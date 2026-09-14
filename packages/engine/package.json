@@ -1,0 +1,20 @@
+{
+  "name": "@pagina/engine",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pagina's core EPUB3 engine: container/OPF/Nav parsing, layout, pagination, and CFI locators. Zero runtime dependencies — built entirely on native browser APIs (DecompressionStream, DOMParser).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^6.0.0",
+    "vitest": "^5.0.0"
+  }
+}
