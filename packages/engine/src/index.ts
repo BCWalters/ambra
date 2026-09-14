@@ -26,6 +26,7 @@ export {
 export type { ResourceReference } from "./content/ContentLoader.js";
 export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/ResourceUrlResolver.js";
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
+export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { SandboxedContentHost, RenderingSurfaceError } from "./rendering/SandboxedContentHost.js";
 export { PaginationEngine, ScrollViewEngine, FixedLayoutRenderer } from "./layout/LayoutEngine.js";
 export { Locator, LocatorResolver } from "./locator/Locator.js";

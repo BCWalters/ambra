@@ -1,5 +1,6 @@
 import type { ContentDocument } from "../content/ContentLoader.js";
 import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
+import { EPUB_CSS_RESET } from "./EpubCssReset.js";
 
 /**
  * A minimal, restrictive Content-Security-Policy applied to every document
@@ -20,8 +21,10 @@ const CONTENT_SECURITY_POLICY =
 /**
  * Assembles a self-contained, sandboxed-iframe-ready XHTML document from a
  * `ContentDocument`: rewrites every resource reference to the `blob:` URL
- * provided for it, injects a restrictive CSP `<meta>` tag, and serializes
- * the result back to an XML string.
+ * provided for it, injects a restrictive CSP `<meta>` tag and the base
+ * `EPUB_CSS_RESET` stylesheet (ahead of the book's own CSS in source
+ * order, so book styles still win the cascade), and serializes the result
+ * back to an XML string.
  *
  * Deliberately a stateless, pure-function-shaped class (no instance state)
  * rather than a free function, since it groups a small family of related
@@ -54,6 +57,7 @@ export class ContentDocumentAssembler {
     }
 
     injectContentSecurityPolicy(doc);
+    injectCssReset(doc);
 
     return new XMLSerializer().serializeToString(doc);
   }
@@ -69,4 +73,25 @@ function injectContentSecurityPolicy(doc: Document): void {
   meta.setAttribute("http-equiv", "Content-Security-Policy");
   meta.setAttribute("content", CONTENT_SECURITY_POLICY);
   head.insertBefore(meta, head.firstChild);
+}
+
+/** Injects the base `EPUB_CSS_RESET` stylesheet as the first `<style>` in
+ * `<head>` — after the CSP `<meta>` (which should stay the very first
+ * element for defense-in-depth: some user agents only honor a CSP
+ * `<meta>` if it precedes other content), but before anything else in the
+ * document's original `<head>` (its `<title>`, the book's own
+ * `<link rel="stylesheet">`/`<style>`, viewport `<meta>`, etc.). Later
+ * source-order rules of equal specificity win the CSS cascade, so the
+ * book's own styles naturally override this reset wherever they disagree. */
+function injectCssReset(doc: Document): void {
+  const head = doc.getElementsByTagName("head")[0];
+  if (!head) {
+    return;
+  }
+
+  const style = doc.createElement("style");
+  style.textContent = EPUB_CSS_RESET;
+
+  const cspMeta = head.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  head.insertBefore(style, cspMeta ? cspMeta.nextSibling : head.firstChild);
 }

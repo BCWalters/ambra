@@ -73,4 +73,27 @@ describe("ContentDocumentAssembler", () => {
 
     expect(assembled).toContain('href="ch1.xhtml#footnote1"');
   });
+
+  it("injects the base CSS reset as a <style> element", async () => {
+    const doc = await loader.loadSpineDocument(0);
+
+    const assembled = ContentDocumentAssembler.assemble(doc, new Map());
+
+    expect(assembled).toContain("<style>");
+    expect(assembled).toContain("box-sizing: border-box");
+  });
+
+  it("orders the CSS reset after the CSP meta tag but before the book's own stylesheet link", async () => {
+    const doc = await loader.loadSpineDocument(0);
+
+    const assembled = ContentDocumentAssembler.assemble(doc, new Map());
+
+    const cspIndex = assembled.indexOf("Content-Security-Policy");
+    const resetIndex = assembled.indexOf("box-sizing: border-box");
+    const bookStylesheetIndex = assembled.indexOf('href="styles/main.css"');
+
+    expect(cspIndex).toBeGreaterThan(-1);
+    expect(resetIndex).toBeGreaterThan(cspIndex);
+    expect(bookStylesheetIndex).toBeGreaterThan(resetIndex);
+  });
 });
