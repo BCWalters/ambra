@@ -43,7 +43,7 @@ importers:
     devDependencies:
       "@crxjs/vite-plugin":
         specifier: ^2.7.1
-        version: 2.7.1(vite@8.3.0)
+        version: 2.7.1(vite@8.3.0(@types/node@26.5.1))
       "@types/chrome":
         specifier: ^0.2.9
         version: 0.2.9
@@ -55,22 +55,28 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       "@vitejs/plugin-react":
         specifier: ^6.1.1
-        version: 6.1.1(vite@8.3.0)
+        version: 6.1.1(vite@8.3.0(@types/node@26.5.1))
       typescript:
         specifier: ^6.0.0
         version: 6.0.3
       vite:
         specifier: ^8.3.0
-        version: 8.3.0
+        version: 8.3.0(@types/node@26.5.1)
 
   packages/engine:
     devDependencies:
+      "@types/node":
+        specifier: ^26.5.1
+        version: 26.5.1
+      happy-dom:
+        specifier: ^20.14.5
+        version: 20.14.5
       typescript:
         specifier: ^6.0.0
         version: 6.0.3
       vitest:
         specifier: ^5.0.0
-        version: 5.0.0(vite@8.3.0)
+        version: 5.0.0(@types/node@26.5.1)(happy-dom@20.14.5)(vite@8.3.0(@types/node@26.5.1))
 
   packages/shell:
     dependencies:
@@ -1242,6 +1248,12 @@ packages:
         integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==,
       }
 
+  "@types/node@26.5.1":
+    resolution:
+      {
+        integrity: sha512-CzNm2FezW4VR/LjG6yUdiEgLE/rAQ9Slj5gCu/C2VrdcW7I0ahNZ8DRbHT7zOZ6r3ONgd/bsQIeSaoDGrd1C6g==,
+      }
+
   "@types/react-dom@19.3.0":
     resolution:
       {
@@ -1254,6 +1266,18 @@ packages:
     resolution:
       {
         integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==,
+      }
+
+  "@types/whatwg-mimetype@3.0.2":
+    resolution:
+      {
+        integrity: sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA==,
+      }
+
+  "@types/ws@8.18.1":
+    resolution:
+      {
+        integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==,
       }
 
   "@typescript-eslint/eslint-plugin@8.70.0":
@@ -1446,6 +1470,13 @@ packages:
       }
     engines: { node: 20 || >=22 }
 
+  buffer-image-size@0.6.4:
+    resolution:
+      {
+        integrity: sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==,
+      }
+    engines: { node: ">=4.0" }
+
   cacheable@2.5.0:
     resolution:
       {
@@ -1567,6 +1598,13 @@ packages:
     resolution:
       {
         integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==,
+      }
+    engines: { node: ">=0.12" }
+
+  entities@7.0.1:
+    resolution:
+      {
+        integrity: sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==,
       }
     engines: { node: ">=0.12" }
 
@@ -1753,6 +1791,13 @@ packages:
       {
         integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==,
       }
+
+  happy-dom@20.14.5:
+    resolution:
+      {
+        integrity: sha512-x/RzkpWO40bTjIoT30iQtt64FLLmH/iRcUCN2X//bLx7H3ifkdfPXyqsro/OYtqzIAhiLMMA7mmiOR9C3NOKjQ==,
+      }
+    engines: { node: ">=20.0.0" }
 
   hashery@1.5.1:
     resolution:
@@ -2306,6 +2351,12 @@ packages:
     engines: { node: ">=14.17" }
     hasBin: true
 
+  undici-types@8.9.0:
+    resolution:
+      {
+        integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==,
+      }
+
   universalify@2.0.1:
     resolution:
       {
@@ -2417,6 +2468,13 @@ packages:
       jsdom:
         optional: true
 
+  whatwg-mimetype@3.0.0:
+    resolution:
+      {
+        integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==,
+      }
+    engines: { node: ">=12" }
+
   which@2.0.2:
     resolution:
       {
@@ -2440,6 +2498,21 @@ packages:
       }
     engines: { node: ">=0.10.0" }
 
+  ws@8.21.3:
+    resolution:
+      {
+        integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==,
+      }
+    engines: { node: ">=10.0.0" }
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: ">=5.0.2"
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   yocto-queue@0.1.0:
     resolution:
       {
@@ -2462,7 +2535,7 @@ snapshots:
       hashery: 1.5.1
       keyv: 5.6.0
 
-  "@crxjs/vite-plugin@2.7.1(vite@8.3.0)":
+  "@crxjs/vite-plugin@2.7.1(vite@8.3.0(@types/node@26.5.1))":
     dependencies:
       "@webcomponents/custom-elements": 1.6.0
       acorn-walk: 8.3.5
@@ -2478,7 +2551,7 @@ snapshots:
       rollup: 2.80.0
       rxjs: 7.5.7
       tinyglobby: 0.2.17
-      vite: 8.3.0
+      vite: 8.3.0(@types/node@26.5.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -3813,6 +3886,10 @@ snapshots:
 
   "@types/json-schema@7.0.15": {}
 
+  "@types/node@26.5.1":
+    dependencies:
+      undici-types: 8.9.0
+
   "@types/react-dom@19.3.0(@types/react@19.3.0)":
     dependencies:
       "@types/react": 19.3.0
@@ -3820,6 +3897,12 @@ snapshots:
   "@types/react@19.3.0":
     dependencies:
       csstype: 3.2.3
+
+  "@types/whatwg-mimetype@3.0.2": {}
+
+  "@types/ws@8.18.1":
+    dependencies:
+      "@types/node": 26.5.1
 
   "@typescript-eslint/eslint-plugin@8.70.0(@typescript-eslint/parser@8.70.0(eslint@10.10.0)(typescript@6.0.3))(eslint@10.10.0)(typescript@6.0.3)":
     dependencies:
@@ -3912,19 +3995,19 @@ snapshots:
       "@typescript-eslint/types": 8.70.0
       eslint-visitor-keys: 5.0.1
 
-  "@vitejs/plugin-react@6.1.1(vite@8.3.0)":
+  "@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@26.5.1))":
     dependencies:
       "@rolldown/pluginutils": 1.0.1
-      vite: 8.3.0
+      vite: 8.3.0(@types/node@26.5.1)
 
-  "@vitest/mocker@5.0.0(vite@8.3.0)":
+  "@vitest/mocker@5.0.0(vite@8.3.0(@types/node@26.5.1))":
     dependencies:
       "@jridgewell/trace-mapping": 0.3.31
       "@vitest/spy": 5.0.0
       estree-walker: 3.0.3
       magic-string: 1.3.1
     optionalDependencies:
-      vite: 8.3.0
+      vite: 8.3.0(@types/node@26.5.1)
 
   "@vitest/spy@5.0.0": {}
 
@@ -3956,6 +4039,10 @@ snapshots:
   brace-expansion@5.0.9:
     dependencies:
       balanced-match: 4.0.4
+
+  buffer-image-size@0.6.4:
+    dependencies:
+      "@types/node": 26.5.1
 
   cacheable@2.5.0:
     dependencies:
@@ -4024,6 +4111,8 @@ snapshots:
   embla-carousel@8.6.0: {}
 
   entities@4.5.0: {}
+
+  entities@7.0.1: {}
 
   es-module-lexer@0.10.5: {}
 
@@ -4142,6 +4231,19 @@ snapshots:
       is-glob: 4.0.3
 
   graceful-fs@4.2.11: {}
+
+  happy-dom@20.14.5:
+    dependencies:
+      "@types/node": 26.5.1
+      "@types/whatwg-mimetype": 3.0.2
+      "@types/ws": 8.18.1
+      buffer-image-size: 0.6.4
+      entities: 7.0.1
+      whatwg-mimetype: 3.0.0
+      ws: 8.21.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   hashery@1.5.1:
     dependencies:
@@ -4414,6 +4516,8 @@ snapshots:
 
   typescript@6.0.3: {}
 
+  undici-types@8.9.0: {}
+
   universalify@2.0.1: {}
 
   uri-js@4.4.1:
@@ -4424,7 +4528,7 @@ snapshots:
     dependencies:
       react: 19.3.0
 
-  vite@8.3.0:
+  vite@8.3.0(@types/node@26.5.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -4432,12 +4536,13 @@ snapshots:
       rolldown: 1.2.8
       tinyglobby: 0.2.17
     optionalDependencies:
+      "@types/node": 26.5.1
       fsevents: 2.3.3
 
-  vitest@5.0.0(vite@8.3.0):
+  vitest@5.0.0(@types/node@26.5.1)(happy-dom@20.14.5)(vite@8.3.0(@types/node@26.5.1)):
     dependencies:
       "@types/chai": 5.2.3
-      "@vitest/mocker": 5.0.0(vite@8.3.0)
+      "@vitest/mocker": 5.0.0(vite@8.3.0(@types/node@26.5.1))
       chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -4448,10 +4553,15 @@ snapshots:
       tinybench: 6.1.4
       tinyexec: 1.3.0
       tinyglobby: 0.2.17
-      vite: 8.3.0
+      vite: 8.3.0(@types/node@26.5.1)
       why-is-node-running: 2.3.0
+    optionalDependencies:
+      "@types/node": 26.5.1
+      happy-dom: 20.14.5
     transitivePeerDependencies:
       - msw
+
+  whatwg-mimetype@3.0.0: {}
 
   which@2.0.2:
     dependencies:
@@ -4463,5 +4573,7 @@ snapshots:
       stackback: 0.0.2
 
   word-wrap@1.2.5: {}
+
+  ws@8.21.3: {}
 
   yocto-queue@0.1.0: {}
