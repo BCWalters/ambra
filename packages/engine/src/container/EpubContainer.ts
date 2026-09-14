@@ -1,8 +1,10 @@
 import { ZipArchive, ZipEntry } from "./ZipArchive.js";
 import { PackageDocument } from "./PackageDocument.js";
 import { getFirstDescendantElementByNS } from "./Xml.js";
+import { EncryptionDocument } from "../encryption/EncryptionDocument.js";
 
 const CONTAINER_XML_PATH = "META-INF/container.xml";
+const ENCRYPTION_XML_PATH = "META-INF/encryption.xml";
 const CONTAINER_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container";
 
 /** Thrown when an EPUB's OCF container (the ZIP archive's top-level
@@ -18,11 +20,14 @@ export class EpubContainerError extends Error {
 
 /**
  * Represents a parsed EPUB container: the ZIP archive plus its resolved
- * `META-INF/container.xml` rootfile path and parsed OPF package document
- * (metadata, manifest, spine).
+ * `META-INF/container.xml` rootfile path, parsed OPF package document
+ * (metadata, manifest, spine), and — if present — parsed
+ * `META-INF/encryption.xml` (almost always used only to declare font
+ * obfuscation in non-DRM books; see `FontDeobfuscator`).
  */
 export class EpubContainer {
   private packageDocument: PackageDocument | undefined;
+  private encryptionDocument: EncryptionDocument | null | undefined;
 
   private constructor(
     private readonly archive: ZipArchive,
@@ -75,6 +80,17 @@ export class EpubContainer {
       this.packageDocument = PackageDocument.parse(xml, this.rootFilePath);
     }
     return this.packageDocument;
+  }
+
+  /** Parses (and caches) this container's `META-INF/encryption.xml`, if
+   * present — `undefined` for the (common) case of a container with no
+   * encrypted/obfuscated resources at all. */
+  public async getEncryptionDocument(): Promise<EncryptionDocument | undefined> {
+    if (this.encryptionDocument === undefined) {
+      const entry = this.archive.getEntry(ENCRYPTION_XML_PATH);
+      this.encryptionDocument = entry ? EncryptionDocument.parse(await entry.readText()) : null;
+    }
+    return this.encryptionDocument ?? undefined;
   }
 
   public getEntry(path: string): ZipEntry | undefined {

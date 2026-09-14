@@ -85,3 +85,17 @@ describe("ContentLoader", () => {
     });
   });
 });
+
+describe("ContentLoader font de-obfuscation integration", () => {
+  it("transparently de-obfuscates both IDPF- and Adobe-obfuscated fonts via loadResourceBytes", async () => {
+    const container = await EpubContainer.open(await loadFixture("font-obfuscation.epub"));
+    const loader = await ContentLoader.create(container);
+    const expectedPlaintext = await loadFixture("font-obfuscation-plaintext.bin");
+
+    const idpfBytes = await loader.loadResourceBytesById("idpf-font");
+    const adobeBytes = await loader.loadResourceBytesById("adobe-font");
+
+    expect(idpfBytes).toEqual(expectedPlaintext);
+    expect(adobeBytes).toEqual(expectedPlaintext);
+  });
+});

@@ -76,6 +76,14 @@ export class SpineItemRef {
  * fixed-layout rendering. */
 export class PackageMetadata {
   public constructor(
+    /** The value of the `dc:identifier` element specifically referenced by
+     * `<package unique-identifier="...">` — not merely "the first
+     * `dc:identifier`", which real-world books may have several of (e.g.
+     * an ISBN alongside a UUID). This distinction matters beyond just
+     * correctness of the metadata itself: it's the exact value the EPUB
+     * font obfuscation algorithm is defined against (see
+     * `font-obfuscation`), so getting the wrong identifier here would
+     * silently produce the wrong de-obfuscation key. */
     public readonly identifier: string,
     public readonly title: string,
     public readonly language: string,
@@ -163,7 +171,7 @@ export class PackageDocument {
     const manifestEl = getRequiredChild(packageEl, OPF_NAMESPACE, "manifest", opfPath);
     const spineEl = getRequiredChild(packageEl, OPF_NAMESPACE, "spine", opfPath);
 
-    const metadata = PackageDocument.parseMetadata(metadataEl, opfPath);
+    const metadata = PackageDocument.parseMetadata(packageEl, metadataEl, opfPath);
     const manifestItems = PackageDocument.parseManifest(manifestEl, opfPath);
     const manifestById = new Map(manifestItems.map((item) => [item.id, item]));
     const spine = PackageDocument.parseSpine(spineEl, manifestById, opfPath);
@@ -172,20 +180,54 @@ export class PackageDocument {
     return new PackageDocument(metadata, manifestItems, spine, tocManifestId);
   }
 
-  private static parseMetadata(metadataEl: Element, opfPath: string): PackageMetadata {
-    const identifier = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "identifier");
+  private static parseMetadata(
+    packageEl: Element,
+    metadataEl: Element,
+    opfPath: string,
+  ): PackageMetadata {
+    const identifier = PackageDocument.parseUniqueIdentifier(packageEl, metadataEl, opfPath);
     const title = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "title");
     const language = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "language");
 
-    if (!identifier || !title || !language) {
+    if (!title || !language) {
       throw new PackageDocumentError(
-        `OPF metadata at ${opfPath} is missing a required dc:identifier, dc:title, or dc:language.`,
+        `OPF metadata at ${opfPath} is missing a required dc:title or dc:language.`,
       );
     }
 
     const renditionLayout = PackageDocument.parseRenditionLayoutMeta(metadataEl);
 
     return new PackageMetadata(identifier, title, language, renditionLayout);
+  }
+
+  /** Resolves the `dc:identifier` element specifically referenced by
+   * `<package unique-identifier="...">` (per spec, this attribute is
+   * required and must reference a `dc:identifier`'s `id`). Falls back to
+   * the first `dc:identifier` present if the reference is missing or
+   * doesn't resolve, for resilience against real-world non-conformant
+   * files — consistent with this engine's general approach to malformed
+   * content elsewhere (e.g. the NCX fallback). */
+  private static parseUniqueIdentifier(
+    packageEl: Element,
+    metadataEl: Element,
+    opfPath: string,
+  ): string {
+    const identifierElements = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "identifier");
+    const uniqueIdentifierId = packageEl.getAttribute("unique-identifier");
+
+    if (uniqueIdentifierId) {
+      const match = identifierElements.find((el) => el.getAttribute("id") === uniqueIdentifierId);
+      const text = match?.textContent?.trim();
+      if (text) {
+        return text;
+      }
+    }
+
+    const firstText = identifierElements[0]?.textContent?.trim();
+    if (!firstText) {
+      throw new PackageDocumentError(`OPF metadata at ${opfPath} has no dc:identifier element.`);
+    }
+    return firstText;
   }
 
   private static parseRenditionLayoutMeta(metadataEl: Element): RenditionLayout {

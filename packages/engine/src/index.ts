@@ -24,6 +24,14 @@ export {
   findResourceReferencesInDocument,
 } from "./content/ContentLoader.js";
 export type { ResourceReference } from "./content/ContentLoader.js";
+export { EncryptionDocument, EncryptionDocumentError } from "./encryption/EncryptionDocument.js";
+export type { EncryptedResourceEntry } from "./encryption/EncryptionDocument.js";
+export {
+  FontDeobfuscator,
+  UnsupportedEncryptionAlgorithmError,
+  IDPF_FONT_OBFUSCATION_ALGORITHM_URI,
+  ADOBE_FONT_OBFUSCATION_ALGORITHM_URI,
+} from "./encryption/FontDeobfuscator.js";
 export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/ResourceUrlResolver.js";
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";

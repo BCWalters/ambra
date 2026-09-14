@@ -128,3 +128,41 @@ describe("PackageDocument error handling", () => {
     expect(() => PackageDocument.parse(xml, "OEBPS/content.opf")).toThrow(PackageDocumentError);
   });
 });
+
+describe("PackageDocument unique-identifier resolution", () => {
+  const buildXml = (
+    metadataInner: string,
+    uniqueIdentifier = "pub-id",
+  ): string => `<?xml version="1.0"?>
+    <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="${uniqueIdentifier}">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        ${metadataInner}
+        <dc:title>Test</dc:title>
+        <dc:language>en</dc:language>
+      </metadata>
+      <manifest></manifest>
+      <spine></spine>
+    </package>`;
+
+  it("resolves the dc:identifier matching <package unique-identifier>, not just the first one", () => {
+    const xml = buildXml(`
+      <dc:identifier id="isbn-id">urn:isbn:9780000000000</dc:identifier>
+      <dc:identifier id="pub-id">urn:uuid:the-real-one</dc:identifier>
+    `);
+
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.identifier).toBe("urn:uuid:the-real-one");
+  });
+
+  it("falls back to the first dc:identifier when unique-identifier doesn't match any id", () => {
+    const xml = buildXml(
+      `<dc:identifier id="some-other-id">urn:uuid:fallback</dc:identifier>`,
+      "does-not-match-anything",
+    );
+
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.identifier).toBe("urn:uuid:fallback");
+  });
+});

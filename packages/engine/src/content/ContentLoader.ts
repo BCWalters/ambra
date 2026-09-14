@@ -2,6 +2,8 @@ import { EpubContainer } from "../container/EpubContainer.js";
 import { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
 import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
 import { getDescendantElementsByNS, getNamespacedAttributeName } from "../container/Xml.js";
+import type { EncryptionDocument } from "../encryption/EncryptionDocument.js";
+import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -55,18 +57,24 @@ const RESOURCE_ATTRIBUTE_SELECTORS: readonly { selector: string; attribute: stri
  * `url(...)`, background images) are out of scope here, since resolving
  * those requires actually parsing CSS text, which belongs with the
  * rendering surface that decides how stylesheets are delivered into the
- * sandboxed content host (see the `rendering-surface` and `font-obfuscation`
- * work items).
+ * sandboxed content host.
+ *
+ * `loadResourceBytes`/`loadResourceBytesById` transparently reverse font
+ * obfuscation (see `FontDeobfuscator`) when `META-INF/encryption.xml`
+ * declares a resource as obfuscated, so callers never need to know or
+ * care whether a given font was obfuscated in the source file.
  */
 export class ContentLoader {
   private constructor(
     private readonly container: EpubContainer,
     private readonly pkg: PackageDocument,
+    private readonly encryptionDocument: EncryptionDocument | undefined,
   ) {}
 
   public static async create(container: EpubContainer): Promise<ContentLoader> {
     const pkg = await container.getPackageDocument();
-    return new ContentLoader(container, pkg);
+    const encryptionDocument = await container.getEncryptionDocument();
+    return new ContentLoader(container, pkg, encryptionDocument);
   }
 
   public get packageDocument(): PackageDocument {
@@ -99,9 +107,23 @@ export class ContentLoader {
   }
 
   /** Reads the raw (already-decompressed) bytes of any resource in the
-   * container, given its archive-relative path. */
+   * container, given its archive-relative path. Transparently reverses
+   * font obfuscation (per `META-INF/encryption.xml`) when present, so
+   * callers always get plain, usable bytes regardless of whether the
+   * underlying resource happened to be obfuscated in the source file. */
   public async loadResourceBytes(path: string): Promise<Uint8Array> {
-    return this.container.requireEntry(path).read();
+    const bytes = await this.container.requireEntry(path).read();
+
+    const encryptionEntry = this.encryptionDocument?.getEntry(path);
+    if (!encryptionEntry) {
+      return bytes;
+    }
+
+    return FontDeobfuscator.deobfuscate(
+      bytes,
+      encryptionEntry.algorithmUri,
+      this.pkg.metadata.identifier,
+    );
   }
 
   /** Like `loadResourceBytes`, but by manifest item id rather than path. */
