@@ -1,4 +1,6 @@
 import { ZipArchive, ZipEntry } from "./ZipArchive.js";
+import { PackageDocument } from "./PackageDocument.js";
+import { getFirstDescendantElementByNS } from "./Xml.js";
 
 const CONTAINER_XML_PATH = "META-INF/container.xml";
 const CONTAINER_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container";
@@ -16,11 +18,12 @@ export class EpubContainerError extends Error {
 
 /**
  * Represents a parsed EPUB container: the ZIP archive plus its resolved
- * `META-INF/container.xml` rootfile path (pointing at the OPF package
- * document). Parsing the OPF's metadata/manifest/spine is the `opf-parser`
- * work item's responsibility, layered on top of this class.
+ * `META-INF/container.xml` rootfile path and parsed OPF package document
+ * (metadata, manifest, spine).
  */
 export class EpubContainer {
+  private packageDocument: PackageDocument | undefined;
+
   private constructor(
     private readonly archive: ZipArchive,
     public readonly rootFilePath: string,
@@ -28,7 +31,7 @@ export class EpubContainer {
 
   /** Opens `data` as a ZIP archive and resolves the OCF rootfile path from
    * `META-INF/container.xml`. Does not parse the OPF package document
-   * itself — see the `opf-parser` work item. */
+   * itself — call `getPackageDocument()` for that, lazily. */
   public static async open(data: ArrayBuffer | Uint8Array): Promise<EpubContainer> {
     const archive = ZipArchive.open(data);
     const rootFilePath = await EpubContainer.resolveRootFilePath(archive);
@@ -48,7 +51,7 @@ export class EpubContainer {
       throw new EpubContainerError(`Malformed XML in ${CONTAINER_XML_PATH}.`);
     }
 
-    const rootFile = doc.getElementsByTagNameNS(CONTAINER_NAMESPACE, "rootfile")[0];
+    const rootFile = getFirstDescendantElementByNS(doc, CONTAINER_NAMESPACE, "rootfile");
     const fullPath = rootFile?.getAttribute("full-path");
     if (!fullPath) {
       throw new EpubContainerError(
@@ -63,6 +66,15 @@ export class EpubContainer {
    * rootfile path. */
   public getRootFileEntry(): ZipEntry {
     return this.archive.requireEntry(this.rootFilePath);
+  }
+
+  /** Parses (and caches) this container's OPF package document. */
+  public async getPackageDocument(): Promise<PackageDocument> {
+    if (!this.packageDocument) {
+      const xml = await this.getRootFileEntry().readText();
+      this.packageDocument = PackageDocument.parse(xml, this.rootFilePath);
+    }
+    return this.packageDocument;
   }
 
   public getEntry(path: string): ZipEntry | undefined {
