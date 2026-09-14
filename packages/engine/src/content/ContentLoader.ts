@@ -114,34 +114,10 @@ export class ContentLoader {
    * archive-relative paths. Hyperlinks (`<a href>`) are deliberately
    * excluded — they're navigation, not embedded resources. */
   public findResourceReferences(contentDocument: ContentDocument): ResourceReference[] {
-    const { document, manifestItem } = contentDocument;
-    const documentPath = manifestItem.path;
-    const references: ResourceReference[] = [];
-
-    for (const { selector, attribute } of RESOURCE_ATTRIBUTE_SELECTORS) {
-      for (const element of Array.from(document.querySelectorAll(selector))) {
-        const reference = resolveReference(element, attribute, documentPath);
-        if (reference) {
-          references.push(reference);
-        }
-      }
-    }
-
-    // SVG <image> elements use either a bare `href` (SVG2) or the legacy
-    // `xlink:href` (SVG1.1, still the common case in real-world EPUBs).
-    for (const imageEl of getDescendantElementsByNS(document, SVG_NAMESPACE, "image")) {
-      const attribute =
-        (imageEl.hasAttribute("href") ? "href" : undefined) ??
-        getNamespacedAttributeName(imageEl, XLINK_NAMESPACE, "href");
-      if (attribute) {
-        const reference = resolveReference(imageEl, attribute, documentPath);
-        if (reference) {
-          references.push(reference);
-        }
-      }
-    }
-
-    return references;
+    return findResourceReferencesInDocument(
+      contentDocument.document,
+      contentDocument.manifestItem.path,
+    );
   }
 
   private requireManifestItem(id: string): ManifestItem {
@@ -151,6 +127,44 @@ export class ContentLoader {
     }
     return item;
   }
+}
+
+/** Standalone version of `ContentLoader.findResourceReferences`, operating
+ * directly on any parsed `Document` rather than a `ContentLoader`-owned
+ * `ContentDocument`. Exists so the future rendering surface can re-run
+ * discovery against a freshly (re-)parsed clone of a content document —
+ * e.g. right before rewriting references to blob URLs — without needing
+ * to identity-match elements across two separately parsed DOM trees. */
+export function findResourceReferencesInDocument(
+  document: Document,
+  documentPath: string,
+): ResourceReference[] {
+  const references: ResourceReference[] = [];
+
+  for (const { selector, attribute } of RESOURCE_ATTRIBUTE_SELECTORS) {
+    for (const element of Array.from(document.querySelectorAll(selector))) {
+      const reference = resolveReference(element, attribute, documentPath);
+      if (reference) {
+        references.push(reference);
+      }
+    }
+  }
+
+  // SVG <image> elements use either a bare `href` (SVG2) or the legacy
+  // `xlink:href` (SVG1.1, still the common case in real-world EPUBs).
+  for (const imageEl of getDescendantElementsByNS(document, SVG_NAMESPACE, "image")) {
+    const attribute =
+      (imageEl.hasAttribute("href") ? "href" : undefined) ??
+      getNamespacedAttributeName(imageEl, XLINK_NAMESPACE, "href");
+    if (attribute) {
+      const reference = resolveReference(imageEl, attribute, documentPath);
+      if (reference) {
+        references.push(reference);
+      }
+    }
+  }
+
+  return references;
 }
 
 function resolveReference(

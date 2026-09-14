@@ -117,6 +117,13 @@ export class PackageDocument {
     return this.manifestById.get(id);
   }
 
+  /** Finds the manifest item whose (already archive-relative) `path`
+   * matches, e.g. for resolving a resource reference discovered within a
+   * content document back to its manifest entry (to read its media type). */
+  public findManifestItemByPath(path: string): ManifestItem | undefined {
+    return this.manifest.find((item) => item.path === path);
+  }
+
   /** The publication's single EPUB3 Nav Document, if declared. Absent for
    * EPUB2-authored content relying solely on an NCX — see `findNcxDocument`. */
   public findNavDocument(): ManifestItem | undefined {

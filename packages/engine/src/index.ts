@@ -17,8 +17,16 @@ export {
   NavPoint,
 } from "./navigation/NavigationDocument.js";
 export type { NavigationListType } from "./navigation/NavigationDocument.js";
-export { ContentLoader, ContentDocument, ContentLoaderError } from "./content/ContentLoader.js";
+export {
+  ContentLoader,
+  ContentDocument,
+  ContentLoaderError,
+  findResourceReferencesInDocument,
+} from "./content/ContentLoader.js";
 export type { ResourceReference } from "./content/ContentLoader.js";
+export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/ResourceUrlResolver.js";
+export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
+export { SandboxedContentHost, RenderingSurfaceError } from "./rendering/SandboxedContentHost.js";
 export { PaginationEngine, ScrollViewEngine, FixedLayoutRenderer } from "./layout/LayoutEngine.js";
 export { Locator, LocatorResolver } from "./locator/Locator.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";

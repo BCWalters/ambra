@@ -1,10 +1,13 @@
-import { useState } from "react";
-import type { ChangeEvent, FC } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent, FC, MutableRefObject } from "react";
 import { Body1, Caption1, Divider, Title2, Title3 } from "@fluentui/react-components";
 import {
+  ContentDocumentAssembler,
   ContentLoader,
   EpubContainer,
   NavigationDocument,
+  ResourceUrlResolver,
+  SandboxedContentHost,
   type NavPoint,
   type PackageDocument,
 } from "@pagina/engine";
@@ -21,9 +24,10 @@ interface ParsedBookSummary {
   firstSpineResourceRefs: { attributeName: string; path: string }[];
 }
 
-async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
-  const buffer = await file.arrayBuffer();
-  const container = await EpubContainer.open(buffer);
+async function buildBookSummary(
+  container: EpubContainer,
+  fileName: string,
+): Promise<ParsedBookSummary> {
   const pkg = await container.getPackageDocument();
   const navigation = await NavigationDocument.load(container);
   const contentLoader = await ContentLoader.create(container);
@@ -37,7 +41,7 @@ async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
   }
 
   return {
-    fileName: file.name,
+    fileName,
     identifier: pkg.metadata.identifier,
     title: pkg.metadata.title,
     language: pkg.metadata.language,
@@ -56,6 +60,36 @@ async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
     navigation,
     firstSpineResourceRefs,
   };
+}
+
+interface ActiveRender {
+  host: SandboxedContentHost;
+  resolver: ResourceUrlResolver;
+}
+
+/** Renders the first spine item into a real `SandboxedContentHost`, and
+ * appends its iframe into `containerEl`. Exercises the full rendering
+ * pipeline: ContentLoader -> ResourceUrlResolver -> ContentDocumentAssembler
+ * -> SandboxedContentHost. */
+async function renderFirstSpineItem(
+  container: EpubContainer,
+  containerEl: HTMLDivElement,
+  activeRenderRef: MutableRefObject<ActiveRender | null>,
+): Promise<void> {
+  const contentLoader = await ContentLoader.create(container);
+  const spineDoc = await contentLoader.loadSpineDocument(0);
+  const references = contentLoader.findResourceReferences(spineDoc);
+
+  const resolver = new ResourceUrlResolver(contentLoader);
+  const resourceUrls = await resolver.resolveAll(references.map((ref) => ref.path));
+
+  const assembledXhtml = ContentDocumentAssembler.assemble(spineDoc, resourceUrls);
+
+  const host = new SandboxedContentHost();
+  containerEl.replaceChildren(host.element);
+  await host.render(assembledXhtml);
+
+  activeRenderRef.current = { host, resolver };
 }
 
 const NavTree: FC<{ items: readonly NavPoint[] }> = ({ items }) => {
@@ -93,6 +127,41 @@ export const EpubInspector: FC = () => {
   const [summary, setSummary] = useState<ParsedBookSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [renderableContainer, setRenderableContainer] = useState<EpubContainer | null>(null);
+
+  const hostContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeRenderRef = useRef<ActiveRender | null>(null);
+
+  useEffect(() => {
+    // Only runs once React has committed the DOM for the current
+    // `summary`/`renderableContainer` state, so `hostContainerRef.current`
+    // is guaranteed to already point at the (now-mounted) container div —
+    // unlike reading the ref synchronously inside handleFileChange right
+    // after calling setSummary, which would still see the *previous*
+    // render's DOM (React state updates aren't reflected synchronously).
+    if (!renderableContainer || !hostContainerRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await renderFirstSpineItem(renderableContainer, hostContainerRef.current!, activeRenderRef);
+      } catch (renderErr) {
+        if (!cancelled) {
+          setRenderError(renderErr instanceof Error ? renderErr.message : String(renderErr));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      activeRenderRef.current?.host.dispose();
+      activeRenderRef.current?.resolver.dispose();
+      activeRenderRef.current = null;
+    };
+  }, [renderableContainer]);
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
@@ -103,9 +172,18 @@ export const EpubInspector: FC = () => {
     setIsLoading(true);
     setError(null);
     setSummary(null);
+    setRenderError(null);
+    setRenderableContainer(null);
 
     try {
-      setSummary(await parseEpubFile(file));
+      const buffer = await file.arrayBuffer();
+      const container = await EpubContainer.open(buffer);
+      const parsedSummary = await buildBookSummary(container, file.name);
+      setSummary(parsedSummary);
+
+      if (parsedSummary.spine.length > 0) {
+        setRenderableContainer(container);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -197,6 +275,23 @@ export const EpubInspector: FC = () => {
               </li>
             ))}
           </ul>
+
+          <Divider style={{ margin: "12px 0" }} />
+
+          <Title3>Sandboxed render of first spine item</Title3>
+          {renderError && (
+            <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)" }}>
+              Render error: {renderError}
+            </Body1>
+          )}
+          <div
+            ref={hostContainerRef}
+            style={{
+              height: 320,
+              border: "1px solid var(--colorNeutralStroke1, #ccc)",
+              marginTop: 8,
+            }}
+          />
         </div>
       )}
     </div>

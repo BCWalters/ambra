@@ -45,4 +45,5 @@ build_fixture "$FIXTURES_DIR/nested-toc-epub-src" "$FIXTURES_DIR/nested-toc.epub
 build_fixture "$FIXTURES_DIR/ncx-epub-src" "$FIXTURES_DIR/ncx.epub"
 build_fixture "$FIXTURES_DIR/no-navigation-epub-src" "$FIXTURES_DIR/no-navigation.epub"
 build_fixture "$FIXTURES_DIR/content-loader-epub-src" "$FIXTURES_DIR/content-loader.epub"
+build_fixture "$FIXTURES_DIR/malicious-script-epub-src" "$FIXTURES_DIR/malicious-script.epub"
 
