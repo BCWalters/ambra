@@ -91,6 +91,8 @@ export class PackageMetadata {
  * left as OPF-relative hrefs), so downstream consumers never need to know
  * where the OPF file itself lives.
  */
+export const NCX_MEDIA_TYPE = "application/x-dtbncx+xml";
+
 export class PackageDocument {
   private readonly manifestById: ReadonlyMap<string, ManifestItem>;
 
@@ -98,6 +100,11 @@ export class PackageDocument {
     public readonly metadata: PackageMetadata,
     manifestItems: readonly ManifestItem[],
     public readonly spine: readonly SpineItemRef[],
+    /** The manifest item id referenced by the legacy `<spine toc="...">`
+     * attribute, if present — the standard way to locate a fallback NCX
+     * document even in an EPUB3 package (kept for backward compatibility,
+     * per spec). See `findNcxDocument`. */
+    private readonly tocManifestId: string | undefined,
   ) {
     this.manifestById = new Map(manifestItems.map((item) => [item.id, item]));
   }
@@ -111,10 +118,23 @@ export class PackageDocument {
   }
 
   /** The publication's single EPUB3 Nav Document, if declared. Absent for
-   * EPUB2-authored content relying solely on an NCX — see the `nav-parser`
-   * work item's NCX fallback. */
+   * EPUB2-authored content relying solely on an NCX — see `findNcxDocument`. */
   public findNavDocument(): ManifestItem | undefined {
     return this.manifest.find((item) => item.isNavDocument);
+  }
+
+  /** The legacy NCX document to fall back to when there's no EPUB3 Nav
+   * Document, resolved first via the spine's `toc` attribute (the
+   * spec-sanctioned way to reference it), then by media type as a looser
+   * fallback for real-world files that omit the `toc` attribute. */
+  public findNcxDocument(): ManifestItem | undefined {
+    if (this.tocManifestId) {
+      const byId = this.manifestById.get(this.tocManifestId);
+      if (byId) {
+        return byId;
+      }
+    }
+    return this.manifest.find((item) => item.mediaType === NCX_MEDIA_TYPE);
   }
 
   /** Parses `xml` (the OPF package document's raw text) into a
@@ -140,8 +160,9 @@ export class PackageDocument {
     const manifestItems = PackageDocument.parseManifest(manifestEl, opfPath);
     const manifestById = new Map(manifestItems.map((item) => [item.id, item]));
     const spine = PackageDocument.parseSpine(spineEl, manifestById, opfPath);
+    const tocManifestId = spineEl.getAttribute("toc") ?? undefined;
 
-    return new PackageDocument(metadata, manifestItems, spine);
+    return new PackageDocument(metadata, manifestItems, spine, tocManifestId);
   }
 
   private static parseMetadata(metadataEl: Element, opfPath: string): PackageMetadata {

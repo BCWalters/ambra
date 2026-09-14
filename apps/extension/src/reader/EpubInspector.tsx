@@ -1,7 +1,12 @@
 import { useState } from "react";
 import type { ChangeEvent, FC } from "react";
 import { Body1, Caption1, Divider, Title2, Title3 } from "@fluentui/react-components";
-import { EpubContainer, type PackageDocument } from "@pagina/engine";
+import {
+  EpubContainer,
+  NavigationDocument,
+  type NavPoint,
+  type PackageDocument,
+} from "@pagina/engine";
 
 interface ParsedBookSummary {
   fileName: string;
@@ -11,12 +16,14 @@ interface ParsedBookSummary {
   renditionLayout: PackageDocument["metadata"]["renditionLayout"];
   manifest: { id: string; path: string; mediaType: string; properties: string[] }[];
   spine: { id: string; linear: boolean; effectiveLayout: string }[];
+  navigation: NavigationDocument;
 }
 
 async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
   const buffer = await file.arrayBuffer();
   const container = await EpubContainer.open(buffer);
   const pkg = await container.getPackageDocument();
+  const navigation = await NavigationDocument.load(container);
 
   return {
     fileName: file.name,
@@ -35,8 +42,33 @@ async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
       linear: ref.linear,
       effectiveLayout: ref.resolveRenditionLayout(pkg.metadata.renditionLayout),
     })),
+    navigation,
   };
 }
+
+const NavTree: FC<{ items: readonly NavPoint[] }> = ({ items }) => {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul>
+      {items.map((item, index) => (
+        <li key={index}>
+          {item.isLinked ? (
+            <>
+              {item.label} — <code>{item.path}</code>
+              {item.fragment ? <code>#{item.fragment}</code> : null}
+            </>
+          ) : (
+            <em>{item.label} (heading only, no link)</em>
+          )}
+          <NavTree items={item.children} />
+        </li>
+      ))}
+    </ul>
+  );
+};
 
 /**
  * Temporary developer tool for manually exercising the engine end-to-end
@@ -121,6 +153,25 @@ export const EpubInspector: FC = () => {
               </li>
             ))}
           </ul>
+
+          <Divider style={{ margin: "12px 0" }} />
+
+          <Title3>Table of contents</Title3>
+          <NavTree items={summary.navigation.toc.items} />
+
+          {summary.navigation.landmarks && (
+            <>
+              <Title3>Landmarks</Title3>
+              <NavTree items={summary.navigation.landmarks.items} />
+            </>
+          )}
+
+          {summary.navigation.pageList && (
+            <>
+              <Title3>Page list</Title3>
+              <NavTree items={summary.navigation.pageList.items} />
+            </>
+          )}
         </div>
       )}
     </div>

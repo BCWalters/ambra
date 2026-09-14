@@ -36,3 +36,16 @@ export function directoryOf(path: string): string {
   const lastSlash = path.lastIndexOf("/");
   return lastSlash === -1 ? "" : path.slice(0, lastSlash);
 }
+
+/** Splits a raw href like `"chapter1.xhtml#section2"` into its path and
+ * fragment parts. Used by navigation parsing (Nav Document / NCX), where a
+ * link's target position within a content document (the fragment) needs to
+ * be kept separate from the document path (which gets resolved via
+ * `resolveEpubPath`). */
+export function splitHrefFragment(href: string): { path: string; fragment: string | undefined } {
+  const hashIndex = href.indexOf("#");
+  if (hashIndex === -1) {
+    return { path: href, fragment: undefined };
+  }
+  return { path: href.slice(0, hashIndex), fragment: href.slice(hashIndex + 1) };
+}

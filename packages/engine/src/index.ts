@@ -6,10 +6,17 @@ export {
   PackageMetadata,
   ManifestItem,
   SpineItemRef,
+  NCX_MEDIA_TYPE,
 } from "./container/PackageDocument.js";
 export type { RenditionLayout } from "./container/PackageDocument.js";
-export { resolveEpubPath, directoryOf } from "./container/EpubPath.js";
-export { NavigationDocument } from "./navigation/NavigationDocument.js";
+export { resolveEpubPath, directoryOf, splitHrefFragment } from "./container/EpubPath.js";
+export {
+  NavigationDocument,
+  NavigationDocumentError,
+  NavigationList,
+  NavPoint,
+} from "./navigation/NavigationDocument.js";
+export type { NavigationListType } from "./navigation/NavigationDocument.js";
 export { ContentLoader } from "./content/ContentLoader.js";
 export { PaginationEngine, ScrollViewEngine, FixedLayoutRenderer } from "./layout/LayoutEngine.js";
 export { Locator, LocatorResolver } from "./locator/Locator.js";

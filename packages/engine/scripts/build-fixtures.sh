@@ -41,4 +41,7 @@ build_fixture "$FIXTURES_DIR/minimal-epub-src" "$FIXTURES_DIR/minimal.epub"
 build_fixture "$FIXTURES_DIR/malformed-container-epub-src" "$FIXTURES_DIR/malformed-container.epub"
 build_fixture "$FIXTURES_DIR/no-container-epub-src" "$FIXTURES_DIR/no-container.epub"
 build_fixture "$FIXTURES_DIR/fixed-layout-epub-src" "$FIXTURES_DIR/fixed-layout.epub"
+build_fixture "$FIXTURES_DIR/nested-toc-epub-src" "$FIXTURES_DIR/nested-toc.epub"
+build_fixture "$FIXTURES_DIR/ncx-epub-src" "$FIXTURES_DIR/ncx.epub"
+build_fixture "$FIXTURES_DIR/no-navigation-epub-src" "$FIXTURES_DIR/no-navigation.epub"
 

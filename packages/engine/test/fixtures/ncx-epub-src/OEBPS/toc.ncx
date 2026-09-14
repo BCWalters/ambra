@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="urn:uuid:8f8a2c1e-2f1a-4a3b-9c1d-000000000004"/>
+  </head>
+  <docTitle>
+    <text>Pagina NCX Fallback Test Fixture</text>
+  </docTitle>
+  <navMap>
+    <navPoint id="np1" playOrder="1">
+      <navLabel><text>Chapter 1</text></navLabel>
+      <content src="ch1.xhtml"/>
+      <navPoint id="np1-1" playOrder="2">
+        <navLabel><text>Chapter 1, Section 1</text></navLabel>
+        <content src="ch1.xhtml#s1"/>
+      </navPoint>
+    </navPoint>
+    <navPoint id="np2" playOrder="3">
+      <navLabel><text>Chapter 2</text></navLabel>
+      <content src="ch2.xhtml"/>
+    </navPoint>
+  </navMap>
+  <pageList>
+    <pageTarget id="pg1" type="normal" value="1" playOrder="1">
+      <navLabel><text>1</text></navLabel>
+      <content src="ch1.xhtml#page1"/>
+    </pageTarget>
+    <pageTarget id="pg2" type="normal" value="2" playOrder="2">
+      <navLabel><text>2</text></navLabel>
+      <content src="ch2.xhtml#page2"/>
+    </pageTarget>
+  </pageList>
+</ncx>
