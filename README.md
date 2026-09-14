@@ -31,8 +31,12 @@ pnpm lint                             # lint all packages/apps
 
 ## Manually loading the extension in Chrome
 
-This is how you'll actually _see_ the extension as it's built out — even now, while it's
-just an empty shell.
+This is how you'll actually _see_ the extension as it's built out. Right now the reader page
+shows **EpubInspector**, a temporary dev tool: pick any `.epub` file and it runs the real
+engine (`ZipArchive` → `EpubContainer` → `PackageDocument`) and shows the parsed
+title/identifier/language/rendition-layout, spine order, and manifest — a quick way to see
+the engine work on a real book before the actual reading surface exists. It'll be replaced
+as `pagination-engine` and `reader-shell-ui` land.
 
 1. Run `pnpm --filter @pagina/extension dev` (recommended — gives you HMR, so most changes
    to `apps/extension`, `packages/shell`, or `packages/engine` show up without a manual
@@ -48,7 +52,8 @@ just an empty shell.
    chrome.tabs.create({ url: chrome.runtime.getURL("src/reader/index.html?bookId=test") });
    ```
    (Once library-storage and reader-shell-ui land, opening a book from the library will do
-   this for you.)
+   this for you.) Then use the file picker to load any `.epub` — or one of the fixtures in
+   `packages/engine/test/fixtures/` — and see it parsed.
 
 If you're using the dev server (step 1), leave it running — Chrome will pick up most changes
 automatically; for changes to `manifest.json` itself, click the reload icon on the extension
