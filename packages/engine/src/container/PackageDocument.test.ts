@@ -4,6 +4,7 @@ import { fileURLToPath, URL as NodeURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "./EpubContainer.js";
 import { PackageDocument, PackageDocumentError } from "./PackageDocument.js";
+import { CfiStep } from "../locator/EpubCfi.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
   const buffer = await readFile(
@@ -46,6 +47,21 @@ describe("PackageDocument (reflowable fixture)", () => {
     expect(pkg.spine).toHaveLength(1);
     expect(pkg.spine[0]?.manifestItem.id).toBe("chapter1");
     expect(pkg.spine[0]?.linear).toBe(true);
+  });
+
+  it("computes the CFI package-steps path for each spine item from the raw OPF DOM", () => {
+    // <package>'s element children are metadata (1st, step 2), manifest
+    // (2nd, step 4), spine (3rd, step 6); <spine>'s only child is the
+    // single itemref (1st, step 2).
+    const steps = pkg.spine[0]?.packageCfiSteps;
+    expect(steps?.map((s) => s.index)).toEqual([6, 2]);
+    expect(steps?.every((s) => s.idAssertion === undefined)).toBe(true);
+  });
+
+  it("finds a spine index by matching package CFI steps", () => {
+    const steps = pkg.spine[0]!.packageCfiSteps;
+    expect(pkg.findSpineIndexByPackageCfiSteps(steps)).toBe(0);
+    expect(pkg.findSpineIndexByPackageCfiSteps([new CfiStep(6)])).toBeUndefined();
   });
 });
 

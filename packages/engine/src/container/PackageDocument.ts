@@ -1,5 +1,7 @@
 import { resolveEpubPath } from "./EpubPath.js";
 import { getDescendantElementsByNS, getFirstDescendantElementByNS } from "./Xml.js";
+import { elementCfiSteps } from "../locator/CfiTree.js";
+import type { CfiStep } from "../locator/EpubCfi.js";
 
 const OPF_NAMESPACE = "http://www.idpf.org/2007/opf";
 const DC_NAMESPACE = "http://purl.org/dc/elements/1.1/";
@@ -51,6 +53,16 @@ export class SpineItemRef {
      * (e.g. supplementary/ancillary content) per the OPF `linear` attribute. */
     public readonly linear: boolean,
     public readonly properties: ReadonlySet<string>,
+    /** The CFI step path from the OPF `<package>` element down to this
+     * `<itemref>` (per EPUB CFI §3.1.1), computed from the actual raw OPF
+     * DOM at parse time — this is the "package steps" prefix every CFI
+     * pointing into this spine item's content must start with. Computed
+     * from the real DOM (not derived from this class's own structure)
+     * because CFI step numbering depends on the exact child-node makeup
+     * of the OPF file, including whitespace text nodes between elements,
+     * which this engine's own `PackageDocument`/`SpineItemRef` model
+     * intentionally discards for everything else. */
+    public readonly packageCfiSteps: readonly CfiStep[],
   ) {}
 
   public hasProperty(property: string): boolean {
@@ -152,6 +164,21 @@ export class PackageDocument {
     return this.manifest.find((item) => item.mediaType === NCX_MEDIA_TYPE);
   }
 
+  /** Finds the spine index whose `packageCfiSteps` numerically matches
+   * `steps` (as parsed from a CFI's package-steps segment) — the reverse
+   * of `SpineItemRef.packageCfiSteps`, used when resolving a CFI back to
+   * "which spine item does this point into." Compares step index numbers
+   * only, not id assertions (those are a supplementary robustness check,
+   * performed separately during content-step resolution). */
+  public findSpineIndexByPackageCfiSteps(steps: readonly CfiStep[]): number | undefined {
+    const index = this.spine.findIndex(
+      (ref) =>
+        ref.packageCfiSteps.length === steps.length &&
+        ref.packageCfiSteps.every((step, i) => step.index === steps[i]?.index),
+    );
+    return index === -1 ? undefined : index;
+  }
+
   /** Parses `xml` (the OPF package document's raw text) into a
    * `PackageDocument`. `opfPath` is this file's own path within the zip
    * archive, needed to resolve manifest hrefs (which are relative to the
@@ -174,7 +201,7 @@ export class PackageDocument {
     const metadata = PackageDocument.parseMetadata(packageEl, metadataEl, opfPath);
     const manifestItems = PackageDocument.parseManifest(manifestEl, opfPath);
     const manifestById = new Map(manifestItems.map((item) => [item.id, item]));
-    const spine = PackageDocument.parseSpine(spineEl, manifestById, opfPath);
+    const spine = PackageDocument.parseSpine(packageEl, spineEl, manifestById, opfPath);
     const tocManifestId = spineEl.getAttribute("toc") ?? undefined;
 
     return new PackageDocument(metadata, manifestItems, spine, tocManifestId);
@@ -258,6 +285,7 @@ export class PackageDocument {
   }
 
   private static parseSpine(
+    packageEl: Element,
     spineEl: Element,
     manifestById: ReadonlyMap<string, ManifestItem>,
     opfPath: string,
@@ -275,8 +303,9 @@ export class PackageDocument {
 
       const linear = itemRefEl.getAttribute("linear") !== "no";
       const properties = parsePropertyList(itemRefEl.getAttribute("properties"));
+      const packageCfiSteps = elementCfiSteps(packageEl, itemRefEl);
 
-      return new SpineItemRef(manifestItem, linear, properties);
+      return new SpineItemRef(manifestItem, linear, properties, packageCfiSteps);
     });
   }
 }

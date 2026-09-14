@@ -37,5 +37,7 @@ export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.j
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { SandboxedContentHost, RenderingSurfaceError } from "./rendering/SandboxedContentHost.js";
 export { PaginationEngine, ScrollViewEngine, FixedLayoutRenderer } from "./layout/LayoutEngine.js";
-export { Locator, LocatorResolver } from "./locator/Locator.js";
+export { Locator, LocatorResolver, LocatorResolutionError } from "./locator/Locator.js";
+export type { ResolvedLocator } from "./locator/Locator.js";
+export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";

@@ -5,6 +5,7 @@ import {
   ContentDocumentAssembler,
   ContentLoader,
   EpubContainer,
+  LocatorResolver,
   NavigationDocument,
   ResourceUrlResolver,
   SandboxedContentHost,
@@ -22,6 +23,20 @@ interface ParsedBookSummary {
   spine: { id: string; linear: boolean; effectiveLayout: string }[];
   navigation: NavigationDocument;
   firstSpineResourceRefs: { attributeName: string; path: string }[];
+  cfiDemo: { cfi: string; matchedAfterRoundTrip: boolean; resolvedText: string } | undefined;
+}
+
+/** Finds the first non-blank text node under `root`, walking depth-first. */
+function findFirstNonBlankTextNode(root: Node): Text | undefined {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    if (node.textContent && node.textContent.trim().length > 0) {
+      return node as Text;
+    }
+    node = walker.nextNode();
+  }
+  return undefined;
 }
 
 async function buildBookSummary(
@@ -33,11 +48,27 @@ async function buildBookSummary(
   const contentLoader = await ContentLoader.create(container);
 
   let firstSpineResourceRefs: { attributeName: string; path: string }[] = [];
+  let cfiDemo: ParsedBookSummary["cfiDemo"];
   if (pkg.spine.length > 0) {
     const firstSpineDoc = await contentLoader.loadSpineDocument(0);
     firstSpineResourceRefs = contentLoader
       .findResourceReferences(firstSpineDoc)
       .map((ref) => ({ attributeName: ref.attributeName, path: ref.path }));
+
+    const textNode = findFirstNonBlankTextNode(firstSpineDoc.document.body);
+    if (textNode) {
+      const resolver = new LocatorResolver(pkg, contentLoader);
+      const locator = resolver.generate(0, textNode, 0);
+      // Resolve against a *freshly reloaded* parse (not the same document
+      // instance) to prove the CFI is a real, portable position — this is
+      // the actual resume-reading scenario, not just an in-memory echo.
+      const resolved = await resolver.resolve(locator);
+      cfiDemo = {
+        cfi: locator.cfi,
+        matchedAfterRoundTrip: resolved.node.textContent === textNode.textContent,
+        resolvedText: (resolved.node.textContent ?? "").slice(0, 60),
+      };
+    }
   }
 
   return {
@@ -59,6 +90,7 @@ async function buildBookSummary(
     })),
     navigation,
     firstSpineResourceRefs,
+    cfiDemo,
   };
 }
 
@@ -275,6 +307,26 @@ export const EpubInspector: FC = () => {
               </li>
             ))}
           </ul>
+
+          <Divider style={{ margin: "12px 0" }} />
+
+          <Title3>CFI engine demo (first text position)</Title3>
+          {summary.cfiDemo ? (
+            <Body1 as="p">
+              CFI: <code>{summary.cfiDemo.cfi}</code>
+              <br />
+              Resolved (after a fresh reload/re-parse) text: "{summary.cfiDemo.resolvedText}"
+              <br />
+              Round-trip match:{" "}
+              <strong
+                style={{ color: summary.cfiDemo.matchedAfterRoundTrip ? "green" : "crimson" }}
+              >
+                {String(summary.cfiDemo.matchedAfterRoundTrip)}
+              </strong>
+            </Body1>
+          ) : (
+            <Body1 as="p">No text content found to demo.</Body1>
+          )}
 
           <Divider style={{ margin: "12px 0" }} />
 
