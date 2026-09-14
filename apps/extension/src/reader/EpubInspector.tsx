@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ChangeEvent, FC } from "react";
 import { Body1, Caption1, Divider, Title2, Title3 } from "@fluentui/react-components";
 import {
+  ContentLoader,
   EpubContainer,
   NavigationDocument,
   type NavPoint,
@@ -17,6 +18,7 @@ interface ParsedBookSummary {
   manifest: { id: string; path: string; mediaType: string; properties: string[] }[];
   spine: { id: string; linear: boolean; effectiveLayout: string }[];
   navigation: NavigationDocument;
+  firstSpineResourceRefs: { attributeName: string; path: string }[];
 }
 
 async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
@@ -24,6 +26,15 @@ async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
   const container = await EpubContainer.open(buffer);
   const pkg = await container.getPackageDocument();
   const navigation = await NavigationDocument.load(container);
+  const contentLoader = await ContentLoader.create(container);
+
+  let firstSpineResourceRefs: { attributeName: string; path: string }[] = [];
+  if (pkg.spine.length > 0) {
+    const firstSpineDoc = await contentLoader.loadSpineDocument(0);
+    firstSpineResourceRefs = contentLoader
+      .findResourceReferences(firstSpineDoc)
+      .map((ref) => ({ attributeName: ref.attributeName, path: ref.path }));
+  }
 
   return {
     fileName: file.name,
@@ -43,6 +54,7 @@ async function parseEpubFile(file: File): Promise<ParsedBookSummary> {
       effectiveLayout: ref.resolveRenditionLayout(pkg.metadata.renditionLayout),
     })),
     navigation,
+    firstSpineResourceRefs,
   };
 }
 
@@ -172,6 +184,19 @@ export const EpubInspector: FC = () => {
               <NavTree items={summary.navigation.pageList.items} />
             </>
           )}
+
+          <Divider style={{ margin: "12px 0" }} />
+
+          <Title3>
+            Resource references in first spine item ({summary.firstSpineResourceRefs.length})
+          </Title3>
+          <ul>
+            {summary.firstSpineResourceRefs.map((ref, index) => (
+              <li key={index}>
+                <code>{ref.attributeName}</code> → {ref.path}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

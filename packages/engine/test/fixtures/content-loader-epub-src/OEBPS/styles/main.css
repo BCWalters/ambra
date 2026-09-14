@@ -1,0 +1,8 @@
+body {
+  font-family: "Pagina Test Font", serif;
+}
+
+@font-face {
+  font-family: "Pagina Test Font";
+  src: url("../fonts/font.otf");
+}

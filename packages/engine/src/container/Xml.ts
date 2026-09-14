@@ -68,20 +68,38 @@ export function getNamespacedAttribute(
   namespaceURI: string,
   localName: string,
 ): string | null {
-  const direct = element.getAttributeNS(namespaceURI, localName);
-  if (direct !== null) {
-    return direct;
+  const name = getNamespacedAttributeName(element, namespaceURI, localName);
+  return name === undefined ? null : element.getAttribute(name);
+}
+
+/** Like `getNamespacedAttribute`, but returns the actual attribute name
+ * used in the document (e.g. `"xlink:href"`) rather than its value — useful
+ * when a caller needs to know which literal attribute to rewrite, not just
+ * read. Returns `undefined` if no matching attribute is present. */
+export function getNamespacedAttributeName(
+  element: Element,
+  namespaceURI: string,
+  localName: string,
+): string | undefined {
+  if (element.getAttributeNS(namespaceURI, localName) !== null) {
+    // The native lookup found it: in namespace-aware environments (real
+    // browsers), the attribute's serialized name matches its prefix, which
+    // we can recover via getAttributeNodeNS.
+    const attrNode = element.getAttributeNodeNS(namespaceURI, localName);
+    if (attrNode) {
+      return attrNode.name;
+    }
   }
 
   const prefixes = collectPrefixesForNamespace(element, namespaceURI);
   for (const prefix of prefixes) {
-    const value = element.getAttribute(prefix ? `${prefix}:${localName}` : localName);
-    if (value !== null) {
-      return value;
+    const name = prefix ? `${prefix}:${localName}` : localName;
+    if (element.hasAttribute(name)) {
+      return name;
     }
   }
 
-  return null;
+  return undefined;
 }
 
 function collectPrefixesForNamespace(element: Element, namespaceURI: string): Set<string> {
