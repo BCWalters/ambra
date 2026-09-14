@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FC, MutableRefObject } from "react";
-import { Body1, Caption1, Divider, Title2, Title3 } from "@fluentui/react-components";
+import { Body1, Button, Caption1, Divider, Title2, Title3 } from "@fluentui/react-components";
 import {
   ContentDocumentAssembler,
   ContentLoader,
   EpubContainer,
   LocatorResolver,
   NavigationDocument,
+  PaginationEngine,
   ResourceUrlResolver,
   SandboxedContentHost,
   type NavPoint,
   type PackageDocument,
+  type Page,
 } from "@pagina/engine";
 
 interface ParsedBookSummary {
@@ -97,17 +99,21 @@ async function buildBookSummary(
 interface ActiveRender {
   host: SandboxedContentHost;
   resolver: ResourceUrlResolver;
+  pages: Page[];
 }
+
+const PAGINATION_DEMO_WIDTH = 400;
+const PAGINATION_DEMO_HEIGHT = 300;
 
 /** Renders the first spine item into a real `SandboxedContentHost`, and
  * appends its iframe into `containerEl`. Exercises the full rendering
  * pipeline: ContentLoader -> ResourceUrlResolver -> ContentDocumentAssembler
- * -> SandboxedContentHost. */
+ * -> SandboxedContentHost -> PaginationEngine. */
 async function renderFirstSpineItem(
   container: EpubContainer,
   containerEl: HTMLDivElement,
   activeRenderRef: MutableRefObject<ActiveRender | null>,
-): Promise<void> {
+): Promise<Page[]> {
   const contentLoader = await ContentLoader.create(container);
   const spineDoc = await contentLoader.loadSpineDocument(0);
   const references = contentLoader.findResourceReferences(spineDoc);
@@ -118,10 +124,52 @@ async function renderFirstSpineItem(
   const assembledXhtml = ContentDocumentAssembler.assemble(spineDoc, resourceUrls);
 
   const host = new SandboxedContentHost();
+  host.element.style.width = `${PAGINATION_DEMO_WIDTH}px`;
+  host.element.style.height = `${PAGINATION_DEMO_HEIGHT}px`;
   containerEl.replaceChildren(host.element);
   await host.render(assembledXhtml);
 
-  activeRenderRef.current = { host, resolver };
+  const iframeDocument = host.element.contentDocument;
+  if (!iframeDocument) {
+    throw new Error("Sandboxed iframe has no contentDocument after loading (unexpected).");
+  }
+
+  // A real PaginatedContentHost (future work, alongside reader-shell-ui)
+  // would own this display mechanism properly; for this dev-tool demo we
+  // apply it directly. Prevent the iframe's own scrollbar from appearing
+  // for content taller than one page — display is purely the transform
+  // PaginationEngine computes per page, clipped by resizing the iframe's
+  // own box to that page's exact height in `showPage()` below.
+  iframeDocument.documentElement.style.overflow = "hidden";
+  iframeDocument.body.style.overflow = "hidden";
+
+  const pages = PaginationEngine.paginate(iframeDocument.body, PAGINATION_DEMO_HEIGHT);
+
+  activeRenderRef.current = { host, resolver, pages };
+  if (pages.length > 0) {
+    showPage(host, pages[0]!);
+  }
+  return pages;
+}
+
+/** Displays `page` by translating the content up so its first line sits at
+ * the top of the iframe, *and* shrinking the iframe's own box to exactly
+ * `page.height`. The latter is essential, not cosmetic: a page's content
+ * frequently doesn't fill the full `pageHeight` budget it was measured
+ * against (e.g. the next chunk didn't fit and started a new page instead),
+ * and the underlying DOM keeps flowing normally past the end of the
+ * current page. Clipping to a *fixed* `pageHeight`-tall window would let
+ * the next page's content visually "bleed through" into the unused space
+ * at the bottom of the current one instead of showing a clean edge — this
+ * exact bug was caught via real-Chromium verification. Sizing the iframe
+ * itself to `page.height` makes the browser's own viewport clipping do the
+ * right thing with no extra bookkeeping. */
+function showPage(host: SandboxedContentHost, page: Page): void {
+  const body = host.element.contentDocument?.body;
+  if (body) {
+    body.style.transform = `translateY(${page.displayTranslateY}px)`;
+  }
+  host.element.style.height = `${page.height}px`;
 }
 
 const NavTree: FC<{ items: readonly NavPoint[] }> = ({ items }) => {
@@ -161,6 +209,8 @@ export const EpubInspector: FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [renderableContainer, setRenderableContainer] = useState<EpubContainer | null>(null);
+  const [pageCount, setPageCount] = useState<number | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   const hostContainerRef = useRef<HTMLDivElement | null>(null);
   const activeRenderRef = useRef<ActiveRender | null>(null);
@@ -179,7 +229,15 @@ export const EpubInspector: FC = () => {
     let cancelled = false;
     void (async () => {
       try {
-        await renderFirstSpineItem(renderableContainer, hostContainerRef.current!, activeRenderRef);
+        const pages = await renderFirstSpineItem(
+          renderableContainer,
+          hostContainerRef.current!,
+          activeRenderRef,
+        );
+        if (!cancelled) {
+          setPageCount(pages.length);
+          setCurrentPageIndex(0);
+        }
       } catch (renderErr) {
         if (!cancelled) {
           setRenderError(renderErr instanceof Error ? renderErr.message : String(renderErr));
@@ -195,6 +253,15 @@ export const EpubInspector: FC = () => {
     };
   }, [renderableContainer]);
 
+  const goToPage = (index: number): void => {
+    const active = activeRenderRef.current;
+    if (!active || index < 0 || index >= active.pages.length) {
+      return;
+    }
+    showPage(active.host, active.pages[index]!);
+    setCurrentPageIndex(index);
+  };
+
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -206,6 +273,8 @@ export const EpubInspector: FC = () => {
     setSummary(null);
     setRenderError(null);
     setRenderableContainer(null);
+    setPageCount(null);
+    setCurrentPageIndex(0);
 
     try {
       const buffer = await file.arrayBuffer();
@@ -330,16 +399,40 @@ export const EpubInspector: FC = () => {
 
           <Divider style={{ margin: "12px 0" }} />
 
-          <Title3>Sandboxed render of first spine item</Title3>
+          <Title3>Sandboxed render of first spine item (paginated)</Title3>
           {renderError && (
             <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)" }}>
               Render error: {renderError}
             </Body1>
           )}
+          {pageCount !== null && (
+            <Body1 as="p">
+              Page {currentPageIndex + 1} of {pageCount} ({PAGINATION_DEMO_WIDTH}×
+              {PAGINATION_DEMO_HEIGHT}px pages)
+              <Button
+                size="small"
+                style={{ marginLeft: 12 }}
+                disabled={currentPageIndex <= 0}
+                onClick={() => goToPage(currentPageIndex - 1)}
+              >
+                ← Prev
+              </Button>
+              <Button
+                size="small"
+                style={{ marginLeft: 8 }}
+                disabled={currentPageIndex >= pageCount - 1}
+                onClick={() => goToPage(currentPageIndex + 1)}
+              >
+                Next →
+              </Button>
+            </Body1>
+          )}
           <div
             ref={hostContainerRef}
             style={{
-              height: 320,
+              height: PAGINATION_DEMO_HEIGHT,
+              width: PAGINATION_DEMO_WIDTH,
+              overflow: "hidden",
               border: "1px solid var(--colorNeutralStroke1, #ccc)",
               marginTop: 8,
             }}

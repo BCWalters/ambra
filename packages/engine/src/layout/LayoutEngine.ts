@@ -1,15 +1,4 @@
 /**
- * Fragmentation engine for reflowable content: measures content and
- * computes page breaks, keeping the underlying DOM in true linear reading
- * order at all times so visual pagination is purely a presentational
- * transform. See the `pagination-engine` work item.
- */
-export class PaginationEngine {
-  // TODO(pagination-engine): measure content and compute page breaks
-  // without relying on CSS multi-column.
-}
-
-/**
  * Continuous-scroll presentation of reflowable content, sharing the same
  * linear DOM as `PaginationEngine` but rendering it in normal document
  * flow. See the `scroll-view-mode` work item.

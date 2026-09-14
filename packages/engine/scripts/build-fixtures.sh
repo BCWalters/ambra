@@ -47,4 +47,5 @@ build_fixture "$FIXTURES_DIR/no-navigation-epub-src" "$FIXTURES_DIR/no-navigatio
 build_fixture "$FIXTURES_DIR/content-loader-epub-src" "$FIXTURES_DIR/content-loader.epub"
 build_fixture "$FIXTURES_DIR/malicious-script-epub-src" "$FIXTURES_DIR/malicious-script.epub"
 build_fixture "$FIXTURES_DIR/font-obfuscation-epub-src" "$FIXTURES_DIR/font-obfuscation.epub"
+build_fixture "$FIXTURES_DIR/long-content-epub-src" "$FIXTURES_DIR/long-content.epub"
 
