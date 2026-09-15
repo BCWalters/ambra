@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
+import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
 import type { ReaderSnapshot, ViewMode } from "./ReaderController.js";
 
 export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
   contentHostRef: RefObject<HTMLDivElement | null>;
-  openBuffer: (buffer: ArrayBuffer) => Promise<void>;
+  openBook: (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase) => Promise<void>;
   turnPage: (direction: 1 | -1) => void;
   goToChapter: (direction: 1 | -1) => void;
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
@@ -16,9 +17,12 @@ export interface UseReaderControllerResult {
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
  * React: owns the controller instance for the current book, subscribes
  * to it via `useSyncExternalStore` so components re-render on every state
- * change, and wires a `ResizeObserver` on the content host's container
+ * change, wires a `ResizeObserver` on the content host's container
  * element so the reading surface relayouts (preserving position) as the
- * reader pane's size changes. */
+ * reader pane's size changes, and flushes reading progress when the tab
+ * is hidden/closed (the reliable checkpoint for continuous-scroll mode,
+ * whose position otherwise only gets persisted on discrete navigation
+ * actions — see `ReaderController.saveProgress`). */
 export function useReaderController(): UseReaderControllerResult {
   const [controller, setController] = useState<ReaderController | null>(null);
   const contentHostRef = useRef<HTMLDivElement | null>(null);
@@ -49,14 +53,25 @@ export function useReaderController(): UseReaderControllerResult {
     });
     observer.observe(containerEl);
 
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === "hidden") {
+        void controller.flushProgress();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handleVisibilityChange);
+
     return () => {
       observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handleVisibilityChange);
+      void controller.flushProgress();
       controller.dispose();
     };
   }, [controller]);
 
-  const openBuffer = useCallback(async (buffer: ArrayBuffer): Promise<void> => {
-    const opened = await ReaderController.open(buffer);
+  const openBook = useCallback(async (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase): Promise<void> => {
+    const opened = await ReaderController.open(buffer, bookId, library);
     setController(opened);
   }, []);
 
@@ -88,5 +103,5 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
-  return { snapshot, contentHostRef, openBuffer, turnPage, goToChapter, goToNavPoint, setViewMode };
+  return { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode };
 }

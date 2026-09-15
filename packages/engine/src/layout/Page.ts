@@ -51,7 +51,22 @@ export class Page {
     try {
       range.setStart(this.startBreak.node, this.startBreak.offset ?? 0);
       range.setEnd(this.endBreak.node, this.endBreak.offset ?? 0);
-      return range.comparePoint(node, offset) === 0;
+      if (range.comparePoint(node, offset) !== 0) {
+        return false;
+      }
+      // `Range.comparePoint` treats a point exactly at either boundary as
+      // "within" the range (returns 0) — it doesn't distinguish an
+      // inclusive start from an exclusive end. Two adjacent pages share
+      // their boundary point (one's `endBreak` is the next one's
+      // `startBreak`), so without this check both pages would claim it,
+      // and a caller that returns the first match (see
+      // `PaginationEngine.findPageForPosition`) would always resolve such
+      // a position to the earlier page — never the later one whose
+      // *start* it actually is. This was caught via real-Chromium
+      // resume-reading testing: a saved position at a page's exact start
+      // kept resolving one page early, and each reload compounded the
+      // drift by re-saving that (wrong) position.
+      return !(node === this.endBreak.node && offset === (this.endBreak.offset ?? 0));
     } catch {
       // comparePoint throws if `node` isn't in the same document/tree as
       // the range's boundaries, or if the boundary points are invalid —

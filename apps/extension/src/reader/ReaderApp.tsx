@@ -20,7 +20,7 @@ import { useReaderController } from "./useReaderController.js";
  * just needs an `ArrayBuffer`.
  */
 export const ReaderApp: FC = () => {
-  const { snapshot, contentHostRef, openBuffer, turnPage, goToChapter, goToNavPoint, setViewMode } =
+  const { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode } =
     useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -34,6 +34,9 @@ export const ReaderApp: FC = () => {
 
     let cancelled = false;
     void (async () => {
+      // Deliberately not closed here: `ReaderController` keeps this
+      // connection open for the whole reading session to persist/restore
+      // progress (see `resume-reading`), and closes it itself on dispose.
       const library = await LibraryDatabase.open();
       try {
         const blob = await library.getBookFile(bookId);
@@ -42,14 +45,15 @@ export const ReaderApp: FC = () => {
         }
         const buffer = await blob.arrayBuffer();
         if (!cancelled) {
-          await openBuffer(buffer);
+          await openBook(buffer, bookId, library);
+        } else {
+          library.close();
         }
       } catch (err) {
+        library.close();
         if (!cancelled) {
           setOpenError(err instanceof Error ? err.message : String(err));
         }
-      } finally {
-        library.close();
       }
     })();
 

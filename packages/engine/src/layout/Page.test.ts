@@ -63,6 +63,29 @@ describe("Page", () => {
       expect(page.containsPosition(three.firstChild!, 0, document)).toBe(false);
     });
 
+    it("returns true for a position exactly at the page's inclusive start", () => {
+      document.body.innerHTML = "<p>one</p><p>two</p>";
+      const body = document.body;
+      const page = new Page(0, { node: body, offset: 0 }, { node: body, offset: 1 }, 0, 100);
+
+      expect(page.containsPosition(body, 0, document)).toBe(true);
+    });
+
+    it("returns false for a position exactly at the page's exclusive end, even though Range.comparePoint alone treats both boundaries as 'within'", () => {
+      // Two adjacent pages sharing a boundary (this page's endBreak is
+      // the next page's startBreak) must not both claim that exact
+      // position — see PaginationEngine.findPageForPosition, which
+      // returns the *first* matching page and would otherwise always
+      // resolve a boundary position to the earlier page. This is exactly
+      // the bug caught via real-Chromium resume-reading testing: a saved
+      // position at a page's exact start kept resolving one page early.
+      document.body.innerHTML = "<p>one</p><p>two</p><p>three</p>";
+      const body = document.body;
+      const page = new Page(0, { node: body, offset: 0 }, { node: body, offset: 1 }, 0, 100);
+
+      expect(page.containsPosition(body, 1, document)).toBe(false);
+    });
+
     it("returns false (rather than throwing) for a node from a different document", () => {
       document.body.innerHTML = "<p>one</p>";
       const body = document.body;

@@ -1,5 +1,6 @@
 import {
   ContentLoader,
+  EpubCfi,
   EpubContainer,
   Locator,
   LocatorResolver,
@@ -9,6 +10,7 @@ import {
   ScrollContentHost,
 } from "@pagina/engine";
 import type { NavPoint, PackageDocument } from "@pagina/engine";
+import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 
 export type ViewMode = "paginated" | "scroll";
 
@@ -33,18 +35,37 @@ export interface ReaderSnapshot {
  * behalf: opening/switching spine items, turning pages, switching between
  * paginated and scroll mode (bridging position across the switch via a
  * CFI, since the two modes render into separate content hosts/documents),
- * and relaying window resizes into the active host. React never touches
- * `PaginatedContentHost`/`ScrollContentHost`/`LocatorResolver` etc.
- * directly — it reads `snapshot()` and calls methods here, then is
- * notified (`subscribe`) to re-render.
+ * relaying window resizes into the active host, and persisting/restoring
+ * reading position (see `resume-reading`) via the same CFI-bridging
+ * mechanism — resuming a book is conceptually identical to switching view
+ * modes: resolve a saved CFI in whichever content host is now active.
+ * React never touches `PaginatedContentHost`/`ScrollContentHost`/
+ * `LocatorResolver` etc. directly — it reads `snapshot()` and calls
+ * methods here, then is notified (`subscribe`) to re-render.
  */
 export class ReaderController {
   private host: PaginatedContentHost | ScrollContentHost | undefined;
   private viewMode: ViewMode = "paginated";
   private spineIndex = 0;
+  /** The most recently requested reader-pane size. */
   private width = 0;
   private height = 0;
+  /** The size the *current* content host was actually last laid out at —
+   * distinct from `width`/`height` above, which record the latest
+   * request even while it's still deferred (see `pendingResize`). Lets
+   * `resize` recognize a no-op (the deferred resize turning out to match
+   * what `openSpineItem` already laid out the fresh host at) and skip a
+   * pointless second re-pagination that would otherwise risk introducing
+   * its own drift into the just-restored position. */
+  private appliedWidth = 0;
+  private appliedHeight = 0;
   private isLoading = false;
+  /** A resize that arrived while an `openSpineItem` was already in
+   * flight (e.g. `ResizeObserver`'s spec-mandated initial callback racing
+   * with `mount`'s async load) — applying it immediately would relayout
+   * a host that's mid-open, against stale or not-yet-loaded content.
+   * Recorded here and applied once the in-flight open settles instead. */
+  private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
   private containerEl: HTMLDivElement | undefined;
 
@@ -57,13 +78,16 @@ export class ReaderController {
     private readonly locatorResolver: LocatorResolver,
     public readonly pkg: PackageDocument,
     public readonly navigation: NavigationDocument,
+    private readonly bookId: string,
+    private readonly library: LibraryDatabase,
   ) {}
 
   /** Opens a book from its raw bytes — from a `File` (e.g. `await
    * file.arrayBuffer()`) or, in the normal case, the book `Blob` read
    * back out of `LibraryDatabase` for whichever `bookId` the reader page
-   * was opened with. */
-  public static async open(buffer: ArrayBuffer): Promise<ReaderController> {
+   * was opened with. `bookId`/`library` are used to persist and restore
+   * reading position — see `mount`/`saveProgress`. */
+  public static async open(buffer: ArrayBuffer, bookId: string, library: LibraryDatabase): Promise<ReaderController> {
     const container = await EpubContainer.open(buffer);
     const contentLoader = await ContentLoader.create(container);
     const resolver = new ResourceUrlResolver(contentLoader);
@@ -71,7 +95,7 @@ export class ReaderController {
     const navigation = await NavigationDocument.load(container);
     const locatorResolver = new LocatorResolver(pkg, contentLoader);
 
-    return new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation);
+    return new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation, bookId, library);
   }
 
   public subscribe(listener: () => void): () => void {
@@ -104,21 +128,103 @@ export class ReaderController {
   }
 
   /** Mounts the current view mode's content host into `containerEl` and
-   * opens spine item 0. Call once, after the container div is available. */
+   * opens either a previously-saved reading position for this book (see
+   * `saveProgress`) or spine item 0 if there is none. Call once, after
+   * the container div is available. */
   public async mount(containerEl: HTMLDivElement, width: number, height: number): Promise<void> {
     this.containerEl = containerEl;
     this.width = width;
     this.height = height;
-    await this.openSpineItem(0);
+
+    // Guard against a resize (e.g. `ResizeObserver`'s spec-mandated
+    // initial callback) racing with the async progress lookup below —
+    // `openSpineItem` sets/clears this same flag, but there's a window
+    // between calling `mount` and actually reaching `openSpineItem`
+    // (while `getProgress` is in flight) where it otherwise wouldn't be
+    // set yet, letting a resize slip through against a not-yet-created
+    // host. This exact race was caught via real-Chromium testing.
+    this.isLoading = true;
+    this.notify();
+
+    const resumed = await this.tryResume();
+    if (!resumed) {
+      await this.openSpineItem(0);
+    }
+  }
+
+  /** Looks up a saved CFI for this book and, if one resolves to a valid
+   * spine item, opens directly there instead of the beginning. Returns
+   * `false` (having done nothing) if there's no saved progress or it
+   * can't be resolved — e.g. corrupted data, or a CFI from a differently-
+   * structured version of the same book — so the caller falls back to
+   * starting from the beginning rather than getting stuck. */
+  private async tryResume(): Promise<boolean> {
+    try {
+      const progress = await this.library.getProgress(this.bookId);
+      if (!progress) {
+        return false;
+      }
+      const cfi = EpubCfi.parse(progress.cfi);
+      const spineIndex = this.pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps);
+      if (spineIndex === undefined) {
+        return false;
+      }
+      await this.openSpineItem(spineIndex, { bridgeCfi: progress.cfi });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Resolves the currently-displayed position to a CFI and persists it
+   * as this book's reading progress. Called after every navigation action
+   * settles (page turn, chapter change, TOC jump, view-mode switch); also
+   * exposed as `flushProgress` for the reader page to call on
+   * visibility/unload, which is the only reliable checkpoint for
+   * continuous-scroll mode's position drifting between explicit actions. */
+  private async saveProgress(): Promise<void> {
+    const position = this.host?.currentPosition();
+    if (!position) {
+      return;
+    }
+    try {
+      const locator = this.locatorResolver.generate(this.spineIndex, position.node, position.offset);
+      await this.library.saveProgress(this.bookId, locator.cfi);
+    } catch {
+      // Best-effort: resume-reading is a convenience, not something that
+      // should ever surface an error to the reader mid-navigation.
+    }
+  }
+
+  /** See `saveProgress`. Public so the reader page can flush the current
+   * position on `visibilitychange`/`pagehide`. */
+  public flushProgress(): Promise<void> {
+    return this.saveProgress();
   }
 
   /** Relays a resize (e.g. the reader pane changing size, or the user
    * changing font size in a future settings panel) into the active
    * content host, which preserves reading position across the relayout —
-   * see `PaginatedContentHost.relayout`/`ScrollContentHost.resize`. */
+   * see `PaginatedContentHost.relayout`/`ScrollContentHost.resize`. A
+   * no-op if the size hasn't actually changed (e.g. a deferred resize —
+   * see `pendingResize` — turns out to match what was already used),
+   * avoiding pointless re-pagination that could otherwise introduce its
+   * own drift in the restored position. */
   public resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
+
+    if (this.isLoading) {
+      this.pendingResize = { width, height };
+      return;
+    }
+
+    if (width === this.appliedWidth && height === this.appliedHeight) {
+      return;
+    }
+    this.appliedWidth = width;
+    this.appliedHeight = height;
+
     if (this.host instanceof PaginatedContentHost) {
       this.host.relayout(width, height);
     } else if (this.host instanceof ScrollContentHost) {
@@ -158,6 +264,7 @@ export class ReaderController {
     const moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
     if (moved) {
       this.notify();
+      await this.saveProgress();
       return;
     }
 
@@ -214,6 +321,8 @@ export class ReaderController {
 
       await this.host.open(this.contentLoader, this.resolver, spineIndex);
       this.spineIndex = spineIndex;
+      this.appliedWidth = this.width;
+      this.appliedHeight = this.height;
 
       if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
@@ -222,11 +331,18 @@ export class ReaderController {
       } else if (options.landOnLastPage && this.host instanceof PaginatedContentHost) {
         this.host.goToLastPage();
       }
+      await this.saveProgress();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
     } finally {
       this.isLoading = false;
       this.notify();
+
+      if (this.pendingResize) {
+        const { width, height } = this.pendingResize;
+        this.pendingResize = undefined;
+        this.resize(width, height);
+      }
     }
   }
 
@@ -260,5 +376,6 @@ export class ReaderController {
   public dispose(): void {
     this.host?.dispose();
     this.resolver.dispose();
+    this.library.close();
   }
 }
