@@ -23,7 +23,11 @@ const DEFAULT_VIEWPORT: ViewportSize = { width: 1000, height: 1400 };
  * letterboxed and centered, aspect ratio always preserved. Unlike
  * `PaginatedContentHost`/`ScrollContentHost`, resizing never needs to
  * re-measure or re-layout the content itself (fixed-layout content is
- * never reflowed) — it's just a scale-factor recalculation.
+ * never reflowed) — it's just a scale-factor recalculation. Deliberately
+ * opts out of `ReadingTheme` (see `loadAssembledSpineItem`'s
+ * `applyReadingTheme: false`) — fixed-layout content is a pixel-precise,
+ * author-designed page, and our own typography must never be layered
+ * onto it.
  *
  * Deliberately out of scope for this pass: synthetic two-page spreads
  * (`rendition:spread`) — a real, separate feature (odd/even page
@@ -58,7 +62,9 @@ export class FixedContentHost {
     spineIndex: number,
     packageViewport: ViewportSize | undefined,
   ): Promise<void> {
-    const assembledXhtml = await loadAssembledSpineItem(contentLoader, resolver, spineIndex);
+    const assembledXhtml = await loadAssembledSpineItem(contentLoader, resolver, spineIndex, {
+      applyReadingTheme: false,
+    });
     await this.sandboxedHost.render(assembledXhtml);
 
     const iframeDocument = this.sandboxedHost.element.contentDocument;

@@ -83,6 +83,26 @@ describe("ContentDocumentAssembler", () => {
     expect(assembled).toContain("box-sizing: border-box");
   });
 
+  it("injects the reading theme by default, after the CSS reset", async () => {
+    const doc = await loader.loadSpineDocument(0);
+
+    const assembled = ContentDocumentAssembler.assemble(doc, new Map());
+
+    const resetIndex = assembled.indexOf("box-sizing: border-box");
+    const themeIndex = assembled.indexOf("--pagina-font-scale");
+    expect(themeIndex).toBeGreaterThan(resetIndex);
+  });
+
+  it("omits the reading theme when applyReadingTheme is false", async () => {
+    const doc = await loader.loadSpineDocument(0);
+
+    const assembled = ContentDocumentAssembler.assemble(doc, new Map(), { applyReadingTheme: false });
+
+    expect(assembled).not.toContain("--pagina-font-scale");
+    // The reset itself is unaffected by the option.
+    expect(assembled).toContain("box-sizing: border-box");
+  });
+
   it("orders the CSS reset after the CSP meta tag but before the book's own stylesheet link", async () => {
     const doc = await loader.loadSpineDocument(0);
 
@@ -90,10 +110,12 @@ describe("ContentDocumentAssembler", () => {
 
     const cspIndex = assembled.indexOf("Content-Security-Policy");
     const resetIndex = assembled.indexOf("box-sizing: border-box");
+    const themeIndex = assembled.indexOf("--pagina-font-scale");
     const bookStylesheetIndex = assembled.indexOf('href="styles/main.css"');
 
     expect(cspIndex).toBeGreaterThan(-1);
     expect(resetIndex).toBeGreaterThan(cspIndex);
-    expect(bookStylesheetIndex).toBeGreaterThan(resetIndex);
+    expect(themeIndex).toBeGreaterThan(resetIndex);
+    expect(bookStylesheetIndex).toBeGreaterThan(themeIndex);
   });
 });

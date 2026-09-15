@@ -1,6 +1,7 @@
 import type { ContentDocument } from "../content/ContentLoader.js";
 import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
 import { EPUB_CSS_RESET } from "./EpubCssReset.js";
+import { ReadingTheme } from "./ReadingTheme.js";
 
 /**
  * A minimal, restrictive Content-Security-Policy applied to every document
@@ -41,6 +42,7 @@ export class ContentDocumentAssembler {
   public static assemble(
     contentDocument: ContentDocument,
     resourceUrls: ReadonlyMap<string, string>,
+    options: { applyReadingTheme?: boolean } = {},
   ): string {
     // Re-parse from the original raw text rather than cloning
     // `contentDocument.document`, guaranteeing a fully independent DOM tree
@@ -58,6 +60,13 @@ export class ContentDocumentAssembler {
 
     injectContentSecurityPolicy(doc);
     injectCssReset(doc);
+    // Reading theme (typography, margins, colors) applies to reflowable
+    // content only, never fixed-layout — see `ReadingTheme`'s doc comment.
+    // Defaults to on since most callers (paginated/scroll mode) want it;
+    // `FixedContentHost` is the one caller that opts out.
+    if (options.applyReadingTheme ?? true) {
+      injectReadingTheme(doc);
+    }
 
     return new XMLSerializer().serializeToString(doc);
   }
@@ -94,4 +103,22 @@ function injectCssReset(doc: Document): void {
 
   const cspMeta = head.querySelector('meta[http-equiv="Content-Security-Policy"]');
   head.insertBefore(style, cspMeta ? cspMeta.nextSibling : head.firstChild);
+}
+
+/** Injects `ReadingTheme.CSS` as the `<style>` immediately after the CSS
+ * reset — later in source order, so it can layer typography on top of the
+ * reset's box-model rules for the same selectors (e.g. both declare rules
+ * for `html, body`) — but still before anything from the book's own
+ * `<head>`, so the book's own CSS keeps final say. */
+function injectReadingTheme(doc: Document): void {
+  const head = doc.getElementsByTagName("head")[0];
+  if (!head) {
+    return;
+  }
+
+  const style = doc.createElement("style");
+  style.textContent = ReadingTheme.CSS;
+
+  const resetStyle = Array.from(head.getElementsByTagName("style")).find((s) => s.textContent === EPUB_CSS_RESET);
+  head.insertBefore(style, resetStyle ? resetStyle.nextSibling : head.firstChild);
 }

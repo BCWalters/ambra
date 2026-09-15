@@ -14,9 +14,10 @@ export async function loadAssembledSpineItem(
   contentLoader: ContentLoader,
   resolver: ResourceUrlResolver,
   spineIndex: number,
+  options: { applyReadingTheme?: boolean } = {},
 ): Promise<string> {
   const spineDoc = await contentLoader.loadSpineDocument(spineIndex);
   const references = contentLoader.findResourceReferences(spineDoc);
   const resourceUrls = await resolver.resolveAll(references.map((ref) => ref.path));
-  return ContentDocumentAssembler.assemble(spineDoc, resourceUrls);
+  return ContentDocumentAssembler.assemble(spineDoc, resourceUrls, options);
 }

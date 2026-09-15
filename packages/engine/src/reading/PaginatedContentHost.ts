@@ -1,6 +1,7 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
+import { ReadingTheme } from "../rendering/ReadingTheme.js";
 import type { DomBreakPoint } from "../layout/Page.js";
 import { Page } from "../layout/Page.js";
 import { PaginationEngine } from "../layout/PaginationEngine.js";
@@ -14,6 +15,17 @@ import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
  * height (see `Page.displayTranslateY`'s doc comment for why the clip
  * must be sized per-page, not to a fixed budget — a real bug caught via
  * Chromium verification during `pagination-engine`).
+ *
+ * Reserves `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM` px of blank
+ * space above/below the text on every page — pure display insets applied
+ * here (not CSS on the content document), since a CSS `padding` on `body`
+ * would only ever show up once, at the very start/end of the whole spine
+ * item's flow, not on every individual paginated page (there's only one
+ * underlying `<body>` box; pages are just a clipped window over it). The
+ * pagination budget passed to `PaginationEngine` is shrunk by both insets
+ * so no page's text ever grows into that reserved space, and the display
+ * transform/height both shift by the same amount — see `pageContentHeight`
+ * and `showCurrentPage`.
  *
  * Scoped to a single spine item at a time: turning past the first/last
  * page returns `false` from `previousPage`/`nextPage` rather than
@@ -46,6 +58,14 @@ export class PaginatedContentHost {
     return this.pageIndex;
   }
 
+  /** The vertical budget available for text once the top/bottom page
+   * insets are reserved — never less than a small floor, so a very short
+   * available height (e.g. mid-resize) can't produce a degenerate
+   * zero/negative pagination budget. */
+  private get pageContentHeight(): number {
+    return Math.max(50, this.height - ReadingTheme.PAGE_INSET_TOP - ReadingTheme.PAGE_INSET_BOTTOM);
+  }
+
   /** Loads spine item `spineIndex`, paginates it at this host's current
    * width/height, and displays its first page. */
   public async open(contentLoader: ContentLoader, resolver: ResourceUrlResolver, spineIndex: number): Promise<void> {
@@ -63,7 +83,7 @@ export class PaginatedContentHost {
     iframeDocument.documentElement.style.overflow = "hidden";
     iframeDocument.body.style.overflow = "hidden";
 
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.height);
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight);
     this.pageIndex = 0;
     this.showCurrentPage();
   }
@@ -95,7 +115,7 @@ export class PaginatedContentHost {
     // untranslated layout position to measure correctly.
     iframeDocument.body.style.transform = "";
 
-    this.pages = PaginationEngine.paginate(iframeDocument.body, height);
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight);
     if (preserve) {
       const found = PaginationEngine.findPageForPosition(
         this.pages,
@@ -162,9 +182,15 @@ export class PaginatedContentHost {
     }
     const body = this.sandboxedHost.element.contentDocument?.body;
     if (body) {
-      body.style.transform = `translateY(${page.displayTranslateY}px)`;
+      // Shift the content down by the top inset (on top of the page's own
+      // display transform) so the first line lands `PAGE_INSET_TOP` px
+      // below the iframe's top edge instead of flush against it.
+      body.style.transform = `translateY(${page.displayTranslateY + ReadingTheme.PAGE_INSET_TOP}px)`;
     }
-    this.sandboxedHost.element.style.height = `${page.height}px`;
+    // The iframe's own height reserves both insets around the page's
+    // actual content height, so the bottom inset is real blank space
+    // rather than clipped-away overflow.
+    this.sandboxedHost.element.style.height = `${page.height + ReadingTheme.PAGE_INSET_TOP + ReadingTheme.PAGE_INSET_BOTTOM}px`;
   }
 
   public dispose(): void {
