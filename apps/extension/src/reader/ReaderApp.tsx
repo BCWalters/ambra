@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { FC } from "react";
 import { Body1, Spinner, Title2 } from "@fluentui/react-components";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
+import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { useReaderController } from "./useReaderController.js";
@@ -98,6 +99,8 @@ export const ReaderApp: FC = () => {
         </Body1>
       )}
 
+      <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
+
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {isTocOpen && (
           <TocPanel
@@ -109,7 +112,7 @@ export const ReaderApp: FC = () => {
           />
         )}
 
-        <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        <div style={{ flex: 1, position: "relative", minHeight: 0 }} role="main" aria-label="Book content">
           {/* This div is owned entirely by imperative code (ReaderController
               mounts the active content host's iframe into it) — it must never
               receive React-rendered children, or React's reconciliation and

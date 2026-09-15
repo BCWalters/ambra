@@ -1,4 +1,5 @@
 import {
+  AccessibilityController,
   ContentLoader,
   EpubCfi,
   EpubContainer,
@@ -35,6 +36,17 @@ export interface ReaderSnapshot {
   pageCount: number;
   isLoading: boolean;
   error: string | undefined;
+  /** Text for the shell's `aria-live` region to announce (page turns,
+   * chapter changes, view-mode switches) — see `announce`. `undefined`
+   * before the first navigation event. */
+  announcement: string | undefined;
+  /** Increments on every `announce` call, including ones with identical
+   * text to the last — `aria-live` regions only announce on a DOM text
+   * *change*, so the shell's `LiveRegion` keys off this to force a
+   * re-announcement even when, e.g., two consecutive page turns happen
+   * to produce the same "Page 3 of 12" text (impossible in practice for
+   * that exact case, but real for repeated chapter-boundary turns). */
+  announcementId: number;
 }
 
 /**
@@ -43,13 +55,17 @@ export interface ReaderSnapshot {
  * behalf: opening/switching spine items, turning pages, switching between
  * paginated and scroll mode (bridging position across the switch via a
  * CFI, since the two modes render into separate content hosts/documents),
- * relaying window resizes into the active host, and persisting/restoring
+ * relaying window resizes into the active host, persisting/restoring
  * reading position (see `resume-reading`) via the same CFI-bridging
- * mechanism — resuming a book is conceptually identical to switching view
- * modes: resolve a saved CFI in whichever content host is now active.
- * React never touches `PaginatedContentHost`/`ScrollContentHost`/
- * `LocatorResolver` etc. directly — it reads `snapshot()` and calls
- * methods here, then is notified (`subscribe`) to re-render.
+ * mechanism, and accessibility: keyboard navigation and managed focus
+ * (via `AccessibilityController`, re-attached to whichever content host's
+ * iframe document is current) plus live-region announcements (via
+ * `announce`, surfaced through `snapshot()` for the shell's `LiveRegion`
+ * to render — this class has no DOM of its own outside the content
+ * hosts' iframes). React never touches `PaginatedContentHost`/
+ * `ScrollContentHost`/`LocatorResolver` etc. directly — it reads
+ * `snapshot()` and calls methods here, then is notified (`subscribe`) to
+ * re-render.
  */
 export class ReaderController {
   private host: PaginatedContentHost | ScrollContentHost | FixedContentHost | undefined;
@@ -76,6 +92,9 @@ export class ReaderController {
   private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
   private containerEl: HTMLDivElement | undefined;
+  private readonly accessibility = new AccessibilityController();
+  private announcement: string | undefined;
+  private announcementId = 0;
 
   private readonly listeners = new Set<() => void>();
   private cachedSnapshot: ReaderSnapshot | undefined;
@@ -124,6 +143,8 @@ export class ReaderController {
         pageCount: this.host instanceof PaginatedContentHost ? this.host.pageCount : 0,
         isLoading: this.isLoading,
         error: this.error,
+        announcement: this.announcement,
+        announcementId: this.announcementId,
       };
     }
     return this.cachedSnapshot;
@@ -211,6 +232,64 @@ export class ReaderController {
     return this.saveProgress();
   }
 
+  /** Sets the text the shell's `aria-live` region should announce next,
+   * and bumps `announcementId` so a repeat of the same text still
+   * triggers a fresh announcement (an `aria-live` region only reacts to
+   * a DOM text *change*). */
+  private announce(text: string): void {
+    this.announcement = text;
+    this.announcementId++;
+  }
+
+  /** A human-readable label for `spineIndex` — the matching Table of
+   * Contents entry's label, if the current navigation has one pointing at
+   * that spine item's path, falling back to "Chapter N" otherwise. Used
+   * for live-region chapter-change announcements (e.g. "Rowing to a
+   * generic 'Chapter 3'" is far less useful to a screen reader user than
+   * the book's own chapter title, when it's available). */
+  private chapterLabel(spineIndex: number): string {
+    const path = this.pkg.spine[spineIndex]?.manifestItem.path;
+    const match = path !== undefined ? ReaderController.findNavPointByPath(this.navigation.toc.items, path) : undefined;
+    return match?.label ?? `Chapter ${spineIndex + 1}`;
+  }
+
+  private static findNavPointByPath(items: readonly NavPoint[], path: string): NavPoint | undefined {
+    for (const item of items) {
+      if (item.path === path) {
+        return item;
+      }
+      const found = ReaderController.findNavPointByPath(item.children, path);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+
+  /** (Re-)attaches keyboard navigation to the current content host's
+   * iframe document and moves focus into it — called every time a new
+   * spine item is opened, since each one gets a fresh iframe/document.
+   * "Next"/"previous" mean "turn a page" in paginated mode (there's no
+   * page concept in scroll/fixed-layout mode, so they mean "go to the
+   * next/previous chapter" there instead). */
+  private setUpAccessibility(focusTarget?: Element): void {
+    if (this.host) {
+      this.host.element.title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
+    }
+
+    const iframeDocument = this.host?.element.contentDocument;
+    if (!iframeDocument) {
+      return;
+    }
+
+    const isPaginated = this.host instanceof PaginatedContentHost;
+    this.accessibility.attach(iframeDocument, {
+      onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
+      onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
+    });
+    this.accessibility.focusContent(iframeDocument, focusTarget);
+  }
+
   /** Relays a resize (e.g. the reader pane changing size, or the user
    * changing font size in a future settings panel) into the active
    * content host, which preserves reading position across the relayout —
@@ -258,6 +337,8 @@ export class ReaderController {
 
     this.viewMode = mode;
     await this.openSpineItem(this.spineIndex, { bridgeCfi });
+    this.announce(mode === "paginated" ? "Paginated view" : "Scroll view");
+    this.notify();
   }
 
   /** Turns one page in paginated mode. In scroll mode, this is a no-op —
@@ -272,6 +353,7 @@ export class ReaderController {
 
     const moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
     if (moved) {
+      this.announce(`Page ${this.host.currentPageIndex + 1} of ${this.host.pageCount}`);
       this.notify();
       await this.saveProgress();
       return;
@@ -321,6 +403,7 @@ export class ReaderController {
     this.notify();
 
     try {
+      this.accessibility.detach();
       this.host?.dispose();
 
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
@@ -345,11 +428,17 @@ export class ReaderController {
 
       if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
+        this.setUpAccessibility();
       } else if (options.fragment) {
-        this.goToFragment(options.fragment);
-      } else if (options.landOnLastPage && this.host instanceof PaginatedContentHost) {
-        this.host.goToLastPage();
+        const focusTarget = this.goToFragment(options.fragment);
+        this.setUpAccessibility(focusTarget);
+      } else {
+        if (options.landOnLastPage && this.host instanceof PaginatedContentHost) {
+          this.host.goToLastPage();
+        }
+        this.setUpAccessibility();
       }
+      this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
@@ -379,20 +468,22 @@ export class ReaderController {
     }
   }
 
-  private goToFragment(fragment: string): void {
+  private goToFragment(fragment: string): Element | undefined {
     const iframeDocument = this.host?.element.contentDocument;
     const target = iframeDocument?.getElementById(fragment);
     if (!target) {
-      return;
+      return undefined;
     }
     if (this.host instanceof PaginatedContentHost) {
       this.host.goToPosition(target, 0);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(target, 0);
     }
+    return target;
   }
 
   public dispose(): void {
+    this.accessibility.detach();
     this.host?.dispose();
     this.resolver.dispose();
     this.library.close();
