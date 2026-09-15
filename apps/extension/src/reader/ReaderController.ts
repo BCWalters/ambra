@@ -59,8 +59,11 @@ export class ReaderController {
     public readonly navigation: NavigationDocument,
   ) {}
 
-  public static async open(file: File): Promise<ReaderController> {
-    const buffer = await file.arrayBuffer();
+  /** Opens a book from its raw bytes — from a `File` (e.g. `await
+   * file.arrayBuffer()`) or, in the normal case, the book `Blob` read
+   * back out of `LibraryDatabase` for whichever `bookId` the reader page
+   * was opened with. */
+  public static async open(buffer: ArrayBuffer): Promise<ReaderController> {
     const container = await EpubContainer.open(buffer);
     const contentLoader = await ContentLoader.create(container);
     const resolver = new ResourceUrlResolver(contentLoader);

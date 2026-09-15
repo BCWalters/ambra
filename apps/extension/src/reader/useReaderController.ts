@@ -6,7 +6,7 @@ import type { ReaderSnapshot, ViewMode } from "./ReaderController.js";
 export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
   contentHostRef: RefObject<HTMLDivElement | null>;
-  openFile: (file: File) => Promise<void>;
+  openBuffer: (buffer: ArrayBuffer) => Promise<void>;
   turnPage: (direction: 1 | -1) => void;
   goToChapter: (direction: 1 | -1) => void;
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
@@ -55,8 +55,8 @@ export function useReaderController(): UseReaderControllerResult {
     };
   }, [controller]);
 
-  const openFile = useCallback(async (file: File): Promise<void> => {
-    const opened = await ReaderController.open(file);
+  const openBuffer = useCallback(async (buffer: ArrayBuffer): Promise<void> => {
+    const opened = await ReaderController.open(buffer);
     setController(opened);
   }, []);
 
@@ -88,5 +88,5 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
-  return { snapshot, contentHostRef, openFile, turnPage, goToChapter, goToNavPoint, setViewMode };
+  return { snapshot, contentHostRef, openBuffer, turnPage, goToChapter, goToNavPoint, setViewMode };
 }

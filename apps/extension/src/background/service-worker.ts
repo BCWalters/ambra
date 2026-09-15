@@ -4,18 +4,11 @@
  * entry points for `.epub` files.
  */
 
-const READER_PAGE_URL = "src/reader/index.html";
+export { openReaderTab } from "../navigation.js";
 
 chrome.runtime.onInstalled.addListener(() => {
-  // TODO(library-storage): initialize IndexedDB schema on first install.
+  // Nothing to initialize on install — `LibraryDatabase` creates its
+  // IndexedDB object stores lazily on first open (see its
+  // `onupgradeneeded` handler), so there's no separate schema-init step
+  // needed here.
 });
-
-/**
- * Opens the dedicated reader tab for a given book. See the
- * `reader-shell-ui` and `resume-reading` work items — the reader page will
- * read the book id from the URL and restore the last-read Locator.
- */
-export async function openReaderTab(bookId: string): Promise<void> {
-  const url = chrome.runtime.getURL(`${READER_PAGE_URL}?bookId=${encodeURIComponent(bookId)}`);
-  await chrome.tabs.create({ url });
-}

@@ -27,6 +27,16 @@ describe("PackageDocument (reflowable fixture)", () => {
     expect(pkg.metadata.language).toBe("en");
   });
 
+  it("leaves creator undefined when no dc:creator is present", () => {
+    expect(pkg.metadata.creator).toBeUndefined();
+  });
+
+  it("parses dc:creator when present (long-content fixture)", async () => {
+    const container = await EpubContainer.open(await loadFixture("long-content.epub"));
+    const withCreator = await container.getPackageDocument();
+    expect(withCreator.metadata.creator).toBe("Ada Lovelace");
+  });
+
   it("defaults rendition layout to reflowable when no rendition:layout meta is present", () => {
     expect(pkg.metadata.renditionLayout).toBe("reflowable");
   });

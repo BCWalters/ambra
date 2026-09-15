@@ -99,6 +99,13 @@ export class PackageMetadata {
     public readonly identifier: string,
     public readonly title: string,
     public readonly language: string,
+    /** `dc:creator` (author/editor/etc.) — optional per spec, unlike
+     * `dc:title`/`dc:language`, so real-world books that omit it (or use
+     * non-DC creator conventions this parser doesn't yet special-case)
+     * simply have `undefined` here rather than failing to parse. When
+     * multiple `dc:creator` elements are present, only the first is used;
+     * refiners like `role`/`file-as` are not yet interpreted. */
+    public readonly creator: string | undefined,
     /** Publication-wide default rendition layout. Individual spine items
      * may override this — see `SpineItemRef.resolveRenditionLayout`. */
     public readonly renditionLayout: RenditionLayout,
@@ -215,6 +222,7 @@ export class PackageDocument {
     const identifier = PackageDocument.parseUniqueIdentifier(packageEl, metadataEl, opfPath);
     const title = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "title");
     const language = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "language");
+    const creator = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "creator");
 
     if (!title || !language) {
       throw new PackageDocumentError(
@@ -224,7 +232,7 @@ export class PackageDocument {
 
     const renditionLayout = PackageDocument.parseRenditionLayoutMeta(metadataEl);
 
-    return new PackageMetadata(identifier, title, language, renditionLayout);
+    return new PackageMetadata(identifier, title, language, creator, renditionLayout);
   }
 
   /** Resolves the `dc:identifier` element specifically referenced by

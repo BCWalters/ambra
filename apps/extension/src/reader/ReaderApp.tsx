@@ -1,6 +1,7 @@
-import { useState } from "react";
-import type { ChangeEvent, FC } from "react";
+import { useEffect, useState } from "react";
+import type { FC } from "react";
 import { Body1, Spinner, Title2 } from "@fluentui/react-components";
+import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { useReaderController } from "./useReaderController.js";
@@ -13,39 +14,66 @@ import { useReaderController } from "./useReaderController.js";
  * temporary dev tool used to exercise the engine while the real reading
  * surface didn't exist yet.
  *
- * Loading is still a plain file picker for now — `library-storage`
- * (IndexedDB import/library UI) will replace this with a real library,
- * but the reading surface itself doesn't depend on how the book file was
- * obtained.
+ * Loads its book from `LibraryDatabase` by the `?bookId=` query parameter
+ * the library page opens this tab with (see `navigation.ts`) — the
+ * reading surface itself doesn't care how the bytes were obtained, it
+ * just needs an `ArrayBuffer`.
  */
 export const ReaderApp: FC = () => {
-  const { snapshot, contentHostRef, openFile, turnPage, goToChapter, goToNavPoint, setViewMode } =
+  const { snapshot, contentHostRef, openBuffer, turnPage, goToChapter, goToNavPoint, setViewMode } =
     useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0];
-    if (!file) {
+  useEffect(() => {
+    const bookId = new URLSearchParams(window.location.search).get("bookId");
+    if (!bookId) {
+      setOpenError("No book selected — open this book from the Pagina library.");
       return;
     }
-    setOpenError(null);
-    void openFile(file).catch((err: unknown) => {
-      setOpenError(err instanceof Error ? err.message : String(err));
-    });
-  };
+
+    let cancelled = false;
+    void (async () => {
+      const library = await LibraryDatabase.open();
+      try {
+        const blob = await library.getBookFile(bookId);
+        if (!blob) {
+          throw new Error("This book could not be found in your library — it may have been removed.");
+        }
+        const buffer = await blob.arrayBuffer();
+        if (!cancelled) {
+          await openBuffer(buffer);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOpenError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        library.close();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (openError) {
+    return (
+      <div style={{ padding: 24 }}>
+        <Title2>Pagina Reader</Title2>
+        <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)" }}>
+          {openError}
+        </Body1>
+      </div>
+    );
+  }
 
   if (!snapshot) {
     return (
       <div style={{ padding: 24 }}>
         <Title2>Pagina Reader</Title2>
-        <Body1 as="p">Pick an .epub file to start reading.</Body1>
-        <input type="file" accept=".epub" onChange={handleFileChange} />
-        {openError && (
-          <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)" }}>
-            Error: {openError}
-          </Body1>
-        )}
+        <Spinner label="Loading…" />
       </div>
     );
   }
