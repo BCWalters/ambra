@@ -133,6 +133,27 @@ describe("PackageDocument (fixed-layout fixture)", () => {
     expect(page2?.hasProperty("rendition:layout-reflowable")).toBe(true);
     expect(page2?.resolveRenditionLayout(pkg.metadata.renditionLayout)).toBe("reflowable");
   });
+
+  it("computes distinct package CFI steps for each of several spine items", () => {
+    const page1Steps = pkg.spine[0]!.packageCfiSteps;
+    const page2Steps = pkg.spine[1]!.packageCfiSteps;
+
+    expect(page1Steps.map((s) => s.index)).not.toEqual(page2Steps.map((s) => s.index));
+    expect(pkg.findSpineIndexByPackageCfiSteps(page1Steps)).toBe(0);
+    expect(pkg.findSpineIndexByPackageCfiSteps(page2Steps)).toBe(1);
+  });
+
+  it("matches package CFI steps by index only, ignoring a mismatched id assertion", () => {
+    // findSpineIndexByPackageCfiSteps deliberately compares step indices
+    // only, not id assertions — those are a supplementary check performed
+    // separately, only for *content* steps, during LocatorResolver's
+    // resolution (see Locator.ts's verifyIdAssertion). A wrong id
+    // assertion on a package step must not prevent finding the spine item.
+    const realSteps = pkg.spine[1]!.packageCfiSteps;
+    const tamperedSteps = realSteps.map((s) => new CfiStep(s.index, "not-the-real-id"));
+
+    expect(pkg.findSpineIndexByPackageCfiSteps(tamperedSteps)).toBe(1);
+  });
 });
 
 describe("PackageDocument error handling", () => {

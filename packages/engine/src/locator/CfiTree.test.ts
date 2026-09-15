@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   childStepIndex,
+  elementCfiSteps,
   elementStepsFromRoot,
   resolveElementChild,
   resolveElementSteps,
@@ -163,5 +164,83 @@ describe("elementStepsFromRoot / resolveElementSteps (round-trip)", () => {
 
     expect(elementStepsFromRoot(body, body)).toEqual([]);
     expect(resolveElementSteps(body, [])).toBe(body);
+  });
+});
+
+describe("elementCfiSteps", () => {
+  it("attaches an XML ID assertion to a step whose element has an id", () => {
+    const doc = parseXhtmlFragment('<body><div><p id="para">a</p></div></body>');
+    const body = doc.getElementsByTagName("body")[0]!;
+    const p = doc.getElementById("para")!;
+
+    const steps = elementCfiSteps(body, p);
+
+    expect(steps.map((s) => s.index)).toEqual([2, 2]);
+    expect(steps[0]?.idAssertion).toBeUndefined(); // the <div> has no id
+    expect(steps[1]?.idAssertion).toBe("para");
+  });
+
+  it("omits the id assertion for a step whose element has no id", () => {
+    const doc = parseXhtmlFragment("<body><p>a</p></body>");
+    const body = doc.getElementsByTagName("body")[0]!;
+    const p = body.children[0]!;
+
+    expect(elementCfiSteps(body, p)[0]?.idAssertion).toBeUndefined();
+  });
+
+  it("round-trips through resolveElementSteps by discarding the id assertions (positional resolution)", () => {
+    const doc = parseXhtmlFragment(
+      '<body><div id="d1"><p>a</p></div><div id="d2"><p id="target">b</p></div></body>',
+    );
+    const body = doc.getElementsByTagName("body")[0]!;
+    const target = doc.getElementById("target")!;
+
+    const steps = elementCfiSteps(body, target);
+    const resolved = resolveElementSteps(
+      body,
+      steps.map((s) => s.index),
+    );
+
+    expect(resolved).toBe(target);
+  });
+});
+
+describe("comments and processing instructions", () => {
+  it("does not consume a step index and does not break a surrounding text run", () => {
+    // "a" and "b" are both plain text either side of a comment, with no
+    // element in between — per spec, they're one run (odd index 1), and
+    // the comment itself is invisible to the indexing scheme entirely.
+    const doc = parseXhtmlFragment("<body>a<!--comment-->b<p>c</p></body>");
+    const body = doc.getElementsByTagName("body")[0]!;
+    const [textA, , textB] = Array.from(body.childNodes);
+
+    expect(childStepIndex(textA!)).toBe(1);
+    expect(childStepIndex(textB!)).toBe(1);
+
+    const run = resolveTextRun(body, 1);
+    expect(run.map((n) => n.textContent)).toEqual(["a", "b"]);
+  });
+
+  it("does not shift element indices when comments precede or follow them", () => {
+    const doc = parseXhtmlFragment("<body><!--c1--><p>a</p><!--c2--><p>b</p><!--c3--></body>");
+    const body = doc.getElementsByTagName("body")[0]!;
+    const [p1, p2] = Array.from(body.children);
+
+    expect(childStepIndex(p1!)).toBe(2);
+    expect(childStepIndex(p2!)).toBe(4);
+  });
+
+  it("counts a character offset correctly across a run split by a comment", () => {
+    const doc = parseXhtmlFragment("<body><p>x</p>hel<!--c-->lo<p>y</p></body>");
+    const body = doc.getElementsByTagName("body")[0]!;
+    const loNode = Array.from(body.childNodes).find((n) => n.textContent === "lo")!;
+
+    // Run is "hel" (3 chars) + "lo" — offset 1 into "lo" should be 3 + 1 = 4.
+    expect(runCharacterOffset(loNode, 1)).toBe(4);
+
+    const run = resolveTextRun(body, 3);
+    const resolved = resolveOffsetInRun(run, 4);
+    expect(resolved?.node).toBe(loNode);
+    expect(resolved?.localOffset).toBe(1);
   });
 });

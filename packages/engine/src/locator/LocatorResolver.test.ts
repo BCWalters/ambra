@@ -111,4 +111,67 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
 
     expect(() => resolver.generate(5, h1)).toThrow(LocatorResolutionError);
   });
+
+  it("resolveInDocument throws when a step's id assertion doesn't match the resolved element's actual id", async () => {
+    const doc = await contentLoader.loadSpineDocument(0);
+    const h1 = doc.document.querySelector("h1")!;
+    const locator = resolver.generate(0, h1);
+    // h1 has no id in this fixture, so any asserted id is a mismatch —
+    // fabricate one by injecting a bracketed assertion into the last
+    // step, simulating a CFI generated against a differently-structured
+    // version of the same document. Per the resolver's documented,
+    // deliberate design, this must fail loudly rather than silently
+    // resolving positionally (self-healing correction is a documented
+    // future enhancement, not Wave 1 behavior).
+    const tamperedCfi = locator.cfi.replace(/(\/\d+)\)$/, "$1[bogus-id])");
+
+    expect(() => resolver.resolveInDocument(new Locator(tamperedCfi), 0, doc.document)).toThrow(
+      LocatorResolutionError,
+    );
+  });
+});
+
+describe("LocatorResolver (fixed-layout.epub, multiple spine items)", () => {
+  let resolver: LocatorResolver;
+  let contentLoader: ContentLoader;
+
+  beforeAll(async () => {
+    const container = await EpubContainer.open(await loadFixture("fixed-layout.epub"));
+    const pkg = await container.getPackageDocument();
+    contentLoader = await ContentLoader.create(container);
+    resolver = new LocatorResolver(pkg, contentLoader);
+  });
+
+  it("generates and resolves a Locator for an element with no text content (an <img>)", async () => {
+    const doc = await contentLoader.loadSpineDocument(0); // page1.xhtml: <body><img/></body>
+    const img = doc.document.querySelector("img")!;
+
+    const locator = resolver.generate(0, img);
+    const resolved = await resolver.resolve(locator);
+
+    expect(resolved.spineIndex).toBe(0);
+    expect((resolved.node as Element).tagName.toLowerCase()).toBe("img");
+    expect(resolved.characterOffset).toBeUndefined();
+  });
+
+  it("distinguishes between spine items when generating and resolving Locators", async () => {
+    const page1Doc = await contentLoader.loadSpineDocument(0);
+    const page2Doc = await contentLoader.loadSpineDocument(1); // page2.xhtml: <body><p>...</p></body>
+
+    const imgLocator = resolver.generate(0, page1Doc.document.querySelector("img")!);
+    const textNode = page2Doc.document.querySelector("p")!.firstChild!;
+    const textLocator = resolver.generate(1, textNode, 5);
+
+    // The two Locators' package-step prefixes must differ — otherwise
+    // they'd be indistinguishable and resolution would be ambiguous.
+    expect(imgLocator.cfi.split("!")[0]).not.toBe(textLocator.cfi.split("!")[0]);
+
+    const resolvedImg = await resolver.resolve(imgLocator);
+    const resolvedText = await resolver.resolve(textLocator);
+
+    expect(resolvedImg.spineIndex).toBe(0);
+    expect(resolvedText.spineIndex).toBe(1);
+    expect(resolvedText.node.textContent).toBe(textNode.textContent);
+    expect(resolvedText.characterOffset).toBe(5);
+  });
 });

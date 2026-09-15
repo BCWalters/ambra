@@ -41,6 +41,19 @@ describe("EpubCfi.parse / toString round-trip", () => {
     expect(cfi.toString()).toBe("epubcfi(/6/4!/4/2)");
   });
 
+  it("parses an explicit :0 offset as 0, not undefined", () => {
+    const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2:0)");
+
+    expect(cfi.characterOffset).toBe(0);
+    expect(cfi.toString()).toBe("epubcfi(/6/4!/4/2:0)");
+  });
+
+  it("tolerates leading/trailing whitespace around the whole CFI string", () => {
+    const cfi = EpubCfi.parse("  epubcfi(/6/4!/4/2:3)  ");
+
+    expect(cfi.characterOffset).toBe(3);
+  });
+
   it("strips a trailing side-bias parameter from an id assertion", () => {
     const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2[;s=b])");
 
