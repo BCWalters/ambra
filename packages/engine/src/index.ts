@@ -36,7 +36,7 @@ export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/Resour
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { SandboxedContentHost, RenderingSurfaceError } from "./rendering/SandboxedContentHost.js";
-export { ScrollViewEngine, FixedLayoutRenderer } from "./layout/LayoutEngine.js";
+export { FixedLayoutRenderer } from "./layout/LayoutEngine.js";
 export { PaginationEngine } from "./layout/PaginationEngine.js";
 export { planPageBreaks } from "./layout/PaginationEngine.js";
 export { Page } from "./layout/Page.js";
@@ -44,6 +44,8 @@ export type { DomBreakPoint } from "./layout/Page.js";
 export { measureChunks, isBlockLevel, isLeaf, isAtomic } from "./layout/LineMeasurement.js";
 export type { Chunk } from "./layout/LineMeasurement.js";
 export { globalTextOffsetToPosition, totalTextLength } from "./layout/DomTextWalker.js";
+export { ScrollViewEngine } from "./layout/ScrollViewEngine.js";
+export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } from "./layout/ScrollPositionTracker.js";
 export { Locator, LocatorResolver, LocatorResolutionError } from "./locator/Locator.js";
 export type { ResolvedLocator } from "./locator/Locator.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";

@@ -5,11 +5,13 @@ import {
   ContentDocumentAssembler,
   ContentLoader,
   EpubContainer,
+  Locator,
   LocatorResolver,
   NavigationDocument,
   PaginationEngine,
   ResourceUrlResolver,
   SandboxedContentHost,
+  ScrollViewEngine,
   type NavPoint,
   type PackageDocument,
   type Page,
@@ -105,6 +107,27 @@ interface ActiveRender {
 const PAGINATION_DEMO_WIDTH = 400;
 const PAGINATION_DEMO_HEIGHT = 300;
 
+/** Loads spine item 0, resolves its resources to blob URLs, and assembles
+ * the final renderable XHTML — the load pipeline shared by both the
+ * paginated and scroll-view render demos below (`ContentLoader` ->
+ * `ResourceUrlResolver` -> `ContentDocumentAssembler`). Each caller gets
+ * its own fresh `ResourceUrlResolver` (and therefore its own blob URLs)
+ * since the two demos are disposed independently. */
+async function loadAssembledFirstSpineItem(
+  container: EpubContainer,
+): Promise<{ assembledXhtml: string; resolver: ResourceUrlResolver; pkg: PackageDocument; contentLoader: ContentLoader }> {
+  const pkg = await container.getPackageDocument();
+  const contentLoader = await ContentLoader.create(container);
+  const spineDoc = await contentLoader.loadSpineDocument(0);
+  const references = contentLoader.findResourceReferences(spineDoc);
+
+  const resolver = new ResourceUrlResolver(contentLoader);
+  const resourceUrls = await resolver.resolveAll(references.map((ref) => ref.path));
+
+  const assembledXhtml = ContentDocumentAssembler.assemble(spineDoc, resourceUrls);
+  return { assembledXhtml, resolver, pkg, contentLoader };
+}
+
 /** Renders the first spine item into a real `SandboxedContentHost`, and
  * appends its iframe into `containerEl`. Exercises the full rendering
  * pipeline: ContentLoader -> ResourceUrlResolver -> ContentDocumentAssembler
@@ -114,14 +137,7 @@ async function renderFirstSpineItem(
   containerEl: HTMLDivElement,
   activeRenderRef: MutableRefObject<ActiveRender | null>,
 ): Promise<Page[]> {
-  const contentLoader = await ContentLoader.create(container);
-  const spineDoc = await contentLoader.loadSpineDocument(0);
-  const references = contentLoader.findResourceReferences(spineDoc);
-
-  const resolver = new ResourceUrlResolver(contentLoader);
-  const resourceUrls = await resolver.resolveAll(references.map((ref) => ref.path));
-
-  const assembledXhtml = ContentDocumentAssembler.assemble(spineDoc, resourceUrls);
+  const { assembledXhtml, resolver } = await loadAssembledFirstSpineItem(container);
 
   const host = new SandboxedContentHost();
   host.element.style.width = `${PAGINATION_DEMO_WIDTH}px`;
@@ -172,6 +188,82 @@ function showPage(host: SandboxedContentHost, page: Page): void {
   host.element.style.height = `${page.height}px`;
 }
 
+interface ActiveScrollRender {
+  host: SandboxedContentHost;
+  resolver: ResourceUrlResolver;
+  engine: ScrollViewEngine;
+  locatorResolver: LocatorResolver;
+  refreshPosition: () => void;
+  removeScrollListener: () => void;
+}
+
+const SCROLL_DEMO_WIDTH = 400;
+const SCROLL_DEMO_HEIGHT = 300;
+
+/** Renders the same first spine item a second time, into a *separate*
+ * `SandboxedContentHost`, in continuous-scroll mode instead of paginated
+ * mode: deliberately does *not* touch `overflow` (unlike the paginated
+ * demo above), letting the iframe scroll natively, and uses
+ * `ScrollViewEngine` to track/restore position as the reader scrolls
+ * instead of `PaginationEngine`'s page breaks. */
+async function renderScrollViewDemo(
+  container: EpubContainer,
+  containerEl: HTMLDivElement,
+  activeScrollRenderRef: MutableRefObject<ActiveScrollRender | null>,
+  onPositionChange: (cfi: string | undefined) => void,
+): Promise<void> {
+  const { assembledXhtml, resolver, pkg, contentLoader } = await loadAssembledFirstSpineItem(container);
+
+  const host = new SandboxedContentHost();
+  host.element.style.width = `${SCROLL_DEMO_WIDTH}px`;
+  host.element.style.height = `${SCROLL_DEMO_HEIGHT}px`;
+  containerEl.replaceChildren(host.element);
+  await host.render(assembledXhtml);
+
+  const iframeDocument = host.element.contentDocument;
+  const iframeWindow = host.element.contentWindow;
+  if (!iframeDocument || !iframeWindow) {
+    throw new Error("Sandboxed iframe has no contentDocument/contentWindow after loading (unexpected).");
+  }
+
+  const engine = ScrollViewEngine.prepare(iframeDocument.body);
+  const locatorResolver = new LocatorResolver(pkg, contentLoader);
+
+  const reportCurrentPosition = (): void => {
+    const position = engine.currentPosition();
+    if (!position) {
+      onPositionChange(undefined);
+      return;
+    }
+    const locator = locatorResolver.generate(0, position.node, position.offset);
+    onPositionChange(locator.cfi);
+  };
+
+  // A real reading surface would debounce this (per the scroll-view-mode
+  // design: position tracking shouldn't regenerate a CFI on every single
+  // scroll event), but for this demo we report immediately so it's
+  // trivial to verify live in a real browser. The "Refresh position"
+  // button in the UI calls `reportCurrentPosition` directly too, since
+  // some automated test harnesses run pages without an active rendering
+  // loop, where native `scroll` events never fire at all (a harness
+  // limitation, not something a real user's browser does) — the button
+  // gives a reliable way to exercise the same position-tracking logic
+  // regardless.
+  const handleScroll = (): void => reportCurrentPosition();
+  iframeWindow.addEventListener("scroll", handleScroll);
+  reportCurrentPosition();
+
+  activeScrollRenderRef.current = {
+    host,
+    resolver,
+    engine,
+    locatorResolver,
+    refreshPosition: reportCurrentPosition,
+    removeScrollListener: () => iframeWindow.removeEventListener("scroll", handleScroll),
+  };
+}
+
+
 const NavTree: FC<{ items: readonly NavPoint[] }> = ({ items }) => {
   if (items.length === 0) {
     return null;
@@ -211,9 +303,13 @@ export const EpubInspector: FC = () => {
   const [renderableContainer, setRenderableContainer] = useState<EpubContainer | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [scrollCurrentCfi, setScrollCurrentCfi] = useState<string | undefined>(undefined);
+  const [scrollSavedCfi, setScrollSavedCfi] = useState<string | undefined>(undefined);
 
   const hostContainerRef = useRef<HTMLDivElement | null>(null);
   const activeRenderRef = useRef<ActiveRender | null>(null);
+  const scrollHostContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeScrollRenderRef = useRef<ActiveScrollRender | null>(null);
 
   useEffect(() => {
     // Only runs once React has committed the DOM for the current
@@ -253,6 +349,42 @@ export const EpubInspector: FC = () => {
     };
   }, [renderableContainer]);
 
+  useEffect(() => {
+    if (!renderableContainer || !scrollHostContainerRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await renderScrollViewDemo(
+          renderableContainer,
+          scrollHostContainerRef.current!,
+          activeScrollRenderRef,
+          (cfi) => {
+            if (!cancelled) {
+              setScrollCurrentCfi(cfi);
+            }
+          },
+        );
+      } catch (renderErr) {
+        if (!cancelled) {
+          setRenderError(renderErr instanceof Error ? renderErr.message : String(renderErr));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      activeScrollRenderRef.current?.removeScrollListener();
+      activeScrollRenderRef.current?.host.dispose();
+      activeScrollRenderRef.current?.resolver.dispose();
+      activeScrollRenderRef.current = null;
+      setScrollCurrentCfi(undefined);
+      setScrollSavedCfi(undefined);
+    };
+  }, [renderableContainer]);
+
   const goToPage = (index: number): void => {
     const active = activeRenderRef.current;
     if (!active || index < 0 || index >= active.pages.length) {
@@ -260,6 +392,35 @@ export const EpubInspector: FC = () => {
     }
     showPage(active.host, active.pages[index]!);
     setCurrentPageIndex(index);
+  };
+
+  const saveScrollPosition = (): void => {
+    setScrollSavedCfi(scrollCurrentCfi);
+  };
+
+  const refreshScrollPosition = (): void => {
+    activeScrollRenderRef.current?.refreshPosition();
+  };
+
+  const scrollToBottom = (): void => {
+    const active = activeScrollRenderRef.current;
+    const scrollingElement = active?.host.element.contentDocument?.scrollingElement;
+    if (scrollingElement) {
+      scrollingElement.scrollTop = scrollingElement.scrollHeight;
+      active?.refreshPosition();
+    }
+  };
+
+  const restoreSavedScrollPosition = (): void => {
+    const active = activeScrollRenderRef.current;
+    const iframeDocument = active?.host.element.contentDocument;
+    if (!active || !iframeDocument || !scrollSavedCfi) {
+      return;
+    }
+    const locator = new Locator(scrollSavedCfi);
+    const resolved = active.locatorResolver.resolveInDocument(locator, 0, iframeDocument);
+    active.engine.restorePosition(resolved.node, resolved.characterOffset ?? 0);
+    active.refreshPosition();
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -432,6 +593,47 @@ export const EpubInspector: FC = () => {
             style={{
               height: PAGINATION_DEMO_HEIGHT,
               width: PAGINATION_DEMO_WIDTH,
+              overflow: "hidden",
+              border: "1px solid var(--colorNeutralStroke1, #ccc)",
+              marginTop: 8,
+            }}
+          />
+
+          <Divider style={{ margin: "12px 0" }} />
+
+          <Title3>Sandboxed render of first spine item (continuous scroll)</Title3>
+          <Body1 as="p">
+            Current position: <code>{scrollCurrentCfi ?? "(none)"}</code>
+            <br />
+            <Button size="small" style={{ marginTop: 8 }} onClick={refreshScrollPosition}>
+              Refresh position
+            </Button>
+            <Button size="small" style={{ marginLeft: 8 }} onClick={saveScrollPosition}>
+              Save position
+            </Button>
+            <Button size="small" style={{ marginLeft: 8 }} onClick={scrollToBottom}>
+              Scroll to bottom
+            </Button>
+            <Button
+              size="small"
+              style={{ marginLeft: 8 }}
+              disabled={!scrollSavedCfi}
+              onClick={restoreSavedScrollPosition}
+            >
+              Restore saved position
+            </Button>
+            {scrollSavedCfi && (
+              <>
+                <br />
+                Saved: <code>{scrollSavedCfi}</code>
+              </>
+            )}
+          </Body1>
+          <div
+            ref={scrollHostContainerRef}
+            style={{
+              height: SCROLL_DEMO_HEIGHT,
+              width: SCROLL_DEMO_WIDTH,
               overflow: "hidden",
               border: "1px solid var(--colorNeutralStroke1, #ccc)",
               marginTop: 8,
