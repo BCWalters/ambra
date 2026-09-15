@@ -13,8 +13,9 @@ import {
 } from "@pagina/engine";
 import type { NavPoint, PackageDocument } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import type { ViewMode } from "./ViewMode.js";
 
-export type ViewMode = "paginated" | "scroll";
+export type { ViewMode } from "./ViewMode.js";
 
 /** A plain-data snapshot of `ReaderController`'s current state, the shape
  * React components actually read (via `useReaderController`) — they never
@@ -69,6 +70,8 @@ export interface ReaderSnapshot {
  */
 export class ReaderController {
   private host: PaginatedContentHost | ScrollContentHost | FixedContentHost | undefined;
+  /** Defaults to "paginated", but `open` overwrites this from the saved
+   * `view-mode-preference` (if any) before the controller is ever used. */
   private viewMode: ViewMode = "paginated";
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
@@ -122,7 +125,9 @@ export class ReaderController {
     const navigation = await NavigationDocument.load(container);
     const locatorResolver = new LocatorResolver(pkg, contentLoader);
 
-    return new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation, bookId, library);
+    const controller = new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation, bookId, library);
+    controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
+    return controller;
   }
 
   public subscribe(listener: () => void): () => void {
@@ -336,6 +341,7 @@ export class ReaderController {
       : undefined;
 
     this.viewMode = mode;
+    await this.library.setDefaultViewMode(mode);
     await this.openSpineItem(this.spineIndex, { bridgeCfi });
     this.announce(mode === "paginated" ? "Paginated view" : "Scroll view");
     this.notify();

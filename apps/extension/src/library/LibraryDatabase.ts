@@ -1,3 +1,5 @@
+import type { ViewMode } from "../reader/ViewMode.js";
+
 /** Book metadata as stored in the library — small enough to list in bulk
  * without touching the (potentially large) book file/cover blobs, which
  * live in their own object stores. */
@@ -24,19 +26,31 @@ interface BlobRecord {
   readonly blob: Blob;
 }
 
+/** A single key/value preference row — currently just the default view
+ * mode (see `view-mode-preference`), but modeled generically since a
+ * settings panel (font size, theme, etc.) will add more in wave 2. */
+interface PreferenceRecord {
+  readonly key: string;
+  readonly value: unknown;
+}
+
 const DB_NAME = "pagina-library";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const BOOKS_STORE = "books";
 const FILES_STORE = "bookFiles";
 const COVERS_STORE = "bookCovers";
 const PROGRESS_STORE = "readingProgress";
+const PREFERENCES_STORE = "preferences";
+
+const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
- * file bytes, an optional cover image, and per-book reading progress,
- * each in their own IndexedDB object store so listing the library
- * doesn't have to touch the large blobs. All local-only in v1, no cloud
- * sync — see the wave-1 plan's storage section.
+ * file bytes, an optional cover image, per-book reading progress, and
+ * reader-wide preferences, each in their own IndexedDB object store so
+ * listing the library doesn't have to touch the large blobs. All
+ * local-only in v1, no cloud sync — see the wave-1 plan's storage
+ * section.
  */
 export class LibraryDatabase {
   private constructor(private readonly db: IDBDatabase) {}
@@ -58,6 +72,9 @@ export class LibraryDatabase {
         }
         if (!db.objectStoreNames.contains(PROGRESS_STORE)) {
           db.createObjectStore(PROGRESS_STORE, { keyPath: "bookId" });
+        }
+        if (!db.objectStoreNames.contains(PREFERENCES_STORE)) {
+          db.createObjectStore(PREFERENCES_STORE, { keyPath: "key" });
         }
       };
 
@@ -104,6 +121,20 @@ export class LibraryDatabase {
 
   public getProgress(bookId: string): Promise<ReadingProgress | undefined> {
     return this.get<ReadingProgress>(PROGRESS_STORE, bookId);
+  }
+
+  /** The reader-wide default view mode (paginated/scroll) new books
+   * should open in, persisted across sessions — see
+   * `view-mode-preference`. `undefined` if never set, in which case
+   * callers should fall back to the "paginated" default themselves. */
+  public async getDefaultViewMode(): Promise<ViewMode | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, VIEW_MODE_PREFERENCE_KEY);
+    return record?.value as ViewMode | undefined;
+  }
+
+  public async setDefaultViewMode(mode: ViewMode): Promise<void> {
+    const record: PreferenceRecord = { key: VIEW_MODE_PREFERENCE_KEY, value: mode };
+    await this.put(PREFERENCES_STORE, record);
   }
 
   public async deleteBook(id: string): Promise<void> {
