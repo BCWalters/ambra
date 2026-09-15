@@ -7,8 +7,9 @@ export {
   ManifestItem,
   SpineItemRef,
   NCX_MEDIA_TYPE,
+  parseViewportDimensions,
 } from "./container/PackageDocument.js";
-export type { RenditionLayout } from "./container/PackageDocument.js";
+export type { RenditionLayout, ViewportSize } from "./container/PackageDocument.js";
 export { resolveEpubPath, directoryOf, splitHrefFragment } from "./container/EpubPath.js";
 export {
   NavigationDocument,
@@ -36,7 +37,6 @@ export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/Resour
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { SandboxedContentHost, RenderingSurfaceError } from "./rendering/SandboxedContentHost.js";
-export { FixedLayoutRenderer } from "./layout/LayoutEngine.js";
 export { PaginationEngine } from "./layout/PaginationEngine.js";
 export { planPageBreaks } from "./layout/PaginationEngine.js";
 export { Page } from "./layout/Page.js";
@@ -52,4 +52,5 @@ export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";
+export { FixedContentHost } from "./reading/FixedContentHost.js";
 export { loadAssembledSpineItem } from "./reading/SpineItemAssembler.js";

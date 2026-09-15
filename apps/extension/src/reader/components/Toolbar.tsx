@@ -12,8 +12,11 @@ export interface ToolbarProps {
 
 /** The reader's top toolbar: TOC toggle, book title, chapter progress,
  * page navigation (paginated mode only — scrolling is continuous, so
- * there's no discrete page concept in scroll mode), and the paginated/
- * scroll view-mode toggle.
+ * there's no discrete page concept in scroll mode; fixed-layout spine
+ * items have no page/scroll concept at all, regardless of `viewMode`,
+ * since the whole item is one page — see
+ * `ReaderSnapshot.isFixedLayout`), and the paginated/scroll view-mode
+ * toggle.
  *
  * Persisting the chosen view mode is `view-mode-preference`'s job, not
  * this component's — it just reflects/changes the controller's current
@@ -54,7 +57,7 @@ export const Toolbar: FC<ToolbarProps> = ({ snapshot, onToggleToc, onTurnPage, o
         Chapter ▶
       </Button>
 
-      {isPaginated && (
+      {isPaginated && !snapshot.isFixedLayout && (
         <>
           <Body1 as="span">
             Page {snapshot.pageCount > 0 ? snapshot.pageIndex + 1 : 0} of {snapshot.pageCount}
@@ -68,13 +71,15 @@ export const Toolbar: FC<ToolbarProps> = ({ snapshot, onToggleToc, onTurnPage, o
         </>
       )}
 
-      <ToggleButton
-        size="small"
-        checked={!isPaginated}
-        onClick={() => onSetViewMode(isPaginated ? "scroll" : "paginated")}
-      >
-        {isPaginated ? "Paginated" : "Scroll"}
-      </ToggleButton>
+      {!snapshot.isFixedLayout && (
+        <ToggleButton
+          size="small"
+          checked={!isPaginated}
+          onClick={() => onSetViewMode(isPaginated ? "scroll" : "paginated")}
+        >
+          {isPaginated ? "Paginated" : "Scroll"}
+        </ToggleButton>
+      )}
     </div>
   );
 };

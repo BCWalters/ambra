@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "./EpubContainer.js";
-import { PackageDocument, PackageDocumentError } from "./PackageDocument.js";
+import { PackageDocument, PackageDocumentError, parseViewportDimensions } from "./PackageDocument.js";
 import { CfiStep } from "../locator/EpubCfi.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
@@ -12,6 +12,30 @@ async function loadFixture(name: string): Promise<Uint8Array> {
   );
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
+
+describe("parseViewportDimensions", () => {
+  it("parses width/height from a comma-separated string", () => {
+    expect(parseViewportDimensions("width=1000, height=1400")).toEqual({ width: 1000, height: 1400 });
+  });
+
+  it("parses width/height regardless of spacing/order", () => {
+    expect(parseViewportDimensions("height=800,width=600")).toEqual({ width: 600, height: 800 });
+  });
+
+  it("returns undefined when height is missing", () => {
+    expect(parseViewportDimensions("width=1000")).toBeUndefined();
+  });
+
+  it("returns undefined for a non-positive dimension", () => {
+    expect(parseViewportDimensions("width=0, height=1400")).toBeUndefined();
+  });
+
+  it("returns undefined for null/undefined/empty input", () => {
+    expect(parseViewportDimensions(null)).toBeUndefined();
+    expect(parseViewportDimensions(undefined)).toBeUndefined();
+    expect(parseViewportDimensions("")).toBeUndefined();
+  });
+});
 
 describe("PackageDocument (reflowable fixture)", () => {
   let pkg: PackageDocument;
@@ -85,6 +109,10 @@ describe("PackageDocument (fixed-layout fixture)", () => {
 
   it("reads a publication-wide pre-paginated rendition:layout", () => {
     expect(pkg.metadata.renditionLayout).toBe("pre-paginated");
+  });
+
+  it("reads the package-level rendition:viewport", () => {
+    expect(pkg.metadata.renditionViewport).toEqual({ width: 1200, height: 1600 });
   });
 
   it("resolves manifest item hrefs nested in subdirectories", () => {

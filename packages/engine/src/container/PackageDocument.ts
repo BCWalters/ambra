@@ -83,6 +83,14 @@ export class SpineItemRef {
   }
 }
 
+/** An intrinsic pixel size — e.g. a fixed-layout page's authored
+ * dimensions, from a `<meta name="viewport">` tag or the package-level
+ * `rendition:viewport` property. */
+export interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 /** Core Dublin Core / package metadata read from the OPF `<metadata>`
  * element, plus the `rendition:*` metadata used to pick reflowable vs
  * fixed-layout rendering. */
@@ -109,6 +117,14 @@ export class PackageMetadata {
     /** Publication-wide default rendition layout. Individual spine items
      * may override this — see `SpineItemRef.resolveRenditionLayout`. */
     public readonly renditionLayout: RenditionLayout,
+    /** The package-level `rendition:viewport` property (e.g.
+     * `<meta property="rendition:viewport">width=1400, height=2100</meta>`)
+     * — a fallback intrinsic page size for fixed-layout content whose own
+     * content document doesn't declare a `<meta name="viewport">` (the
+     * more common, per-content-document mechanism real fixed-layout books
+     * use, and preferred when present — see `fixed-layout-rendering`).
+     * `undefined` if absent, malformed, or the book isn't fixed-layout. */
+    public readonly renditionViewport: ViewportSize | undefined,
   ) {}
 }
 
@@ -231,8 +247,9 @@ export class PackageDocument {
     }
 
     const renditionLayout = PackageDocument.parseRenditionLayoutMeta(metadataEl);
+    const renditionViewport = PackageDocument.parseRenditionViewportMeta(metadataEl);
 
-    return new PackageMetadata(identifier, title, language, creator, renditionLayout);
+    return new PackageMetadata(identifier, title, language, creator, renditionLayout, renditionViewport);
   }
 
   /** Resolves the `dc:identifier` element specifically referenced by
@@ -272,6 +289,21 @@ export class PackageDocument {
     );
     const content = layoutMeta?.textContent?.trim();
     return content === "pre-paginated" ? "pre-paginated" : "reflowable";
+  }
+
+  /** Parses the package-level `rendition:viewport` property, e.g.
+   * `<meta property="rendition:viewport">width=1400, height=2100</meta>`
+   * — a fallback intrinsic page size for fixed-layout content, used when
+   * a content document doesn't declare its own `<meta name="viewport">`.
+   * Returns `undefined` if absent or the dimensions can't be parsed as
+   * two positive numbers, rather than throwing — this is a fallback
+   * value, not something that should fail parsing the whole book. */
+  private static parseRenditionViewportMeta(metadataEl: Element): ViewportSize | undefined {
+    const metaElements = getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta");
+    const viewportMeta = metaElements.find(
+      (meta) => meta.getAttribute("property") === "rendition:viewport",
+    );
+    return parseViewportDimensions(viewportMeta?.textContent);
   }
 
   private static parseManifest(manifestEl: Element, opfPath: string): ManifestItem[] {
@@ -364,4 +396,26 @@ function parsePropertyList(value: string | null): ReadonlySet<string> {
     return new Set();
   }
   return new Set(value.trim().split(/\s+/));
+}
+
+/** Parses a viewport dimension string in the `width=W, height=H` form
+ * used both by the package-level `rendition:viewport` OPF property and
+ * (in HTML's more familiar `<meta name="viewport" content="...">` form,
+ * which this same key=value shape covers) a fixed-layout content
+ * document's own declared page size — see `fixed-layout-rendering`.
+ * Returns `undefined` if either dimension is missing or not a positive
+ * number, since this is always used as a fallback value that should
+ * degrade gracefully rather than throw. */
+export function parseViewportDimensions(text: string | null | undefined): ViewportSize | undefined {
+  if (!text) {
+    return undefined;
+  }
+  const widthMatch = /width\s*=\s*(\d+(?:\.\d+)?)/i.exec(text);
+  const heightMatch = /height\s*=\s*(\d+(?:\.\d+)?)/i.exec(text);
+  const width = widthMatch ? Number(widthMatch[1]) : undefined;
+  const height = heightMatch ? Number(heightMatch[1]) : undefined;
+  if (!width || !height || width <= 0 || height <= 0) {
+    return undefined;
+  }
+  return { width, height };
 }

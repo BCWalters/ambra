@@ -2,6 +2,7 @@ import {
   ContentLoader,
   EpubCfi,
   EpubContainer,
+  FixedContentHost,
   Locator,
   LocatorResolver,
   NavigationDocument,
@@ -23,6 +24,13 @@ export interface ReaderSnapshot {
   spineIndex: number;
   spineLength: number;
   viewMode: ViewMode;
+  /** True when the *current* spine item resolves to fixed-layout
+   * rendering (see `SpineItemRef.resolveRenditionLayout`) — independent
+   * of `viewMode`, since EPUB3 allows mixing reflowable and fixed-layout
+   * spine items within one book. The reader UI hides page/scroll-mode
+   * controls for such items, since a fixed-layout page has no sub-page
+   * position or reflow to navigate within. */
+  isFixedLayout: boolean;
   pageIndex: number;
   pageCount: number;
   isLoading: boolean;
@@ -44,7 +52,7 @@ export interface ReaderSnapshot {
  * methods here, then is notified (`subscribe`) to re-render.
  */
 export class ReaderController {
-  private host: PaginatedContentHost | ScrollContentHost | undefined;
+  private host: PaginatedContentHost | ScrollContentHost | FixedContentHost | undefined;
   private viewMode: ViewMode = "paginated";
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
@@ -111,6 +119,7 @@ export class ReaderController {
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
         viewMode: this.viewMode,
+        isFixedLayout: this.host instanceof FixedContentHost,
         pageIndex: this.host instanceof PaginatedContentHost ? this.host.currentPageIndex : 0,
         pageCount: this.host instanceof PaginatedContentHost ? this.host.pageCount : 0,
         isLoading: this.isLoading,
@@ -227,7 +236,7 @@ export class ReaderController {
 
     if (this.host instanceof PaginatedContentHost) {
       this.host.relayout(width, height);
-    } else if (this.host instanceof ScrollContentHost) {
+    } else if (this.host instanceof ScrollContentHost || this.host instanceof FixedContentHost) {
       this.host.resize(width, height);
     }
     this.notify();
@@ -313,13 +322,23 @@ export class ReaderController {
 
     try {
       this.host?.dispose();
-      this.host =
-        this.viewMode === "paginated"
-          ? new PaginatedContentHost(this.width, this.height)
-          : new ScrollContentHost(this.width, this.height);
-      this.containerEl.replaceChildren(this.host.element);
 
-      await this.host.open(this.contentLoader, this.resolver, spineIndex);
+      const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
+      if (resolvedLayout === "pre-paginated") {
+        const fixedHost = new FixedContentHost(this.width, this.height);
+        this.containerEl.replaceChildren(fixedHost.element);
+        await fixedHost.open(this.contentLoader, this.resolver, spineIndex, this.pkg.metadata.renditionViewport);
+        this.host = fixedHost;
+      } else {
+        const host =
+          this.viewMode === "paginated"
+            ? new PaginatedContentHost(this.width, this.height)
+            : new ScrollContentHost(this.width, this.height);
+        this.containerEl.replaceChildren(host.element);
+        await host.open(this.contentLoader, this.resolver, spineIndex);
+        this.host = host;
+      }
+
       this.spineIndex = spineIndex;
       this.appliedWidth = this.width;
       this.appliedHeight = this.height;
