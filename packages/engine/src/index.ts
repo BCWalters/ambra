@@ -50,3 +50,6 @@ export { Locator, LocatorResolver, LocatorResolutionError } from "./locator/Loca
 export type { ResolvedLocator } from "./locator/Locator.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";
+export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
+export { ScrollContentHost } from "./reading/ScrollContentHost.js";
+export { loadAssembledSpineItem } from "./reading/SpineItemAssembler.js";
