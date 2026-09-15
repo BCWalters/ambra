@@ -9,7 +9,9 @@ import {
   NavigationDocument,
   PaginatedContentHost,
   ResourceUrlResolver,
+  resolveEpubPath,
   ScrollContentHost,
+  splitHrefFragment,
 } from "@pagina/engine";
 import type { NavPoint, PackageDocument } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
@@ -98,6 +100,10 @@ export class ReaderController {
   private readonly accessibility = new AccessibilityController();
   private announcement: string | undefined;
   private announcementId = 0;
+  /** Detaches the current spine item's in-content link click listener —
+   * see `setUpLinkInterception`. Re-created on every `openSpineItem` call
+   * since each one gets a fresh iframe/document. */
+  private linkClickCleanup: (() => void) | undefined;
 
   private readonly listeners = new Set<() => void>();
   private cachedSnapshot: ReaderSnapshot | undefined;
@@ -295,6 +301,66 @@ export class ReaderController {
     this.accessibility.focusContent(iframeDocument, focusTarget);
   }
 
+  /**
+   * Intercepts clicks on in-content `<a href>` links (footnotes, cross-
+   * references, "see chapter N" links — extremely common in real books)
+   * and routes them through the reader's own navigation instead of
+   * letting the browser attempt to navigate the sandboxed iframe itself.
+   * Without this, real-Chromium testing showed Chrome silently blocks the
+   * navigation (the sandbox has no `allow-top-navigation` token, nor
+   * could it safely be given one — that would let untrusted book content
+   * navigate the whole extension tab) but *also* discards the iframe's
+   * current content in the process, leaving a blank page — arguably
+   * worse than doing nothing. An absolute-URI link (`http:`, `mailto:`,
+   * etc.) opens in a new top-level browser tab instead, the standard
+   * behavior real readers use for links that lead outside the book.
+   */
+  private setUpLinkInterception(): void {
+    const iframeDocument = this.host?.element.contentDocument;
+    const currentPath = this.pkg.spine[this.spineIndex]?.manifestItem.path;
+    if (!iframeDocument || !currentPath) {
+      return;
+    }
+
+    const clickHandler = (event: MouseEvent): void => {
+      const anchor = (event.target as Element | null)?.closest?.("a[href]");
+      const href = anchor?.getAttribute("href");
+      if (!href) {
+        return;
+      }
+      event.preventDefault();
+
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+        // An absolute URI (http:, https:, mailto:, ...) — not a path
+        // within this book at all.
+        window.open(href, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      const { fragment } = splitHrefFragment(href);
+      const targetPath = resolveEpubPath(currentPath, href);
+      const targetSpineIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === targetPath);
+      if (targetSpineIndex === -1) {
+        // Points at something that isn't a spine item (e.g. a resource
+        // the manifest declares but the spine doesn't include) — nothing
+        // sensible to navigate to; already prevented default above.
+        return;
+      }
+
+      if (targetSpineIndex === this.spineIndex) {
+        if (fragment) {
+          const focusTarget = this.goToFragment(fragment);
+          this.accessibility.focusContent(iframeDocument, focusTarget);
+        }
+        return;
+      }
+      void this.openSpineItem(targetSpineIndex, { fragment });
+    };
+
+    iframeDocument.addEventListener("click", clickHandler);
+    this.linkClickCleanup = () => iframeDocument.removeEventListener("click", clickHandler);
+  }
+
   /** Relays a resize (e.g. the reader pane changing size, or the user
    * changing font size in a future settings panel) into the active
    * content host, which preserves reading position across the relayout —
@@ -410,6 +476,8 @@ export class ReaderController {
 
     try {
       this.accessibility.detach();
+      this.linkClickCleanup?.();
+      this.linkClickCleanup = undefined;
       this.host?.dispose();
 
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
@@ -431,6 +499,7 @@ export class ReaderController {
       this.spineIndex = spineIndex;
       this.appliedWidth = this.width;
       this.appliedHeight = this.height;
+      this.setUpLinkInterception();
 
       if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
@@ -490,6 +559,7 @@ export class ReaderController {
 
   public dispose(): void {
     this.accessibility.detach();
+    this.linkClickCleanup?.();
     this.host?.dispose();
     this.resolver.dispose();
     this.library.close();
