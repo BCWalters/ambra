@@ -15,7 +15,7 @@ import {
   splitHrefFragment,
   SpreadPaginatedHost,
 } from "@pagina/engine";
-import type { NavPoint, PackageDocument } from "@pagina/engine";
+import type { FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { ViewMode } from "./ViewMode.js";
 
@@ -58,6 +58,10 @@ export interface ReaderSnapshot {
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
   fontScale: number;
+  /** The current reader-controlled font family and page color theme —
+   * see `ReadingTheme`. */
+  fontFamily: FontFamilyChoice;
+  pageTheme: PageTheme;
   isLoading: boolean;
   error: string | undefined;
   /** Text for the shell's `aria-live` region to announce (page turns,
@@ -100,6 +104,12 @@ export class ReaderController {
    * this from the saved font-scale preference (if any) — see
    * `ReadingTheme`, `setFontScale`. */
   private fontScale = 1;
+  /** Defaults to `ReadingTheme.DEFAULT_FONT_FAMILY`, but `open` overwrites
+   * this from the saved preference (if any) — see `setFontFamily`. */
+  private fontFamily: FontFamilyChoice = ReadingTheme.DEFAULT_FONT_FAMILY;
+  /** Defaults to `ReadingTheme.DEFAULT_PAGE_THEME`, but `open` overwrites
+   * this from the saved preference (if any) — see `setPageTheme`. */
+  private pageTheme: PageTheme = ReadingTheme.DEFAULT_PAGE_THEME;
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
   private width = 0;
@@ -184,6 +194,8 @@ export class ReaderController {
     const controller = new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation, bookId, library);
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
+    controller.fontFamily = (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
+    controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
     return controller;
   }
 
@@ -217,6 +229,8 @@ export class ReaderController {
         isSpread: this.host instanceof SpreadPaginatedHost,
         secondPageIndex: this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
+        fontFamily: this.fontFamily,
+        pageTheme: this.pageTheme,
         isLoading: this.isLoading,
         error: this.error,
         announcement: this.announcement,
@@ -594,22 +608,51 @@ export class ReaderController {
     }
     this.fontScale = clamped;
     await this.library.setDefaultFontScale(clamped);
-    this.applyFontScaleToHost();
+    this.applyDisplaySettingsToHost({ relayout: true });
     this.notify();
     await this.saveProgress();
   }
 
-  /** Writes `this.fontScale` onto every current content document as a CSS
-   * custom property (see `ReadingTheme.applyFontScale`) and re-measures
-   * at the current size — every spine item load applies the persisted
-   * scale the same way (see `openSpineItem`), so a book opened
-   * mid-session at a non-default scale looks correct immediately, not
-   * just after the first explicit font-size change. No-op for
+  /** Sets the reader-controlled font family, persists it, and re-measures
+   * the current content host — a different typeface has different
+   * metrics, so this reflows content the same way a font-scale change
+   * does. A no-op for a fixed-layout spine item. */
+  public async setFontFamily(family: FontFamilyChoice): Promise<void> {
+    if (family === this.fontFamily || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.fontFamily = family;
+    await this.library.setDefaultFontFamily(family);
+    this.applyDisplaySettingsToHost({ relayout: true });
+    this.notify();
+    await this.saveProgress();
+  }
+
+  /** Sets the reader-controlled page color theme and persists it. Unlike
+   * font scale/family, this never needs a relayout — colors don't affect
+   * line-wrapping. A no-op for a fixed-layout spine item. */
+  public async setPageTheme(theme: PageTheme): Promise<void> {
+    if (theme === this.pageTheme || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.pageTheme = theme;
+    await this.library.setDefaultPageTheme(theme);
+    this.applyDisplaySettingsToHost({ relayout: false });
+    this.notify();
+  }
+
+  /** Writes the current font scale/family and page theme onto every
+   * current content document as CSS custom properties (see
+   * `ReadingTheme.applyFontScale`/`applyFontFamily`/`applyPageTheme`) and,
+   * if `relayout` is set, re-measures at the current size — every spine
+   * item load applies all three the same way (see `openSpineItem`), so a
+   * book opened mid-session at non-default settings looks correct
+   * immediately, not just after the first explicit change. No-op for
    * fixed-layout content, which never gets the reading theme at all. In
    * spread mode, both columns are independent documents and need the
-   * property set individually before the shared relayout re-measures
+   * properties set individually before the shared relayout re-measures
    * them together. */
-  private applyFontScaleToHost(): void {
+  private applyDisplaySettingsToHost(options: { relayout: boolean }): void {
     if (this.host instanceof FixedContentHost) {
       return;
     }
@@ -619,11 +662,30 @@ export class ReaderController {
     }
     for (const doc of documents) {
       ReadingTheme.applyFontScale(doc, this.fontScale);
+      ReadingTheme.applyFontFamily(doc, this.fontFamily);
+      ReadingTheme.applyPageTheme(doc, this.pageTheme);
+    }
+    if (!options.relayout) {
+      return;
     }
     if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.relayout(this.width, this.height);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.resize(this.width, this.height);
+    }
+  }
+
+  /** Applies the persisted font scale/family/page theme to a freshly-
+   * opened host (see `openSpineItem`) — every spine item load needs this,
+   * not just explicit in-session changes, so a book opened mid-session at
+   * non-default settings looks correct immediately. Skips the (fairly
+   * expensive) relayout pass entirely when every setting is already at
+   * its theme-default value, since the freshly-opened host was already
+   * paginated at those defaults by its own `open()` call. */
+  private applyPersistedDisplaySettingsToFreshHost(): void {
+    const needsRelayout = this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY;
+    if (needsRelayout || this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME) {
+      this.applyDisplaySettingsToHost({ relayout: needsRelayout });
     }
   }
 
@@ -827,10 +889,12 @@ export class ReaderController {
     containerEl.appendChild(newEl);
 
     await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
-    if (this.fontScale !== 1) {
-      const doc = newHost.element.contentDocument;
-      if (doc) {
-        ReadingTheme.applyFontScale(doc, this.fontScale);
+    const newDoc = newHost.element.contentDocument;
+    if (newDoc) {
+      ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
+      if (this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY) {
+        ReadingTheme.applyFontScale(newDoc, this.fontScale);
+        ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
         newHost.relayout(this.width, this.height);
       }
     }
@@ -1164,9 +1228,7 @@ export class ReaderController {
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
         this.host = host;
-        if (this.fontScale !== 1) {
-          this.applyFontScaleToHost();
-        }
+        this.applyPersistedDisplaySettingsToFreshHost();
       } else {
         const host =
           this.viewMode === "paginated"
@@ -1175,9 +1237,7 @@ export class ReaderController {
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
         this.host = host;
-        if (this.fontScale !== 1) {
-          this.applyFontScaleToHost();
-        }
+        this.applyPersistedDisplaySettingsToFreshHost();
       }
 
       this.spineIndex = spineIndex;

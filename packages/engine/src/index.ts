@@ -37,6 +37,7 @@ export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/Resour
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { ReadingTheme } from "./rendering/ReadingTheme.js";
+export type { PageTheme, FontFamilyChoice } from "./rendering/ReadingTheme.js";
 export { SandboxedContentHost, RenderingSurfaceError } from "./rendering/SandboxedContentHost.js";
 export { PaginationEngine } from "./layout/PaginationEngine.js";
 export { planPageBreaks } from "./layout/PaginationEngine.js";

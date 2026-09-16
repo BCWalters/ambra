@@ -16,31 +16,110 @@
  * good defaults to read *unstyled* reflowable content beautifully, not a
  * forced override.
  *
- * Font size is expressed as `calc(1em * var(--pagina-font-scale, 1))` on
- * the root element rather than a fixed constant, so a reader-controlled
- * font-size setting (the `toolbar-redesign` work) can rescale text live —
- * via `ReadingTheme.applyFontScale` — without re-injecting or reloading
- * the stylesheet; the caller is still responsible for re-paginating/
- * re-measuring afterwards, since a font-size change reflows content the
- * same way a window resize does.
+ * Font size, font family, and page color theme are all expressed as CSS
+ * custom properties rather than fixed values, so reader-controlled
+ * settings (font scale, font family, page theme) can be applied live —
+ * via `ReadingTheme.applyFontScale`/`applyFontFamily`/`applyPageTheme` —
+ * without re-injecting or reloading the stylesheet. Font scale/family
+ * changes reflow content (the caller must re-paginate/re-measure
+ * afterwards, the same way a window resize does); a page theme change
+ * never does, since colors don't affect line-wrapping.
  */
+/** The three page color themes the reader can choose between (see
+ * `ReadingTheme.applyPageTheme`) — deliberately a short, curated list
+ * rather than a full color picker: a plain white default (the least
+ * "designed-feeling" choice, and the most neutral starting point), the
+ * original warm sepia this reader shipped with, and a low-contrast dark
+ * theme for reading in low light. */
+export type PageTheme = "white" | "sepia" | "dark";
+
+interface PageThemeColors {
+  readonly label: string;
+  readonly background: string;
+  readonly foreground: string;
+  readonly linkColor: string;
+}
+
+/** The ~4 curated, widely-available system font stacks the reader can
+ * choose between (see `ReadingTheme.applyFontFamily`), plus `"book-default"`
+ * — which doesn't merely pick a *different* stack, it removes our
+ * font-family override entirely (`unset`, which for an inherited property
+ * like `font-family` falls through to the browser's own default), so a
+ * book that supplies no typography of its own reads in the platform's
+ * bare default font instead of any of our choices. Deliberately all
+ * locally-installed system fonts, never a web font — the CSP this reader
+ * injects (see `ContentDocumentAssembler`) only allows `font-src blob:`,
+ * so a remotely-hosted font couldn't load even if we wanted one, and
+ * bundling font files would cut against minimizing what we ship and own
+ * ourselves. */
+export type FontFamilyChoice = "georgia" | "palatino" | "times" | "sans" | "book-default";
+
+interface FontFamilyOption {
+  readonly label: string;
+  /** The CSS `font-family` value, or `undefined` for `"book-default"`,
+   * which sets the custom property to the literal keyword `unset`
+   * instead of a stack (see `applyFontFamily`). */
+  readonly stack: string | undefined;
+}
+
 export class ReadingTheme {
   /** The CSS custom property `applyFontScale` writes to and the theme's
    * own base font-size reads from. */
   public static readonly FONT_SCALE_PROPERTY = "--pagina-font-scale";
+  public static readonly FONT_FAMILY_PROPERTY = "--pagina-font-family";
+  public static readonly PAGE_BACKGROUND_PROPERTY = "--pagina-page-bg";
+  public static readonly PAGE_FOREGROUND_PROPERTY = "--pagina-page-fg";
+  public static readonly LINK_COLOR_PROPERTY = "--pagina-link-color";
 
   public static readonly MIN_FONT_SCALE = 0.75;
   public static readonly MAX_FONT_SCALE = 2;
   public static readonly FONT_SCALE_STEP = 0.125;
 
+  public static readonly DEFAULT_PAGE_THEME: PageTheme = "white";
+  public static readonly DEFAULT_FONT_FAMILY: FontFamilyChoice = "georgia";
+
+  public static readonly PAGE_THEMES: Readonly<Record<PageTheme, PageThemeColors>> = {
+    white: { label: "White", background: "#ffffff", foreground: "#1a1a1a", linkColor: "#0b57a4" },
+    sepia: { label: "Sepia", background: "#faf7f1", foreground: "#232019", linkColor: "#2a5db0" },
+    dark: { label: "Dark", background: "#232323", foreground: "#e8e6e1", linkColor: "#8ab4f8" },
+  };
+
+  public static readonly FONT_FAMILIES: Readonly<Record<FontFamilyChoice, FontFamilyOption>> = {
+    georgia: {
+      label: "Georgia",
+      stack: `Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", serif`,
+    },
+    palatino: {
+      label: "Palatino",
+      stack: `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`,
+    },
+    times: {
+      label: "Times",
+      stack: `"Times New Roman", Times, Georgia, serif`,
+    },
+    sans: {
+      label: "Sans-Serif",
+      stack: `"Avenir Next", "Century Gothic", "Segoe UI", "Helvetica Neue", Arial, sans-serif`,
+    },
+    "book-default": {
+      label: "Book Default",
+      stack: undefined,
+    },
+  };
+
   /** Vertical whitespace (in CSS px) reserved above and below the text on
    * every paginated page — see `PaginatedContentHost`, the only content
    * host that needs this as a JS-level value (scroll mode gets its
    * breathing room from normal document flow; a fixed-layout page has no
-   * pagination at all). Kept here, next to the rest of the theme, so the
-   * "how much air is around the text" decision lives in one place. */
-  public static readonly PAGE_INSET_TOP = 56;
-  public static readonly PAGE_INSET_BOTTOM = 40;
+   * pagination at all). The top inset must always be tall enough that
+   * the toolbar overlay (see `Toolbar`/`chromeTheme`) never covers the
+   * first line of text even while visible, and both insets need to fit
+   * the running header/footer (book/chapter title, page number — see
+   * `page-running-header-footer`) they host. Kept here, next to the rest
+   * of the theme, so the "how much air is around the text" decision
+   * lives in one place. */
+  public static readonly PAGE_INSET_TOP = 64;
+  public static readonly PAGE_INSET_BOTTOM = 52;
 
   /** Sets the current font-scale multiplier on a content document,
    * clamped to `[MIN_FONT_SCALE, MAX_FONT_SCALE]`. Purely a style change —
@@ -60,20 +139,44 @@ export class ReadingTheme {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
   }
 
+  /** Sets the current font family on a content document. Like
+   * `applyFontScale`, this reflows content (a different typeface has
+   * different metrics), so the caller must re-paginate/re-measure
+   * afterwards. `"book-default"` sets the property to the literal
+   * keyword `unset` rather than a stack — for an inherited property like
+   * `font-family`, that falls through to whatever the browser's own
+   * default is, letting a book that declares no typography of its own
+   * render in the platform default instead of any of our choices. */
+  public static applyFontFamily(doc: Document, choice: FontFamilyChoice): void {
+    const option = ReadingTheme.FONT_FAMILIES[choice];
+    doc.documentElement.style.setProperty(ReadingTheme.FONT_FAMILY_PROPERTY, option.stack ?? "unset");
+  }
+
+  /** Sets the current page color theme (background/foreground/link
+   * colors) on a content document. Unlike font scale/family, this never
+   * needs a re-paginate/re-measure — colors don't affect line-wrapping. */
+  public static applyPageTheme(doc: Document, theme: PageTheme): void {
+    const colors = ReadingTheme.PAGE_THEMES[theme];
+    const style = doc.documentElement.style;
+    style.setProperty(ReadingTheme.PAGE_BACKGROUND_PROPERTY, colors.background);
+    style.setProperty(ReadingTheme.PAGE_FOREGROUND_PROPERTY, colors.foreground);
+    style.setProperty(ReadingTheme.LINK_COLOR_PROPERTY, colors.linkColor);
+  }
+
   /**
    * The theme stylesheet itself. Deliberate choices, aiming for "Apple
    * Books, not a browser tab":
    * - A serif body typeface from a widely-available system stack (no
    *   embedded/web font — consistent with minimizing our footprint of
    *   anything that isn't ours, and this reads beautifully on every
-   *   platform Chrome runs on without a network fetch).
+   *   platform Chrome runs on without a network fetch) — reader-
+   *   selectable, see `FontFamilyChoice`.
    * - A restrained content measure (~34em, roughly 65-75 characters per
    *   line at the base size) centered in the available width, rather than
    *   letting text stretch edge-to-edge — the single highest-leverage
    *   change for making a page look like a book instead of a web page.
-   * - A warm, slightly off-white page color instead of stark white, and a
-   *   soft near-black ink color instead of pure black — easier on the
-   *   eyes for long reading sessions, and closer to a physical page.
+   * - A plain white page by default, with reader-selectable warm-sepia
+   *   and low-light dark alternatives — see `PageTheme`.
    * - Justified text with hyphenation, generous line-height, and real
    *   paragraph spacing.
    *
@@ -86,6 +189,10 @@ export class ReadingTheme {
   public static readonly CSS = `
 :root {
   ${ReadingTheme.FONT_SCALE_PROPERTY}: 1;
+  ${ReadingTheme.FONT_FAMILY_PROPERTY}: ${ReadingTheme.FONT_FAMILIES[ReadingTheme.DEFAULT_FONT_FAMILY].stack};
+  ${ReadingTheme.PAGE_BACKGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].background};
+  ${ReadingTheme.PAGE_FOREGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].foreground};
+  ${ReadingTheme.LINK_COLOR_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].linkColor};
 }
 
 html {
@@ -93,8 +200,8 @@ html {
 }
 
 html, body {
-  background: #faf7f1;
-  color: #232019;
+  background: var(${ReadingTheme.PAGE_BACKGROUND_PROPERTY});
+  color: var(${ReadingTheme.PAGE_FOREGROUND_PROPERTY});
 }
 
 body {
@@ -102,7 +209,7 @@ body {
   max-width: 34em;
   margin: 0 auto;
   padding: 0 1.5em;
-  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", serif;
+  font-family: var(${ReadingTheme.FONT_FAMILY_PROPERTY});
   font-size: 1.125rem;
   line-height: 1.65;
   text-align: justify;
@@ -130,7 +237,7 @@ blockquote {
 }
 
 a {
-  color: #2a5db0;
+  color: var(${ReadingTheme.LINK_COLOR_PROPERTY});
 }
 `.trim();
 }

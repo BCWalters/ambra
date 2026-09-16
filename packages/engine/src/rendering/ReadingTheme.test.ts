@@ -25,4 +25,27 @@ describe("ReadingTheme", () => {
     ReadingTheme.applyFontScale(doc, 10);
     expect(ReadingTheme.currentFontScale(doc)).toBe(ReadingTheme.MAX_FONT_SCALE);
   });
+
+  it("sets the font-family custom property to the chosen stack", () => {
+    const doc = new DOMParser().parseFromString("<html><body></body></html>", "text/html");
+    ReadingTheme.applyFontFamily(doc, "times");
+    expect(doc.documentElement.style.getPropertyValue(ReadingTheme.FONT_FAMILY_PROPERTY)).toBe(
+      ReadingTheme.FONT_FAMILIES.times.stack,
+    );
+  });
+
+  it("sets the font-family custom property to unset for book-default", () => {
+    const doc = new DOMParser().parseFromString("<html><body></body></html>", "text/html");
+    ReadingTheme.applyFontFamily(doc, "book-default");
+    expect(doc.documentElement.style.getPropertyValue(ReadingTheme.FONT_FAMILY_PROPERTY)).toBe("unset");
+  });
+
+  it("sets the page theme's background/foreground/link custom properties", () => {
+    const doc = new DOMParser().parseFromString("<html><body></body></html>", "text/html");
+    ReadingTheme.applyPageTheme(doc, "dark");
+    const style = doc.documentElement.style;
+    expect(style.getPropertyValue(ReadingTheme.PAGE_BACKGROUND_PROPERTY)).toBe(ReadingTheme.PAGE_THEMES.dark.background);
+    expect(style.getPropertyValue(ReadingTheme.PAGE_FOREGROUND_PROPERTY)).toBe(ReadingTheme.PAGE_THEMES.dark.foreground);
+    expect(style.getPropertyValue(ReadingTheme.LINK_COLOR_PROPERTY)).toBe(ReadingTheme.PAGE_THEMES.dark.linkColor);
+  });
 });

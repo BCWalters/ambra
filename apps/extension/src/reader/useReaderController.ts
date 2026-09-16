@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
+import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
 import type { ReaderSnapshot, ViewMode } from "./ReaderController.js";
@@ -13,6 +14,8 @@ export interface UseReaderControllerResult {
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
   setViewMode: (mode: ViewMode) => void;
   setFontScale: (scale: number) => void;
+  setFontFamily: (family: FontFamilyChoice) => void;
+  setPageTheme: (theme: PageTheme) => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -111,5 +114,30 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
-  return { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode, setFontScale };
+  const setFontFamily = useCallback(
+    (family: FontFamilyChoice) => {
+      void controller?.setFontFamily(family);
+    },
+    [controller],
+  );
+
+  const setPageTheme = useCallback(
+    (theme: PageTheme) => {
+      void controller?.setPageTheme(theme);
+    },
+    [controller],
+  );
+
+  return {
+    snapshot,
+    contentHostRef,
+    openBook,
+    turnPage,
+    goToChapter,
+    goToNavPoint,
+    setViewMode,
+    setFontScale,
+    setFontFamily,
+    setPageTheme,
+  };
 }

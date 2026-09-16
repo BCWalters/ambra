@@ -1,3 +1,4 @@
+import type { PageTheme, FontFamilyChoice } from "@pagina/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
 
 /** Book metadata as stored in the library — small enough to list in bulk
@@ -45,6 +46,8 @@ const PREFERENCES_STORE = "preferences";
 
 const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
+const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
+const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -150,6 +153,34 @@ export class LibraryDatabase {
 
   public async setDefaultFontScale(scale: number): Promise<void> {
     const record: PreferenceRecord = { key: FONT_SCALE_PREFERENCE_KEY, value: scale };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default page color theme (see `ReadingTheme.PageTheme`)
+   * new chapters should open at, persisted the same way as
+   * `getDefaultFontScale`. `undefined` if never set, in which case
+   * callers should fall back to `ReadingTheme.DEFAULT_PAGE_THEME`. */
+  public async getDefaultPageTheme(): Promise<PageTheme | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, PAGE_THEME_PREFERENCE_KEY);
+    return record?.value as PageTheme | undefined;
+  }
+
+  public async setDefaultPageTheme(theme: PageTheme): Promise<void> {
+    const record: PreferenceRecord = { key: PAGE_THEME_PREFERENCE_KEY, value: theme };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default font family (see
+   * `ReadingTheme.FontFamilyChoice`), persisted the same way as
+   * `getDefaultFontScale`. `undefined` if never set, in which case
+   * callers should fall back to `ReadingTheme.DEFAULT_FONT_FAMILY`. */
+  public async getDefaultFontFamily(): Promise<FontFamilyChoice | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, FONT_FAMILY_PREFERENCE_KEY);
+    return record?.value as FontFamilyChoice | undefined;
+  }
+
+  public async setDefaultFontFamily(family: FontFamilyChoice): Promise<void> {
+    const record: PreferenceRecord = { key: FONT_FAMILY_PREFERENCE_KEY, value: family };
     await this.put(PREFERENCES_STORE, record);
   }
 

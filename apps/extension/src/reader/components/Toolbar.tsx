@@ -29,6 +29,7 @@ import {
   TextColumnOneRegular,
 } from "@fluentui/react-icons";
 import { ReadingTheme } from "@pagina/engine";
+import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
 import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
 import { useAutoHideChrome } from "../useAutoHideChrome.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BACKGROUND, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
@@ -41,9 +42,13 @@ export interface ToolbarProps {
   onGoToChapter: (direction: 1 | -1) => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetFontScale: (scale: number) => void;
+  onSetFontFamily: (family: FontFamilyChoice) => void;
+  onSetPageTheme: (theme: PageTheme) => void;
 }
 
 const VIEW_MODE_GROUP_NAME = "viewMode";
+const FONT_FAMILY_GROUP_NAME = "fontFamily";
+const PAGE_THEME_GROUP_NAME = "pageTheme";
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
@@ -56,13 +61,13 @@ const VIEW_MODE_GROUP_NAME = "viewMode";
  * `beginDragPageTurn` — not a toolbar-button one, and folding four
  * buttons into one menu trigger is what keeps this bar a single
  * unobtrusive row instead of an ever-growing button strip). Display
- * settings (font size, paginated/scroll) live in a second "Reading
- * settings" menu, grouped under "Page" and "Book" headers — a UX pattern
- * deliberately built to scale to more settings later (columns, font
- * family, margins) without needing another redesign.
+ * settings live in a second "Reading settings" menu, grouped under "Page"
+ * (font size, font family, page color theme) and "Book" (paginated/
+ * scroll) headers — a UX pattern deliberately built to scale to more
+ * settings later (columns, margins) without needing another redesign.
  *
- * Persisting the chosen view mode/font scale is `ReaderController`'s job,
- * not this component's — it just reflects/changes current state. */
+ * Persisting every chosen setting is `ReaderController`'s job, not this
+ * component's — it just reflects/changes current state. */
 export const Toolbar: FC<ToolbarProps> = ({
   snapshot,
   isTocOpen,
@@ -71,6 +76,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   onGoToChapter,
   onSetViewMode,
   onSetFontScale,
+  onSetFontFamily,
+  onSetPageTheme,
 }) => {
   const isPaginated = snapshot.viewMode === "paginated";
   const { visible, handlers } = useAutoHideChrome(isTocOpen);
@@ -211,10 +218,18 @@ export const Toolbar: FC<ToolbarProps> = ({
         {!snapshot.isFixedLayout && (
           <Menu
             persistOnItemClick
-            checkedValues={{ [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode] }}
+            checkedValues={{
+              [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
+              [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
+              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
+            }}
             onCheckedValueChange={(_event, data) => {
               if (data.name === VIEW_MODE_GROUP_NAME) {
                 onSetViewMode(data.checkedItems[0] as ViewMode);
+              } else if (data.name === FONT_FAMILY_GROUP_NAME) {
+                onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
+              } else if (data.name === PAGE_THEME_GROUP_NAME) {
+                onSetPageTheme(data.checkedItems[0] as PageTheme);
               }
             }}
           >
@@ -250,6 +265,24 @@ export const Toolbar: FC<ToolbarProps> = ({
                       />
                     </Tooltip>
                   </div>
+                </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>Font</MenuGroupHeader>
+                  {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => (
+                    <MenuItemRadio key={key} name={FONT_FAMILY_GROUP_NAME} value={key}>
+                      {ReadingTheme.FONT_FAMILIES[key].label}
+                    </MenuItemRadio>
+                  ))}
+                </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>Theme</MenuGroupHeader>
+                  {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
+                    <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
+                      {ReadingTheme.PAGE_THEMES[key].label}
+                    </MenuItemRadio>
+                  ))}
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>

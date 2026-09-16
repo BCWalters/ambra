@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FC } from "react";
 import { Body1, Spinner, Title2 } from "@fluentui/react-components";
+import { ReadingTheme } from "@pagina/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
@@ -21,8 +22,18 @@ import { useReaderController } from "./useReaderController.js";
  * just needs an `ArrayBuffer`.
  */
 export const ReaderApp: FC = () => {
-  const { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode, setFontScale } =
-    useReaderController();
+  const {
+    snapshot,
+    contentHostRef,
+    openBook,
+    turnPage,
+    goToChapter,
+    goToNavPoint,
+    setViewMode,
+    setFontScale,
+    setFontFamily,
+    setPageTheme,
+  } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -84,6 +95,10 @@ export const ReaderApp: FC = () => {
     );
   }
 
+  const pageBackground = snapshot.isFixedLayout
+    ? "#e5e5e5"
+    : ReadingTheme.PAGE_THEMES[snapshot.pageTheme].background;
+
   return (
     <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
       {/* The content row fills the entire viewport — the toolbar is an
@@ -108,14 +123,24 @@ export const ReaderApp: FC = () => {
           }}
         />
 
-        <div style={{ flex: 1, position: "relative", minHeight: 0 }} role="main" aria-label="Book content">
+        <div
+          style={{ flex: 1, position: "relative", minHeight: 0, background: pageBackground }}
+          role="main"
+          aria-label="Book content"
+        >
           {/* This div is owned entirely by imperative code (ReaderController
               mounts the active content host's iframe into it) — it must never
               receive React-rendered children, or React's reconciliation and
               the controller's direct DOM mutations will conflict. `position:
               absolute; inset: 0` (rather than percentage width/height) sizes
               it reliably regardless of how many layers of flexbox surround
-              it, which is what a real-Chromium test caught going wrong. */}
+              it, which is what a real-Chromium test caught going wrong.
+              Deliberately no background of its own — it inherits the
+              surrounding `role="main"` div's background (kept in sync with
+              the active page color theme above), so the bottom slack under
+              a short last page and the spread gutter between two columns
+              (both of which show this div's background through, not the
+              content host's own) never visually mismatch the page. */}
           <div
             ref={contentHostRef}
             style={{
@@ -146,6 +171,8 @@ export const ReaderApp: FC = () => {
             onGoToChapter={goToChapter}
             onSetViewMode={setViewMode}
             onSetFontScale={setFontScale}
+            onSetFontFamily={setFontFamily}
+            onSetPageTheme={setPageTheme}
           />
 
           {snapshot.error && (
