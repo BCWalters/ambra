@@ -65,11 +65,18 @@ export function useAutoHideChrome(pinned: boolean): AutoHideChrome {
     };
     window.addEventListener("pointermove", handleActivity);
     window.addEventListener("keydown", handleActivity);
+    // A window resize (e.g. crossing the two-page-spread width threshold,
+    // which swaps the whole content host) is itself a deliberate user
+    // action that changes the layout — worth surfacing the chrome for,
+    // even if the pointer never touches the reveal strip/toolbar during
+    // an OS-level window-edge drag.
+    window.addEventListener("resize", handleActivity);
     scheduleHide();
 
     return () => {
       window.removeEventListener("pointermove", handleActivity);
       window.removeEventListener("keydown", handleActivity);
+      window.removeEventListener("resize", handleActivity);
       window.clearTimeout(timerRef.current);
     };
   }, [pinned]);

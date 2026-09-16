@@ -24,6 +24,7 @@ export const ReaderApp: FC = () => {
   const { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode, setFontScale } =
     useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
+  const [isTocPinned, setIsTocPinned] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,15 +93,20 @@ export const ReaderApp: FC = () => {
           pointless relayout via the `ResizeObserver` below on every
           fade). */}
       <div style={{ position: "absolute", inset: 0, display: "flex" }}>
-        {isTocOpen && (
-          <TocPanel
-            items={snapshot.toc}
-            onSelect={(navPoint) => {
-              goToNavPoint(navPoint);
+        <TocPanel
+          items={snapshot.toc}
+          currentPath={snapshot.currentSpinePath}
+          open={isTocOpen}
+          pinned={isTocPinned}
+          onTogglePin={() => setIsTocPinned((pinned) => !pinned)}
+          onRequestClose={() => setIsTocOpen(false)}
+          onSelect={(navPoint) => {
+            goToNavPoint(navPoint);
+            if (!isTocPinned) {
               setIsTocOpen(false);
-            }}
-          />
-        )}
+            }
+          }}
+        />
 
         <div style={{ flex: 1, position: "relative", minHeight: 0 }} role="main" aria-label="Book content">
           {/* This div is owned entirely by imperative code (ReaderController

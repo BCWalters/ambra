@@ -29,6 +29,12 @@ export interface ReaderSnapshot {
   toc: readonly NavPoint[];
   spineIndex: number;
   spineLength: number;
+  /** Archive-relative manifest path of the *current* spine item — lets
+   * the shell (the TOC panel, specifically) highlight whichever entry
+   * points at the chapter currently open, by comparing against each
+   * `NavPoint.path`. `undefined` only if the current spine item somehow
+   * has no manifest entry (shouldn't happen for a valid EPUB). */
+  currentSpinePath: string | undefined;
   viewMode: ViewMode;
   /** True when the *current* spine item resolves to fixed-layout
    * rendering (see `SpineItemRef.resolveRenditionLayout`) — independent
@@ -203,6 +209,7 @@ export class ReaderController {
         toc: this.navigation.toc.items,
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
+        currentSpinePath: this.pkg.spine[this.spineIndex]?.manifestItem.path,
         viewMode: this.viewMode,
         isFixedLayout: this.host instanceof FixedContentHost,
         pageIndex,

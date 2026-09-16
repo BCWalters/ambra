@@ -1,13 +1,18 @@
 import type { FC } from "react";
 import {
   Body1,
+  Button,
   Caption1,
-  Toolbar as FluentToolbar,
-  ToolbarButton,
-  ToolbarDivider,
-  ToolbarGroup,
-  ToolbarRadioButton,
-  ToolbarRadioGroup,
+  Menu,
+  MenuDivider,
+  MenuGroup,
+  MenuGroupHeader,
+  MenuItem,
+  MenuItemRadio,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
+  ToggleButton,
   Tooltip,
 } from "@fluentui/react-components";
 import {
@@ -16,15 +21,17 @@ import {
   ChevronDoubleRightRegular,
   ChevronLeftRegular,
   ChevronRightRegular,
+  CompassNorthwestRegular,
   FontDecreaseRegular,
   FontIncreaseRegular,
-  PanelLeftContractRegular,
-  PanelLeftExpandRegular,
+  SlideSettingsRegular,
+  TextBulletListRegular,
   TextColumnOneRegular,
 } from "@fluentui/react-icons";
 import { ReadingTheme } from "@pagina/engine";
 import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
 import { useAutoHideChrome } from "../useAutoHideChrome.js";
+import { CHROME_BACKDROP_FILTER, CHROME_BACKGROUND, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
@@ -39,20 +46,20 @@ export interface ToolbarProps {
 const VIEW_MODE_GROUP_NAME = "viewMode";
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
- * `useAutoHideChrome`) rather than a chrome bar permanently competing
- * with the page for attention. Holds the TOC toggle, book title, chapter
- * navigation, page navigation (paginated mode only — scrolling is
- * continuous, so there's no discrete page concept in scroll mode;
- * fixed-layout spine items have no page/scroll/font concept at all,
- * regardless of `viewMode`, since the whole item is one author-designed
- * page — see `ReaderSnapshot.isFixedLayout`), a font-size stepper, and the
- * paginated/scroll view-mode control.
+ * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
+ * from the book page itself (see `chromeTheme`), rather than a chrome
+ * bar permanently competing with the page for attention.
  *
- * The paginated/scroll control is a real two-option radio group
- * (`ToolbarRadioGroup`/`ToolbarRadioButton`), not a single ambiguous
- * toggle button — each mode has its own always-visible icon+label, and
- * clicking a mode switches directly *to* it, so there's nothing to infer
- * about what the control's current state implies the click will do.
+ * Deliberately compact: chapter/page navigation lives in the "Navigate"
+ * menu rather than as always-visible buttons (turning pages is normally
+ * a keyboard-arrow/click/drag affair — see `ReaderController.turnPage`/
+ * `beginDragPageTurn` — not a toolbar-button one, and folding four
+ * buttons into one menu trigger is what keeps this bar a single
+ * unobtrusive row instead of an ever-growing button strip). Display
+ * settings (font size, paginated/scroll) live in a second "Reading
+ * settings" menu, grouped under "Page" and "Book" headers — a UX pattern
+ * deliberately built to scale to more settings later (columns, font
+ * family, margins) without needing another redesign.
  *
  * Persisting the chosen view mode/font scale is `ReaderController`'s job,
  * not this component's — it just reflects/changes current state. */
@@ -68,6 +75,13 @@ export const Toolbar: FC<ToolbarProps> = ({
   const isPaginated = snapshot.viewMode === "paginated";
   const { visible, handlers } = useAutoHideChrome(isTocOpen);
 
+  const pageLabel =
+    snapshot.pageCount === 0
+      ? undefined
+      : snapshot.secondPageIndex !== undefined
+        ? `Pages ${snapshot.pageIndex + 1}–${snapshot.secondPageIndex + 1} of ${snapshot.pageCount}`
+        : `Page ${snapshot.pageIndex + 1} of ${snapshot.pageCount}`;
+
   return (
     <>
       {/* A thin, always-present hover target at the very top edge of the
@@ -78,11 +92,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           keyboard listener directly to the iframe's own document rather
           than the parent window) — so this toolbar's own
           `onPointerEnter` alone would never fire again once the pointer
-          drifted from the visible toolbar down into the page. Moving the
-          mouse to the top edge to reveal chrome is a familiar convention
-          (e.g. auto-hiding menu/toolbars in fullscreen apps) and doesn't
-          depend on cross-frame event bubbling at all, since this strip
-          lives in the parent document alongside the toolbar itself. */}
+          drifted from the visible toolbar down into the page. */}
       <div
         onPointerEnter={handlers.onPointerEnter}
         style={{ position: "absolute", top: 0, left: 0, right: 0, height: 10, zIndex: 9 }}
@@ -102,122 +112,159 @@ export const Toolbar: FC<ToolbarProps> = ({
           display: "flex",
           alignItems: "center",
           gap: 4,
-          padding: "10px 16px",
-          background: "rgba(250, 247, 241, 0.82)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
-          boxShadow: visible ? "0 2px 12px rgba(0, 0, 0, 0.06)" : "none",
+          padding: "8px 10px",
+          background: CHROME_BACKGROUND,
+          backdropFilter: CHROME_BACKDROP_FILTER,
+          WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
+          borderBottom: `1px solid ${CHROME_BORDER}`,
+          boxShadow: visible ? CHROME_SHADOW : "none",
           opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(-8px)",
           pointerEvents: visible ? "auto" : "none",
-          transition: "opacity 220ms ease, box-shadow 220ms ease",
+          transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
         }}
       >
         <Tooltip content={isTocOpen ? "Hide contents" : "Show contents"} relationship="label">
-          <ToolbarButton
-            icon={isTocOpen ? <PanelLeftContractRegular /> : <PanelLeftExpandRegular />}
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isTocOpen}
+            icon={<TextBulletListRegular />}
             onClick={onToggleToc}
-        />
-      </Tooltip>
+          />
+        </Tooltip>
 
-      <Body1 as="span" style={{ flex: 1, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>
-        {snapshot.title}
-      </Body1>
+        <Body1
+          as="span"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {snapshot.title}
+        </Body1>
 
-      <FluentToolbar
-        aria-label="Reader controls"
-        size="small"
-        checkedValues={{ [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode] }}
-        onCheckedValueChange={(_event, data) => {
-          if (data.name === VIEW_MODE_GROUP_NAME) {
-            onSetViewMode(data.checkedItems[0] as ViewMode);
-          }
-        }}
-      >
-        <ToolbarGroup>
-          <Caption1 as="span">
-            Chapter {snapshot.spineIndex + 1} of {snapshot.spineLength}
+        {pageLabel && (
+          <Caption1
+            as="span"
+            style={{ whiteSpace: "nowrap", color: "var(--colorNeutralForeground2, #444)", flexShrink: 0 }}
+          >
+            {pageLabel}
           </Caption1>
-          <Tooltip content="Previous chapter" relationship="label">
-            <ToolbarButton
-              icon={<ChevronDoubleLeftRegular />}
-              disabled={snapshot.spineIndex <= 0}
-              onClick={() => onGoToChapter(-1)}
-            />
-          </Tooltip>
-          <Tooltip content="Next chapter" relationship="label">
-            <ToolbarButton
-              icon={<ChevronDoubleRightRegular />}
-              disabled={snapshot.spineIndex >= snapshot.spineLength - 1}
-              onClick={() => onGoToChapter(1)}
-            />
-          </Tooltip>
-        </ToolbarGroup>
-
-        {isPaginated && !snapshot.isFixedLayout && (
-          <>
-            <ToolbarDivider />
-            <ToolbarGroup>
-              <Caption1 as="span">
-                {snapshot.pageCount === 0
-                  ? "Page 0 of 0"
-                  : snapshot.secondPageIndex !== undefined
-                    ? `Pages ${snapshot.pageIndex + 1}–${snapshot.secondPageIndex + 1} of ${snapshot.pageCount}`
-                    : `Page ${snapshot.pageIndex + 1} of ${snapshot.pageCount}`}
-              </Caption1>
-              <Tooltip content="Previous page" relationship="label">
-                <ToolbarButton
-                  icon={<ChevronLeftRegular />}
-                  disabled={snapshot.pageIndex <= 0}
-                  onClick={() => onTurnPage(-1)}
-                />
-              </Tooltip>
-              <Tooltip content="Next page" relationship="label">
-                <ToolbarButton
-                  icon={<ChevronRightRegular />}
-                  disabled={snapshot.pageIndex >= snapshot.pageCount - 1}
-                  onClick={() => onTurnPage(1)}
-                />
-              </Tooltip>
-            </ToolbarGroup>
-          </>
         )}
+
+        <Menu>
+          <MenuTrigger disableButtonEnhancement>
+            <Tooltip content="Navigate" relationship="label">
+              <Button appearance="subtle" size="small" icon={<CompassNorthwestRegular />} />
+            </Tooltip>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              <MenuGroup>
+                <MenuGroupHeader>Chapter</MenuGroupHeader>
+                <MenuItem
+                  icon={<ChevronDoubleLeftRegular />}
+                  disabled={snapshot.spineIndex <= 0}
+                  onClick={() => onGoToChapter(-1)}
+                >
+                  Previous Chapter
+                </MenuItem>
+                <MenuItem
+                  icon={<ChevronDoubleRightRegular />}
+                  disabled={snapshot.spineIndex >= snapshot.spineLength - 1}
+                  onClick={() => onGoToChapter(1)}
+                >
+                  Next Chapter
+                </MenuItem>
+              </MenuGroup>
+              {isPaginated && !snapshot.isFixedLayout && (
+                <>
+                  <MenuDivider />
+                  <MenuGroup>
+                    <MenuGroupHeader>Page</MenuGroupHeader>
+                    <MenuItem
+                      icon={<ChevronLeftRegular />}
+                      disabled={snapshot.pageIndex <= 0}
+                      onClick={() => onTurnPage(-1)}
+                    >
+                      Previous Page
+                    </MenuItem>
+                    <MenuItem
+                      icon={<ChevronRightRegular />}
+                      disabled={snapshot.pageIndex >= snapshot.pageCount - 1}
+                      onClick={() => onTurnPage(1)}
+                    >
+                      Next Page
+                    </MenuItem>
+                  </MenuGroup>
+                </>
+              )}
+            </MenuList>
+          </MenuPopover>
+        </Menu>
 
         {!snapshot.isFixedLayout && (
-          <>
-            <ToolbarDivider />
-            <ToolbarGroup>
-              <Tooltip content="Decrease font size" relationship="label">
-                <ToolbarButton
-                  icon={<FontDecreaseRegular />}
-                  disabled={snapshot.fontScale <= ReadingTheme.MIN_FONT_SCALE}
-                  onClick={() => onSetFontScale(snapshot.fontScale - ReadingTheme.FONT_SCALE_STEP)}
-                />
+          <Menu
+            persistOnItemClick
+            checkedValues={{ [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode] }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === VIEW_MODE_GROUP_NAME) {
+                onSetViewMode(data.checkedItems[0] as ViewMode);
+              }
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <Tooltip content="Reading settings" relationship="label">
+                <Button appearance="subtle" size="small" icon={<SlideSettingsRegular />} />
               </Tooltip>
-              <Caption1 as="span" style={{ minWidth: "3.2em", textAlign: "center" }}>
-                {Math.round(snapshot.fontScale * 100)}%
-              </Caption1>
-              <Tooltip content="Increase font size" relationship="label">
-                <ToolbarButton
-                  icon={<FontIncreaseRegular />}
-                  disabled={snapshot.fontScale >= ReadingTheme.MAX_FONT_SCALE}
-                  onClick={() => onSetFontScale(snapshot.fontScale + ReadingTheme.FONT_SCALE_STEP)}
-                />
-              </Tooltip>
-            </ToolbarGroup>
-
-            <ToolbarDivider />
-            <ToolbarRadioGroup>
-              <Tooltip content="Paginated view" relationship="label">
-                <ToolbarRadioButton name={VIEW_MODE_GROUP_NAME} value="paginated" icon={<BookOpenRegular />} />
-              </Tooltip>
-              <Tooltip content="Scroll view" relationship="label">
-                <ToolbarRadioButton name={VIEW_MODE_GROUP_NAME} value="scroll" icon={<TextColumnOneRegular />} />
-              </Tooltip>
-            </ToolbarRadioGroup>
-          </>
+            </MenuTrigger>
+            <MenuPopover>
+              <MenuList>
+                <MenuGroup>
+                  <MenuGroupHeader>Page</MenuGroupHeader>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
+                    <Tooltip content="Decrease font size" relationship="label">
+                      <Button
+                        appearance="subtle"
+                        size="small"
+                        icon={<FontDecreaseRegular />}
+                        disabled={snapshot.fontScale <= ReadingTheme.MIN_FONT_SCALE}
+                        onClick={() => onSetFontScale(snapshot.fontScale - ReadingTheme.FONT_SCALE_STEP)}
+                      />
+                    </Tooltip>
+                    <Body1 as="span" style={{ flex: 1, textAlign: "center" }}>
+                      Font Size
+                    </Body1>
+                    <Tooltip content="Increase font size" relationship="label">
+                      <Button
+                        appearance="subtle"
+                        size="small"
+                        icon={<FontIncreaseRegular />}
+                        disabled={snapshot.fontScale >= ReadingTheme.MAX_FONT_SCALE}
+                        onClick={() => onSetFontScale(snapshot.fontScale + ReadingTheme.FONT_SCALE_STEP)}
+                      />
+                    </Tooltip>
+                  </div>
+                </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>Book</MenuGroupHeader>
+                  <MenuItemRadio name={VIEW_MODE_GROUP_NAME} value="paginated" icon={<BookOpenRegular />}>
+                    Paginated
+                  </MenuItemRadio>
+                  <MenuItemRadio name={VIEW_MODE_GROUP_NAME} value="scroll" icon={<TextColumnOneRegular />}>
+                    Scroll
+                  </MenuItemRadio>
+                </MenuGroup>
+              </MenuList>
+            </MenuPopover>
+          </Menu>
         )}
-        </FluentToolbar>
       </div>
     </>
   );
