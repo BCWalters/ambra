@@ -507,6 +507,56 @@ export class ReaderController {
     });
   }
 
+  /** Re-arms keyboard navigation and the click/drag page-turn gesture on
+   * the current content document, and restores focus into the content if
+   * nothing else in the parent app is deliberately holding it — call
+   * whenever the browser window regains OS-level focus (see the reader
+   * page's own `window.addEventListener("focus", ...)`).
+   *
+   * The concrete, reproducible cause this guards against: a plain page
+   * turn deliberately never moves focus (see `reattachKeyboardNav`'s doc
+   * comment), so if the reader's last interaction before switching away
+   * landed focus somewhere in the parent shell (a toolbar button, or
+   * simply nowhere in particular after a click on non-focusable chrome),
+   * keyboard arrow-key page-turning silently stops working — not because
+   * any listener broke, but because the browser correctly delivers
+   * keydown events to whatever currently has focus, which is no longer
+   * inside the content iframe at all. The previously-reported symptom
+   * ("page turning stops working entirely after alt-tabbing away and
+   * back, until navigating via the TOC") is exactly this: TOC navigation
+   * incidentally "fixes" it only because `setUpAccessibility` explicitly
+   * refocuses the content as part of opening a spine item, not because
+   * of anything specific to rebuilding the host.
+   *
+   * Refocuses content whenever the window regains focus *unless* a
+   * toolbar menu/popup is currently open (Fluent UI menus manage their
+   * own focus trapping — forcibly moving focus away mid-interaction
+   * would be actively disruptive, not helpful). A plain toolbar button
+   * merely *having* focus (the common case: the reader's last action
+   * before switching away was clicking something, or simply clicking
+   * back into the window landed on the toolbar's chrome rather than the
+   * page itself) is deliberately *not* treated as "leave it alone" —
+   * reading is this app's primary activity, so restoring keyboard
+   * page-turning takes priority over a transient, non-input control
+   * happening to still show a focus ring.
+   *
+   * Also re-arms the click/drag page-turn gesture (`setUpDragPageTurn`)
+   * as a cheap additional safety net — it's already safe to call
+   * repeatedly on a still-alive document (it cleans up its own previous
+   * listener first), so there's no real cost to re-running it here even
+   * if it turns out not to be needed for this particular regression. */
+  public handleWindowRefocus(): void {
+    this.reattachKeyboardNav();
+    this.setUpDragPageTurn();
+
+    const iframeDocument = this.primaryContentDocument();
+    const topDocument = this.containerEl?.ownerDocument;
+    const menuOpen = topDocument?.querySelector('[role="menu"], [role="dialog"], [role="listbox"]') != null;
+    if (iframeDocument && topDocument && !menuOpen) {
+      this.accessibility.focusContent(iframeDocument);
+    }
+  }
+
   /** (Re-)attaches keyboard navigation to the current content host's
    * iframe document and moves focus into it — called every time a new
    * spine item is opened, since each one gets a fresh iframe/document.
@@ -1034,18 +1084,26 @@ export class ReaderController {
    * carries on over. */
   private static readonly DRAG_COMMIT_THRESHOLD = 0.4;
 
-  /** (Re-)attaches the pointer-driven, interactive page-turn gesture to
-   * the current content host's primary iframe document — the draggable
-   * counterpart to `animatePageTurn`'s click-triggered version. Only
-   * enabled for single-column paginated mode (matching
-   * `animatePageTurn`'s scope); spread mode and chapter-crossing drags
-   * are deliberately out of scope for this pass. Attached directly to
-   * the iframe document for the same reason `AccessibilityController`
-   * attaches its keyboard listener there: pointer events started inside
-   * an iframe don't bubble out to the parent window. */
+  /** (Re-)attaches the pointer-driven page-turn gesture(s) to the current
+   * content host. Single-column paginated mode gets the full draggable,
+   * animated flip (see `beginDragPageTurn`); spread mode gets click-to-
+   * navigate only, on each column independently (see
+   * `setUpSpreadClickToNavigate`) — a drag/flip animation across two
+   * independent side-by-side iframes is a substantially harder visual
+   * problem, deliberately out of scope for this pass, same as
+   * chapter-crossing drags. Attached directly to each iframe's own
+   * document for the same reason `AccessibilityController` attaches its
+   * keyboard listener there: pointer events started inside an iframe
+   * don't bubble out to the parent window. */
   private setUpDragPageTurn(): void {
     this.dragCleanup?.();
     this.dragCleanup = undefined;
+
+    if (this.host instanceof SpreadPaginatedHost) {
+      this.dragCleanup = this.setUpSpreadClickToNavigate(this.host);
+      return;
+    }
+
     if (!(this.host instanceof PaginatedContentHost)) {
       return;
     }
@@ -1062,6 +1120,51 @@ export class ReaderController {
     };
     iframeDocument.addEventListener("pointerdown", onPointerDown);
     this.dragCleanup = () => iframeDocument.removeEventListener("pointerdown", onPointerDown);
+  }
+
+  /** Click-to-navigate for spread mode: no drag/flip animation (see
+   * `setUpDragPageTurn`'s doc comment), just tap detection independently
+   * on each column — reuses `handleContentClick`'s tap-vs-drag/selection/
+   * link guards, but with *that column's own width* as the left/right-
+   * third reference (via `SpreadPaginatedHost.effectiveColumnWidth`) so
+   * "tapping near this page's edge" means the same thing regardless of
+   * which of the two side-by-side columns it lands in. Attached to both
+   * columns (not just the primary/left one accessibility uses), matching
+   * `setUpLinkInterception`'s existing scope: mouse interaction works on
+   * both pages of a spread, even though only the left one participates
+   * in keyboard/focus accessibility. Returns a single cleanup function
+   * for both columns' listeners, for `setUpDragPageTurn`'s `dragCleanup`
+   * to call as one unit. */
+  private setUpSpreadClickToNavigate(host: SpreadPaginatedHost): () => void {
+    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+    const cleanups: Array<() => void> = [];
+
+    for (const doc of host.contentDocuments()) {
+      let startX = 0;
+      let startY = 0;
+      const onPointerDown = (event: PointerEvent): void => {
+        if (event.pointerType === "mouse" && event.button !== 0) {
+          return;
+        }
+        startX = event.clientX;
+        startY = event.clientY;
+      };
+      const onPointerUp = (event: PointerEvent): void => {
+        this.handleContentClick(event, startX, startY, columnWidth);
+      };
+      doc.addEventListener("pointerdown", onPointerDown);
+      doc.addEventListener("pointerup", onPointerUp);
+      cleanups.push(() => {
+        doc.removeEventListener("pointerdown", onPointerDown);
+        doc.removeEventListener("pointerup", onPointerUp);
+      });
+    }
+
+    return () => {
+      for (const cleanup of cleanups) {
+        cleanup();
+      }
+    };
   }
 
   /** Tracks one pointer gesture from `pointerdown` through release,

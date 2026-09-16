@@ -65,10 +65,21 @@ export function useReaderController(): UseReaderControllerResult {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pagehide", handleVisibilityChange);
 
+    // See `ReaderController.handleWindowRefocus`'s doc comment: recovers
+    // page-turn keyboard/pointer interactivity that can otherwise go
+    // silently dead after the window loses and regains OS focus (e.g.
+    // alt-tabbing away and back), which previously required navigating
+    // via the TOC (an incidental full host rebuild) to fix.
+    const handleWindowFocus = (): void => {
+      controller.handleWindowRefocus();
+    };
+    window.addEventListener("focus", handleWindowFocus);
+
     return () => {
       observer.disconnect();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
       void controller.flushProgress();
       controller.dispose();
     };
