@@ -119,6 +119,16 @@ export class ReaderController {
    * than queuing it — consistent with how physical book pages can't be
    * turned faster than one at a time anyway. */
   private isTurningPage = false;
+  /** Incremented every time a new page-turn gesture (click or drag)
+   * begins, and captured by that gesture's own async operations. Before
+   * any turn actually commits (mutates `this.host`), it checks its
+   * captured token against the current one — a mismatch means a *newer*
+   * turn has since started and finished (possible if an old drag's
+   * incoming-page load is unusually slow and a fresh interaction starts
+   * once `isTurningPage` clears), so the stale turn discards its own
+   * work instead of clobbering newer state. A second, independent
+   * safety net beyond `isTurningPage` for this same class of race. */
+  private turnToken = 0;
   /** A resize that arrived while an `openSpineItem` was already in
    * flight (e.g. `ResizeObserver`'s spec-mandated initial callback racing
    * with `mount`'s async load) — applying it immediately would relayout
@@ -134,6 +144,10 @@ export class ReaderController {
    * see `setUpLinkInterception`. Re-created on every `openSpineItem` call
    * since each one gets a fresh iframe/document. */
   private linkClickCleanup: (() => void) | undefined;
+  /** Detaches the current drag-page-turn `pointerdown` listener — see
+   * `setUpDragPageTurn`. Re-created every time the primary content
+   * document changes, same lifecycle as `linkClickCleanup`. */
+  private dragCleanup: (() => void) | undefined;
 
   private readonly listeners = new Set<() => void>();
   private cachedSnapshot: ReaderSnapshot | undefined;
@@ -620,14 +634,15 @@ export class ReaderController {
       return;
     }
     this.isTurningPage = true;
+    const token = ++this.turnToken;
     try {
-      await this.turnPageInternal(direction);
+      await this.turnPageInternal(direction, token);
     } finally {
       this.isTurningPage = false;
     }
   }
 
-  private async turnPageInternal(direction: 1 | -1): Promise<void> {
+  private async turnPageInternal(direction: 1 | -1, token: number): Promise<void> {
     let moved: boolean;
     let announcement: string;
     if (this.host instanceof SpreadPaginatedHost) {
@@ -639,12 +654,23 @@ export class ReaderController {
     } else if (this.host instanceof PaginatedContentHost) {
       const animatedHost = await this.animatePageTurn(this.host, direction);
       if (animatedHost) {
+        if (token !== this.turnToken) {
+          // A newer turn (click or drag) has since started and finished
+          // while this one's incoming page was loading/animating —
+          // discard this stale result instead of clobbering the newer
+          // state (see `turnToken`).
+          animatedHost.dispose();
+          return;
+        }
         this.linkClickCleanup?.();
         this.linkClickCleanup = undefined;
+        this.dragCleanup?.();
+        this.dragCleanup = undefined;
         this.host = animatedHost;
         this.updateContentTitle();
         this.reattachKeyboardNav();
         this.setUpLinkInterception();
+        this.setUpDragPageTurn();
         this.announce(`Page ${animatedHost.currentPageIndex + 1} of ${animatedHost.pageCount}`);
         this.notify();
         await this.saveProgress();
@@ -678,27 +704,17 @@ export class ReaderController {
    * Real book feel requires the outgoing and incoming pages to be visible
    * *simultaneously* mid-turn, which a single iframe fundamentally can't
    * do (it only ever shows one page at a time) — so this builds the
-   * incoming page in a brand-new, independent `PaginatedContentHost` (the
-   * same load pipeline `openSpineItem` uses; `ResourceUrlResolver`'s
-   * blob-URL cache makes re-loading the same spine item cheap), stacks it
-   * *underneath* the outgoing page, and animates only the outgoing page
-   * rotating away — `backface-visibility: hidden` makes it disappear past
-   * 90°, revealing the already-fully-rendered incoming page beneath it
-   * without that page needing any animation of its own.
-   *
-   * `oldHost.element` is deliberately never reparented (only ever
-   * style-mutated in place): an iframe that's already loaded gets
-   * reloaded by most browsers if it's ever disconnected from the document
-   * and reattached, even synchronously — this earned its docs comment the
-   * hard way, via a real "iframe never finishes loading" bug caught
-   * during Chromium verification. `newHost.element` is likewise attached
-   * to the live document *before* `open()` is called on it, for the same
-   * reason (an iframe generally won't start loading `src` at all while
-   * detached).
+   * incoming page in a brand-new, independent `PaginatedContentHost` (see
+   * `prepareIncomingPage`), stacks it *underneath* the outgoing page, and
+   * animates only the outgoing page rotating away — `backface-visibility:
+   * hidden` makes it disappear past 90°, revealing the already-fully-
+   * rendered incoming page beneath it without that page needing any
+   * animation of its own.
    *
    * Skips the animation (an instant page swap) when
    * `prefers-reduced-motion` is set, consistent with the rest of the
-   * reader respecting it.
+   * reader respecting it. See `beginDragPageTurn` for the interactive,
+   * pointer-driven version of this same underlying mechanism.
    */
   private async animatePageTurn(
     oldHost: PaginatedContentHost,
@@ -707,49 +723,17 @@ export class ReaderController {
     if (!this.containerEl) {
       return undefined;
     }
-    const targetIndex = oldHost.currentPageIndex + direction;
-    if (targetIndex < 0 || targetIndex >= oldHost.pageCount) {
+    const newHost = await this.prepareIncomingPage(oldHost, direction);
+    if (!newHost) {
       return undefined;
     }
-
     const containerEl = this.containerEl;
-    const newHost = new PaginatedContentHost(this.width, this.height);
-
-    // Positioned to sit exactly beneath `oldHost.element` (which stays a
-    // normal, flex-centered in-flow child) without disturbing it —
-    // `containerEl` is already `position: absolute` (see `ReaderApp`), so
-    // it's a valid containing block for this without any extra wrapper.
     const newEl = newHost.element;
-    newEl.style.position = "absolute";
-    newEl.style.top = "0";
-    newEl.style.left = "50%";
-    newEl.style.transform = "translateX(-50%)";
-    newEl.style.zIndex = "1";
-    containerEl.appendChild(newEl);
-
-    await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
-    if (this.fontScale !== 1) {
-      const doc = newHost.element.contentDocument;
-      if (doc) {
-        ReadingTheme.applyFontScale(doc, this.fontScale);
-        newHost.relayout(this.width, this.height);
-      }
-    }
-    newHost.goToPageIndex(targetIndex);
-    newEl.title = oldHost.element.title;
 
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (!reduceMotion) {
       const oldEl = oldHost.element;
-      containerEl.style.perspective = "2200px";
-      oldEl.style.position = "relative";
-      oldEl.style.zIndex = "2";
-      oldEl.style.backfaceVisibility = "hidden";
-      // The hinge is the spine edge the page turns away from: the right
-      // edge turning forward (as if lifting toward the next page), the
-      // left edge turning back.
-      oldEl.style.transformOrigin = `${direction === 1 ? "right" : "left"} center`;
-      oldEl.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+      this.stagePageTurn(oldHost, direction);
 
       await new Promise<void>((resolve) => {
         let settled = false;
@@ -767,12 +751,12 @@ export class ReaderController {
           }
         };
         oldEl.addEventListener("transitionend", onTransitionEnd);
+        oldEl.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
         // Rotating slightly past 90° (rather than stopping exactly at
         // it) reads as a page continuing its motion out of view rather
         // than freezing edge-on to the viewer.
         requestAnimationFrame(() => {
-          oldEl.style.transform = `rotateY(${direction === 1 ? -100 : 100}deg)`;
-          oldEl.style.boxShadow = "0 12px 40px rgba(0, 0, 0, 0.35)";
+          this.setPageTurnRotation(oldEl, direction === 1 ? -100 : 100, 1);
         });
         // A safety net in case `transitionend` never fires (e.g. the
         // element was removed mid-transition by a rapid subsequent
@@ -794,6 +778,331 @@ export class ReaderController {
     newEl.style.zIndex = "";
     return newHost;
   }
+
+  /** Builds and returns the incoming page for a turn away from
+   * `oldHost`'s current page, positioned to sit exactly beneath
+   * `oldHost.element` (which stays a normal, flex-centered in-flow child,
+   * left completely undisturbed) without needing any wrapper elements —
+   * `containerEl` is already `position: absolute` (see `ReaderApp`), so
+   * it's a valid containing block for this on its own. Returns
+   * `undefined` if `direction` would cross a chapter boundary.
+   *
+   * `newHost.element` is attached to the live document *before*
+   * `open()` is called on it — an iframe generally won't start loading
+   * its `src` at all while detached from the document, a real bug this
+   * comment exists specifically to prevent regressing (caught via
+   * Chromium verification: the load hung until it hit
+   * `RenderingSurfaceError`'s timeout). Likewise, `oldHost.element` is
+   * never reparented here or anywhere else in the page-turn machinery:
+   * most browsers reload an iframe that's ever disconnected and
+   * reattached to the document, even synchronously.
+   */
+  private async prepareIncomingPage(
+    oldHost: PaginatedContentHost,
+    direction: 1 | -1,
+  ): Promise<PaginatedContentHost | undefined> {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const targetIndex = oldHost.currentPageIndex + direction;
+    if (targetIndex < 0 || targetIndex >= oldHost.pageCount) {
+      return undefined;
+    }
+
+    const containerEl = this.containerEl;
+    const newHost = new PaginatedContentHost(this.width, this.height);
+    const newEl = newHost.element;
+    newEl.style.position = "absolute";
+    newEl.style.top = "0";
+    newEl.style.left = "50%";
+    newEl.style.transform = "translateX(-50%)";
+    newEl.style.zIndex = "1";
+    containerEl.appendChild(newEl);
+
+    await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
+    if (this.fontScale !== 1) {
+      const doc = newHost.element.contentDocument;
+      if (doc) {
+        ReadingTheme.applyFontScale(doc, this.fontScale);
+        newHost.relayout(this.width, this.height);
+      }
+    }
+    newHost.goToPageIndex(targetIndex);
+    newEl.title = oldHost.element.title;
+    return newHost;
+  }
+
+  /** Puts `oldHost.element` into "ready to rotate" state (perspective on
+   * the container, the correct hinge edge for `direction`, hidden
+   * backface) without yet touching its `transform` — shared setup
+   * between the click-triggered (`animatePageTurn`) and drag-driven
+   * (`beginDragPageTurn`) turn mechanics. */
+  private stagePageTurn(oldHost: PaginatedContentHost, direction: 1 | -1): void {
+    if (!this.containerEl) {
+      return;
+    }
+    const oldEl = oldHost.element;
+    this.containerEl.style.perspective = "2200px";
+    oldEl.style.position = "relative";
+    oldEl.style.zIndex = "2";
+    oldEl.style.backfaceVisibility = "hidden";
+    // The hinge is the spine edge the page turns away from: the right
+    // edge turning forward (as if lifting toward the next page), the
+    // left edge turning back.
+    oldEl.style.transformOrigin = `${direction === 1 ? "right" : "left"} center`;
+  }
+
+  /** Sets `oldEl`'s rotation directly (no transition) — `fraction` (0 to
+   * 1) scales a deepening drop shadow alongside the rotation, so a
+   * partial drag reads as the page physically lifting, not just tilting
+   * in place. */
+  private setPageTurnRotation(oldEl: HTMLIFrameElement, degrees: number, fraction: number): void {
+    oldEl.style.transform = `rotateY(${degrees}deg)`;
+    oldEl.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
+  }
+
+  /** Fraction of the reader pane's width a drag must cross before
+   * releasing completes the turn rather than reverting it — a book page
+   * lifted less than halfway falls back closed; lifted further, it
+   * carries on over. */
+  private static readonly DRAG_COMMIT_THRESHOLD = 0.4;
+
+  /** (Re-)attaches the pointer-driven, interactive page-turn gesture to
+   * the current content host's primary iframe document — the draggable
+   * counterpart to `animatePageTurn`'s click-triggered version. Only
+   * enabled for single-column paginated mode (matching
+   * `animatePageTurn`'s scope); spread mode and chapter-crossing drags
+   * are deliberately out of scope for this pass. Attached directly to
+   * the iframe document for the same reason `AccessibilityController`
+   * attaches its keyboard listener there: pointer events started inside
+   * an iframe don't bubble out to the parent window. */
+  private setUpDragPageTurn(): void {
+    this.dragCleanup?.();
+    this.dragCleanup = undefined;
+    if (!(this.host instanceof PaginatedContentHost)) {
+      return;
+    }
+    const iframeDocument = this.host.element.contentDocument;
+    if (!iframeDocument) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent): void => {
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+      this.beginDragPageTurn(event, iframeDocument);
+    };
+    iframeDocument.addEventListener("pointerdown", onPointerDown);
+    this.dragCleanup = () => iframeDocument.removeEventListener("pointerdown", onPointerDown);
+  }
+
+  /** Tracks one pointer gesture from `pointerdown` through release,
+   * turning the page interactively: the outgoing page rotates in direct
+   * proportion to how far the pointer has moved (see
+   * `setPageTurnRotation`) rather than on a fixed timer, so the reader
+   * can see exactly how far "through" the turn they are and change their
+   * mind mid-gesture. Direction (forward/back) locks in on the first
+   * movement past a small dead zone (so an ordinary tap/click is never
+   * misread as a drag), at which point the incoming page begins loading
+   * (see `prepareIncomingPage`) — if the pointer is released before that
+   * finishes, `settleDragPageTurn` is invoked as soon as it does, using
+   * whatever fraction was last recorded. */
+  private beginDragPageTurn(startEvent: PointerEvent, doc: Document): void {
+    if (this.isTurningPage || !(this.host instanceof PaginatedContentHost)) {
+      return;
+    }
+    const oldHost = this.host;
+    const startX = startEvent.clientX;
+    const containerWidth = Math.max(1, this.width);
+
+    let direction: 1 | -1 | undefined;
+    let newHost: PaginatedContentHost | undefined;
+    let preparing = false;
+    let released = false;
+    let latestFraction = 0;
+    let capturedToken: number | undefined;
+
+    const cleanupListeners = (): void => {
+      doc.removeEventListener("pointermove", onPointerMove);
+      doc.removeEventListener("pointerup", onPointerUp);
+      doc.removeEventListener("pointercancel", onPointerUp);
+    };
+
+    const onPointerMove = (moveEvent: PointerEvent): void => {
+      const deltaX = moveEvent.clientX - startX;
+
+      if (direction === undefined) {
+        if (Math.abs(deltaX) < 12) {
+          return;
+        }
+        const lockedDirection: 1 | -1 = deltaX < 0 ? 1 : -1;
+        direction = lockedDirection;
+        this.isTurningPage = true;
+        const token = ++this.turnToken;
+        capturedToken = token;
+        preparing = true;
+        void this.prepareIncomingPage(oldHost, lockedDirection).then((prepared) => {
+          preparing = false;
+          newHost = prepared;
+          if (released) {
+            void this.settleDragPageTurn(oldHost, prepared, lockedDirection, latestFraction, token);
+            return;
+          }
+          if (prepared) {
+            this.stagePageTurn(oldHost, lockedDirection);
+            this.setPageTurnRotation(oldHost.element, lockedDirection * -90 * latestFraction, latestFraction);
+          } else {
+            // A chapter boundary — nothing to drag into in this pass.
+            this.isTurningPage = false;
+          }
+        });
+      }
+
+      moveEvent.preventDefault();
+      const fraction = Math.max(0, Math.min(1, Math.abs(deltaX) / containerWidth));
+      latestFraction = fraction;
+      if (newHost && direction !== undefined) {
+        this.setPageTurnRotation(oldHost.element, direction * -90 * fraction, fraction);
+      }
+    };
+
+    const onPointerUp = (): void => {
+      cleanupListeners();
+      if (direction === undefined || capturedToken === undefined) {
+        // Never moved past the dead zone — an ordinary tap/click, not a
+        // drag; nothing to settle.
+        return;
+      }
+      released = true;
+      if (preparing) {
+        // `onPointerMove`'s promise continuation settles this once the
+        // incoming page finishes loading.
+        return;
+      }
+      void this.settleDragPageTurn(oldHost, newHost, direction, latestFraction, capturedToken);
+    };
+
+    doc.addEventListener("pointermove", onPointerMove);
+    doc.addEventListener("pointerup", onPointerUp);
+    doc.addEventListener("pointercancel", onPointerUp);
+  }
+
+  /** Resolves a drag gesture once released (and, if it was still loading,
+   * once the incoming page finishes preparing): animates the rest of the
+   * way to completion if the drag crossed `DRAG_COMMIT_THRESHOLD`, or back
+   * to closed otherwise, then either swaps in the new host (committed —
+   * the same finalization `animatePageTurn`'s caller does: re-attach
+   * link/keyboard/drag handling, announce, persist progress) or disposes
+   * it unused (cancelled). `newHost` is `undefined` if the drag crossed a
+   * chapter boundary, in which case there's nothing to animate or commit —
+   * this pass doesn't support dragging across a chapter. `token` is
+   * this gesture's `turnToken`, checked before committing — see
+   * `turnToken`'s doc comment. */
+  private async settleDragPageTurn(
+    oldHost: PaginatedContentHost,
+    newHost: PaginatedContentHost | undefined,
+    direction: 1 | -1,
+    fraction: number,
+    token: number,
+  ): Promise<void> {
+    if (!newHost) {
+      this.isTurningPage = false;
+      return;
+    }
+
+    const oldEl = oldHost.element;
+    const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+    if (!reduceMotion) {
+      const remainingFraction = commit ? 1 - fraction : fraction;
+      const duration = Math.max(80, Math.round(remainingFraction * 260));
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          oldEl.removeEventListener("transitionend", onTransitionEnd);
+          resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent): void => {
+          if (event.target === oldEl && event.propertyName === "transform") {
+            finish();
+          }
+        };
+        oldEl.addEventListener("transitionend", onTransitionEnd);
+        oldEl.style.transition = `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow ${duration}ms ease`;
+        requestAnimationFrame(() => {
+          if (commit) {
+            this.setPageTurnRotation(oldEl, direction === 1 ? -100 : 100, 1);
+          } else {
+            this.setPageTurnRotation(oldEl, 0, 0);
+          }
+        });
+        setTimeout(finish, duration + 250);
+      });
+    }
+
+    if (this.containerEl) {
+      this.containerEl.style.perspective = "";
+    }
+
+    if (token !== this.turnToken) {
+      // A newer turn started and finished while this one's completion
+      // animation was still running — discard this stale result instead
+      // of clobbering the newer state (see `turnToken`).
+      newHost.dispose();
+      if (!commit) {
+        oldEl.style.position = "";
+        oldEl.style.zIndex = "";
+        oldEl.style.backfaceVisibility = "";
+        oldEl.style.transformOrigin = "";
+        oldEl.style.transition = "";
+        oldEl.style.transform = "";
+        oldEl.style.boxShadow = "";
+      }
+      this.isTurningPage = false;
+      return;
+    }
+
+    if (commit) {
+      oldHost.dispose();
+      const newEl = newHost.element;
+      newEl.style.position = "";
+      newEl.style.top = "";
+      newEl.style.left = "";
+      newEl.style.transform = "";
+      newEl.style.zIndex = "";
+
+      this.linkClickCleanup?.();
+      this.linkClickCleanup = undefined;
+      this.dragCleanup?.();
+      this.dragCleanup = undefined;
+      this.host = newHost;
+      this.updateContentTitle();
+      this.reattachKeyboardNav();
+      this.setUpLinkInterception();
+      this.setUpDragPageTurn();
+      this.announce(`Page ${newHost.currentPageIndex + 1} of ${newHost.pageCount}`);
+      this.notify();
+      await this.saveProgress();
+    } else {
+      oldEl.style.position = "";
+      oldEl.style.zIndex = "";
+      oldEl.style.backfaceVisibility = "";
+      oldEl.style.transformOrigin = "";
+      oldEl.style.transition = "";
+      oldEl.style.transform = "";
+      oldEl.style.boxShadow = "";
+      newHost.dispose();
+    }
+    this.isTurningPage = false;
+  }
+
+
 
   /** Loads the adjacent chapter directly (both view modes) — the
    * "previous/next chapter" toolbar actions, as distinct from `turnPage`
@@ -868,6 +1177,7 @@ export class ReaderController {
       this.appliedWidth = this.width;
       this.appliedHeight = this.height;
       this.setUpLinkInterception();
+      this.setUpDragPageTurn();
 
       if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
@@ -928,6 +1238,7 @@ export class ReaderController {
   public dispose(): void {
     this.accessibility.detach();
     this.linkClickCleanup?.();
+    this.dragCleanup?.();
     this.host?.dispose();
     this.resolver.dispose();
     this.library.close();
