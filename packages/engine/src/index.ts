@@ -57,3 +57,6 @@ export { ScrollContentHost } from "./reading/ScrollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";
 export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";
 export { loadAssembledSpineItem } from "./reading/SpineItemAssembler.js";
+export { BookPaginationEstimator } from "./reading/BookPaginationEstimator.js";
+export type { BookPosition } from "./reading/BookPaginationEstimator.js";
+export { computePriorityOrder, aggregateBookPosition } from "./reading/BookPagination.js";

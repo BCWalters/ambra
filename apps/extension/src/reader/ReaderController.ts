@@ -1,5 +1,6 @@
 import {
   AccessibilityController,
+  BookPaginationEstimator,
   ContentLoader,
   EpubCfi,
   EpubContainer,
@@ -45,6 +46,16 @@ export interface ReaderSnapshot {
   isFixedLayout: boolean;
   pageIndex: number;
   pageCount: number;
+  /** The reader's position expressed as a page number across the *whole
+   * book*, not just the current chapter — see `BookPaginationEstimator`.
+   * Both fields are `undefined` until enough background measurement has
+   * completed to know them (see `aggregateBookPosition`): `bookPageIndex`
+   * needs every spine item up to and including the current one measured,
+   * `bookPageCount` needs the entire book. The shell falls back to the
+   * per-chapter `pageIndex`/`pageCount` above while these are still
+   * unknown, so the page number is never blank, just coarser at first. */
+  bookPageIndex: number | undefined;
+  bookPageCount: number | undefined;
   /** `true` when the current spine item is showing as a two-page spread
    * (see `SpreadPaginatedHost`) — the reader pane is wide enough and the
    * item is reflowable and in paginated mode. The shell shows "Pages
@@ -164,6 +175,17 @@ export class ReaderController {
    * `setUpDragPageTurn`. Re-created every time the primary content
    * document changes, same lifecycle as `linkClickCleanup`. */
   private dragCleanup: (() => void) | undefined;
+  /** Background-paginates the whole book to derive book-wide page
+   * numbers (see `BookPaginationEstimator`) — `undefined` until `mount`
+   * creates it (it needs `hiddenMeasureContainer` to exist first). */
+  private bookPagination: BookPaginationEstimator | undefined;
+  /** An offscreen, zero-size-but-attached container `bookPagination`
+   * mounts its measurement iframes into — real browsers don't lay out a
+   * detached element, so this can't simply be left unattached, but it
+   * also must never let its children become visible or affect this
+   * page's own scroll extents. Created once in `mount` and torn down in
+   * `dispose`. */
+  private hiddenMeasureContainer: HTMLDivElement | undefined;
 
   private readonly listeners = new Set<() => void>();
   private cachedSnapshot: ReaderSnapshot | undefined;
@@ -216,6 +238,18 @@ export class ReaderController {
         pageCount = this.host.pageCount;
       }
 
+      // Book-wide numbers only make sense in paginated/spread mode — the
+      // same reason `pageIndex`/`pageCount` above stay `0` in scroll
+      // mode, which has no discrete "page" concept of its own to place
+      // within a book-wide count either.
+      let bookPageIndex: number | undefined;
+      let bookPageCount: number | undefined;
+      if (this.bookPagination && (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)) {
+        const position = this.bookPagination.positionFor(this.spineIndex, pageIndex);
+        bookPageIndex = position.currentPage;
+        bookPageCount = position.totalPages;
+      }
+
       this.cachedSnapshot = {
         title: this.pkg.metadata.title,
         toc: this.navigation.toc.items,
@@ -226,6 +260,8 @@ export class ReaderController {
         isFixedLayout: this.host instanceof FixedContentHost,
         pageIndex,
         pageCount,
+        bookPageIndex,
+        bookPageCount,
         isSpread: this.host instanceof SpreadPaginatedHost,
         secondPageIndex: this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
@@ -255,6 +291,7 @@ export class ReaderController {
     this.containerEl = containerEl;
     this.width = width;
     this.height = height;
+    this.setUpBookPagination(containerEl.ownerDocument);
 
     // Guard against a resize (e.g. `ResizeObserver`'s spec-mandated
     // initial callback) racing with the async progress lookup below —
@@ -270,6 +307,56 @@ export class ReaderController {
     if (!resumed) {
       await this.openSpineItem(0);
     }
+  }
+
+  /** Creates the offscreen container `BookPaginationEstimator` mounts its
+   * measurement iframes into, and the estimator itself. `position: fixed`
+   * plus zero size and `overflow: hidden` keeps it (and every iframe
+   * temporarily mounted inside it, each of which sizes itself explicitly
+   * regardless of this wrapper's own size) completely invisible and
+   * without affecting this page's own scroll extents — `display: none`
+   * would be simpler but real browsers don't lay out `display: none`
+   * content at all, which is exactly the real layout measurement this
+   * exists to get. */
+  private setUpBookPagination(ownerDocument: Document): void {
+    const container = ownerDocument.createElement("div");
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.width = "0";
+    container.style.height = "0";
+    container.style.overflow = "hidden";
+    container.setAttribute("aria-hidden", "true");
+    ownerDocument.body.appendChild(container);
+    this.hiddenMeasureContainer = container;
+    this.bookPagination = new BookPaginationEstimator(
+      this.contentLoader,
+      this.resolver,
+      this.pkg.spine,
+      this.pkg.metadata.renditionLayout,
+      container,
+    );
+  }
+
+  /** (Re-)starts `bookPagination` at the current width/height/font
+   * settings, prioritized around the current spine item, notifying
+   * subscribers (so the shell's book-wide page number updates) as each
+   * spine item's count becomes known. Safe to call liberally — chapter
+   * navigation calls this just to reprioritize (cheap: see
+   * `BookPaginationEstimator.run`'s doc comment), while a real width/
+   * height/font change triggers the fuller re-measurement. Measures at
+   * the *effective single-column* width — in spread mode that's each
+   * column's own (narrower) width, not the whole reader pane's — so a
+   * book-wide page number always agrees with what's actually on screen. */
+  private refreshBookPagination(): void {
+    if (!this.bookPagination || this.host instanceof FixedContentHost) {
+      return;
+    }
+    const measureWidth =
+      this.host instanceof SpreadPaginatedHost ? SpreadPaginatedHost.effectiveColumnWidth(this.width) : this.width;
+    void this.bookPagination.run(this.spineIndex, measureWidth, this.height, this.fontScale, this.fontFamily, () => {
+      this.notify();
+    });
   }
 
   /** Looks up a saved CFI for this book and, if one resolves to a valid
@@ -546,6 +633,7 @@ export class ReaderController {
     } else if (this.host instanceof ScrollContentHost || this.host instanceof FixedContentHost) {
       this.host.resize(width, height);
     }
+    this.refreshBookPagination();
     this.notify();
   }
 
@@ -609,6 +697,7 @@ export class ReaderController {
     this.fontScale = clamped;
     await this.library.setDefaultFontScale(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
+    this.refreshBookPagination();
     this.notify();
     await this.saveProgress();
   }
@@ -624,6 +713,7 @@ export class ReaderController {
     this.fontFamily = family;
     await this.library.setDefaultFontFamily(family);
     this.applyDisplaySettingsToHost({ relayout: true });
+    this.refreshBookPagination();
     this.notify();
     await this.saveProgress();
   }
@@ -1298,6 +1388,7 @@ export class ReaderController {
       this.appliedHeight = this.height;
       this.setUpLinkInterception();
       this.setUpDragPageTurn();
+      this.refreshBookPagination();
 
       if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
@@ -1360,6 +1451,8 @@ export class ReaderController {
     this.linkClickCleanup?.();
     this.dragCleanup?.();
     this.host?.dispose();
+    this.bookPagination?.dispose();
+    this.hiddenMeasureContainer?.remove();
     this.resolver.dispose();
     this.library.close();
   }

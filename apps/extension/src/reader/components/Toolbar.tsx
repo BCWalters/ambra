@@ -82,12 +82,24 @@ export const Toolbar: FC<ToolbarProps> = ({
   const isPaginated = snapshot.viewMode === "paginated";
   const { visible, handlers } = useAutoHideChrome(isTocOpen);
 
-  const pageLabel =
-    snapshot.pageCount === 0
-      ? undefined
-      : snapshot.secondPageIndex !== undefined
-        ? `Pages ${snapshot.pageIndex + 1}–${snapshot.secondPageIndex + 1} of ${snapshot.pageCount}`
-        : `Page ${snapshot.pageIndex + 1} of ${snapshot.pageCount}`;
+  const pageLabel = (() => {
+    if (snapshot.secondPageIndex !== undefined) {
+      // Spread mode: chapter-relative for now — see `bookPageIndex`'s
+      // doc comment on why book-wide numbering is scoped to the
+      // single-page case for this first pass.
+      return snapshot.pageCount === 0
+        ? undefined
+        : `Pages ${snapshot.pageIndex + 1}–${snapshot.secondPageIndex + 1} of ${snapshot.pageCount}`;
+    }
+    if (snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined) {
+      // Prefer the book-wide number once background pagination knows it
+      // — see `BookPaginationEstimator`. Falls back to the per-chapter
+      // number below while that's still being measured, so the toolbar
+      // never shows nothing.
+      return `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount}`;
+    }
+    return snapshot.pageCount === 0 ? undefined : `Page ${snapshot.pageIndex + 1} of ${snapshot.pageCount}`;
+  })();
 
   return (
     <>

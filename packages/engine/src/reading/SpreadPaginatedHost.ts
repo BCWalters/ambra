@@ -226,4 +226,16 @@ export class SpreadPaginatedHost {
   private static columnWidth(totalWidth: number): number {
     return Math.max(MIN_SPREAD_COLUMN_WIDTH, Math.floor((totalWidth - GUTTER_WIDTH) / 2));
   }
+
+  /** Public alias for `columnWidth` — the effective single-column width
+   * a spread of `totalWidth` renders each side at. Exposed for callers
+   * outside this class that need to measure/paginate at the *same*
+   * width spread mode is actually displaying at, rather than a
+   * conceptually separate "reference" width — currently
+   * `BookPaginationEstimator`, which must always paginate at whatever
+   * width is really on screen so its book-wide page numbers agree with
+   * what the reader sees. */
+  public static effectiveColumnWidth(totalWidth: number): number {
+    return SpreadPaginatedHost.columnWidth(totalWidth);
+  }
 }
