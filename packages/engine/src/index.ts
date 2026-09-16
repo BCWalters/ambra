@@ -54,4 +54,5 @@ export { AccessibilityController } from "./accessibility/AccessibilityController
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";
+export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";
 export { loadAssembledSpineItem } from "./reading/SpineItemAssembler.js";

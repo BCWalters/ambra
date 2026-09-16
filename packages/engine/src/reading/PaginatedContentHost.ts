@@ -158,6 +158,22 @@ export class PaginatedContentHost {
     return true;
   }
 
+  /** Jumps directly to a specific page index without any DOM-position
+   * anchoring — used by `SpreadPaginatedHost` to show its companion
+   * column's "next page after the primary column" purely by index, since
+   * that companion page has no independent reading position of its own
+   * to preserve. A no-op if `index` is out of range; callers that need
+   * "nothing to show" behavior for an out-of-range index (e.g. the
+   * trailing unpaired page of a chapter in spread mode) should check
+   * `pageCount` themselves first. */
+  public goToPageIndex(index: number): void {
+    if (index < 0 || index >= this.pages.length) {
+      return;
+    }
+    this.pageIndex = index;
+    this.showCurrentPage();
+  }
+
   /** Jumps to the last page — used when navigating backward into this
    * spine item from the one after it. */
   public goToLastPage(): void {

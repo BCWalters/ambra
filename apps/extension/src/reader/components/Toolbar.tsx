@@ -159,7 +159,11 @@ export const Toolbar: FC<ToolbarProps> = ({
             <ToolbarDivider />
             <ToolbarGroup>
               <Caption1 as="span">
-                Page {snapshot.pageCount > 0 ? snapshot.pageIndex + 1 : 0} of {snapshot.pageCount}
+                {snapshot.pageCount === 0
+                  ? "Page 0 of 0"
+                  : snapshot.secondPageIndex !== undefined
+                    ? `Pages ${snapshot.pageIndex + 1}–${snapshot.secondPageIndex + 1} of ${snapshot.pageCount}`
+                    : `Page ${snapshot.pageIndex + 1} of ${snapshot.pageCount}`}
               </Caption1>
               <Tooltip content="Previous page" relationship="label">
                 <ToolbarButton

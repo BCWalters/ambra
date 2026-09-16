@@ -13,6 +13,7 @@ import {
   resolveEpubPath,
   ScrollContentHost,
   splitHrefFragment,
+  SpreadPaginatedHost,
 } from "@pagina/engine";
 import type { NavPoint, PackageDocument } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
@@ -38,6 +39,15 @@ export interface ReaderSnapshot {
   isFixedLayout: boolean;
   pageIndex: number;
   pageCount: number;
+  /** `true` when the current spine item is showing as a two-page spread
+   * (see `SpreadPaginatedHost`) — the reader pane is wide enough and the
+   * item is reflowable and in paginated mode. The shell shows "Pages
+   * X–Y of Z" instead of "Page X of Y" when this is set. */
+  isSpread: boolean;
+  /** The companion page index shown alongside `pageIndex` in spread mode
+   * — `undefined` outside spread mode, or if there's no companion page
+   * (the chapter's last page has no facing page). */
+  secondPageIndex: number | undefined;
   /** The current reader-controlled font-size multiplier (see
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
@@ -76,7 +86,7 @@ export interface ReaderSnapshot {
  * re-render.
  */
 export class ReaderController {
-  private host: PaginatedContentHost | ScrollContentHost | FixedContentHost | undefined;
+  private host: PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | undefined;
   /** Defaults to "paginated", but `open` overwrites this from the saved
    * `view-mode-preference` (if any) before the controller is ever used. */
   private viewMode: ViewMode = "paginated";
@@ -153,6 +163,16 @@ export class ReaderController {
 
   public snapshot(): ReaderSnapshot {
     if (!this.cachedSnapshot) {
+      let pageIndex = 0;
+      let pageCount = 0;
+      if (this.host instanceof PaginatedContentHost) {
+        pageIndex = this.host.currentPageIndex;
+        pageCount = this.host.pageCount;
+      } else if (this.host instanceof SpreadPaginatedHost) {
+        pageIndex = this.host.pageIndex;
+        pageCount = this.host.pageCount;
+      }
+
       this.cachedSnapshot = {
         title: this.pkg.metadata.title,
         toc: this.navigation.toc.items,
@@ -160,8 +180,10 @@ export class ReaderController {
         spineLength: this.pkg.spine.length,
         viewMode: this.viewMode,
         isFixedLayout: this.host instanceof FixedContentHost,
-        pageIndex: this.host instanceof PaginatedContentHost ? this.host.currentPageIndex : 0,
-        pageCount: this.host instanceof PaginatedContentHost ? this.host.pageCount : 0,
+        pageIndex,
+        pageCount,
+        isSpread: this.host instanceof SpreadPaginatedHost,
+        secondPageIndex: this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         isLoading: this.isLoading,
         error: this.error,
@@ -288,6 +310,30 @@ export class ReaderController {
     return undefined;
   }
 
+  /** The content document accessibility (keyboard navigation, focus
+   * management) and CFI/fragment resolution key off — the *only* document
+   * for every host type except `SpreadPaginatedHost`, where it's
+   * specifically the primary (left) column; see that class's doc comment
+   * for why the right column is deliberately excluded. */
+  private primaryContentDocument(): Document | undefined {
+    if (this.host instanceof SpreadPaginatedHost) {
+      return this.host.primaryContentDocument();
+    }
+    return this.host?.element.contentDocument ?? undefined;
+  }
+
+  /** Every content document the reader might receive a click in — one for
+   * every host type except `SpreadPaginatedHost`, which has two (both
+   * columns get working in-content links, even though only the left one
+   * participates in keyboard/focus accessibility). */
+  private allContentDocuments(): Document[] {
+    if (this.host instanceof SpreadPaginatedHost) {
+      return this.host.contentDocuments();
+    }
+    const doc = this.host?.element.contentDocument;
+    return doc ? [doc] : [];
+  }
+
   /** (Re-)attaches keyboard navigation to the current content host's
    * iframe document and moves focus into it — called every time a new
    * spine item is opened, since each one gets a fresh iframe/document.
@@ -295,16 +341,19 @@ export class ReaderController {
    * page concept in scroll/fixed-layout mode, so they mean "go to the
    * next/previous chapter" there instead). */
   private setUpAccessibility(focusTarget?: Element): void {
-    if (this.host) {
-      this.host.element.title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
+    const title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
+    if (this.host instanceof SpreadPaginatedHost) {
+      this.host.setTitle(title);
+    } else if (this.host) {
+      this.host.element.title = title;
     }
 
-    const iframeDocument = this.host?.element.contentDocument;
+    const iframeDocument = this.primaryContentDocument();
     if (!iframeDocument) {
       return;
     }
 
-    const isPaginated = this.host instanceof PaginatedContentHost;
+    const isPaginated = this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
     this.accessibility.attach(iframeDocument, {
       onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
       onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
@@ -325,51 +374,69 @@ export class ReaderController {
    * worse than doing nothing. An absolute-URI link (`http:`, `mailto:`,
    * etc.) opens in a new top-level browser tab instead, the standard
    * behavior real readers use for links that lead outside the book.
+   *
+   * Attached to every document `allContentDocuments()` returns — in
+   * spread mode, that's both columns, so a link on the companion (right)
+   * page works exactly like one on the primary (left) page, even though
+   * only the left page participates in keyboard/focus accessibility.
    */
   private setUpLinkInterception(): void {
-    const iframeDocument = this.host?.element.contentDocument;
     const currentPath = this.pkg.spine[this.spineIndex]?.manifestItem.path;
-    if (!iframeDocument || !currentPath) {
+    const documents = this.allContentDocuments();
+    if (documents.length === 0 || !currentPath) {
       return;
     }
 
-    const clickHandler = (event: MouseEvent): void => {
-      const anchor = (event.target as Element | null)?.closest?.("a[href]");
-      const href = anchor?.getAttribute("href");
-      if (!href) {
-        return;
-      }
-      event.preventDefault();
+    const focusDocument = this.primaryContentDocument();
+    const cleanups: Array<() => void> = [];
 
-      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
-        // An absolute URI (http:, https:, mailto:, ...) — not a path
-        // within this book at all.
-        window.open(href, "_blank", "noopener,noreferrer");
-        return;
-      }
-
-      const { fragment } = splitHrefFragment(href);
-      const targetPath = resolveEpubPath(currentPath, href);
-      const targetSpineIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === targetPath);
-      if (targetSpineIndex === -1) {
-        // Points at something that isn't a spine item (e.g. a resource
-        // the manifest declares but the spine doesn't include) — nothing
-        // sensible to navigate to; already prevented default above.
-        return;
-      }
-
-      if (targetSpineIndex === this.spineIndex) {
-        if (fragment) {
-          const focusTarget = this.goToFragment(fragment);
-          this.accessibility.focusContent(iframeDocument, focusTarget);
+    for (const iframeDocument of documents) {
+      const clickHandler = (event: MouseEvent): void => {
+        const anchor = (event.target as Element | null)?.closest?.("a[href]");
+        const href = anchor?.getAttribute("href");
+        if (!href) {
+          return;
         }
-        return;
-      }
-      void this.openSpineItem(targetSpineIndex, { fragment });
-    };
+        event.preventDefault();
 
-    iframeDocument.addEventListener("click", clickHandler);
-    this.linkClickCleanup = () => iframeDocument.removeEventListener("click", clickHandler);
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+          // An absolute URI (http:, https:, mailto:, ...) — not a path
+          // within this book at all.
+          window.open(href, "_blank", "noopener,noreferrer");
+          return;
+        }
+
+        const { fragment } = splitHrefFragment(href);
+        const targetPath = resolveEpubPath(currentPath, href);
+        const targetSpineIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === targetPath);
+        if (targetSpineIndex === -1) {
+          // Points at something that isn't a spine item (e.g. a resource
+          // the manifest declares but the spine doesn't include) — nothing
+          // sensible to navigate to; already prevented default above.
+          return;
+        }
+
+        if (targetSpineIndex === this.spineIndex) {
+          if (fragment) {
+            const focusTarget = this.goToFragment(fragment);
+            if (focusDocument) {
+              this.accessibility.focusContent(focusDocument, focusTarget);
+            }
+          }
+          return;
+        }
+        void this.openSpineItem(targetSpineIndex, { fragment });
+      };
+
+      iframeDocument.addEventListener("click", clickHandler);
+      cleanups.push(() => iframeDocument.removeEventListener("click", clickHandler));
+    }
+
+    this.linkClickCleanup = () => {
+      for (const cleanup of cleanups) {
+        cleanup();
+      }
+    };
   }
 
   /** Relays a resize (e.g. the reader pane changing size, or the user
@@ -379,7 +446,10 @@ export class ReaderController {
    * no-op if the size hasn't actually changed (e.g. a deferred resize —
    * see `pendingResize` — turns out to match what was already used),
    * avoiding pointless re-pagination that could otherwise introduce its
-   * own drift in the restored position. */
+   * own drift in the restored position. Crossing the two-page-spread
+   * width threshold (see `shouldSwitchSpreadMode`) is handled as a full
+   * host swap rather than a plain relayout, since a spread is
+   * architecturally two iframes, not one. */
   public resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
@@ -392,15 +462,44 @@ export class ReaderController {
     if (width === this.appliedWidth && height === this.appliedHeight) {
       return;
     }
+
+    if (this.shouldSwitchSpreadMode(width)) {
+      void this.reopenForCurrentSize();
+      return;
+    }
+
     this.appliedWidth = width;
     this.appliedHeight = height;
 
-    if (this.host instanceof PaginatedContentHost) {
+    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.relayout(width, height);
     } else if (this.host instanceof ScrollContentHost || this.host instanceof FixedContentHost) {
       this.host.resize(width, height);
     }
     this.notify();
+  }
+
+  /** `true` if the reader pane just crossed the two-page-spread width
+   * threshold (`SpreadPaginatedHost.isEligible`) while in paginated mode
+   * on a reflowable spine item. Fixed-layout content and scroll mode
+   * never use a spread — see `SpreadPaginatedHost`'s doc comment. */
+  private shouldSwitchSpreadMode(width: number): boolean {
+    if (this.viewMode !== "paginated" || this.host instanceof FixedContentHost) {
+      return false;
+    }
+    return SpreadPaginatedHost.isEligible(width) !== (this.host instanceof SpreadPaginatedHost);
+  }
+
+  /** Bridges the current reading position via CFI and reopens the
+   * current spine item at the (already-updated) `width`/`height` — used
+   * when a resize crosses the spread-mode width threshold, the same
+   * CFI-bridging `setViewMode` uses for the paginated/scroll switch. */
+  private async reopenForCurrentSize(): Promise<void> {
+    const position = this.host?.currentPosition();
+    const bridgeCfi = position
+      ? this.locatorResolver.generate(this.spineIndex, position.node, position.offset).cfi
+      : undefined;
+    await this.openSpineItem(this.spineIndex, { bridgeCfi });
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
@@ -444,39 +543,57 @@ export class ReaderController {
     await this.saveProgress();
   }
 
-  /** Writes `this.fontScale` onto the current content host's iframe
-   * document as a CSS custom property (see `ReadingTheme.applyFontScale`)
-   * and re-measures at the current size — every spine item load applies
-   * the persisted scale the same way (see `openSpineItem`), so a book
-   * opened mid-session at a non-default scale looks correct immediately,
-   * not just after the first explicit font-size change. No-op for
-   * fixed-layout content, which never gets the reading theme at all. */
+  /** Writes `this.fontScale` onto every current content document as a CSS
+   * custom property (see `ReadingTheme.applyFontScale`) and re-measures
+   * at the current size — every spine item load applies the persisted
+   * scale the same way (see `openSpineItem`), so a book opened
+   * mid-session at a non-default scale looks correct immediately, not
+   * just after the first explicit font-size change. No-op for
+   * fixed-layout content, which never gets the reading theme at all. In
+   * spread mode, both columns are independent documents and need the
+   * property set individually before the shared relayout re-measures
+   * them together. */
   private applyFontScaleToHost(): void {
-    const iframeDocument = this.host?.element.contentDocument;
-    if (!iframeDocument || this.host instanceof FixedContentHost) {
+    if (this.host instanceof FixedContentHost) {
       return;
     }
-    ReadingTheme.applyFontScale(iframeDocument, this.fontScale);
-    if (this.host instanceof PaginatedContentHost) {
+    const documents = this.allContentDocuments();
+    if (documents.length === 0) {
+      return;
+    }
+    for (const doc of documents) {
+      ReadingTheme.applyFontScale(doc, this.fontScale);
+    }
+    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.relayout(this.width, this.height);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.resize(this.width, this.height);
     }
   }
 
-  /** Turns one page in paginated mode. In scroll mode, this is a no-op —
-   * scrolling is continuous and has no discrete "page" concept; use
-   * native scrolling within the content host instead. Crossing the first/
-   * last page of the current spine item advances to the adjacent chapter
-   * automatically. */
+  /** Turns one page (or one spread, in spread mode) in paginated mode. In
+   * scroll mode, this is a no-op — scrolling is continuous and has no
+   * discrete "page" concept; use native scrolling within the content host
+   * instead. Crossing the first/last page of the current spine item
+   * advances to the adjacent chapter automatically. */
   public async turnPage(direction: 1 | -1): Promise<void> {
-    if (!(this.host instanceof PaginatedContentHost)) {
+    let moved: boolean;
+    let announcement: string;
+    if (this.host instanceof SpreadPaginatedHost) {
+      moved = direction === 1 ? this.host.nextSpread() : this.host.previousSpread();
+      const second = this.host.secondPageIndex;
+      announcement = second !== undefined
+        ? `Pages ${this.host.pageIndex + 1}–${second + 1} of ${this.host.pageCount}`
+        : `Page ${this.host.pageIndex + 1} of ${this.host.pageCount}`;
+    } else if (this.host instanceof PaginatedContentHost) {
+      moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
+      announcement = `Page ${this.host.currentPageIndex + 1} of ${this.host.pageCount}`;
+    } else {
       return;
     }
 
-    const moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
     if (moved) {
-      this.announce(`Page ${this.host.currentPageIndex + 1} of ${this.host.pageCount}`);
+      this.announce(announcement);
       this.notify();
       await this.saveProgress();
       return;
@@ -537,6 +654,14 @@ export class ReaderController {
         this.containerEl.replaceChildren(fixedHost.element);
         await fixedHost.open(this.contentLoader, this.resolver, spineIndex, this.pkg.metadata.renditionViewport);
         this.host = fixedHost;
+      } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
+        const host = new SpreadPaginatedHost(this.width, this.height);
+        this.containerEl.replaceChildren(host.element);
+        await host.open(this.contentLoader, this.resolver, spineIndex);
+        this.host = host;
+        if (this.fontScale !== 1) {
+          this.applyFontScaleToHost();
+        }
       } else {
         const host =
           this.viewMode === "paginated"
@@ -562,7 +687,7 @@ export class ReaderController {
         const focusTarget = this.goToFragment(options.fragment);
         this.setUpAccessibility(focusTarget);
       } else {
-        if (options.landOnLastPage && this.host instanceof PaginatedContentHost) {
+        if (options.landOnLastPage && (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)) {
           this.host.goToLastPage();
         }
         this.setUpAccessibility();
@@ -584,13 +709,13 @@ export class ReaderController {
   }
 
   private restoreCfi(cfi: string, spineIndex: number): void {
-    const iframeDocument = this.host?.element.contentDocument;
+    const iframeDocument = this.primaryContentDocument();
     if (!iframeDocument) {
       return;
     }
     const resolved = this.locatorResolver.resolveInDocument(new Locator(cfi), spineIndex, iframeDocument);
     const offset = resolved.characterOffset ?? 0;
-    if (this.host instanceof PaginatedContentHost) {
+    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.goToPosition(resolved.node, offset);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(resolved.node, offset);
@@ -598,12 +723,12 @@ export class ReaderController {
   }
 
   private goToFragment(fragment: string): Element | undefined {
-    const iframeDocument = this.host?.element.contentDocument;
+    const iframeDocument = this.primaryContentDocument();
     const target = iframeDocument?.getElementById(fragment);
     if (!target) {
       return undefined;
     }
-    if (this.host instanceof PaginatedContentHost) {
+    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.goToPosition(target, 0);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(target, 0);
