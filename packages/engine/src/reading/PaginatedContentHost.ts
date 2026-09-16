@@ -99,7 +99,13 @@ export class PaginatedContentHost {
    * (e.g. a window resize or font-size change), preserving reading
    * position by re-resolving the current page's start position against
    * the freshly-measured pages — per the CFI design principle that
-   * position, not page number, is the source of truth across relayout. */
+   * position, not page number, is the source of truth across relayout.
+   * The preserved position is passed to `PaginationEngine.paginate` as an
+   * anchor, forcing a page break exactly there so it lands at the very
+   * top of its page rather than wherever it happens to fall under normal
+   * top-down pagination (see `PaginationEngine.paginate`'s `anchor`
+   * parameter) — the reader's first visible word never silently shifts
+   * mid-page across a resize/font-size change. */
   public relayout(width: number, height: number): void {
     const preserve = this.currentPosition();
     this.height = height;
@@ -115,7 +121,7 @@ export class PaginatedContentHost {
     // untranslated layout position to measure correctly.
     iframeDocument.body.style.transform = "";
 
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight);
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, preserve);
     if (preserve) {
       const found = PaginationEngine.findPageForPosition(
         this.pages,
@@ -159,15 +165,19 @@ export class PaginatedContentHost {
     this.showCurrentPage();
   }
 
-  /** Jumps to whichever page's range contains `(node, offset)` — used for
-   * TOC/fragment navigation within an already-open spine item, and for
-   * restoring a bridged position after a scroll-to-paginated mode
-   * switch. No-op if no page contains the position. */
+  /** Jumps to `(node, offset)` — used for TOC/fragment navigation within
+   * an already-open spine item, in-content link targets, and restoring a
+   * bridged position after a scroll-to-paginated mode switch. Re-paginates
+   * with the target as an anchor (see `PaginationEngine.paginate`) so it
+   * always lands at the very top of its page — e.g. clicking a footnote
+   * reference shows the footnote as the first line on screen, not buried
+   * wherever normal pagination happens to place it. */
   public goToPosition(node: Node, offset: number): void {
     const iframeDocument = this.sandboxedHost.element.contentDocument;
     if (!iframeDocument) {
       return;
     }
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, { node, offset });
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
     if (found) {
       this.pageIndex = found.index;

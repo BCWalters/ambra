@@ -2,6 +2,7 @@ import type { Chunk } from "./LineMeasurement.js";
 import { measureChunks } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
 import { Page } from "./Page.js";
+import { findChunkForPosition } from "./ScrollPositionTracker.js";
 
 /**
  * Plans page boundaries from an ordered list of measured `Chunk`s (one
@@ -18,11 +19,25 @@ import { Page } from "./Page.js";
  * overflow (this is what gives an oversized atomic element, e.g. an
  * image taller than a full page, its own page rather than being
  * cropped/scaled — see the `pagination-engine` design discussion).
+ *
+ * `forcedBreakBefore`, if given, must be the exact `breakBefore` object of
+ * one of `chunks` (compared by reference, not DOM position — resolving an
+ * arbitrary DOM position to that exact chunk reference is
+ * `PaginationEngine.paginate`'s job, since it requires real DOM position
+ * comparison this pure function deliberately doesn't depend on). When
+ * given, a page break is forced immediately before that chunk even if it
+ * would otherwise still fit on the current page — this is what lets
+ * `PaginatedContentHost.relayout`/`goToPosition` guarantee a preserved
+ * reading position always lands at the very top of a page after a
+ * resize/font-size change/navigation, rather than wherever normal greedy
+ * pagination happens to leave it (see the `reflow-position-preservation`
+ * work item).
  */
 export function planPageBreaks(
   chunks: readonly Chunk[],
   pageHeight: number,
   endOfDocument: DomBreakPoint,
+  forcedBreakBefore?: DomBreakPoint,
 ): Page[] {
   if (chunks.length === 0) {
     return [];
@@ -35,8 +50,9 @@ export function planPageBreaks(
   let chunksOnCurrentPage = 0;
 
   for (const chunk of chunks) {
+    const isForcedBreak = chunk.breakBefore === forcedBreakBefore;
     const wouldBeHeight = chunk.bottom - pageStartTop;
-    if (wouldBeHeight > pageHeight && chunksOnCurrentPage > 0) {
+    if ((wouldBeHeight > pageHeight || isForcedBreak) && chunksOnCurrentPage > 0) {
       pages.push(new Page(pages.length, pageStartBreak, chunk.breakBefore, pageStartTop, pageBottom));
       pageStartTop = chunk.top;
       pageStartBreak = chunk.breakBefore;
@@ -61,13 +77,24 @@ export function planPageBreaks(
  * accessibility at all times.
  */
 export class PaginationEngine {
-  public static paginate(bodyElement: Element, pageHeight: number): Page[] {
+  /** `anchor`, if given, is a DOM position (typically a previously-saved
+   * reading position — a resize/font-size change preserving it, a TOC/
+   * fragment/CFI navigation target, an in-content link target) that must
+   * land exactly at the top of whichever page contains it, rather than
+   * wherever it happens to fall under normal greedy top-down pagination.
+   * Resolved to the exact chunk containing it (`findChunkForPosition`,
+   * the same position-to-chunk lookup `ScrollViewEngine` uses) and passed
+   * to `planPageBreaks` as a forced break point. */
+  public static paginate(bodyElement: Element, pageHeight: number, anchor?: DomBreakPoint): Page[] {
     const chunks = measureChunks(bodyElement);
     const endOfDocument: DomBreakPoint = {
       node: bodyElement,
       offset: bodyElement.childNodes.length,
     };
-    return planPageBreaks(chunks, pageHeight, endOfDocument);
+    const forcedBreakBefore = anchor
+      ? findChunkForPosition(chunks, anchor.node, anchor.offset ?? 0)?.breakBefore
+      : undefined;
+    return planPageBreaks(chunks, pageHeight, endOfDocument, forcedBreakBefore);
   }
 
   /** Finds the page whose `[startBreak, endBreak)` range contains

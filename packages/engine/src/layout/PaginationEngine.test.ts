@@ -108,4 +108,42 @@ describe("planPageBreaks", () => {
     expect(pages[0]!.endBreak).not.toBe(END_OF_DOC);
     expect(pages[pages.length - 1]!.endBreak).toBe(END_OF_DOC);
   });
+
+  it("forces a page break at forcedBreakBefore even though the chunk would otherwise still fit", () => {
+    // All four chunks (20px each) fit within an 80px page on their own,
+    // so without a forced break this would be a single page.
+    const chunks = [chunk(0, 20, "a"), chunk(20, 40, "b"), chunk(40, 60, "c"), chunk(60, 80, "d")];
+
+    const pages = planPageBreaks(chunks, 80, END_OF_DOC, chunks[2]!.breakBefore);
+
+    expect(pages).toHaveLength(2);
+    expect(pages[0]!.topY).toBe(0);
+    expect(pages[0]!.bottomY).toBe(40); // a, b
+    expect(pages[1]!.topY).toBe(40);
+    expect(pages[1]!.bottomY).toBe(80); // c, d — "c" now starts a fresh page
+    expect(pages[1]!.startBreak).toBe(chunks[2]!.breakBefore);
+  });
+
+  it("does not force a break at forcedBreakBefore if it's already the first chunk on its page", () => {
+    // Page height only fits 2 chunks per page (40 <= 50, 60 > 50), so "c"
+    // is naturally already the first chunk of page 2 — forcing a break
+    // there again would be a no-op, not an extra empty page.
+    const chunks = [chunk(0, 20, "a"), chunk(20, 40, "b"), chunk(40, 60, "c"), chunk(60, 80, "d")];
+
+    const pages = planPageBreaks(chunks, 50, END_OF_DOC, chunks[2]!.breakBefore);
+
+    expect(pages).toHaveLength(2);
+    expect(pages[0]!.bottomY).toBe(40); // a, b
+    expect(pages[1]!.topY).toBe(40);
+    expect(pages[1]!.bottomY).toBe(80); // c, d
+  });
+
+  it("ignores a forcedBreakBefore that doesn't match any chunk's breakBefore", () => {
+    const chunks = [chunk(0, 20, "a"), chunk(20, 40, "b")];
+    const unrelated: DomBreakPoint = { node: { name: "elsewhere" } as unknown as Node };
+
+    const pages = planPageBreaks(chunks, 100, END_OF_DOC, unrelated);
+
+    expect(pages).toHaveLength(1);
+  });
 });
