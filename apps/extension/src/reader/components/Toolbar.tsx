@@ -24,9 +24,10 @@ import {
   CompassNorthwestRegular,
   FontDecreaseRegular,
   FontIncreaseRegular,
-  SlideSettingsRegular,
+  SettingsRegular,
   TextBulletListRegular,
   TextColumnOneRegular,
+  TextFontRegular,
 } from "@fluentui/react-icons";
 import { ReadingTheme } from "@pagina/engine";
 import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
@@ -60,10 +61,12 @@ const PAGE_THEME_GROUP_NAME = "pageTheme";
  * a keyboard-arrow/click/drag affair — see `ReaderController.turnPage`/
  * `beginDragPageTurn` — not a toolbar-button one, and folding four
  * buttons into one menu trigger is what keeps this bar a single
- * unobtrusive row instead of an ever-growing button strip). Display
- * settings live in a second "Reading settings" menu, grouped under "Page"
- * (font size, font family, page color theme) and "Book" (paginated/
- * scroll) headers — a UX pattern deliberately built to scale to more
+ * unobtrusive row instead of an ever-growing button strip). Typography
+ * (font size, font family) lives in its own "Aa" menu, kept separate
+ * from the gear "Settings" menu (page color theme, paginated/scroll)
+ * since font choice is the setting readers reach for far more often —
+ * splitting it out means it's never buried behind less-frequently-used
+ * options. Both are a UX pattern deliberately built to scale to more
  * settings later (columns, margins) without needing another redesign.
  *
  * Persisting every chosen setting is `ReaderController`'s job, not this
@@ -153,19 +156,56 @@ export const Toolbar: FC<ToolbarProps> = ({
           />
         </Tooltip>
 
-        <Body1
-          as="span"
+        {/* Book title + current chapter, sharing one flexible region: the
+            chapter name (shown here because it's otherwise only visible
+            in the running header underneath — see `PageFurniture` — which
+            this same toolbar covers whenever it's shown) is deliberately
+            the first thing to truncate/disappear as the toolbar narrows,
+            never the book title. */}
+        <div
           style={{
             flex: 1,
             minWidth: 0,
-            fontWeight: 600,
+            display: "flex",
+            alignItems: "baseline",
+            gap: 6,
             overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
           }}
         >
-          {snapshot.title}
-        </Body1>
+          <Body1
+            as="span"
+            style={{
+              flexShrink: 0,
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              maxWidth: "100%",
+            }}
+          >
+            {snapshot.title}
+          </Body1>
+
+          {/* The current chapter — shown only when there's room for it
+              (see the doc comment above): this wrapper takes whatever
+              space is left after the book title above (which never
+              shrinks below its own content size), so as the toolbar
+              narrows, the chapter name is always the first thing to
+              truncate and eventually disappear, never the book title. */}
+          <Caption1
+            as="span"
+            style={{
+              minWidth: 0,
+              flex: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              color: "var(--colorNeutralForeground2, #444)",
+            }}
+          >
+            — {snapshot.currentChapterLabel}
+          </Caption1>
+        </div>
 
         {pageLabel && (
           <Caption1
@@ -230,30 +270,22 @@ export const Toolbar: FC<ToolbarProps> = ({
         {!snapshot.isFixedLayout && (
           <Menu
             persistOnItemClick
-            checkedValues={{
-              [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
-              [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
-              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
-            }}
+            checkedValues={{ [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily] }}
             onCheckedValueChange={(_event, data) => {
-              if (data.name === VIEW_MODE_GROUP_NAME) {
-                onSetViewMode(data.checkedItems[0] as ViewMode);
-              } else if (data.name === FONT_FAMILY_GROUP_NAME) {
+              if (data.name === FONT_FAMILY_GROUP_NAME) {
                 onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
-              } else if (data.name === PAGE_THEME_GROUP_NAME) {
-                onSetPageTheme(data.checkedItems[0] as PageTheme);
               }
             }}
           >
             <MenuTrigger disableButtonEnhancement>
-              <Tooltip content="Reading settings" relationship="label">
-                <Button appearance="subtle" size="small" icon={<SlideSettingsRegular />} />
+              <Tooltip content="Font" relationship="label">
+                <Button appearance="subtle" size="small" icon={<TextFontRegular />} />
               </Tooltip>
             </MenuTrigger>
             <MenuPopover>
               <MenuList>
                 <MenuGroup>
-                  <MenuGroupHeader>Page</MenuGroupHeader>
+                  <MenuGroupHeader>Size</MenuGroupHeader>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
                     <Tooltip content="Decrease font size" relationship="label">
                       <Button
@@ -287,7 +319,33 @@ export const Toolbar: FC<ToolbarProps> = ({
                     </MenuItemRadio>
                   ))}
                 </MenuGroup>
-                <MenuDivider />
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+        )}
+
+        {!snapshot.isFixedLayout && (
+          <Menu
+            persistOnItemClick
+            checkedValues={{
+              [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
+              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
+            }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === VIEW_MODE_GROUP_NAME) {
+                onSetViewMode(data.checkedItems[0] as ViewMode);
+              } else if (data.name === PAGE_THEME_GROUP_NAME) {
+                onSetPageTheme(data.checkedItems[0] as PageTheme);
+              }
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <Tooltip content="Settings" relationship="label">
+                <Button appearance="subtle" size="small" icon={<SettingsRegular />} />
+              </Tooltip>
+            </MenuTrigger>
+            <MenuPopover>
+              <MenuList>
                 <MenuGroup>
                   <MenuGroupHeader>Theme</MenuGroupHeader>
                   {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
