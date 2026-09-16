@@ -81,6 +81,12 @@ export interface ReaderSnapshot {
    * — `undefined` outside spread mode, or if there's no companion page
    * (the chapter's last page has no facing page). */
   secondPageIndex: number | undefined;
+  /** The reader pane's current width in CSS pixels — lets `PageFurniture`
+   * replicate `SpreadPaginatedHost`'s own column/gutter geometry exactly
+   * (via `SpreadPaginatedHost.effectiveColumnWidth`/`GUTTER_WIDTH`) so its
+   * running header can center itself on each visible page in spread
+   * mode, rather than guessing at where the two columns actually sit. */
+  paneWidth: number;
   /** The current reader-controlled font-size multiplier (see
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
@@ -298,6 +304,7 @@ export class ReaderController {
         bookPageCount,
         isSpread: this.host instanceof SpreadPaginatedHost,
         secondPageIndex: this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
+        paneWidth: this.width,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
@@ -460,76 +467,92 @@ export class ReaderController {
     this.announcementId++;
   }
 
-  /** A human-readable label for `spineIndex` — the matching Table of
-   * Contents entry's label, if the current navigation has one pointing at
-   * that spine item's path, falling back to "Chapter N" otherwise. Used
-   * for live-region chapter-change announcements (e.g. "Rowing to a
-   * generic 'Chapter 3'" is far less useful to a screen reader user than
-   * the book's own chapter title, when it's available). */
+  /** A human-readable label for `spineIndex` — the label of the *last*
+   * TOC entry (by actual resolved spine order, not TOC listing order)
+   * whose target is at or before `spineIndex` (see
+   * `nearestPrecedingNavPoint`), so a spine item with no TOC entry of
+   * its own (an epigraph, an unlisted section between two listed
+   * chapters) still gets a meaningful label — the chapter it's actually
+   * part of — rather than a generic, spine-index-derived "Chapter N"
+   * that routinely doesn't match the book's own numbering at all. Used
+   * for the running header (see `PageFurniture`), live-region
+   * chapter-change announcements, and the progress scrubber's drag
+   * preview.
+   *
+   * Falls back to "Start of Book" specifically when the book *has* a
+   * TOC but `spineIndex` is before its first real entry (a cover, title
+   * page, etc. — the same section `TocPanel`'s synthetic "Start of
+   * Book" entry reaches, see `tocHighlightPath`) — this was a real bug:
+   * the progress scrubber previously showed "Chapter 1" for this
+   * section, disagreeing with what the TOC panel itself highlighted
+   * there. Only falls back further to a generic "Chapter N" when the
+   * book has no TOC at all, since calling literally every page "Start
+   * of Book" for such a book would be actively misleading. */
   private chapterLabel(spineIndex: number): string {
-    const path = this.pkg.spine[spineIndex]?.manifestItem.path;
-    const match = path !== undefined ? ReaderController.findNavPointByPath(this.navigation.toc.items, path) : undefined;
-    return match?.label ?? `Chapter ${spineIndex + 1}`;
-  }
-
-  private static findNavPointByPath(items: readonly NavPoint[], path: string): NavPoint | undefined {
-    for (const item of items) {
-      if (item.path === path) {
-        return item;
-      }
-      const found = ReaderController.findNavPointByPath(item.children, path);
-      if (found) {
-        return found;
-      }
+    const nearest = this.nearestPrecedingNavPoint(spineIndex);
+    if (nearest) {
+      return nearest.label;
     }
-    return undefined;
+    const hasAnyToc = ReaderController.flattenLinkedNavPoints(this.navigation.toc.items).length > 0;
+    return hasAnyToc ? "Start of Book" : `Chapter ${spineIndex + 1}`;
   }
 
-  /** Flattens every *linked* entry's path out of a TOC tree, in document
-   * order — a helper for `tocHighlightPath`, which needs to consider
+  /** Flattens every *linked* entry out of a TOC tree, in document order
+   * — a helper for `nearestPrecedingNavPoint`, which needs to consider
    * every entry as a candidate regardless of nesting depth. */
-  private static flattenLinkedPaths(items: readonly NavPoint[]): string[] {
-    const paths: string[] = [];
+  private static flattenLinkedNavPoints(items: readonly NavPoint[]): NavPoint[] {
+    const result: NavPoint[] = [];
     for (const item of items) {
       if (item.isLinked && item.path !== undefined) {
-        paths.push(item.path);
+        result.push(item);
       }
-      paths.push(...ReaderController.flattenLinkedPaths(item.children));
+      result.push(...ReaderController.flattenLinkedNavPoints(item.children));
     }
-    return paths;
+    return result;
+  }
+
+  /** The TOC entry (by actual resolved spine order, not TOC listing
+   * order) whose target is the *last* one at or before `spineIndex` —
+   * shared by `chapterLabel` and `tocHighlightPath`, both of which need
+   * to treat a spine item with no TOC entry of its own as "part of
+   * whichever listed chapter precedes it," not unlabeled. Returns
+   * `undefined` if there's no such entry — either the book's TOC is
+   * empty, or `spineIndex` is before its first real entry — callers
+   * distinguish those two cases themselves, since they mean different
+   * things (a generic "Chapter N" vs. "Start of Book"). */
+  private nearestPrecedingNavPoint(spineIndex: number): NavPoint | undefined {
+    let best: NavPoint | undefined;
+    let bestSpineIndex = -1;
+
+    for (const candidate of ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)) {
+      const candidateIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === candidate.path);
+      if (candidateIndex === -1 || candidateIndex > spineIndex) {
+        continue;
+      }
+      if (candidateIndex >= bestSpineIndex) {
+        best = candidate;
+        bestSpineIndex = candidateIndex;
+      }
+    }
+
+    return best;
   }
 
   /** The TOC entry the shell should highlight as "current" — not
    * necessarily the entry whose path exactly matches the open spine
    * item (see `currentSpinePath`), since real books routinely have
    * spine items with no TOC entry of their own at all (an epigraph, a
-   * dedication, an unlisted section between two listed chapters). The
-   * correct entry to highlight is always the *last* one (by spine
-   * order, not TOC listing order — the two aren't guaranteed to agree)
-   * whose target is at or before the current spine index, falling back
-   * to the book's very first spine item — i.e. the synthetic "Start of
-   * Book" entry `TocPanel` shows when the TOC's own first entry skips
-   * ahead of it — if the reader is somewhere before the first real TOC
-   * entry's target (a cover, title page, etc. that isn't listed at
-   * all). Without this fallback-to-nearest-preceding-entry logic, a
-   * reader on such an unlisted spine item would see *nothing* at all
-   * highlighted in the TOC, real bug reported directly. */
+   * dedication, an unlisted section between two listed chapters).
+   * Falls back to the book's very first spine item — i.e. the
+   * synthetic "Start of Book" entry `TocPanel` shows when the TOC's own
+   * first entry skips ahead of it — if the reader is somewhere before
+   * the first real TOC entry's target (a cover, title page, etc. that
+   * isn't listed at all). Without this fallback-to-nearest-preceding-
+   * entry logic, a reader on such an unlisted spine item would see
+   * *nothing* at all highlighted in the TOC, a real bug reported
+   * directly. */
   private tocHighlightPath(): string | undefined {
-    let bestPath: string | undefined = this.pkg.spine[0]?.manifestItem.path;
-    let bestSpineIndex = 0;
-
-    for (const path of ReaderController.flattenLinkedPaths(this.navigation.toc.items)) {
-      const candidateIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === path);
-      if (candidateIndex === -1 || candidateIndex > this.spineIndex) {
-        continue;
-      }
-      if (candidateIndex >= bestSpineIndex) {
-        bestPath = path;
-        bestSpineIndex = candidateIndex;
-      }
-    }
-
-    return bestPath;
+    return this.nearestPrecedingNavPoint(this.spineIndex)?.path ?? this.pkg.spine[0]?.manifestItem.path;
   }
 
   /** The content document accessibility (keyboard navigation, focus
@@ -1596,7 +1619,7 @@ export class ReaderController {
         };
       }
     }
-    const targetSpineIndex = Math.max(0, Math.min(this.pkg.spine.length - 1, Math.round(clamped * (this.pkg.spine.length - 1))));
+    const { spineIndex: targetSpineIndex } = this.resolveSpineFraction(clamped);
     return {
       label: `Chapter ${targetSpineIndex + 1} of ${this.pkg.spine.length}`,
       chapterLabel: this.chapterLabel(targetSpineIndex),
@@ -1608,11 +1631,13 @@ export class ReaderController {
    * Prefers exact, book-wide page-level seeking when `bookPagination`
    * has fully measured every spine item (via `resolveGlobalPage`,
    * landing on the precise page); falls back to coarser spine-level
-   * seeking (landing on the first page of whichever chapter the
-   * fraction points at) when the book isn't fully measured yet — a
-   * very large book's background pagination can take a while, and the
-   * scrubber should still be usable in the meantime, just less
-   * precisely. */
+   * seeking (landing *partway through* whichever chapter the fraction
+   * points at, via `resolveSpineFraction` — not always its very first
+   * page, which was a real bug: a chapter spanning many pages made the
+   * scrubber feel like it always undershot wherever the reader actually
+   * released it) when the book isn't fully measured yet — a very large
+   * book's background pagination can take a while, and the scrubber
+   * should still be usable in the meantime, just less precisely. */
   public async seekToFraction(fraction: number): Promise<void> {
     const clamped = Math.max(0, Math.min(1, fraction));
     const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
@@ -1624,8 +1649,30 @@ export class ReaderController {
         return;
       }
     }
-    const targetSpineIndex = Math.max(0, Math.min(this.pkg.spine.length - 1, Math.round(clamped * (this.pkg.spine.length - 1))));
-    await this.openSpineItem(targetSpineIndex);
+    const { spineIndex: targetSpineIndex, localFraction } = this.resolveSpineFraction(clamped);
+    await this.openSpineItem(targetSpineIndex, { landOnFractionInItem: localFraction });
+  }
+
+  /** Picks a spine item and a 0-to-1 fraction within it for a coarse,
+   * spine-level seek — shared by `previewSeek`'s label and
+   * `seekToFraction`'s actual navigation when `bookPagination` hasn't
+   * fully measured the book yet. Treats the whole book as
+   * `spine.length` equal-width slots (a simplifying assumption — real
+   * chapters vary widely in length — but the best available one without
+   * full measurement, and far better than treating every chapter as a
+   * single point): `fraction` selects both which slot it falls in and
+   * how far through that slot, so a drag partway through a long
+   * chapter's share of the book lands partway through that chapter, not
+   * always at its very first page. */
+  private resolveSpineFraction(clamped: number): { spineIndex: number; localFraction: number } {
+    const spineLength = this.pkg.spine.length;
+    if (spineLength <= 0) {
+      return { spineIndex: 0, localFraction: 0 };
+    }
+    const scaled = clamped * spineLength;
+    const spineIndex = Math.max(0, Math.min(spineLength - 1, Math.floor(scaled)));
+    const localFraction = Math.max(0, Math.min(1, scaled - spineIndex));
+    return { spineIndex, localFraction };
   }
 
   /** Navigates to a Table of Contents entry: loads its target spine item
@@ -1643,7 +1690,13 @@ export class ReaderController {
 
   private async openSpineItem(
     spineIndex: number,
-    options: { fragment?: string; bridgeCfi?: string; landOnLastPage?: boolean; landOnPageIndex?: number } = {},
+    options: {
+      fragment?: string;
+      bridgeCfi?: string;
+      landOnLastPage?: boolean;
+      landOnPageIndex?: number;
+      landOnFractionInItem?: number;
+    } = {},
   ): Promise<void> {
     if (!this.containerEl) {
       return;
@@ -1704,6 +1757,16 @@ export class ReaderController {
           // there instead is a reasonable, functional fallback rather
           // than a hard requirement for the progress scrubber to work.
           this.host.goToPageIndex(options.landOnPageIndex);
+        } else if (options.landOnFractionInItem !== undefined && this.host instanceof PaginatedContentHost) {
+          // The coarse, spine-level progress-scrubber fallback (see
+          // `resolveSpineFraction`) only knows a 0-to-1 fraction through
+          // this chapter, not an exact page index, until *after* the
+          // chapter is open and its real page count is known — unlike
+          // `landOnPageIndex`, which already has an exact index computed
+          // from a fully-measured book. Same spread-mode limitation as
+          // `landOnPageIndex` above.
+          const targetIndex = Math.round(options.landOnFractionInItem * Math.max(0, this.host.pageCount - 1));
+          this.host.goToPageIndex(targetIndex);
         }
         this.setUpAccessibility();
       }

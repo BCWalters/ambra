@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { Caption1 } from "@fluentui/react-components";
-import { ReadingTheme } from "@pagina/engine";
+import { ReadingTheme, SpreadPaginatedHost } from "@pagina/engine";
 import type { ReaderSnapshot } from "../ReaderController.js";
 
 export interface PageFurnitureProps {
@@ -71,32 +71,65 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
       ? `Page ${displayPage} of ${displayTotal}${bookPercent !== undefined ? ` · ${bookPercent}%` : ""}`
       : undefined;
 
+  // In spread mode, each of the two visible pages gets its own centered
+  // "Title — Chapter" header, matching how a real printed book's running
+  // head reads the same on facing verso/recto pages — rather than one
+  // header spanning both pages with the title pinned to the outer-left
+  // edge and the chapter to the outer-right edge, which read as
+  // disconnected from the page each was actually sitting on. Computed
+  // from `SpreadPaginatedHost`'s own column/gutter geometry (not
+  // guessed) so each band lines up exactly with the page beneath it.
+  const columnWidth = snapshot.isSpread ? SpreadPaginatedHost.effectiveColumnWidth(snapshot.paneWidth) : undefined;
+  const sideMargin =
+    columnWidth !== undefined
+      ? Math.max(0, (snapshot.paneWidth - (columnWidth * 2 + SpreadPaginatedHost.GUTTER_WIDTH)) / 2)
+      : undefined;
+  const headerBands: { left: number | string; right: number | string; width: number | string }[] =
+    columnWidth !== undefined && sideMargin !== undefined
+      ? [
+          { left: sideMargin, right: "auto", width: columnWidth },
+          { left: "auto", right: sideMargin, width: columnWidth },
+        ]
+      : [{ left: 0, right: 0, width: "auto" }];
+
   return (
     <>
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: ReadingTheme.PAGE_INSET_TOP,
-          zIndex: 5,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 20px",
-          pointerEvents: "none",
-          overflow: "hidden",
-        }}
-      >
-        <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
-          {snapshot.title}
-        </Caption1>
-        <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>
-          {snapshot.currentChapterLabel}
-        </Caption1>
-      </div>
+      {headerBands.map((band, index) => (
+        <div
+          key={index}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: band.left,
+            right: band.right,
+            width: band.width,
+            height: ReadingTheme.PAGE_INSET_TOP,
+            zIndex: 5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: headerBands.length > 1 ? "center" : "space-between",
+            padding: "0 20px",
+            pointerEvents: "none",
+            overflow: "hidden",
+          }}
+        >
+          {headerBands.length > 1 ? (
+            <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
+              {snapshot.title} — {snapshot.currentChapterLabel}
+            </Caption1>
+          ) : (
+            <>
+              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
+                {snapshot.title}
+              </Caption1>
+              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>
+                {snapshot.currentChapterLabel}
+              </Caption1>
+            </>
+          )}
+        </div>
+      ))}
 
       {footerLabel && (
         <div

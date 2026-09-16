@@ -13,12 +13,6 @@ import { PaginatedContentHost } from "./PaginatedContentHost.js";
  * paginated vs. scroll, just automatic instead of reader-chosen. */
 const MIN_SPREAD_COLUMN_WIDTH = 480;
 
-/** The gap between the two columns — wide enough to read as a genuine
- * gutter (the bound edge of an open book) rather than a stray sliver of
- * whitespace, and to hold the divider's shadow gradient (see the
- * constructor). */
-const GUTTER_WIDTH = 40;
-
 /**
  * A two-page spread for reflowable content on wide reader panes: two
  * independent `PaginatedContentHost` instances, each loading and
@@ -50,6 +44,15 @@ const GUTTER_WIDTH = 40;
  * `contentDocuments()` returns, not just the primary one.
  */
 export class SpreadPaginatedHost {
+  /** The gap between the two columns — wide enough to read as a genuine
+   * gutter (the bound edge of an open book) rather than a stray sliver
+   * of whitespace, and to hold the divider's shadow gradient (see the
+   * constructor). Public so callers outside this class (currently
+   * `PageFurniture`, which overlays a running header/footer centered on
+   * each column rather than injecting one into either iframe) can
+   * replicate this exact layout geometry rather than guessing at it. */
+  public static readonly GUTTER_WIDTH = 40;
+
   private readonly left: PaginatedContentHost;
   private readonly right: PaginatedContentHost;
   private readonly containerEl: HTMLDivElement;
@@ -67,7 +70,7 @@ export class SpreadPaginatedHost {
     this.right.element.setAttribute("tabindex", "-1");
 
     const divider = doc.createElement("div");
-    divider.style.width = `${GUTTER_WIDTH}px`;
+    divider.style.width = `${SpreadPaginatedHost.GUTTER_WIDTH}px`;
     divider.style.flexShrink = "0";
     divider.style.alignSelf = "stretch";
     divider.style.background =
@@ -220,11 +223,11 @@ export class SpreadPaginatedHost {
    * least `MIN_SPREAD_COLUMN_WIDTH` each side by side, with room for the
    * gutter between them. */
   public static isEligible(totalWidth: number): boolean {
-    return totalWidth >= MIN_SPREAD_COLUMN_WIDTH * 2 + GUTTER_WIDTH;
+    return totalWidth >= MIN_SPREAD_COLUMN_WIDTH * 2 + SpreadPaginatedHost.GUTTER_WIDTH;
   }
 
   private static columnWidth(totalWidth: number): number {
-    return Math.max(MIN_SPREAD_COLUMN_WIDTH, Math.floor((totalWidth - GUTTER_WIDTH) / 2));
+    return Math.max(MIN_SPREAD_COLUMN_WIDTH, Math.floor((totalWidth - SpreadPaginatedHost.GUTTER_WIDTH) / 2));
   }
 
   /** Public alias for `columnWidth` — the effective single-column width
