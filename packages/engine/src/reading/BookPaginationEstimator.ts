@@ -4,7 +4,7 @@ import type { RenditionLayout, SpineItemRef } from "../container/PackageDocument
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
 import { ReadingTheme } from "../rendering/ReadingTheme.js";
 import type { FontFamilyChoice } from "../rendering/ReadingTheme.js";
-import { aggregateBookPosition, computePriorityOrder } from "./BookPagination.js";
+import { aggregateBookPosition, computePriorityOrder, resolveGlobalPage } from "./BookPagination.js";
 import type { BookPosition } from "./BookPagination.js";
 
 export type { BookPosition } from "./BookPagination.js";
@@ -162,6 +162,17 @@ export class BookPaginationEstimator {
    * `aggregateBookPosition` for exactly when each field becomes defined. */
   public positionFor(currentSpineIndex: number, pageIndexInItem: number): BookPosition {
     return aggregateBookPosition(this.pageCounts, currentSpineIndex, pageIndexInItem);
+  }
+
+  /** The inverse of `positionFor`: given a target book-wide page number
+   * (1-based), finds which spine item and local page index it falls
+   * within — see `resolveGlobalPage`. Used by the reader's progress
+   * scrubber to turn "the reader dragged to N% through the book" into
+   * an actual navigable position. `undefined` if the book isn't fully
+   * measured yet (a caller should fall back to coarser, spine-level
+   * seeking in that case). */
+  public resolveGlobalPage(globalPageOneBased: number): { spineIndex: number; pageIndexInItem: number } | undefined {
+    return resolveGlobalPage(this.pageCounts, globalPageOneBased);
   }
 
   /** Invalidates any in-flight `run` (its remaining work will finish but

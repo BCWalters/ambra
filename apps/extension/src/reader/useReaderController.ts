@@ -16,6 +16,8 @@ export interface UseReaderControllerResult {
   setFontScale: (scale: number) => void;
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
+  previewSeek: (fraction: number) => { label: string; chapterLabel: string };
+  seekToFraction: (fraction: number) => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -139,6 +141,20 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const previewSeek = useCallback(
+    (fraction: number) => {
+      return controller?.previewSeek(fraction) ?? { label: "", chapterLabel: "" };
+    },
+    [controller],
+  );
+
+  const seekToFraction = useCallback(
+    (fraction: number) => {
+      void controller?.seekToFraction(fraction);
+    },
+    [controller],
+  );
+
   return {
     snapshot,
     contentHostRef,
@@ -150,5 +166,7 @@ export function useReaderController(): UseReaderControllerResult {
     setFontScale,
     setFontFamily,
     setPageTheme,
+    previewSeek,
+    seekToFraction,
   };
 }

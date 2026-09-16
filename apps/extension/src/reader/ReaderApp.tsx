@@ -7,7 +7,9 @@ import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { PageFurniture } from "./components/PageFurniture.js";
+import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
+import { useAutoHideChrome } from "./useAutoHideChrome.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -34,10 +36,20 @@ export const ReaderApp: FC = () => {
     setFontScale,
     setFontFamily,
     setPageTheme,
+    previewSeek,
+    seekToFraction,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
+  // Shared between the toolbar and the progress scrubber (see
+  // `useAutoHideChrome`'s doc comment) so both fade in/out together as
+  // one unit of chrome, rather than each keeping its own independent
+  // (and potentially out-of-sync) visibility state.
+  const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
+    isTocOpen,
+    snapshot?.contentPointerActivityId,
+  );
 
   useEffect(() => {
     const bookId = new URLSearchParams(window.location.search).get("bookId");
@@ -111,7 +123,8 @@ export const ReaderApp: FC = () => {
       <div style={{ position: "absolute", inset: 0, display: "flex" }}>
         <TocPanel
           items={snapshot.toc}
-          currentPath={snapshot.currentSpinePath}
+          currentPath={snapshot.highlightedTocPath}
+          firstSpinePath={snapshot.firstSpinePath}
           open={isTocOpen}
           pinned={isTocPinned}
           onTogglePin={() => setIsTocPinned((pinned) => !pinned)}
@@ -175,6 +188,16 @@ export const ReaderApp: FC = () => {
             onSetFontScale={setFontScale}
             onSetFontFamily={setFontFamily}
             onSetPageTheme={setPageTheme}
+            visible={chromeVisible}
+            handlers={chromeHandlers}
+          />
+
+          <ProgressScrubber
+            snapshot={snapshot}
+            visible={chromeVisible}
+            handlers={chromeHandlers}
+            onPreview={previewSeek}
+            onSeek={seekToFraction}
           />
 
           {snapshot.error && (

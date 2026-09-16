@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateBookPosition, computePriorityOrder } from "./BookPagination.js";
+import { aggregateBookPosition, computePriorityOrder, resolveGlobalPage } from "./BookPagination.js";
 
 describe("computePriorityOrder", () => {
   it("starts with the current spine index", () => {
@@ -60,5 +60,55 @@ describe("aggregateBookPosition", () => {
 
   it("returns totalPages of 0 for an empty pageCounts array", () => {
     expect(aggregateBookPosition([], 0, 0)).toEqual({ currentPage: 1, totalPages: 0 });
+  });
+});
+
+describe("resolveGlobalPage", () => {
+  it("resolves a page within the first spine item", () => {
+    const counts = [10, 8, 12];
+    expect(resolveGlobalPage(counts, 5)).toEqual({ spineIndex: 0, pageIndexInItem: 4 });
+  });
+
+  it("resolves a page at the exact boundary between two spine items", () => {
+    const counts = [10, 8, 12];
+    // Page 10 is the last page of item 0; page 11 is the first of item 1.
+    expect(resolveGlobalPage(counts, 10)).toEqual({ spineIndex: 0, pageIndexInItem: 9 });
+    expect(resolveGlobalPage(counts, 11)).toEqual({ spineIndex: 1, pageIndexInItem: 0 });
+  });
+
+  it("resolves a page within a later spine item", () => {
+    const counts = [10, 8, 12];
+    expect(resolveGlobalPage(counts, 25)).toEqual({ spineIndex: 2, pageIndexInItem: 6 });
+  });
+
+  it("clamps an out-of-range (too high) target to the last page of the book", () => {
+    const counts = [10, 8, 12];
+    expect(resolveGlobalPage(counts, 999)).toEqual({ spineIndex: 2, pageIndexInItem: 11 });
+  });
+
+  it("clamps a too-low (zero or negative) target to page 1", () => {
+    const counts = [10, 8, 12];
+    expect(resolveGlobalPage(counts, 0)).toEqual({ spineIndex: 0, pageIndexInItem: 0 });
+    expect(resolveGlobalPage(counts, -5)).toEqual({ spineIndex: 0, pageIndexInItem: 0 });
+  });
+
+  it("rounds a fractional target to the nearest whole page", () => {
+    const counts = [10, 8, 12];
+    expect(resolveGlobalPage(counts, 5.4)).toEqual({ spineIndex: 0, pageIndexInItem: 4 });
+    expect(resolveGlobalPage(counts, 5.6)).toEqual({ spineIndex: 0, pageIndexInItem: 5 });
+  });
+
+  it("returns undefined when the spine item containing the target isn't measured yet", () => {
+    const counts = [10, undefined, 12];
+    expect(resolveGlobalPage(counts, 15)).toBeUndefined();
+  });
+
+  it("returns undefined for an empty pageCounts array", () => {
+    expect(resolveGlobalPage([], 1)).toBeUndefined();
+  });
+
+  it("returns undefined when clamping to the last page but that page isn't measured", () => {
+    const counts = [10, undefined];
+    expect(resolveGlobalPage(counts, 999)).toBeUndefined();
   });
 });

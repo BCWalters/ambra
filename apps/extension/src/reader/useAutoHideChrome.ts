@@ -28,13 +28,24 @@ export interface AutoHideChrome {
  * toolbar holds its own close control) or the pointer/focus is on the
  * toolbar itself.
  *
+ * `contentActivityId`, if given, is watched for changes (typically
+ * `ReaderSnapshot.contentPointerActivityId`) and hides the toolbar
+ * *immediately* — no fade delay — the instant it changes: a click into
+ * the book content is a strong, deliberate signal the reader wants the
+ * chrome out of the way right now, not in `HIDE_DELAY_MS`. Ignores the
+ * id's very first defined value (whether that's on mount, or — since this
+ * hook is called before the book has finished loading — on the later
+ * render where a still-loading `undefined` id first becomes a real
+ * number) so a freshly-mounted toolbar is never hidden before the reader
+ * has actually done anything.
+ *
  * The fade is purely a cosmetic, mouse-oriented convenience: the toolbar
  * remains in the accessibility tree and keyboard-focusable at all times
  * regardless of `visible` — only its opacity/pointer-events change (see
  * the `Toolbar` component's styling) — so a keyboard or assistive
  * technology user is never blocked from reaching it.
  */
-export function useAutoHideChrome(pinned: boolean): AutoHideChrome {
+export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): AutoHideChrome {
   const [visible, setVisible] = useState(true);
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
@@ -80,6 +91,28 @@ export function useAutoHideChrome(pinned: boolean): AutoHideChrome {
       window.clearTimeout(timerRef.current);
     };
   }, [pinned]);
+
+  // Only hides on a genuine *increment* of contentActivityId — never on
+  // mount, and never on the id's very first defined value. The reader
+  // calls this hook unconditionally before its book has finished loading
+  // (so it can share one visibility state between the toolbar and the
+  // progress scrubber, both of which only render once `snapshot` exists —
+  // see `ReaderApp`), so `contentActivityId` itself starts as `undefined`
+  // and jumps straight to its first real number once the snapshot arrives.
+  // That jump is just the book finishing loading, not a deliberate click
+  // into the content — without this guard it was indistinguishable from a
+  // real activity bump and hid a freshly-mounted toolbar before the reader
+  // had done anything.
+  const previousActivityIdRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousActivityIdRef.current;
+    previousActivityIdRef.current = contentActivityId;
+    if (previous === undefined || contentActivityId === undefined || pinned || hoveredRef.current || focusedRef.current) {
+      return;
+    }
+    window.clearTimeout(timerRef.current);
+    setVisible(false);
+  }, [contentActivityId]);
 
   return {
     visible,

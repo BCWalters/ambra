@@ -80,3 +80,48 @@ export function aggregateBookPosition(
 
   return { currentPage, totalPages };
 }
+
+/** The inverse of `aggregateBookPosition`: given every spine item's page
+ * count and a target *book-wide* page number (1-based), finds which
+ * spine item that page falls within and its zero-based page index
+ * inside that item — the calculation the progress scrubber needs to
+ * turn "the reader dragged to 61% through the book" into an actual
+ * navigable position. Returns `undefined` if any spine item up to and
+ * including the one containing the target page hasn't been measured
+ * yet (an imprecise, partially-measured book can't be seeked into
+ * exactly — the caller should fall back to coarser, spine-level
+ * seeking in that case; see `ReaderController.seekToFraction`).
+ * `globalPageOneBased` is clamped into range rather than ever failing
+ * on an out-of-bounds value, since it's normally derived from a
+ * continuous drag fraction that can easily overshoot by a fraction of
+ * a page at either end. */
+export function resolveGlobalPage(
+  pageCounts: readonly (number | undefined)[],
+  globalPageOneBased: number,
+): { spineIndex: number; pageIndexInItem: number } | undefined {
+  if (pageCounts.length === 0) {
+    return undefined;
+  }
+  const clampedTarget = Math.max(1, Math.round(globalPageOneBased));
+  let remaining = clampedTarget;
+  for (let i = 0; i < pageCounts.length; i++) {
+    const count = pageCounts[i];
+    if (count === undefined) {
+      return undefined;
+    }
+    if (remaining <= count) {
+      return { spineIndex: i, pageIndexInItem: Math.max(0, remaining - 1) };
+    }
+    remaining -= count;
+  }
+  // The target was at or past the very end of the book — clamp to the
+  // last page of the last spine item rather than treating it as
+  // unresolved (a drag to the far right edge of the scrubber should
+  // always land somewhere, not silently do nothing).
+  const lastIndex = pageCounts.length - 1;
+  const lastCount = pageCounts[lastIndex];
+  if (lastCount === undefined) {
+    return undefined;
+  }
+  return { spineIndex: lastIndex, pageIndexInItem: Math.max(0, lastCount - 1) };
+}

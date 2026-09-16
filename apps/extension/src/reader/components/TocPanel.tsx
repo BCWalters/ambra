@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1 } from "@fluentui/react-components";
-import { DismissRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
-import type { NavPoint } from "@pagina/engine";
+import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
+import { NavPoint } from "@pagina/engine";
 import {
   CHROME_BACKGROUND_SOLID,
   CHROME_BORDER,
@@ -10,6 +10,25 @@ import {
   CHROME_SELECTED_BACKGROUND,
   CHROME_SHADOW,
 } from "../chromeTheme.js";
+
+/** Depth-first search for the first *linked* entry in a TOC tree (in
+ * document order) — used to detect whether the TOC's own first entry
+ * already points at the very start of the book, or skips ahead of some
+ * front matter (a cover, title page, copyright page, etc.) that the
+ * navigation document simply never lists — see `TocPanel`'s "Start of
+ * Book" synthetic entry. */
+function findFirstLinkedPath(items: readonly NavPoint[]): string | undefined {
+  for (const item of items) {
+    if (item.isLinked) {
+      return item.path;
+    }
+    const found = findFirstLinkedPath(item.children);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return undefined;
+}
 
 interface NavTreeProps {
   items: readonly NavPoint[];
@@ -91,6 +110,11 @@ export interface TocPanelProps {
    * `ReaderSnapshot.currentSpinePath`) — highlights whichever entry
    * points at it. */
   currentPath: string | undefined;
+  /** Archive-relative path of the book's very first spine item (see
+   * `ReaderSnapshot.firstSpinePath`) — compared against the TOC's own
+   * first linked entry to decide whether to show a synthetic "Start of
+   * Book" entry above it (see the component doc comment). */
+  firstSpinePath: string | undefined;
   onSelect: (navPoint: NavPoint) => void;
   /** Whether the panel should currently be shown at all. Always rendered
    * (never conditionally unmounted) so it can animate closed instead of
@@ -116,8 +140,24 @@ export interface TocPanelProps {
  * auto-dismiss behaviors.
  *
  * The entry matching `currentPath` is highlighted, so the reader always
- * has a sense of "where am I" when they open it. */
-export const TocPanel: FC<TocPanelProps> = ({ items, currentPath, onSelect, open, pinned, onTogglePin, onRequestClose }) => {
+ * has a sense of "where am I" when they open it.
+ *
+ * Shows a synthetic "Start of Book" entry above the book's own TOC
+ * whenever the TOC's first linked entry doesn't point at the very first
+ * spine item — real books commonly leave a cover, title page, or
+ * copyright page out of their navigation entirely, which would
+ * otherwise leave no way to get back to the literal beginning of the
+ * book once you've navigated away from it. */
+export const TocPanel: FC<TocPanelProps> = ({
+  items,
+  currentPath,
+  firstSpinePath,
+  onSelect,
+  open,
+  pinned,
+  onTogglePin,
+  onRequestClose,
+}) => {
   useEffect(() => {
     if (!open || pinned) {
       return;
@@ -213,6 +253,46 @@ export const TocPanel: FC<TocPanelProps> = ({ items, currentPath, onSelect, open
           )}
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
+          {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
+            <button
+              type="button"
+              onClick={() => onSelect(new NavPoint("Start of Book", firstSpinePath, undefined, []))}
+              aria-current={currentPath === firstSpinePath ? "location" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
+                border: "none",
+                borderRadius: 6,
+                color:
+                  currentPath === firstSpinePath
+                    ? "var(--colorNeutralForeground1, #1a1a1a)"
+                    : "var(--colorNeutralForeground2, #333)",
+                fontWeight: currentPath === firstSpinePath ? 600 : 400,
+                cursor: "pointer",
+                padding: "7px 10px",
+                marginBottom: 4,
+                textAlign: "left",
+                font: "inherit",
+                lineHeight: 1.35,
+              }}
+              onMouseEnter={(e) => {
+                if (currentPath !== firstSpinePath) {
+                  e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentPath !== firstSpinePath) {
+                  e.currentTarget.style.background = "none";
+                }
+              }}
+            >
+              <HomeRegular fontSize={16} />
+              Start of Book
+            </button>
+          )}
           <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} />
         </div>
       </nav>

@@ -36,6 +36,17 @@ export interface ReaderSnapshot {
    * `NavPoint.path`. `undefined` only if the current spine item somehow
    * has no manifest entry (shouldn't happen for a valid EPUB). */
   currentSpinePath: string | undefined;
+  /** Archive-relative manifest path of the book's very first spine item
+   * — lets the shell (`TocPanel`) detect whether the navigation
+   * document's own first entry skips ahead of some unlisted front
+   * matter (a cover, title page, copyright page), and if so, offer a
+   * synthetic "Start of Book" entry that actually reaches it. */
+  firstSpinePath: string | undefined;
+  /** The TOC entry path the shell should actually highlight as
+   * "current" (see `ReaderController.tocHighlightPath`) — not always
+   * the same as `currentSpinePath`, since the open spine item may have
+   * no TOC entry of its own at all. */
+  highlightedTocPath: string | undefined;
   /** A human-readable label for the current chapter — the matching TOC
    * entry's own label when the navigation has one, else a generic
    * "Chapter N" (see `chapterLabel`). Used for the running header (see
@@ -91,6 +102,12 @@ export interface ReaderSnapshot {
    * to produce the same "Page 3 of 12" text (impossible in practice for
    * that exact case, but real for repeated chapter-boundary turns). */
   announcementId: number;
+  /** Increments on every pointerdown inside the content — see
+   * `ReaderController.contentPointerActivityId`'s doc comment. The
+   * shell's `Toolbar` watches this to hide itself immediately on a
+   * click into the book, rather than waiting for the usual auto-hide
+   * timeout. */
+  contentPointerActivityId: number;
 }
 
 /**
@@ -172,6 +189,15 @@ export class ReaderController {
   private readonly accessibility = new AccessibilityController();
   private announcement: string | undefined;
   private announcementId = 0;
+  /** Increments on every pointerdown inside the content (any content
+   * host's iframe document) — the shell's `Toolbar` watches this via
+   * `snapshot()` to hide itself immediately the instant the reader
+   * clicks into the book, rather than waiting for the usual auto-hide
+   * timeout (see `useAutoHideChrome`). Deliberately *every* pointerdown,
+   * not just ones that turn out to be a page-turn tap — a click that
+   * lands on a link, or one that starts a text-selection drag, should
+   * still dismiss the toolbar just as immediately. */
+  private contentPointerActivityId = 0;
   /** Detaches the current spine item's in-content link click listener —
    * see `setUpLinkInterception`. Re-created on every `openSpineItem` call
    * since each one gets a fresh iframe/document. */
@@ -261,6 +287,8 @@ export class ReaderController {
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
         currentSpinePath: this.pkg.spine[this.spineIndex]?.manifestItem.path,
+        firstSpinePath: this.pkg.spine[0]?.manifestItem.path,
+        highlightedTocPath: this.tocHighlightPath(),
         currentChapterLabel: this.chapterLabel(this.spineIndex),
         viewMode: this.viewMode,
         isFixedLayout: this.host instanceof FixedContentHost,
@@ -277,6 +305,7 @@ export class ReaderController {
         error: this.error,
         announcement: this.announcement,
         announcementId: this.announcementId,
+        contentPointerActivityId: this.contentPointerActivityId,
       };
     }
     return this.cachedSnapshot;
@@ -287,6 +316,13 @@ export class ReaderController {
     for (const listener of this.listeners) {
       listener();
     }
+  }
+
+  /** Bumps `contentPointerActivityId` and notifies — see that field's
+   * doc comment. */
+  private bumpContentActivity(): void {
+    this.contentPointerActivityId++;
+    this.notify();
   }
 
   /** Mounts the current view mode's content host into `containerEl` and
@@ -447,6 +483,53 @@ export class ReaderController {
       }
     }
     return undefined;
+  }
+
+  /** Flattens every *linked* entry's path out of a TOC tree, in document
+   * order — a helper for `tocHighlightPath`, which needs to consider
+   * every entry as a candidate regardless of nesting depth. */
+  private static flattenLinkedPaths(items: readonly NavPoint[]): string[] {
+    const paths: string[] = [];
+    for (const item of items) {
+      if (item.isLinked && item.path !== undefined) {
+        paths.push(item.path);
+      }
+      paths.push(...ReaderController.flattenLinkedPaths(item.children));
+    }
+    return paths;
+  }
+
+  /** The TOC entry the shell should highlight as "current" — not
+   * necessarily the entry whose path exactly matches the open spine
+   * item (see `currentSpinePath`), since real books routinely have
+   * spine items with no TOC entry of their own at all (an epigraph, a
+   * dedication, an unlisted section between two listed chapters). The
+   * correct entry to highlight is always the *last* one (by spine
+   * order, not TOC listing order — the two aren't guaranteed to agree)
+   * whose target is at or before the current spine index, falling back
+   * to the book's very first spine item — i.e. the synthetic "Start of
+   * Book" entry `TocPanel` shows when the TOC's own first entry skips
+   * ahead of it — if the reader is somewhere before the first real TOC
+   * entry's target (a cover, title page, etc. that isn't listed at
+   * all). Without this fallback-to-nearest-preceding-entry logic, a
+   * reader on such an unlisted spine item would see *nothing* at all
+   * highlighted in the TOC, real bug reported directly. */
+  private tocHighlightPath(): string | undefined {
+    let bestPath: string | undefined = this.pkg.spine[0]?.manifestItem.path;
+    let bestSpineIndex = 0;
+
+    for (const path of ReaderController.flattenLinkedPaths(this.navigation.toc.items)) {
+      const candidateIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === path);
+      if (candidateIndex === -1 || candidateIndex > this.spineIndex) {
+        continue;
+      }
+      if (candidateIndex >= bestSpineIndex) {
+        bestPath = path;
+        bestSpineIndex = candidateIndex;
+      }
+    }
+
+    return bestPath;
   }
 
   /** The content document accessibility (keyboard navigation, focus
@@ -643,6 +726,19 @@ export class ReaderController {
 
       iframeDocument.addEventListener("click", clickHandler);
       cleanups.push(() => iframeDocument.removeEventListener("click", clickHandler));
+
+      // Hides the toolbar immediately on any click into the content —
+      // see `contentPointerActivityId`'s doc comment. Attached here
+      // (rather than only alongside the paginated/spread click-to-
+      // navigate listeners) so this also covers scroll mode and fixed-
+      // layout content, which have no page-turn gesture of their own but
+      // should still dismiss the toolbar the instant the reader clicks
+      // into the page.
+      const pointerDownHandler = (): void => {
+        this.bumpContentActivity();
+      };
+      iframeDocument.addEventListener("pointerdown", pointerDownHandler);
+      cleanups.push(() => iframeDocument.removeEventListener("pointerdown", pointerDownHandler));
     }
 
     this.linkClickCleanup = () => {
@@ -1132,9 +1228,26 @@ export class ReaderController {
    * columns (not just the primary/left one accessibility uses), matching
    * `setUpLinkInterception`'s existing scope: mouse interaction works on
    * both pages of a spread, even though only the left one participates
-   * in keyboard/focus accessibility. Returns a single cleanup function
-   * for both columns' listeners, for `setUpDragPageTurn`'s `dragCleanup`
-   * to call as one unit. */
+   * in keyboard/focus accessibility.
+   *
+   * Also attaches a *third* listener directly to `host.element` (the
+   * parent-side container both iframes sit inside, not a cross-document
+   * boundary) for the blank-companion-page case: `SpreadPaginatedHost`
+   * hides the right column with `visibility: hidden` when there's no
+   * next page to show it (see `syncRight`), and a `visibility: hidden`
+   * element is never hit-tested at all — a click there passes straight
+   * through to whatever's behind it in the *same* document, which is
+   * this container, not the (invisible) iframe. Without this, tapping
+   * that blank facing page silently did nothing, a real bug caught via
+   * real-Chromium interaction: there was simply no listener anywhere
+   * that a click landing there could ever reach. Any tap this container-
+   * level listener catches — the blank page, or the narrow gutter
+   * divider between columns — reasonably means "continue forward", so
+   * it always turns the page ahead rather than bucketing into thirds
+   * (there's no content there to reference thirds against).
+   *
+   * Returns a single cleanup function for all three listeners, for
+   * `setUpDragPageTurn`'s `dragCleanup` to call as one unit. */
   private setUpSpreadClickToNavigate(host: SpreadPaginatedHost): () => void {
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const cleanups: Array<() => void> = [];
@@ -1159,6 +1272,32 @@ export class ReaderController {
         doc.removeEventListener("pointerup", onPointerUp);
       });
     }
+
+    const containerEl = host.element;
+    let containerStartX = 0;
+    let containerStartY = 0;
+    const onContainerPointerDown = (event: PointerEvent): void => {
+      this.bumpContentActivity();
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+      containerStartX = event.clientX;
+      containerStartY = event.clientY;
+    };
+    const onContainerPointerUp = (event: PointerEvent): void => {
+      const deltaX = Math.abs(event.clientX - containerStartX);
+      const deltaY = Math.abs(event.clientY - containerStartY);
+      if (deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE || deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE) {
+        return;
+      }
+      void this.turnPage(1);
+    };
+    containerEl.addEventListener("pointerdown", onContainerPointerDown);
+    containerEl.addEventListener("pointerup", onContainerPointerUp);
+    cleanups.push(() => {
+      containerEl.removeEventListener("pointerdown", onContainerPointerDown);
+      containerEl.removeEventListener("pointerup", onContainerPointerUp);
+    });
 
     return () => {
       for (const cleanup of cleanups) {
@@ -1425,8 +1564,6 @@ export class ReaderController {
     this.isTurningPage = false;
   }
 
-
-
   /** Loads the adjacent chapter directly (both view modes) — the
    * "previous/next chapter" toolbar actions, as distinct from `turnPage`
    * which only steps by one page within paginated mode. */
@@ -1436,6 +1573,59 @@ export class ReaderController {
       return;
     }
     await this.openSpineItem(nextSpineIndex);
+  }
+
+  /** A live, side-effect-free preview of where a progress-scrubber drag
+   * at `fraction` (0 to 1 across the whole book) would land, for the
+   * scrubber to show in its drag popup without actually navigating
+   * there on every pointer move — only `seekToFraction` (called once,
+   * on release) actually commits it. Prefers an exact, book-wide page
+   * number when `bookPagination` has fully measured the book; falls
+   * back to a coarser chapter-level preview otherwise (see
+   * `seekToFraction`'s doc comment for why). */
+  public previewSeek(fraction: number): { label: string; chapterLabel: string } {
+    const clamped = Math.max(0, Math.min(1, fraction));
+    const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
+    if (totalPages !== undefined && totalPages > 0) {
+      const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
+      const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
+      if (resolved) {
+        return {
+          label: `Page ${targetGlobalPage} of ${totalPages}`,
+          chapterLabel: this.chapterLabel(resolved.spineIndex),
+        };
+      }
+    }
+    const targetSpineIndex = Math.max(0, Math.min(this.pkg.spine.length - 1, Math.round(clamped * (this.pkg.spine.length - 1))));
+    return {
+      label: `Chapter ${targetSpineIndex + 1} of ${this.pkg.spine.length}`,
+      chapterLabel: this.chapterLabel(targetSpineIndex),
+    };
+  }
+
+  /** Jumps to `fraction` (0 to 1) of the way through the whole book —
+   * the progress scrubber's "drop" action, once a drag settles.
+   * Prefers exact, book-wide page-level seeking when `bookPagination`
+   * has fully measured every spine item (via `resolveGlobalPage`,
+   * landing on the precise page); falls back to coarser spine-level
+   * seeking (landing on the first page of whichever chapter the
+   * fraction points at) when the book isn't fully measured yet — a
+   * very large book's background pagination can take a while, and the
+   * scrubber should still be usable in the meantime, just less
+   * precisely. */
+  public async seekToFraction(fraction: number): Promise<void> {
+    const clamped = Math.max(0, Math.min(1, fraction));
+    const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
+    if (totalPages !== undefined && totalPages > 0) {
+      const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
+      const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
+      if (resolved) {
+        await this.openSpineItem(resolved.spineIndex, { landOnPageIndex: resolved.pageIndexInItem });
+        return;
+      }
+    }
+    const targetSpineIndex = Math.max(0, Math.min(this.pkg.spine.length - 1, Math.round(clamped * (this.pkg.spine.length - 1))));
+    await this.openSpineItem(targetSpineIndex);
   }
 
   /** Navigates to a Table of Contents entry: loads its target spine item
@@ -1453,7 +1643,7 @@ export class ReaderController {
 
   private async openSpineItem(
     spineIndex: number,
-    options: { fragment?: string; bridgeCfi?: string; landOnLastPage?: boolean } = {},
+    options: { fragment?: string; bridgeCfi?: string; landOnLastPage?: boolean; landOnPageIndex?: number } = {},
   ): Promise<void> {
     if (!this.containerEl) {
       return;
@@ -1508,6 +1698,12 @@ export class ReaderController {
       } else {
         if (options.landOnLastPage && (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)) {
           this.host.goToLastPage();
+        } else if (options.landOnPageIndex !== undefined && this.host instanceof PaginatedContentHost) {
+          // Spread mode has no exact-page-index API of its own (see
+          // `SpreadPaginatedHost`) — landing on the chapter's first page
+          // there instead is a reasonable, functional fallback rather
+          // than a hard requirement for the progress scrubber to work.
+          this.host.goToPageIndex(options.landOnPageIndex);
         }
         this.setUpAccessibility();
       }
