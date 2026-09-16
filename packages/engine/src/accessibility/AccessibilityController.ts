@@ -81,6 +81,16 @@ export class AccessibilityController {
     if (!element.hasAttribute("tabindex")) {
       element.setAttribute("tabindex", "-1");
     }
-    (element as HTMLElement).focus();
+    // `preventScroll` is essential here: the content document's scroll
+    // position is not a free variable a browser default should ever
+    // touch — paginated mode owns it entirely via a `transform` (see
+    // `PaginatedContentHost.showCurrentPage`) and scroll mode owns it via
+    // `ScrollViewEngine`. Without `preventScroll`, the browser's default
+    // scroll-into-view-on-focus behavior fights with (and partially wins
+    // against) that transform, silently eating into the reserved
+    // `PAGE_INSET_TOP` margin and letting text creep up toward the
+    // toolbar on every navigation that moves focus — a real regression
+    // caught via real-Chromium measurement, not merely theoretical.
+    (element as HTMLElement).focus({ preventScroll: true });
   }
 }
