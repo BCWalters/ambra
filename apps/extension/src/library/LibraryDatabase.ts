@@ -26,9 +26,10 @@ interface BlobRecord {
   readonly blob: Blob;
 }
 
-/** A single key/value preference row — currently just the default view
- * mode (see `view-mode-preference`), but modeled generically since a
- * settings panel (font size, theme, etc.) will add more in wave 2. */
+/** A single key/value preference row — the default view mode (see
+ * `view-mode-preference`) and default font-size scale (see
+ * `ReadingTheme`/`toolbar-redesign`), modeled generically since more
+ * reader-wide settings (theme, etc.) are likely to follow. */
 interface PreferenceRecord {
   readonly key: string;
   readonly value: unknown;
@@ -43,6 +44,7 @@ const PROGRESS_STORE = "readingProgress";
 const PREFERENCES_STORE = "preferences";
 
 const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
+const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -134,6 +136,20 @@ export class LibraryDatabase {
 
   public async setDefaultViewMode(mode: ViewMode): Promise<void> {
     const record: PreferenceRecord = { key: VIEW_MODE_PREFERENCE_KEY, value: mode };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default font-size scale (see `ReadingTheme`) new
+   * chapters should open at, persisted across sessions the same way as
+   * `getDefaultViewMode`. `undefined` if never set, in which case callers
+   * should fall back to `1` (the theme's default) themselves. */
+  public async getDefaultFontScale(): Promise<number | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, FONT_SCALE_PREFERENCE_KEY);
+    return record?.value as number | undefined;
+  }
+
+  public async setDefaultFontScale(scale: number): Promise<void> {
+    const record: PreferenceRecord = { key: FONT_SCALE_PREFERENCE_KEY, value: scale };
     await this.put(PREFERENCES_STORE, record);
   }
 

@@ -12,6 +12,7 @@ export interface UseReaderControllerResult {
   goToChapter: (direction: 1 | -1) => void;
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
   setViewMode: (mode: ViewMode) => void;
+  setFontScale: (scale: number) => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -103,5 +104,12 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
-  return { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode };
+  const setFontScale = useCallback(
+    (scale: number) => {
+      void controller?.setFontScale(scale);
+    },
+    [controller],
+  );
+
+  return { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode, setFontScale };
 }

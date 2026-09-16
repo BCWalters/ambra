@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fluentui/react-components": "^9.74.0",
+    "@fluentui/react-icons": "^2.0.341",
     "@pagina/engine": "workspace:*",
     "@pagina/shell": "workspace:*",
     "react": "^19.3.0",

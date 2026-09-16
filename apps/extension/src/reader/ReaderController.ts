@@ -8,6 +8,7 @@ import {
   LocatorResolver,
   NavigationDocument,
   PaginatedContentHost,
+  ReadingTheme,
   ResourceUrlResolver,
   resolveEpubPath,
   ScrollContentHost,
@@ -37,6 +38,10 @@ export interface ReaderSnapshot {
   isFixedLayout: boolean;
   pageIndex: number;
   pageCount: number;
+  /** The current reader-controlled font-size multiplier (see
+   * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
+   * a fixed-layout spine item, which has no reader-adjustable typography. */
+  fontScale: number;
   isLoading: boolean;
   error: string | undefined;
   /** Text for the shell's `aria-live` region to announce (page turns,
@@ -75,6 +80,10 @@ export class ReaderController {
   /** Defaults to "paginated", but `open` overwrites this from the saved
    * `view-mode-preference` (if any) before the controller is ever used. */
   private viewMode: ViewMode = "paginated";
+  /** Defaults to `1` (the theme's own default), but `open` overwrites
+   * this from the saved font-scale preference (if any) — see
+   * `ReadingTheme`, `setFontScale`. */
+  private fontScale = 1;
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
   private width = 0;
@@ -133,6 +142,7 @@ export class ReaderController {
 
     const controller = new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation, bookId, library);
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
+    controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
     return controller;
   }
 
@@ -152,6 +162,7 @@ export class ReaderController {
         isFixedLayout: this.host instanceof FixedContentHost,
         pageIndex: this.host instanceof PaginatedContentHost ? this.host.currentPageIndex : 0,
         pageCount: this.host instanceof PaginatedContentHost ? this.host.pageCount : 0,
+        fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         isLoading: this.isLoading,
         error: this.error,
         announcement: this.announcement,
@@ -413,6 +424,46 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Sets the reader-controlled font-size multiplier (clamped to
+   * `ReadingTheme`'s supported range), persists it as the new default for
+   * future chapters/sessions, and re-measures the current content host at
+   * the new size — the same relayout path a window resize uses, so
+   * reading position is preserved across the font-size change exactly the
+   * way it is across a resize (see `PaginatedContentHost.relayout`/
+   * `ScrollContentHost.resize`). A no-op for a fixed-layout spine item,
+   * which has no reader-adjustable typography. */
+  public async setFontScale(scale: number): Promise<void> {
+    const clamped = Math.min(ReadingTheme.MAX_FONT_SCALE, Math.max(ReadingTheme.MIN_FONT_SCALE, scale));
+    if (clamped === this.fontScale || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.fontScale = clamped;
+    await this.library.setDefaultFontScale(clamped);
+    this.applyFontScaleToHost();
+    this.notify();
+    await this.saveProgress();
+  }
+
+  /** Writes `this.fontScale` onto the current content host's iframe
+   * document as a CSS custom property (see `ReadingTheme.applyFontScale`)
+   * and re-measures at the current size — every spine item load applies
+   * the persisted scale the same way (see `openSpineItem`), so a book
+   * opened mid-session at a non-default scale looks correct immediately,
+   * not just after the first explicit font-size change. No-op for
+   * fixed-layout content, which never gets the reading theme at all. */
+  private applyFontScaleToHost(): void {
+    const iframeDocument = this.host?.element.contentDocument;
+    if (!iframeDocument || this.host instanceof FixedContentHost) {
+      return;
+    }
+    ReadingTheme.applyFontScale(iframeDocument, this.fontScale);
+    if (this.host instanceof PaginatedContentHost) {
+      this.host.relayout(this.width, this.height);
+    } else if (this.host instanceof ScrollContentHost) {
+      this.host.resize(this.width, this.height);
+    }
+  }
+
   /** Turns one page in paginated mode. In scroll mode, this is a no-op —
    * scrolling is continuous and has no discrete "page" concept; use
    * native scrolling within the content host instead. Crossing the first/
@@ -494,6 +545,9 @@ export class ReaderController {
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
         this.host = host;
+        if (this.fontScale !== 1) {
+          this.applyFontScaleToHost();
+        }
       }
 
       this.spineIndex = spineIndex;

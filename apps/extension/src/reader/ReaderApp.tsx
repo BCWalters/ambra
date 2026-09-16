@@ -21,7 +21,7 @@ import { useReaderController } from "./useReaderController.js";
  * just needs an `ArrayBuffer`.
  */
 export const ReaderApp: FC = () => {
-  const { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode } =
+  const { snapshot, contentHostRef, openBook, turnPage, goToChapter, goToNavPoint, setViewMode, setFontScale } =
     useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [openError, setOpenError] = useState<string | null>(null);
@@ -84,24 +84,14 @@ export const ReaderApp: FC = () => {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <Toolbar
-        snapshot={snapshot}
-        onToggleToc={() => setIsTocOpen((open) => !open)}
-        onTurnPage={turnPage}
-        onGoToChapter={goToChapter}
-        onSetViewMode={setViewMode}
-      />
-
-      {snapshot.error && (
-        <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)", padding: "4px 12px" }}>
-          Error: {snapshot.error}
-        </Body1>
-      )}
-
-      <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
-
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+    <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
+      {/* The content row fills the entire viewport — the toolbar is an
+          absolutely-positioned overlay (see `Toolbar`), not a normal-flow
+          element pushing this row down, so it can fade in/out without
+          ever changing this row's size (which would otherwise trigger a
+          pointless relayout via the `ResizeObserver` below on every
+          fade). */}
+      <div style={{ position: "absolute", inset: 0, display: "flex" }}>
         {isTocOpen && (
           <TocPanel
             items={snapshot.toc}
@@ -137,8 +127,44 @@ export const ReaderApp: FC = () => {
               style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
             />
           )}
+
+          {/* Scoped to this content pane (not the TOC panel beside it) —
+              the toolbar is positioned relative to *this* div so it never
+              overlaps the TOC panel's own clickable area when both are
+              open at once. */}
+          <Toolbar
+            snapshot={snapshot}
+            isTocOpen={isTocOpen}
+            onToggleToc={() => setIsTocOpen((open) => !open)}
+            onTurnPage={turnPage}
+            onGoToChapter={goToChapter}
+            onSetViewMode={setViewMode}
+            onSetFontScale={setFontScale}
+          />
+
+          {snapshot.error && (
+            <Body1
+              as="p"
+              style={{
+                position: "absolute",
+                top: 64,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 20,
+                margin: 0,
+                padding: "6px 14px",
+                borderRadius: 6,
+                background: "var(--colorPaletteRedBackground3, #fde7e9)",
+                color: "var(--colorPaletteRedForeground1, crimson)",
+              }}
+            >
+              Error: {snapshot.error}
+            </Body1>
+          )}
         </div>
       </div>
+
+      <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
     </div>
   );
 };
