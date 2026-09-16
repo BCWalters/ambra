@@ -985,6 +985,7 @@ export class ReaderController {
     }
     const oldHost = this.host;
     const startX = startEvent.clientX;
+    const startY = startEvent.clientY;
     const containerWidth = Math.max(1, this.width);
 
     let direction: 1 | -1 | undefined;
@@ -1038,11 +1039,16 @@ export class ReaderController {
       }
     };
 
-    const onPointerUp = (): void => {
+    const onPointerUp = (upEvent: PointerEvent): void => {
       cleanupListeners();
       if (direction === undefined || capturedToken === undefined) {
         // Never moved past the dead zone — an ordinary tap/click, not a
-        // drag; nothing to settle.
+        // drag. Treat it as click-to-navigate (see `handleContentClick`)
+        // rather than as nothing, but only for a genuine release, not a
+        // cancelled gesture (e.g. the pointer leaving the window).
+        if (upEvent.type === "pointerup") {
+          this.handleContentClick(upEvent, startX, startY, containerWidth);
+        }
         return;
       }
       released = true;
@@ -1057,6 +1063,53 @@ export class ReaderController {
     doc.addEventListener("pointermove", onPointerMove);
     doc.addEventListener("pointerup", onPointerUp);
     doc.addEventListener("pointercancel", onPointerUp);
+  }
+
+  /** Maximum total pointer movement (in either axis, px) between
+   * `pointerdown` and `pointerup` for a gesture to still count as a tap
+   * rather than an aborted drag/selection — deliberately generous enough
+   * to absorb ordinary hand tremor, but small enough that a real text
+   * selection drag (which usually moves well past this before the
+   * pointer is released) never gets misread as a page-turn tap. */
+  private static readonly CLICK_MOVEMENT_TOLERANCE = 10;
+
+  /** Click-to-navigate: turns the page when a tap/click lands in the
+   * left or right third of the reading pane, and does nothing in the
+   * middle third (reserved for a future "show/hide chrome" tap target,
+   * and simply safe to leave inert for now). Only reachable when
+   * `beginDragPageTurn`'s pointer gesture never crossed its drag
+   * dead-zone, so this never fires alongside an actual page-turn drag.
+   * Two additional guards keep it from misfiring: an active text
+   * selection (the user was dragging to select, not tapping) and a click
+   * that landed on an `<a href>` (already handled, and already
+   * navigated, by `setUpLinkInterception`'s own click listener — turning
+   * the page *as well* would be a confusing double-navigation). */
+  private handleContentClick(upEvent: PointerEvent, startX: number, startY: number, containerWidth: number): void {
+    const deltaX = Math.abs(upEvent.clientX - startX);
+    const deltaY = Math.abs(upEvent.clientY - startY);
+    if (
+      deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
+      deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
+    ) {
+      return;
+    }
+
+    const selection = upEvent.target instanceof Node ? upEvent.target.ownerDocument?.getSelection() : undefined;
+    if (selection && !selection.isCollapsed) {
+      return;
+    }
+
+    if ((upEvent.target as Element | null)?.closest?.("a[href]")) {
+      return;
+    }
+
+    const thirdWidth = containerWidth / 3;
+    if (startX < thirdWidth) {
+      void this.turnPage(-1);
+    } else if (startX > containerWidth - thirdWidth) {
+      void this.turnPage(1);
+    }
+    // Middle third: no-op for now.
   }
 
   /** Resolves a drag gesture once released (and, if it was still loading,
