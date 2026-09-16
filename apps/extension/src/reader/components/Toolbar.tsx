@@ -12,6 +12,7 @@ import {
   MenuList,
   MenuPopover,
   MenuTrigger,
+  Slider,
   ToggleButton,
   Tooltip,
 } from "@fluentui/react-components";
@@ -22,8 +23,6 @@ import {
   ChevronLeftRegular,
   ChevronRightRegular,
   CompassNorthwestRegular,
-  FontDecreaseRegular,
-  FontIncreaseRegular,
   SettingsRegular,
   TextBulletListRegular,
   TextColumnOneRegular,
@@ -32,7 +31,6 @@ import {
 import { ReadingTheme } from "@pagina/engine";
 import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
 import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
-import { useAutoHideChrome } from "../useAutoHideChrome.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BACKGROUND, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 
 export interface ToolbarProps {
@@ -45,6 +43,18 @@ export interface ToolbarProps {
   onSetFontScale: (scale: number) => void;
   onSetFontFamily: (family: FontFamilyChoice) => void;
   onSetPageTheme: (theme: PageTheme) => void;
+  /** Whether the toolbar should currently be shown, and the pointer/
+   * focus handlers that keep it visible — lifted up into `ReaderApp` (see
+   * `useAutoHideChrome`) rather than owned here, so `ProgressScrubber`
+   * can share the exact same show/hide state and the two fade together
+   * as one unit of chrome instead of drifting out of sync. */
+  visible: boolean;
+  handlers: {
+    onPointerEnter: () => void;
+    onPointerLeave: () => void;
+    onFocus: () => void;
+    onBlur: () => void;
+  };
 }
 
 const VIEW_MODE_GROUP_NAME = "viewMode";
@@ -81,28 +91,10 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetFontScale,
   onSetFontFamily,
   onSetPageTheme,
+  visible,
+  handlers,
 }) => {
   const isPaginated = snapshot.viewMode === "paginated";
-  const { visible, handlers } = useAutoHideChrome(isTocOpen);
-
-  const pageLabel = (() => {
-    if (snapshot.secondPageIndex !== undefined) {
-      // Spread mode: chapter-relative for now — see `bookPageIndex`'s
-      // doc comment on why book-wide numbering is scoped to the
-      // single-page case for this first pass.
-      return snapshot.pageCount === 0
-        ? undefined
-        : `Pages ${snapshot.pageIndex + 1}–${snapshot.secondPageIndex + 1} of ${snapshot.pageCount}`;
-    }
-    if (snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined) {
-      // Prefer the book-wide number once background pagination knows it
-      // — see `BookPaginationEstimator`. Falls back to the per-chapter
-      // number below while that's still being measured, so the toolbar
-      // never shows nothing.
-      return `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount}`;
-    }
-    return snapshot.pageCount === 0 ? undefined : `Page ${snapshot.pageIndex + 1} of ${snapshot.pageCount}`;
-  })();
 
   return (
     <>
@@ -133,7 +125,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           zIndex: 10,
           display: "flex",
           alignItems: "center",
-          gap: 4,
+          gap: 10,
           padding: "8px 10px",
           background: CHROME_BACKGROUND,
           backdropFilter: CHROME_BACKDROP_FILTER,
@@ -207,14 +199,11 @@ export const Toolbar: FC<ToolbarProps> = ({
           </Caption1>
         </div>
 
-        {pageLabel && (
-          <Caption1
-            as="span"
-            style={{ whiteSpace: "nowrap", color: "var(--colorNeutralForeground2, #444)", flexShrink: 0 }}
-          >
-            {pageLabel}
-          </Caption1>
-        )}
+        {/* No page-number display in the toolbar itself — it lives in
+            the running footer (see `PageFurniture`) instead. Showing it
+            here too was confusing: chapter-relative vs. book-wide page
+            numbers side by side (footer + toolbar) read as two different,
+            possibly conflicting counts. */}
 
         <Menu>
           <MenuTrigger disableButtonEnhancement>
@@ -286,38 +275,40 @@ export const Toolbar: FC<ToolbarProps> = ({
               <MenuList>
                 <MenuGroup>
                   <MenuGroupHeader>Size</MenuGroupHeader>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px" }}>
-                    <Tooltip content="Decrease font size" relationship="label">
-                      <Button
-                        appearance="subtle"
-                        size="small"
-                        icon={<FontDecreaseRegular />}
-                        disabled={snapshot.fontScale <= ReadingTheme.MIN_FONT_SCALE}
-                        onClick={() => onSetFontScale(snapshot.fontScale - ReadingTheme.FONT_SCALE_STEP)}
-                      />
-                    </Tooltip>
-                    <Body1 as="span" style={{ flex: 1, textAlign: "center" }}>
-                      Font Size
-                    </Body1>
-                    <Tooltip content="Increase font size" relationship="label">
-                      <Button
-                        appearance="subtle"
-                        size="small"
-                        icon={<FontIncreaseRegular />}
-                        disabled={snapshot.fontScale >= ReadingTheme.MAX_FONT_SCALE}
-                        onClick={() => onSetFontScale(snapshot.fontScale + ReadingTheme.FONT_SCALE_STEP)}
-                      />
-                    </Tooltip>
+                  <div style={{ padding: "6px 12px 10px" }}>
+                    <Slider
+                      min={ReadingTheme.MIN_FONT_SCALE}
+                      max={ReadingTheme.MAX_FONT_SCALE}
+                      step={ReadingTheme.FONT_SCALE_STEP}
+                      value={snapshot.fontScale}
+                      onChange={(_event, data) => onSetFontScale(data.value)}
+                      aria-label="Font size"
+                      style={{ width: "100%" }}
+                    />
                   </div>
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>
                   <MenuGroupHeader>Font</MenuGroupHeader>
-                  {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => (
-                    <MenuItemRadio key={key} name={FONT_FAMILY_GROUP_NAME} value={key}>
-                      {ReadingTheme.FONT_FAMILIES[key].label}
-                    </MenuItemRadio>
-                  ))}
+                  {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
+                    // Preview each option in its own typeface (falling back
+                    // to the toolbar's own font for "Book Default", which
+                    // has no fixed stack of its own by design — it defers
+                    // to whatever the book itself specifies) so the user
+                    // can see the difference between options before picking
+                    // one, rather than reading identical-looking labels.
+                    const stack = ReadingTheme.FONT_FAMILIES[key].stack;
+                    return (
+                      <MenuItemRadio
+                        key={key}
+                        name={FONT_FAMILY_GROUP_NAME}
+                        value={key}
+                        style={stack ? { fontFamily: stack } : undefined}
+                      >
+                        {ReadingTheme.FONT_FAMILIES[key].label}
+                      </MenuItemRadio>
+                    );
+                  })}
                 </MenuGroup>
               </MenuList>
             </MenuPopover>
