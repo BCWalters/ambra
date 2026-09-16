@@ -36,6 +36,11 @@ export interface ReaderSnapshot {
    * `NavPoint.path`. `undefined` only if the current spine item somehow
    * has no manifest entry (shouldn't happen for a valid EPUB). */
   currentSpinePath: string | undefined;
+  /** A human-readable label for the current chapter — the matching TOC
+   * entry's own label when the navigation has one, else a generic
+   * "Chapter N" (see `chapterLabel`). Used for the running header (see
+   * `PageFurniture`) and live-region chapter-change announcements. */
+  currentChapterLabel: string;
   viewMode: ViewMode;
   /** True when the *current* spine item resolves to fixed-layout
    * rendering (see `SpineItemRef.resolveRenditionLayout`) — independent
@@ -256,6 +261,7 @@ export class ReaderController {
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
         currentSpinePath: this.pkg.spine[this.spineIndex]?.manifestItem.path,
+        currentChapterLabel: this.chapterLabel(this.spineIndex),
         viewMode: this.viewMode,
         isFixedLayout: this.host instanceof FixedContentHost,
         pageIndex,

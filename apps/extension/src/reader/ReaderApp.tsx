@@ -6,6 +6,7 @@ import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
+import { PageFurniture } from "./components/PageFurniture.js";
 import { useReaderController } from "./useReaderController.js";
 
 /**
@@ -152,6 +153,7 @@ export const ReaderApp: FC = () => {
               overflow: "hidden",
             }}
           />
+          <PageFurniture snapshot={snapshot} />
           {snapshot.isLoading && (
             <Spinner
               label="Loading…"
