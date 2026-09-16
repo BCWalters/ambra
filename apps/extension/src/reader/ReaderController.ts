@@ -108,6 +108,17 @@ export class ReaderController {
   private appliedWidth = 0;
   private appliedHeight = 0;
   private isLoading = false;
+  /** Guards against overlapping `turnPage` calls — a real bug caught via
+   * Chromium testing: rapid repeated clicks/keypresses could start a
+   * second animated page turn (see `animatePageTurn`) while a first was
+   * still mid-flight, each building its own new host from whatever
+   * `this.host`/`this.width`/`this.height` happened to be at that moment,
+   * racing to swap `this.host` and corrupting pagination state (page
+   * counts changing nonsensically was the symptom). `turnPage` simply
+   * ignores a call that arrives while one is already in progress, rather
+   * than queuing it — consistent with how physical book pages can't be
+   * turned faster than one at a time anyway. */
+  private isTurningPage = false;
   /** A resize that arrived while an `openSpineItem` was already in
    * flight (e.g. `ResizeObserver`'s spec-mandated initial callback racing
    * with `mount`'s async load) — applying it immediately would relayout
@@ -334,6 +345,40 @@ export class ReaderController {
     return doc ? [doc] : [];
   }
 
+  /** Updates the current content host's iframe title(s) to reflect the
+   * current chapter — split out so an animated page turn (see
+   * `animatePageTurn`), which swaps in a brand-new host without going
+   * through the full `setUpAccessibility` flow, can keep it in sync too. */
+  private updateContentTitle(): void {
+    const title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
+    if (this.host instanceof SpreadPaginatedHost) {
+      this.host.setTitle(title);
+    } else if (this.host) {
+      this.host.element.title = title;
+    }
+  }
+
+  /** (Re-)attaches `ArrowLeft`/`ArrowRight` keyboard navigation to the
+   * current content host's primary iframe document, *without* moving
+   * focus — split out from `setUpAccessibility` so a plain in-chapter
+   * page turn (including an animated one — see `animatePageTurn`, which
+   * swaps in a brand-new host/document each turn) can re-arm keyboard
+   * navigation for that new document without stealing focus away from
+   * wherever the reader currently has it, consistent with page turns
+   * never forcing focus (only chapter changes/TOC jumps/fragment
+   * navigation do — see `setUpAccessibility`). */
+  private reattachKeyboardNav(): void {
+    const iframeDocument = this.primaryContentDocument();
+    if (!iframeDocument) {
+      return;
+    }
+    const isPaginated = this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
+    this.accessibility.attach(iframeDocument, {
+      onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
+      onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
+    });
+  }
+
   /** (Re-)attaches keyboard navigation to the current content host's
    * iframe document and moves focus into it — called every time a new
    * spine item is opened, since each one gets a fresh iframe/document.
@@ -341,23 +386,13 @@ export class ReaderController {
    * page concept in scroll/fixed-layout mode, so they mean "go to the
    * next/previous chapter" there instead). */
   private setUpAccessibility(focusTarget?: Element): void {
-    const title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
-    if (this.host instanceof SpreadPaginatedHost) {
-      this.host.setTitle(title);
-    } else if (this.host) {
-      this.host.element.title = title;
-    }
+    this.updateContentTitle();
+    this.reattachKeyboardNav();
 
     const iframeDocument = this.primaryContentDocument();
     if (!iframeDocument) {
       return;
     }
-
-    const isPaginated = this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
-    this.accessibility.attach(iframeDocument, {
-      onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
-      onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
-    });
     this.accessibility.focusContent(iframeDocument, focusTarget);
   }
 
@@ -575,8 +610,24 @@ export class ReaderController {
    * scroll mode, this is a no-op — scrolling is continuous and has no
    * discrete "page" concept; use native scrolling within the content host
    * instead. Crossing the first/last page of the current spine item
-   * advances to the adjacent chapter automatically. */
+   * advances to the adjacent chapter automatically. A single-column
+   * paginated turn plays a book-like flip animation (see
+   * `animatePageTurn`); spread turns and chapter-boundary turns are
+   * instant for now. Ignored entirely if a turn is already in progress —
+   * see `isTurningPage`. */
   public async turnPage(direction: 1 | -1): Promise<void> {
+    if (this.isTurningPage) {
+      return;
+    }
+    this.isTurningPage = true;
+    try {
+      await this.turnPageInternal(direction);
+    } finally {
+      this.isTurningPage = false;
+    }
+  }
+
+  private async turnPageInternal(direction: 1 | -1): Promise<void> {
     let moved: boolean;
     let announcement: string;
     if (this.host instanceof SpreadPaginatedHost) {
@@ -586,6 +637,19 @@ export class ReaderController {
         ? `Pages ${this.host.pageIndex + 1}–${second + 1} of ${this.host.pageCount}`
         : `Page ${this.host.pageIndex + 1} of ${this.host.pageCount}`;
     } else if (this.host instanceof PaginatedContentHost) {
+      const animatedHost = await this.animatePageTurn(this.host, direction);
+      if (animatedHost) {
+        this.linkClickCleanup?.();
+        this.linkClickCleanup = undefined;
+        this.host = animatedHost;
+        this.updateContentTitle();
+        this.reattachKeyboardNav();
+        this.setUpLinkInterception();
+        this.announce(`Page ${animatedHost.currentPageIndex + 1} of ${animatedHost.pageCount}`);
+        this.notify();
+        await this.saveProgress();
+        return;
+      }
       moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
       announcement = `Page ${this.host.currentPageIndex + 1} of ${this.host.pageCount}`;
     } else {
@@ -604,6 +668,131 @@ export class ReaderController {
       return;
     }
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
+  }
+
+  /** Plays a book-like page-turn flip and returns the fully-paginated
+   * *new* host to swap in as `this.host` — or `undefined` if `direction`
+   * would cross a chapter boundary (the caller falls back to its normal
+   * chapter-advance handling; this pass doesn't animate that case).
+   *
+   * Real book feel requires the outgoing and incoming pages to be visible
+   * *simultaneously* mid-turn, which a single iframe fundamentally can't
+   * do (it only ever shows one page at a time) — so this builds the
+   * incoming page in a brand-new, independent `PaginatedContentHost` (the
+   * same load pipeline `openSpineItem` uses; `ResourceUrlResolver`'s
+   * blob-URL cache makes re-loading the same spine item cheap), stacks it
+   * *underneath* the outgoing page, and animates only the outgoing page
+   * rotating away — `backface-visibility: hidden` makes it disappear past
+   * 90°, revealing the already-fully-rendered incoming page beneath it
+   * without that page needing any animation of its own.
+   *
+   * `oldHost.element` is deliberately never reparented (only ever
+   * style-mutated in place): an iframe that's already loaded gets
+   * reloaded by most browsers if it's ever disconnected from the document
+   * and reattached, even synchronously — this earned its docs comment the
+   * hard way, via a real "iframe never finishes loading" bug caught
+   * during Chromium verification. `newHost.element` is likewise attached
+   * to the live document *before* `open()` is called on it, for the same
+   * reason (an iframe generally won't start loading `src` at all while
+   * detached).
+   *
+   * Skips the animation (an instant page swap) when
+   * `prefers-reduced-motion` is set, consistent with the rest of the
+   * reader respecting it.
+   */
+  private async animatePageTurn(
+    oldHost: PaginatedContentHost,
+    direction: 1 | -1,
+  ): Promise<PaginatedContentHost | undefined> {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const targetIndex = oldHost.currentPageIndex + direction;
+    if (targetIndex < 0 || targetIndex >= oldHost.pageCount) {
+      return undefined;
+    }
+
+    const containerEl = this.containerEl;
+    const newHost = new PaginatedContentHost(this.width, this.height);
+
+    // Positioned to sit exactly beneath `oldHost.element` (which stays a
+    // normal, flex-centered in-flow child) without disturbing it —
+    // `containerEl` is already `position: absolute` (see `ReaderApp`), so
+    // it's a valid containing block for this without any extra wrapper.
+    const newEl = newHost.element;
+    newEl.style.position = "absolute";
+    newEl.style.top = "0";
+    newEl.style.left = "50%";
+    newEl.style.transform = "translateX(-50%)";
+    newEl.style.zIndex = "1";
+    containerEl.appendChild(newEl);
+
+    await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
+    if (this.fontScale !== 1) {
+      const doc = newHost.element.contentDocument;
+      if (doc) {
+        ReadingTheme.applyFontScale(doc, this.fontScale);
+        newHost.relayout(this.width, this.height);
+      }
+    }
+    newHost.goToPageIndex(targetIndex);
+    newEl.title = oldHost.element.title;
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (!reduceMotion) {
+      const oldEl = oldHost.element;
+      containerEl.style.perspective = "2200px";
+      oldEl.style.position = "relative";
+      oldEl.style.zIndex = "2";
+      oldEl.style.backfaceVisibility = "hidden";
+      // The hinge is the spine edge the page turns away from: the right
+      // edge turning forward (as if lifting toward the next page), the
+      // left edge turning back.
+      oldEl.style.transformOrigin = `${direction === 1 ? "right" : "left"} center`;
+      oldEl.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          oldEl.removeEventListener("transitionend", onTransitionEnd);
+          resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent): void => {
+          if (event.target === oldEl && event.propertyName === "transform") {
+            finish();
+          }
+        };
+        oldEl.addEventListener("transitionend", onTransitionEnd);
+        // Rotating slightly past 90° (rather than stopping exactly at
+        // it) reads as a page continuing its motion out of view rather
+        // than freezing edge-on to the viewer.
+        requestAnimationFrame(() => {
+          oldEl.style.transform = `rotateY(${direction === 1 ? -100 : 100}deg)`;
+          oldEl.style.boxShadow = "0 12px 40px rgba(0, 0, 0, 0.35)";
+        });
+        // A safety net in case `transitionend` never fires (e.g. the
+        // element was removed mid-transition by a rapid subsequent
+        // action) — never leave the turn hung indefinitely.
+        setTimeout(finish, 600);
+      });
+      containerEl.style.perspective = "";
+    }
+
+    // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
+    // `newEl` as the sole remaining child — reset its temporary
+    // positioning so it behaves like any other freshly-mounted host for
+    // every subsequent operation (relayout, resize, etc.).
+    oldHost.dispose();
+    newEl.style.position = "";
+    newEl.style.top = "";
+    newEl.style.left = "";
+    newEl.style.transform = "";
+    newEl.style.zIndex = "";
+    return newHost;
   }
 
   /** Loads the adjacent chapter directly (both view modes) — the
