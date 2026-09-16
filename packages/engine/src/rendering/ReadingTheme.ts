@@ -112,14 +112,16 @@ export class ReadingTheme {
    * host that needs this as a JS-level value (scroll mode gets its
    * breathing room from normal document flow; a fixed-layout page has no
    * pagination at all). The top inset must always be tall enough that
-   * the toolbar overlay (see `Toolbar`/`chromeTheme`) never covers the
-   * first line of text even while visible, and both insets need to fit
-   * the running header/footer (book/chapter title, page number — see
-   * `page-running-header-footer`) they host. Kept here, next to the rest
-   * of the theme, so the "how much air is around the text" decision
-   * lives in one place. */
-  public static readonly PAGE_INSET_TOP = 64;
-  public static readonly PAGE_INSET_BOTTOM = 52;
+   * the toolbar overlay (see `Toolbar`/`chromeTheme`, typically ~41px
+   * tall) never covers the first line of text even while visible — only
+   * the running header (book/chapter title — see `PageFurniture`) is
+   * meant to sit underneath the toolbar and get covered by it. The
+   * bottom inset needs enough room that the running footer (page number/
+   * percent) reads as clearly *below* the last line of text, not
+   * crowding it. Kept here, next to the rest of the theme, so the "how
+   * much air is around the text" decision lives in one place. */
+  public static readonly PAGE_INSET_TOP = 88;
+  public static readonly PAGE_INSET_BOTTOM = 76;
 
   /** Sets the current font-scale multiplier on a content document,
    * clamped to `[MIN_FONT_SCALE, MAX_FONT_SCALE]`. Purely a style change —

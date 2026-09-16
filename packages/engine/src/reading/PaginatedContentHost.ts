@@ -193,6 +193,17 @@ export class PaginatedContentHost {
     if (!iframeDocument) {
       return;
     }
+    // Reset any transform left over from whichever page was displayed
+    // before this call (e.g. `open()`'s own initial page) — exactly the
+    // same reason `relayout` resets it first: `measureChunks`/
+    // `getClientRects` must see the content in its natural, untranslated
+    // layout position, or every measured chunk's `top` silently includes
+    // that leftover offset too. Missing this reset was a real bug (caught
+    // via real-Chromium measurement): resuming a saved reading position
+    // landed the first line of text noticeably too high, close enough to
+    // sit under the toolbar, because the page it re-paginated from was
+    // still visually shifted down from `open()`'s own initial page.
+    iframeDocument.body.style.transform = "";
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, { node, offset });
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
     if (found) {
