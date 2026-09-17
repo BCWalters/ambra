@@ -72,43 +72,44 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
     margin: 0,
   } as const;
 
-  const displayPage = snapshot.bookPageIndex ?? (snapshot.pageCount > 0 ? snapshot.pageIndex + 1 : undefined);
-  const displayTotal = snapshot.bookPageCount ?? (snapshot.pageCount > 0 ? snapshot.pageCount : undefined);
+  // A simple "Page N" per visible page — no running total, no
+  // percentage (see the standalone percentage indicator below instead).
+  // The companion (right) page in spread mode is always exactly one
+  // page after the primary one (`SpreadPaginatedHost.secondPageIndex`
+  // is defined as `left.currentPageIndex + 1`), so its own number is
+  // just the primary's plus one — no separate book-wide/chapter-relative
+  // branching needed for it.
+  const primaryPageNumber = snapshot.bookPageIndex ?? (snapshot.pageCount > 0 ? snapshot.pageIndex + 1 : undefined);
+  const secondaryPageNumber =
+    snapshot.secondPageIndex !== undefined && primaryPageNumber !== undefined ? primaryPageNumber + 1 : undefined;
   const bookPercent = percent(snapshot.bookPageIndex, snapshot.bookPageCount);
 
-  const footerLabel =
-    displayPage !== undefined && displayTotal !== undefined
-      ? `Page ${displayPage} of ${displayTotal}${bookPercent !== undefined ? ` · ${bookPercent}%` : ""}`
-      : undefined;
-
-  // In spread mode, each of the two visible pages gets one centered
-  // label of its own — book title above the left page, chapter title
-  // above the right page — matching how a real printed book's running
-  // head splits across facing verso/recto pages, rather than repeating
-  // both the title *and* the chapter on every page (redundant, and not
-  // how a real book's running head reads) or spanning one header across
-  // both pages with the title pinned to the outer-left edge and the
-  // chapter to the outer-right edge (disconnected from the page each
-  // was actually sitting on). Computed from `SpreadPaginatedHost`'s own
-  // column/gutter geometry (not guessed) so each band lines up exactly
-  // with the page beneath it.
+  // In spread mode, each of the two visible pages gets its own header
+  // and footer band — matching how a real printed book's running head
+  // and folio (page number) each belong to the specific page they sit
+  // on, not to the spread as a whole. Computed once from
+  // `SpreadPaginatedHost`'s own column/gutter geometry (not guessed) so
+  // every band lines up exactly with the page beneath it, and shared
+  // between the header and footer below rather than recomputed twice.
   const columnWidth = snapshot.isSpread ? SpreadPaginatedHost.effectiveColumnWidth(snapshot.paneWidth) : undefined;
   const sideMargin =
     columnWidth !== undefined
       ? Math.max(0, (snapshot.paneWidth - (columnWidth * 2 + SpreadPaginatedHost.GUTTER_WIDTH)) / 2)
       : undefined;
-  const headerBands: { left: number | string; right: number | string; width: number | string; text: string }[] =
+  const columnBands: { left: number | string; right: number | string; width: number | string }[] =
     columnWidth !== undefined && sideMargin !== undefined
       ? [
-          { left: sideMargin, right: "auto", width: columnWidth, text: snapshot.title },
-          { left: "auto", right: sideMargin, width: columnWidth, text: snapshot.currentChapterLabel },
+          { left: sideMargin, right: "auto", width: columnWidth },
+          { left: "auto", right: sideMargin, width: columnWidth },
         ]
-      : [];
+      : [{ left: 0, right: 0, width: "auto" }];
+  const headerTexts = columnBands.length > 1 ? [snapshot.title, snapshot.currentChapterLabel] : undefined;
+  const footerNumbers = columnBands.length > 1 ? [primaryPageNumber, secondaryPageNumber] : [primaryPageNumber];
 
   return (
     <>
-      {headerBands.length > 0 ? (
-        headerBands.map((band, index) => (
+      {headerTexts ? (
+        columnBands.map((band, index) => (
           <div
             key={index}
             aria-hidden="true"
@@ -129,7 +130,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
             }}
           >
             <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
-              {band.text}
+              {headerTexts[index]}
             </Caption1>
           </div>
         ))
@@ -160,24 +161,58 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
         </div>
       )}
 
-      {footerLabel && (
+      {columnBands.map((band, index) => {
+        const pageNumber = footerNumbers[index];
+        if (pageNumber === undefined) {
+          return null;
+        }
+        return (
+          <div
+            key={index}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: band.left,
+              right: band.right,
+              width: band.width,
+              height: ReadingTheme.PAGE_INSET_BOTTOM,
+              zIndex: 5,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <Caption1 as="span" style={textStyle}>
+              {`Page ${pageNumber}`}
+            </Caption1>
+          </div>
+        );
+      })}
+
+      {/* A single "how far through the book" indicator, anchored to the
+          bottom-left of the whole reader pane — deliberately not
+          per-page (unlike the "Page N" folios above), since a percentage
+          describes progress through the *book*, not either individual
+          page on screen right now. */}
+      {bookPercent !== undefined && (
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
             bottom: 0,
             left: 0,
-            right: 0,
             height: ReadingTheme.PAGE_INSET_BOTTOM,
             zIndex: 5,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
+            padding: "0 20px",
             pointerEvents: "none",
           }}
         >
           <Caption1 as="span" style={textStyle}>
-            {footerLabel}
+            {`${bookPercent}%`}
           </Caption1>
         </div>
       )}
