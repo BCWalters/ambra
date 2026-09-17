@@ -16,6 +16,8 @@ export interface UseReaderControllerResult {
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
   setViewMode: (mode: ViewMode) => void;
   setFontScale: (scale: number) => void;
+  setLineSpacing: (spacing: number) => void;
+  setLetterSpacing: (spacing: number) => void;
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
   setChromeTheme: (theme: ChromeThemeChoice) => void;
@@ -141,6 +143,20 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const setLineSpacing = useCallback(
+    (spacing: number) => {
+      void controller?.setLineSpacing(spacing);
+    },
+    [controller],
+  );
+
+  const setLetterSpacing = useCallback(
+    (spacing: number) => {
+      void controller?.setLetterSpacing(spacing);
+    },
+    [controller],
+  );
+
   const setFontFamily = useCallback(
     (family: FontFamilyChoice) => {
       void controller?.setFontFamily(family);
@@ -208,6 +224,8 @@ export function useReaderController(): UseReaderControllerResult {
     goToNavPoint,
     setViewMode,
     setFontScale,
+    setLineSpacing,
+    setLetterSpacing,
     setFontFamily,
     setPageTheme,
     setChromeTheme,

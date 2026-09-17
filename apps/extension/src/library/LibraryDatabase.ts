@@ -53,6 +53,8 @@ const PREFERENCES_STORE = "preferences";
 
 const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
+const LINE_SPACING_PREFERENCE_KEY = "defaultLineSpacing";
+const LETTER_SPACING_PREFERENCE_KEY = "defaultLetterSpacing";
 const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
 const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
@@ -170,6 +172,34 @@ export class LibraryDatabase {
 
   public async setDefaultFontScale(scale: number): Promise<void> {
     const record: PreferenceRecord = { key: FONT_SCALE_PREFERENCE_KEY, value: scale };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default line-spacing multiplier (see
+   * `ReadingTheme.LINE_SPACING_PROPERTY`), persisted the same way as
+   * `getDefaultFontScale`. `undefined` if never set, in which case
+   * callers should fall back to `ReadingTheme.DEFAULT_LINE_SPACING`. */
+  public async getDefaultLineSpacing(): Promise<number | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, LINE_SPACING_PREFERENCE_KEY);
+    return record?.value as number | undefined;
+  }
+
+  public async setDefaultLineSpacing(spacing: number): Promise<void> {
+    const record: PreferenceRecord = { key: LINE_SPACING_PREFERENCE_KEY, value: spacing };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default extra letter-spacing (see
+   * `ReadingTheme.LETTER_SPACING_PROPERTY`), persisted the same way as
+   * `getDefaultFontScale`. `undefined` if never set, in which case
+   * callers should fall back to `ReadingTheme.DEFAULT_LETTER_SPACING`. */
+  public async getDefaultLetterSpacing(): Promise<number | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, LETTER_SPACING_PREFERENCE_KEY);
+    return record?.value as number | undefined;
+  }
+
+  public async setDefaultLetterSpacing(spacing: number): Promise<void> {
+    const record: PreferenceRecord = { key: LETTER_SPACING_PREFERENCE_KEY, value: spacing };
     await this.put(PREFERENCES_STORE, record);
   }
 

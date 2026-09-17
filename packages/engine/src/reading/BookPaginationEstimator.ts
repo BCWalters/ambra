@@ -45,6 +45,8 @@ export class BookPaginationEstimator {
   private lastHeight: number | undefined;
   private lastFontScale: number | undefined;
   private lastFontFamily: FontFamilyChoice | undefined;
+  private lastLineSpacing: number | undefined;
+  private lastLetterSpacing: number | undefined;
 
   public constructor(
     private readonly contentLoader: ContentLoader,
@@ -57,22 +59,24 @@ export class BookPaginationEstimator {
   }
 
   /** (Re-)starts measuring spine items' page counts at `width`/`height`
-   * and the reader's current `fontScale`/`fontFamily` (both affect how
-   * much text fits per page, exactly like a width/height change would),
-   * prioritized around `currentSpineIndex`, invoking `onProgress` after
-   * every individual item finishes (so the UI can show a book-wide page
-   * number as soon as it's known, well before the whole book finishes
-   * measuring) — the caller combines the latest counts with whatever
-   * position within the current item it cares about via `positionFor`,
-   * since this class has no opinion on that.
+   * and the reader's current `fontScale`/`fontFamily`/`lineSpacing`/
+   * `letterSpacing` (all affect how much text fits per page, exactly
+   * like a width/height change would), prioritized around
+   * `currentSpineIndex`, invoking `onProgress` after every individual
+   * item finishes (so the UI can show a book-wide page number as soon as
+   * it's known, well before the whole book finishes measuring) — the
+   * caller combines the latest counts with whatever position within the
+   * current item it cares about via `positionFor`, since this class has
+   * no opinion on that.
    *
    * Previously-measured counts are kept (not re-measured) when none of
-   * `width`/`height`/`fontScale`/`fontFamily` have changed since the
-   * last `run` — plain chapter navigation calls this too, just to
-   * reprioritize around the new current spine item, and would otherwise
-   * wastefully re-measure the entire book on every chapter turn. A real
-   * change to any of those four invalidates every existing count, since
-   * they were all measured against a now-stale layout.
+   * `width`/`height`/`fontScale`/`fontFamily`/`lineSpacing`/
+   * `letterSpacing` have changed since the last `run` — plain chapter
+   * navigation calls this too, just to reprioritize around the new
+   * current spine item, and would otherwise wastefully re-measure the
+   * entire book on every chapter turn. A real change to any of those six
+   * invalidates every existing count, since they were all measured
+   * against a now-stale layout.
    *
    * Any previously in-flight `run` is cancelled — its own remaining
    * measurements finish (an in-progress `PaginatedContentHost.open()`
@@ -85,6 +89,8 @@ export class BookPaginationEstimator {
     height: number,
     fontScale: number,
     fontFamily: FontFamilyChoice,
+    lineSpacing: number,
+    letterSpacing: number,
     onProgress: () => void,
   ): Promise<void> {
     const token = ++this.generation;
@@ -92,13 +98,17 @@ export class BookPaginationEstimator {
       width !== this.lastWidth ||
       height !== this.lastHeight ||
       fontScale !== this.lastFontScale ||
-      fontFamily !== this.lastFontFamily
+      fontFamily !== this.lastFontFamily ||
+      lineSpacing !== this.lastLineSpacing ||
+      letterSpacing !== this.lastLetterSpacing
     ) {
       this.pageCounts = new Array(this.spine.length).fill(undefined);
       this.lastWidth = width;
       this.lastHeight = height;
       this.lastFontScale = fontScale;
       this.lastFontFamily = fontFamily;
+      this.lastLineSpacing = lineSpacing;
+      this.lastLetterSpacing = letterSpacing;
     }
 
     const order = computePriorityOrder(currentSpineIndex, this.spine.length);
@@ -111,7 +121,16 @@ export class BookPaginationEstimator {
       if (!spineItem) {
         continue;
       }
-      const count = await this.measureSpineItem(spineItem, spineIndex, width, height, fontScale, fontFamily);
+      const count = await this.measureSpineItem(
+        spineItem,
+        spineIndex,
+        width,
+        height,
+        fontScale,
+        fontFamily,
+        lineSpacing,
+        letterSpacing,
+      );
       if (token !== this.generation) {
         // A newer `run` call has since started — this one's remaining
         // work is stale and should stop reporting (and stop consuming
@@ -130,6 +149,8 @@ export class BookPaginationEstimator {
     height: number,
     fontScale: number,
     fontFamily: FontFamilyChoice,
+    lineSpacing: number,
+    letterSpacing: number,
   ): Promise<number> {
     if (spineItem.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
       // Fixed-layout content is never reflowed/paginated — it's always
@@ -141,12 +162,18 @@ export class BookPaginationEstimator {
     this.hiddenContainer.appendChild(host.element);
     try {
       await host.open(this.contentLoader, this.resolver, spineIndex);
-      const needsNonDefaultSettings = fontScale !== 1 || fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY;
+      const needsNonDefaultSettings =
+        fontScale !== 1 ||
+        fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
+        lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
+        letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING;
       if (needsNonDefaultSettings) {
         const doc = host.element.contentDocument;
         if (doc) {
           ReadingTheme.applyFontScale(doc, fontScale);
           ReadingTheme.applyFontFamily(doc, fontFamily);
+          ReadingTheme.applyLineSpacing(doc, lineSpacing);
+          ReadingTheme.applyLetterSpacing(doc, letterSpacing);
           host.relayout(width, height);
         }
       }

@@ -109,6 +109,8 @@ export class ReadingTheme {
    * own base font-size reads from. */
   public static readonly FONT_SCALE_PROPERTY = "--ambra-font-scale";
   public static readonly FONT_FAMILY_PROPERTY = "--ambra-font-family";
+  public static readonly LINE_SPACING_PROPERTY = "--ambra-line-spacing";
+  public static readonly LETTER_SPACING_PROPERTY = "--ambra-letter-spacing";
   public static readonly PAGE_BACKGROUND_PROPERTY = "--ambra-page-bg";
   public static readonly PAGE_FOREGROUND_PROPERTY = "--ambra-page-fg";
   public static readonly LINK_COLOR_PROPERTY = "--ambra-link-color";
@@ -128,6 +130,25 @@ export class ReadingTheme {
   public static readonly MIN_FONT_SCALE = 0.75;
   public static readonly MAX_FONT_SCALE = 2;
   public static readonly FONT_SCALE_STEP = 0.125;
+
+  /** A multiplier on the theme's own base line-height (1.65 — see `CSS`),
+   * not an absolute value, the same way `FONT_SCALE_PROPERTY` multiplies
+   * a base font size — `1` (`DEFAULT_LINE_SPACING`) reproduces exactly
+   * the theme's original line-height. Scoped to body text only; headings
+   * keep their own fixed, tighter line-height regardless (see `CSS`). */
+  public static readonly MIN_LINE_SPACING = 0.85;
+  public static readonly MAX_LINE_SPACING = 1.6;
+  public static readonly LINE_SPACING_STEP = 0.05;
+  public static readonly DEFAULT_LINE_SPACING = 1;
+
+  /** Extra tracking, in `em`, added on top of a font's own default glyph
+   * spacing — `0` (`DEFAULT_LETTER_SPACING`) leaves it untouched. Only
+   * ever non-negative: negative letter-spacing risks glyphs visually
+   * colliding, which no reader would ever actually want here. */
+  public static readonly MIN_LETTER_SPACING = 0;
+  public static readonly MAX_LETTER_SPACING = 0.12;
+  public static readonly LETTER_SPACING_STEP = 0.01;
+  public static readonly DEFAULT_LETTER_SPACING = 0;
 
   public static readonly DEFAULT_PAGE_THEME: PageTheme = "white";
   /** The reading font a brand-new reader (or a book with no saved font
@@ -202,6 +223,32 @@ export class ReadingTheme {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
   }
 
+  /** Sets the current line-spacing multiplier on a content document,
+   * clamped to `[MIN_LINE_SPACING, MAX_LINE_SPACING]` — see
+   * `LINE_SPACING_PROPERTY`. Reflows content the same way a font-scale
+   * change does (a taller line-height means fewer lines fit per page),
+   * so the caller must re-paginate/re-measure afterwards. */
+  public static applyLineSpacing(doc: Document, spacing: number): void {
+    const clamped = Math.min(
+      ReadingTheme.MAX_LINE_SPACING,
+      Math.max(ReadingTheme.MIN_LINE_SPACING, spacing),
+    );
+    doc.documentElement.style.setProperty(ReadingTheme.LINE_SPACING_PROPERTY, String(clamped));
+  }
+
+  /** Sets the current extra letter-spacing (in `em`) on a content
+   * document, clamped to `[MIN_LETTER_SPACING, MAX_LETTER_SPACING]` —
+   * see `LETTER_SPACING_PROPERTY`. Reflows content (wider tracking
+   * changes where lines break), so the caller must re-paginate/
+   * re-measure afterwards. */
+  public static applyLetterSpacing(doc: Document, spacing: number): void {
+    const clamped = Math.min(
+      ReadingTheme.MAX_LETTER_SPACING,
+      Math.max(ReadingTheme.MIN_LETTER_SPACING, spacing),
+    );
+    doc.documentElement.style.setProperty(ReadingTheme.LETTER_SPACING_PROPERTY, String(clamped));
+  }
+
   /** Sets the current font family on a content document. Like
    * `applyFontScale`, this reflows content (a different typeface has
    * different metrics), so the caller must re-paginate/re-measure
@@ -271,6 +318,8 @@ export class ReadingTheme {
 :root {
   ${ReadingTheme.FONT_SCALE_PROPERTY}: 1;
   ${ReadingTheme.FONT_FAMILY_PROPERTY}: ${ReadingTheme.FONT_FAMILIES[ReadingTheme.DEFAULT_FONT_FAMILY].stack};
+  ${ReadingTheme.LINE_SPACING_PROPERTY}: 1;
+  ${ReadingTheme.LETTER_SPACING_PROPERTY}: 0;
   ${ReadingTheme.PAGE_BACKGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].background};
   ${ReadingTheme.PAGE_FOREGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].foreground};
   ${ReadingTheme.LINK_COLOR_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].linkColor};
@@ -292,7 +341,8 @@ body {
   padding: 0 1.5em;
   font-family: var(${ReadingTheme.FONT_FAMILY_PROPERTY});
   font-size: 1.125rem;
-  line-height: 1.65;
+  line-height: calc(1.65 * var(${ReadingTheme.LINE_SPACING_PROPERTY}, 1));
+  letter-spacing: calc(var(${ReadingTheme.LETTER_SPACING_PROPERTY}, 0) * 1em);
   text-align: justify;
   -webkit-hyphens: auto;
   hyphens: auto;

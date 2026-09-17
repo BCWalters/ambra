@@ -38,6 +38,8 @@ export const ReaderApp: FC = () => {
     goToNavPoint,
     setViewMode,
     setFontScale,
+    setLineSpacing,
+    setLetterSpacing,
     setFontFamily,
     setPageTheme,
     setChromeTheme,
@@ -268,6 +270,8 @@ export const ReaderApp: FC = () => {
               onGoToChapter={goToChapter}
               onSetViewMode={setViewMode}
               onSetFontScale={setFontScale}
+              onSetLineSpacing={setLineSpacing}
+              onSetLetterSpacing={setLetterSpacing}
               onSetFontFamily={setFontFamily}
               onSetPageTheme={setPageTheme}
               onSetChromeTheme={setChromeTheme}

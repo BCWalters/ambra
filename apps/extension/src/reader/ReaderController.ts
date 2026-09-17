@@ -150,6 +150,11 @@ export interface ReaderSnapshot {
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
   fontScale: number;
+  /** The current reader-controlled line-spacing multiplier and extra
+   * letter-spacing (in `em`) — see `ReadingTheme`. Same fixed-layout
+   * exception as `fontScale`. */
+  lineSpacing: number;
+  letterSpacing: number;
   /** The current reader-controlled font family and page color theme —
    * see `ReadingTheme`. */
   fontFamily: FontFamilyChoice;
@@ -229,6 +234,11 @@ export class ReaderController {
    * this from the saved font-scale preference (if any) — see
    * `ReadingTheme`, `setFontScale`. */
   private fontScale = 1;
+  /** Defaults to `ReadingTheme.DEFAULT_LINE_SPACING`/`DEFAULT_LETTER_SPACING`,
+   * but `open` overwrites these from saved preferences (if any) — see
+   * `setLineSpacing`/`setLetterSpacing`. */
+  private lineSpacing = ReadingTheme.DEFAULT_LINE_SPACING;
+  private letterSpacing = ReadingTheme.DEFAULT_LETTER_SPACING;
   /** Defaults to `ReadingTheme.DEFAULT_FONT_FAMILY`, but `open` overwrites
    * this from the saved preference (if any) — see `setFontFamily`. */
   private fontFamily: FontFamilyChoice = ReadingTheme.DEFAULT_FONT_FAMILY;
@@ -399,6 +409,10 @@ export class ReaderController {
     );
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
+    controller.lineSpacing =
+      (await library.getDefaultLineSpacing()) ?? ReadingTheme.DEFAULT_LINE_SPACING;
+    controller.letterSpacing =
+      (await library.getDefaultLetterSpacing()) ?? ReadingTheme.DEFAULT_LETTER_SPACING;
     controller.fontFamily =
       (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
     controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
@@ -461,6 +475,12 @@ export class ReaderController {
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         paneWidth: this.width,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
+        lineSpacing:
+          this.host instanceof FixedContentHost ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
+        letterSpacing:
+          this.host instanceof FixedContentHost
+            ? ReadingTheme.DEFAULT_LETTER_SPACING
+            : this.letterSpacing,
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
         chromeTheme: this.chromeTheme,
@@ -569,6 +589,8 @@ export class ReaderController {
       this.height,
       this.fontScale,
       this.fontFamily,
+      this.lineSpacing,
+      this.letterSpacing,
       () => {
         this.notify();
       },
@@ -1178,6 +1200,47 @@ export class ReaderController {
     await this.saveProgress();
   }
 
+  /** Sets the reader-controlled line-spacing multiplier (clamped to
+   * `ReadingTheme`'s supported range) — same "persist, re-measure,
+   * refresh book-wide pagination" shape as `setFontScale`, since a
+   * taller/shorter line-height reflows content exactly the same way a
+   * font-size change does. A no-op for a fixed-layout spine item. */
+  public async setLineSpacing(spacing: number): Promise<void> {
+    const clamped = Math.min(
+      ReadingTheme.MAX_LINE_SPACING,
+      Math.max(ReadingTheme.MIN_LINE_SPACING, spacing),
+    );
+    if (clamped === this.lineSpacing || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.lineSpacing = clamped;
+    await this.library.setDefaultLineSpacing(clamped);
+    this.applyDisplaySettingsToHost({ relayout: true });
+    this.refreshBookPagination();
+    this.notify();
+    await this.saveProgress();
+  }
+
+  /** Sets the reader-controlled extra letter-spacing (clamped to
+   * `ReadingTheme`'s supported range) — same shape as `setLineSpacing`;
+   * wider tracking reflows content (it changes where lines break) just
+   * like line-height does. A no-op for a fixed-layout spine item. */
+  public async setLetterSpacing(spacing: number): Promise<void> {
+    const clamped = Math.min(
+      ReadingTheme.MAX_LETTER_SPACING,
+      Math.max(ReadingTheme.MIN_LETTER_SPACING, spacing),
+    );
+    if (clamped === this.letterSpacing || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.letterSpacing = clamped;
+    await this.library.setDefaultLetterSpacing(clamped);
+    this.applyDisplaySettingsToHost({ relayout: true });
+    this.refreshBookPagination();
+    this.notify();
+    await this.saveProgress();
+  }
+
   /** Sets the reader-controlled page color theme and persists it. Unlike
    * font scale/family, this never needs a relayout — colors don't affect
    * line-wrapping. A no-op for a fixed-layout spine item. */
@@ -1284,12 +1347,13 @@ export class ReaderController {
     }
   }
 
-  /** Writes the current font scale/family and page theme onto every
-   * current content document as CSS custom properties (see
-   * `ReadingTheme.applyFontScale`/`applyFontFamily`/`applyPageTheme`) and,
-   * if `relayout` is set, re-measures at the current size — every spine
-   * item load applies all three the same way (see `openSpineItem`), so a
-   * book opened mid-session at non-default settings looks correct
+  /** Writes the current font scale/family/line-spacing/letter-spacing and
+   * page theme onto every current content document as CSS custom
+   * properties (see `ReadingTheme.applyFontScale`/`applyFontFamily`/
+   * `applyLineSpacing`/`applyLetterSpacing`/`applyPageTheme`) and, if
+   * `relayout` is set, re-measures at the current size — every spine
+   * item load applies all of these the same way (see `openSpineItem`),
+   * so a book opened mid-session at non-default settings looks correct
    * immediately, not just after the first explicit change. No-op for
    * fixed-layout content, which never gets the reading theme at all. In
    * spread mode, both columns are independent documents and need the
@@ -1306,6 +1370,8 @@ export class ReaderController {
     for (const doc of documents) {
       ReadingTheme.applyFontScale(doc, this.fontScale);
       ReadingTheme.applyFontFamily(doc, this.fontFamily);
+      ReadingTheme.applyLineSpacing(doc, this.lineSpacing);
+      ReadingTheme.applyLetterSpacing(doc, this.letterSpacing);
       ReadingTheme.applyPageTheme(doc, this.pageTheme);
     }
     if (!options.relayout) {
@@ -1318,16 +1384,20 @@ export class ReaderController {
     }
   }
 
-  /** Applies the persisted font scale/family/page theme to a freshly-
-   * opened host (see `openSpineItem`) — every spine item load needs this,
-   * not just explicit in-session changes, so a book opened mid-session at
-   * non-default settings looks correct immediately. Skips the (fairly
-   * expensive) relayout pass entirely when every setting is already at
-   * its theme-default value, since the freshly-opened host was already
-   * paginated at those defaults by its own `open()` call. */
+  /** Applies the persisted font scale/family/line-spacing/letter-spacing/
+   * page theme to a freshly-opened host (see `openSpineItem`) — every
+   * spine item load needs this, not just explicit in-session changes, so
+   * a book opened mid-session at non-default settings looks correct
+   * immediately. Skips the (fairly expensive) relayout pass entirely when
+   * every setting is already at its theme-default value, since the
+   * freshly-opened host was already paginated at those defaults by its
+   * own `open()` call. */
   private applyPersistedDisplaySettingsToFreshHost(): void {
     const needsRelayout =
-      this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY;
+      this.fontScale !== 1 ||
+      this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
+      this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
+      this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING;
     if (needsRelayout || this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME) {
       this.applyDisplaySettingsToHost({ relayout: needsRelayout });
     }
@@ -1539,9 +1609,16 @@ export class ReaderController {
     const newDoc = newHost.element.contentDocument;
     if (newDoc) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-      if (this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY) {
+      if (
+        this.fontScale !== 1 ||
+        this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
+        this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
+        this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING
+      ) {
         ReadingTheme.applyFontScale(newDoc, this.fontScale);
         ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
+        ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
+        ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
         newHost.relayout(this.width, this.height);
       }
     }

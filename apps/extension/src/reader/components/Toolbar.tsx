@@ -52,6 +52,8 @@ export interface ToolbarProps {
   onGoToChapter: (direction: 1 | -1) => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetFontScale: (scale: number) => void;
+  onSetLineSpacing: (spacing: number) => void;
+  onSetLetterSpacing: (spacing: number) => void;
   onSetFontFamily: (family: FontFamilyChoice) => void;
   onSetPageTheme: (theme: PageTheme) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
@@ -106,6 +108,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   onGoToChapter,
   onSetViewMode,
   onSetFontScale,
+  onSetLineSpacing,
+  onSetLetterSpacing,
   onSetFontFamily,
   onSetPageTheme,
   onSetChromeTheme,
@@ -314,6 +318,36 @@ export const Toolbar: FC<ToolbarProps> = ({
                       value={snapshot.fontScale}
                       onChange={(_event, data) => onSetFontScale(data.value)}
                       aria-label="Font size"
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>Line Spacing</MenuGroupHeader>
+                  <div style={{ padding: "6px 12px 10px" }}>
+                    <Slider
+                      min={ReadingTheme.MIN_LINE_SPACING}
+                      max={ReadingTheme.MAX_LINE_SPACING}
+                      step={ReadingTheme.LINE_SPACING_STEP}
+                      value={snapshot.lineSpacing}
+                      onChange={(_event, data) => onSetLineSpacing(data.value)}
+                      aria-label="Line spacing"
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>Character Spacing</MenuGroupHeader>
+                  <div style={{ padding: "6px 12px 10px" }}>
+                    <Slider
+                      min={ReadingTheme.MIN_LETTER_SPACING}
+                      max={ReadingTheme.MAX_LETTER_SPACING}
+                      step={ReadingTheme.LETTER_SPACING_STEP}
+                      value={snapshot.letterSpacing}
+                      onChange={(_event, data) => onSetLetterSpacing(data.value)}
+                      aria-label="Character spacing"
                       style={{ width: "100%" }}
                     />
                   </div>
