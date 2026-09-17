@@ -18,8 +18,11 @@ export interface ProgressScrubberProps {
    * would land — see `ReaderController.previewSeek`. */
   onPreview: (fraction: number) => { label: string; chapterLabel: string };
   /** Commits a drag's final position — see `ReaderController.
-   * seekToFraction`. Called once, on release. */
-  onSeek: (fraction: number) => void;
+   * seekToFraction`. Called once, on release. Returns a `Promise` (not
+   * fire-and-forget) so `endDrag` can keep showing the drag's own
+   * released position until the navigation actually lands — see its
+   * doc comment for why that matters. */
+  onSeek: (fraction: number) => Promise<void>;
 }
 
 /** The current reading position as a fraction (0 to 1) of the whole
@@ -103,8 +106,19 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
       return;
     }
     event.currentTarget.releasePointerCapture(event.pointerId);
-    onSeek(fractionAt(event.clientX));
-    setDragFraction(undefined);
+    // Keep showing the released drag position (not falling back to
+    // `currentFraction(snapshot)`, the *pre-seek* position) until the
+    // async navigation this triggers actually lands and the real
+    // snapshot catches up to match it — clearing `dragFraction`
+    // immediately here was a real, reported bug: the thumb would jump
+    // back to the old position for the async gap, then jump again to
+    // the new one once it resolved, a jarring double-jump instead of
+    // one smooth settle.
+    const released = fractionAt(event.clientX);
+    setDragFraction(released);
+    void onSeek(released).finally(() => {
+      setDragFraction(undefined);
+    });
   };
 
   const displayFraction = dragFraction ?? currentFraction(snapshot);

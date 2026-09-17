@@ -17,7 +17,7 @@ export interface UseReaderControllerResult {
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
   previewSeek: (fraction: number) => { label: string; chapterLabel: string };
-  seekToFraction: (fraction: number) => void;
+  seekToFraction: (fraction: number) => Promise<void>;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -149,8 +149,8 @@ export function useReaderController(): UseReaderControllerResult {
   );
 
   const seekToFraction = useCallback(
-    (fraction: number) => {
-      void controller?.seekToFraction(fraction);
+    async (fraction: number): Promise<void> => {
+      await controller?.seekToFraction(fraction);
     },
     [controller],
   );
