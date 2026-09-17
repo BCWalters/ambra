@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FC, PointerEvent as ReactPointerEvent } from "react";
 import { Caption1 } from "@fluentui/react-components";
 import type { ReaderSnapshot } from "../ReaderController.js";
@@ -40,7 +40,11 @@ export interface ProgressScrubberProps {
  * preference order, so the scrubber's resting position and a drag's
  * preview always agree on what a given fraction means. */
 function currentFraction(snapshot: ReaderSnapshot): number {
-  if (snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined && snapshot.bookPageCount > 0) {
+  if (
+    snapshot.bookPageIndex !== undefined &&
+    snapshot.bookPageCount !== undefined &&
+    snapshot.bookPageCount > 0
+  ) {
     return snapshot.bookPageIndex / snapshot.bookPageCount;
   }
   if (snapshot.spineLength > 0) {
@@ -79,7 +83,13 @@ function currentFraction(snapshot: ReaderSnapshot): number {
  * serves this purpose, and fixed-layout content has no meaningful
  * "page" position to scrub through page-by-page.
  */
-export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible, handlers, onPreview, onSeek }) => {
+export const ProgressScrubber: FC<ProgressScrubberProps> = ({
+  snapshot,
+  visible,
+  handlers,
+  onPreview,
+  onSeek,
+}) => {
   const chromeTheme = useChromeTheme();
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -112,7 +122,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
     const halfWidth = popupWidth / 2;
     const minCenter = POPUP_EDGE_MARGIN + halfWidth;
     const maxCenter = window.innerWidth - POPUP_EDGE_MARGIN - halfWidth;
-    const clampedCenterInViewport = Math.min(maxCenter, Math.max(minCenter, desiredCenterInViewport));
+    const clampedCenterInViewport = Math.min(
+      maxCenter,
+      Math.max(minCenter, desiredCenterInViewport),
+    );
     setPopupCenterPx(clampedCenterInViewport - barRect.left);
     // `preview.label`/`preview.chapterLabel` deliberately included: the
     // popup's rendered width changes as its text does (e.g. "Page 9 of
@@ -123,6 +136,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
   if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
     return null;
   }
+
+  const activePointerIdRef = useRef<number | undefined>(undefined);
 
   const fractionAt = (clientX: number): number => {
     const track = trackRef.current;
@@ -140,36 +155,95 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
     }
+    // Pointer capture is still required here, not just a nicety: without
+    // it, a real (Chromium-in-this-environment, at least) hang was
+    // reproduced by dragging the pointer — button still held — from the
+    // track up into the sandboxed content iframe. Capture keeps the
+    // browser's own hit-testing pinned to the track for the whole
+    // gesture, which avoids that; the *separate*, real "stuck after
+    // release" bug this is otherwise fixing is about the eventual
+    // release (pointerup/pointercancel) not reliably arriving back here
+    // — see the effect below.
     event.currentTarget.setPointerCapture(event.pointerId);
+    activePointerIdRef.current = event.pointerId;
     setDragFraction(fractionAt(event.clientX));
   };
 
-  const updateDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (dragFraction === undefined) {
-      return;
+  // Finalizes a drag at `fraction`: keeps showing the released drag
+  // position (not falling back to `currentFraction(snapshot)`, the
+  // *pre-seek* position) until the async navigation this triggers
+  // actually lands and the real snapshot catches up to match it —
+  // clearing `dragFraction` immediately here was a real, reported bug:
+  // the thumb would jump back to the old position for the async gap,
+  // then jump again to the new one once it resolved, a jarring
+  // double-jump instead of one smooth settle.
+  const finishDrag = (fraction: number): void => {
+    const track = trackRef.current;
+    const pointerId = activePointerIdRef.current;
+    if (track && pointerId !== undefined && track.hasPointerCapture(pointerId)) {
+      track.releasePointerCapture(pointerId);
     }
-    setDragFraction(fractionAt(event.clientX));
-  };
-
-  const endDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (dragFraction === undefined) {
-      return;
-    }
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    // Keep showing the released drag position (not falling back to
-    // `currentFraction(snapshot)`, the *pre-seek* position) until the
-    // async navigation this triggers actually lands and the real
-    // snapshot catches up to match it — clearing `dragFraction`
-    // immediately here was a real, reported bug: the thumb would jump
-    // back to the old position for the async gap, then jump again to
-    // the new one once it resolved, a jarring double-jump instead of
-    // one smooth settle.
-    const released = fractionAt(event.clientX);
-    setDragFraction(released);
-    void onSeek(released).finally(() => {
+    activePointerIdRef.current = undefined;
+    setDragFraction(fraction);
+    void onSeek(fraction).finally(() => {
       setDragFraction(undefined);
     });
   };
+
+  // The drag's move/release handling deliberately lives in a
+  // window-level effect below, not as onPointerMove/onPointerUp props on
+  // the track element — see this effect's doc comment for why: relying
+  // solely on the captured element's own pointerup/pointercancel
+  // eventually arriving is exactly what caused a real, reported bug
+  // where the scrubber stayed stuck tracking the mouse after release.
+  useEffect(() => {
+    if (dragFraction === undefined) {
+      return;
+    }
+
+    const finalizeFromEvent = (event: PointerEvent): void => {
+      finishDrag(fractionAt(event.clientX));
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      // `event.buttons` reflects the pointing device's *actual current*
+      // button state on every move, independent of how this specific
+      // event was routed to us — unlike relying solely on a captured
+      // element's own pointerup/pointercancel arriving, which can
+      // silently never happen at all: this reader's book content is
+      // rendered in sandboxed iframes (separate top-level documents),
+      // and a real, hard-to-repro Chromium quirk can apparently drop or
+      // misdeliver the eventual release back to the parent document —
+      // exactly what the report's "moving vertically in and out of the
+      // region" points at: the scrubber sits at the very bottom edge of
+      // the pane, right next to the content iframe. Treating "no buttons
+      // currently held" as an implicit release, the instant we next see
+      // *any* pointer activity back in this (parent) document, self-heals
+      // the stuck state — this is also why these are `window` listeners
+      // rather than handlers on the track element itself: a native event
+      // bubbles to `window` from wherever it actually landed in this
+      // document, not just from the narrow 16px track strip, so the
+      // self-heal doesn't need the pointer to specifically re-hover the
+      // track to recover.
+      if (event.buttons === 0) {
+        finalizeFromEvent(event);
+        return;
+      }
+      setDragFraction(fractionAt(event.clientX));
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finalizeFromEvent);
+    window.addEventListener("pointercancel", finalizeFromEvent);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finalizeFromEvent);
+      window.removeEventListener("pointercancel", finalizeFromEvent);
+    };
+    // `fractionAt`/`finishDrag` close over refs and stable props only —
+    // deliberately excluded so this effect doesn't tear down and
+    // re-attach its listeners on every fraction update mid-drag.
+  }, [dragFraction !== undefined]);
 
   const displayFraction = dragFraction ?? currentFraction(snapshot);
 
@@ -185,7 +259,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
   // have reached this point in a possibly-still-measuring book, so it's
   // dropped (not shown as a placeholder) until that's known, consistent
   // with how the rest of the reader's chrome degrades gracefully.
-  const pagesLeftInChapter = snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
+  const pagesLeftInChapter =
+    snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
   const currentPositionLabel =
     pagesLeftInChapter === undefined
       ? undefined
@@ -215,7 +290,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(8px)",
         pointerEvents: visible ? "auto" : "none",
-        transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
+        transition:
+          "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
       }}
     >
       {currentPositionLabel && (
@@ -284,9 +360,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
       <div
         ref={trackRef}
         onPointerDown={beginDrag}
-        onPointerMove={updateDrag}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
         role="slider"
         aria-label="Position in book"
         aria-valuemin={0}
