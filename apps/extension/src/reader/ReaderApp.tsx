@@ -7,6 +7,7 @@ import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
+import { ImageViewer } from "./components/ImageViewer.js";
 import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
@@ -43,6 +44,7 @@ export const ReaderApp: FC = () => {
     previewSeek,
     seekToFraction,
     getBookDetails,
+    closeImageViewer,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
@@ -240,6 +242,8 @@ export const ReaderApp: FC = () => {
               onRequestClose={() => setIsDetailsOpen(false)}
               details={bookDetails}
             />
+
+            <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
 
             <ProgressScrubber
               snapshot={snapshot}

@@ -21,6 +21,7 @@ export interface UseReaderControllerResult {
   previewSeek: (fraction: number) => { label: string; chapterLabel: string };
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
+  closeImageViewer: () => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -37,7 +38,10 @@ export function useReaderController(): UseReaderControllerResult {
   const contentHostRef = useRef<HTMLDivElement | null>(null);
 
   const snapshot = useSyncExternalStore(
-    useCallback((listener: () => void) => (controller ? controller.subscribe(listener) : () => undefined), [controller]),
+    useCallback(
+      (listener: () => void) => (controller ? controller.subscribe(listener) : () => undefined),
+      [controller],
+    ),
     useCallback(() => controller?.snapshot(), [controller]),
   );
 
@@ -90,10 +94,13 @@ export function useReaderController(): UseReaderControllerResult {
     };
   }, [controller]);
 
-  const openBook = useCallback(async (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase): Promise<void> => {
-    const opened = await ReaderController.open(buffer, bookId, library);
-    setController(opened);
-  }, []);
+  const openBook = useCallback(
+    async (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase): Promise<void> => {
+      const opened = await ReaderController.open(buffer, bookId, library);
+      setController(opened);
+    },
+    [],
+  );
 
   const turnPage = useCallback(
     (direction: 1 | -1) => {
@@ -169,6 +176,10 @@ export function useReaderController(): UseReaderControllerResult {
     return controller?.getBookDetails();
   }, [controller]);
 
+  const closeImageViewer = useCallback(() => {
+    controller?.closeImageViewer();
+  }, [controller]);
+
   return {
     snapshot,
     contentHostRef,
@@ -184,5 +195,6 @@ export function useReaderController(): UseReaderControllerResult {
     previewSeek,
     seekToFraction,
     getBookDetails,
+    closeImageViewer,
   };
 }

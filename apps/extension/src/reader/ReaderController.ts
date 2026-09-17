@@ -16,11 +16,28 @@ import {
   splitHrefFragment,
   SpreadPaginatedHost,
 } from "@ambra/engine";
-import type { BookIdentifier, FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@ambra/engine";
+import type {
+  BookIdentifier,
+  FontFamilyChoice,
+  NavPoint,
+  PackageDocument,
+  PageTheme,
+} from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { ViewMode } from "./ViewMode.js";
+
+/** The smallest a rendered image is allowed to be (in *both* CSS px
+ * dimensions) for a click/keypress on it to open the image viewer — see
+ * `ReaderController.setUpContentInteraction`. Deliberately checked
+ * against the image's actual *rendered* size, not its intrinsic/natural
+ * resolution: a decorative icon or a chapter-divider glyph is small on
+ * the page regardless of the source file's own resolution, while a
+ * genuine illustration reads as large on the page even if its source
+ * file happens to be modestly sized — rendered size is what actually
+ * distinguishes "worth zooming" content from decoration in practice. */
+const MIN_ZOOMABLE_IMAGE_SIZE = 100;
 
 /** Everything the Book Details panel shows, combined from two sources
  * that otherwise live in separate layers: `PackageDocument.metadata`
@@ -157,6 +174,24 @@ export interface ReaderSnapshot {
    * click into the book, rather than waiting for the usual auto-hide
    * timeout. */
   contentPointerActivityId: number;
+  /** The currently-open image viewer overlay's image, or `undefined` if
+   * it's closed — see `ReaderController.openImageViewer`/
+   * `closeImageViewer`. Only ever set for images at least
+   * `MIN_ZOOMABLE_IMAGE_SIZE` px in *both* dimensions when rendered (see
+   * `setUpContentInteraction`), so a reader can't accidentally "zoom" a
+   * decorative icon or a chapter-divider glyph into a giant, meaningless
+   * blur. */
+  imageViewer: ImageViewerState | undefined;
+}
+
+/** See `ReaderSnapshot.imageViewer`. `src` is whatever the content
+ * document's own `<img>` element resolved to (already a `blob:` URL for
+ * an in-book image, via `ResourceUrlResolver` — reused as-is, no need to
+ * re-resolve anything), so the viewer shows the exact same image data,
+ * never a re-fetch. */
+export interface ImageViewerState {
+  readonly src: string;
+  readonly alt: string;
 }
 
 /**
@@ -178,7 +213,8 @@ export interface ReaderSnapshot {
  * re-render.
  */
 export class ReaderController {
-  private host: PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | undefined;
+  private host:
+    PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | undefined;
   /** Defaults to "paginated", but `open` overwrites this from the saved
    * `view-mode-preference` (if any) before the controller is ever used. */
   private viewMode: ViewMode = "paginated";
@@ -253,13 +289,16 @@ export class ReaderController {
    * lands on a link, or one that starts a text-selection drag, should
    * still dismiss the toolbar just as immediately. */
   private contentPointerActivityId = 0;
-  /** Detaches the current spine item's in-content link click listener —
-   * see `setUpLinkInterception`. Re-created on every `openSpineItem` call
+  /** See `ReaderSnapshot.imageViewer`. */
+  private imageViewer: ImageViewerState | undefined;
+  /** Detaches the current spine item's in-content interaction listeners
+   * (link clicks, and the image-viewer's click/keyboard triggers) — see
+   * `setUpContentInteraction`. Re-created on every `openSpineItem` call
    * since each one gets a fresh iframe/document. */
-  private linkClickCleanup: (() => void) | undefined;
+  private contentInteractionCleanup: (() => void) | undefined;
   /** Detaches the current drag-page-turn `pointerdown` listener — see
    * `setUpDragPageTurn`. Re-created every time the primary content
-   * document changes, same lifecycle as `linkClickCleanup`. */
+   * document changes, same lifecycle as `contentInteractionCleanup`. */
   private dragCleanup: (() => void) | undefined;
   /** Background-paginates the whole book to derive book-wide page
    * numbers (see `BookPaginationEstimator`) — `undefined` until `mount`
@@ -294,7 +333,11 @@ export class ReaderController {
    * back out of `LibraryDatabase` for whichever `bookId` the reader page
    * was opened with. `bookId`/`library` are used to persist and restore
    * reading position — see `mount`/`saveProgress`. */
-  public static async open(buffer: ArrayBuffer, bookId: string, library: LibraryDatabase): Promise<ReaderController> {
+  public static async open(
+    buffer: ArrayBuffer,
+    bookId: string,
+    library: LibraryDatabase,
+  ): Promise<ReaderController> {
     const container = await EpubContainer.open(buffer);
     const contentLoader = await ContentLoader.create(container);
     const resolver = new ResourceUrlResolver(contentLoader);
@@ -302,10 +345,19 @@ export class ReaderController {
     const navigation = await NavigationDocument.load(container);
     const locatorResolver = new LocatorResolver(pkg, contentLoader);
 
-    const controller = new ReaderController(contentLoader, resolver, locatorResolver, pkg, navigation, bookId, library);
+    const controller = new ReaderController(
+      contentLoader,
+      resolver,
+      locatorResolver,
+      pkg,
+      navigation,
+      bookId,
+      library,
+    );
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
-    controller.fontFamily = (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
+    controller.fontFamily =
+      (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
     controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
     controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
     return controller;
@@ -334,7 +386,10 @@ export class ReaderController {
       // within a book-wide count either.
       let bookPageIndex: number | undefined;
       let bookPageCount: number | undefined;
-      if (this.bookPagination && (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)) {
+      if (
+        this.bookPagination &&
+        (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
+      ) {
         const position = this.bookPagination.positionFor(this.spineIndex, pageIndex);
         bookPageIndex = position.currentPage;
         bookPageCount = position.totalPages;
@@ -357,7 +412,8 @@ export class ReaderController {
         bookPageIndex,
         bookPageCount,
         isSpread: this.host instanceof SpreadPaginatedHost,
-        secondPageIndex: this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
+        secondPageIndex:
+          this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         paneWidth: this.width,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         fontFamily: this.fontFamily,
@@ -368,6 +424,7 @@ export class ReaderController {
         announcement: this.announcement,
         announcementId: this.announcementId,
         contentPointerActivityId: this.contentPointerActivityId,
+        imageViewer: this.imageViewer,
       };
     }
     return this.cachedSnapshot;
@@ -457,10 +514,19 @@ export class ReaderController {
       return;
     }
     const measureWidth =
-      this.host instanceof SpreadPaginatedHost ? SpreadPaginatedHost.effectiveColumnWidth(this.width) : this.width;
-    void this.bookPagination.run(this.spineIndex, measureWidth, this.height, this.fontScale, this.fontFamily, () => {
-      this.notify();
-    });
+      this.host instanceof SpreadPaginatedHost
+        ? SpreadPaginatedHost.effectiveColumnWidth(this.width)
+        : this.width;
+    void this.bookPagination.run(
+      this.spineIndex,
+      measureWidth,
+      this.height,
+      this.fontScale,
+      this.fontFamily,
+      () => {
+        this.notify();
+      },
+    );
   }
 
   /** Looks up a saved CFI for this book and, if one resolves to a valid
@@ -499,7 +565,11 @@ export class ReaderController {
       return;
     }
     try {
-      const locator = this.locatorResolver.generate(this.spineIndex, position.node, position.offset);
+      const locator = this.locatorResolver.generate(
+        this.spineIndex,
+        position.node,
+        position.offset,
+      );
       await this.library.saveProgress(this.bookId, locator.cfi);
     } catch {
       // Best-effort: resume-reading is a convenience, not something that
@@ -580,7 +650,9 @@ export class ReaderController {
     let bestSpineIndex = -1;
 
     for (const candidate of ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)) {
-      const candidateIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === candidate.path);
+      const candidateIndex = this.pkg.spine.findIndex(
+        (ref) => ref.manifestItem.path === candidate.path,
+      );
       if (candidateIndex === -1 || candidateIndex > spineIndex) {
         continue;
       }
@@ -607,7 +679,9 @@ export class ReaderController {
    * *nothing* at all highlighted in the TOC, a real bug reported
    * directly. */
   private tocHighlightPath(): string | undefined {
-    return this.nearestPrecedingNavPoint(this.spineIndex)?.path ?? this.pkg.spine[0]?.manifestItem.path;
+    return (
+      this.nearestPrecedingNavPoint(this.spineIndex)?.path ?? this.pkg.spine[0]?.manifestItem.path
+    );
   }
 
   /** Book-wide page number of the first page of every spine item whose
@@ -682,7 +756,8 @@ export class ReaderController {
     if (!iframeDocument) {
       return;
     }
-    const isPaginated = this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
+    const isPaginated =
+      this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
     this.accessibility.attach(iframeDocument, {
       onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
       onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
@@ -733,7 +808,8 @@ export class ReaderController {
 
     const iframeDocument = this.primaryContentDocument();
     const topDocument = this.containerEl?.ownerDocument;
-    const menuOpen = topDocument?.querySelector('[role="menu"], [role="dialog"], [role="listbox"]') != null;
+    const menuOpen =
+      topDocument?.querySelector('[role="menu"], [role="dialog"], [role="listbox"]') != null;
     if (iframeDocument && topDocument && !menuOpen) {
       this.accessibility.focusContent(iframeDocument);
     }
@@ -770,12 +846,25 @@ export class ReaderController {
    * etc.) opens in a new top-level browser tab instead, the standard
    * behavior real readers use for links that lead outside the book.
    *
+   * Also wires up the image viewer: every `<img>` at least
+   * `MIN_ZOOMABLE_IMAGE_SIZE` px in both rendered dimensions, and not
+   * already inside a link (a linked image should still navigate like any
+   * other link, not "zoom" instead), is marked focusable
+   * (`tabIndex`/`role="button"`/an `aria-label`) so it's independently
+   * reachable by keyboard, not just mouse — clicking it, or pressing
+   * Enter/Space while it's focused, opens `ReaderController.
+   * openImageViewer`. An image not yet finished loading at scan time
+   * (rare, but the content host's own render/pagination pass doesn't
+   * strictly wait for every image decode) is re-checked once its `load`
+   * event fires, rather than being silently skipped.
+   *
    * Attached to every document `allContentDocuments()` returns — in
-   * spread mode, that's both columns, so a link on the companion (right)
-   * page works exactly like one on the primary (left) page, even though
-   * only the left page participates in keyboard/focus accessibility.
+   * spread mode, that's both columns, so a link (or a zoomable image) on
+   * the companion (right) page works exactly like one on the primary
+   * (left) page, even though only the left page participates in
+   * keyboard/focus accessibility.
    */
-  private setUpLinkInterception(): void {
+  private setUpContentInteraction(): void {
     const currentPath = this.pkg.spine[this.spineIndex]?.manifestItem.path;
     const documents = this.allContentDocuments();
     if (documents.length === 0 || !currentPath) {
@@ -785,11 +874,36 @@ export class ReaderController {
     const focusDocument = this.primaryContentDocument();
     const cleanups: Array<() => void> = [];
 
+    const isZoomableImage = (element: Element): element is HTMLImageElement => {
+      // Deliberately `localName` rather than `instanceof HTMLImageElement`
+      // (`element` was obtained from the *content iframe's own* document,
+      // a separate JS realm with its own `HTMLImageElement` constructor;
+      // `instanceof` compares against *this* (parent) realm's
+      // constructor, which fails for every cross-realm element regardless
+      // of its actual type) — and rather than `tagName`, which preserves
+      // its as-authored case for an XML/XHTML document (content here is
+      // parsed as `application/xhtml+xml`, so a real book's `<img>`
+      // reads back as `"img"`, not the `"IMG"` a plain HTML document
+      // would normalize it to). `localName` is spec-guaranteed lowercase
+      // in both cases — both were real bugs caught via testing in real
+      // Chromium.
+      if (element.localName !== "img" || element.closest("a[href]")) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      return rect.width >= MIN_ZOOMABLE_IMAGE_SIZE && rect.height >= MIN_ZOOMABLE_IMAGE_SIZE;
+    };
+
     for (const iframeDocument of documents) {
       const clickHandler = (event: MouseEvent): void => {
-        const anchor = (event.target as Element | null)?.closest?.("a[href]");
+        const target = event.target as Element | null;
+        const anchor = target?.closest?.("a[href]");
         const href = anchor?.getAttribute("href");
         if (!href) {
+          const img = target?.closest?.("img");
+          if (img && isZoomableImage(img)) {
+            this.openImageViewer(img.currentSrc || img.src, img.alt);
+          }
           return;
         }
         event.preventDefault();
@@ -803,7 +917,9 @@ export class ReaderController {
 
         const { fragment } = splitHrefFragment(href);
         const targetPath = resolveEpubPath(currentPath, href);
-        const targetSpineIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === targetPath);
+        const targetSpineIndex = this.pkg.spine.findIndex(
+          (ref) => ref.manifestItem.path === targetPath,
+        );
         if (targetSpineIndex === -1) {
           // Points at something that isn't a spine item (e.g. a resource
           // the manifest declares but the spine doesn't include) — nothing
@@ -826,6 +942,49 @@ export class ReaderController {
       iframeDocument.addEventListener("click", clickHandler);
       cleanups.push(() => iframeDocument.removeEventListener("click", clickHandler));
 
+      // Keyboard equivalent of the click handler above, for a focused
+      // zoomable image (see `markZoomableImage` below, which is what
+      // makes an image focusable in the first place) — Enter and Space
+      // are both conventional "activate" keys for a `role="button"`
+      // element, matching how a real `<button>` responds to either.
+      const keydownHandler = (event: KeyboardEvent): void => {
+        const active = iframeDocument.activeElement;
+        if ((event.key !== "Enter" && event.key !== " ") || !active || !isZoomableImage(active)) {
+          return;
+        }
+        event.preventDefault();
+        this.openImageViewer(active.currentSrc || active.src, active.alt);
+      };
+      iframeDocument.addEventListener("keydown", keydownHandler);
+      cleanups.push(() => iframeDocument.removeEventListener("keydown", keydownHandler));
+
+      // Marks an already-loaded, currently-eligible image as focusable/
+      // announced — re-invoked from the `load` listener below for an
+      // image that wasn't finished loading (so its rendered size wasn't
+      // known yet) at the time of the initial scan.
+      const markIfZoomable = (img: HTMLImageElement): void => {
+        if (!isZoomableImage(img)) {
+          return;
+        }
+        img.tabIndex = 0;
+        img.setAttribute("role", "button");
+        img.setAttribute("aria-label", img.alt ? `Zoom image: ${img.alt}` : "Zoom image");
+        img.style.cursor = "zoom-in";
+      };
+
+      for (const img of iframeDocument.querySelectorAll("img")) {
+        if (img.complete) {
+          markIfZoomable(img);
+          continue;
+        }
+        const onLoad = (): void => {
+          markIfZoomable(img);
+          img.removeEventListener("load", onLoad);
+        };
+        img.addEventListener("load", onLoad);
+        cleanups.push(() => img.removeEventListener("load", onLoad));
+      }
+
       // Hides the toolbar immediately on any click into the content —
       // see `contentPointerActivityId`'s doc comment. Attached here
       // (rather than only alongside the paginated/spread click-to-
@@ -840,7 +999,7 @@ export class ReaderController {
       cleanups.push(() => iframeDocument.removeEventListener("pointerdown", pointerDownHandler));
     }
 
-    this.linkClickCleanup = () => {
+    this.contentInteractionCleanup = () => {
       for (const cleanup of cleanups) {
         cleanup();
       }
@@ -896,7 +1055,7 @@ export class ReaderController {
     if (this.viewMode !== "paginated" || this.host instanceof FixedContentHost) {
       return false;
     }
-    return SpreadPaginatedHost.isEligible(width) !== (this.host instanceof SpreadPaginatedHost);
+    return SpreadPaginatedHost.isEligible(width) !== this.host instanceof SpreadPaginatedHost;
   }
 
   /** Bridges the current reading position via CFI and reopens the
@@ -941,7 +1100,10 @@ export class ReaderController {
    * `ScrollContentHost.resize`). A no-op for a fixed-layout spine item,
    * which has no reader-adjustable typography. */
   public async setFontScale(scale: number): Promise<void> {
-    const clamped = Math.min(ReadingTheme.MAX_FONT_SCALE, Math.max(ReadingTheme.MIN_FONT_SCALE, scale));
+    const clamped = Math.min(
+      ReadingTheme.MAX_FONT_SCALE,
+      Math.max(ReadingTheme.MIN_FONT_SCALE, scale),
+    );
     if (clamped === this.fontScale || this.host instanceof FixedContentHost) {
       return;
     }
@@ -996,6 +1158,25 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Opens the image viewer overlay on a specific image — called by the
+   * click/keyboard handlers `setUpContentInteraction` attaches to
+   * qualifying `<img>` elements. Pure UI state, not persisted (there's
+   * nothing meaningful to resume — closing and reopening the same image
+   * is a fresh, cheap action, unlike a reading position). */
+  public openImageViewer(src: string, alt: string): void {
+    this.imageViewer = { src, alt };
+    this.notify();
+  }
+
+  /** Closes the image viewer overlay, if open. */
+  public closeImageViewer(): void {
+    if (!this.imageViewer) {
+      return;
+    }
+    this.imageViewer = undefined;
+    this.notify();
+  }
+
   /** Writes the current font scale/family and page theme onto every
    * current content document as CSS custom properties (see
    * `ReadingTheme.applyFontScale`/`applyFontFamily`/`applyPageTheme`) and,
@@ -1038,7 +1219,8 @@ export class ReaderController {
    * its theme-default value, since the freshly-opened host was already
    * paginated at those defaults by its own `open()` call. */
   private applyPersistedDisplaySettingsToFreshHost(): void {
-    const needsRelayout = this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY;
+    const needsRelayout =
+      this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY;
     if (needsRelayout || this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME) {
       this.applyDisplaySettingsToHost({ relayout: needsRelayout });
     }
@@ -1072,9 +1254,10 @@ export class ReaderController {
     if (this.host instanceof SpreadPaginatedHost) {
       moved = direction === 1 ? this.host.nextSpread() : this.host.previousSpread();
       const second = this.host.secondPageIndex;
-      announcement = second !== undefined
-        ? `Pages ${this.host.pageIndex + 1}–${second + 1} of ${this.host.pageCount}`
-        : `Page ${this.host.pageIndex + 1} of ${this.host.pageCount}`;
+      announcement =
+        second !== undefined
+          ? `Pages ${this.host.pageIndex + 1}–${second + 1} of ${this.host.pageCount}`
+          : `Page ${this.host.pageIndex + 1} of ${this.host.pageCount}`;
     } else if (this.host instanceof PaginatedContentHost) {
       const animatedHost = await this.animatePageTurn(this.host, direction);
       if (animatedHost) {
@@ -1086,14 +1269,14 @@ export class ReaderController {
           animatedHost.dispose();
           return;
         }
-        this.linkClickCleanup?.();
-        this.linkClickCleanup = undefined;
+        this.contentInteractionCleanup?.();
+        this.contentInteractionCleanup = undefined;
         this.dragCleanup?.();
         this.dragCleanup = undefined;
         this.host = animatedHost;
         this.updateContentTitle();
         this.reattachKeyboardNav();
-        this.setUpLinkInterception();
+        this.setUpContentInteraction();
         this.setUpDragPageTurn();
         this.announce(`Page ${animatedHost.currentPageIndex + 1} of ${animatedHost.pageCount}`);
         this.notify();
@@ -1175,7 +1358,8 @@ export class ReaderController {
           }
         };
         oldEl.addEventListener("transitionend", onTransitionEnd);
-        oldEl.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+        oldEl.style.transition =
+          "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
         // Rotating slightly past 90° (rather than stopping exactly at
         // it) reads as a page continuing its motion out of view rather
         // than freezing edge-on to the viewer.
@@ -1339,7 +1523,7 @@ export class ReaderController {
    * "tapping near this page's edge" means the same thing regardless of
    * which of the two side-by-side columns it lands in. Attached to both
    * columns (not just the primary/left one accessibility uses), matching
-   * `setUpLinkInterception`'s existing scope: mouse interaction works on
+   * `setUpContentInteraction`'s existing scope: mouse interaction works on
    * both pages of a spread, even though only the left one participates
    * in keyboard/focus accessibility.
    *
@@ -1400,7 +1584,10 @@ export class ReaderController {
     const onContainerPointerUp = (event: PointerEvent): void => {
       const deltaX = Math.abs(event.clientX - containerStartX);
       const deltaY = Math.abs(event.clientY - containerStartY);
-      if (deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE || deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE) {
+      if (
+        deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
+        deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
+      ) {
         return;
       }
       void this.turnPage(1);
@@ -1474,7 +1661,11 @@ export class ReaderController {
           }
           if (prepared) {
             this.stagePageTurn(oldHost, lockedDirection);
-            this.setPageTurnRotation(oldHost.element, lockedDirection * -90 * latestFraction, latestFraction);
+            this.setPageTurnRotation(
+              oldHost.element,
+              lockedDirection * -90 * latestFraction,
+              latestFraction,
+            );
           } else {
             // A chapter boundary — nothing to drag into in this pass.
             this.isTurningPage = false;
@@ -1533,9 +1724,14 @@ export class ReaderController {
    * Two additional guards keep it from misfiring: an active text
    * selection (the user was dragging to select, not tapping) and a click
    * that landed on an `<a href>` (already handled, and already
-   * navigated, by `setUpLinkInterception`'s own click listener — turning
+   * navigated, by `setUpContentInteraction`'s own click listener — turning
    * the page *as well* would be a confusing double-navigation). */
-  private handleContentClick(upEvent: PointerEvent, startX: number, startY: number, containerWidth: number): void {
+  private handleContentClick(
+    upEvent: PointerEvent,
+    startX: number,
+    startY: number,
+    containerWidth: number,
+  ): void {
     const deltaX = Math.abs(upEvent.clientX - startX);
     const deltaY = Math.abs(upEvent.clientY - startY);
     if (
@@ -1545,7 +1741,8 @@ export class ReaderController {
       return;
     }
 
-    const selection = upEvent.target instanceof Node ? upEvent.target.ownerDocument?.getSelection() : undefined;
+    const selection =
+      upEvent.target instanceof Node ? upEvent.target.ownerDocument?.getSelection() : undefined;
     if (selection && !selection.isCollapsed) {
       return;
     }
@@ -1652,14 +1849,14 @@ export class ReaderController {
       newEl.style.transform = "";
       newEl.style.zIndex = "";
 
-      this.linkClickCleanup?.();
-      this.linkClickCleanup = undefined;
+      this.contentInteractionCleanup?.();
+      this.contentInteractionCleanup = undefined;
       this.dragCleanup?.();
       this.dragCleanup = undefined;
       this.host = newHost;
       this.updateContentTitle();
       this.reattachKeyboardNav();
-      this.setUpLinkInterception();
+      this.setUpContentInteraction();
       this.setUpDragPageTurn();
       this.announce(`Page ${newHost.currentPageIndex + 1} of ${newHost.pageCount}`);
       this.notify();
@@ -1763,7 +1960,9 @@ export class ReaderController {
       const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
-        await this.openSpineItem(resolved.spineIndex, { landOnPageIndex: resolved.pageIndexInItem });
+        await this.openSpineItem(resolved.spineIndex, {
+          landOnPageIndex: resolved.pageIndexInItem,
+        });
         return;
       }
     }
@@ -1826,15 +2025,22 @@ export class ReaderController {
 
     try {
       this.accessibility.detach();
-      this.linkClickCleanup?.();
-      this.linkClickCleanup = undefined;
+      this.contentInteractionCleanup?.();
+      this.contentInteractionCleanup = undefined;
       this.host?.dispose();
 
-      const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
+      const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
+        this.pkg.metadata.renditionLayout,
+      );
       if (resolvedLayout === "pre-paginated") {
         const fixedHost = new FixedContentHost(this.width, this.height);
         this.containerEl.replaceChildren(fixedHost.element);
-        await fixedHost.open(this.contentLoader, this.resolver, spineIndex, this.pkg.metadata.renditionViewport);
+        await fixedHost.open(
+          this.contentLoader,
+          this.resolver,
+          spineIndex,
+          this.pkg.metadata.renditionViewport,
+        );
         this.host = fixedHost;
       } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
         const host = new SpreadPaginatedHost(this.width, this.height);
@@ -1856,7 +2062,7 @@ export class ReaderController {
       this.spineIndex = spineIndex;
       this.appliedWidth = this.width;
       this.appliedHeight = this.height;
-      this.setUpLinkInterception();
+      this.setUpContentInteraction();
       this.setUpDragPageTurn();
       this.refreshBookPagination();
 
@@ -1867,7 +2073,10 @@ export class ReaderController {
         const focusTarget = this.goToFragment(options.fragment);
         this.setUpAccessibility(focusTarget);
       } else {
-        if (options.landOnLastPage && (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)) {
+        if (
+          options.landOnLastPage &&
+          (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
+        ) {
           this.host.goToLastPage();
         } else if (
           options.landOnPageIndex !== undefined &&
@@ -1884,7 +2093,9 @@ export class ReaderController {
           // chapter is open and its real page count is known — unlike
           // `landOnPageIndex`, which already has an exact index computed
           // from a fully-measured book.
-          const targetIndex = Math.round(options.landOnFractionInItem * Math.max(0, this.host.pageCount - 1));
+          const targetIndex = Math.round(
+            options.landOnFractionInItem * Math.max(0, this.host.pageCount - 1),
+          );
           this.host.goToPageIndex(targetIndex);
         }
         this.setUpAccessibility();
@@ -1910,7 +2121,11 @@ export class ReaderController {
     if (!iframeDocument) {
       return;
     }
-    const resolved = this.locatorResolver.resolveInDocument(new Locator(cfi), spineIndex, iframeDocument);
+    const resolved = this.locatorResolver.resolveInDocument(
+      new Locator(cfi),
+      spineIndex,
+      iframeDocument,
+    );
     const offset = resolved.characterOffset ?? 0;
     if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.goToPosition(resolved.node, offset);
@@ -1935,7 +2150,7 @@ export class ReaderController {
 
   public dispose(): void {
     this.accessibility.detach();
-    this.linkClickCleanup?.();
+    this.contentInteractionCleanup?.();
     this.dragCleanup?.();
     this.host?.dispose();
     this.bookPagination?.dispose();
