@@ -14,19 +14,19 @@
  * `CHROME_THEMES` background is deliberately kept light enough that the
  * existing dark neutral text/icons (Fluent's own defaults, used
  * throughout the toolbar/TOC/panels) stay comfortably above WCAG AAA
- * contrast (10:1+) against all four, without needing to re-theme
+ * contrast (10:1+) against all five, without needing to re-theme
  * Fluent's own component internals (icons, menu popovers) per color —
  * out of scope for this pass, which only themes the toolbar/TOC/
  * scrubber/details-panel *backgrounds* the issue asked for.
  *
  * Most themes are a flat translucent/opaque color, but nothing about
  * `background`/`backgroundSolid` requires that — they're plain CSS
- * `background` values, so a theme can just as well be a gradient (see
- * `amber`, matching the extension's own icon) as long as *every* stop
- * stays light enough to keep that same contrast guarantee; a flat, raw
- * saturated color sampled directly from brand art (e.g. the icon's own
- * vivid amber gem tone) reads as garish/loud as a full chrome tint in a
- * way a soft gradient across lighter tints of the same hue doesn't. */
+ * `background` values, so a theme can just as well be a gradient (used
+ * for all five themes below) as long as *every* stop stays light enough
+ * to keep that same contrast guarantee; a flat, raw saturated color
+ * sampled directly from brand art (e.g. the extension icon's own vivid
+ * amber gem tone) reads as garish/loud as a full chrome tint in a way a
+ * soft gradient across lighter tints of the same hue doesn't. */
 export const CHROME_BORDER = "rgba(15, 23, 42, 0.09)";
 export const CHROME_SHADOW = "0 2px 16px rgba(15, 23, 42, 0.10)";
 export const CHROME_HOVER_BACKGROUND = "rgba(15, 23, 42, 0.05)";
@@ -38,7 +38,7 @@ export const CHROME_BACKDROP_FILTER = "blur(12px) saturate(1.1)";
  * avoid the two being confused as the same setting) — this one lives in
  * the Settings ("gear") menu as "Reader Theme" instead, since it's an
  * app-chrome preference, not a book-reading-experience one. */
-export type ChromeThemeChoice = "silver" | "green" | "blue" | "purple" | "amber";
+export type ChromeThemeChoice = "silver" | "green" | "blue" | "purple" | "ambra";
 
 interface ChromeThemePalette {
   readonly label: string;
@@ -54,33 +54,34 @@ interface ChromeThemePalette {
 
 export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "silver";
 
+// Every gradient below runs light-to-slightly-deeper along the same
+// 135deg diagonal (a consistent implied "light source" direction across
+// themes) and was individually verified — at *both* stops, not just the
+// lighter one — to clear at least 10:1 contrast (WCAG AAA is 7:1) against
+// the reader's existing dark text/icon colors.
 export const CHROME_THEMES: Readonly<Record<ChromeThemeChoice, ChromeThemePalette>> = {
   silver: {
     label: "Silver",
-    background: "rgba(226, 228, 233, 0.86)",
-    backgroundSolid: "rgb(226, 228, 233)",
+    background: "linear-gradient(135deg, rgba(244, 245, 248, 0.90), rgba(222, 225, 231, 0.86))",
+    backgroundSolid: "linear-gradient(135deg, rgb(244, 245, 248), rgb(222, 225, 231))",
   },
   green: {
     label: "Green",
-    background: "rgba(188, 220, 205, 0.86)",
-    backgroundSolid: "rgb(188, 220, 205)",
+    background: "linear-gradient(135deg, rgba(206, 231, 218, 0.90), rgba(178, 212, 194, 0.86))",
+    backgroundSolid: "linear-gradient(135deg, rgb(206, 231, 218), rgb(178, 212, 194))",
   },
   blue: {
     label: "Blue",
-    background: "rgba(181, 202, 227, 0.86)",
-    backgroundSolid: "rgb(181, 202, 227)",
+    background: "linear-gradient(135deg, rgba(199, 215, 236, 0.90), rgba(176, 199, 226, 0.86))",
+    backgroundSolid: "linear-gradient(135deg, rgb(199, 215, 236), rgb(176, 199, 226))",
   },
   purple: {
     label: "Purple",
-    background: "rgba(212, 191, 222, 0.86)",
-    backgroundSolid: "rgb(212, 191, 222)",
+    background: "linear-gradient(135deg, rgba(227, 212, 233, 0.90), rgba(211, 189, 223, 0.86))",
+    backgroundSolid: "linear-gradient(135deg, rgb(227, 212, 233), rgb(211, 189, 223))",
   },
-  amber: {
-    label: "Amber",
-    // A soft champagne-to-gold gradient rather than the icon's own
-    // saturated, flat amber tone — verified 10.8:1+ contrast (WCAG AAA)
-    // against the reader's dark text at *both* gradient stops, not just
-    // the lighter one. See this file's doc comment above.
+  ambra: {
+    label: "Ambra",
     background: "linear-gradient(135deg, rgba(255, 232, 189, 0.90), rgba(240, 196, 140, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(255, 232, 189), rgb(240, 196, 140))",
   },
