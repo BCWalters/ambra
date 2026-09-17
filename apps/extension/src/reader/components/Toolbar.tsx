@@ -126,7 +126,12 @@ export const Toolbar: FC<ToolbarProps> = ({
           display: "flex",
           alignItems: "center",
           gap: 10,
-          padding: "8px 10px",
+          // A little taller than a bare-minimum button bar (12px, not
+          // 8px, of vertical padding) so the toolbar fully covers the
+          // running header's own title/chapter text underneath it (see
+          // `PageFurniture`'s `HEADER_TEXT_TOP_OFFSET`) whenever it's
+          // shown, instead of just barely overlapping it.
+          padding: "12px 10px",
           background: CHROME_BACKGROUND,
           backdropFilter: CHROME_BACKDROP_FILTER,
           WebkitBackdropFilter: CHROME_BACKDROP_FILTER,

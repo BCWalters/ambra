@@ -7,6 +7,16 @@ export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
 }
 
+/** How far below the top of the reserved header band (`PAGE_INSET_TOP`)
+ * the running header's own text sits — deliberately near the *top* of
+ * that band (not vertically centered within it) so the text sits well
+ * within the toolbar's own footprint when it's shown, rather than
+ * peeking out just below it. Paired with the toolbar's own height (see
+ * `Toolbar.tsx`) — the two are tuned together so the toolbar always
+ * fully covers this text, never partially, which previously read as an
+ * awkward visual glitch when the two only barely overlapped. */
+const HEADER_TEXT_TOP_OFFSET = 14;
+
 /** Rounds a page position to a whole-number percentage, or `undefined`
  * if either input isn't known yet — never `0%`/`100%` by construction
  * error (a book with 1 total page and current page 1 correctly reads
@@ -71,65 +81,84 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
       ? `Page ${displayPage} of ${displayTotal}${bookPercent !== undefined ? ` · ${bookPercent}%` : ""}`
       : undefined;
 
-  // In spread mode, each of the two visible pages gets its own centered
-  // "Title — Chapter" header, matching how a real printed book's running
-  // head reads the same on facing verso/recto pages — rather than one
-  // header spanning both pages with the title pinned to the outer-left
-  // edge and the chapter to the outer-right edge, which read as
-  // disconnected from the page each was actually sitting on. Computed
-  // from `SpreadPaginatedHost`'s own column/gutter geometry (not
-  // guessed) so each band lines up exactly with the page beneath it.
+  // In spread mode, each of the two visible pages gets one centered
+  // label of its own — book title above the left page, chapter title
+  // above the right page — matching how a real printed book's running
+  // head splits across facing verso/recto pages, rather than repeating
+  // both the title *and* the chapter on every page (redundant, and not
+  // how a real book's running head reads) or spanning one header across
+  // both pages with the title pinned to the outer-left edge and the
+  // chapter to the outer-right edge (disconnected from the page each
+  // was actually sitting on). Computed from `SpreadPaginatedHost`'s own
+  // column/gutter geometry (not guessed) so each band lines up exactly
+  // with the page beneath it.
   const columnWidth = snapshot.isSpread ? SpreadPaginatedHost.effectiveColumnWidth(snapshot.paneWidth) : undefined;
   const sideMargin =
     columnWidth !== undefined
       ? Math.max(0, (snapshot.paneWidth - (columnWidth * 2 + SpreadPaginatedHost.GUTTER_WIDTH)) / 2)
       : undefined;
-  const headerBands: { left: number | string; right: number | string; width: number | string }[] =
+  const headerBands: { left: number | string; right: number | string; width: number | string; text: string }[] =
     columnWidth !== undefined && sideMargin !== undefined
       ? [
-          { left: sideMargin, right: "auto", width: columnWidth },
-          { left: "auto", right: sideMargin, width: columnWidth },
+          { left: sideMargin, right: "auto", width: columnWidth, text: snapshot.title },
+          { left: "auto", right: sideMargin, width: columnWidth, text: snapshot.currentChapterLabel },
         ]
-      : [{ left: 0, right: 0, width: "auto" }];
+      : [];
 
   return (
     <>
-      {headerBands.map((band, index) => (
+      {headerBands.length > 0 ? (
+        headerBands.map((band, index) => (
+          <div
+            key={index}
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: band.left,
+              right: band.right,
+              width: band.width,
+              height: ReadingTheme.PAGE_INSET_TOP,
+              zIndex: 5,
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
+              pointerEvents: "none",
+              overflow: "hidden",
+            }}
+          >
+            <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
+              {band.text}
+            </Caption1>
+          </div>
+        ))
+      ) : (
         <div
-          key={index}
           aria-hidden="true"
           style={{
             position: "absolute",
             top: 0,
-            left: band.left,
-            right: band.right,
-            width: band.width,
+            left: 0,
+            right: 0,
             height: ReadingTheme.PAGE_INSET_TOP,
             zIndex: 5,
             display: "flex",
-            alignItems: "center",
-            justifyContent: headerBands.length > 1 ? "center" : "space-between",
-            padding: "0 20px",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
             pointerEvents: "none",
             overflow: "hidden",
           }}
         >
-          {headerBands.length > 1 ? (
-            <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
-              {snapshot.title} — {snapshot.currentChapterLabel}
-            </Caption1>
-          ) : (
-            <>
-              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
-                {snapshot.title}
-              </Caption1>
-              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>
-                {snapshot.currentChapterLabel}
-              </Caption1>
-            </>
-          )}
+          <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
+            {snapshot.title}
+          </Caption1>
+          <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>
+            {snapshot.currentChapterLabel}
+          </Caption1>
         </div>
-      ))}
+      )}
 
       {footerLabel && (
         <div
