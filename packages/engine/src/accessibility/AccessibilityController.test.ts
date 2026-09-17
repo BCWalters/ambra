@@ -21,7 +21,7 @@ describe("AccessibilityController", () => {
       expect(onPrevious).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores keys other than ArrowLeft/ArrowRight", () => {
+    it("ignores keys other than ArrowLeft/ArrowRight/Space", () => {
       const controller = new AccessibilityController();
       const onNext = vi.fn();
       const onPrevious = vi.fn();
@@ -29,10 +29,38 @@ describe("AccessibilityController", () => {
 
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown" }));
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
 
       expect(onNext).not.toHaveBeenCalled();
       expect(onPrevious).not.toHaveBeenCalled();
+    });
+
+    it("calls onNext for Space and onPrevious for Shift+Space by default", () => {
+      const controller = new AccessibilityController();
+      const onNext = vi.fn();
+      const onPrevious = vi.fn();
+      controller.attach(document, { onNext, onPrevious });
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: " ", shiftKey: true }));
+
+      expect(onNext).toHaveBeenCalledTimes(1);
+      expect(onPrevious).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not intercept Space when interceptSpace is false (continuous-scroll content)", () => {
+      const controller = new AccessibilityController();
+      const onNext = vi.fn();
+      const onPrevious = vi.fn();
+      controller.attach(document, { onNext, onPrevious }, { interceptSpace: false });
+
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: " ", shiftKey: true }));
+
+      expect(onNext).not.toHaveBeenCalled();
+      expect(onPrevious).not.toHaveBeenCalled();
+      // Left/Right must still work — only Space is opted out.
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      expect(onNext).toHaveBeenCalledTimes(1);
     });
 
     it("replaces a previously attached listener rather than stacking them", () => {

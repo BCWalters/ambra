@@ -20,7 +20,8 @@ export class AccessibilityController {
   private keydownHandler: ((event: KeyboardEvent) => void) | undefined;
 
   /**
-   * Wires `ArrowLeft`/`ArrowRight` navigation directly onto `document` —
+   * Wires `ArrowLeft`/`ArrowRight` (and, unless `interceptSpace` is
+   * `false`, `Space`/`Shift+Space`) navigation directly onto `document` —
    * the content host's *own* iframe document, not the parent window.
    * Keyboard events don't bubble out of an iframe's browsing context to
    * the parent, so a listener on the parent's `window`/`document` would
@@ -31,12 +32,24 @@ export class AccessibilityController {
    * has real DOM access to) — not the untrusted content running any
    * script of its own, which stays fully disabled.
    *
-   * Deliberately only intercepts Left/Right: Up/Down/PageUp/PageDown/
-   * Space are left untouched so native scrolling keeps working normally
-   * in continuous-scroll mode. Replaces any previously attached listener.
+   * `interceptSpace` defaults to `true` (matching Space's conventional
+   * "advance" meaning in essentially every reading app) but the caller
+   * passes `false` for continuous-scroll content specifically, where
+   * Space's native "scroll down one viewport" behavior already serves
+   * the exact same "move forward through the book" purpose *and* is a
+   * more useful, finer-grained action than a hypothetical "next chapter"
+   * would be — overriding it there would take away a well-understood
+   * browser behavior for a strictly worse replacement. Up/Down/PageUp/
+   * PageDown are always left untouched for the same "don't fight native
+   * scrolling" reasoning. Replaces any previously attached listener.
    */
-  public attach(document: Document, handlers: AccessibilityNavigationHandlers): void {
+  public attach(
+    document: Document,
+    handlers: AccessibilityNavigationHandlers,
+    options: { interceptSpace?: boolean } = {},
+  ): void {
     this.detach();
+    const interceptSpace = options.interceptSpace ?? true;
 
     const keydownHandler = (event: KeyboardEvent): void => {
       if (event.key === "ArrowRight") {
@@ -45,6 +58,13 @@ export class AccessibilityController {
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
         handlers.onPrevious();
+      } else if (interceptSpace && event.key === " ") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handlers.onPrevious();
+        } else {
+          handlers.onNext();
+        }
       }
     };
 

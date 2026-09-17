@@ -1043,10 +1043,55 @@ export class ReaderController {
     }
     const isPaginated =
       this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
-    this.accessibility.attach(iframeDocument, {
-      onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
-      onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
-    });
+    this.accessibility.attach(
+      iframeDocument,
+      {
+        onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
+        onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
+      },
+      // Space keeps its native "scroll down one viewport" behavior in
+      // continuous-scroll mode — already a well-understood, finer-
+      // grained way to move forward through the book than a hypothetical
+      // "next chapter" binding would be (see `AccessibilityController.
+      // attach`'s doc comment).
+      { interceptSpace: !(this.host instanceof ScrollContentHost) },
+    );
+  }
+
+  /** `true` if `host`'s own iframe element currently has the parent
+   * document's focus — the only way its content document's keyboard
+   * listener (see `reattachKeyboardNav`) could have received the very
+   * keypress that triggered this turn. Used by `turnPageInternal` to
+   * decide whether an animated turn's host swap needs to *restore*
+   * focus afterward (see `restoreFocusAfterHostSwap`) — a real,
+   * confirmed bug without this: the old iframe (which had focus) gets
+   * disposed when the turn commits, and nothing else in the parent
+   * document claims focus in its place, so the *next* keyboard page
+   * turn's keydown goes nowhere at all, silently. */
+  private iframeHasFocus(host: PaginatedContentHost): boolean {
+    const iframe = host.element;
+    return iframe.ownerDocument.activeElement === iframe;
+  }
+
+  /** Restores keyboard focus into the *new* content host's document
+   * after an animated page turn swaps it in — but only if
+   * `hadKeyboardFocus` (captured via `iframeHasFocus` *before* the swap)
+   * is `true`. Deliberately conditional: an ordinary mouse/touch-driven
+   * turn (a click or a drag, never having moved focus into the content
+   * at all) must keep the existing "page turns never force focus"
+   * behavior (see `AccessibilityController.focusContent`'s callers) —
+   * forcibly focusing the content on every turn regardless would be a
+   * real regression for mouse users, disorienting focus on every single
+   * page turn instead of only when keyboard navigation actually needs
+   * it preserved. */
+  private restoreFocusAfterHostSwap(hadKeyboardFocus: boolean): void {
+    if (!hadKeyboardFocus) {
+      return;
+    }
+    const doc = this.primaryContentDocument();
+    if (doc) {
+      this.accessibility.focusContent(doc);
+    }
   }
 
   /** Re-arms keyboard navigation and the click/drag page-turn gesture on
@@ -1914,6 +1959,12 @@ export class ReaderController {
           ? `Pages ${this.host.pageIndex + 1}–${second + 1} of ${this.host.pageCount}`
           : `Page ${this.host.pageIndex + 1} of ${this.host.pageCount}`;
     } else if (this.host instanceof PaginatedContentHost) {
+      // Captured *before* the old host is disposed below (inside
+      // `animatePageTurn`) — see the restoration right after the host
+      // swap for why this matters (a real, confirmed bug: keyboard
+      // page-turning going silently dead after exactly one animated
+      // turn).
+      const hadKeyboardFocus = this.iframeHasFocus(this.host);
       const animatedHost = await this.animatePageTurn(this.host, direction);
       if (animatedHost) {
         if (token !== this.turnToken) {
@@ -1935,6 +1986,7 @@ export class ReaderController {
         this.setUpDragPageTurn();
         this.setUpHighlightSelection();
         this.applyHighlightsToCurrentHost();
+        this.restoreFocusAfterHostSwap(hadKeyboardFocus);
         this.announce(`Page ${animatedHost.currentPageIndex + 1} of ${animatedHost.pageCount}`);
         this.notify();
         await this.saveProgress();
@@ -2485,6 +2537,9 @@ export class ReaderController {
       return;
     }
 
+    // Captured up front, before anything below disposes `oldHost` — see
+    // `iframeHasFocus`/`restoreFocusAfterHostSwap`'s doc comments.
+    const hadKeyboardFocus = this.iframeHasFocus(oldHost);
     const oldEl = oldHost.element;
     const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -2562,6 +2617,7 @@ export class ReaderController {
       this.setUpDragPageTurn();
       this.setUpHighlightSelection();
       this.applyHighlightsToCurrentHost();
+      this.restoreFocusAfterHostSwap(hadKeyboardFocus);
       this.announce(`Page ${newHost.currentPageIndex + 1} of ${newHost.pageCount}`);
       this.notify();
       await this.saveProgress();
