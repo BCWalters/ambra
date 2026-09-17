@@ -41,6 +41,7 @@ export const ReaderApp: FC = () => {
     setFontFamily,
     setPageTheme,
     setChromeTheme,
+    setPageTurnAnimationStyle,
     previewSeek,
     seekToFraction,
     getBookDetails,
@@ -249,6 +250,7 @@ export const ReaderApp: FC = () => {
               onSetFontFamily={setFontFamily}
               onSetPageTheme={setPageTheme}
               onSetChromeTheme={setChromeTheme}
+              onSetPageTurnAnimationStyle={setPageTurnAnimationStyle}
               visible={chromeVisible}
               handlers={chromeHandlers}
             />

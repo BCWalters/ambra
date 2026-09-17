@@ -26,6 +26,8 @@ import type {
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
+import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
+import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { ViewMode } from "./ViewMode.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
 
@@ -156,6 +158,10 @@ export interface ReaderSnapshot {
    * — see `ChromeThemeChoice`), distinct from `pageTheme` (the book
    * page's own background). */
   chromeTheme: ChromeThemeChoice;
+  /** Which page-turn animation (see `PageTurnAnimationStyle`) click/drag
+   * page turns use — pure UI state, read straight off the snapshot by
+   * the settings menu. */
+  pageTurnAnimationStyle: PageTurnAnimationStyle;
   isLoading: boolean;
   error: string | undefined;
   /** Text for the shell's `aria-live` region to announce (page turns,
@@ -235,6 +241,12 @@ export class ReaderController {
    * (see `applyDisplaySettingsToHost`) — the shell reads it straight off
    * the snapshot via `ChromeThemeProvider`. */
   private chromeTheme: ChromeThemeChoice = DEFAULT_CHROME_THEME;
+  /** Defaults to `DEFAULT_PAGE_TURN_ANIMATION_STYLE`, but `open` overwrites
+   * this from the saved preference (if any) — see
+   * `setPageTurnAnimationStyle`. Pure UI/interaction state, consulted by
+   * `stagePageTurn`/`setPageTurnTransform` for every click- or drag-driven
+   * turn. */
+  private pageTurnAnimationStyle: PageTurnAnimationStyle = DEFAULT_PAGE_TURN_ANIMATION_STYLE;
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
   private width = 0;
@@ -391,6 +403,8 @@ export class ReaderController {
       (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
     controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
     controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
+    controller.pageTurnAnimationStyle =
+      (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
     return controller;
   }
 
@@ -450,6 +464,7 @@ export class ReaderController {
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
         chromeTheme: this.chromeTheme,
+        pageTurnAnimationStyle: this.pageTurnAnimationStyle,
         isLoading: this.isLoading,
         error: this.error,
         announcement: this.announcement,
@@ -1190,6 +1205,19 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Sets which animation click/drag page turns use (see
+   * `PageTurnAnimationStyle`) — same "pure UI state, just persist and
+   * notify" shape as `setChromeTheme`, since it never touches a content
+   * document either. */
+  public async setPageTurnAnimationStyle(style: PageTurnAnimationStyle): Promise<void> {
+    if (style === this.pageTurnAnimationStyle) {
+      return;
+    }
+    this.pageTurnAnimationStyle = style;
+    await this.library.setDefaultPageTurnAnimationStyle(style);
+    this.notify();
+  }
+
   /** Opens the image viewer overlay on a specific image — called by the
    * click/keyboard handlers `setUpContentInteraction` attaches to
    * qualifying `<img>` elements. Pure UI state, not persisted (there's
@@ -1444,7 +1472,7 @@ export class ReaderController {
         // it) reads as a page continuing its motion out of view rather
         // than freezing edge-on to the viewer.
         requestAnimationFrame(() => {
-          this.setPageTurnRotation(oldEl, direction === 1 ? -100 : 100, 1);
+          this.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1);
         });
         // A safety net in case `transitionend` never fires (e.g. the
         // element was removed mid-transition by a rapid subsequent
@@ -1522,32 +1550,68 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Puts `oldHost.element` into "ready to rotate" state (perspective on
-   * the container, the correct hinge edge for `direction`, hidden
-   * backface) without yet touching its `transform` — shared setup
-   * between the click-triggered (`animatePageTurn`) and drag-driven
-   * (`beginDragPageTurn`) turn mechanics. */
+  /** Puts `oldHost.element` into "ready to turn" state without yet
+   * touching its `transform` — shared setup between the click-triggered
+   * (`animatePageTurn`) and drag-driven (`beginDragPageTurn`) turn
+   * mechanics, for whichever style `this.pageTurnAnimationStyle` is
+   * currently set to.
+   *
+   * "rotate" needs perspective on the container, the correct hinge edge
+   * for `direction`, and a hidden backface; "slide" needs none of that —
+   * it's a flat 2D translate of a page that's already sitting in the
+   * exact same spot the incoming page occupies underneath it (see
+   * `prepareIncomingPage`), so simply sliding it aside reveals the next
+   * page with no 3D setup at all. */
   private stagePageTurn(oldHost: PaginatedContentHost, direction: 1 | -1): void {
     if (!this.containerEl) {
       return;
     }
     const oldEl = oldHost.element;
-    this.containerEl.style.perspective = "2200px";
     oldEl.style.position = "relative";
     oldEl.style.zIndex = "2";
+    if (this.pageTurnAnimationStyle === "slide") {
+      return;
+    }
+    this.containerEl.style.perspective = "2200px";
     oldEl.style.backfaceVisibility = "hidden";
-    // The hinge is the spine edge the page turns away from: the right
-    // edge turning forward (as if lifting toward the next page), the
-    // left edge turning back.
-    oldEl.style.transformOrigin = `${direction === 1 ? "right" : "left"} center`;
+    // The hinge is the spine edge the page turns away from: the left
+    // edge turning forward (the right/free edge lifts up and toward the
+    // viewer, like turning the right-hand page of a physical book), the
+    // right edge turning back (the left/free edge lifts toward the
+    // viewer instead). Confirmed empirically against an isolated CSS 3D
+    // transform test — `rotateY`'s sign only reads as "toward the
+    // viewer" when paired with the hinge on the *opposite* side from the
+    // edge that's lifting.
+    oldEl.style.transformOrigin = `${direction === 1 ? "left" : "right"} center`;
   }
 
-  /** Sets `oldEl`'s rotation directly (no transition) — `fraction` (0 to
-   * 1) scales a deepening drop shadow alongside the rotation, so a
-   * partial drag reads as the page physically lifting, not just tilting
-   * in place. */
-  private setPageTurnRotation(oldEl: HTMLIFrameElement, degrees: number, fraction: number): void {
-    oldEl.style.transform = `rotateY(${degrees}deg)`;
+  /** Scales a 0–1 drag fraction into `this.pageTurnAnimationStyle`'s own
+   * natural unit for `setPageTurnTransform` — degrees for "rotate" (a
+   * quarter turn at `fraction=1`), percent for "slide" (a full page-width
+   * translate at `fraction=1`) — signed so the outgoing page always
+   * moves the same "out of view" way for a given `direction` regardless
+   * of which style is active. */
+  private pageTurnPartialAmount(direction: 1 | -1, fraction: number): number {
+    const scale = this.pageTurnAnimationStyle === "slide" ? 100 : 90;
+    return direction * -scale * fraction;
+  }
+
+  /** Sets `oldEl`'s in-progress transform directly (no transition) for
+   * whichever style is active — `amount` is degrees (rotate) or percent
+   * (slide); `fraction` (0 to 1) scales a deepening drop shadow
+   * alongside it, so a partial drag reads as the page physically
+   * lifting/sliding, not just moving in place. */
+  private setPageTurnTransform(oldEl: HTMLIFrameElement, amount: number, fraction: number): void {
+    if (this.pageTurnAnimationStyle === "slide") {
+      oldEl.style.transform = `translateX(${amount}%)`;
+      // The shadow falls on the trailing edge — the side most recently
+      // uncovered — which is the opposite side from the direction of
+      // travel (negative `amount` = moving left = shadow on the right).
+      const edge = amount < 0 ? "" : "-";
+      oldEl.style.boxShadow = `${edge}16px 0 32px rgba(0, 0, 0, ${(0.3 * fraction).toFixed(3)})`;
+      return;
+    }
+    oldEl.style.transform = `rotateY(${amount}deg)`;
     oldEl.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
   }
 
@@ -1689,7 +1753,7 @@ export class ReaderController {
   /** Tracks one pointer gesture from `pointerdown` through release,
    * turning the page interactively: the outgoing page rotates in direct
    * proportion to how far the pointer has moved (see
-   * `setPageTurnRotation`) rather than on a fixed timer, so the reader
+   * `setPageTurnTransform`) rather than on a fixed timer, so the reader
    * can see exactly how far "through" the turn they are and change their
    * mind mid-gesture. Direction (forward/back) locks in on the first
    * movement past a small dead zone (so an ordinary tap/click is never
@@ -1741,9 +1805,9 @@ export class ReaderController {
           }
           if (prepared) {
             this.stagePageTurn(oldHost, lockedDirection);
-            this.setPageTurnRotation(
+            this.setPageTurnTransform(
               oldHost.element,
-              lockedDirection * -90 * latestFraction,
+              this.pageTurnPartialAmount(lockedDirection, latestFraction),
               latestFraction,
             );
           } else {
@@ -1757,7 +1821,7 @@ export class ReaderController {
       const fraction = Math.max(0, Math.min(1, Math.abs(deltaX) / containerWidth));
       latestFraction = fraction;
       if (newHost && direction !== undefined) {
-        this.setPageTurnRotation(oldHost.element, direction * -90 * fraction, fraction);
+        this.setPageTurnTransform(oldHost.element, this.pageTurnPartialAmount(direction, fraction), fraction);
       }
     };
 
@@ -1889,9 +1953,9 @@ export class ReaderController {
         oldEl.style.transition = `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow ${duration}ms ease`;
         requestAnimationFrame(() => {
           if (commit) {
-            this.setPageTurnRotation(oldEl, direction === 1 ? -100 : 100, 1);
+            this.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1);
           } else {
-            this.setPageTurnRotation(oldEl, 0, 0);
+            this.setPageTurnTransform(oldEl, 0, 0);
           }
         });
         setTimeout(finish, duration + 250);

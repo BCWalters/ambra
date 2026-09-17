@@ -40,6 +40,7 @@ import {
 } from "../chromeTheme.js";
 import type { ChromeThemeChoice } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
@@ -54,6 +55,7 @@ export interface ToolbarProps {
   onSetFontFamily: (family: FontFamilyChoice) => void;
   onSetPageTheme: (theme: PageTheme) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
+  onSetPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
   /** Whether the toolbar should currently be shown, and the pointer/
    * focus handlers that keep it visible — lifted up into `ReaderApp` (see
    * `useAutoHideChrome`) rather than owned here, so `ProgressScrubber`
@@ -72,6 +74,7 @@ const VIEW_MODE_GROUP_NAME = "viewMode";
 const FONT_FAMILY_GROUP_NAME = "fontFamily";
 const PAGE_THEME_GROUP_NAME = "pageTheme";
 const CHROME_THEME_GROUP_NAME = "chromeTheme";
+const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
@@ -106,6 +109,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetFontFamily,
   onSetPageTheme,
   onSetChromeTheme,
+  onSetPageTurnAnimationStyle,
   visible,
   handlers,
 }) => {
@@ -356,12 +360,15 @@ export const Toolbar: FC<ToolbarProps> = ({
           checkedValues={{
             [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
             [CHROME_THEME_GROUP_NAME]: [snapshot.chromeTheme],
+            [PAGE_TURN_ANIMATION_GROUP_NAME]: [snapshot.pageTurnAnimationStyle],
           }}
           onCheckedValueChange={(_event, data) => {
             if (data.name === VIEW_MODE_GROUP_NAME) {
               onSetViewMode(data.checkedItems[0] as ViewMode);
             } else if (data.name === CHROME_THEME_GROUP_NAME) {
               onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
+            } else if (data.name === PAGE_TURN_ANIMATION_GROUP_NAME) {
+              onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
             }
           }}
         >
@@ -389,6 +396,16 @@ export const Toolbar: FC<ToolbarProps> = ({
                       icon={<TextColumnOneRegular />}
                     >
                       Scroll
+                    </MenuItemRadio>
+                  </MenuGroup>
+                  <MenuDivider />
+                  <MenuGroup>
+                    <MenuGroupHeader>Page Turn</MenuGroupHeader>
+                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="rotate">
+                      Rotate
+                    </MenuItemRadio>
+                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
+                      Slide
                     </MenuItemRadio>
                   </MenuGroup>
                   <MenuDivider />

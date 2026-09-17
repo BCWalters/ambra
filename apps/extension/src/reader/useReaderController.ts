@@ -5,6 +5,7 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
 import type { BookDetails, ReaderSnapshot, ViewMode } from "./ReaderController.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
+import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 
 export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
@@ -18,6 +19,7 @@ export interface UseReaderControllerResult {
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
   setChromeTheme: (theme: ChromeThemeChoice) => void;
+  setPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
   previewSeek: (fraction: number) => { label: string; chapterLabel: string };
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
@@ -160,6 +162,13 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const setPageTurnAnimationStyle = useCallback(
+    (style: PageTurnAnimationStyle) => {
+      void controller?.setPageTurnAnimationStyle(style);
+    },
+    [controller],
+  );
+
   const previewSeek = useCallback(
     (fraction: number) => {
       return controller?.previewSeek(fraction) ?? { label: "", chapterLabel: "" };
@@ -202,6 +211,7 @@ export function useReaderController(): UseReaderControllerResult {
     setFontFamily,
     setPageTheme,
     setChromeTheme,
+    setPageTurnAnimationStyle,
     previewSeek,
     seekToFraction,
     getBookDetails,

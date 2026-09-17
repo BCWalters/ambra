@@ -1,6 +1,7 @@
 import type { PageTheme, FontFamilyChoice } from "@ambra/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
+import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
 
 /** Book metadata as stored in the library — small enough to list in bulk
  * without touching the (potentially large) book file/cover blobs, which
@@ -55,6 +56,7 @@ const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
 const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
 const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
+const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -211,6 +213,22 @@ export class LibraryDatabase {
 
   public async setDefaultChromeTheme(theme: ChromeThemeChoice): Promise<void> {
     const record: PreferenceRecord = { key: CHROME_THEME_PREFERENCE_KEY, value: theme };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** Which page-turn animation (see `PageTurnAnimationStyle`) to use for
+   * click/drag-driven page turns. `undefined` if never set, in which case
+   * callers should fall back to `DEFAULT_PAGE_TURN_ANIMATION_STYLE`. */
+  public async getDefaultPageTurnAnimationStyle(): Promise<PageTurnAnimationStyle | undefined> {
+    const record = await this.get<PreferenceRecord>(
+      PREFERENCES_STORE,
+      PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY,
+    );
+    return record?.value as PageTurnAnimationStyle | undefined;
+  }
+
+  public async setDefaultPageTurnAnimationStyle(style: PageTurnAnimationStyle): Promise<void> {
+    const record: PreferenceRecord = { key: PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY, value: style };
     await this.put(PREFERENCES_STORE, record);
   }
 
