@@ -79,6 +79,18 @@ export class SpreadPaginatedHost {
     this.containerEl = doc.createElement("div");
     this.containerEl.style.display = "flex";
     this.containerEl.style.alignItems = "flex-start";
+    // Fixed to the full pane height (not left to auto/content-driven
+    // sizing) so the divider — which stretches via `align-self: stretch`
+    // below — always reaches the bottom of the reader pane. Without this,
+    // the row's cross size is derived from its tallest child, but each
+    // column's own iframe is sized to that *specific page's* actual
+    // content height (see `PaginatedContentHost`, which shrinks the
+    // iframe to `page.height + insets` for accurate clipping), not the
+    // full available height — so a page with less text than a full page
+    // (very common: the last page of a chapter) left a real gap between
+    // the divider's bottom and the window's bottom edge, whose size
+    // varied with however much text happened to be on that page.
+    this.containerEl.style.height = `${height}px`;
     this.containerEl.append(this.left.element, divider, this.right.element);
   }
 
@@ -154,6 +166,7 @@ export class SpreadPaginatedHost {
    * is simply re-synced afterward. */
   public relayout(width: number, height: number): void {
     const columnWidth = SpreadPaginatedHost.columnWidth(width);
+    this.containerEl.style.height = `${height}px`;
     this.left.relayout(columnWidth, height);
     this.right.relayout(columnWidth, height);
     this.syncRight();
