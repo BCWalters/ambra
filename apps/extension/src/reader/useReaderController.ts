@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import type { RefObject } from "react";
 import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
 import type { BookDetails, ReaderSnapshot, ViewMode } from "./ReaderController.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
@@ -29,6 +30,10 @@ export interface UseReaderControllerResult {
   closeImageViewer: () => void;
   restoreContentFocus: () => void;
   getDiagnosticsText: () => string | undefined;
+  addBookmark: () => Promise<Bookmark | undefined>;
+  listBookmarks: () => Promise<Bookmark[]>;
+  removeBookmark: (id: string) => Promise<void>;
+  goToBookmark: (cfi: string) => Promise<void>;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -223,6 +228,28 @@ export function useReaderController(): UseReaderControllerResult {
     return controller?.getDiagnosticsText();
   }, [controller]);
 
+  const addBookmark = useCallback(async () => {
+    return controller?.addBookmark();
+  }, [controller]);
+
+  const listBookmarks = useCallback(async () => {
+    return (await controller?.listBookmarks()) ?? [];
+  }, [controller]);
+
+  const removeBookmark = useCallback(
+    async (id: string) => {
+      await controller?.removeBookmark(id);
+    },
+    [controller],
+  );
+
+  const goToBookmark = useCallback(
+    async (cfi: string) => {
+      await controller?.goToBookmark(cfi);
+    },
+    [controller],
+  );
+
   return {
     snapshot,
     contentHostRef,
@@ -245,5 +272,9 @@ export function useReaderController(): UseReaderControllerResult {
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,
+    addBookmark,
+    listBookmarks,
+    removeBookmark,
+    goToBookmark,
   };
 }

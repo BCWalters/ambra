@@ -14,6 +14,7 @@ import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import type { BookDetails } from "./ReaderController.js";
+import type { Bookmark } from "../library/LibraryDatabase.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -51,11 +52,16 @@ export const ReaderApp: FC = () => {
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,
+    addBookmark,
+    listBookmarks,
+    removeBookmark,
+    goToBookmark,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [openError, setOpenError] = useState<string | null>(null);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   // Shared between the toolbar and the progress scrubber (see
@@ -90,6 +96,45 @@ export const ReaderApp: FC = () => {
       cancelled = true;
     };
   }, [isDetailsOpen, bookDetails, getBookDetails]);
+
+  // Re-fetches every time the TOC panel opens (unlike book details above,
+  // which only ever needs fetching once per book) — bookmarks change far
+  // more often, via the toolbar's "Bookmark this page" button, so a
+  // stale list from an earlier open would routinely miss ones just added.
+  useEffect(() => {
+    if (!isTocOpen) {
+      return;
+    }
+    let cancelled = false;
+    void listBookmarks().then((list) => {
+      if (!cancelled) {
+        setBookmarks(list);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTocOpen, listBookmarks]);
+
+  const handleAddBookmark = (): void => {
+    void addBookmark().then((added) => {
+      if (added) {
+        setBookmarks((current) => [...current, added]);
+      }
+    });
+  };
+
+  const handleRemoveBookmark = (id: string): void => {
+    setBookmarks((current) => current.filter((bookmark) => bookmark.id !== id));
+    void removeBookmark(id);
+  };
+
+  const handleSelectBookmark = (cfi: string): void => {
+    void goToBookmark(cfi);
+    if (!isTocPinned) {
+      setIsTocOpen(false);
+    }
+  };
 
   useEffect(() => {
     const bookId = new URLSearchParams(window.location.search).get("bookId");
@@ -182,6 +227,9 @@ export const ReaderApp: FC = () => {
                 setIsTocOpen(false);
               }
             }}
+            bookmarks={bookmarks}
+            onSelectBookmark={handleSelectBookmark}
+            onRemoveBookmark={handleRemoveBookmark}
           />
 
           <div
@@ -270,6 +318,7 @@ export const ReaderApp: FC = () => {
               onTurnPage={turnPage}
               onGoToChapter={goToChapter}
               onSeekToFraction={(fraction) => void seekToFraction(fraction)}
+              onAddBookmark={handleAddBookmark}
               onSetViewMode={setViewMode}
               onSetFontScale={setFontScale}
               onSetLineSpacing={setLineSpacing}

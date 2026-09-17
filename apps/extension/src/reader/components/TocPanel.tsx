@@ -1,10 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1 } from "@fluentui/react-components";
-import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
+import { Body1, Button, Caption1, Tab, TabList } from "@fluentui/react-components";
+import {
+  BookmarkRegular,
+  DismissRegular,
+  HomeRegular,
+  PinOffRegular,
+  PinRegular,
+} from "@fluentui/react-icons";
 import { NavPoint } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import type { Bookmark } from "../../library/LibraryDatabase.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
  * document order) — used to detect whether the TOC's own first entry
@@ -119,6 +126,78 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
   );
 };
 
+interface BookmarkListProps {
+  bookmarks: readonly Bookmark[];
+  onSelect: (cfi: string) => void;
+  onRemove: (id: string) => void;
+}
+
+/** The "Bookmarks" tab's contents — a flat, creation-order list (oldest
+ * first, matching `LibraryDatabase.listBookmarksForBook`), each showing
+ * its label (chapter + page — see `ReaderController.bookmarkLabel`) and
+ * an inline remove button. No "current position" highlight the way the
+ * TOC tree has one: unlike TOC entries, a bookmark is exactly one saved
+ * position, not a section the reader might currently be inside. */
+const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) => {
+  if (bookmarks.length === 0) {
+    return (
+      <Caption1
+        as="p"
+        style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}
+      >
+        No bookmarks yet — use the bookmark button in the toolbar to save your place.
+      </Caption1>
+    );
+  }
+
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {bookmarks.map((bookmark) => (
+        <li key={bookmark.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button
+            type="button"
+            onClick={() => onSelect(bookmark.cfi)}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "none",
+              border: "none",
+              borderRadius: 6,
+              color: "var(--colorNeutralForeground2, #333)",
+              cursor: "pointer",
+              padding: "7px 10px",
+              textAlign: "left",
+              font: "inherit",
+              lineHeight: 1.35,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "none";
+            }}
+          >
+            <BookmarkRegular fontSize={16} style={{ flexShrink: 0, opacity: 0.7 }} />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {bookmark.label}
+            </span>
+          </button>
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<DismissRegular />}
+            aria-label={`Remove bookmark: ${bookmark.label}`}
+            onClick={() => onRemove(bookmark.id)}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 export interface TocPanelProps {
   items: readonly NavPoint[];
   /** Archive-relative path of the currently-open spine item (see
@@ -147,6 +226,11 @@ export interface TocPanelProps {
   pinned: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
+  /** The current book's saved bookmarks (see the "Bookmarks" tab) —
+   * fetched by `ReaderApp` whenever this panel opens, not owned here. */
+  bookmarks: readonly Bookmark[];
+  onSelectBookmark: (cfi: string) => void;
+  onRemoveBookmark: (id: string) => void;
 }
 
 /** The reader's Table of Contents: by default a flyout that slides in
@@ -177,7 +261,12 @@ export const TocPanel: FC<TocPanelProps> = ({
   pinned,
   onTogglePin,
   onRequestClose,
+  bookmarks,
+  onSelectBookmark,
+  onRemoveBookmark,
 }) => {
+  const [activeTab, setActiveTab] = useState<"contents" | "bookmarks">("contents");
+
   const chromeTheme = useChromeTheme();
 
   useEffect(() => {
@@ -254,7 +343,7 @@ export const TocPanel: FC<TocPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            Contents
+            {activeTab === "contents" ? "Contents" : "Bookmarks"}
           </Body1>
           <Button
             appearance="subtle"
@@ -274,56 +363,75 @@ export const TocPanel: FC<TocPanelProps> = ({
             />
           )}
         </div>
+        <TabList
+          size="small"
+          selectedValue={activeTab}
+          onTabSelect={(_event, data) => setActiveTab(data.value as "contents" | "bookmarks")}
+          style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
+        >
+          <Tab value="contents" icon={<HomeRegular />}>
+            Contents
+          </Tab>
+          <Tab value="bookmarks" icon={<BookmarkRegular />}>
+            Bookmarks{bookmarks.length > 0 ? ` (${bookmarks.length})` : ""}
+          </Tab>
+        </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-          {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
-            <button
-              type="button"
-              onClick={() => onSelect(new NavPoint("Start of Book", firstSpinePath, undefined, []))}
-              aria-current={currentPath === firstSpinePath ? "location" : undefined}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                width: "100%",
-                background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
-                border: "none",
-                borderRadius: 6,
-                color:
-                  currentPath === firstSpinePath
-                    ? "var(--colorNeutralForeground1, #1a1a1a)"
-                    : "var(--colorNeutralForeground2, #333)",
-                fontWeight: currentPath === firstSpinePath ? 600 : 400,
-                cursor: "pointer",
-                padding: "7px 10px",
-                marginBottom: 4,
-                textAlign: "left",
-                font: "inherit",
-                lineHeight: 1.35,
-              }}
-              onMouseEnter={(e) => {
-                if (currentPath !== firstSpinePath) {
-                  e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (currentPath !== firstSpinePath) {
-                  e.currentTarget.style.background = "none";
-                }
-              }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <HomeRegular fontSize={16} />
-                Start of Book
-              </span>
-              {pageNumbers.get(firstSpinePath) !== undefined && (
-                <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
-                  {pageNumbers.get(firstSpinePath)}
-                </Caption1>
+          {activeTab === "bookmarks" ? (
+            <BookmarkList bookmarks={bookmarks} onSelect={onSelectBookmark} onRemove={onRemoveBookmark} />
+          ) : (
+            <>
+              {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
+                <button
+                  type="button"
+                  onClick={() => onSelect(new NavPoint("Start of Book", firstSpinePath, undefined, []))}
+                  aria-current={currentPath === firstSpinePath ? "location" : undefined}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    width: "100%",
+                    background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
+                    border: "none",
+                    borderRadius: 6,
+                    color:
+                      currentPath === firstSpinePath
+                        ? "var(--colorNeutralForeground1, #1a1a1a)"
+                        : "var(--colorNeutralForeground2, #333)",
+                    fontWeight: currentPath === firstSpinePath ? 600 : 400,
+                    cursor: "pointer",
+                    padding: "7px 10px",
+                    marginBottom: 4,
+                    textAlign: "left",
+                    font: "inherit",
+                    lineHeight: 1.35,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentPath !== firstSpinePath) {
+                      e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentPath !== firstSpinePath) {
+                      e.currentTarget.style.background = "none";
+                    }
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <HomeRegular fontSize={16} />
+                    Start of Book
+                  </span>
+                  {pageNumbers.get(firstSpinePath) !== undefined && (
+                    <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
+                      {pageNumbers.get(firstSpinePath)}
+                    </Caption1>
+                  )}
+                </button>
               )}
-            </button>
+              <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} pageNumbers={pageNumbers} />
+            </>
           )}
-          <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} pageNumbers={pageNumbers} />
         </div>
       </nav>
     </>

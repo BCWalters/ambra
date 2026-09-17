@@ -20,6 +20,7 @@ import {
 import {
   BookInformationRegular,
   BookOpenRegular,
+  BookmarkAddRegular,
   ChevronDoubleLeftRegular,
   ChevronDoubleRightRegular,
   ChevronLeftRegular,
@@ -53,6 +54,7 @@ export interface ToolbarProps {
   onTurnPage: (direction: 1 | -1) => void;
   onGoToChapter: (direction: 1 | -1) => void;
   onSeekToFraction: (fraction: number) => void;
+  onAddBookmark: () => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetFontScale: (scale: number) => void;
   onSetLineSpacing: (spacing: number) => void;
@@ -111,6 +113,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onTurnPage,
   onGoToChapter,
   onSeekToFraction,
+  onAddBookmark,
   onSetViewMode,
   onSetFontScale,
   onSetLineSpacing,
@@ -498,6 +501,15 @@ export const Toolbar: FC<ToolbarProps> = ({
             </MenuList>
           </MenuPopover>
         </Menu>
+
+        <Tooltip content="Bookmark this page" relationship="label">
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<BookmarkAddRegular />}
+            onClick={onAddBookmark}
+          />
+        </Tooltip>
 
         <Tooltip
           content={isDetailsOpen ? "Hide book details" : "Book details"}

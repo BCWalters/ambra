@@ -24,6 +24,7 @@ import type {
   PageTheme,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import type { Bookmark } from "../library/LibraryDatabase.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
@@ -661,6 +662,73 @@ export class ReaderController {
    * position on `visibilitychange`/`pagehide`. */
   public flushProgress(): Promise<void> {
     return this.saveProgress();
+  }
+
+  /** Creates a new bookmark at the currently-displayed position (see
+   * `Bookmark`'s doc comment — this always creates a fresh entry, never
+   * toggles an existing one), labeled with the current chapter (and, in
+   * paginated/spread mode, its page number) so a bookmarks list reads as
+   * more than an opaque timestamp. `undefined` if the position can't be
+   * resolved to a CFI right now (mirrors `saveProgress`'s own
+   * best-effort handling) — vanishingly rare in practice, but bookmarks
+   * are a nice-to-have, not something worth surfacing an error for. */
+  public async addBookmark(): Promise<Bookmark | undefined> {
+    const position = this.host?.currentPosition();
+    if (!position) {
+      return undefined;
+    }
+    try {
+      const locator = this.locatorResolver.generate(this.spineIndex, position.node, position.offset);
+      const bookmark = await this.library.addBookmark(this.bookId, locator.cfi, this.bookmarkLabel());
+      this.announce("Bookmark added");
+      this.notify();
+      return bookmark;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** "Chapter — Page N" for paginated/spread mode (matching what the
+   * running footer/toolbar already show), or just the chapter for
+   * scroll/fixed-layout content, which has no single "page number" of
+   * its own. */
+  private bookmarkLabel(): string {
+    const chapter = this.chapterLabel(this.spineIndex);
+    if (this.host instanceof PaginatedContentHost) {
+      return `${chapter} — Page ${this.host.currentPageIndex + 1}`;
+    }
+    if (this.host instanceof SpreadPaginatedHost) {
+      return `${chapter} — Page ${this.host.pageIndex + 1}`;
+    }
+    return chapter;
+  }
+
+  public listBookmarks(): Promise<Bookmark[]> {
+    return this.library.listBookmarksForBook(this.bookId);
+  }
+
+  public removeBookmark(id: string): Promise<void> {
+    return this.library.removeBookmark(id);
+  }
+
+  /** Navigates to a saved bookmark's CFI — the same "parse, find the
+   * owning spine item by its package steps, open with a bridging CFI"
+   * mechanism `tryResume` uses, since resuming a session and jumping to
+   * a bookmark are the same underlying operation. Best-effort: a
+   * bookmark from a book whose structure has since changed (a
+   * re-imported, edited file) silently does nothing rather than
+   * crashing the reader. */
+  public async goToBookmark(cfi: string): Promise<void> {
+    try {
+      const parsed = EpubCfi.parse(cfi);
+      const spineIndex = this.pkg.findSpineIndexByPackageCfiSteps(parsed.packageSteps);
+      if (spineIndex === undefined) {
+        return;
+      }
+      await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
+    } catch {
+      // Best-effort — see doc comment.
+    }
   }
 
   /** Sets the text the shell's `aria-live` region should announce next,

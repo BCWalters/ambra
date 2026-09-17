@@ -29,6 +29,23 @@ export interface ReadingProgress {
   readonly updatedAt: number;
 }
 
+/** A reader-created bookmark: a saved position (via CFI, same
+ * locator concept `ReadingProgress` uses) plus a human-readable label
+ * (chapter + page, when known) so a bookmarks list reads as more than
+ * an opaque timestamp. Deliberately not a toggleable "is this exact
+ * page bookmarked" concept — each explicit "Add Bookmark" action
+ * creates its own list entry, managed (and removed) from the
+ * bookmarks list itself; this sidesteps the fragile problem of
+ * deciding whether a *reflowed* page (after a font-size/margin change)
+ * still "is" the same page a bookmark was created on. */
+export interface Bookmark {
+  readonly id: string;
+  readonly bookId: string;
+  readonly cfi: string;
+  readonly label: string;
+  readonly createdAt: number;
+}
+
 interface BlobRecord {
   readonly id: string;
   readonly blob: Blob;
@@ -44,12 +61,13 @@ interface PreferenceRecord {
 }
 
 const DB_NAME = "ambra-library";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const BOOKS_STORE = "books";
 const FILES_STORE = "bookFiles";
 const COVERS_STORE = "bookCovers";
 const PROGRESS_STORE = "readingProgress";
 const PREFERENCES_STORE = "preferences";
+const BOOKMARKS_STORE = "bookmarks";
 
 const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
@@ -92,6 +110,9 @@ export class LibraryDatabase {
         }
         if (!db.objectStoreNames.contains(PREFERENCES_STORE)) {
           db.createObjectStore(PREFERENCES_STORE, { keyPath: "key" });
+        }
+        if (!db.objectStoreNames.contains(BOOKMARKS_STORE)) {
+          db.createObjectStore(BOOKMARKS_STORE, { keyPath: "id" });
         }
       };
 
@@ -283,6 +304,32 @@ export class LibraryDatabase {
     await this.delete(FILES_STORE, id);
     await this.delete(COVERS_STORE, id);
     await this.delete(PROGRESS_STORE, id);
+    for (const bookmark of await this.listBookmarksForBook(id)) {
+      await this.delete(BOOKMARKS_STORE, bookmark.id);
+    }
+  }
+
+  /** Creates a new bookmark for `bookId` at `cfi` (see `Bookmark`'s doc
+   * comment on why this always creates a fresh entry rather than
+   * toggling one at the "same" position) and returns the full record,
+   * including its generated `id`/`createdAt`. */
+  public async addBookmark(bookId: string, cfi: string, label: string): Promise<Bookmark> {
+    const bookmark: Bookmark = { id: crypto.randomUUID(), bookId, cfi, label, createdAt: Date.now() };
+    await this.put(BOOKMARKS_STORE, bookmark);
+    return bookmark;
+  }
+
+  public async removeBookmark(id: string): Promise<void> {
+    await this.delete(BOOKMARKS_STORE, id);
+  }
+
+  /** All bookmarks for `bookId`, oldest first — fetches every bookmark
+   * in the store and filters client-side rather than via an IndexedDB
+   * index, which is simpler and plenty fast at the scale a single
+   * reader's bookmark list actually reaches. */
+  public async listBookmarksForBook(bookId: string): Promise<Bookmark[]> {
+    const all = await this.getAll<Bookmark>(BOOKMARKS_STORE);
+    return all.filter((bookmark) => bookmark.bookId === bookId).sort((a, b) => a.createdAt - b.createdAt);
   }
 
   public close(): void {
