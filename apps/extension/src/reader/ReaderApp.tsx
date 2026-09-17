@@ -45,6 +45,7 @@ export const ReaderApp: FC = () => {
     seekToFraction,
     getBookDetails,
     closeImageViewer,
+    restoreContentFocus,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
@@ -165,7 +166,10 @@ export const ReaderApp: FC = () => {
             open={isTocOpen}
             pinned={isTocPinned}
             onTogglePin={() => setIsTocPinned((pinned) => !pinned)}
-            onRequestClose={() => setIsTocOpen(false)}
+            onRequestClose={() => {
+              setIsTocOpen(false);
+              restoreContentFocus();
+            }}
             onSelect={(navPoint) => {
               goToNavPoint(navPoint);
               if (!isTocPinned) {
@@ -223,9 +227,19 @@ export const ReaderApp: FC = () => {
             <Toolbar
               snapshot={snapshot}
               isTocOpen={isTocOpen}
-              onToggleToc={() => setIsTocOpen((open) => !open)}
+              onToggleToc={() => {
+                if (isTocOpen) {
+                  restoreContentFocus();
+                }
+                setIsTocOpen((open) => !open);
+              }}
               isDetailsOpen={isDetailsOpen}
-              onToggleDetails={() => setIsDetailsOpen((open) => !open)}
+              onToggleDetails={() => {
+                if (isDetailsOpen) {
+                  restoreContentFocus();
+                }
+                setIsDetailsOpen((open) => !open);
+              }}
               onTurnPage={turnPage}
               onGoToChapter={goToChapter}
               onSetViewMode={setViewMode}
@@ -239,7 +253,10 @@ export const ReaderApp: FC = () => {
 
             <BookDetailsPanel
               open={isDetailsOpen}
-              onRequestClose={() => setIsDetailsOpen(false)}
+              onRequestClose={() => {
+                setIsDetailsOpen(false);
+                restoreContentFocus();
+              }}
               details={bookDetails}
             />
 

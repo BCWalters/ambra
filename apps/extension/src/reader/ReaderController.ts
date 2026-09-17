@@ -314,6 +314,9 @@ export class ReaderController {
   private contentPointerActivityId = 0;
   /** See `ReaderSnapshot.imageViewer`. */
   private imageViewer: ImageViewerState | undefined;
+  /** See `openImageViewer`'s doc comment — the element to restore focus
+   * to when the viewer closes. */
+  private imageViewerReturnFocusTarget: Element | undefined;
   /** Detaches the current spine item's in-content interaction listeners
    * (link clicks, and the image-viewer's click/keyboard triggers) — see
    * `setUpContentInteraction`. Re-created on every `openSpineItem` call
@@ -925,7 +928,7 @@ export class ReaderController {
         if (!href) {
           const img = target?.closest?.("img");
           if (img && isZoomableImage(img)) {
-            this.openImageViewer(img.currentSrc || img.src, img.alt);
+            this.openImageViewer(img.currentSrc || img.src, img.alt, img);
           }
           return;
         }
@@ -976,7 +979,7 @@ export class ReaderController {
           return;
         }
         event.preventDefault();
-        this.openImageViewer(active.currentSrc || active.src, active.alt);
+        this.openImageViewer(active.currentSrc || active.src, active.alt, active);
       };
       iframeDocument.addEventListener("keydown", keydownHandler);
       cleanups.push(() => iframeDocument.removeEventListener("keydown", keydownHandler));
@@ -1185,19 +1188,66 @@ export class ReaderController {
    * click/keyboard handlers `setUpContentInteraction` attaches to
    * qualifying `<img>` elements. Pure UI state, not persisted (there's
    * nothing meaningful to resume — closing and reopening the same image
-   * is a fresh, cheap action, unlike a reading position). */
-  public openImageViewer(src: string, alt: string): void {
+   * is a fresh, cheap action, unlike a reading position).
+   *
+   * `sourceElement` (the image itself) is remembered so `closeImageViewer`
+   * can restore focus back onto it — without this, a real, reported bug:
+   * the viewer's own close button lives in the *parent* document, so
+   * once it (or the backdrop) is what has focus at close time, that
+   * focus stays in the parent unless something explicitly moves it back
+   * — and `AccessibilityController`'s Left/Right keyboard navigation is
+   * attached to the *content* document specifically (keyboard events
+   * don't bubble out of an iframe), so a reader who'd been turning pages
+   * with the keyboard would suddenly find arrow keys silently doing
+   * nothing at all after closing the viewer. */
+  public openImageViewer(src: string, alt: string, sourceElement: Element): void {
     this.imageViewer = { src, alt };
+    this.imageViewerReturnFocusTarget = sourceElement;
     this.notify();
   }
 
-  /** Closes the image viewer overlay, if open. */
+  /** Closes the image viewer overlay, if open, and restores focus back
+   * onto whichever image opened it (see `openImageViewer`'s doc comment)
+   * — falling back to the content document's own managed-focus default
+   * (its `body`) if that element is no longer around (e.g. the chapter
+   * changed while the viewer happened to be open). */
   public closeImageViewer(): void {
     if (!this.imageViewer) {
       return;
     }
     this.imageViewer = undefined;
+    const returnTarget = this.imageViewerReturnFocusTarget;
+    this.imageViewerReturnFocusTarget = undefined;
+    const iframeDocument = this.primaryContentDocument();
+    if (iframeDocument) {
+      const stillConnected =
+        returnTarget?.isConnected && returnTarget.ownerDocument === iframeDocument;
+      this.accessibility.focusContent(iframeDocument, stillConnected ? returnTarget : undefined);
+    }
     this.notify();
+  }
+
+  /** Restores focus to the current content document's own managed-focus
+   * default (see `AccessibilityController.focusContent`) — call whenever
+   * a parent-document overlay (the TOC panel, Book Details panel) closes
+   * *without* itself navigating anywhere (a TOC entry click, unlike a
+   * bare close, already moves focus into the target content as part of
+   * its own navigation — see `goToNavPoint`/`setUpAccessibility`).
+   *
+   * This was a real, reported bug: closing either panel with the mouse
+   * left focus stranded on the panel's own (parent-document) close
+   * button, and since `AccessibilityController`'s Left/Right keyboard
+   * navigation is attached to the *content* document specifically
+   * (keyboard events don't bubble out of an iframe), arrow keys silently
+   * did nothing afterward. See `AccessibilityController.focusContent`'s
+   * own doc comment for the actual underlying fix (focusing the iframe
+   * *element itself*, not just something inside it) — this method is
+   * just the call site for the "closed without navigating" case. */
+  public restoreContentFocus(): void {
+    const iframeDocument = this.primaryContentDocument();
+    if (iframeDocument) {
+      this.accessibility.focusContent(iframeDocument);
+    }
   }
 
   /** Writes the current font scale/family and page theme onto every

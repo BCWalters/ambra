@@ -72,6 +72,23 @@ export class AccessibilityController {
    * that aren't naturally focusable (a `<body>`, a heading, ordinary
    * text) need `tabindex="-1"` added first to accept programmatic focus
    * without becoming part of the normal Tab order.
+   *
+   * Also explicitly focuses the content iframe *element itself* (in the
+   * parent document, via `document.defaultView.frameElement` — accessible
+   * here because the sandboxed iframe is same-origin, just script-
+   * disabled) before focusing anything inside it. This was a real,
+   * reported bug found via testing in real Chromium: focusing an element
+   * *inside* a cross-document iframe from the parent's context updates
+   * that inner document's own `activeElement` correctly, but does *not*
+   * reliably also transfer the browser's page-level "active frame" to
+   * that iframe if some *other* element in the parent document (e.g. a
+   * just-clicked toolbar/panel button) currently holds it — leaving the
+   * parent's `document.activeElement` on that button. Since
+   * `AccessibilityController.attach`'s Left/Right keyboard listener is
+   * itself attached to the content document (keyboard events don't
+   * bubble out of an iframe), a reader closing any parent-document
+   * overlay with the mouse would find arrow-key navigation silently do
+   * nothing afterward, with no visible sign of why.
    */
   public focusContent(document: Document, target?: Element): void {
     const element = target ?? document.body;
@@ -80,6 +97,10 @@ export class AccessibilityController {
     }
     if (!element.hasAttribute("tabindex")) {
       element.setAttribute("tabindex", "-1");
+    }
+    const frameElement = document.defaultView?.frameElement;
+    if (frameElement instanceof HTMLElement) {
+      frameElement.focus({ preventScroll: true });
     }
     // `preventScroll` is essential here: the content document's scroll
     // position is not a free variable a browser default should ever

@@ -22,6 +22,7 @@ export interface UseReaderControllerResult {
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
   closeImageViewer: () => void;
+  restoreContentFocus: () => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -180,6 +181,10 @@ export function useReaderController(): UseReaderControllerResult {
     controller?.closeImageViewer();
   }, [controller]);
 
+  const restoreContentFocus = useCallback(() => {
+    controller?.restoreContentFocus();
+  }, [controller]);
+
   return {
     snapshot,
     contentHostRef,
@@ -196,5 +201,6 @@ export function useReaderController(): UseReaderControllerResult {
     seekToFraction,
     getBookDetails,
     closeImageViewer,
+    restoreContentFocus,
   };
 }
