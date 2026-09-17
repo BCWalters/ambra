@@ -167,6 +167,21 @@ export class SpreadPaginatedHost {
     this.syncRight();
   }
 
+  /** Jumps directly to `index` in the left column and re-syncs the right
+   * column to show its companion page — used by the progress scrubber's
+   * exact/proportional seeking (see `ReaderController.openSpineItem`'s
+   * `landOnPageIndex`/`landOnFractionInItem` options), which previously
+   * had no way to land on a specific page in spread mode at all and
+   * silently fell back to the chapter's default first page instead — a
+   * real bug, since it meant a scrubber release could land somewhere
+   * completely different from what its own drag preview had just shown.
+   * A no-op if `index` is out of range, matching
+   * `PaginatedContentHost.goToPageIndex`. */
+  public goToPageIndex(index: number): void {
+    this.left.goToPageIndex(index);
+    this.syncRight();
+  }
+
   /** Shows the final spread of the chapter — used when navigating
    * backward into this spine item from the one after it. Lands one page
    * short of the last page (rather than the last page itself as the

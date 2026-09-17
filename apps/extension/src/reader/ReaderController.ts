@@ -1751,20 +1751,21 @@ export class ReaderController {
       } else {
         if (options.landOnLastPage && (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)) {
           this.host.goToLastPage();
-        } else if (options.landOnPageIndex !== undefined && this.host instanceof PaginatedContentHost) {
-          // Spread mode has no exact-page-index API of its own (see
-          // `SpreadPaginatedHost`) — landing on the chapter's first page
-          // there instead is a reasonable, functional fallback rather
-          // than a hard requirement for the progress scrubber to work.
+        } else if (
+          options.landOnPageIndex !== undefined &&
+          (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
+        ) {
           this.host.goToPageIndex(options.landOnPageIndex);
-        } else if (options.landOnFractionInItem !== undefined && this.host instanceof PaginatedContentHost) {
+        } else if (
+          options.landOnFractionInItem !== undefined &&
+          (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
+        ) {
           // The coarse, spine-level progress-scrubber fallback (see
           // `resolveSpineFraction`) only knows a 0-to-1 fraction through
           // this chapter, not an exact page index, until *after* the
           // chapter is open and its real page count is known — unlike
           // `landOnPageIndex`, which already has an exact index computed
-          // from a fully-measured book. Same spread-mode limitation as
-          // `landOnPageIndex` above.
+          // from a fully-measured book.
           const targetIndex = Math.round(options.landOnFractionInItem * Math.max(0, this.host.pageCount - 1));
           this.host.goToPageIndex(targetIndex);
         }
