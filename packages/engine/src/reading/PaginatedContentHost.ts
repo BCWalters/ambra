@@ -228,8 +228,20 @@ export class PaginatedContentHost {
     // actual content height, so the bottom inset is real blank space
     // rather than clipped-away overflow.
     this.sandboxedHost.element.style.height = `${page.height + ReadingTheme.PAGE_INSET_TOP + ReadingTheme.PAGE_INSET_BOTTOM}px`;
+    // The inset bands are only reliably blank *by convention* (nothing
+    // actually stops adjacent content from painting there) — the
+    // previous page's last line is usually only one line-height above
+    // this page's first line, routinely far less than `PAGE_INSET_TOP`,
+    // so without an explicit clip it visibly bled into the header/footer
+    // bands whenever a page began mid-paragraph (tightly-packed
+    // continuation lines) rather than at a new block with its own
+    // margin — a real, confirmed, reported bug. `clip-path` on the
+    // iframe *element itself* (not anything inside its document) clips
+    // its painted output to exactly the page-content band regardless of
+    // what the transform happens to place above/below it, independent of
+    // how much natural gap the surrounding content has.
+    this.sandboxedHost.element.style.clipPath = `inset(${ReadingTheme.PAGE_INSET_TOP}px 0 ${ReadingTheme.PAGE_INSET_BOTTOM}px 0)`;
   }
-
   public dispose(): void {
     this.sandboxedHost.dispose();
   }
