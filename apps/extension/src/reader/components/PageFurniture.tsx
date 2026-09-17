@@ -192,7 +192,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
       })}
 
       {/* A single "how far through the book" indicator, anchored to the
-          bottom-left of the whole reader pane — deliberately not
+          bottom-right of the whole reader pane — deliberately not
           per-page (unlike the "Page N" folios above), since a percentage
           describes progress through the *book*, not either individual
           page on screen right now. */}
@@ -202,7 +202,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
           style={{
             position: "absolute",
             bottom: 0,
-            left: 0,
+            right: 0,
             height: ReadingTheme.PAGE_INSET_BOTTOM,
             zIndex: 5,
             display: "flex",
