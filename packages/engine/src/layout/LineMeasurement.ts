@@ -62,10 +62,22 @@ function isAtomic(element: Element): boolean {
 /** Walks `root`'s block structure, collecting each block-level leaf
  * element in document order (skipping into non-leaf block containers,
  * e.g. a `<div>` wrapping several `<p>`s, without treating the container
- * itself as a leaf). */
+ * itself as a leaf). Checks `isAtomic` *before* `isLeaf` — a real,
+ * confirmed bug: a `<table>` (declared atomic via `ATOMIC_TAG_NAMES`,
+ * specifically so pagination never breaks in the middle of one) has
+ * `<tr>`/`<td>` children, both block-level per `isBlockLevel` (their
+ * default `display` is `table-row`/`table-cell`), so `isLeaf` alone
+ * says a table is *not* a leaf and this recursed straight into it,
+ * extracting each `<td>` as its own ordinary text leaf — completely
+ * bypassing the "atomic, never split" intent and letting a page break
+ * land mid-table. Caught via a real book (a DocBook-generated EPUB
+ * using a `<table>` to lay out a short poem/rhyme) where the poem
+ * visibly split across a page boundary — the reported "pages can be
+ * cut off" bug. The same reasoning applies to any other structurally
+ * complex atomic tag (e.g. `<figure>` wrapping a captioned image). */
 function collectLeaves(root: Element, out: Element[]): void {
   for (const child of Array.from(root.children)) {
-    if (isLeaf(child)) {
+    if (isAtomic(child) || isLeaf(child)) {
       out.push(child);
     } else {
       collectLeaves(child, out);
