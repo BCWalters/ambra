@@ -40,7 +40,7 @@ interface PageThemeColors {
   readonly linkColor: string;
 }
 
-/** The ~4 curated, widely-available system font stacks the reader can
+/** The curated, widely-available system font stacks the reader can
  * choose between (see `ReadingTheme.applyFontFamily`), plus `"book-default"`
  * — which doesn't merely pick a *different* stack, it removes our
  * font-family override entirely (`unset`, which for an inherited property
@@ -52,7 +52,7 @@ interface PageThemeColors {
  * so a remotely-hosted font couldn't load even if we wanted one, and
  * bundling font files would cut against minimizing what we ship and own
  * ourselves. */
-export type FontFamilyChoice = "georgia" | "palatino" | "times" | "sans" | "book-default";
+export type FontFamilyChoice = "georgia" | "palatino" | "times" | "sans" | "sitka" | "book-default";
 
 interface FontFamilyOption {
   readonly label: string;
@@ -60,6 +60,48 @@ interface FontFamilyOption {
    * which sets the custom property to the literal keyword `unset`
    * instead of a stack (see `applyFontFamily`). */
   readonly stack: string | undefined;
+}
+
+/** Picks the best default reading font for `platformString` (typically
+ * `navigator.userAgentData.platform`, falling back to `navigator.platform`/
+ * `navigator.userAgent` — see `detectPlatformString`, kept separate from
+ * this pure decision so the decision itself is unit-testable without a
+ * real `navigator`). Real Palatino ships with macOS/iOS; Windows doesn't
+ * have it, but does ship Sitka — Microsoft's own purpose-built reading
+ * serif, a meaningfully better default there than "Palatino Linotype"
+ * (an older, lower-quality Palatino-alike Windows also happens to have,
+ * and which the `palatino` stack below already falls back to on its own
+ * if a reader picks it manually anyway). Every other platform (Android,
+ * Linux, ChromeOS, or detection failing outright) defaults to Palatino
+ * too, per explicit instruction — its own stack already degrades
+ * gracefully to a generic serif everywhere it isn't actually installed. */
+export function defaultFontFamilyForPlatform(platformString: string): FontFamilyChoice {
+  return /win/i.test(platformString) ? "sitka" : "palatino";
+}
+
+/** A minimal shape for the User-Agent Client Hints API's `platform`
+ * field (`navigator.userAgentData`) — not yet in TypeScript's built-in
+ * DOM lib, and only ever present in Chrome (which is this reader's only
+ * target), so declared locally rather than pulling in a whole extra
+ * `@types` package for one field. */
+interface NavigatorUserAgentData {
+  readonly platform: string;
+}
+
+/** Reads whatever OS-identifying string is available from `navigator` —
+ * User-Agent Client Hints' own `platform` first (the modern, most
+ * direct signal, Chrome-only but that's this reader's whole target),
+ * falling back to the older, deprecated-but-still-populated
+ * `navigator.platform`, then `navigator.userAgent` itself as a last
+ * resort. Returns `""` outside a browser (e.g. this module loading in a
+ * Node-based test) rather than throwing — `defaultFontFamilyForPlatform`
+ * already treats an unrecognized string as "default to Palatino." */
+function detectPlatformString(): string {
+  if (typeof navigator === "undefined") {
+    return "";
+  }
+  const uaData = (navigator as Navigator & { userAgentData?: NavigatorUserAgentData }).userAgentData;
+  return uaData?.platform || navigator.platform || navigator.userAgent || "";
 }
 
 export class ReadingTheme {
@@ -76,7 +118,10 @@ export class ReadingTheme {
   public static readonly FONT_SCALE_STEP = 0.125;
 
   public static readonly DEFAULT_PAGE_THEME: PageTheme = "white";
-  public static readonly DEFAULT_FONT_FAMILY: FontFamilyChoice = "georgia";
+  /** The reading font a brand-new reader (or a book with no saved font
+   * preference) starts with — OS-appropriate rather than one fixed
+   * choice for everyone, see `defaultFontFamilyForPlatform`. */
+  public static readonly DEFAULT_FONT_FAMILY: FontFamilyChoice = defaultFontFamilyForPlatform(detectPlatformString());
 
   public static readonly PAGE_THEMES: Readonly<Record<PageTheme, PageThemeColors>> = {
     white: { label: "White", background: "#ffffff", foreground: "#1a1a1a", linkColor: "#0b57a4" },
@@ -96,6 +141,10 @@ export class ReadingTheme {
     times: {
       label: "Times",
       stack: `"Times New Roman", Times, Georgia, serif`,
+    },
+    sitka: {
+      label: "Sitka",
+      stack: `"Sitka Text", "Sitka Small", Cambria, Georgia, serif`,
     },
     sans: {
       label: "Sans-Serif",

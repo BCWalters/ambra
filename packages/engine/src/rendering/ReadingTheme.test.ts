@@ -1,6 +1,28 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { ReadingTheme } from "./ReadingTheme.js";
+import { ReadingTheme, defaultFontFamilyForPlatform } from "./ReadingTheme.js";
+
+describe("defaultFontFamilyForPlatform", () => {
+  it("picks Sitka for any Windows platform string", () => {
+    expect(defaultFontFamilyForPlatform("Windows")).toBe("sitka");
+    expect(defaultFontFamilyForPlatform("Win32")).toBe("sitka");
+    expect(defaultFontFamilyForPlatform("Windows NT 10.0; Win64; x64")).toBe("sitka");
+  });
+
+  it("picks Palatino for macOS/iOS platform strings", () => {
+    expect(defaultFontFamilyForPlatform("macOS")).toBe("palatino");
+    expect(defaultFontFamilyForPlatform("MacIntel")).toBe("palatino");
+    expect(defaultFontFamilyForPlatform("iPhone")).toBe("palatino");
+  });
+
+  it("picks Palatino for Android, Linux, ChromeOS, and unrecognized platforms", () => {
+    expect(defaultFontFamilyForPlatform("Android")).toBe("palatino");
+    expect(defaultFontFamilyForPlatform("Linux x86_64")).toBe("palatino");
+    expect(defaultFontFamilyForPlatform("Chrome OS")).toBe("palatino");
+    expect(defaultFontFamilyForPlatform("")).toBe("palatino");
+    expect(defaultFontFamilyForPlatform("something entirely unexpected")).toBe("palatino");
+  });
+});
 
 describe("ReadingTheme", () => {
   it("defaults to a font scale of 1 when never set", () => {

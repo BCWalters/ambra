@@ -4,6 +4,16 @@ import { useEffect, useRef, useState } from "react";
  * before fading away. */
 const HIDE_DELAY_MS = 2500;
 
+/** How close to the top or bottom edge of the window the pointer has to
+ * get for a bare pointer move to reveal the chrome — deliberately not
+ * "anywhere in the window," since that made moving the mouse across the
+ * gutter between two pages in spread mode (a perfectly ordinary reading
+ * gesture, nothing to do with wanting the toolbar) reveal it too. Sized
+ * generously enough to cover the toolbar/scrubber's own footprint plus a
+ * little approach room, without covering so much of the page that normal
+ * reading-area movement still triggers it. */
+const EDGE_REVEAL_ZONE_PX = 96;
+
 export interface AutoHideChrome {
   /** Whether the toolbar should currently be shown. */
   visible: boolean;
@@ -22,11 +32,15 @@ export interface AutoHideChrome {
  * Auto-hides the reader's toolbar chrome after a period of inactivity, so
  * it doesn't visually compete with the page underneath it once a reader
  * settles into actually reading — a deliberately "less intrusive" chrome
- * behavior, restoring it instantly on any pointer movement or key press
- * anywhere in the reader, and keeping it shown continuously whenever
- * `pinned` is true (e.g. the Table of Contents panel is open — the
- * toolbar holds its own close control) or the pointer/focus is on the
- * toolbar itself.
+ * behavior, restoring it on a key press anywhere in the reader, or a
+ * pointer move that reaches near the top or bottom edge of the window
+ * (see `EDGE_REVEAL_ZONE_PX`) — deliberately *not* anywhere the pointer
+ * moves at all, which used to reveal the chrome on the perfectly
+ * ordinary reading gesture of moving the mouse across the gutter between
+ * two pages in spread mode, nothing to do with wanting the toolbar.
+ * Stays shown continuously whenever `pinned` is true (e.g. the Table of
+ * Contents panel is open — the toolbar holds its own close control) or
+ * the pointer/focus is on the toolbar itself.
  *
  * `contentActivityId`, if given, is watched for changes (typically
  * `ReaderSnapshot.contentPointerActivityId`) and hides the toolbar
@@ -70,24 +84,31 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
       return;
     }
 
-    const handleActivity = (): void => {
+    const reveal = (): void => {
       setVisible(true);
       scheduleHide();
     };
-    window.addEventListener("pointermove", handleActivity);
-    window.addEventListener("keydown", handleActivity);
+    const handlePointerMove = (event: PointerEvent): void => {
+      const nearTop = event.clientY <= EDGE_REVEAL_ZONE_PX;
+      const nearBottom = event.clientY >= window.innerHeight - EDGE_REVEAL_ZONE_PX;
+      if (nearTop || nearBottom) {
+        reveal();
+      }
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("keydown", reveal);
     // A window resize (e.g. crossing the two-page-spread width threshold,
     // which swaps the whole content host) is itself a deliberate user
     // action that changes the layout — worth surfacing the chrome for,
     // even if the pointer never touches the reveal strip/toolbar during
     // an OS-level window-edge drag.
-    window.addEventListener("resize", handleActivity);
+    window.addEventListener("resize", reveal);
     scheduleHide();
 
     return () => {
-      window.removeEventListener("pointermove", handleActivity);
-      window.removeEventListener("keydown", handleActivity);
-      window.removeEventListener("resize", handleActivity);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("keydown", reveal);
+      window.removeEventListener("resize", reveal);
       window.clearTimeout(timerRef.current);
     };
   }, [pinned]);
