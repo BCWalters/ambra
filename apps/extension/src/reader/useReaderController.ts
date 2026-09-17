@@ -42,6 +42,7 @@ export interface UseReaderControllerResult {
   goToSearchResult: (cfi: string) => Promise<void>;
   goToHighlight: (cfi: string) => Promise<void>;
   dismissSelectionToolbar: () => void;
+  dismissError: () => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -304,6 +305,10 @@ export function useReaderController(): UseReaderControllerResult {
     controller?.dismissSelectionToolbar();
   }, [controller]);
 
+  const dismissError = useCallback(() => {
+    controller?.dismissError();
+  }, [controller]);
+
   return {
     snapshot,
     contentHostRef,
@@ -337,5 +342,6 @@ export function useReaderController(): UseReaderControllerResult {
     goToSearchResult,
     goToHighlight,
     dismissSelectionToolbar,
+    dismissError,
   };
 }

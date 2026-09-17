@@ -178,6 +178,16 @@ export interface ReaderSnapshot {
   pageTurnAnimationStyle: PageTurnAnimationStyle;
   isLoading: boolean;
   error: string | undefined;
+  /** Whether `error` is "blocking" (there's genuinely nothing readable
+   * on screen — the book, or this specific spine item, failed to load
+   * with no previous content still showing) or "transient" (a
+   * navigation failed, but the previously-open spine item is still
+   * shown, so the reader isn't actually stuck — see the doc comment on
+   * where this is set, in `openSpineItem`'s catch block, for the exact
+   * "did `this.host` survive" test). Drives which of `FriendlyError`'s
+   * two presentations the shell shows — see issue #27. `undefined`
+   * whenever `error` itself is. */
+  errorSeverity: "blocking" | "transient" | undefined;
   /** Text for the shell's `aria-live` region to announce (page turns,
    * chapter changes, view-mode switches) — see `announce`. `undefined`
    * before the first navigation event. */
@@ -351,17 +361,23 @@ export class ReaderController {
    *
    * This mattered for a real, reported bug: two overlapping
    * `openSpineItem` calls (e.g. two seeks in quick succession, before
-   * the first's content finished loading) each call
-   * `containerEl.replaceChildren(...)` to attach their own new host's
-   * iframe — which, as a side effect, *detaches* whichever iframe the
-   * still-in-flight older call was loading into. A detached iframe's
-   * load essentially never completes (see `SandboxedContentHost`'s own
-   * doc comment on this), so the older call would sit for the full
+   * the first's content finished loading) used to share one call to
+   * `containerEl.replaceChildren(...)`, so the second call's own new
+   * iframe *detached* whichever iframe the still-in-flight older call
+   * was loading into as a side effect. A detached iframe's load
+   * essentially never completes (see `SandboxedContentHost`'s own doc
+   * comment on this), so the older call would sit for the full
    * `RenderingSurfaceError` timeout and then throw — even though the
-   * reader had already moved on to (and successfully shown) wherever
-   * the newer call navigated to. Without this guard, that stale
-   * failure surfaced as a scary, confusing error message despite
-   * nothing actually being wrong. */
+   * reader had already moved on to (and successfully shown) wherever the
+   * newer call navigated to. Without this guard, that stale failure
+   * surfaced as a scary, confusing error message despite nothing
+   * actually being wrong.
+   *
+   * The staged-hidden-host swap `openSpineItem` now uses (each call gets
+   * its own private staging element, see `stageHiddenHostElement`) means
+   * overlapping calls no longer detach each other's iframes at all — but
+   * this token guard is still needed so that if *both* overlapping calls
+   * succeed, only the newer one actually gets displayed. */
   private spineOpenToken = 0;
   /** A resize that arrived while an `openSpineItem` was already in
    * flight (e.g. `ResizeObserver`'s spec-mandated initial callback racing
@@ -370,6 +386,8 @@ export class ReaderController {
    * Recorded here and applied once the in-flight open settles instead. */
   private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
+  /** See `ReaderSnapshot.errorSeverity`. */
+  private errorSeverity: "blocking" | "transient" | undefined;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
   /** See `DiagnosticsLog`'s own doc comment — a short in-memory trail of
@@ -576,6 +594,7 @@ export class ReaderController {
         pageTurnAnimationStyle: this.pageTurnAnimationStyle,
         isLoading: this.isLoading,
         error: this.error,
+        errorSeverity: this.errorSeverity,
         announcement: this.announcement,
         announcementId: this.announcementId,
         contentPointerActivityId: this.contentPointerActivityId,
@@ -1849,6 +1868,17 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Clears the current error/severity — the shell calls this once a
+   * transient error's own toast has been visible long enough (see
+   * `FriendlyError`), or on an explicit dismiss. Harmless to call for a
+   * blocking error too (there's no separate "retry" state to preserve),
+   * though the shell doesn't currently auto-dismiss those. */
+  public dismissError(): void {
+    this.error = undefined;
+    this.errorSeverity = undefined;
+    this.notify();
+  }
+
   /** Creates a highlight from the selection `setUpHighlightSelection`
    * last captured (see `pendingSelectionRange`), persists it, applies it
    * immediately (so it renders without waiting for a reload), and
@@ -2789,6 +2819,31 @@ export class ReaderController {
     await this.openSpineItem(spineIndex, { fragment: navPoint.fragment });
   }
 
+  /** Creates a hidden, out-of-flow staging wrapper inside `containerEl`
+   * and attaches `el` to it. Used by `openSpineItem` to load a new
+   * spine item's host *without* disturbing whatever is currently
+   * displayed — the new host still needs to be attached to a live
+   * document for its own `open()` to lay out/paginate correctly (see
+   * `prepareIncomingPage`'s doc comment for the same constraint), but
+   * `visibility: hidden` plus `position: absolute` keeps it invisible
+   * and out of the normal-flow flex layout the currently-visible host
+   * relies on for centering, so the old content is completely
+   * undisturbed until/unless the new load actually succeeds. */
+  private stageHiddenHostElement(el: HTMLElement): HTMLDivElement {
+    const containerEl = this.containerEl!;
+    const stagingEl = containerEl.ownerDocument.createElement("div");
+    stagingEl.style.position = "absolute";
+    stagingEl.style.inset = "0";
+    stagingEl.style.visibility = "hidden";
+    stagingEl.style.pointerEvents = "none";
+    stagingEl.style.display = "flex";
+    stagingEl.style.justifyContent = "center";
+    stagingEl.style.alignItems = "flex-start";
+    stagingEl.appendChild(el);
+    containerEl.appendChild(stagingEl);
+    return stagingEl;
+  }
+
   private async openSpineItem(
     spineIndex: number,
     options: {
@@ -2805,6 +2860,7 @@ export class ReaderController {
 
     this.isLoading = true;
     this.error = undefined;
+    this.errorSeverity = undefined;
     this.notify();
     // See this method's doc comment on `spineOpenToken` for why every
     // return path below (including the catch block) must check this
@@ -2822,56 +2878,79 @@ export class ReaderController {
       this.highlightSelectionCleanup = undefined;
       this.pendingSelectionRange = undefined;
       this.selectionToolbar = undefined;
-      this.host?.dispose();
 
+      // The new host is opened hidden, alongside whatever is already on
+      // screen, rather than disposing the old one up front — see
+      // `stageHiddenHostElement`'s doc comment. `previousHost` is only
+      // disposed once the new content has *actually* loaded
+      // successfully, so a load failure (a real hazard: malformed
+      // chapters, missing resources — this isn't hypothetical, see
+      // issue #27) leaves the reader exactly where it was instead of a
+      // blank pane, and makes the "transient" severity classification in
+      // the catch block below actually true rather than a stale
+      // reference to an already-disposed host.
+      const previousHost = this.host;
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
         this.pkg.metadata.renditionLayout,
       );
-      if (resolvedLayout === "pre-paginated") {
-        const fixedHost = new FixedContentHost(this.width, this.height);
-        this.containerEl.replaceChildren(fixedHost.element);
-        await fixedHost.open(
-          this.contentLoader,
-          this.resolver,
-          spineIndex,
-          this.pkg.metadata.renditionViewport,
+      let stagingEl: HTMLDivElement | undefined;
+      let newHost: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost;
+      let applyDisplaySettings = false;
+      try {
+        if (resolvedLayout === "pre-paginated") {
+          const fixedHost = new FixedContentHost(this.width, this.height);
+          stagingEl = this.stageHiddenHostElement(fixedHost.element);
+          await fixedHost.open(
+            this.contentLoader,
+            this.resolver,
+            spineIndex,
+            this.pkg.metadata.renditionViewport,
+          );
+          newHost = fixedHost;
+        } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
+          const host = new SpreadPaginatedHost(this.width, this.height);
+          stagingEl = this.stageHiddenHostElement(host.element);
+          await host.open(this.contentLoader, this.resolver, spineIndex);
+          newHost = host;
+          applyDisplaySettings = true;
+        } else {
+          const host =
+            this.viewMode === "paginated"
+              ? new PaginatedContentHost(this.width, this.height)
+              : new ScrollContentHost(this.width, this.height);
+          stagingEl = this.stageHiddenHostElement(host.element);
+          await host.open(this.contentLoader, this.resolver, spineIndex);
+          newHost = host;
+          applyDisplaySettings = true;
+        }
+      } catch (err) {
+        // The failed host's own element is inside `stagingEl`, never
+        // shown, and never touched `this.host` — `previousHost` (if any)
+        // is still exactly as it was.
+        stagingEl?.remove();
+        throw err;
+      }
+
+      if (token !== this.spineOpenToken) {
+        this.diagnostics.record(
+          `openSpineItem stale-discard spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
         );
-        if (token !== this.spineOpenToken) {
-          this.diagnostics.record(
-            `openSpineItem stale-discard (fixed) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
-          );
-          fixedHost.dispose();
-          return;
-        }
-        this.host = fixedHost;
-      } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
-        const host = new SpreadPaginatedHost(this.width, this.height);
-        this.containerEl.replaceChildren(host.element);
-        await host.open(this.contentLoader, this.resolver, spineIndex);
-        if (token !== this.spineOpenToken) {
-          this.diagnostics.record(
-            `openSpineItem stale-discard (spread) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
-          );
-          host.dispose();
-          return;
-        }
-        this.host = host;
-        this.applyPersistedDisplaySettingsToFreshHost();
-      } else {
-        const host =
-          this.viewMode === "paginated"
-            ? new PaginatedContentHost(this.width, this.height)
-            : new ScrollContentHost(this.width, this.height);
-        this.containerEl.replaceChildren(host.element);
-        await host.open(this.contentLoader, this.resolver, spineIndex);
-        if (token !== this.spineOpenToken) {
-          this.diagnostics.record(
-            `openSpineItem stale-discard spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
-          );
-          host.dispose();
-          return;
-        }
-        this.host = host;
+        newHost.dispose();
+        stagingEl?.remove();
+        return;
+      }
+
+      // Success: reveal the new host in place of whatever was showing
+      // before. `previousHost.dispose()` removes its own element from
+      // `containerEl`, and only then is it safe to move the new host's
+      // element out of the (about to be discarded) staging wrapper and
+      // into `containerEl` directly, as a normal flex child again.
+      previousHost?.dispose();
+      newHost.element.style.visibility = "";
+      this.containerEl.appendChild(newHost.element);
+      stagingEl?.remove();
+      this.host = newHost;
+      if (applyDisplaySettings) {
         this.applyPersistedDisplaySettingsToFreshHost();
       }
 
@@ -2925,8 +3004,17 @@ export class ReaderController {
       const message = err instanceof Error ? err.message : String(err);
       if (token === this.spineOpenToken) {
         this.error = message;
+        // `this.host` is only ever reassigned *after* a new host has
+        // genuinely finished loading (see the staged-hidden-host swap
+        // above) — a failed load never disposes or replaces whatever was
+        // already showing. So if `this.host` is still set here, that
+        // content is still visible on screen right now, and the reader
+        // isn't stuck with a blank pane. `undefined` only when this was
+        // the very first load (e.g. a corrupt/unreadable book) and there
+        // was never anything to fall back to.
+        this.errorSeverity = this.host ? "transient" : "blocking";
         this.diagnostics.record(
-          `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message}`,
+          `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message} severity=${this.errorSeverity}`,
         );
         console.error(this.diagnostics.format(this.diagnosticsContext()));
       } else {
