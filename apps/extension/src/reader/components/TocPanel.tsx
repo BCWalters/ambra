@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, SearchBox, Spinner, Tab, TabList, Textarea } from "@fluentui/react-components";
 import {
@@ -14,6 +14,8 @@ import {
 import { NavPoint, HighlightTheme } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useFocusOnOpen } from "../useFocusOnOpen.js";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 import type { SearchResultItem } from "../ReaderController.js";
 
@@ -576,6 +578,8 @@ export const TocPanel: FC<TocPanelProps> = ({
   const [activeTab, setActiveTab] = useState<"contents" | "bookmarks" | "highlights" | "search">("contents");
 
   const chromeTheme = useChromeTheme();
+  const navRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (!open || pinned) {
@@ -590,6 +594,21 @@ export const TocPanel: FC<TocPanelProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, pinned, onRequestClose]);
 
+  // Moves focus into the panel the moment it opens as a flyout (not
+  // pinned — a pinned panel is a permanent docked fixture, not something
+  // that "just opened"). Without this, a keyboard user pressing Tab
+  // right after opening it (with the toolbar's toggle button) would tab
+  // straight past the panel entirely: this panel is rendered *earlier*
+  // in the DOM than the toolbar that opens it (it visually sits to the
+  // left of the content pane, which is where the toolbar itself lives),
+  // so the natural tab order after the toggle button skips right over
+  // it — only Shift+Tab happened to land here by accident. Focusing the
+  // `<nav>` itself (via `tabIndex={-1}`, see below) rather than a
+  // specific descendant keeps this robust across which tab happens to be
+  // active. See `useFocusOnOpen` for why this isn't just a plain
+  // `.focus()` call in a `useEffect`.
+  useFocusOnOpen(navRef, open && !pinned);
+
   return (
     <>
       {!pinned && (
@@ -603,15 +622,18 @@ export const TocPanel: FC<TocPanelProps> = ({
             background: "rgba(15, 23, 42, 0.18)",
             opacity: open ? 1 : 0,
             pointerEvents: open ? "auto" : "none",
-            transition: "opacity 260ms ease",
+            transition: reduceMotion ? "none" : "opacity 260ms ease",
           }}
         />
       )}
 
       <nav
+        ref={navRef}
+        tabIndex={-1}
         aria-label="Table of contents"
         style={{
           position: pinned ? "relative" : "absolute",
+          outline: "none",
           // In flyout (unpinned) mode the panel spans the full app row
           // width, which would otherwise put its own header (Contents/
           // pin/close) directly underneath the toolbar's identical top:0
@@ -638,7 +660,9 @@ export const TocPanel: FC<TocPanelProps> = ({
           opacity: pinned || open ? 1 : 0,
           pointerEvents: pinned || open ? "auto" : "none",
           visibility: pinned || open ? "visible" : "hidden",
-          transition: "transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, visibility 280ms",
+          transition: reduceMotion
+            ? "none"
+            : "transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, visibility 280ms",
         }}
       >
         <div

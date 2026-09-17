@@ -42,6 +42,7 @@ import {
 } from "../chromeTheme.js";
 import type { ChromeThemeChoice } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
 import { GoToDialog } from "./GoToDialog.js";
 
@@ -128,6 +129,7 @@ export const Toolbar: FC<ToolbarProps> = ({
 }) => {
   const isPaginated = snapshot.viewMode === "paginated";
   const chromePalette = useChromeTheme();
+  const reduceMotion = usePrefersReducedMotion();
   const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   return (
@@ -174,8 +176,9 @@ export const Toolbar: FC<ToolbarProps> = ({
           opacity: visible ? 1 : 0,
           transform: visible ? "translateY(0)" : "translateY(-8px)",
           pointerEvents: visible ? "auto" : "none",
-          transition:
-            "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
+          transition: reduceMotion
+            ? "none"
+            : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
         }}
       >
         <Tooltip content={isTocOpen ? "Hide contents" : "Show contents"} relationship="label">

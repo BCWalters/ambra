@@ -56,19 +56,34 @@ export class HighlightTheme {
   /** The stylesheet defining every style's `::highlight()` appearance —
    * injected once per reflowable content document (see
    * `ContentDocumentAssembler`), the same way `ReadingTheme.CSS` is.
-   * Colors are deliberately soft/pastel backgrounds with normal text
-   * color preserved (unlike a text selection's default inverted
-   * colors), since these need to stay comfortably readable indefinitely,
-   * not just for the moment of a transient selection. `underline` uses
-   * no background at all, just a solid underline in a neutral ink color
-   * — closer to a pencil annotation than a marker. */
+   * Colors are deliberately soft/pastel backgrounds, with a fixed dark
+   * ink `color` applied on top (not "normal text color preserved" — see
+   * below for why that changed) — closer to a marker over already-
+   * printed text than an inverted text-selection highlight, since these
+   * need to stay comfortably readable indefinitely, not just for the
+   * moment of a transient selection. `underline` uses no background at
+   * all, just a solid underline in a neutral ink color — closer to a
+   * pencil annotation than a marker, and so leaves the theme's own text
+   * color untouched (there's no background here for any fixed color to
+   * protect against).
+   *
+   * The fixed `color: #1a1a1a` on the background styles is a deliberate
+   * fix, not the original design: these swatches are always a *light*
+   * pastel regardless of the reader's current page theme (see
+   * `ReadingTheme.PAGE_THEMES`), but "Dark" theme's own foreground text
+   * color is a *light* off-white (`#e8e6e1`) — leaving that as-is over a
+   * light-yellow/green/etc. background measured at roughly 1:1 contrast,
+   * i.e. essentially invisible, nowhere near WCAG AA's 4.5:1 minimum.
+   * `#1a1a1a` (the same ink "White" theme already uses) comfortably
+   * clears 12:1+ against every one of these swatches, so a highlighted
+   * passage stays legible no matter which page theme is active. */
   public static readonly CSS = (Object.keys(HighlightTheme.STYLES) as HighlightStyle[])
     .map((style) => {
       const name = HighlightTheme.highlightName(style);
       if (style === "underline") {
         return `::highlight(${name}) { text-decoration: underline; text-decoration-color: ${HighlightTheme.STYLES[style].swatch}; text-decoration-thickness: 2px; text-underline-offset: 3px; }`;
       }
-      return `::highlight(${name}) { background-color: ${HighlightTheme.STYLES[style].swatch}; }`;
+      return `::highlight(${name}) { background-color: ${HighlightTheme.STYLES[style].swatch}; color: #1a1a1a; }`;
     })
     .join("\n");
 }

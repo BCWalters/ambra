@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Spinner, Title3 } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useFocusOnOpen } from "../useFocusOnOpen.js";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -58,6 +60,8 @@ const DetailRow: FC<{ label: string; value: string | undefined }> = ({ label, va
  */
 export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClose, details }) => {
   const chromeTheme = useChromeTheme();
+  const asideRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (!open) {
@@ -71,6 +75,11 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open, onRequestClose]);
+
+  // See `TocPanel`'s identical effect for why this matters: without it,
+  // a keyboard user pressing Tab right after opening this panel (via the
+  // toolbar's toggle button) has no guarantee of landing inside it next.
+  useFocusOnOpen(asideRef, open);
 
   const isbn = details?.identifiers.find((id) => id.scheme?.toUpperCase() === "ISBN");
   const otherIdentifiers = details?.identifiers.filter((id) => id !== isbn) ?? [];
@@ -87,14 +96,17 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
           background: "rgba(15, 23, 42, 0.18)",
           opacity: open ? 1 : 0,
           pointerEvents: open ? "auto" : "none",
-          transition: "opacity 260ms ease",
+          transition: reduceMotion ? "none" : "opacity 260ms ease",
         }}
       />
 
       <aside
+        ref={asideRef}
+        tabIndex={-1}
         aria-label="Book details"
         style={{
           position: "absolute",
+          outline: "none",
           top: 44,
           right: 0,
           bottom: 8,
@@ -112,7 +124,9 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
           opacity: open ? 1 : 0,
           pointerEvents: open ? "auto" : "none",
           visibility: open ? "visible" : "hidden",
-          transition: "transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, visibility 280ms",
+          transition: reduceMotion
+            ? "none"
+            : "transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, visibility 280ms",
         }}
       >
         <div

@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FC, PointerEvent as ReactPointerEvent } from "react";
+import type { FC, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { Caption1 } from "@fluentui/react-components";
 import type { ReaderSnapshot } from "../ReaderController.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 
 /** Smallest gap the drag preview popup is ever allowed from the browser
  * window's left/right edges — purely cosmetic breathing room, not a
@@ -91,6 +92,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   onSeek,
 }) => {
   const chromeTheme = useChromeTheme();
+  const reduceMotion = usePrefersReducedMotion();
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
@@ -269,6 +271,60 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             : ""
         }${pagesLeftInChapter} page${pagesLeftInChapter === 1 ? "" : "s"} left in this chapter`;
 
+  // Keyboard operability for the `role="slider"` track — required by the
+  // ARIA slider pattern, not optional polish: without this, the track was
+  // reachable by Tab (a real `tabIndex` was missing too, so it wasn't
+  // even that) but entirely inert for anyone not using a mouse/touch,
+  // including screen reader users navigating by keyboard. Left/Right/Up/
+  // Down step by one book-wide page at a time (matching the conventional
+  // slider direction, both orientations supported since this track is
+  // visually horizontal but ARIA sliders don't mandate one) once
+  // `bookPageCount` is known — falling back to a flat 1% while a large
+  // book's background pagination is still catching up, consistent with
+  // how the rest of this component degrades (see `currentFraction`).
+  // Page Up/Down move by roughly a chapter's worth (10 pages, or 5%
+  // without a known page count), Home/End jump to the very start/end of
+  // the book. Each key press commits immediately via `onSeek` rather
+  // than staging a drag — there's no "release" gesture for a keyboard
+  // interaction to wait for.
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const smallStep =
+      snapshot.bookPageCount !== undefined && snapshot.bookPageCount > 0
+        ? 1 / snapshot.bookPageCount
+        : 0.01;
+    const bigStep =
+      snapshot.bookPageCount !== undefined && snapshot.bookPageCount > 0
+        ? Math.min(0.2, 10 / snapshot.bookPageCount)
+        : 0.05;
+    let next: number | undefined;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowUp":
+        next = Math.min(1, displayFraction + smallStep);
+        break;
+      case "ArrowLeft":
+      case "ArrowDown":
+        next = Math.max(0, displayFraction - smallStep);
+        break;
+      case "PageUp":
+        next = Math.min(1, displayFraction + bigStep);
+        break;
+      case "PageDown":
+        next = Math.max(0, displayFraction - bigStep);
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    void onSeek(next);
+  };
+
   // Scoped to paginated/spread reflowable content only (see this
   // component's doc comment) — deliberately checked only *after* every
   // hook above has run unconditionally on every render. An early return
@@ -302,8 +358,9 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(8px)",
         pointerEvents: visible ? "auto" : "none",
-        transition:
-          "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
+        transition: reduceMotion
+          ? "none"
+          : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
       }}
     >
       {currentPositionLabel && (
@@ -372,11 +429,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       <div
         ref={trackRef}
         onPointerDown={beginDrag}
+        onKeyDown={handleKeyDown}
         role="slider"
+        tabIndex={0}
         aria-label="Position in book"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(displayFraction * 100)}
+        aria-valuetext={currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`}
         style={{
           position: "relative",
           height: 16,
