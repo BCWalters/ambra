@@ -83,6 +83,7 @@ export class PaginatedContentHost {
     iframeDocument.documentElement.style.overflow = "hidden";
     iframeDocument.body.style.overflow = "hidden";
 
+    ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight);
     this.pageIndex = 0;
     this.showCurrentPage();
@@ -121,6 +122,7 @@ export class PaginatedContentHost {
     // untranslated layout position to measure correctly.
     iframeDocument.body.style.transform = "";
 
+    ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, preserve);
     if (preserve) {
       const found = PaginationEngine.findPageForPosition(
@@ -204,6 +206,7 @@ export class PaginatedContentHost {
     // sit under the toolbar, because the page it re-paginated from was
     // still visually shifted down from `open()`'s own initial page.
     iframeDocument.body.style.transform = "";
+    ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, { node, offset });
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
     if (found) {

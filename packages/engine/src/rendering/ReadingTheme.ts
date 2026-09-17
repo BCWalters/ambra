@@ -112,6 +112,18 @@ export class ReadingTheme {
   public static readonly PAGE_BACKGROUND_PROPERTY = "--ambra-page-bg";
   public static readonly PAGE_FOREGROUND_PROPERTY = "--ambra-page-fg";
   public static readonly LINK_COLOR_PROPERTY = "--ambra-link-color";
+  /** The vertical budget (in CSS px) available for one paginated page's
+   * content — see `EPUB_CSS_RESET`'s `img, svg` rule, which caps images
+   * to this height (falling back to `none` when unset, e.g. in scroll or
+   * fixed-layout modes, where no single "page height" exists/applies).
+   * Set by `PaginatedContentHost` before every pagination pass, from the
+   * exact same budget it passes to `PaginationEngine.paginate` — so an
+   * oversized image is scaled down to actually fit a page *before*
+   * pagination ever measures it, rather than pagination giving it an
+   * oversized page of its own to avoid cropping it (which is still the
+   * fallback for other, non-image atomic content too tall to shrink,
+   * e.g. a giant table). */
+  public static readonly PAGE_CONTENT_HEIGHT_PROPERTY = "--ambra-page-content-height";
 
   public static readonly MIN_FONT_SCALE = 0.75;
   public static readonly MAX_FONT_SCALE = 2;
@@ -212,6 +224,24 @@ export class ReadingTheme {
     style.setProperty(ReadingTheme.PAGE_BACKGROUND_PROPERTY, colors.background);
     style.setProperty(ReadingTheme.PAGE_FOREGROUND_PROPERTY, colors.foreground);
     style.setProperty(ReadingTheme.LINK_COLOR_PROPERTY, colors.linkColor);
+  }
+
+  /** Sets the vertical budget available for one paginated page's content
+   * on a content document, so `EPUB_CSS_RESET`'s `img, svg` rule can cap
+   * oversized images to actually fit a page — see
+   * `PAGE_CONTENT_HEIGHT_PROPERTY`'s doc comment. Must be called (with
+   * the same `pageHeight` about to be passed to
+   * `PaginationEngine.paginate`) *before* that pagination pass, not
+   * after, so an oversized image is already shrunk by the time
+   * measurement sees it. `undefined` clears the property (setting it
+   * back to unset/`none`) — for content hosts that don't paginate at
+   * all (scroll mode, fixed-layout). */
+  public static applyPageContentHeight(doc: Document, pageHeight: number | undefined): void {
+    if (pageHeight === undefined) {
+      doc.documentElement.style.removeProperty(ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY);
+      return;
+    }
+    doc.documentElement.style.setProperty(ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY, `${pageHeight}px`);
   }
 
   /**

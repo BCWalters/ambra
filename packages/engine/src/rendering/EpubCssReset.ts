@@ -21,6 +21,8 @@
  * settings (wave 2: font/theme customization) applied at a different
  * layer, layered on top of this reset rather than baked into it.
  */
+import { ReadingTheme } from "./ReadingTheme.js";
+
 export const EPUB_CSS_RESET = `
 /* Predictable box model: every element's declared width/height includes
    its padding and border, so layout measurement doesn't need to add them
@@ -40,10 +42,17 @@ html, body {
 
 /* Images/SVG must never overflow their container's width — a common
    real-world EPUB authoring gap for images with fixed pixel dimensions
-   embedded in reflowable content. Height auto preserves aspect ratio. */
+   embedded in reflowable content. Height auto preserves aspect ratio.
+   The max-height cap keeps a tall image (e.g. a full-bleed title-page
+   illustration) from overflowing one paginated page's height too —
+   the custom property is set by PaginatedContentHost to that exact
+   budget before every pagination pass (see
+   ReadingTheme.applyPageContentHeight), and simply falls back to
+   "none" wherever it isn't relevant/set (scroll mode, fixed-layout). */
 img, svg {
   max-width: 100%;
   height: auto;
+  max-height: var(${ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY}, none);
 }
 
 /* Long unbroken strings (URLs, code) and wide tables are the most common
