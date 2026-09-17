@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FC } from "react";
 import {
   Body1,
@@ -41,6 +42,7 @@ import {
 import type { ChromeThemeChoice } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
+import { GoToDialog } from "./GoToDialog.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
@@ -50,6 +52,7 @@ export interface ToolbarProps {
   onToggleDetails: () => void;
   onTurnPage: (direction: 1 | -1) => void;
   onGoToChapter: (direction: 1 | -1) => void;
+  onSeekToFraction: (fraction: number) => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetFontScale: (scale: number) => void;
   onSetLineSpacing: (spacing: number) => void;
@@ -107,6 +110,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onToggleDetails,
   onTurnPage,
   onGoToChapter,
+  onSeekToFraction,
   onSetViewMode,
   onSetFontScale,
   onSetLineSpacing,
@@ -121,6 +125,7 @@ export const Toolbar: FC<ToolbarProps> = ({
 }) => {
   const isPaginated = snapshot.viewMode === "paginated";
   const chromePalette = useChromeTheme();
+  const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   return (
     <>
@@ -280,6 +285,20 @@ export const Toolbar: FC<ToolbarProps> = ({
                       onClick={() => onTurnPage(1)}
                     >
                       Next Page
+                    </MenuItem>
+                  </MenuGroup>
+                </>
+              )}
+              {!snapshot.isFixedLayout && (
+                <>
+                  <MenuDivider />
+                  <MenuGroup>
+                    <MenuGroupHeader>Go To</MenuGroupHeader>
+                    {isPaginated && (
+                      <MenuItem onClick={() => setGoToDialogMode("page")}>Go to Page…</MenuItem>
+                    )}
+                    <MenuItem onClick={() => setGoToDialogMode("percentage")}>
+                      Go to Percentage…
                     </MenuItem>
                   </MenuGroup>
                 </>
@@ -493,6 +512,20 @@ export const Toolbar: FC<ToolbarProps> = ({
           />
         </Tooltip>
       </div>
+
+      {goToDialogMode && (
+        <GoToDialog
+          mode={goToDialogMode}
+          open={goToDialogMode !== undefined}
+          onOpenChange={(open) => {
+            if (!open) {
+              setGoToDialogMode(undefined);
+            }
+          }}
+          bookPageCount={snapshot.bookPageCount}
+          onGo={onSeekToFraction}
+        />
+      )}
     </>
   );
 };

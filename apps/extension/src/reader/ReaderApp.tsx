@@ -269,6 +269,7 @@ export const ReaderApp: FC = () => {
               }}
               onTurnPage={turnPage}
               onGoToChapter={goToChapter}
+              onSeekToFraction={(fraction) => void seekToFraction(fraction)}
               onSetViewMode={setViewMode}
               onSetFontScale={setFontScale}
               onSetLineSpacing={setLineSpacing}
