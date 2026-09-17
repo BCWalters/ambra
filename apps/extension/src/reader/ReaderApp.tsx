@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Spinner, Title2 } from "@fluentui/react-components";
 import { ReadingTheme } from "@ambra/engine";
+import type { HighlightStyle } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
+import { SelectionToolbar } from "./components/SelectionToolbar.js";
 import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
@@ -56,6 +58,9 @@ export const ReaderApp: FC = () => {
     listBookmarks,
     removeBookmark,
     goToBookmark,
+    addHighlight,
+    removeHighlight,
+    goToHighlight,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
@@ -131,6 +136,21 @@ export const ReaderApp: FC = () => {
 
   const handleSelectBookmark = (cfi: string): void => {
     void goToBookmark(cfi);
+    if (!isTocPinned) {
+      setIsTocOpen(false);
+    }
+  };
+
+  const handleAddHighlight = (style: HighlightStyle): void => {
+    void addHighlight(style);
+  };
+
+  const handleRemoveHighlight = (id: string): void => {
+    void removeHighlight(id);
+  };
+
+  const handleSelectHighlight = (cfi: string): void => {
+    void goToHighlight(cfi);
     if (!isTocPinned) {
       setIsTocOpen(false);
     }
@@ -230,6 +250,9 @@ export const ReaderApp: FC = () => {
             bookmarks={bookmarks}
             onSelectBookmark={handleSelectBookmark}
             onRemoveBookmark={handleRemoveBookmark}
+            highlights={snapshot.highlights}
+            onSelectHighlight={handleSelectHighlight}
+            onRemoveHighlight={handleRemoveHighlight}
           />
 
           <div
@@ -342,6 +365,8 @@ export const ReaderApp: FC = () => {
             />
 
             <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
+
+            <SelectionToolbar state={snapshot.selectionToolbar} onPick={handleAddHighlight} />
 
             <ProgressScrubber
               snapshot={snapshot}

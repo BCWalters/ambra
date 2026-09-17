@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
+import type { HighlightStyle } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
@@ -34,6 +35,10 @@ export interface UseReaderControllerResult {
   listBookmarks: () => Promise<Bookmark[]>;
   removeBookmark: (id: string) => Promise<void>;
   goToBookmark: (cfi: string) => Promise<void>;
+  addHighlight: (style: HighlightStyle) => Promise<void>;
+  removeHighlight: (id: string) => Promise<void>;
+  goToHighlight: (cfi: string) => Promise<void>;
+  dismissSelectionToolbar: () => void;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -250,6 +255,31 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const addHighlight = useCallback(
+    async (style: HighlightStyle) => {
+      await controller?.addHighlight(style);
+    },
+    [controller],
+  );
+
+  const removeHighlight = useCallback(
+    async (id: string) => {
+      await controller?.removeHighlight(id);
+    },
+    [controller],
+  );
+
+  const goToHighlight = useCallback(
+    async (cfi: string) => {
+      await controller?.goToHighlight(cfi);
+    },
+    [controller],
+  );
+
+  const dismissSelectionToolbar = useCallback(() => {
+    controller?.dismissSelectionToolbar();
+  }, [controller]);
+
   return {
     snapshot,
     contentHostRef,
@@ -276,5 +306,9 @@ export function useReaderController(): UseReaderControllerResult {
     listBookmarks,
     removeBookmark,
     goToBookmark,
+    addHighlight,
+    removeHighlight,
+    goToHighlight,
+    dismissSelectionToolbar,
   };
 }

@@ -4,14 +4,15 @@ import { Body1, Button, Caption1, Tab, TabList } from "@fluentui/react-component
 import {
   BookmarkRegular,
   DismissRegular,
+  HighlightRegular,
   HomeRegular,
   PinOffRegular,
   PinRegular,
 } from "@fluentui/react-icons";
-import { NavPoint } from "@ambra/engine";
+import { NavPoint, HighlightTheme } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
-import type { Bookmark } from "../../library/LibraryDatabase.js";
+import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
  * document order) — used to detect whether the TOC's own first entry
@@ -198,6 +199,101 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) 
   );
 };
 
+interface HighlightListProps {
+  highlights: readonly Highlight[];
+  onSelect: (cfi: string) => void;
+  onRemove: (id: string) => void;
+}
+
+/** The "Highlights" tab's contents — each entry shows a small color
+ * swatch (matching `HighlightTheme`'s style — an underline preview for
+ * that one style, same as the selection toolbar's own swatches) and an
+ * excerpt of the highlighted text itself (snapshotted at creation time —
+ * see `Highlight.text` — so this never needs to re-resolve/re-extract
+ * from the DOM just to render a list). */
+const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove }) => {
+  if (highlights.length === 0) {
+    return (
+      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
+        No highlights yet — select some text while reading to highlight it.
+      </Caption1>
+    );
+  }
+
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {highlights.map((highlight) => {
+        const option = HighlightTheme.STYLES[highlight.style];
+        return (
+          <li key={highlight.id} style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
+            <button
+              type="button"
+              onClick={() => onSelect(highlight.startCfi)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                background: "none",
+                border: "none",
+                borderRadius: 6,
+                color: "var(--colorNeutralForeground2, #333)",
+                cursor: "pointer",
+                padding: "7px 10px",
+                textAlign: "left",
+                font: "inherit",
+                lineHeight: 1.35,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "none";
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  flexShrink: 0,
+                  marginTop: 4,
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(0, 0, 0, 0.15)",
+                  background:
+                    highlight.style === "underline"
+                      ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+                      : option.swatch,
+                }}
+              />
+              <span
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                {highlight.text}
+              </span>
+            </button>
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<DismissRegular />}
+              aria-label={`Remove highlight: ${highlight.text}`}
+              onClick={() => onRemove(highlight.id)}
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
 export interface TocPanelProps {
   items: readonly NavPoint[];
   /** Archive-relative path of the currently-open spine item (see
@@ -231,6 +327,12 @@ export interface TocPanelProps {
   bookmarks: readonly Bookmark[];
   onSelectBookmark: (cfi: string) => void;
   onRemoveBookmark: (id: string) => void;
+  /** The current book's saved highlights (see the "Highlights" tab) —
+   * read straight from `ReaderSnapshot.highlights`, always already
+   * current (unlike bookmarks, this never needs a separate fetch). */
+  highlights: readonly Highlight[];
+  onSelectHighlight: (cfi: string) => void;
+  onRemoveHighlight: (id: string) => void;
 }
 
 /** The reader's Table of Contents: by default a flyout that slides in
@@ -264,8 +366,11 @@ export const TocPanel: FC<TocPanelProps> = ({
   bookmarks,
   onSelectBookmark,
   onRemoveBookmark,
+  highlights,
+  onSelectHighlight,
+  onRemoveHighlight,
 }) => {
-  const [activeTab, setActiveTab] = useState<"contents" | "bookmarks">("contents");
+  const [activeTab, setActiveTab] = useState<"contents" | "bookmarks" | "highlights">("contents");
 
   const chromeTheme = useChromeTheme();
 
@@ -343,7 +448,7 @@ export const TocPanel: FC<TocPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "contents" ? "Contents" : "Bookmarks"}
+            {activeTab === "contents" ? "Contents" : activeTab === "bookmarks" ? "Bookmarks" : "Highlights"}
           </Body1>
           <Button
             appearance="subtle"
@@ -366,7 +471,7 @@ export const TocPanel: FC<TocPanelProps> = ({
         <TabList
           size="small"
           selectedValue={activeTab}
-          onTabSelect={(_event, data) => setActiveTab(data.value as "contents" | "bookmarks")}
+          onTabSelect={(_event, data) => setActiveTab(data.value as "contents" | "bookmarks" | "highlights")}
           style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
         >
           <Tab value="contents" icon={<HomeRegular />}>
@@ -375,10 +480,15 @@ export const TocPanel: FC<TocPanelProps> = ({
           <Tab value="bookmarks" icon={<BookmarkRegular />}>
             Bookmarks{bookmarks.length > 0 ? ` (${bookmarks.length})` : ""}
           </Tab>
+          <Tab value="highlights" icon={<HighlightRegular />}>
+            Highlights{highlights.length > 0 ? ` (${highlights.length})` : ""}
+          </Tab>
         </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {activeTab === "bookmarks" ? (
             <BookmarkList bookmarks={bookmarks} onSelect={onSelectBookmark} onRemove={onRemoveBookmark} />
+          ) : activeTab === "highlights" ? (
+            <HighlightList highlights={highlights} onSelect={onSelectHighlight} onRemove={onRemoveHighlight} />
           ) : (
             <>
               {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (

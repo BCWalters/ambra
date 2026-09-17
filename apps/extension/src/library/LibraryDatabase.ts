@@ -1,4 +1,4 @@
-import type { PageTheme, FontFamilyChoice } from "@ambra/engine";
+import type { PageTheme, FontFamilyChoice, HighlightStyle } from "@ambra/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
@@ -46,6 +46,44 @@ export interface Bookmark {
   readonly createdAt: number;
 }
 
+/** A reader-created highlight: a saved text range (via two point CFIs
+ * marking the start/end — see the doc comment on why this isn't the
+ * spec's single comma-joined range-CFI string) plus its visual style
+ * (see `HighlightStyle`) and a snapshot of the highlighted text itself,
+ * so a highlights list can show a readable excerpt without
+ * re-resolving/re-extracting from the DOM. `note` is reserved for the
+ * annotations feature (attaching a note to a highlight) — always
+ * `undefined` until that lands, kept here now so adding it later
+ * doesn't need its own store migration. */
+export interface Highlight {
+  readonly id: string;
+  readonly bookId: string;
+  /** Redundant with what `startCfi`'s package steps already encode, but
+   * kept as its own field so listing "this spine item's highlights"
+   * (applying them to a freshly-opened content document) doesn't need
+   * to parse every stored CFI first. */
+  readonly spineIndex: number;
+  /**
+   * A true EPUB CFI range is a single string with a shared prefix and
+   * two comma-separated divergent suffixes (spec §3.4) — a real,
+   * non-trivial grammar in its own right. Since nothing outside this
+   * app ever needs to read one of these CFIs back (no interop/export
+   * requirement), storing two independent, ordinary *point* CFIs here
+   * is functionally equivalent for every actual use (generate both via
+   * the exact same `LocatorResolver.generate` used everywhere else,
+   * resolve both via `resolveInDocument`) while reusing the entire
+   * existing, tested point-CFI engine as-is — not worth building and
+   * maintaining a second parser/resolver for the canonical range-CFI
+   * string format when nothing needs it.
+   */
+  readonly startCfi: string;
+  readonly endCfi: string;
+  readonly style: HighlightStyle;
+  readonly text: string;
+  readonly note: string | undefined;
+  readonly createdAt: number;
+}
+
 interface BlobRecord {
   readonly id: string;
   readonly blob: Blob;
@@ -61,13 +99,14 @@ interface PreferenceRecord {
 }
 
 const DB_NAME = "ambra-library";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const BOOKS_STORE = "books";
 const FILES_STORE = "bookFiles";
 const COVERS_STORE = "bookCovers";
 const PROGRESS_STORE = "readingProgress";
 const PREFERENCES_STORE = "preferences";
 const BOOKMARKS_STORE = "bookmarks";
+const HIGHLIGHTS_STORE = "highlights";
 
 const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
@@ -113,6 +152,9 @@ export class LibraryDatabase {
         }
         if (!db.objectStoreNames.contains(BOOKMARKS_STORE)) {
           db.createObjectStore(BOOKMARKS_STORE, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(HIGHLIGHTS_STORE)) {
+          db.createObjectStore(HIGHLIGHTS_STORE, { keyPath: "id" });
         }
       };
 
@@ -307,6 +349,9 @@ export class LibraryDatabase {
     for (const bookmark of await this.listBookmarksForBook(id)) {
       await this.delete(BOOKMARKS_STORE, bookmark.id);
     }
+    for (const highlight of await this.listHighlightsForBook(id)) {
+      await this.delete(HIGHLIGHTS_STORE, highlight.id);
+    }
   }
 
   /** Creates a new bookmark for `bookId` at `cfi` (see `Bookmark`'s doc
@@ -330,6 +375,28 @@ export class LibraryDatabase {
   public async listBookmarksForBook(bookId: string): Promise<Bookmark[]> {
     const all = await this.getAll<Bookmark>(BOOKMARKS_STORE);
     return all.filter((bookmark) => bookmark.bookId === bookId).sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Creates a new highlight (see `Highlight`'s doc comment) and returns
+   * the full record, including its generated `id`/`createdAt`. */
+  public async addHighlight(
+    highlight: Omit<Highlight, "id" | "createdAt">,
+  ): Promise<Highlight> {
+    const record: Highlight = { ...highlight, id: crypto.randomUUID(), createdAt: Date.now() };
+    await this.put(HIGHLIGHTS_STORE, record);
+    return record;
+  }
+
+  public async removeHighlight(id: string): Promise<void> {
+    await this.delete(HIGHLIGHTS_STORE, id);
+  }
+
+  /** All highlights for `bookId`, oldest first — same "fetch all, filter
+   * client-side" approach as `listBookmarksForBook`, for the same
+   * reason. */
+  public async listHighlightsForBook(bookId: string): Promise<Highlight[]> {
+    const all = await this.getAll<Highlight>(HIGHLIGHTS_STORE);
+    return all.filter((highlight) => highlight.bookId === bookId).sort((a, b) => a.createdAt - b.createdAt);
   }
 
   public close(): void {

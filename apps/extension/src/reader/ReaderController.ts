@@ -19,12 +19,14 @@ import {
 import type {
   BookIdentifier,
   FontFamilyChoice,
+  HighlightStyle,
   NavPoint,
   PackageDocument,
   PageTheme,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
-import type { Bookmark } from "../library/LibraryDatabase.js";
+import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
+import { applyHighlightRanges } from "./HighlightRenderer.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
@@ -199,6 +201,28 @@ export interface ReaderSnapshot {
    * decorative icon or a chapter-divider glyph into a giant, meaningless
    * blur. */
   imageViewer: ImageViewerState | undefined;
+  /** A completed, non-collapsed text selection in the primary content
+   * document, positioned for a floating highlight-color picker to
+   * anchor itself just above it (parent-viewport coordinates, already
+   * combining the selection's own rect with the content iframe's
+   * position — see `setUpHighlightSelection`). `undefined` whenever
+   * there's no active selection (nothing to highlight) or the current
+   * content is fixed-layout (highlighting is reflowable-content-only,
+   * matching every other reader-controlled reading feature). */
+  selectionToolbar: SelectionToolbarState | undefined;
+  /** Every highlight in the book, across all spine items, oldest first
+   * — for the Highlights tab (see `TocPanel`). Read straight from the
+   * in-memory cache (`highlightsBySpineIndex`) on every snapshot, not a
+   * separate async fetch the way `BookDetails`/bookmarks need — a
+   * highlight is created/removed by this same controller, so the cache
+   * is always already up to date by the time a new snapshot is built. */
+  highlights: readonly Highlight[];
+}
+
+/** See `ReaderSnapshot.selectionToolbar`. */
+export interface SelectionToolbarState {
+  readonly left: number;
+  readonly top: number;
 }
 
 /** See `ReaderSnapshot.imageViewer`. `src` is whatever the content
@@ -350,6 +374,28 @@ export class ReaderController {
   /** See `openImageViewer`'s doc comment — the element to restore focus
    * to when the viewer closes. */
   private imageViewerReturnFocusTarget: Element | undefined;
+  /** Every highlight in this book, grouped by the spine index its
+   * `startCfi` targets — loaded once in `open()` (see
+   * `LibraryDatabase.listHighlightsForBook`) and kept in sync in-memory
+   * on every add/remove, rather than re-querying IndexedDB on every
+   * spine item load (`applyHighlightsToDocument` runs on *every* open,
+   * unconditionally, unlike the font/theme settings this class also
+   * applies, which skip the work entirely at their defaults). */
+  private highlightsBySpineIndex = new Map<number, Highlight[]>();
+  /** See `ReaderSnapshot.selectionToolbar`. */
+  private selectionToolbar: SelectionToolbarState | undefined;
+  /** The live `Range` backing `selectionToolbar`, captured at the same
+   * time — `addHighlight` uses this directly rather than re-querying
+   * `getSelection()`, since by the time a reader has clicked a color
+   * swatch in the (parent-document) toolbar, focus may have moved away
+   * from the content iframe, and re-querying at that point is a needless
+   * risk when the original `Range` object is still perfectly valid. */
+  private pendingSelectionRange: Range | undefined;
+  /** Detaches the primary content document's selection-tracking
+   * listeners (see `setUpHighlightSelection`) — same re-created-per-
+   * spine-item lifecycle as `contentInteractionCleanup`. */
+  private highlightSelectionCleanup: (() => void) | undefined;
+
   /** Detaches the current spine item's in-content interaction listeners
    * (link clicks, and the image-viewer's click/keyboard triggers) — see
    * `setUpContentInteraction`. Re-created on every `openSpineItem` call
@@ -427,6 +473,7 @@ export class ReaderController {
     controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
     controller.pageTurnAnimationStyle =
       (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
+    controller.reloadHighlightsCache(await library.listHighlightsForBook(bookId));
     return controller;
   }
 
@@ -503,6 +550,10 @@ export class ReaderController {
         announcementId: this.announcementId,
         contentPointerActivityId: this.contentPointerActivityId,
         imageViewer: this.imageViewer,
+        selectionToolbar: this.selectionToolbar,
+        highlights: Array.from(this.highlightsBySpineIndex.values())
+          .flat()
+          .sort((a, b) => a.createdAt - b.createdAt),
       };
     }
     return this.cachedSnapshot;
@@ -711,14 +762,29 @@ export class ReaderController {
     return this.library.removeBookmark(id);
   }
 
-  /** Navigates to a saved bookmark's CFI — the same "parse, find the
-   * owning spine item by its package steps, open with a bridging CFI"
-   * mechanism `tryResume` uses, since resuming a session and jumping to
-   * a bookmark are the same underlying operation. Best-effort: a
-   * bookmark from a book whose structure has since changed (a
-   * re-imported, edited file) silently does nothing rather than
-   * crashing the reader. */
+  /** Navigates to a saved bookmark's CFI — see `goToCfi`, which does the
+   * actual work (shared with `goToHighlight`, since both are "jump to a
+   * previously-saved position" and differ only in where the CFI came
+   * from). */
   public async goToBookmark(cfi: string): Promise<void> {
+    await this.goToCfi(cfi);
+  }
+
+  /** Navigates to a highlight's starting position — see `goToBookmark`'s
+   * doc comment. */
+  public async goToHighlight(cfi: string): Promise<void> {
+    await this.goToCfi(cfi);
+  }
+
+  /** Parses `cfi`, finds the spine item it targets by its package steps,
+   * and opens it with `cfi` as a bridging position — the same "parse,
+   * find owning spine item, open with a bridging CFI" mechanism
+   * `tryResume` uses for resuming a session, since resuming, jumping to
+   * a bookmark, and jumping to a highlight are all the same underlying
+   * operation: "go to a previously-saved position." Best-effort: a CFI
+   * from a book whose structure has since changed (a re-imported, edited
+   * file) silently does nothing rather than crashing the reader. */
+  private async goToCfi(cfi: string): Promise<void> {
     try {
       const parsed = EpubCfi.parse(cfi);
       const spineIndex = this.pkg.findSpineIndexByPackageCfiSteps(parsed.packageSteps);
@@ -953,6 +1019,7 @@ export class ReaderController {
   public handleWindowRefocus(): void {
     this.reattachKeyboardNav();
     this.setUpDragPageTurn();
+    this.setUpHighlightSelection();
 
     const iframeDocument = this.primaryContentDocument();
     const topDocument = this.containerEl?.ownerDocument;
@@ -1507,6 +1574,223 @@ export class ReaderController {
     }
   }
 
+  /** Rebuilds `highlightsBySpineIndex` from a flat list (see `open`'s
+   * initial load, and every add/remove afterwards) — grouping once here
+   * keeps `applyHighlightsToCurrentHost` a simple map lookup rather than
+   * a linear filter on every single spine item load. */
+  private reloadHighlightsCache(all: readonly Highlight[]): void {
+    this.highlightsBySpineIndex = new Map();
+    for (const highlight of all) {
+      const existing = this.highlightsBySpineIndex.get(highlight.spineIndex);
+      if (existing) {
+        existing.push(highlight);
+      } else {
+        this.highlightsBySpineIndex.set(highlight.spineIndex, [highlight]);
+      }
+    }
+  }
+
+  /** Resolves every highlight belonging to `spineIndex` against `doc`
+   * (a live, already-loaded content document for that same spine item)
+   * into real `Range`s, grouped by style, and applies them via
+   * `applyHighlightRanges` (the CSS Custom Highlight API — see its doc
+   * comment for why this never touches `doc`'s own DOM). A highlight
+   * whose CFI fails to resolve (corrupted data, or content that's
+   * changed since it was created) is silently skipped rather than
+   * failing the whole batch — one bad highlight shouldn't hide every
+   * other one on the page. No-op for fixed-layout content, which has no
+   * reflowable text to highlight in the first place. */
+  private applyHighlightsToDocument(doc: Document, spineIndex: number): void {
+    const highlights = this.highlightsBySpineIndex.get(spineIndex);
+    const groups = new Map<HighlightStyle, Range[]>();
+    if (highlights) {
+      for (const highlight of highlights) {
+        const range = this.resolveHighlightRange(highlight, spineIndex, doc);
+        if (!range) {
+          continue;
+        }
+        const existing = groups.get(highlight.style);
+        if (existing) {
+          existing.push(range);
+        } else {
+          groups.set(highlight.style, [range]);
+        }
+      }
+    }
+    applyHighlightRanges(doc, groups);
+  }
+
+  /** Applies highlights to every content document the current host owns
+   * (both spread-mode columns, same scope as `allContentDocuments`) —
+   * called on every spine item load, unconditionally (unlike the font/
+   * theme settings `applyDisplaySettingsToHost` also applies, which skip
+   * the work when already at their defaults — a spine item having zero
+   * highlights isn't a meaningful "default" to detect ahead of time, so
+   * this always at least attempts the (cheap, no-op-if-empty) lookup). */
+  private applyHighlightsToCurrentHost(): void {
+    if (this.host instanceof FixedContentHost) {
+      return;
+    }
+    for (const doc of this.allContentDocuments()) {
+      this.applyHighlightsToDocument(doc, this.spineIndex);
+    }
+  }
+
+  private resolveHighlightRange(highlight: Highlight, spineIndex: number, doc: Document): Range | undefined {
+    try {
+      const start = this.locatorResolver.resolveInDocument(new Locator(highlight.startCfi), spineIndex, doc);
+      const end = this.locatorResolver.resolveInDocument(new Locator(highlight.endCfi), spineIndex, doc);
+      const range = doc.createRange();
+      range.setStart(start.node, start.characterOffset ?? 0);
+      range.setEnd(end.node, end.characterOffset ?? 0);
+      return range;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Attaches selection tracking to the current content host's primary
+   * document (the same one `AccessibilityController`'s keyboard listener
+   * uses, and — in spread mode — the same left-column-only scope
+   * everything selection-adjacent already uses): whenever the reader
+   * finishes making (or clears) a text selection, updates
+   * `selectionToolbar` so the shell can show/hide a floating
+   * highlight-color picker positioned just above it. Listens for
+   * `pointerup` (mouse/touch selection) and `keyup` (keyboard selection
+   * via Shift+arrows) — the two ways a selection can actually finish
+   * changing. No-op for fixed-layout content.
+   *
+   * Verified working well for double/triple-click word/sentence
+   * selection in every mode, including single-column paginated mode.
+   * Free-form click-*drag* selection in single-column paginated mode
+   * specifically was **not** exercised end-to-end — that mode's own
+   * `beginDragPageTurn` attaches its own pointermove/preventDefault
+   * handling to the same document to drive the page-turn-drag gesture,
+   * and a synthetic drag-based selection attempt during manual testing
+   * hung the test browser outright (the same category of real, confirmed
+   * "drag + this iframe" hang documented on issue #15's fix, not
+   * something to casually re-poke at). Word-level selection via
+   * double-click is unaffected (it's a click-count gesture, never enters
+   * `beginDragPageTurn`'s pointermove handling at all) and covers the
+   * primary use case; a real click-drag-to-select disambiguation against
+   * the page-turn gesture, if ever wanted, deserves its own careful,
+   * dedicated investigation rather than folding into this pass. */
+  private setUpHighlightSelection(): void {
+    this.highlightSelectionCleanup?.();
+    this.highlightSelectionCleanup = undefined;
+    if (this.host instanceof FixedContentHost) {
+      return;
+    }
+    const doc = this.primaryContentDocument();
+    const iframeEl = doc?.defaultView?.frameElement;
+    if (!doc || !iframeEl) {
+      return;
+    }
+
+    const updateFromSelection = (): void => {
+      const selection = doc.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        this.pendingSelectionRange = undefined;
+        this.selectionToolbar = undefined;
+        this.notify();
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const rangeRect = range.getBoundingClientRect();
+      if (rangeRect.width === 0 && rangeRect.height === 0) {
+        // A selection can momentarily report a zero-size rect (e.g. right
+        // as it's being cleared) — treat exactly like "no selection"
+        // rather than showing a toolbar with nowhere sensible to anchor.
+        this.pendingSelectionRange = undefined;
+        this.selectionToolbar = undefined;
+        this.notify();
+        return;
+      }
+      const iframeRect = iframeEl.getBoundingClientRect();
+      this.pendingSelectionRange = range.cloneRange();
+      this.selectionToolbar = {
+        left: iframeRect.left + rangeRect.left + rangeRect.width / 2,
+        top: iframeRect.top + rangeRect.top,
+      };
+      this.notify();
+    };
+
+    doc.addEventListener("pointerup", updateFromSelection);
+    doc.addEventListener("keyup", updateFromSelection);
+    this.highlightSelectionCleanup = () => {
+      doc.removeEventListener("pointerup", updateFromSelection);
+      doc.removeEventListener("keyup", updateFromSelection);
+    };
+  }
+
+  /** Hides the selection toolbar and clears the current in-content text
+   * selection — called after committing a highlight, and available to
+   * the shell for an explicit dismiss (e.g. clicking elsewhere). */
+  public dismissSelectionToolbar(): void {
+    this.primaryContentDocument()?.getSelection()?.removeAllRanges();
+    this.pendingSelectionRange = undefined;
+    this.selectionToolbar = undefined;
+    this.notify();
+  }
+
+  /** Creates a highlight from the selection `setUpHighlightSelection`
+   * last captured (see `pendingSelectionRange`), persists it, applies it
+   * immediately (so it renders without waiting for a reload), and
+   * dismisses the selection toolbar. A no-op if there's no pending
+   * selection (the toolbar isn't showing, or it's since been dismissed)
+   * — defensive, since the shell should never be able to call this
+   * without one, but never worth crashing over if it somehow did. */
+  public async addHighlight(style: HighlightStyle): Promise<void> {
+    const range = this.pendingSelectionRange;
+    if (!range || this.host instanceof FixedContentHost) {
+      return;
+    }
+    try {
+      const startLocator = this.locatorResolver.generate(this.spineIndex, range.startContainer, range.startOffset);
+      const endLocator = this.locatorResolver.generate(this.spineIndex, range.endContainer, range.endOffset);
+      const highlight = await this.library.addHighlight({
+        bookId: this.bookId,
+        spineIndex: this.spineIndex,
+        startCfi: startLocator.cfi,
+        endCfi: endLocator.cfi,
+        style,
+        text: range.toString(),
+        note: undefined,
+      });
+      const existing = this.highlightsBySpineIndex.get(this.spineIndex);
+      if (existing) {
+        existing.push(highlight);
+      } else {
+        this.highlightsBySpineIndex.set(this.spineIndex, [highlight]);
+      }
+      this.applyHighlightsToCurrentHost();
+      this.announce("Highlight added");
+    } catch {
+      // Best-effort — see `saveProgress`'s identical reasoning; a failed
+      // highlight save shouldn't surface an error to the reader mid-flow.
+    } finally {
+      this.dismissSelectionToolbar();
+    }
+  }
+
+  /** Removes a highlight (from the Highlights list — see `TocPanel`) and
+   * re-applies whatever's left to the current host if it belonged to the
+   * spine item currently open. */
+  public async removeHighlight(id: string): Promise<void> {
+    await this.library.removeHighlight(id);
+    for (const [spineIndex, highlights] of this.highlightsBySpineIndex) {
+      const index = highlights.findIndex((highlight) => highlight.id === id);
+      if (index !== -1) {
+        highlights.splice(index, 1);
+        if (spineIndex === this.spineIndex) {
+          this.applyHighlightsToCurrentHost();
+        }
+        break;
+      }
+    }
+    this.notify();
+  }
+
   /** Turns one page (or one spread, in spread mode) in paginated mode. In
    * scroll mode, this is a no-op — scrolling is continuous and has no
    * discrete "page" concept; use native scrolling within the content host
@@ -1560,6 +1844,8 @@ export class ReaderController {
         this.reattachKeyboardNav();
         this.setUpContentInteraction();
         this.setUpDragPageTurn();
+        this.setUpHighlightSelection();
+        this.applyHighlightsToCurrentHost();
         this.announce(`Page ${animatedHost.currentPageIndex + 1} of ${animatedHost.pageCount}`);
         this.notify();
         await this.saveProgress();
@@ -2185,6 +2471,8 @@ export class ReaderController {
       this.reattachKeyboardNav();
       this.setUpContentInteraction();
       this.setUpDragPageTurn();
+      this.setUpHighlightSelection();
+      this.applyHighlightsToCurrentHost();
       this.announce(`Page ${newHost.currentPageIndex + 1} of ${newHost.pageCount}`);
       this.notify();
       await this.saveProgress();
@@ -2385,6 +2673,10 @@ export class ReaderController {
       this.accessibility.detach();
       this.contentInteractionCleanup?.();
       this.contentInteractionCleanup = undefined;
+      this.highlightSelectionCleanup?.();
+      this.highlightSelectionCleanup = undefined;
+      this.pendingSelectionRange = undefined;
+      this.selectionToolbar = undefined;
       this.host?.dispose();
 
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
@@ -2443,6 +2735,8 @@ export class ReaderController {
       this.appliedHeight = this.height;
       this.setUpContentInteraction();
       this.setUpDragPageTurn();
+      this.setUpHighlightSelection();
+      this.applyHighlightsToCurrentHost();
       this.refreshBookPagination();
 
       if (options.bridgeCfi) {
@@ -2551,6 +2845,7 @@ export class ReaderController {
     this.accessibility.detach();
     this.contentInteractionCleanup?.();
     this.dragCleanup?.();
+    this.highlightSelectionCleanup?.();
     this.host?.dispose();
     this.bookPagination?.dispose();
     this.hiddenMeasureContainer?.remove();

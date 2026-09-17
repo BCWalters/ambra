@@ -2,6 +2,7 @@ import type { ContentDocument } from "../content/ContentLoader.js";
 import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
 import { EPUB_CSS_RESET } from "./EpubCssReset.js";
 import { ReadingTheme } from "./ReadingTheme.js";
+import { HighlightTheme } from "./HighlightTheme.js";
 
 /**
  * A minimal, restrictive Content-Security-Policy applied to every document
@@ -66,6 +67,7 @@ export class ContentDocumentAssembler {
     // `FixedContentHost` is the one caller that opts out.
     if (options.applyReadingTheme ?? true) {
       injectReadingTheme(doc);
+      injectHighlightTheme(doc);
     }
 
     return new XMLSerializer().serializeToString(doc);
@@ -121,4 +123,24 @@ function injectReadingTheme(doc: Document): void {
 
   const resetStyle = Array.from(head.getElementsByTagName("style")).find((s) => s.textContent === EPUB_CSS_RESET);
   head.insertBefore(style, resetStyle ? resetStyle.nextSibling : head.firstChild);
+}
+
+/** Injects `HighlightTheme.CSS` (the `::highlight()` style definitions
+ * for every highlight color/underline — see `HighlightTheme`) right
+ * after the reading theme, same reasoning: later in source order than
+ * the reset, but still ahead of the book's own `<head>` content. Ranges
+ * aren't populated here — `ReaderController` does that separately via
+ * `CSS.highlights` once the document is loaded and live, since it needs
+ * real `Range` objects that don't exist until then. */
+function injectHighlightTheme(doc: Document): void {
+  const head = doc.getElementsByTagName("head")[0];
+  if (!head) {
+    return;
+  }
+
+  const style = doc.createElement("style");
+  style.textContent = HighlightTheme.CSS;
+
+  const themeStyle = Array.from(head.getElementsByTagName("style")).find((s) => s.textContent === ReadingTheme.CSS);
+  head.insertBefore(style, themeStyle ? themeStyle.nextSibling : head.firstChild);
 }
