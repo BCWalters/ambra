@@ -2,7 +2,7 @@
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id" xml:lang="en">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="pub-id">urn:uuid:12345678-1234-5678-1234-567812345678</dc:identifier>
-    <dc:title>Pagina Font Obfuscation Test Fixture</dc:title>
+    <dc:title>Ambra Font Obfuscation Test Fixture</dc:title>
     <dc:language>en</dc:language>
   </metadata>
   <manifest>

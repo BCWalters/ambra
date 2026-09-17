@@ -1,4 +1,4 @@
-import { ContentLoader, EpubContainer } from "@pagina/engine";
+import { ContentLoader, EpubContainer } from "@ambra/engine";
 import type { BookMetadata } from "./LibraryDatabase.js";
 import { LibraryDatabase } from "./LibraryDatabase.js";
 

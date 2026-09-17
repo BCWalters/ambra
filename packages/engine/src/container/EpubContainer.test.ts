@@ -29,7 +29,7 @@ describe("EpubContainer", () => {
     const container = await EpubContainer.open(fixtureBytes);
     const opfText = await container.getRootFileEntry().readText();
 
-    expect(opfText).toContain("Pagina Minimal Test Fixture");
+    expect(opfText).toContain("Ambra Minimal Test Fixture");
   });
 
   it("delegates entry access to the underlying zip archive", async () => {

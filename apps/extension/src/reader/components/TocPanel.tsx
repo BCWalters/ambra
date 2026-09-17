@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1 } from "@fluentui/react-components";
 import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
-import { NavPoint } from "@pagina/engine";
+import { NavPoint } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 

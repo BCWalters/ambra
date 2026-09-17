@@ -1,4 +1,4 @@
-# Pagina
+# Ambra
 
 A polished, accessible EPUB3 reader browser extension — built for Chrome first.
 
@@ -22,7 +22,7 @@ This is a pnpm workspace monorepo:
 
 ```sh
 pnpm install
-pnpm --filter @pagina/extension dev   # Vite dev server with HMR for the extension
+pnpm --filter @ambra/extension dev   # Vite dev server with HMR for the extension
 pnpm build                            # build all packages/apps
 pnpm test                             # run all package tests
 pnpm typecheck                        # typecheck all packages/apps
@@ -38,14 +38,14 @@ title/identifier/language/rendition-layout, spine order, and manifest — a quic
 the engine work on a real book before the actual reading surface exists. It'll be replaced
 as `pagination-engine` and `reader-shell-ui` land.
 
-1. Run `pnpm --filter @pagina/extension dev` (recommended — gives you HMR, so most changes
+1. Run `pnpm --filter @ambra/extension dev` (recommended — gives you HMR, so most changes
    to `apps/extension`, `packages/shell`, or `packages/engine` show up without a manual
    reload) **or** `pnpm build` for a one-off production bundle. Either way this produces
    `apps/extension/dist`.
 2. In Chrome, go to `chrome://extensions`.
 3. Turn on **Developer mode** (top-right toggle).
 4. Click **Load unpacked**, and select the `apps/extension/dist` folder.
-5. Pagina's icon appears in the toolbar — click it to open the library popup.
+5. Ambra's icon appears in the toolbar — click it to open the library popup.
 6. To see the reader page, open the browser console on the popup (or background service
    worker, via "Inspect views: service worker" on the extension card) and run:
    ```js

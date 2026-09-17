@@ -15,8 +15,8 @@ import {
   ScrollContentHost,
   splitHrefFragment,
   SpreadPaginatedHost,
-} from "@pagina/engine";
-import type { BookIdentifier, FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@pagina/engine";
+} from "@ambra/engine";
+import type { BookIdentifier, FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";

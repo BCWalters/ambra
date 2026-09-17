@@ -1,8 +1,8 @@
 {
-  "name": "@pagina/shell",
+  "name": "@ambra/shell",
   "private": true,
   "version": "0.0.0",
-  "description": "Pagina's shell UI components (toolbar, TOC panel, library, settings) built with React and Fluent UI v9.",
+  "description": "Ambra's shell UI components (toolbar, TOC panel, library, settings) built with React and Fluent UI v9.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

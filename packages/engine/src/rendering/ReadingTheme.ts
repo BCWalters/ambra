@@ -107,11 +107,11 @@ function detectPlatformString(): string {
 export class ReadingTheme {
   /** The CSS custom property `applyFontScale` writes to and the theme's
    * own base font-size reads from. */
-  public static readonly FONT_SCALE_PROPERTY = "--pagina-font-scale";
-  public static readonly FONT_FAMILY_PROPERTY = "--pagina-font-family";
-  public static readonly PAGE_BACKGROUND_PROPERTY = "--pagina-page-bg";
-  public static readonly PAGE_FOREGROUND_PROPERTY = "--pagina-page-fg";
-  public static readonly LINK_COLOR_PROPERTY = "--pagina-link-color";
+  public static readonly FONT_SCALE_PROPERTY = "--ambra-font-scale";
+  public static readonly FONT_FAMILY_PROPERTY = "--ambra-font-family";
+  public static readonly PAGE_BACKGROUND_PROPERTY = "--ambra-page-bg";
+  public static readonly PAGE_FOREGROUND_PROPERTY = "--ambra-page-fg";
+  public static readonly LINK_COLOR_PROPERTY = "--ambra-link-color";
 
   public static readonly MIN_FONT_SCALE = 0.75;
   public static readonly MAX_FONT_SCALE = 2;

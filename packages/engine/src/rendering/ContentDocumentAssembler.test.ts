@@ -89,7 +89,7 @@ describe("ContentDocumentAssembler", () => {
     const assembled = ContentDocumentAssembler.assemble(doc, new Map());
 
     const resetIndex = assembled.indexOf("box-sizing: border-box");
-    const themeIndex = assembled.indexOf("--pagina-font-scale");
+    const themeIndex = assembled.indexOf("--ambra-font-scale");
     expect(themeIndex).toBeGreaterThan(resetIndex);
   });
 
@@ -98,7 +98,7 @@ describe("ContentDocumentAssembler", () => {
 
     const assembled = ContentDocumentAssembler.assemble(doc, new Map(), { applyReadingTheme: false });
 
-    expect(assembled).not.toContain("--pagina-font-scale");
+    expect(assembled).not.toContain("--ambra-font-scale");
     // The reset itself is unaffected by the option.
     expect(assembled).toContain("box-sizing: border-box");
   });
@@ -110,7 +110,7 @@ describe("ContentDocumentAssembler", () => {
 
     const cspIndex = assembled.indexOf("Content-Security-Policy");
     const resetIndex = assembled.indexOf("box-sizing: border-box");
-    const themeIndex = assembled.indexOf("--pagina-font-scale");
+    const themeIndex = assembled.indexOf("--ambra-font-scale");
     const bookStylesheetIndex = assembled.indexOf('href="styles/main.css"');
 
     expect(cspIndex).toBeGreaterThan(-1);

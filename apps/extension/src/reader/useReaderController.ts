@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
-import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
+import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
 import type { BookDetails, ReaderSnapshot, ViewMode } from "./ReaderController.js";

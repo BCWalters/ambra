@@ -5,7 +5,7 @@
     <meta name="dtb:uid" content="urn:uuid:8f8a2c1e-2f1a-4a3b-9c1d-000000000004"/>
   </head>
   <docTitle>
-    <text>Pagina NCX Fallback Test Fixture</text>
+    <text>Ambra NCX Fallback Test Fixture</text>
   </docTitle>
   <navMap>
     <navPoint id="np1" playOrder="1">

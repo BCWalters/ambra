@@ -1,8 +1,8 @@
 body {
-  font-family: "Pagina Test Font", serif;
+  font-family: "Ambra Test Font", serif;
 }
 
 @font-face {
-  font-family: "Pagina Test Font";
+  font-family: "Ambra Test Font";
   src: url("../fonts/font.otf");
 }

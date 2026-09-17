@@ -1,8 +1,8 @@
 {
-  "name": "@pagina/extension",
+  "name": "@ambra/extension",
   "private": true,
   "version": "0.0.1",
-  "description": "Pagina Chrome extension: Manifest V3 wiring for the library UI, reader page, and background service worker.",
+  "description": "Ambra Chrome extension: Manifest V3 wiring for the library UI, reader page, and background service worker.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,8 +13,8 @@
   "dependencies": {
     "@fluentui/react-components": "^9.74.0",
     "@fluentui/react-icons": "^2.0.341",
-    "@pagina/engine": "workspace:*",
-    "@pagina/shell": "workspace:*",
+    "@ambra/engine": "workspace:*",
+    "@ambra/shell": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

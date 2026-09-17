@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FC } from "react";
 import { Body1, Spinner, Title2 } from "@fluentui/react-components";
-import { ReadingTheme } from "@pagina/engine";
+import { ReadingTheme } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
@@ -85,7 +85,7 @@ export const ReaderApp: FC = () => {
   useEffect(() => {
     const bookId = new URLSearchParams(window.location.search).get("bookId");
     if (!bookId) {
-      setOpenError("No book selected — open this book from the Pagina library.");
+      setOpenError("No book selected — open this book from the Ambra library.");
       return;
     }
 
@@ -124,7 +124,7 @@ export const ReaderApp: FC = () => {
   if (openError) {
     return (
       <div style={{ padding: 24 }}>
-        <Title2>Pagina Reader</Title2>
+        <Title2>Ambra Reader</Title2>
         <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)" }}>
           {openError}
         </Body1>
@@ -135,7 +135,7 @@ export const ReaderApp: FC = () => {
   if (!snapshot) {
     return (
       <div style={{ padding: 24 }}>
-        <Title2>Pagina Reader</Title2>
+        <Title2>Ambra Reader</Title2>
         <Spinner label="Loading…" />
       </div>
     );

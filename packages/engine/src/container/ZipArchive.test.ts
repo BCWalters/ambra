@@ -48,13 +48,13 @@ describe("ZipArchive", () => {
     expect(containerXml).toContain('full-path="OEBPS/content.opf"');
 
     const opf = await archive.requireEntry("OEBPS/content.opf").readText();
-    expect(opf).toContain("Pagina Minimal Test Fixture");
+    expect(opf).toContain("Ambra Minimal Test Fixture");
 
     const nav = await archive.requireEntry("OEBPS/nav.xhtml").readText();
     expect(nav).toContain('epub:type="toc"');
 
     const chapter = await archive.requireEntry("OEBPS/chapter1.xhtml").readText();
-    expect(chapter).toContain("Hello, Pagina!");
+    expect(chapter).toContain("Hello, Ambra!");
   });
 
   it("treats directory entries as empty, non-throwing reads", async () => {

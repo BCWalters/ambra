@@ -1,1 +1,1 @@
-export { PaginaThemeProvider } from "./components/PaginaThemeProvider.js";
+export { AmbraThemeProvider } from "./components/AmbraThemeProvider.js";

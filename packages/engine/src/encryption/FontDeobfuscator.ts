@@ -17,7 +17,7 @@ export class UnsupportedEncryptionAlgorithmError extends Error {
   public constructor(algorithmUri: string) {
     super(
       `Unsupported encryption/obfuscation algorithm: ${algorithmUri}. This is likely DRM-protected ` +
-        "content, which Pagina does not support (font de-obfuscation is the only reversible scheme handled).",
+        "content, which Ambra does not support (font de-obfuscation is the only reversible scheme handled).",
     );
     this.name = "UnsupportedEncryptionAlgorithmError";
   }

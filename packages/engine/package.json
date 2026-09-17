@@ -1,8 +1,8 @@
 {
-  "name": "@pagina/engine",
+  "name": "@ambra/engine",
   "private": true,
   "version": "0.0.0",
-  "description": "Pagina's core EPUB3 engine: container/OPF/Nav parsing, layout, pagination, and CFI locators. Zero runtime dependencies — built entirely on native browser APIs (DecompressionStream, DOMParser).",
+  "description": "Ambra's core EPUB3 engine: container/OPF/Nav parsing, layout, pagination, and CFI locators. Zero runtime dependencies — built entirely on native browser APIs (DecompressionStream, DOMParser).",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

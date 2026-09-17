@@ -1,17 +1,17 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { PaginaThemeProvider } from "@pagina/shell";
+import { AmbraThemeProvider } from "@ambra/shell";
 import { LibraryApp } from "./LibraryApp.js";
 
 const container = document.getElementById("root");
 if (!container) {
-  throw new Error("Pagina library: #root element not found.");
+  throw new Error("Ambra library: #root element not found.");
 }
 
 createRoot(container).render(
   <StrictMode>
-    <PaginaThemeProvider>
+    <AmbraThemeProvider>
       <LibraryApp />
-    </PaginaThemeProvider>
+    </AmbraThemeProvider>
   </StrictMode>,
 );

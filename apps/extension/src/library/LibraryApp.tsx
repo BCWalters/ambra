@@ -79,7 +79,7 @@ export const LibraryApp: FC = () => {
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Title2>Pagina</Title2>
+        <Title2>Ambra</Title2>
         <Button size="small" onClick={() => fileInputRef.current?.click()}>
           Import EPUB
         </Button>

@@ -47,7 +47,7 @@ describe("PackageDocument (reflowable fixture)", () => {
 
   it("parses core dc metadata", () => {
     expect(pkg.metadata.identifier).toBe("urn:uuid:8f8a2c1e-2f1a-4a3b-9c1d-000000000001");
-    expect(pkg.metadata.title).toBe("Pagina Minimal Test Fixture");
+    expect(pkg.metadata.title).toBe("Ambra Minimal Test Fixture");
     expect(pkg.metadata.language).toBe("en");
   });
 

@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { Caption1 } from "@fluentui/react-components";
-import { ReadingTheme, SpreadPaginatedHost } from "@pagina/engine";
+import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderController.js";
 
 export interface PageFurnitureProps {

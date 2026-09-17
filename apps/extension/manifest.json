@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Pagina",
-  "short_name": "Pagina",
+  "name": "Ambra EPUB Reader",
+  "short_name": "Ambra",
   "description": "A polished, accessible EPUB3 reader for Chrome.",
   "version": "0.0.1",
   "icons": {

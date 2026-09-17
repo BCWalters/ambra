@@ -29,8 +29,8 @@ import {
   TextColumnOneRegular,
   TextFontRegular,
 } from "@fluentui/react-icons";
-import { ReadingTheme } from "@pagina/engine";
-import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
+import { ReadingTheme } from "@ambra/engine";
+import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
 import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
 import {
   CHROME_BACKDROP_FILTER,

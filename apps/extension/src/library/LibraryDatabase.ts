@@ -1,4 +1,4 @@
-import type { PageTheme, FontFamilyChoice } from "@pagina/engine";
+import type { PageTheme, FontFamilyChoice } from "@ambra/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 
@@ -42,7 +42,7 @@ interface PreferenceRecord {
   readonly value: unknown;
 }
 
-const DB_NAME = "pagina-library";
+const DB_NAME = "ambra-library";
 const DB_VERSION = 3;
 const BOOKS_STORE = "books";
 const FILES_STORE = "bookFiles";
@@ -91,7 +91,7 @@ export class LibraryDatabase {
       };
 
       request.onsuccess = () => resolve(new LibraryDatabase(request.result));
-      request.onerror = () => reject(request.error ?? new Error("Failed to open the Pagina library database."));
+      request.onerror = () => reject(request.error ?? new Error("Failed to open the Ambra library database."));
     });
   }
 

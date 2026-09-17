@@ -2,7 +2,7 @@
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id" xml:lang="en">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="pub-id">urn:uuid:8f8a2c1e-2f1a-4a3b-9c1d-000000000007</dc:identifier>
-    <dc:title>Pagina Malicious Script Test Fixture</dc:title>
+    <dc:title>Ambra Malicious Script Test Fixture</dc:title>
     <dc:language>en</dc:language>
   </metadata>
   <manifest>
