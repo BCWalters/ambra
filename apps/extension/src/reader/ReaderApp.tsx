@@ -154,6 +154,7 @@ export const ReaderApp: FC = () => {
           items={snapshot.toc}
           currentPath={snapshot.highlightedTocPath}
           firstSpinePath={snapshot.firstSpinePath}
+          pageNumbers={snapshot.tocPageNumbers}
           open={isTocOpen}
           pinned={isTocPinned}
           onTogglePin={() => setIsTocPinned((pinned) => !pinned)}

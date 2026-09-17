@@ -35,9 +35,12 @@ interface NavTreeProps {
   currentPath: string | undefined;
   onSelect: (navPoint: NavPoint) => void;
   depth: number;
+  /** Book-wide page number of each entry's target spine item, keyed by
+   * path — see `ReaderSnapshot.tocPageNumbers`. */
+  pageNumbers: ReadonlyMap<string, number>;
 }
 
-const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth }) => {
+const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNumbers }) => {
   if (items.length === 0) {
     return null;
   }
@@ -46,6 +49,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth }) => {
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {items.map((item, index) => {
         const isCurrent = item.isLinked && item.path === currentPath;
+        const pageNumber = item.path !== undefined ? pageNumbers.get(item.path) : undefined;
         return (
           <li key={index}>
             {item.isLinked ? (
@@ -54,7 +58,10 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth }) => {
                 onClick={() => onSelect(item)}
                 aria-current={isCurrent ? "location" : undefined}
                 style={{
-                  display: "block",
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: 8,
                   width: "100%",
                   background: isCurrent ? CHROME_SELECTED_BACKGROUND : "none",
                   border: "none",
@@ -79,7 +86,14 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth }) => {
                   }
                 }}
               >
-                {item.label}
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {item.label}
+                </span>
+                {pageNumber !== undefined && (
+                  <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
+                    {pageNumber}
+                  </Caption1>
+                )}
               </button>
             ) : (
               <Caption1
@@ -96,7 +110,13 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth }) => {
                 {item.label}
               </Caption1>
             )}
-            <NavTree items={item.children} currentPath={currentPath} onSelect={onSelect} depth={depth + 1} />
+            <NavTree
+              items={item.children}
+              currentPath={currentPath}
+              onSelect={onSelect}
+              depth={depth + 1}
+              pageNumbers={pageNumbers}
+            />
           </li>
         );
       })}
@@ -115,6 +135,10 @@ export interface TocPanelProps {
    * first linked entry to decide whether to show a synthetic "Start of
    * Book" entry above it (see the component doc comment). */
   firstSpinePath: string | undefined;
+  /** Book-wide page number of each entry's target spine item, keyed by
+   * path (see `ReaderSnapshot.tocPageNumbers`) — shown right-justified
+   * alongside each entry's label, whenever it's known. */
+  pageNumbers: ReadonlyMap<string, number>;
   onSelect: (navPoint: NavPoint) => void;
   /** Whether the panel should currently be shown at all. Always rendered
    * (never conditionally unmounted) so it can animate closed instead of
@@ -152,6 +176,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   items,
   currentPath,
   firstSpinePath,
+  pageNumbers,
   onSelect,
   open,
   pinned,
@@ -261,6 +286,7 @@ export const TocPanel: FC<TocPanelProps> = ({
               style={{
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "space-between",
                 gap: 8,
                 width: "100%",
                 background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
@@ -289,11 +315,18 @@ export const TocPanel: FC<TocPanelProps> = ({
                 }
               }}
             >
-              <HomeRegular fontSize={16} />
-              Start of Book
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <HomeRegular fontSize={16} />
+                Start of Book
+              </span>
+              {pageNumbers.get(firstSpinePath) !== undefined && (
+                <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
+                  {pageNumbers.get(firstSpinePath)}
+                </Caption1>
+              )}
             </button>
           )}
-          <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} />
+          <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} pageNumbers={pageNumbers} />
         </div>
       </nav>
     </>

@@ -70,6 +70,20 @@ export interface ReaderSnapshot {
    * the same as `currentSpinePath`, since the open spine item may have
    * no TOC entry of its own at all. */
   highlightedTocPath: string | undefined;
+  /** Book-wide page number of the *first* page of each spine item,
+   * keyed by that item's manifest path — lets `TocPanel` show a page
+   * number next to each entry. Only ever contains entries whose page
+   * number is already known (`BookPaginationEstimator`'s background
+   * measurement reaches every spine item eventually, but not
+   * instantly — see `ReaderController.computeTocPageNumbers`), so a
+   * TOC opened before that finishes simply shows page numbers for
+   * whichever entries are ready so far, never a placeholder. Every TOC
+   * entry linking into the same spine item (e.g. several `<h2>`
+   * subsections of one chapter file) shares that item's single page
+   * number — resolving a fragment's own, more precise page would need
+   * actually rendering/paginating around it, not just its spine item's
+   * start, which is out of scope for now. */
+  tocPageNumbers: ReadonlyMap<string, number>;
   /** A human-readable label for the current chapter — the matching TOC
    * entry's own label when the navigation has one, else a generic
    * "Chapter N" (see `chapterLabel`). Used for the running header (see
@@ -321,6 +335,7 @@ export class ReaderController {
         currentSpinePath: this.pkg.spine[this.spineIndex]?.manifestItem.path,
         firstSpinePath: this.pkg.spine[0]?.manifestItem.path,
         highlightedTocPath: this.tocHighlightPath(),
+        tocPageNumbers: this.computeTocPageNumbers(),
         currentChapterLabel: this.chapterLabel(this.spineIndex),
         viewMode: this.viewMode,
         isFixedLayout: this.host instanceof FixedContentHost,
@@ -579,6 +594,27 @@ export class ReaderController {
    * directly. */
   private tocHighlightPath(): string | undefined {
     return this.nearestPrecedingNavPoint(this.spineIndex)?.path ?? this.pkg.spine[0]?.manifestItem.path;
+  }
+
+  /** Book-wide page number of the first page of every spine item whose
+   * page count `bookPagination` has measured so far, keyed by manifest
+   * path — see `ReaderSnapshot.tocPageNumbers`'s doc comment for how
+   * `TocPanel` uses this. Empty before background pagination has made
+   * any progress at all (e.g. scroll mode/fixed-layout-only books,
+   * where `bookPagination` is never created — see `refreshBookPagination`). */
+  private computeTocPageNumbers(): ReadonlyMap<string, number> {
+    const result = new Map<string, number>();
+    if (!this.bookPagination) {
+      return result;
+    }
+    for (let spineIndex = 0; spineIndex < this.pkg.spine.length; spineIndex++) {
+      const currentPage = this.bookPagination.positionFor(spineIndex, 0).currentPage;
+      const path = this.pkg.spine[spineIndex]?.manifestItem.path;
+      if (currentPage !== undefined && path !== undefined) {
+        result.set(path, currentPage);
+      }
+    }
+    return result;
   }
 
   /** The content document accessibility (keyboard navigation, focus
