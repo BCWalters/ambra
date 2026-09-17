@@ -61,6 +61,7 @@ export const ReaderApp: FC = () => {
     addHighlight,
     removeHighlight,
     goToHighlight,
+    setHighlightNote,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
@@ -147,6 +148,10 @@ export const ReaderApp: FC = () => {
 
   const handleRemoveHighlight = (id: string): void => {
     void removeHighlight(id);
+  };
+
+  const handleSetHighlightNote = (id: string, note: string | undefined): void => {
+    void setHighlightNote(id, note);
   };
 
   const handleSelectHighlight = (cfi: string): void => {
@@ -253,6 +258,7 @@ export const ReaderApp: FC = () => {
             highlights={snapshot.highlights}
             onSelectHighlight={handleSelectHighlight}
             onRemoveHighlight={handleRemoveHighlight}
+            onSetHighlightNote={handleSetHighlightNote}
           />
 
           <div

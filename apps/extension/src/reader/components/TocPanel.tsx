@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Tab, TabList } from "@fluentui/react-components";
+import { Body1, Button, Caption1, Tab, TabList, Textarea } from "@fluentui/react-components";
 import {
   BookmarkRegular,
   DismissRegular,
   HighlightRegular,
   HomeRegular,
+  NoteRegular,
   PinOffRegular,
   PinRegular,
 } from "@fluentui/react-icons";
@@ -203,15 +204,17 @@ interface HighlightListProps {
   highlights: readonly Highlight[];
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
+  onSetNote: (id: string, note: string | undefined) => void;
 }
 
 /** The "Highlights" tab's contents — each entry shows a small color
  * swatch (matching `HighlightTheme`'s style — an underline preview for
- * that one style, same as the selection toolbar's own swatches) and an
+ * that one style, same as the selection toolbar's own swatches), an
  * excerpt of the highlighted text itself (snapshotted at creation time —
  * see `Highlight.text` — so this never needs to re-resolve/re-extract
- * from the DOM just to render a list). */
-const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove }) => {
+ * from the DOM just to render a list), and its note (if any — see the
+ * annotations feature, `HighlightListItem`). */
+const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove, onSetNote }) => {
   if (highlights.length === 0) {
     return (
       <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
@@ -222,75 +225,146 @@ const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove 
 
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      {highlights.map((highlight) => {
-        const option = HighlightTheme.STYLES[highlight.style];
-        return (
-          <li key={highlight.id} style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
-            <button
-              type="button"
-              onClick={() => onSelect(highlight.startCfi)}
+      {highlights.map((highlight) => (
+        <HighlightListItem
+          key={highlight.id}
+          highlight={highlight}
+          onSelect={onSelect}
+          onRemove={onRemove}
+          onSetNote={onSetNote}
+        />
+      ))}
+    </ul>
+  );
+};
+
+interface HighlightListItemProps {
+  highlight: Highlight;
+  onSelect: (cfi: string) => void;
+  onRemove: (id: string) => void;
+  onSetNote: (id: string, note: string | undefined) => void;
+}
+
+/** One highlight's row, plus its own local "note editor open?" state —
+ * split out from `HighlightList` specifically so each row can hold that
+ * state independently (a `useState` inside a `.map()` callback isn't
+ * possible; a real sub-component is the correct fix, not a workaround). */
+const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, onRemove, onSetNote }) => {
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [draftNote, setDraftNote] = useState(highlight.note ?? "");
+  const option = HighlightTheme.STYLES[highlight.style];
+
+  const saveNote = (): void => {
+    const trimmed = draftNote.trim();
+    onSetNote(highlight.id, trimmed === "" ? undefined : trimmed);
+    setIsEditingNote(false);
+  };
+
+  return (
+    <li style={{ padding: "2px 0" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
+        <button
+          type="button"
+          onClick={() => onSelect(highlight.startCfi)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            background: "none",
+            border: "none",
+            borderRadius: 6,
+            color: "var(--colorNeutralForeground2, #333)",
+            cursor: "pointer",
+            padding: "7px 10px",
+            textAlign: "left",
+            font: "inherit",
+            lineHeight: 1.35,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "none";
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              flexShrink: 0,
+              marginTop: 4,
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              border: "1px solid rgba(0, 0, 0, 0.15)",
+              background:
+                highlight.style === "underline"
+                  ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+                  : option.swatch,
+            }}
+          />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span
               style={{
-                flex: 1,
-                minWidth: 0,
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 8,
-                background: "none",
-                border: "none",
-                borderRadius: 6,
-                color: "var(--colorNeutralForeground2, #333)",
-                cursor: "pointer",
-                padding: "7px 10px",
-                textAlign: "left",
-                font: "inherit",
-                lineHeight: 1.35,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "none";
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
-              <span
-                aria-hidden="true"
-                style={{
-                  flexShrink: 0,
-                  marginTop: 4,
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  border: "1px solid rgba(0, 0, 0, 0.15)",
-                  background:
-                    highlight.style === "underline"
-                      ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
-                      : option.swatch,
-                }}
-              />
-              <span
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                }}
+              {highlight.text}
+            </span>
+            {highlight.note && !isEditingNote && (
+              <Caption1
+                as="span"
+                block
+                style={{ marginTop: 2, fontStyle: "italic", opacity: 0.75 }}
               >
-                {highlight.text}
-              </span>
-            </button>
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<DismissRegular />}
-              aria-label={`Remove highlight: ${highlight.text}`}
-              onClick={() => onRemove(highlight.id)}
-            />
-          </li>
-        );
-      })}
-    </ul>
+                {highlight.note}
+              </Caption1>
+            )}
+          </span>
+        </button>
+        <Button
+          appearance="subtle"
+          size="small"
+          icon={<NoteRegular />}
+          aria-label={highlight.note ? `Edit note: ${highlight.text}` : `Add note: ${highlight.text}`}
+          onClick={() => {
+            setDraftNote(highlight.note ?? "");
+            setIsEditingNote((open) => !open);
+          }}
+        />
+        <Button
+          appearance="subtle"
+          size="small"
+          icon={<DismissRegular />}
+          aria-label={`Remove highlight: ${highlight.text}`}
+          onClick={() => onRemove(highlight.id)}
+        />
+      </div>
+      {isEditingNote && (
+        <div style={{ padding: "0 10px 8px 34px" }}>
+          <Textarea
+            value={draftNote}
+            onChange={(_event, data) => setDraftNote(data.value)}
+            placeholder="Add a note…"
+            resize="vertical"
+            style={{ width: "100%" }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
+            <Button size="small" onClick={() => setIsEditingNote(false)}>
+              Cancel
+            </Button>
+            <Button size="small" appearance="primary" onClick={saveNote}>
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+    </li>
   );
 };
 
@@ -333,6 +407,7 @@ export interface TocPanelProps {
   highlights: readonly Highlight[];
   onSelectHighlight: (cfi: string) => void;
   onRemoveHighlight: (id: string) => void;
+  onSetHighlightNote: (id: string, note: string | undefined) => void;
 }
 
 /** The reader's Table of Contents: by default a flyout that slides in
@@ -369,6 +444,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   highlights,
   onSelectHighlight,
   onRemoveHighlight,
+  onSetHighlightNote,
 }) => {
   const [activeTab, setActiveTab] = useState<"contents" | "bookmarks" | "highlights">("contents");
 
@@ -488,7 +564,12 @@ export const TocPanel: FC<TocPanelProps> = ({
           {activeTab === "bookmarks" ? (
             <BookmarkList bookmarks={bookmarks} onSelect={onSelectBookmark} onRemove={onRemoveBookmark} />
           ) : activeTab === "highlights" ? (
-            <HighlightList highlights={highlights} onSelect={onSelectHighlight} onRemove={onRemoveHighlight} />
+            <HighlightList
+              highlights={highlights}
+              onSelect={onSelectHighlight}
+              onRemove={onRemoveHighlight}
+              onSetNote={onSetHighlightNote}
+            />
           ) : (
             <>
               {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (

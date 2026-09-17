@@ -391,6 +391,16 @@ export class LibraryDatabase {
     await this.delete(HIGHLIGHTS_STORE, id);
   }
 
+  /** Updates an existing highlight record in place — used for attaching/
+   * editing/clearing a note (see the annotations feature). Takes the
+   * full, already-modified record (the caller — `ReaderController`,
+   * which keeps every highlight in memory anyway — builds it) rather
+   * than a partial patch, since IndexedDB's `put` always replaces the
+   * whole record regardless. */
+  public async updateHighlight(highlight: Highlight): Promise<void> {
+    await this.put(HIGHLIGHTS_STORE, highlight);
+  }
+
   /** All highlights for `bookId`, oldest first — same "fetch all, filter
    * client-side" approach as `listBookmarksForBook`, for the same
    * reason. */

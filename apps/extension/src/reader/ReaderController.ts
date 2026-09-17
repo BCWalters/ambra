@@ -1791,6 +1791,24 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Attaches, edits, or clears (pass `undefined`) a note on an existing
+   * highlight — the annotations feature (#25). Never touches rendering
+   * (a note has no visual presence of its own on the highlighted text
+   * itself, only in the Highlights list — see `TocPanel`), so unlike
+   * `removeHighlight` this never needs `applyHighlightsToCurrentHost`. */
+  public async setHighlightNote(id: string, note: string | undefined): Promise<void> {
+    for (const highlights of this.highlightsBySpineIndex.values()) {
+      const index = highlights.findIndex((highlight) => highlight.id === id);
+      if (index !== -1) {
+        const updated: Highlight = { ...highlights[index]!, note };
+        await this.library.updateHighlight(updated);
+        highlights[index] = updated;
+        this.notify();
+        return;
+      }
+    }
+  }
+
   /** Turns one page (or one spread, in spread mode) in paginated mode. In
    * scroll mode, this is a no-op — scrolling is continuous and has no
    * discrete "page" concept; use native scrolling within the content host
