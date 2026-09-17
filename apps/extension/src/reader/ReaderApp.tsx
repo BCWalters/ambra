@@ -11,6 +11,7 @@ import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
+import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import type { BookDetails } from "./ReaderController.js";
 
 /**
@@ -38,6 +39,7 @@ export const ReaderApp: FC = () => {
     setFontScale,
     setFontFamily,
     setPageTheme,
+    setChromeTheme,
     previewSeek,
     seekToFraction,
     getBookDetails,
@@ -96,7 +98,9 @@ export const ReaderApp: FC = () => {
       try {
         const blob = await library.getBookFile(bookId);
         if (!blob) {
-          throw new Error("This book could not be found in your library — it may have been removed.");
+          throw new Error(
+            "This book could not be found in your library — it may have been removed.",
+          );
         }
         const buffer = await blob.arrayBuffer();
         if (!cancelled) {
@@ -142,121 +146,133 @@ export const ReaderApp: FC = () => {
     : ReadingTheme.PAGE_THEMES[snapshot.pageTheme].background;
 
   return (
-    <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
-      {/* The content row fills the entire viewport — the toolbar is an
-          absolutely-positioned overlay (see `Toolbar`), not a normal-flow
-          element pushing this row down, so it can fade in/out without
-          ever changing this row's size (which would otherwise trigger a
-          pointless relayout via the `ResizeObserver` below on every
-          fade). */}
-      <div style={{ position: "absolute", inset: 0, display: "flex" }}>
-        <TocPanel
-          items={snapshot.toc}
-          currentPath={snapshot.highlightedTocPath}
-          firstSpinePath={snapshot.firstSpinePath}
-          pageNumbers={snapshot.tocPageNumbers}
-          open={isTocOpen}
-          pinned={isTocPinned}
-          onTogglePin={() => setIsTocPinned((pinned) => !pinned)}
-          onRequestClose={() => setIsTocOpen(false)}
-          onSelect={(navPoint) => {
-            goToNavPoint(navPoint);
-            if (!isTocPinned) {
-              setIsTocOpen(false);
-            }
-          }}
-        />
-
-        <div
-          style={{ flex: 1, position: "relative", minHeight: 0, background: pageBackground }}
-          role="main"
-          aria-label="Book content"
-        >
-          {/* This div is owned entirely by imperative code (ReaderController
-              mounts the active content host's iframe into it) — it must never
-              receive React-rendered children, or React's reconciliation and
-              the controller's direct DOM mutations will conflict. `position:
-              absolute; inset: 0` (rather than percentage width/height) sizes
-              it reliably regardless of how many layers of flexbox surround
-              it, which is what a real-Chromium test caught going wrong.
-              Deliberately no background of its own — it inherits the
-              surrounding `role="main"` div's background (kept in sync with
-              the active page color theme above), so the bottom slack under
-              a short last page and the spread gutter between two columns
-              (both of which show this div's background through, not the
-              content host's own) never visually mismatch the page. */}
-          <div
-            ref={contentHostRef}
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "flex-start",
-              overflow: "hidden",
+    <ChromeThemeProvider theme={snapshot.chromeTheme}>
+      <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
+        {/* The content row fills the entire viewport — the toolbar is an
+              absolutely-positioned overlay (see `Toolbar`), not a normal-flow
+              element pushing this row down, so it can fade in/out without
+              ever changing this row's size (which would otherwise trigger a
+              pointless relayout via the `ResizeObserver` below on every
+              fade). */}
+        <div style={{ position: "absolute", inset: 0, display: "flex" }}>
+          <TocPanel
+            items={snapshot.toc}
+            currentPath={snapshot.highlightedTocPath}
+            firstSpinePath={snapshot.firstSpinePath}
+            pageNumbers={snapshot.tocPageNumbers}
+            open={isTocOpen}
+            pinned={isTocPinned}
+            onTogglePin={() => setIsTocPinned((pinned) => !pinned)}
+            onRequestClose={() => setIsTocOpen(false)}
+            onSelect={(navPoint) => {
+              goToNavPoint(navPoint);
+              if (!isTocPinned) {
+                setIsTocOpen(false);
+              }
             }}
           />
-          <PageFurniture snapshot={snapshot} />
-          {snapshot.isLoading && (
-            <Spinner
-              label="Loading…"
-              style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
-            />
-          )}
 
-          {/* Scoped to this content pane (not the TOC panel beside it) —
-              the toolbar is positioned relative to *this* div so it never
-              overlaps the TOC panel's own clickable area when both are
-              open at once. */}
-          <Toolbar
-            snapshot={snapshot}
-            isTocOpen={isTocOpen}
-            onToggleToc={() => setIsTocOpen((open) => !open)}
-            isDetailsOpen={isDetailsOpen}
-            onToggleDetails={() => setIsDetailsOpen((open) => !open)}
-            onTurnPage={turnPage}
-            onGoToChapter={goToChapter}
-            onSetViewMode={setViewMode}
-            onSetFontScale={setFontScale}
-            onSetFontFamily={setFontFamily}
-            onSetPageTheme={setPageTheme}
-            visible={chromeVisible}
-            handlers={chromeHandlers}
-          />
-
-          <BookDetailsPanel open={isDetailsOpen} onRequestClose={() => setIsDetailsOpen(false)} details={bookDetails} />
-
-          <ProgressScrubber
-            snapshot={snapshot}
-            visible={chromeVisible}
-            handlers={chromeHandlers}
-            onPreview={previewSeek}
-            onSeek={seekToFraction}
-          />
-
-          {snapshot.error && (
-            <Body1
-              as="p"
+          <div
+            style={{ flex: 1, position: "relative", minHeight: 0, background: pageBackground }}
+            role="main"
+            aria-label="Book content"
+          >
+            {/* This div is owned entirely by imperative code (ReaderController
+                mounts the active content host's iframe into it) — it must never
+                receive React-rendered children, or React's reconciliation and
+                the controller's direct DOM mutations will conflict. `position:
+                absolute; inset: 0` (rather than percentage width/height) sizes
+                it reliably regardless of how many layers of flexbox surround
+                it, which is what a real-Chromium test caught going wrong.
+                Deliberately no background of its own — it inherits the
+                surrounding `role="main"` div's background (kept in sync with
+                the active page color theme above), so the bottom slack under
+                a short last page and the spread gutter between two columns
+                (both of which show this div's background through, not the
+                content host's own) never visually mismatch the page. */}
+            <div
+              ref={contentHostRef}
               style={{
                 position: "absolute",
-                top: 64,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 20,
-                margin: 0,
-                padding: "6px 14px",
-                borderRadius: 6,
-                background: "var(--colorPaletteRedBackground3, #fde7e9)",
-                color: "var(--colorPaletteRedForeground1, crimson)",
+                inset: 0,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "flex-start",
+                overflow: "hidden",
               }}
-            >
-              Error: {snapshot.error}
-            </Body1>
-          )}
-        </div>
-      </div>
+            />
+            <PageFurniture snapshot={snapshot} />
+            {snapshot.isLoading && (
+              <Spinner
+                label="Loading…"
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                }}
+              />
+            )}
 
-      <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
-    </div>
+            {/* Scoped to this content pane (not the TOC panel beside it) —
+                the toolbar is positioned relative to *this* div so it never
+                overlaps the TOC panel's own clickable area when both are
+                open at once. */}
+            <Toolbar
+              snapshot={snapshot}
+              isTocOpen={isTocOpen}
+              onToggleToc={() => setIsTocOpen((open) => !open)}
+              isDetailsOpen={isDetailsOpen}
+              onToggleDetails={() => setIsDetailsOpen((open) => !open)}
+              onTurnPage={turnPage}
+              onGoToChapter={goToChapter}
+              onSetViewMode={setViewMode}
+              onSetFontScale={setFontScale}
+              onSetFontFamily={setFontFamily}
+              onSetPageTheme={setPageTheme}
+              onSetChromeTheme={setChromeTheme}
+              visible={chromeVisible}
+              handlers={chromeHandlers}
+            />
+
+            <BookDetailsPanel
+              open={isDetailsOpen}
+              onRequestClose={() => setIsDetailsOpen(false)}
+              details={bookDetails}
+            />
+
+            <ProgressScrubber
+              snapshot={snapshot}
+              visible={chromeVisible}
+              handlers={chromeHandlers}
+              onPreview={previewSeek}
+              onSeek={seekToFraction}
+            />
+
+            {snapshot.error && (
+              <Body1
+                as="p"
+                style={{
+                  position: "absolute",
+                  top: 64,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 20,
+                  margin: 0,
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  background: "var(--colorPaletteRedBackground3, #fde7e9)",
+                  color: "var(--colorPaletteRedForeground1, crimson)",
+                }}
+              >
+                Error: {snapshot.error}
+              </Body1>
+            )}
+          </div>
+        </div>
+
+        <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
+      </div>
+    </ChromeThemeProvider>
   );
 };

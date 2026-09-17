@@ -18,6 +18,8 @@ import {
 } from "@pagina/engine";
 import type { BookIdentifier, FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
+import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { ViewMode } from "./ViewMode.js";
 
 /** Everything the Book Details panel shows, combined from two sources
@@ -132,6 +134,10 @@ export interface ReaderSnapshot {
    * see `ReadingTheme`. */
   fontFamily: FontFamilyChoice;
   pageTheme: PageTheme;
+  /** The reader's own chrome color (toolbar/TOC/scrubber/details panel
+   * — see `ChromeThemeChoice`), distinct from `pageTheme` (the book
+   * page's own background). */
+  chromeTheme: ChromeThemeChoice;
   isLoading: boolean;
   error: string | undefined;
   /** Text for the shell's `aria-live` region to announce (page turns,
@@ -186,6 +192,12 @@ export class ReaderController {
   /** Defaults to `ReadingTheme.DEFAULT_PAGE_THEME`, but `open` overwrites
    * this from the saved preference (if any) — see `setPageTheme`. */
   private pageTheme: PageTheme = ReadingTheme.DEFAULT_PAGE_THEME;
+  /** Defaults to `DEFAULT_CHROME_THEME`, but `open` overwrites this from
+   * the saved preference (if any) — see `setChromeTheme`. Pure UI state,
+   * never applied to a content document the way font/page settings are
+   * (see `applyDisplaySettingsToHost`) — the shell reads it straight off
+   * the snapshot via `ChromeThemeProvider`. */
+  private chromeTheme: ChromeThemeChoice = DEFAULT_CHROME_THEME;
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
   private width = 0;
@@ -295,6 +307,7 @@ export class ReaderController {
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
     controller.fontFamily = (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
     controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
+    controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
     return controller;
   }
 
@@ -349,6 +362,7 @@ export class ReaderController {
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
+        chromeTheme: this.chromeTheme,
         isLoading: this.isLoading,
         error: this.error,
         announcement: this.announcement,
@@ -965,6 +979,20 @@ export class ReaderController {
     this.pageTheme = theme;
     await this.library.setDefaultPageTheme(theme);
     this.applyDisplaySettingsToHost({ relayout: false });
+    this.notify();
+  }
+
+  /** Sets the reader's own chrome color and persists it. Pure UI state —
+   * unlike `setPageTheme`/`setFontFamily`, this never touches a content
+   * document at all (no fixed-layout exception needed either, since it
+   * has nothing to do with the book's own content), so it's just a
+   * state update and a notify. */
+  public async setChromeTheme(theme: ChromeThemeChoice): Promise<void> {
+    if (theme === this.chromeTheme) {
+      return;
+    }
+    this.chromeTheme = theme;
+    await this.library.setDefaultChromeTheme(theme);
     this.notify();
   }
 

@@ -4,6 +4,7 @@ import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
 import type { BookDetails, ReaderSnapshot, ViewMode } from "./ReaderController.js";
+import type { ChromeThemeChoice } from "./chromeTheme.js";
 
 export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
@@ -16,6 +17,7 @@ export interface UseReaderControllerResult {
   setFontScale: (scale: number) => void;
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
+  setChromeTheme: (theme: ChromeThemeChoice) => void;
   previewSeek: (fraction: number) => { label: string; chapterLabel: string };
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
@@ -142,6 +144,13 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const setChromeTheme = useCallback(
+    (theme: ChromeThemeChoice) => {
+      void controller?.setChromeTheme(theme);
+    },
+    [controller],
+  );
+
   const previewSeek = useCallback(
     (fraction: number) => {
       return controller?.previewSeek(fraction) ?? { label: "", chapterLabel: "" };
@@ -171,6 +180,7 @@ export function useReaderController(): UseReaderControllerResult {
     setFontScale,
     setFontFamily,
     setPageTheme,
+    setChromeTheme,
     previewSeek,
     seekToFraction,
     getBookDetails,

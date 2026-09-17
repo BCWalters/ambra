@@ -1,5 +1,6 @@
 import type { PageTheme, FontFamilyChoice } from "@pagina/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
+import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 
 /** Book metadata as stored in the library — small enough to list in bulk
  * without touching the (potentially large) book file/cover blobs, which
@@ -53,6 +54,7 @@ const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
 const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
 const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
+const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -194,6 +196,21 @@ export class LibraryDatabase {
 
   public async setDefaultFontFamily(family: FontFamilyChoice): Promise<void> {
     const record: PreferenceRecord = { key: FONT_FAMILY_PREFERENCE_KEY, value: family };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader's own chrome color (see `ChromeThemeChoice`) — distinct
+   * from `getDefaultPageTheme`, which is the book *page's* background,
+   * not the toolbar/TOC/scrubber. Persisted the same way as the other
+   * reader-wide preferences. `undefined` if never set, in which case
+   * callers should fall back to `DEFAULT_CHROME_THEME`. */
+  public async getDefaultChromeTheme(): Promise<ChromeThemeChoice | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, CHROME_THEME_PREFERENCE_KEY);
+    return record?.value as ChromeThemeChoice | undefined;
+  }
+
+  public async setDefaultChromeTheme(theme: ChromeThemeChoice): Promise<void> {
+    const record: PreferenceRecord = { key: CHROME_THEME_PREFERENCE_KEY, value: theme };
     await this.put(PREFERENCES_STORE, record);
   }
 

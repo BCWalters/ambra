@@ -3,13 +3,8 @@ import type { FC } from "react";
 import { Body1, Button, Caption1 } from "@fluentui/react-components";
 import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { NavPoint } from "@pagina/engine";
-import {
-  CHROME_BACKGROUND_SOLID,
-  CHROME_BORDER,
-  CHROME_HOVER_BACKGROUND,
-  CHROME_SELECTED_BACKGROUND,
-  CHROME_SHADOW,
-} from "../chromeTheme.js";
+import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
  * document order) — used to detect whether the TOC's own first entry
@@ -183,6 +178,8 @@ export const TocPanel: FC<TocPanelProps> = ({
   onTogglePin,
   onRequestClose,
 }) => {
+  const chromeTheme = useChromeTheme();
+
   useEffect(() => {
     if (!open || pinned) {
       return;
@@ -235,7 +232,7 @@ export const TocPanel: FC<TocPanelProps> = ({
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          background: CHROME_BACKGROUND_SOLID,
+          background: chromeTheme.backgroundSolid,
           backdropFilter: pinned ? undefined : "blur(16px)",
           borderRight: `1px solid ${CHROME_BORDER}`,
           borderRadius: pinned ? 0 : "0 12px 12px 0",

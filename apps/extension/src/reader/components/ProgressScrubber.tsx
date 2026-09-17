@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { FC, PointerEvent as ReactPointerEvent } from "react";
 import { Caption1 } from "@fluentui/react-components";
 import type { ReaderSnapshot } from "../ReaderController.js";
-import { CHROME_BACKDROP_FILTER, CHROME_BACKGROUND, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 /** Smallest gap the drag preview popup is ever allowed from the browser
  * window's left/right edges — purely cosmetic breathing room, not a
@@ -79,6 +80,7 @@ function currentFraction(snapshot: ReaderSnapshot): number {
  * "page" position to scrub through page-by-page.
  */
 export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible, handlers, onPreview, onSeek }) => {
+  const chromeTheme = useChromeTheme();
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
@@ -205,7 +207,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
         right: 0,
         zIndex: 10,
         padding: "6px 14px",
-        background: CHROME_BACKGROUND,
+        background: chromeTheme.background,
         backdropFilter: CHROME_BACKDROP_FILTER,
         WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
         borderTop: `1px solid ${CHROME_BORDER}`,
@@ -259,7 +261,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
             // `white-space: nowrap` below already assumes.
             width: "max-content",
             transform: "translate(-50%, -8px)",
-            background: CHROME_BACKGROUND,
+            background: chromeTheme.background,
             backdropFilter: CHROME_BACKDROP_FILTER,
             WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
             border: `1px solid ${CHROME_BORDER}`,

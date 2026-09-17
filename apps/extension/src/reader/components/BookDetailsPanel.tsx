@@ -3,7 +3,8 @@ import type { FC } from "react";
 import { Body1, Button, Caption1, Spinner, Title3 } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
-import { CHROME_BACKGROUND_SOLID, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -56,6 +57,8 @@ const DetailRow: FC<{ label: string; value: string | undefined }> = ({ label, va
  * pin mode supports.
  */
 export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClose, details }) => {
+  const chromeTheme = useChromeTheme();
+
   useEffect(() => {
     if (!open) {
       return;
@@ -100,7 +103,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          background: CHROME_BACKGROUND_SOLID,
+          background: chromeTheme.backgroundSolid,
           backdropFilter: "blur(16px)",
           borderLeft: `1px solid ${CHROME_BORDER}`,
           borderRadius: "12px 0 0 12px",

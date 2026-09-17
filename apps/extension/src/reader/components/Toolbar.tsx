@@ -32,7 +32,14 @@ import {
 import { ReadingTheme } from "@pagina/engine";
 import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
 import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
-import { CHROME_BACKDROP_FILTER, CHROME_BACKGROUND, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import {
+  CHROME_BACKDROP_FILTER,
+  CHROME_BORDER,
+  CHROME_SHADOW,
+  CHROME_THEMES,
+} from "../chromeTheme.js";
+import type { ChromeThemeChoice } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
@@ -46,6 +53,7 @@ export interface ToolbarProps {
   onSetFontScale: (scale: number) => void;
   onSetFontFamily: (family: FontFamilyChoice) => void;
   onSetPageTheme: (theme: PageTheme) => void;
+  onSetChromeTheme: (theme: ChromeThemeChoice) => void;
   /** Whether the toolbar should currently be shown, and the pointer/
    * focus handlers that keep it visible — lifted up into `ReaderApp` (see
    * `useAutoHideChrome`) rather than owned here, so `ProgressScrubber`
@@ -63,6 +71,7 @@ export interface ToolbarProps {
 const VIEW_MODE_GROUP_NAME = "viewMode";
 const FONT_FAMILY_GROUP_NAME = "fontFamily";
 const PAGE_THEME_GROUP_NAME = "pageTheme";
+const CHROME_THEME_GROUP_NAME = "chromeTheme";
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
@@ -96,10 +105,12 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetFontScale,
   onSetFontFamily,
   onSetPageTheme,
+  onSetChromeTheme,
   visible,
   handlers,
 }) => {
   const isPaginated = snapshot.viewMode === "paginated";
+  const chromePalette = useChromeTheme();
 
   return (
     <>
@@ -137,7 +148,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           // `PageFurniture`'s `HEADER_TEXT_TOP_OFFSET`) whenever it's
           // shown, instead of just barely overlapping it.
           padding: "12px 10px",
-          background: CHROME_BACKGROUND,
+          background: chromePalette.background,
           backdropFilter: CHROME_BACKDROP_FILTER,
           WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
           borderBottom: `1px solid ${CHROME_BORDER}`,
@@ -145,7 +156,8 @@ export const Toolbar: FC<ToolbarProps> = ({
           opacity: visible ? 1 : 0,
           transform: visible ? "translateY(0)" : "translateY(-8px)",
           pointerEvents: visible ? "auto" : "none",
-          transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
+          transition:
+            "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
         }}
       >
         <Tooltip content={isTocOpen ? "Hide contents" : "Show contents"} relationship="label">
@@ -327,7 +339,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>
-                  <MenuGroupHeader>Theme</MenuGroupHeader>
+                  <MenuGroupHeader>Page Style</MenuGroupHeader>
                   {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
                     <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
                       {ReadingTheme.PAGE_THEMES[key].label}
@@ -339,40 +351,65 @@ export const Toolbar: FC<ToolbarProps> = ({
           </Menu>
         )}
 
-        {!snapshot.isFixedLayout && (
-          <Menu
-            persistOnItemClick
-            checkedValues={{
-              [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
-            }}
-            onCheckedValueChange={(_event, data) => {
-              if (data.name === VIEW_MODE_GROUP_NAME) {
-                onSetViewMode(data.checkedItems[0] as ViewMode);
-              }
-            }}
-          >
-            <MenuTrigger disableButtonEnhancement>
-              <Tooltip content="Settings" relationship="label">
-                <Button appearance="subtle" size="small" icon={<SettingsRegular />} />
-              </Tooltip>
-            </MenuTrigger>
-            <MenuPopover>
-              <MenuList>
-                <MenuGroup>
-                  <MenuGroupHeader>Book</MenuGroupHeader>
-                  <MenuItemRadio name={VIEW_MODE_GROUP_NAME} value="paginated" icon={<BookOpenRegular />}>
-                    Paginated
+        <Menu
+          persistOnItemClick
+          checkedValues={{
+            [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
+            [CHROME_THEME_GROUP_NAME]: [snapshot.chromeTheme],
+          }}
+          onCheckedValueChange={(_event, data) => {
+            if (data.name === VIEW_MODE_GROUP_NAME) {
+              onSetViewMode(data.checkedItems[0] as ViewMode);
+            } else if (data.name === CHROME_THEME_GROUP_NAME) {
+              onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
+            }
+          }}
+        >
+          <MenuTrigger disableButtonEnhancement>
+            <Tooltip content="Settings" relationship="label">
+              <Button appearance="subtle" size="small" icon={<SettingsRegular />} />
+            </Tooltip>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              {!snapshot.isFixedLayout && (
+                <>
+                  <MenuGroup>
+                    <MenuGroupHeader>Book</MenuGroupHeader>
+                    <MenuItemRadio
+                      name={VIEW_MODE_GROUP_NAME}
+                      value="paginated"
+                      icon={<BookOpenRegular />}
+                    >
+                      Paginated
+                    </MenuItemRadio>
+                    <MenuItemRadio
+                      name={VIEW_MODE_GROUP_NAME}
+                      value="scroll"
+                      icon={<TextColumnOneRegular />}
+                    >
+                      Scroll
+                    </MenuItemRadio>
+                  </MenuGroup>
+                  <MenuDivider />
+                </>
+              )}
+              <MenuGroup>
+                <MenuGroupHeader>Reader Theme</MenuGroupHeader>
+                {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
+                  <MenuItemRadio key={key} name={CHROME_THEME_GROUP_NAME} value={key}>
+                    {CHROME_THEMES[key].label}
                   </MenuItemRadio>
-                  <MenuItemRadio name={VIEW_MODE_GROUP_NAME} value="scroll" icon={<TextColumnOneRegular />}>
-                    Scroll
-                  </MenuItemRadio>
-                </MenuGroup>
-              </MenuList>
-            </MenuPopover>
-          </Menu>
-        )}
+                ))}
+              </MenuGroup>
+            </MenuList>
+          </MenuPopover>
+        </Menu>
 
-        <Tooltip content={isDetailsOpen ? "Hide book details" : "Book details"} relationship="label">
+        <Tooltip
+          content={isDetailsOpen ? "Hide book details" : "Book details"}
+          relationship="label"
+        >
           <ToggleButton
             appearance="subtle"
             size="small"
