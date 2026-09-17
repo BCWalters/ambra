@@ -58,6 +58,13 @@ function currentFraction(snapshot: ReaderSnapshot): number {
  * a live preview of where that position is (page number and chapter
  * name) — see `ReaderController.previewSeek`.
  *
+ * Also shows the reader's actual *current* position ("Page X of Y - Z
+ * pages left in this chapter") in its own row above the track — this is
+ * deliberately not the same thing as the drag preview above: it reflects
+ * whatever page is genuinely on screen right now, not wherever a drag
+ * happens to be pointing, so it stays put/unaffected while dragging
+ * (the preview popup floats above it instead of replacing it).
+ *
  * Deliberately never claims more precision than the reader currently
  * has: `currentFraction`/`previewSeek` both prefer an exact book-wide
  * page number once it's known, but happily fall back to a coarser
@@ -164,6 +171,28 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
 
   const displayFraction = dragFraction ?? currentFraction(snapshot);
 
+  // "Page X of Y - Z pages left in this chapter" - the reader's actual
+  // current position, not tied to a drag at all (unlike everything else
+  // in this bar) - deliberately styled/positioned as its own row above
+  // the track, not overlapping the drag-preview popup's own space (which
+  // floats above the *entire* bar via `bottom: 100%`, so adding a row
+  // inside the bar doesn't move it), so the two don't read as the same
+  // thing even though they're visually close together. "Pages left" only
+  // needs this chapter's own page count, known immediately on open; the
+  // book-wide "Page X of Y" prefix needs `BookPaginationEstimator` to
+  // have reached this point in a possibly-still-measuring book, so it's
+  // dropped (not shown as a placeholder) until that's known, consistent
+  // with how the rest of the reader's chrome degrades gracefully.
+  const pagesLeftInChapter = snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
+  const currentPositionLabel =
+    pagesLeftInChapter === undefined
+      ? undefined
+      : `${
+          snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined
+            ? `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount} - `
+            : ""
+        }${pagesLeftInChapter} page${pagesLeftInChapter === 1 ? "" : "s"} left in this chapter`;
+
   return (
     <div
       ref={barRef}
@@ -187,6 +216,22 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
         transition: "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
       }}
     >
+      {currentPositionLabel && (
+        <Caption1
+          as="p"
+          block
+          aria-hidden="true"
+          style={{
+            margin: "0 0 6px",
+            textAlign: "center",
+            opacity: 0.55,
+            pointerEvents: "none",
+          }}
+        >
+          {currentPositionLabel}
+        </Caption1>
+      )}
+
       {preview && (
         <div
           ref={popupRef}
