@@ -1,8 +1,13 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { FC, PointerEvent as ReactPointerEvent } from "react";
 import { Caption1 } from "@fluentui/react-components";
 import type { ReaderSnapshot } from "../ReaderController.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BACKGROUND, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+
+/** Smallest gap the drag preview popup is ever allowed from the browser
+ * window's left/right edges — purely cosmetic breathing room, not a
+ * layout necessity. */
+const POPUP_EDGE_MARGIN = 8;
 
 export interface ProgressScrubberProps {
   snapshot: ReaderSnapshot;
@@ -67,8 +72,44 @@ function currentFraction(snapshot: ReaderSnapshot): number {
  * "page" position to scrub through page-by-page.
  */
 export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible, handlers, onPreview, onSeek }) => {
+  const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
   const [dragFraction, setDragFraction] = useState<number | undefined>(undefined);
+  // The popup's horizontal center, in pixels relative to the bar (`barRef`)
+  // it's positioned within — clamped so it never runs past the browser
+  // window's left/right edges, unlike naively centering it on the thumb
+  // via a `left` percentage (which is exactly where thumb and popup are
+  // the same thing, but breaks down near either end of the track, since
+  // the popup itself has real width that a bare percentage doesn't
+  // account for). Recomputed via `useLayoutEffect` below, since it
+  // depends on the popup's own *rendered* width (its text content, and
+  // thus width, changes as the drag moves across page/chapter numbers).
+  const [popupCenterPx, setPopupCenterPx] = useState<number | undefined>(undefined);
+
+  const preview = dragFraction !== undefined ? onPreview(dragFraction) : undefined;
+
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    const track = trackRef.current;
+    const popup = popupRef.current;
+    if (!bar || !track || !popup || dragFraction === undefined) {
+      return;
+    }
+    const barRect = bar.getBoundingClientRect();
+    const trackRect = track.getBoundingClientRect();
+    const popupWidth = popup.getBoundingClientRect().width;
+    const desiredCenterInViewport = trackRect.left + dragFraction * trackRect.width;
+    const halfWidth = popupWidth / 2;
+    const minCenter = POPUP_EDGE_MARGIN + halfWidth;
+    const maxCenter = window.innerWidth - POPUP_EDGE_MARGIN - halfWidth;
+    const clampedCenterInViewport = Math.min(maxCenter, Math.max(minCenter, desiredCenterInViewport));
+    setPopupCenterPx(clampedCenterInViewport - barRect.left);
+    // `preview.label`/`preview.chapterLabel` deliberately included: the
+    // popup's rendered width changes as its text does (e.g. "Page 9 of
+    // 12" vs "Page 100 of 120"), which can itself push it back into (or
+    // out of) needing to be clamped, even without `dragFraction` moving.
+  }, [dragFraction, preview?.label, preview?.chapterLabel]);
 
   if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
     return null;
@@ -122,10 +163,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
   };
 
   const displayFraction = dragFraction ?? currentFraction(snapshot);
-  const preview = dragFraction !== undefined ? onPreview(dragFraction) : undefined;
 
   return (
     <div
+      ref={barRef}
       onPointerEnter={handlers.onPointerEnter}
       onPointerLeave={handlers.onPointerLeave}
       style={{
@@ -148,11 +189,30 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({ snapshot, visible,
     >
       {preview && (
         <div
+          ref={popupRef}
           aria-hidden="true"
           style={{
             position: "absolute",
             bottom: "100%",
-            left: `${dragFraction! * 100}%`,
+            // Falls back to the un-clamped percentage-based center for
+            // the very first paint before `useLayoutEffect` has had a
+            // chance to measure the popup's real width — briefly
+            // inaccurate only at the extreme edges, on the first frame
+            // of a drag, never visibly clipped since the layout effect
+            // runs before the browser actually paints.
+            left: popupCenterPx ?? `${dragFraction! * 100}%`,
+            // Without an explicit width, an absolutely positioned box
+            // with only `left` set (no `right`) shrink-to-fits within
+            // the space *remaining* to the containing block's edge —
+            // which the `translateX(-50%)` centering below doesn't
+            // factor into (transforms are purely a paint-time effect,
+            // invisible to layout) — so near either edge the popup got
+            // squeezed narrower than its own text and wrapped, even
+            // though its clamped position had plenty of room to its
+            // *other* side. `max-content` sizes it to its content's own
+            // preferred width unconditionally, matching what
+            // `white-space: nowrap` below already assumes.
+            width: "max-content",
             transform: "translate(-50%, -8px)",
             background: CHROME_BACKGROUND,
             backdropFilter: CHROME_BACKDROP_FILTER,
