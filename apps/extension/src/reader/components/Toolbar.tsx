@@ -54,6 +54,7 @@ export interface ToolbarProps {
   onSetFontScale: (scale: number) => void;
   onSetLineSpacing: (spacing: number) => void;
   onSetLetterSpacing: (spacing: number) => void;
+  onSetContentWidth: (widthEm: number) => void;
   onSetFontFamily: (family: FontFamilyChoice) => void;
   onSetPageTheme: (theme: PageTheme) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
@@ -110,6 +111,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetFontScale,
   onSetLineSpacing,
   onSetLetterSpacing,
+  onSetContentWidth,
   onSetFontFamily,
   onSetPageTheme,
   onSetChromeTheme,
@@ -348,6 +350,27 @@ export const Toolbar: FC<ToolbarProps> = ({
                       value={snapshot.letterSpacing}
                       onChange={(_event, data) => onSetLetterSpacing(data.value)}
                       aria-label="Character spacing"
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  {/* Labeled by the underlying value it directly controls
+                      (a wider value = a wider text column) rather than
+                      "Margins" (the inverse framing some readers use,
+                      where turning it up means *narrower* text/more
+                      margin) — avoids an inverted slider whose visual
+                      direction wouldn't match its own value. */}
+                  <MenuGroupHeader>Text Width</MenuGroupHeader>
+                  <div style={{ padding: "6px 12px 10px" }}>
+                    <Slider
+                      min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
+                      max={ReadingTheme.MAX_CONTENT_WIDTH_EM}
+                      step={ReadingTheme.CONTENT_WIDTH_STEP}
+                      value={snapshot.contentWidthEm}
+                      onChange={(_event, data) => onSetContentWidth(data.value)}
+                      aria-label="Text width"
                       style={{ width: "100%" }}
                     />
                   </div>

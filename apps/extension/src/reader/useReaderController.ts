@@ -18,6 +18,7 @@ export interface UseReaderControllerResult {
   setFontScale: (scale: number) => void;
   setLineSpacing: (spacing: number) => void;
   setLetterSpacing: (spacing: number) => void;
+  setContentWidth: (widthEm: number) => void;
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
   setChromeTheme: (theme: ChromeThemeChoice) => void;
@@ -157,6 +158,13 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const setContentWidth = useCallback(
+    (widthEm: number) => {
+      void controller?.setContentWidth(widthEm);
+    },
+    [controller],
+  );
+
   const setFontFamily = useCallback(
     (family: FontFamilyChoice) => {
       void controller?.setFontFamily(family);
@@ -226,6 +234,7 @@ export function useReaderController(): UseReaderControllerResult {
     setFontScale,
     setLineSpacing,
     setLetterSpacing,
+    setContentWidth,
     setFontFamily,
     setPageTheme,
     setChromeTheme,

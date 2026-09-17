@@ -155,6 +155,10 @@ export interface ReaderSnapshot {
    * exception as `fontScale`. */
   lineSpacing: number;
   letterSpacing: number;
+  /** The reading column's own max-width, in `em` — what a reader thinks
+   * of as "margins" (see `ReadingTheme.CONTENT_WIDTH_PROPERTY`). Same
+   * fixed-layout exception as `fontScale`. */
+  contentWidthEm: number;
   /** The current reader-controlled font family and page color theme —
    * see `ReadingTheme`. */
   fontFamily: FontFamilyChoice;
@@ -239,6 +243,7 @@ export class ReaderController {
    * `setLineSpacing`/`setLetterSpacing`. */
   private lineSpacing = ReadingTheme.DEFAULT_LINE_SPACING;
   private letterSpacing = ReadingTheme.DEFAULT_LETTER_SPACING;
+  private contentWidthEm = ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
   /** Defaults to `ReadingTheme.DEFAULT_FONT_FAMILY`, but `open` overwrites
    * this from the saved preference (if any) — see `setFontFamily`. */
   private fontFamily: FontFamilyChoice = ReadingTheme.DEFAULT_FONT_FAMILY;
@@ -413,6 +418,8 @@ export class ReaderController {
       (await library.getDefaultLineSpacing()) ?? ReadingTheme.DEFAULT_LINE_SPACING;
     controller.letterSpacing =
       (await library.getDefaultLetterSpacing()) ?? ReadingTheme.DEFAULT_LETTER_SPACING;
+    controller.contentWidthEm =
+      (await library.getDefaultContentWidth()) ?? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
     controller.fontFamily =
       (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
     controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
@@ -481,6 +488,10 @@ export class ReaderController {
           this.host instanceof FixedContentHost
             ? ReadingTheme.DEFAULT_LETTER_SPACING
             : this.letterSpacing,
+        contentWidthEm:
+          this.host instanceof FixedContentHost
+            ? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
+            : this.contentWidthEm,
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
         chromeTheme: this.chromeTheme,
@@ -591,6 +602,7 @@ export class ReaderController {
       this.fontFamily,
       this.lineSpacing,
       this.letterSpacing,
+      this.contentWidthEm,
       () => {
         this.notify();
       },
@@ -1241,6 +1253,28 @@ export class ReaderController {
     await this.saveProgress();
   }
 
+  /** Sets the reader-controlled reading column width in `em` (clamped to
+   * `ReadingTheme`'s supported range) — what a reader thinks of as
+   * "margins" (see `ReadingTheme.CONTENT_WIDTH_PROPERTY`). Same shape as
+   * `setLineSpacing`; a narrower/wider column reflows content just like
+   * line-height/letter-spacing do. A no-op for a fixed-layout spine
+   * item, whose page design is fixed/pixel-precise. */
+  public async setContentWidth(widthEm: number): Promise<void> {
+    const clamped = Math.min(
+      ReadingTheme.MAX_CONTENT_WIDTH_EM,
+      Math.max(ReadingTheme.MIN_CONTENT_WIDTH_EM, widthEm),
+    );
+    if (clamped === this.contentWidthEm || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.contentWidthEm = clamped;
+    await this.library.setDefaultContentWidth(clamped);
+    this.applyDisplaySettingsToHost({ relayout: true });
+    this.refreshBookPagination();
+    this.notify();
+    await this.saveProgress();
+  }
+
   /** Sets the reader-controlled page color theme and persists it. Unlike
    * font scale/family, this never needs a relayout — colors don't affect
    * line-wrapping. A no-op for a fixed-layout spine item. */
@@ -1372,6 +1406,7 @@ export class ReaderController {
       ReadingTheme.applyFontFamily(doc, this.fontFamily);
       ReadingTheme.applyLineSpacing(doc, this.lineSpacing);
       ReadingTheme.applyLetterSpacing(doc, this.letterSpacing);
+      ReadingTheme.applyContentWidth(doc, this.contentWidthEm);
       ReadingTheme.applyPageTheme(doc, this.pageTheme);
     }
     if (!options.relayout) {
@@ -1385,19 +1420,20 @@ export class ReaderController {
   }
 
   /** Applies the persisted font scale/family/line-spacing/letter-spacing/
-   * page theme to a freshly-opened host (see `openSpineItem`) — every
-   * spine item load needs this, not just explicit in-session changes, so
-   * a book opened mid-session at non-default settings looks correct
-   * immediately. Skips the (fairly expensive) relayout pass entirely when
-   * every setting is already at its theme-default value, since the
-   * freshly-opened host was already paginated at those defaults by its
-   * own `open()` call. */
+   * content-width/page theme to a freshly-opened host (see
+   * `openSpineItem`) — every spine item load needs this, not just
+   * explicit in-session changes, so a book opened mid-session at
+   * non-default settings looks correct immediately. Skips the (fairly
+   * expensive) relayout pass entirely when every setting is already at
+   * its theme-default value, since the freshly-opened host was already
+   * paginated at those defaults by its own `open()` call. */
   private applyPersistedDisplaySettingsToFreshHost(): void {
     const needsRelayout =
       this.fontScale !== 1 ||
       this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
       this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
-      this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING;
+      this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
+      this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
     if (needsRelayout || this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME) {
       this.applyDisplaySettingsToHost({ relayout: needsRelayout });
     }
@@ -1613,12 +1649,14 @@ export class ReaderController {
         this.fontScale !== 1 ||
         this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
         this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
-        this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING
+        this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
+        this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
       ) {
         ReadingTheme.applyFontScale(newDoc, this.fontScale);
         ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
         ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
         ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
+        ReadingTheme.applyContentWidth(newDoc, this.contentWidthEm);
         newHost.relayout(this.width, this.height);
       }
     }

@@ -111,6 +111,7 @@ export class ReadingTheme {
   public static readonly FONT_FAMILY_PROPERTY = "--ambra-font-family";
   public static readonly LINE_SPACING_PROPERTY = "--ambra-line-spacing";
   public static readonly LETTER_SPACING_PROPERTY = "--ambra-letter-spacing";
+  public static readonly CONTENT_WIDTH_PROPERTY = "--ambra-content-width";
   public static readonly PAGE_BACKGROUND_PROPERTY = "--ambra-page-bg";
   public static readonly PAGE_FOREGROUND_PROPERTY = "--ambra-page-fg";
   public static readonly LINK_COLOR_PROPERTY = "--ambra-link-color";
@@ -149,6 +150,17 @@ export class ReadingTheme {
   public static readonly MAX_LETTER_SPACING = 0.12;
   public static readonly LETTER_SPACING_STEP = 0.01;
   public static readonly DEFAULT_LETTER_SPACING = 0;
+
+  /** The reading column's own max-width, in `em` — what a reader thinks
+   * of as "margins" (narrower text = more visual margin on either side
+   * of it in a wide pane), the same metaphor Apple Books' own "Margin"
+   * setting uses. `34` (`DEFAULT_CONTENT_WIDTH_EM`) is the theme's
+   * original, hand-picked measure (see `CSS`'s own doc comment on why
+   * ~34em/65-75 characters per line was chosen). */
+  public static readonly MIN_CONTENT_WIDTH_EM = 24;
+  public static readonly MAX_CONTENT_WIDTH_EM = 44;
+  public static readonly CONTENT_WIDTH_STEP = 1;
+  public static readonly DEFAULT_CONTENT_WIDTH_EM = 34;
 
   public static readonly DEFAULT_PAGE_THEME: PageTheme = "white";
   /** The reading font a brand-new reader (or a book with no saved font
@@ -249,6 +261,19 @@ export class ReadingTheme {
     doc.documentElement.style.setProperty(ReadingTheme.LETTER_SPACING_PROPERTY, String(clamped));
   }
 
+  /** Sets the current reading column width (in `em` — see
+   * `CONTENT_WIDTH_PROPERTY`) on a content document, clamped to
+   * `[MIN_CONTENT_WIDTH_EM, MAX_CONTENT_WIDTH_EM]`. Reflows content (a
+   * narrower/wider column changes where lines break), so the caller must
+   * re-paginate/re-measure afterwards. */
+  public static applyContentWidth(doc: Document, widthEm: number): void {
+    const clamped = Math.min(
+      ReadingTheme.MAX_CONTENT_WIDTH_EM,
+      Math.max(ReadingTheme.MIN_CONTENT_WIDTH_EM, widthEm),
+    );
+    doc.documentElement.style.setProperty(ReadingTheme.CONTENT_WIDTH_PROPERTY, String(clamped));
+  }
+
   /** Sets the current font family on a content document. Like
    * `applyFontScale`, this reflows content (a different typeface has
    * different metrics), so the caller must re-paginate/re-measure
@@ -320,6 +345,7 @@ export class ReadingTheme {
   ${ReadingTheme.FONT_FAMILY_PROPERTY}: ${ReadingTheme.FONT_FAMILIES[ReadingTheme.DEFAULT_FONT_FAMILY].stack};
   ${ReadingTheme.LINE_SPACING_PROPERTY}: 1;
   ${ReadingTheme.LETTER_SPACING_PROPERTY}: 0;
+  ${ReadingTheme.CONTENT_WIDTH_PROPERTY}: ${ReadingTheme.DEFAULT_CONTENT_WIDTH_EM};
   ${ReadingTheme.PAGE_BACKGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].background};
   ${ReadingTheme.PAGE_FOREGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].foreground};
   ${ReadingTheme.LINK_COLOR_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].linkColor};
@@ -336,7 +362,7 @@ html, body {
 
 body {
   box-sizing: border-box;
-  max-width: 34em;
+  max-width: calc(var(${ReadingTheme.CONTENT_WIDTH_PROPERTY}, 34) * 1em);
   margin: 0 auto;
   padding: 0 1.5em;
   font-family: var(${ReadingTheme.FONT_FAMILY_PROPERTY});

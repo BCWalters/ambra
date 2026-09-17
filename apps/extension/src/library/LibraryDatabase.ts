@@ -55,6 +55,7 @@ const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
 const LINE_SPACING_PREFERENCE_KEY = "defaultLineSpacing";
 const LETTER_SPACING_PREFERENCE_KEY = "defaultLetterSpacing";
+const CONTENT_WIDTH_PREFERENCE_KEY = "defaultContentWidth";
 const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
 const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
@@ -200,6 +201,21 @@ export class LibraryDatabase {
 
   public async setDefaultLetterSpacing(spacing: number): Promise<void> {
     const record: PreferenceRecord = { key: LETTER_SPACING_PREFERENCE_KEY, value: spacing };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default reading column width in `em` (see
+   * `ReadingTheme.CONTENT_WIDTH_PROPERTY` — what a reader thinks of as
+   * "margins"), persisted the same way as `getDefaultFontScale`.
+   * `undefined` if never set, in which case callers should fall back to
+   * `ReadingTheme.DEFAULT_CONTENT_WIDTH_EM`. */
+  public async getDefaultContentWidth(): Promise<number | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, CONTENT_WIDTH_PREFERENCE_KEY);
+    return record?.value as number | undefined;
+  }
+
+  public async setDefaultContentWidth(widthEm: number): Promise<void> {
+    const record: PreferenceRecord = { key: CONTENT_WIDTH_PREFERENCE_KEY, value: widthEm };
     await this.put(PREFERENCES_STORE, record);
   }
 
