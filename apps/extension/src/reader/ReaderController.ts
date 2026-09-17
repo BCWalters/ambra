@@ -27,6 +27,7 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { ViewMode } from "./ViewMode.js";
+import { DiagnosticsLog } from "./DiagnosticsLog.js";
 
 /** The smallest a rendered image is allowed to be (in *both* CSS px
  * dimensions) for a click/keypress on it to open the image viewer — see
@@ -301,6 +302,10 @@ export class ReaderController {
   private error: string | undefined;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
+  /** See `DiagnosticsLog`'s own doc comment — a short in-memory trail of
+   * recent actions, to help describe "what just happened" when
+   * something goes wrong in a way that's hard to reproduce on demand. */
+  private readonly diagnostics = new DiagnosticsLog();
   private announcement: string | undefined;
   private announcementId = 0;
   /** Increments on every pointerdown inside the content (any content
@@ -1044,6 +1049,7 @@ export class ReaderController {
    * host swap rather than a plain relayout, since a spread is
    * architecturally two iframes, not one. */
   public resize(width: number, height: number): void {
+    this.diagnostics.record(`resize width=${width} height=${height} isLoading=${this.isLoading}`);
     this.width = width;
     this.height = height;
 
@@ -1314,6 +1320,7 @@ export class ReaderController {
     }
     this.isTurningPage = true;
     const token = ++this.turnToken;
+    this.diagnostics.record(`turnPage direction=${direction} token=${token}`);
     try {
       await this.turnPageInternal(direction, token);
     } finally {
@@ -1975,6 +1982,29 @@ export class ReaderController {
     };
   }
 
+  /** Basic reader state, gathered fresh each time — included alongside
+   * the recent-events trail in `getDiagnosticsText`/the auto-`console.error`
+   * dump on a real navigation error, so a report doesn't also need to
+   * separately ask "what book, what view mode, what size window." */
+  private diagnosticsContext(): Record<string, string> {
+    return {
+      book: this.pkg.metadata.title,
+      spineIndex: String(this.spineIndex),
+      spineLength: String(this.pkg.spine.length),
+      viewMode: this.viewMode,
+      paneSize: `${this.width}x${this.height}`,
+      isSpread: String(this.host instanceof SpreadPaginatedHost),
+    };
+  }
+
+  /** Formats the current diagnostics trail (see `DiagnosticsLog`) plus
+   * basic reader state as plain text — the "Copy diagnostics" action
+   * shown alongside a navigation error calls this to put a full report
+   * on the clipboard in one step, in place of a screenshot plus guesswork. */
+  public getDiagnosticsText(): string {
+    return this.diagnostics.format(this.diagnosticsContext());
+  }
+
   /** Loads the adjacent chapter directly (both view modes) — the
    * "previous/next chapter" toolbar actions, as distinct from `turnPage`
    * which only steps by one page within paginated mode. */
@@ -2028,6 +2058,7 @@ export class ReaderController {
    * should still be usable in the meantime, just less precisely. */
   public async seekToFraction(fraction: number): Promise<void> {
     const clamped = Math.max(0, Math.min(1, fraction));
+    this.diagnostics.record(`seekToFraction fraction=${fraction} clamped=${clamped}`);
     const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
     if (totalPages !== undefined && totalPages > 0) {
       const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
@@ -2099,6 +2130,9 @@ export class ReaderController {
     // return path below (including the catch block) must check this
     // before touching any shared state.
     const token = ++this.spineOpenToken;
+    this.diagnostics.record(
+      `openSpineItem start spineIndex=${spineIndex} token=${token} options=${JSON.stringify(options)}`,
+    );
 
     try {
       this.accessibility.detach();
@@ -2119,6 +2153,9 @@ export class ReaderController {
           this.pkg.metadata.renditionViewport,
         );
         if (token !== this.spineOpenToken) {
+          this.diagnostics.record(
+            `openSpineItem stale-discard (fixed) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
+          );
           fixedHost.dispose();
           return;
         }
@@ -2128,6 +2165,9 @@ export class ReaderController {
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
         if (token !== this.spineOpenToken) {
+          this.diagnostics.record(
+            `openSpineItem stale-discard (spread) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
+          );
           host.dispose();
           return;
         }
@@ -2141,6 +2181,9 @@ export class ReaderController {
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
         if (token !== this.spineOpenToken) {
+          this.diagnostics.record(
+            `openSpineItem stale-discard spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
+          );
           host.dispose();
           return;
         }
@@ -2191,9 +2234,19 @@ export class ReaderController {
       }
       this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
+      this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex} token=${token}`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       if (token === this.spineOpenToken) {
-        this.error = err instanceof Error ? err.message : String(err);
+        this.error = message;
+        this.diagnostics.record(
+          `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message}`,
+        );
+        console.error(this.diagnostics.format(this.diagnosticsContext()));
+      } else {
+        this.diagnostics.record(
+          `openSpineItem stale-error (suppressed) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken} message=${message}`,
+        );
       }
       // A stale call's failure (see `spineOpenToken`) is expected and
       // silent — its iframe was deliberately detached by whichever newer

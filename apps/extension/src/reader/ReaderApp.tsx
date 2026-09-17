@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FC } from "react";
-import { Body1, Spinner, Title2 } from "@fluentui/react-components";
+import { Body1, Button, Spinner, Title2 } from "@fluentui/react-components";
 import { ReadingTheme } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
@@ -46,12 +46,14 @@ export const ReaderApp: FC = () => {
     getBookDetails,
     closeImageViewer,
     restoreContentFocus,
+    getDiagnosticsText,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   // Shared between the toolbar and the progress scrubber (see
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
@@ -271,23 +273,48 @@ export const ReaderApp: FC = () => {
             />
 
             {snapshot.error && (
-              <Body1
-                as="p"
+              <div
                 style={{
                   position: "absolute",
                   top: 64,
                   left: "50%",
                   transform: "translateX(-50%)",
                   zIndex: 20,
-                  margin: 0,
-                  padding: "6px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "6px 8px 6px 14px",
                   borderRadius: 6,
                   background: "var(--colorPaletteRedBackground3, #fde7e9)",
                   color: "var(--colorPaletteRedForeground1, crimson)",
                 }}
               >
-                Error: {snapshot.error}
-              </Body1>
+                <Body1 as="p" style={{ margin: 0 }}>
+                  Error: {snapshot.error}
+                </Body1>
+                {/* Copies the recent-events trail (see `DiagnosticsLog`) plus
+                    basic reader state to the clipboard in one step — meant to
+                    replace "here's a screenshot of the error" with something
+                    that actually describes what led up to it, for exactly the
+                    class of bug (a confusing, hard-to-repro timing issue) that
+                    prompted adding this in the first place. */}
+                <Button
+                  appearance="outline"
+                  size="small"
+                  onClick={() => {
+                    const text = getDiagnosticsText();
+                    if (!text) {
+                      return;
+                    }
+                    void navigator.clipboard.writeText(text).then(() => {
+                      setDiagnosticsCopied(true);
+                      setTimeout(() => setDiagnosticsCopied(false), 2000);
+                    });
+                  }}
+                >
+                  {diagnosticsCopied ? "Copied!" : "Copy diagnostics"}
+                </Button>
+              </div>
             )}
           </div>
         </div>

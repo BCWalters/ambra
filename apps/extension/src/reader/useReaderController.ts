@@ -23,6 +23,7 @@ export interface UseReaderControllerResult {
   getBookDetails: () => Promise<BookDetails | undefined>;
   closeImageViewer: () => void;
   restoreContentFocus: () => void;
+  getDiagnosticsText: () => string | undefined;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -185,6 +186,10 @@ export function useReaderController(): UseReaderControllerResult {
     controller?.restoreContentFocus();
   }, [controller]);
 
+  const getDiagnosticsText = useCallback(() => {
+    return controller?.getDiagnosticsText();
+  }, [controller]);
+
   return {
     snapshot,
     contentHostRef,
@@ -202,5 +207,6 @@ export function useReaderController(): UseReaderControllerResult {
     getBookDetails,
     closeImageViewer,
     restoreContentFocus,
+    getDiagnosticsText,
   };
 }
