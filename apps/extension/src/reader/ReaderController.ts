@@ -269,6 +269,29 @@ export class ReaderController {
    * work instead of clobbering newer state. A second, independent
    * safety net beyond `isTurningPage` for this same class of race. */
   private turnToken = 0;
+  /** Incremented at the start of every `openSpineItem` call (chapter
+   * navigation, TOC jumps, and seeking via the progress scrubber all
+   * funnel through it) and captured by that call's own async work.
+   * Before committing anything a stale result would otherwise clobber
+   * (`this.host`, `this.error`, `this.isLoading`), every return path
+   * checks its captured token against the current one — a mismatch
+   * means a *newer* `openSpineItem` call has since started while this
+   * one's content was still loading.
+   *
+   * This mattered for a real, reported bug: two overlapping
+   * `openSpineItem` calls (e.g. two seeks in quick succession, before
+   * the first's content finished loading) each call
+   * `containerEl.replaceChildren(...)` to attach their own new host's
+   * iframe — which, as a side effect, *detaches* whichever iframe the
+   * still-in-flight older call was loading into. A detached iframe's
+   * load essentially never completes (see `SandboxedContentHost`'s own
+   * doc comment on this), so the older call would sit for the full
+   * `RenderingSurfaceError` timeout and then throw — even though the
+   * reader had already moved on to (and successfully shown) wherever
+   * the newer call navigated to. Without this guard, that stale
+   * failure surfaced as a scary, confusing error message despite
+   * nothing actually being wrong. */
+  private spineOpenToken = 0;
   /** A resize that arrived while an `openSpineItem` was already in
    * flight (e.g. `ResizeObserver`'s spec-mandated initial callback racing
    * with `mount`'s async load) — applying it immediately would relayout
@@ -2022,6 +2045,10 @@ export class ReaderController {
     this.isLoading = true;
     this.error = undefined;
     this.notify();
+    // See this method's doc comment on `spineOpenToken` for why every
+    // return path below (including the catch block) must check this
+    // before touching any shared state.
+    const token = ++this.spineOpenToken;
 
     try {
       this.accessibility.detach();
@@ -2041,11 +2068,19 @@ export class ReaderController {
           spineIndex,
           this.pkg.metadata.renditionViewport,
         );
+        if (token !== this.spineOpenToken) {
+          fixedHost.dispose();
+          return;
+        }
         this.host = fixedHost;
       } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
         const host = new SpreadPaginatedHost(this.width, this.height);
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
+        if (token !== this.spineOpenToken) {
+          host.dispose();
+          return;
+        }
         this.host = host;
         this.applyPersistedDisplaySettingsToFreshHost();
       } else {
@@ -2055,6 +2090,10 @@ export class ReaderController {
             : new ScrollContentHost(this.width, this.height);
         this.containerEl.replaceChildren(host.element);
         await host.open(this.contentLoader, this.resolver, spineIndex);
+        if (token !== this.spineOpenToken) {
+          host.dispose();
+          return;
+        }
         this.host = host;
         this.applyPersistedDisplaySettingsToFreshHost();
       }
@@ -2103,15 +2142,25 @@ export class ReaderController {
       this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
     } catch (err) {
-      this.error = err instanceof Error ? err.message : String(err);
+      if (token === this.spineOpenToken) {
+        this.error = err instanceof Error ? err.message : String(err);
+      }
+      // A stale call's failure (see `spineOpenToken`) is expected and
+      // silent — its iframe was deliberately detached by whichever newer
+      // call superseded it, so of course loading it never completed;
+      // that's not a real failure worth alarming the reader over,
+      // especially since the newer navigation it lost to has already
+      // shown *something* in its place.
     } finally {
-      this.isLoading = false;
-      this.notify();
+      if (token === this.spineOpenToken) {
+        this.isLoading = false;
+        this.notify();
 
-      if (this.pendingResize) {
-        const { width, height } = this.pendingResize;
-        this.pendingResize = undefined;
-        this.resize(width, height);
+        if (this.pendingResize) {
+          const { width, height } = this.pendingResize;
+          this.pendingResize = undefined;
+          this.resize(width, height);
+        }
       }
     }
   }
