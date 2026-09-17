@@ -1,5 +1,5 @@
 import { resolveEpubPath } from "./EpubPath.js";
-import { getDescendantElementsByNS, getFirstDescendantElementByNS } from "./Xml.js";
+import { getDescendantElementsByNS, getFirstDescendantElementByNS, getNamespacedAttribute } from "./Xml.js";
 import { elementCfiSteps } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
 
@@ -91,6 +91,18 @@ export interface ViewportSize {
   readonly height: number;
 }
 
+/** One `dc:identifier` element from the OPF metadata — a book commonly
+ * has several (e.g. an ISBN alongside a UUID or a publisher's own
+ * catalog id), only one of which is *the* unique identifier
+ * (`PackageMetadata.identifier`); this is the full list, for display
+ * purposes (the Book Details panel), each with its `opf:scheme`
+ * attribute if present (the conventional way an ISBN is actually
+ * marked as such, e.g. `<dc:identifier opf:scheme="ISBN">`). */
+export interface BookIdentifier {
+  readonly value: string;
+  readonly scheme: string | undefined;
+}
+
 /** Core Dublin Core / package metadata read from the OPF `<metadata>`
  * element, plus the `rendition:*` metadata used to pick reflowable vs
  * fixed-layout rendering. */
@@ -125,6 +137,16 @@ export class PackageMetadata {
      * use, and preferred when present — see `fixed-layout-rendering`).
      * `undefined` if absent, malformed, or the book isn't fixed-layout. */
     public readonly renditionViewport: ViewportSize | undefined,
+    /** `dc:description` — a back-cover-blurb-style summary, when the book
+     * provides one. Used by the Book Details panel; nothing else in the
+     * reader depends on it. */
+    public readonly description: string | undefined,
+    /** `dc:publisher`. Used by the Book Details panel only. */
+    public readonly publisher: string | undefined,
+    /** Every `dc:identifier` element present (not just the unique one —
+     * see `identifier`), for the Book Details panel to show alongside
+     * whatever scheme each is marked with (e.g. "ISBN"). */
+    public readonly identifiers: readonly BookIdentifier[],
   ) {}
 }
 
@@ -248,8 +270,38 @@ export class PackageDocument {
 
     const renditionLayout = PackageDocument.parseRenditionLayoutMeta(metadataEl);
     const renditionViewport = PackageDocument.parseRenditionViewportMeta(metadataEl);
+    const description = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "description");
+    const publisher = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "publisher");
+    const identifiers = PackageDocument.parseIdentifiers(metadataEl);
 
-    return new PackageMetadata(identifier, title, language, creator, renditionLayout, renditionViewport);
+    return new PackageMetadata(
+      identifier,
+      title,
+      language,
+      creator,
+      renditionLayout,
+      renditionViewport,
+      description,
+      publisher,
+      identifiers,
+    );
+  }
+
+  /** Every `dc:identifier` element in the metadata (not just the unique
+   * one — see `parseUniqueIdentifier`), each paired with its
+   * `opf:scheme` attribute if present — the conventional way a real
+   * book marks one of its several identifiers as specifically an ISBN,
+   * e.g. `<dc:identifier opf:scheme="ISBN">978-...</dc:identifier>`. */
+  private static parseIdentifiers(metadataEl: Element): BookIdentifier[] {
+    return getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "identifier")
+      .map((el): BookIdentifier | undefined => {
+        const value = el.textContent?.trim();
+        if (!value) {
+          return undefined;
+        }
+        return { value, scheme: getNamespacedAttribute(el, OPF_NAMESPACE, "scheme") ?? undefined };
+      })
+      .filter((identifier): identifier is BookIdentifier => identifier !== undefined);
   }
 
   /** Resolves the `dc:identifier` element specifically referenced by

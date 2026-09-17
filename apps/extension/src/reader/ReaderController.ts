@@ -16,9 +16,32 @@ import {
   splitHrefFragment,
   SpreadPaginatedHost,
 } from "@pagina/engine";
-import type { FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@pagina/engine";
+import type { BookIdentifier, FontFamilyChoice, NavPoint, PackageDocument, PageTheme } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { ViewMode } from "./ViewMode.js";
+
+/** Everything the Book Details panel shows, combined from two sources
+ * that otherwise live in separate layers: `PackageDocument.metadata`
+ * (title/creator/description/publisher/identifiers/language — already
+ * parsed and in memory, no extra I/O) and `LibraryDatabase` (the
+ * original file name and cover image, which live in IndexedDB and
+ * require an async read the first time they're needed — see
+ * `ReaderController.getBookDetails`). */
+export interface BookDetails {
+  readonly title: string;
+  readonly creator: string | undefined;
+  readonly description: string | undefined;
+  readonly publisher: string | undefined;
+  readonly language: string;
+  readonly identifiers: readonly BookIdentifier[];
+  readonly fileName: string | undefined;
+  /** An object URL for the book's cover image, or `undefined` if it has
+   * none. Valid only for the lifetime of this `ReaderController` — never
+   * revoked until `dispose()`, so it's safe to keep using the same URL
+   * across repeated panel opens instead of creating (and needing to
+   * revoke) a fresh one every time. */
+  readonly coverUrl: string | undefined;
+}
 
 export type { ViewMode } from "./ViewMode.js";
 
@@ -226,6 +249,9 @@ export class ReaderController {
 
   private readonly listeners = new Set<() => void>();
   private cachedSnapshot: ReaderSnapshot | undefined;
+  /** Lazily created by `getBookDetails`, kept for the controller's whole
+   * lifetime (revoked only in `dispose`) — see `BookDetails.coverUrl`. */
+  private cachedCoverUrl: string | undefined;
 
   private constructor(
     private readonly contentLoader: ContentLoader,
@@ -1587,6 +1613,34 @@ export class ReaderController {
     this.isTurningPage = false;
   }
 
+  /** Assembles the Book Details panel's data — combines metadata already
+   * parsed from the OPF (no I/O needed) with the original file name and
+   * cover image, which live in `LibraryDatabase` and need an async read.
+   * The cover's object URL is created at most once per controller (see
+   * `cachedCoverUrl`) since repeatedly creating one on every panel open
+   * would leak URLs that are never revoked until `dispose()` anyway. */
+  public async getBookDetails(): Promise<BookDetails> {
+    const libraryRecord = await this.library.getBookMetadata(this.bookId);
+
+    if (this.cachedCoverUrl === undefined) {
+      const coverBlob = await this.library.getCoverBlob(this.bookId);
+      if (coverBlob) {
+        this.cachedCoverUrl = URL.createObjectURL(coverBlob);
+      }
+    }
+
+    return {
+      title: this.pkg.metadata.title,
+      creator: this.pkg.metadata.creator,
+      description: this.pkg.metadata.description,
+      publisher: this.pkg.metadata.publisher,
+      language: this.pkg.metadata.language,
+      identifiers: this.pkg.metadata.identifiers,
+      fileName: libraryRecord?.fileName,
+      coverUrl: this.cachedCoverUrl,
+    };
+  }
+
   /** Loads the adjacent chapter directly (both view modes) — the
    * "previous/next chapter" toolbar actions, as distinct from `turnPage`
    * which only steps by one page within paginated mode. */
@@ -1823,6 +1877,9 @@ export class ReaderController {
     this.bookPagination?.dispose();
     this.hiddenMeasureContainer?.remove();
     this.resolver.dispose();
+    if (this.cachedCoverUrl !== undefined) {
+      URL.revokeObjectURL(this.cachedCoverUrl);
+    }
     this.library.close();
   }
 }

@@ -6,10 +6,12 @@ import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
+import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
+import type { BookDetails } from "./ReaderController.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -38,18 +40,45 @@ export const ReaderApp: FC = () => {
     setPageTheme,
     previewSeek,
     seekToFraction,
+    getBookDetails,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
   // Shared between the toolbar and the progress scrubber (see
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
-  // (and potentially out-of-sync) visibility state.
+  // (and potentially out-of-sync) visibility state. Kept visible
+  // whenever either flyout panel (TOC or Book Details) is open, the
+  // same way `isTocOpen` alone did before — both are "pinned" reasons
+  // to keep the chrome from auto-hiding out from under an open panel.
   const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
-    isTocOpen,
+    isTocOpen || isDetailsOpen,
     snapshot?.contentPointerActivityId,
   );
+
+  // Fetches the book's details (cover/file name need an async
+  // `LibraryDatabase` read the first time — see `ReaderController.
+  // getBookDetails`) the first time the panel is opened, not on every
+  // mount — there's no reason to pay for it before the reader ever asks
+  // to see it, and the controller itself caches the cover's object URL
+  // so a second open doesn't re-fetch anything.
+  useEffect(() => {
+    if (!isDetailsOpen || bookDetails !== undefined) {
+      return;
+    }
+    let cancelled = false;
+    void getBookDetails().then((details) => {
+      if (!cancelled) {
+        setBookDetails(details);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDetailsOpen, bookDetails, getBookDetails]);
 
   useEffect(() => {
     const bookId = new URLSearchParams(window.location.search).get("bookId");
@@ -182,6 +211,8 @@ export const ReaderApp: FC = () => {
             snapshot={snapshot}
             isTocOpen={isTocOpen}
             onToggleToc={() => setIsTocOpen((open) => !open)}
+            isDetailsOpen={isDetailsOpen}
+            onToggleDetails={() => setIsDetailsOpen((open) => !open)}
             onTurnPage={turnPage}
             onGoToChapter={goToChapter}
             onSetViewMode={setViewMode}
@@ -191,6 +222,8 @@ export const ReaderApp: FC = () => {
             visible={chromeVisible}
             handlers={chromeHandlers}
           />
+
+          <BookDetailsPanel open={isDetailsOpen} onRequestClose={() => setIsDetailsOpen(false)} details={bookDetails} />
 
           <ProgressScrubber
             snapshot={snapshot}

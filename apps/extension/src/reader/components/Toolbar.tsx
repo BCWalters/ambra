@@ -17,6 +17,7 @@ import {
   Tooltip,
 } from "@fluentui/react-components";
 import {
+  BookInformationRegular,
   BookOpenRegular,
   ChevronDoubleLeftRegular,
   ChevronDoubleRightRegular,
@@ -37,6 +38,8 @@ export interface ToolbarProps {
   snapshot: ReaderSnapshot;
   isTocOpen: boolean;
   onToggleToc: () => void;
+  isDetailsOpen: boolean;
+  onToggleDetails: () => void;
   onTurnPage: (direction: 1 | -1) => void;
   onGoToChapter: (direction: 1 | -1) => void;
   onSetViewMode: (mode: ViewMode) => void;
@@ -85,6 +88,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   snapshot,
   isTocOpen,
   onToggleToc,
+  isDetailsOpen,
+  onToggleDetails,
   onTurnPage,
   onGoToChapter,
   onSetViewMode,
@@ -264,15 +269,20 @@ export const Toolbar: FC<ToolbarProps> = ({
         {!snapshot.isFixedLayout && (
           <Menu
             persistOnItemClick
-            checkedValues={{ [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily] }}
+            checkedValues={{
+              [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
+              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
+            }}
             onCheckedValueChange={(_event, data) => {
               if (data.name === FONT_FAMILY_GROUP_NAME) {
                 onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
+              } else if (data.name === PAGE_THEME_GROUP_NAME) {
+                onSetPageTheme(data.checkedItems[0] as PageTheme);
               }
             }}
           >
             <MenuTrigger disableButtonEnhancement>
-              <Tooltip content="Font" relationship="label">
+              <Tooltip content="Text and page layout" relationship="label">
                 <Button appearance="subtle" size="small" icon={<TextFontRegular />} />
               </Tooltip>
             </MenuTrigger>
@@ -315,6 +325,15 @@ export const Toolbar: FC<ToolbarProps> = ({
                     );
                   })}
                 </MenuGroup>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>Theme</MenuGroupHeader>
+                  {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
+                    <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
+                      {ReadingTheme.PAGE_THEMES[key].label}
+                    </MenuItemRadio>
+                  ))}
+                </MenuGroup>
               </MenuList>
             </MenuPopover>
           </Menu>
@@ -325,13 +344,10 @@ export const Toolbar: FC<ToolbarProps> = ({
             persistOnItemClick
             checkedValues={{
               [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
-              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
             }}
             onCheckedValueChange={(_event, data) => {
               if (data.name === VIEW_MODE_GROUP_NAME) {
                 onSetViewMode(data.checkedItems[0] as ViewMode);
-              } else if (data.name === PAGE_THEME_GROUP_NAME) {
-                onSetPageTheme(data.checkedItems[0] as PageTheme);
               }
             }}
           >
@@ -342,15 +358,6 @@ export const Toolbar: FC<ToolbarProps> = ({
             </MenuTrigger>
             <MenuPopover>
               <MenuList>
-                <MenuGroup>
-                  <MenuGroupHeader>Theme</MenuGroupHeader>
-                  {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
-                    <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
-                      {ReadingTheme.PAGE_THEMES[key].label}
-                    </MenuItemRadio>
-                  ))}
-                </MenuGroup>
-                <MenuDivider />
                 <MenuGroup>
                   <MenuGroupHeader>Book</MenuGroupHeader>
                   <MenuItemRadio name={VIEW_MODE_GROUP_NAME} value="paginated" icon={<BookOpenRegular />}>
@@ -364,6 +371,16 @@ export const Toolbar: FC<ToolbarProps> = ({
             </MenuPopover>
           </Menu>
         )}
+
+        <Tooltip content={isDetailsOpen ? "Hide book details" : "Book details"} relationship="label">
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isDetailsOpen}
+            icon={<BookInformationRegular />}
+            onClick={onToggleDetails}
+          />
+        </Tooltip>
       </div>
     </>
   );

@@ -24,7 +24,7 @@ export async function importBook(library: LibraryDatabase, file: File): Promise<
 
   return library.addBook(
     new Blob([buffer], { type: "application/epub+zip" }),
-    { title: pkg.metadata.title, creator: pkg.metadata.creator, identifier: pkg.metadata.identifier },
+    { title: pkg.metadata.title, creator: pkg.metadata.creator, identifier: pkg.metadata.identifier, fileName: file.name },
     coverBlob,
   );
 }

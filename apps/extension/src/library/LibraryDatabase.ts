@@ -10,6 +10,11 @@ export interface BookMetadata {
   readonly creator: string | undefined;
   readonly identifier: string;
   readonly addedAt: number;
+  /** The original file's own name (e.g. `moby-dick.epub`) at import time
+   * — shown in the Book Details panel. `undefined` for books imported
+   * before this field existed; not worth a migration for a single,
+   * purely-informational display field. */
+  readonly fileName: string | undefined;
 }
 
 /** Where a reader last left off in a given book — a CFI, since it's the
@@ -107,6 +112,14 @@ export class LibraryDatabase {
 
   public listBooks(): Promise<BookMetadata[]> {
     return this.getAll<BookMetadata>(BOOKS_STORE);
+  }
+
+  /** A single book's own library record (title/creator/identifier/
+   * fileName/addedAt) — used by the reader's Book Details panel, which
+   * needs this alongside the richer metadata already available from the
+   * open `PackageDocument` (description, publisher, every identifier). */
+  public getBookMetadata(id: string): Promise<BookMetadata | undefined> {
+    return this.get<BookMetadata>(BOOKS_STORE, id);
   }
 
   public async getBookFile(id: string): Promise<Blob | undefined> {

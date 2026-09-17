@@ -241,3 +241,51 @@ describe("PackageDocument unique-identifier resolution", () => {
     expect(pkg.metadata.identifier).toBe("urn:uuid:fallback");
   });
 });
+
+describe("PackageDocument additional metadata (description/publisher/identifiers)", () => {
+  const buildXml = (metadataInner: string): string => `<?xml version="1.0"?>
+    <package xmlns="http://www.idpf.org/2007/opf" xmlns:opf="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+        <dc:title>Test</dc:title>
+        <dc:language>en</dc:language>
+        ${metadataInner}
+      </metadata>
+      <manifest></manifest>
+      <spine></spine>
+    </package>`;
+
+  it("parses dc:description and dc:publisher when present", () => {
+    const xml = buildXml(`
+      <dc:description>A short blurb about the book.</dc:description>
+      <dc:publisher>Test Publishing House</dc:publisher>
+    `);
+
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.description).toBe("A short blurb about the book.");
+    expect(pkg.metadata.publisher).toBe("Test Publishing House");
+  });
+
+  it("leaves description and publisher undefined when absent", () => {
+    const pkg = PackageDocument.parse(buildXml(""), "OEBPS/content.opf");
+
+    expect(pkg.metadata.description).toBeUndefined();
+    expect(pkg.metadata.publisher).toBeUndefined();
+  });
+
+  it("collects every dc:identifier, pairing each with its opf:scheme if present", () => {
+    const xml = buildXml(`
+      <dc:identifier id="isbn-id" opf:scheme="ISBN">9780000000000</dc:identifier>
+      <dc:identifier id="other-id">some-other-catalog-id</dc:identifier>
+    `);
+
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.identifiers).toEqual([
+      { value: "urn:uuid:test", scheme: undefined },
+      { value: "9780000000000", scheme: "ISBN" },
+      { value: "some-other-catalog-id", scheme: undefined },
+    ]);
+  });
+});

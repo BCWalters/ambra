@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import type { FontFamilyChoice, PageTheme } from "@pagina/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
-import type { ReaderSnapshot, ViewMode } from "./ReaderController.js";
+import type { BookDetails, ReaderSnapshot, ViewMode } from "./ReaderController.js";
 
 export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
@@ -18,6 +18,7 @@ export interface UseReaderControllerResult {
   setPageTheme: (theme: PageTheme) => void;
   previewSeek: (fraction: number) => { label: string; chapterLabel: string };
   seekToFraction: (fraction: number) => Promise<void>;
+  getBookDetails: () => Promise<BookDetails | undefined>;
 }
 
 /** Bridges `ReaderController` (a plain, framework-agnostic class) into
@@ -155,6 +156,10 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const getBookDetails = useCallback(async () => {
+    return controller?.getBookDetails();
+  }, [controller]);
+
   return {
     snapshot,
     contentHostRef,
@@ -168,5 +173,6 @@ export function useReaderController(): UseReaderControllerResult {
     setPageTheme,
     previewSeek,
     seekToFraction,
+    getBookDetails,
   };
 }
