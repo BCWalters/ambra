@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2b1d14"/>
+      <stop offset="100%" stop-color="#120b07"/>
+    </linearGradient>
+    <linearGradient id="gem" x1="40" y1="18" x2="88" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffdf9c"/>
+      <stop offset="42%" stop-color="#f5a531"/>
+      <stop offset="100%" stop-color="#b6591b"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff6e0" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#fff6e0" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="gemClip">
+      <path d="M 64 20
+               C 90 54, 101 71, 101 89
+               C 101 107, 84.5 120, 64 120
+               C 43.5 120, 27 107, 27 89
+               C 27 71, 38 54, 64 20
+               Z"/>
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="128" height="128" rx="26" fill="url(#bg)"/>
+
+  <path d="M 64 20
+           C 90 54, 101 71, 101 89
+           C 101 107, 84.5 120, 64 120
+           C 43.5 120, 27 107, 27 89
+           C 27 71, 38 54, 64 20
+           Z"
+        fill="url(#gem)" stroke="#6b3410" stroke-width="2"/>
+
+  <g clip-path="url(#gemClip)">
+    <path d="M 64 20 L 64 120" stroke="#8a3f10" stroke-width="1.5" opacity="0.4"/>
+    <path d="M 64 20 L 40 74" stroke="#8a3f10" stroke-width="1.5" opacity="0.3"/>
+    <path d="M 64 20 L 88 74" stroke="#8a3f10" stroke-width="1.5" opacity="0.3"/>
+    <path d="M 40 74 L 27 89" stroke="#8a3f10" stroke-width="1.2" opacity="0.25"/>
+    <path d="M 88 74 L 101 89" stroke="#8a3f10" stroke-width="1.2" opacity="0.25"/>
+
+    <ellipse cx="46" cy="42" rx="7" ry="18" fill="url(#shine)" transform="rotate(-22 46 42)"/>
+  </g>
+</svg>
