@@ -105,6 +105,11 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // depends on the popup's own *rendered* width (its text content, and
   // thus width, changes as the drag moves across page/chapter numbers).
   const [popupCenterPx, setPopupCenterPx] = useState<number | undefined>(undefined);
+  // Declared alongside the other refs (not down where it's used) so
+  // every hook in this component runs unconditionally on every render —
+  // see the early-return guard just before the final JSX for why that
+  // matters here specifically.
+  const activePointerIdRef = useRef<number | undefined>(undefined);
 
   const preview = dragFraction !== undefined ? onPreview(dragFraction) : undefined;
 
@@ -132,12 +137,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     // 12" vs "Page 100 of 120"), which can itself push it back into (or
     // out of) needing to be clamped, even without `dragFraction` moving.
   }, [dragFraction, preview?.label, preview?.chapterLabel]);
-
-  if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
-    return null;
-  }
-
-  const activePointerIdRef = useRef<number | undefined>(undefined);
 
   const fractionAt = (clientX: number): number => {
     const track = trackRef.current;
@@ -269,6 +268,19 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             ? `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount} - `
             : ""
         }${pagesLeftInChapter} page${pagesLeftInChapter === 1 ? "" : "s"} left in this chapter`;
+
+  // Scoped to paginated/spread reflowable content only (see this
+  // component's doc comment) — deliberately checked only *after* every
+  // hook above has run unconditionally on every render. An early return
+  // before a hook call is a real bug (not just a lint nit): switching
+  // from paginated to scroll mode changes which branch this component
+  // takes, and if a hook further down were skipped on that render,
+  // React's hook-call-order bookkeeping desyncs and throws ("Rendered
+  // fewer hooks than expected"), crashing the whole reader — caught via
+  // real-Chromium testing switching view modes with this panel mounted.
+  if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
+    return null;
+  }
 
   return (
     <div

@@ -208,6 +208,27 @@ export const ReaderApp: FC = () => {
                 justifyContent: "center",
                 alignItems: "flex-start",
                 overflow: "hidden",
+                // Continuous scroll mode gets no baked-in top inset the
+                // way paginated pages do (see `ReadingTheme.PAGE_INSET_TOP`'s
+                // doc comment — it relies on normal document flow and the
+                // toolbar auto-hiding). That assumption breaks whenever the
+                // toolbar is being kept forcibly visible (a pinned/open TOC
+                // or Book Details panel — see `chromeVisible`), which can
+                // leave a chapter's very first heading sitting right under
+                // it. Push the content down by the same amount paginated
+                // mode already reserves, but via `transform` rather than
+                // `padding` — this div is exactly what `useReaderController`'s
+                // `ResizeObserver` watches to drive `resize()`/relayout, and
+                // a transform (unlike padding) never changes its observed
+                // content-box size, so toggling this alongside the toolbar's
+                // own fade never triggers a pointless re-measurement (see
+                // the comment on the toolbar overlay above for the same
+                // reasoning applied to the toolbar itself).
+                transform:
+                  !snapshot.isFixedLayout && snapshot.viewMode === "scroll" && chromeVisible
+                    ? `translateY(${ReadingTheme.PAGE_INSET_TOP}px)`
+                    : "translateY(0)",
+                transition: "transform 240ms ease",
               }}
             />
             <PageFurniture snapshot={snapshot} />

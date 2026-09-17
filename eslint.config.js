@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
+import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   {
@@ -14,6 +15,25 @@ export default tseslint.config(
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+    },
+  },
+  {
+    // Catches exactly the class of bug behind a real, reported crash
+    // (issue #35's investigation): a component with an early `return`
+    // *before* a later hook call desyncs React's hook-call-order
+    // bookkeeping the moment a render actually takes that early-return
+    // branch, throwing "Rendered fewer hooks than expected" and crashing
+    // the whole tree — `ProgressScrubber`'s `viewMode !== "paginated"`
+    // guard did exactly this. Scoped to `.tsx` files only (the only
+    // place React components/hooks exist in this repo), and to just this
+    // one rule rather than the plugin's full "recommended" set, which
+    // pulls in several much more opinionated, newer rules (e.g.
+    // `set-state-in-effect`) that would force refactoring unrelated,
+    // already-correct code.
+    files: ["**/*.tsx"],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      "react-hooks/rules-of-hooks": "error",
     },
   },
   {
