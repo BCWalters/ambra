@@ -1,6 +1,7 @@
 import {
   AccessibilityController,
   BookPaginationEstimator,
+  BookSearch,
   ContentLoader,
   EpubCfi,
   EpubContainer,
@@ -23,6 +24,7 @@ import type {
   NavPoint,
   PackageDocument,
   PageTheme,
+  SearchResult,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
@@ -217,12 +219,28 @@ export interface ReaderSnapshot {
    * highlight is created/removed by this same controller, so the cache
    * is always already up to date by the time a new snapshot is built. */
   highlights: readonly Highlight[];
+  /** The current book-wide search's query, in-flight results (appended
+   * to progressively — see `BookSearch`), and whether it's still
+   * running — for the "Search" tab (see `TocPanel`). `searchQuery` is
+   * echoed back here (not just tracked as local component state) so the
+   * search input stays in sync even if the panel unmounts/remounts. */
+  searchQuery: string;
+  searchResults: readonly SearchResultItem[];
+  isSearching: boolean;
 }
 
 /** See `ReaderSnapshot.selectionToolbar`. */
 export interface SelectionToolbarState {
   readonly left: number;
   readonly top: number;
+}
+
+/** See `ReaderSnapshot.searchResults` — a `SearchResult` (see the engine)
+ * plus the chapter label its spine item resolves to, computed once when
+ * the result is found (see `ReaderController.search`) rather than by
+ * the shell re-deriving it from `spineIndex` on every render. */
+export interface SearchResultItem extends SearchResult {
+  readonly chapterLabel: string;
 }
 
 /** See `ReaderSnapshot.imageViewer`. `src` is whatever the content
@@ -395,6 +413,16 @@ export class ReaderController {
    * listeners (see `setUpHighlightSelection`) — same re-created-per-
    * spine-item lifecycle as `contentInteractionCleanup`. */
   private highlightSelectionCleanup: (() => void) | undefined;
+  /** Book-wide full-text search — see `BookSearch`'s doc comment (no
+   * pre-built index; searches spine item by spine item, progressively,
+   * per explicit product direction). Created once in the constructor
+   * (it only needs `contentLoader`/`locatorResolver`/`pkg.spine`, all
+   * available immediately — unlike `bookPagination`, it has no
+   * dependency on a live DOM/hidden measurement container at all). */
+  private readonly bookSearch: BookSearch;
+  private searchQuery = "";
+  private searchResults: SearchResultItem[] = [];
+  private isSearching = false;
 
   /** Detaches the current spine item's in-content interaction listeners
    * (link clicks, and the image-viewer's click/keyboard triggers) — see
@@ -431,7 +459,9 @@ export class ReaderController {
     public readonly navigation: NavigationDocument,
     private readonly bookId: string,
     private readonly library: LibraryDatabase,
-  ) {}
+  ) {
+    this.bookSearch = new BookSearch(contentLoader, locatorResolver, pkg.spine);
+  }
 
   /** Opens a book from its raw bytes — from a `File` (e.g. `await
    * file.arrayBuffer()`) or, in the normal case, the book `Blob` read
@@ -554,6 +584,9 @@ export class ReaderController {
         highlights: Array.from(this.highlightsBySpineIndex.values())
           .flat()
           .sort((a, b) => a.createdAt - b.createdAt),
+        searchQuery: this.searchQuery,
+        searchResults: this.searchResults,
+        isSearching: this.isSearching,
       };
     }
     return this.cachedSnapshot;
@@ -776,14 +809,52 @@ export class ReaderController {
     await this.goToCfi(cfi);
   }
 
+  /** Navigates to a search result's position — see `goToBookmark`'s doc
+   * comment; a search result's CFI is just another "previously
+   * generated position" like a bookmark or highlight's. */
+  public async goToSearchResult(cfi: string): Promise<void> {
+    await this.goToCfi(cfi);
+  }
+
+  /** (Re-)starts a book-wide search for `query`, replacing any previous
+   * (possibly still in-flight) search's results — see `BookSearch` for
+   * the actual progressive, non-indexed search mechanism and its
+   * cancellation semantics. Results accumulate into `searchResults` as
+   * they stream in, each one triggering a `notify()` so the shell's
+   * results list grows live rather than waiting for the whole book to
+   * finish. An empty/too-short `query` clears any existing results
+   * immediately rather than running a pointless (or, for a 1-2 character
+   * query, book-wide-and-meaningless) search. */
+  public search(query: string): void {
+    this.searchQuery = query;
+    this.searchResults = [];
+    this.isSearching = query.trim().length > 0;
+    this.notify();
+    void this.bookSearch.search(
+      query,
+      (result) => {
+        this.searchResults = [
+          ...this.searchResults,
+          { ...result, chapterLabel: this.chapterLabel(result.spineIndex) },
+        ];
+        this.notify();
+      },
+      () => {
+        this.isSearching = false;
+        this.notify();
+      },
+    );
+  }
+
   /** Parses `cfi`, finds the spine item it targets by its package steps,
    * and opens it with `cfi` as a bridging position — the same "parse,
    * find owning spine item, open with a bridging CFI" mechanism
    * `tryResume` uses for resuming a session, since resuming, jumping to
-   * a bookmark, and jumping to a highlight are all the same underlying
-   * operation: "go to a previously-saved position." Best-effort: a CFI
-   * from a book whose structure has since changed (a re-imported, edited
-   * file) silently does nothing rather than crashing the reader. */
+   * a bookmark, jumping to a highlight, and jumping to a search result
+   * are all the same underlying operation: "go to a previously-saved
+   * position." Best-effort: a CFI from a book whose structure has since
+   * changed (a re-imported, edited file) silently does nothing rather
+   * than crashing the reader. */
   private async goToCfi(cfi: string): Promise<void> {
     try {
       const parsed = EpubCfi.parse(cfi);
@@ -2864,6 +2935,7 @@ export class ReaderController {
     this.contentInteractionCleanup?.();
     this.dragCleanup?.();
     this.highlightSelectionCleanup?.();
+    this.bookSearch.cancel();
     this.host?.dispose();
     this.bookPagination?.dispose();
     this.hiddenMeasureContainer?.remove();

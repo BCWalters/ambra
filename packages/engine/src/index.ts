@@ -61,4 +61,6 @@ export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";
 export { loadAssembledSpineItem } from "./reading/SpineItemAssembler.js";
 export { BookPaginationEstimator } from "./reading/BookPaginationEstimator.js";
 export type { BookPosition } from "./reading/BookPaginationEstimator.js";
+export { BookSearch } from "./reading/BookSearch.js";
+export type { SearchResult } from "./reading/BookSearch.js";
 export { computePriorityOrder, aggregateBookPosition, resolveGlobalPage } from "./reading/BookPagination.js";

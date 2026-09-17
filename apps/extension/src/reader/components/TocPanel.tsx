@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Tab, TabList, Textarea } from "@fluentui/react-components";
+import { Body1, Button, Caption1, SearchBox, Spinner, Tab, TabList, Textarea } from "@fluentui/react-components";
 import {
   BookmarkRegular,
   DismissRegular,
@@ -9,11 +9,13 @@ import {
   NoteRegular,
   PinOffRegular,
   PinRegular,
+  SearchRegular,
 } from "@fluentui/react-icons";
 import { NavPoint, HighlightTheme } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
+import type { SearchResultItem } from "../ReaderController.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
  * document order) — used to detect whether the TOC's own first entry
@@ -368,6 +370,119 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
   );
 };
 
+interface SearchTabProps {
+  /** The last query actually *submitted* to `ReaderController.search`
+   * (see `ReaderSnapshot.searchQuery`) — used only to initialize the
+   * input's local state on first mount, so reopening the panel after a
+   * previous search still shows what was searched for; typing itself is
+   * tracked as its own local state below; not read on every render. */
+  query: string;
+  results: readonly SearchResultItem[];
+  isSearching: boolean;
+  onSearch: (query: string) => void;
+  onSelect: (cfi: string) => void;
+}
+
+/** How long to wait after the reader stops typing before actually
+ * running a search — `BookSearch` itself cancels a stale search cheaply
+ * (see its own doc comment), but debouncing here still avoids kicking
+ * off a search-then-immediately-cancel for every single keystroke,
+ * which would otherwise re-open/re-read every already-searched spine
+ * item's content document from scratch on each one. */
+const SEARCH_DEBOUNCE_MS = 250;
+
+/** The "Search" tab's contents — a search box plus a progressively-
+ * growing results list (see `ReaderController.search`/`BookSearch`: no
+ * pre-built index, so results for earlier chapters appear immediately
+ * while later ones are still being searched, shown via `isSearching`).
+ * Each result shows its chapter label and an excerpt with the match
+ * itself bolded, and navigates on click like every other list in this
+ * panel. */
+const SearchTab: FC<SearchTabProps> = ({ query, results, isSearching, onSearch, onSelect }) => {
+  const [input, setInput] = useState(query);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => onSearch(input), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+    // `onSearch` is a stable callback (see `ReaderApp`) — only `input`
+    // itself should ever re-arm this debounce timer.
+  }, [input]);
+
+  return (
+    <>
+      <div style={{ padding: "0 4px 8px" }}>
+        <SearchBox
+          value={input}
+          onChange={(_event, data) => setInput(data.value)}
+          placeholder="Search this book…"
+          style={{ width: "100%" }}
+        />
+      </div>
+      {input.trim().length > 0 && input.trim().length < 3 && (
+        <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
+          Keep typing — searches start at 3 characters.
+        </Caption1>
+      )}
+      {results.map((result, index) => (
+        <button
+          key={`${result.spineIndex}-${index}`}
+          type="button"
+          onClick={() => onSelect(result.cfi)}
+          style={{
+            display: "block",
+            width: "100%",
+            background: "none",
+            border: "none",
+            borderRadius: 6,
+            color: "var(--colorNeutralForeground2, #333)",
+            cursor: "pointer",
+            padding: "7px 10px",
+            textAlign: "left",
+            font: "inherit",
+            lineHeight: 1.35,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "none";
+          }}
+        >
+          <Caption1 as="p" block style={{ margin: "0 0 2px", opacity: 0.6 }}>
+            {result.chapterLabel}
+          </Caption1>
+          {/* Trims `before` down to a short prefix right at render time
+              (rather than shortening it in `BookSearch` itself) so the
+              highlighted match always stays within the visible,
+              single-line-truncated width — a longer `before` value is
+              still stored/available for a possible future wider layout,
+              but here it would otherwise routinely push the match itself
+              past the ellipsis cutoff, defeating the whole point of
+              showing an excerpt. */}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+            …{result.before.slice(-18)}
+            <strong>{result.match}</strong>
+            {result.after}…
+          </span>
+        </button>
+      ))}
+      {isSearching && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
+          <Spinner size="tiny" />
+          <Caption1 as="span" style={{ opacity: 0.6 }}>
+            Searching…
+          </Caption1>
+        </div>
+      )}
+      {!isSearching && input.trim().length >= 3 && results.length === 0 && (
+        <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
+          No matches found.
+        </Caption1>
+      )}
+    </>
+  );
+};
+
 export interface TocPanelProps {
   items: readonly NavPoint[];
   /** Archive-relative path of the currently-open spine item (see
@@ -408,6 +523,13 @@ export interface TocPanelProps {
   onSelectHighlight: (cfi: string) => void;
   onRemoveHighlight: (id: string) => void;
   onSetHighlightNote: (id: string, note: string | undefined) => void;
+  /** Book-wide full-text search (see the "Search" tab) — read straight
+   * from `ReaderSnapshot.searchQuery`/`searchResults`/`isSearching`. */
+  searchQuery: string;
+  searchResults: readonly SearchResultItem[];
+  isSearching: boolean;
+  onSearch: (query: string) => void;
+  onSelectSearchResult: (cfi: string) => void;
 }
 
 /** The reader's Table of Contents: by default a flyout that slides in
@@ -445,8 +567,13 @@ export const TocPanel: FC<TocPanelProps> = ({
   onSelectHighlight,
   onRemoveHighlight,
   onSetHighlightNote,
+  searchQuery,
+  searchResults,
+  isSearching,
+  onSearch,
+  onSelectSearchResult,
 }) => {
-  const [activeTab, setActiveTab] = useState<"contents" | "bookmarks" | "highlights">("contents");
+  const [activeTab, setActiveTab] = useState<"contents" | "bookmarks" | "highlights" | "search">("contents");
 
   const chromeTheme = useChromeTheme();
 
@@ -524,7 +651,13 @@ export const TocPanel: FC<TocPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "contents" ? "Contents" : activeTab === "bookmarks" ? "Bookmarks" : "Highlights"}
+            {activeTab === "contents"
+              ? "Contents"
+              : activeTab === "bookmarks"
+                ? "Bookmarks"
+                : activeTab === "highlights"
+                  ? "Highlights"
+                  : "Search"}
           </Body1>
           <Button
             appearance="subtle"
@@ -547,7 +680,9 @@ export const TocPanel: FC<TocPanelProps> = ({
         <TabList
           size="small"
           selectedValue={activeTab}
-          onTabSelect={(_event, data) => setActiveTab(data.value as "contents" | "bookmarks" | "highlights")}
+          onTabSelect={(_event, data) =>
+            setActiveTab(data.value as "contents" | "bookmarks" | "highlights" | "search")
+          }
           style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
         >
           <Tab value="contents" icon={<HomeRegular />}>
@@ -559,6 +694,9 @@ export const TocPanel: FC<TocPanelProps> = ({
           <Tab value="highlights" icon={<HighlightRegular />}>
             Highlights{highlights.length > 0 ? ` (${highlights.length})` : ""}
           </Tab>
+          <Tab value="search" icon={<SearchRegular />}>
+            Search
+          </Tab>
         </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {activeTab === "bookmarks" ? (
@@ -569,6 +707,14 @@ export const TocPanel: FC<TocPanelProps> = ({
               onSelect={onSelectHighlight}
               onRemove={onRemoveHighlight}
               onSetNote={onSetHighlightNote}
+            />
+          ) : activeTab === "search" ? (
+            <SearchTab
+              query={searchQuery}
+              results={searchResults}
+              isSearching={isSearching}
+              onSearch={onSearch}
+              onSelect={onSelectSearchResult}
             />
           ) : (
             <>

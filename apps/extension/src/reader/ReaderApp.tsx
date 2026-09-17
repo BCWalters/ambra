@@ -62,6 +62,8 @@ export const ReaderApp: FC = () => {
     removeHighlight,
     goToHighlight,
     setHighlightNote,
+    search,
+    goToSearchResult,
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
@@ -156,6 +158,13 @@ export const ReaderApp: FC = () => {
 
   const handleSelectHighlight = (cfi: string): void => {
     void goToHighlight(cfi);
+    if (!isTocPinned) {
+      setIsTocOpen(false);
+    }
+  };
+
+  const handleSelectSearchResult = (cfi: string): void => {
+    void goToSearchResult(cfi);
     if (!isTocPinned) {
       setIsTocOpen(false);
     }
@@ -259,6 +268,11 @@ export const ReaderApp: FC = () => {
             onSelectHighlight={handleSelectHighlight}
             onRemoveHighlight={handleRemoveHighlight}
             onSetHighlightNote={handleSetHighlightNote}
+            searchQuery={snapshot.searchQuery}
+            searchResults={snapshot.searchResults}
+            isSearching={snapshot.isSearching}
+            onSearch={search}
+            onSelectSearchResult={handleSelectSearchResult}
           />
 
           <div

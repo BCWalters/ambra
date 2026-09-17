@@ -38,6 +38,8 @@ export interface UseReaderControllerResult {
   addHighlight: (style: HighlightStyle) => Promise<void>;
   removeHighlight: (id: string) => Promise<void>;
   setHighlightNote: (id: string, note: string | undefined) => Promise<void>;
+  search: (query: string) => void;
+  goToSearchResult: (cfi: string) => Promise<void>;
   goToHighlight: (cfi: string) => Promise<void>;
   dismissSelectionToolbar: () => void;
 }
@@ -277,6 +279,20 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const search = useCallback(
+    (query: string) => {
+      controller?.search(query);
+    },
+    [controller],
+  );
+
+  const goToSearchResult = useCallback(
+    async (cfi: string) => {
+      await controller?.goToSearchResult(cfi);
+    },
+    [controller],
+  );
+
   const goToHighlight = useCallback(
     async (cfi: string) => {
       await controller?.goToHighlight(cfi);
@@ -317,6 +333,8 @@ export function useReaderController(): UseReaderControllerResult {
     addHighlight,
     removeHighlight,
     setHighlightNote,
+    search,
+    goToSearchResult,
     goToHighlight,
     dismissSelectionToolbar,
   };
