@@ -3713,7 +3713,7 @@ export class ReaderController {
         startY = event.clientY;
       };
       const onPointerUp = (event: PointerEvent): void => {
-        this.handleContentClick(event, startX, startY, columnWidth, isRightColumn);
+        this.handleContentClick(event, startX, startY, columnWidth, doc, isRightColumn);
       };
       doc.addEventListener("pointerdown", onPointerDown);
       doc.addEventListener("pointerup", onPointerUp);
@@ -3863,7 +3863,7 @@ export class ReaderController {
         // rather than as nothing, but only for a genuine release, not a
         // cancelled gesture (e.g. the pointer leaving the window).
         if (upEvent.type === "pointerup") {
-          this.handleContentClick(upEvent, startX, startY, containerWidth);
+          this.handleContentClick(upEvent, startX, startY, containerWidth, doc);
         }
         return;
       }
@@ -3915,6 +3915,7 @@ export class ReaderController {
     startX: number,
     startY: number,
     containerWidth: number,
+    doc: Document,
     isRightColumn = false,
   ): void {
     const deltaX = Math.abs(upEvent.clientX - startX);
@@ -3926,8 +3927,22 @@ export class ReaderController {
       return;
     }
 
-    const selection =
-      upEvent.target instanceof Node ? upEvent.target.ownerDocument?.getSelection() : undefined;
+    // `doc` is passed in directly by the caller (which already knows
+    // exactly which content document this gesture belongs to) rather
+    // than derived here via `upEvent.target instanceof Node` — a real,
+    // confirmed bug found via testing: `Node` inside `ReaderController`
+    // resolves to the *parent* window's own `Node` constructor, but
+    // `upEvent.target` for a pointer event dispatched inside a
+    // cross-document iframe is an instance of *that iframe's own*,
+    // separate-realm `Node` class. `instanceof` checks identity against
+    // a specific constructor, so this always evaluated to `false` for
+    // every content-iframe event, silently disabling the selection
+    // guard below (issue #74): a Shift+click (or any tap) that landed
+    // in the left/right third of a two-page spread's column turned the
+    // page even with an active, non-collapsed text selection, since the
+    // guard's `selection` was always `undefined` and so never actually
+    // blocked anything.
+    const selection = doc.getSelection();
     if (selection && !selection.isCollapsed) {
       return;
     }
@@ -3944,8 +3959,7 @@ export class ReaderController {
     // turning the page out from under it at the same time left a popup
     // referencing a highlight no longer on screen (its "close" was
     // still wired to the page that's no longer there).
-    const doc = upEvent.target instanceof Node ? upEvent.target.ownerDocument : undefined;
-    if (doc && this.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
+    if (this.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
       return;
     }
 
