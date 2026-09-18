@@ -3,6 +3,7 @@ import type { PageTheme, FontFamilyChoice, HighlightStyle } from "@ambra/engine"
 import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
+import type { LocalePreference } from "../i18n/Locale.js";
 
 /** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
  * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
@@ -133,6 +134,7 @@ const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
 const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
+const LOCALE_PREFERENCE_KEY = "localePreference";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -354,6 +356,22 @@ export class LibraryDatabase {
 
   public async setDefaultPageTurnAnimationStyle(style: PageTurnAnimationStyle): Promise<void> {
     const record: PreferenceRecord = { key: PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY, value: style };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader's UI language preference (issue #50) — either an
+   * explicit locale a reader picked in settings, or `"system"` (detect
+   * from the browser — see `Locale.ts`'s `detectBrowserLocale`), the
+   * default until they ever change it. Shared between the library page
+   * and the reader page (both need it, and both already share this same
+   * `LibraryDatabase`), unlike the reading-specific preferences above. */
+  public async getLocalePreference(): Promise<LocalePreference | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, LOCALE_PREFERENCE_KEY);
+    return record?.value as LocalePreference | undefined;
+  }
+
+  public async setLocalePreference(preference: LocalePreference): Promise<void> {
+    const record: PreferenceRecord = { key: LOCALE_PREFERENCE_KEY, value: preference };
     await this.put(PREFERENCES_STORE, record);
   }
 

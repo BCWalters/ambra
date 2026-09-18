@@ -19,6 +19,7 @@ import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
+import { LocaleProvider } from "../i18n/LocaleContext.js";
 import type { BookDetails, EpubInspectionData } from "./ReaderController.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 
@@ -35,7 +36,13 @@ import type { Bookmark } from "../library/LibraryDatabase.js";
  * reading surface itself doesn't care how the bytes were obtained, it
  * just needs an `ArrayBuffer`.
  */
-export const ReaderApp: FC = () => {
+export const ReaderApp: FC = () => (
+  <LocaleProvider>
+    <ReaderAppInner />
+  </LocaleProvider>
+);
+
+const ReaderAppInner: FC = () => {
   const {
     snapshot,
     contentHostRef,

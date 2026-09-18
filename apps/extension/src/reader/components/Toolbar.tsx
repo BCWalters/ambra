@@ -45,6 +45,9 @@ import type { ChromeThemeChoice } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
+import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
+import { LOCALE_NATIVE_NAMES, SUPPORTED_LOCALES } from "../../i18n/Locale.js";
+import type { LocalePreference } from "../../i18n/Locale.js";
 import { GoToDialog } from "./GoToDialog.js";
 
 export interface ToolbarProps {
@@ -87,6 +90,7 @@ const FONT_FAMILY_GROUP_NAME = "fontFamily";
 const PAGE_THEME_GROUP_NAME = "pageTheme";
 const CHROME_THEME_GROUP_NAME = "chromeTheme";
 const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
+const LOCALE_GROUP_NAME = "locale";
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
@@ -135,6 +139,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   const isPaginated = snapshot.viewMode === "paginated";
   const chromePalette = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
+  const t = useTranslation();
+  const { preference: localePreference, setPreference: setLocalePreference } = useLocale();
   const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   // Centers the title/chapter group within the space left over between
@@ -226,7 +232,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
         }}
       >
-        <Tooltip content={isTocOpen ? "Hide contents" : "Show contents"} relationship="label">
+        <Tooltip content={isTocOpen ? t("toolbar.hideContents") : t("toolbar.showContents")} relationship="label">
           <ToggleButton
             appearance="subtle"
             size="small"
@@ -237,7 +243,7 @@ export const Toolbar: FC<ToolbarProps> = ({
         </Tooltip>
 
         <Tooltip
-          content={isAnnotationsOpen ? "Hide bookmarks and highlights" : "Bookmarks and highlights"}
+          content={isAnnotationsOpen ? t("toolbar.hideBookmarksAndHighlights") : t("toolbar.bookmarksAndHighlights")}
           relationship="label"
         >
           <ToggleButton
@@ -384,7 +390,7 @@ export const Toolbar: FC<ToolbarProps> = ({
 
         <Menu>
           <MenuTrigger disableButtonEnhancement>
-            <Tooltip content="Navigate" relationship="label">
+            <Tooltip content={t("toolbar.navigate")} relationship="label">
               <Button appearance="subtle" size="small" icon={<CompassNorthwestRegular />} />
             </Tooltip>
           </MenuTrigger>
@@ -397,14 +403,14 @@ export const Toolbar: FC<ToolbarProps> = ({
                   disabled={snapshot.spineIndex <= 0}
                   onClick={() => onGoToChapter(-1)}
                 >
-                  Previous Chapter
+                  {t("toolbar.previousChapter")}
                 </MenuItem>
                 <MenuItem
                   icon={<ChevronDoubleRightRegular />}
                   disabled={snapshot.spineIndex >= snapshot.spineLength - 1}
                   onClick={() => onGoToChapter(1)}
                 >
-                  Next Chapter
+                  {t("toolbar.nextChapter")}
                 </MenuItem>
               </MenuGroup>
               {isPaginated && !snapshot.isFixedLayout && (
@@ -417,14 +423,14 @@ export const Toolbar: FC<ToolbarProps> = ({
                       disabled={snapshot.pageIndex <= 0}
                       onClick={() => onTurnPage(-1)}
                     >
-                      Previous Page
+                      {t("toolbar.previousPage")}
                     </MenuItem>
                     <MenuItem
                       icon={<ChevronRightRegular />}
                       disabled={snapshot.pageIndex >= snapshot.pageCount - 1}
                       onClick={() => onTurnPage(1)}
                     >
-                      Next Page
+                      {t("toolbar.nextPage")}
                     </MenuItem>
                   </MenuGroup>
                 </>
@@ -435,10 +441,10 @@ export const Toolbar: FC<ToolbarProps> = ({
                   <MenuGroup>
                     <MenuGroupHeader>Go To</MenuGroupHeader>
                     {isPaginated && (
-                      <MenuItem onClick={() => setGoToDialogMode("page")}>Go to Page…</MenuItem>
+                      <MenuItem onClick={() => setGoToDialogMode("page")}>{t("toolbar.goToPage")}</MenuItem>
                     )}
                     <MenuItem onClick={() => setGoToDialogMode("percentage")}>
-                      Go to Percentage…
+                      {t("toolbar.goToPercentage")}
                     </MenuItem>
                   </MenuGroup>
                 </>
@@ -463,7 +469,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             }}
           >
             <MenuTrigger disableButtonEnhancement>
-              <Tooltip content="Text and page layout" relationship="label">
+              <Tooltip content={t("toolbar.textAndPageLayout")} relationship="label">
                 <Button
                   appearance="subtle"
                   size="small"
@@ -582,6 +588,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
             [CHROME_THEME_GROUP_NAME]: [snapshot.chromeTheme],
             [PAGE_TURN_ANIMATION_GROUP_NAME]: [snapshot.pageTurnAnimationStyle],
+            [LOCALE_GROUP_NAME]: [localePreference],
           }}
           onCheckedValueChange={(_event, data) => {
             if (data.name === VIEW_MODE_GROUP_NAME) {
@@ -590,11 +597,13 @@ export const Toolbar: FC<ToolbarProps> = ({
               onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
             } else if (data.name === PAGE_TURN_ANIMATION_GROUP_NAME) {
               onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
+            } else if (data.name === LOCALE_GROUP_NAME) {
+              setLocalePreference(data.checkedItems[0] as LocalePreference);
             }
           }}
         >
           <MenuTrigger disableButtonEnhancement>
-            <Tooltip content="Settings" relationship="label">
+            <Tooltip content={t("toolbar.settings")} relationship="label">
               <Button
                 appearance="subtle"
                 size="small"
@@ -650,12 +659,24 @@ export const Toolbar: FC<ToolbarProps> = ({
                   </MenuItemRadio>
                 ))}
               </MenuGroup>
+              <MenuDivider />
+              <MenuGroup>
+                <MenuGroupHeader>{t("settings.language")}</MenuGroupHeader>
+                <MenuItemRadio name={LOCALE_GROUP_NAME} value="system">
+                  {t("settings.languageSystemDefault")}
+                </MenuItemRadio>
+                {SUPPORTED_LOCALES.map((localeOption) => (
+                  <MenuItemRadio key={localeOption} name={LOCALE_GROUP_NAME} value={localeOption}>
+                    {LOCALE_NATIVE_NAMES[localeOption]}
+                  </MenuItemRadio>
+                ))}
+              </MenuGroup>
             </MenuList>
           </MenuPopover>
         </Menu>
 
         <Tooltip
-          content={isDetailsOpen ? "Hide book details" : "Book details"}
+          content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}
           relationship="label"
         >
           <ToggleButton
@@ -683,7 +704,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             current page(s), whichever the pressed state says is about
             to happen. */}
         <Tooltip
-          content={snapshot.isBookmarked ? "Remove bookmark" : "Bookmark this page"}
+          content={snapshot.isBookmarked ? t("toolbar.removeBookmark") : t("toolbar.bookmarkThisPage")}
           relationship="label"
         >
           <ToggleButton
