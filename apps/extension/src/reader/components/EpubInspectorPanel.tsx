@@ -274,7 +274,11 @@ const FilesTab: FC<{
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
 }> = ({ data, onReadFile, onGetPreviewUrl }) => {
   const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
-  const [wrap, setWrap] = useState(true);
+  // Defaults to off (issue #70) — spine item/markup source reads more
+  // naturally with each line as its own row (indentation stays legible)
+  // rather than wrapped, and a reader can always switch it back on for a
+  // narrower file.
+  const [wrap, setWrap] = useState(false);
   const selectedFile = data.files.find((file) => file.path === selectedPath);
   const selectedClassification = selectedFile
     ? classifyInspectionFile(selectedFile.path, selectedFile.mediaType)
