@@ -516,6 +516,7 @@ const ReaderAppInner: FC = () => {
               }}
               details={bookDetails}
               onOpenInspector={() => setIsInspectorOpen(true)}
+              scrubberVisible={scrubberVisible}
             />
 
             <EpubInspectorPanel

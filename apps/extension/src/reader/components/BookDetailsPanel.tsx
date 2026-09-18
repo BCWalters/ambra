@@ -3,7 +3,7 @@ import type { FC } from "react";
 import { Body1, Button, Caption1, Spinner, Subtitle1 } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
-import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
@@ -24,6 +24,14 @@ export interface BookDetailsPanelProps {
    * tool (file structure + parsed metadata) reachable only from here,
    * so an ordinary reader never stumbles into it. */
   onOpenInspector: () => void;
+  /** Whether the progress scrubber is currently shown (paginated
+   * reflowable content only — see `ProgressScrubber`'s own identical
+   * condition) — this panel needs to stop *above* it rather than
+   * running the full pane height, or the scrubber bar ends up covering
+   * its last few rows. Mirrors the identical fix `TocPanel`/`SearchPanel`/
+   * `AnnotationsPanel` already got for issue #59 — `BookDetailsPanel`
+   * predated that fix and was missed, which is what issue #72 caught. */
+  scrubberVisible: boolean;
 }
 
 /** A single label/value row in the details list — skipped entirely
@@ -62,7 +70,13 @@ const DetailRow: FC<{ label: string; value: string | undefined }> = ({ label, va
  * reader keeps open continuously alongside the page the way the TOC's
  * pin mode supports.
  */
-export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClose, details, onOpenInspector }) => {
+export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
+  open,
+  onRequestClose,
+  details,
+  onOpenInspector,
+  scrubberVisible,
+}) => {
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -113,7 +127,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
           outline: "none",
           top: 44,
           right: 0,
-          bottom: 8,
+          bottom: scrubberVisible ? SCRUBBER_HEIGHT : 8,
           zIndex: 8,
           width: 340,
           flexShrink: 0,
