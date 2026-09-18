@@ -20,7 +20,7 @@ import {
 import {
   BookInformationRegular,
   BookOpenRegular,
-  BookmarkAddRegular,
+  BookmarkFilled,
   BookmarkRegular,
   ChevronDoubleLeftRegular,
   ChevronDoubleRightRegular,
@@ -58,7 +58,7 @@ export interface ToolbarProps {
   onTurnPage: (direction: 1 | -1) => void;
   onGoToChapter: (direction: 1 | -1) => void;
   onSeekToFraction: (fraction: number) => void;
-  onAddBookmark: () => void;
+  onToggleBookmark: () => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetFontScale: (scale: number) => void;
   onSetLineSpacing: (spacing: number) => void;
@@ -119,7 +119,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onTurnPage,
   onGoToChapter,
   onSeekToFraction,
-  onAddBookmark,
+  onToggleBookmark,
   onSetViewMode,
   onSetFontScale,
   onSetLineSpacing,
@@ -672,13 +672,26 @@ export const Toolbar: FC<ToolbarProps> = ({
             (beyond the toolbar's own uniform `gap`) — per explicit
             design direction, the toolbar reads as three loose clusters
             left to right: Navigate, then Text/Settings/Details grouped
-            together, then Bookmark on its own at the end. */}
-        <Tooltip content="Bookmark this page" relationship="label">
-          <Button
+            together, then Bookmark on its own at the end.
+
+            A single toggle rather than a plain "add" action (issue
+            #47): pressed/filled whenever any bookmark already falls on
+            whichever page(s) are visible right now (`snapshot.isBookmarked`,
+            resolved against the *live* page content, not just "was one
+            ever added to this chapter") — clicking it either adds one
+            at the current position or removes every bookmark on the
+            current page(s), whichever the pressed state says is about
+            to happen. */}
+        <Tooltip
+          content={snapshot.isBookmarked ? "Remove bookmark" : "Bookmark this page"}
+          relationship="label"
+        >
+          <ToggleButton
             appearance="subtle"
             size="small"
-            icon={<BookmarkAddRegular />}
-            onClick={onAddBookmark}
+            checked={snapshot.isBookmarked}
+            icon={snapshot.isBookmarked ? <BookmarkFilled /> : <BookmarkRegular />}
+            onClick={onToggleBookmark}
             style={{ marginLeft: 8 }}
           />
         </Tooltip>

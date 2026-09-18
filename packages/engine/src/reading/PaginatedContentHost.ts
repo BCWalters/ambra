@@ -96,6 +96,18 @@ export class PaginatedContentHost {
     return this.pages[this.pageIndex]?.startBreak;
   }
 
+  /** The currently-displayed `Page` (its `[startBreak, endBreak)` range —
+   * see `Page.containsPosition`) paired with the live content document it
+   * describes — for callers that need to test whether some other DOM
+   * position (e.g. a saved bookmark's resolved CFI) falls on the page
+   * actually on screen right now. `undefined` only if nothing has been
+   * paginated/rendered yet. */
+  public currentPageAndDocument(): { page: Page; document: Document } | undefined {
+    const page = this.pages[this.pageIndex];
+    const document = this.element.contentDocument;
+    return page && document ? { page, document } : undefined;
+  }
+
   /** Re-paginates the *currently loaded* content at a new width/height
    * (e.g. a window resize or font-size change), preserving reading
    * position by re-resolving the current page's start position against

@@ -32,6 +32,7 @@ export interface UseReaderControllerResult {
   restoreContentFocus: () => void;
   getDiagnosticsText: () => string | undefined;
   addBookmark: () => Promise<Bookmark | undefined>;
+  toggleBookmark: () => Promise<void>;
   listBookmarks: () => Promise<Bookmark[]>;
   removeBookmark: (id: string) => Promise<void>;
   goToBookmark: (cfi: string) => Promise<void>;
@@ -241,6 +242,10 @@ export function useReaderController(): UseReaderControllerResult {
     return controller?.addBookmark();
   }, [controller]);
 
+  const toggleBookmark = useCallback(async () => {
+    await controller?.toggleBookmark();
+  }, [controller]);
+
   const listBookmarks = useCallback(async () => {
     return (await controller?.listBookmarks()) ?? [];
   }, [controller]);
@@ -332,6 +337,7 @@ export function useReaderController(): UseReaderControllerResult {
     restoreContentFocus,
     getDiagnosticsText,
     addBookmark,
+    toggleBookmark,
     listBookmarks,
     removeBookmark,
     goToBookmark,

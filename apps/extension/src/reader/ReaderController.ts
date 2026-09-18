@@ -23,6 +23,7 @@ import type {
   HighlightStyle,
   NavPoint,
   PackageDocument,
+  Page,
   PageTheme,
   SearchResult,
 } from "@ambra/engine";
@@ -161,6 +162,12 @@ export interface ReaderSnapshot {
    * book-wide percentage indicator stays up throughout regardless — it
    * describes overall progress, not either individual page turning. */
   isAnimatingPageTurn: boolean;
+  /** `true` when at least one saved bookmark's CFI resolves onto
+   * whichever page(s) are on screen right now (see `bookmarksOnCurrentPage`)
+   * — drives the toolbar's single bookmark button's pressed state (see
+   * `toggleBookmark`). Always `false` for scroll mode/fixed-layout
+   * content, which have no discrete "page" for a bookmark to be "on". */
+  isBookmarked: boolean;
   /** The current reader-controlled font-size multiplier (see
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
@@ -436,6 +443,14 @@ export class ReaderController {
    * unconditionally, unlike the font/theme settings this class also
    * applies, which skip the work entirely at their defaults). */
   private highlightsBySpineIndex = new Map<number, Highlight[]>();
+  /** Every bookmark in this book — loaded once in `open()` and kept in
+   * sync in-memory on every add/remove, exactly like `highlightsBySpineIndex`
+   * (just not grouped by spine index, since there's no per-spine-item
+   * application step the way highlights have — this is only ever used
+   * to answer "is the current page bookmarked?", a full scan of a
+   * reader's typically-small bookmark list). See `ReaderSnapshot.
+   * isBookmarked`. */
+  private bookmarksCache: Bookmark[] = [];
   /** See `ReaderSnapshot.selectionToolbar`. */
   private selectionToolbar: SelectionToolbarState | undefined;
   /** The live `Range` backing `selectionToolbar`, captured at the same
@@ -542,6 +557,7 @@ export class ReaderController {
     controller.pageTurnAnimationStyle =
       (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
     controller.reloadHighlightsCache(await library.listHighlightsForBook(bookId));
+    controller.bookmarksCache = await library.listBookmarksForBook(bookId);
     return controller;
   }
 
@@ -598,6 +614,7 @@ export class ReaderController {
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         paneWidth: this.width,
         isAnimatingPageTurn: this.isAnimatingPageTurn,
+        isBookmarked: this.bookmarksOnCurrentPage().length > 0,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         lineSpacing:
           this.host instanceof FixedContentHost ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
@@ -790,7 +807,8 @@ export class ReaderController {
 
   /** Creates a new bookmark at the currently-displayed position (see
    * `Bookmark`'s doc comment — this always creates a fresh entry, never
-   * toggles an existing one), labeled with the current chapter (and, in
+   * toggles an existing one — see `toggleBookmark` for the toolbar's own
+   * add-or-remove behavior), labeled with the current chapter (and, in
    * paginated/spread mode, its page number) so a bookmarks list reads as
    * more than an opaque timestamp. `undefined` if the position can't be
    * resolved to a CFI right now (mirrors `saveProgress`'s own
@@ -804,6 +822,7 @@ export class ReaderController {
     try {
       const locator = this.locatorResolver.generate(this.spineIndex, position.node, position.offset);
       const bookmark = await this.library.addBookmark(this.bookId, locator.cfi, this.bookmarkLabel());
+      this.bookmarksCache.push(bookmark);
       this.announce("Bookmark added");
       this.notify();
       return bookmark;
@@ -832,7 +851,83 @@ export class ReaderController {
   }
 
   public removeBookmark(id: string): Promise<void> {
+    this.bookmarksCache = this.bookmarksCache.filter((bookmark) => bookmark.id !== id);
+    this.notify();
     return this.library.removeBookmark(id);
+  }
+
+  /** The `{ page, document }` pair(s) actually on screen right now — both
+   * columns of a two-page spread (or just the primary one, if the
+   * companion is hidden — see `SpreadPaginatedHost.currentPagesAndDocuments`),
+   * or the single page of ordinary paginated mode. Empty for scroll mode
+   * (no discrete "page" to speak of) and fixed-layout content (no
+   * reflowable text `Page`/CFI machinery applies to at all) — `toggleBookmark`/
+   * `ReaderSnapshot.isBookmarked` are simply inert in both. */
+  private currentPagesAndDocuments(): Array<{ page: Page; document: Document }> {
+    if (this.host instanceof PaginatedContentHost) {
+      const entry = this.host.currentPageAndDocument();
+      return entry ? [entry] : [];
+    }
+    if (this.host instanceof SpreadPaginatedHost) {
+      return this.host.currentPagesAndDocuments();
+    }
+    return [];
+  }
+
+  /** Every saved bookmark whose CFI resolves onto whichever page(s) are
+   * actually on screen right now (see `currentPagesAndDocuments`) — the
+   * shared basis for both `ReaderSnapshot.isBookmarked` (just "is this
+   * list non-empty?") and `toggleBookmark`'s "remove every bookmark on
+   * this page" behavior. A bookmark whose CFI belongs to a different
+   * spine item, or otherwise fails to resolve (corrupted data, or
+   * content that's changed since it was created), is silently treated
+   * as "not on this page" rather than failing the whole scan — the same
+   * "one bad entry shouldn't break everything else" reasoning as
+   * `applyHighlightsToDocument`. */
+  private bookmarksOnCurrentPage(): Bookmark[] {
+    const pagesAndDocuments = this.currentPagesAndDocuments();
+    if (pagesAndDocuments.length === 0 || this.bookmarksCache.length === 0) {
+      return [];
+    }
+    const matches: Bookmark[] = [];
+    for (const bookmark of this.bookmarksCache) {
+      const locator = new Locator(bookmark.cfi);
+      for (const { page, document } of pagesAndDocuments) {
+        try {
+          const resolved = this.locatorResolver.resolveInDocument(locator, this.spineIndex, document);
+          if (page.containsPosition(resolved.node, resolved.characterOffset ?? 0, document)) {
+            matches.push(bookmark);
+            break;
+          }
+        } catch {
+          // Different spine item, or otherwise unresolvable against this
+          // document — not on this page; try the next document (spread
+          // mode) or just move on to the next bookmark.
+        }
+      }
+    }
+    return matches;
+  }
+
+  /** The toolbar's single bookmark button, per explicit product
+   * direction (issue #47): if none of the currently-visible page(s)
+   * already have a bookmark, adds one at the current position (exactly
+   * like `addBookmark`); if one or more already do, removes *all* of
+   * them instead (a reader could in principle have created more than
+   * one very close together) — either way, the button's own pressed
+   * state (`ReaderSnapshot.isBookmarked`) reflects the *result*, not the
+   * state beforehand. */
+  public async toggleBookmark(): Promise<void> {
+    const existing = this.bookmarksOnCurrentPage();
+    if (existing.length === 0) {
+      await this.addBookmark();
+      return;
+    }
+    const removedIds = new Set(existing.map((bookmark) => bookmark.id));
+    this.bookmarksCache = this.bookmarksCache.filter((bookmark) => !removedIds.has(bookmark.id));
+    this.announce(existing.length > 1 ? "Bookmarks removed" : "Bookmark removed");
+    this.notify();
+    await Promise.all(existing.map((bookmark) => this.library.removeBookmark(bookmark.id)));
   }
 
   /** Navigates to a saved bookmark's CFI — see `goToCfi`, which does the

@@ -56,7 +56,7 @@ export const ReaderApp: FC = () => {
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,
-    addBookmark,
+    toggleBookmark,
     listBookmarks,
     removeBookmark,
     goToBookmark,
@@ -142,12 +142,17 @@ export const ReaderApp: FC = () => {
     };
   }, [isAnnotationsOpen, listBookmarks]);
 
-  const handleAddBookmark = (): void => {
-    void addBookmark().then((added) => {
-      if (added) {
-        setBookmarks((current) => [...current, added]);
-      }
-    });
+  const handleToggleBookmark = (): void => {
+    // Re-fetches the full list afterward rather than patching local state
+    // in place — unlike a plain add (always exactly one new entry),
+    // `toggleBookmark` can *remove* an arbitrary number of entries (every
+    // bookmark on the current page), so there's no single "diff" to
+    // apply locally that's simpler than just asking for the current
+    // truth again. Keeps the Bookmarks panel's list correct even if it's
+    // already open when this fires, not just the next time it opens.
+    void toggleBookmark()
+      .then(() => listBookmarks())
+      .then(setBookmarks);
   };
 
   const handleRemoveBookmark = (id: string): void => {
@@ -398,7 +403,7 @@ export const ReaderApp: FC = () => {
               onTurnPage={turnPage}
               onGoToChapter={goToChapter}
               onSeekToFraction={(fraction) => void seekToFraction(fraction)}
-              onAddBookmark={handleAddBookmark}
+              onToggleBookmark={handleToggleBookmark}
               onSetViewMode={setViewMode}
               onSetFontScale={setFontScale}
               onSetLineSpacing={setLineSpacing}

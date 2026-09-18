@@ -1,6 +1,6 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
-import type { DomBreakPoint } from "../layout/Page.js";
+import type { DomBreakPoint, Page } from "../layout/Page.js";
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
 
 /** The narrowest a single spread column is allowed to get before spread
@@ -158,6 +158,27 @@ export class SpreadPaginatedHost {
    * after the left column" (see `syncRight`). */
   public currentPosition(): DomBreakPoint | undefined {
     return this.left.currentPosition();
+  }
+
+  /** Both currently-visible columns' `{ page, document }` pairs (see
+   * `PaginatedContentHost.currentPageAndDocument`) — just the left
+   * column's if the right one is hidden (the chapter's last, unpaired
+   * page — see `syncRight`). Used to test whether some other DOM
+   * position (e.g. a saved bookmark) falls on *either* visible page of
+   * the spread, not just the primary one. */
+  public currentPagesAndDocuments(): Array<{ page: Page; document: Document }> {
+    const result: Array<{ page: Page; document: Document }> = [];
+    const leftEntry = this.left.currentPageAndDocument();
+    if (leftEntry) {
+      result.push(leftEntry);
+    }
+    if (this.right.element.style.visibility !== "hidden") {
+      const rightEntry = this.right.currentPageAndDocument();
+      if (rightEntry) {
+        result.push(rightEntry);
+      }
+    }
+    return result;
   }
 
   /** Re-paginates both columns at a new width/height, splitting the width
