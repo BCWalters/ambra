@@ -12,6 +12,7 @@ import {
   Spinner,
   Tab,
   TabList,
+  Tooltip,
 } from "@fluentui/react-components";
 import {
   BracesRegular,
@@ -22,6 +23,8 @@ import {
   ImageRegular,
   MusicNote2Regular,
   TextFontRegular,
+  TextWrapOffRegular,
+  TextWrapRegular,
   VideoRegular,
 } from "@fluentui/react-icons";
 import type { FluentIcon } from "@fluentui/react-icons";
@@ -127,9 +130,10 @@ const FilePreview: FC<{
   path: string;
   size: number;
   manifestMediaType: string | undefined;
+  wrap: boolean;
   onReadFile: (path: string) => Promise<string>;
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
-}> = ({ path, size, manifestMediaType, onReadFile, onGetPreviewUrl }) => {
+}> = ({ path, size, manifestMediaType, wrap, onReadFile, onGetPreviewUrl }) => {
   const classification = useMemo(() => classifyInspectionFile(path, manifestMediaType), [path, manifestMediaType]);
   const resolvedMediaType = guessMediaType(path, manifestMediaType);
 
@@ -240,8 +244,8 @@ const FilePreview: FC<{
           margin: 0,
           fontFamily: "ui-monospace, Menlo, Consolas, monospace",
           fontSize: 12,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
+          whiteSpace: wrap ? "pre-wrap" : "pre",
+          wordBreak: wrap ? "break-word" : "normal",
         }}
         // Safe: highlight.js escapes the source text itself and only
         // wraps recognized tokens in `<span class="hljs-...">` — it
@@ -255,8 +259,8 @@ const FilePreview: FC<{
         margin: 0,
         fontFamily: "ui-monospace, Menlo, Consolas, monospace",
         fontSize: 12,
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-word",
+        whiteSpace: wrap ? "pre-wrap" : "pre",
+        wordBreak: wrap ? "break-word" : "normal",
       }}
     >
       {plainText}
@@ -270,7 +274,11 @@ const FilesTab: FC<{
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
 }> = ({ data, onReadFile, onGetPreviewUrl }) => {
   const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
+  const [wrap, setWrap] = useState(true);
   const selectedFile = data.files.find((file) => file.path === selectedPath);
+  const selectedClassification = selectedFile
+    ? classifyInspectionFile(selectedFile.path, selectedFile.mediaType)
+    : undefined;
 
   return (
     <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
@@ -317,19 +325,42 @@ const FilesTab: FC<{
           );
         })}
       </div>
-      <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: 12 }}>
-        {!selectedFile ? (
-          <Caption1 style={{ opacity: 0.6 }}>Select a file to view its contents.</Caption1>
-        ) : (
-          <FilePreview
-            key={selectedFile.path}
-            path={selectedFile.path}
-            size={selectedFile.size}
-            manifestMediaType={selectedFile.mediaType}
-            onReadFile={onReadFile}
-            onGetPreviewUrl={onGetPreviewUrl}
-          />
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {selectedClassification?.isText && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              padding: "4px 8px",
+              borderBottom: `1px solid ${CHROME_BORDER}`,
+            }}
+          >
+            <Tooltip content={wrap ? "Turn off line wrapping" : "Turn on line wrapping"} relationship="label">
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={wrap ? <TextWrapRegular /> : <TextWrapOffRegular />}
+                aria-label={wrap ? "Turn off line wrapping" : "Turn on line wrapping"}
+                onClick={() => setWrap((value) => !value)}
+              />
+            </Tooltip>
+          </div>
         )}
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12 }}>
+          {!selectedFile ? (
+            <Caption1 style={{ opacity: 0.6 }}>Select a file to view its contents.</Caption1>
+          ) : (
+            <FilePreview
+              key={selectedFile.path}
+              path={selectedFile.path}
+              size={selectedFile.size}
+              manifestMediaType={selectedFile.mediaType}
+              wrap={wrap}
+              onReadFile={onReadFile}
+              onGetPreviewUrl={onGetPreviewUrl}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -557,7 +588,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   return (
     <Dialog open={open} onOpenChange={(_event, dialogData) => onOpenChange(dialogData.open)}>
       <DialogSurface style={{ maxWidth: 900, width: "90vw", height: "80vh" }}>
-        <DialogBody style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <DialogBody style={{ height: "100%" }}>
           <DialogTitle
             action={
               <Button
