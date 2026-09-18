@@ -1114,6 +1114,28 @@ export class ReaderController {
     return iframe.ownerDocument.activeElement === iframe;
   }
 
+  /** The spread-mode equivalent of `iframeHasFocus`: which of `host`'s
+   * two columns (if either) currently has focus — `0` for the primary
+   * (left) column, `1` for the companion (right) one, `undefined` if
+   * neither does (a mouse/touch-driven turn, which never moves focus
+   * into the content at all). Both columns are checked, not just the
+   * primary one, since a reader can click directly into the right
+   * column and drive keyboard navigation from there (see
+   * `reattachKeyboardNav`'s "every content document" scope) — an
+   * animated spread turn disposes *both* of the old spread's iframes,
+   * so restoring focus correctly needs to know which one (if either)
+   * actually held it. */
+  private spreadFocusedColumn(host: SpreadPaginatedHost): 0 | 1 | undefined {
+    const docs = host.contentDocuments();
+    for (let index = 0; index < docs.length; index++) {
+      const iframe = docs[index]?.defaultView?.frameElement;
+      if (iframe instanceof HTMLElement && iframe.ownerDocument.activeElement === iframe) {
+        return index as 0 | 1;
+      }
+    }
+    return undefined;
+  }
+
   /** Restores keyboard focus into the *new* content host's document
    * after an animated page turn swaps it in — but only if
    * `hadKeyboardFocus` (captured via `iframeHasFocus` *before* the swap)
@@ -1130,6 +1152,27 @@ export class ReaderController {
       return;
     }
     const doc = this.primaryContentDocument();
+    if (doc) {
+      this.accessibility.focusContent(doc);
+    }
+  }
+
+  /** The spread-mode equivalent of `restoreFocusAfterHostSwap`: restores
+   * focus into whichever column (`focusedColumn`, captured via
+   * `spreadFocusedColumn` *before* the old spread was disposed) actually
+   * had it — into the *same* column of the new spread, not always the
+   * primary one, so a reader driving keyboard navigation from the
+   * companion column doesn't get silently bounced back to the primary
+   * one on every turn. A no-op if `focusedColumn` is `undefined` (an
+   * ordinary mouse/touch-driven turn). */
+  private restoreSpreadFocusAfterHostSwap(
+    newHost: SpreadPaginatedHost,
+    focusedColumn: 0 | 1 | undefined,
+  ): void {
+    if (focusedColumn === undefined) {
+      return;
+    }
+    const doc = newHost.contentDocuments()[focusedColumn];
     if (doc) {
       this.accessibility.focusContent(doc);
     }
@@ -2028,6 +2071,42 @@ export class ReaderController {
     let moved: boolean;
     let announcement: string;
     if (this.host instanceof SpreadPaginatedHost) {
+      // Captured *before* the old spread is disposed below (inside
+      // `animateSpreadTurn`) — mirrors the single-page path's own
+      // `iframeHasFocus`/`restoreFocusAfterHostSwap` reasoning, just
+      // across whichever of the two columns actually had focus (see
+      // `spreadFocusedColumn`'s doc comment: a reader can drive keyboard
+      // navigation from either column, not just the primary one).
+      const focusedColumn = this.spreadFocusedColumn(this.host);
+      const animatedSpread = await this.animateSpreadTurn(this.host, direction);
+      if (animatedSpread) {
+        if (token !== this.turnToken) {
+          animatedSpread.dispose();
+          return;
+        }
+        this.contentInteractionCleanup?.();
+        this.contentInteractionCleanup = undefined;
+        this.dragCleanup?.();
+        this.dragCleanup = undefined;
+        this.host = animatedSpread;
+        this.clearStaleHostWrapper();
+        this.updateContentTitle();
+        this.reattachKeyboardNav();
+        this.setUpContentInteraction();
+        this.setUpDragPageTurn();
+        this.setUpHighlightSelection();
+        this.applyHighlightsToCurrentHost();
+        this.restoreSpreadFocusAfterHostSwap(animatedSpread, focusedColumn);
+        const second = animatedSpread.secondPageIndex;
+        this.announce(
+          second !== undefined
+            ? `Pages ${animatedSpread.pageIndex + 1}–${second + 1} of ${animatedSpread.pageCount}`
+            : `Page ${animatedSpread.pageIndex + 1} of ${animatedSpread.pageCount}`,
+        );
+        this.notify();
+        await this.saveProgress();
+        return;
+      }
       moved = direction === 1 ? this.host.nextSpread() : this.host.previousSpread();
       const second = this.host.secondPageIndex;
       announcement =
@@ -2056,6 +2135,7 @@ export class ReaderController {
         this.dragCleanup?.();
         this.dragCleanup = undefined;
         this.host = animatedHost;
+        this.clearStaleHostWrapper();
         this.updateContentTitle();
         this.reattachKeyboardNav();
         this.setUpContentInteraction();
@@ -2106,7 +2186,9 @@ export class ReaderController {
    * Skips the animation (an instant page swap) when
    * `prefers-reduced-motion` is set, consistent with the rest of the
    * reader respecting it. See `beginDragPageTurn` for the interactive,
-   * pointer-driven version of this same underlying mechanism.
+   * pointer-driven version of this same underlying mechanism, and
+   * `animateSpreadTurn` for the two-page-spread equivalent of this
+   * method.
    */
   private async animatePageTurn(
     oldHost: PaginatedContentHost,
@@ -2119,45 +2201,9 @@ export class ReaderController {
     if (!newHost) {
       return undefined;
     }
-    const containerEl = this.containerEl;
     const newEl = newHost.element;
 
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    if (!reduceMotion) {
-      const oldEl = oldHost.element;
-      this.stagePageTurn(oldHost, direction);
-
-      await new Promise<void>((resolve) => {
-        let settled = false;
-        const finish = (): void => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          oldEl.removeEventListener("transitionend", onTransitionEnd);
-          resolve();
-        };
-        const onTransitionEnd = (event: TransitionEvent): void => {
-          if (event.target === oldEl && event.propertyName === "transform") {
-            finish();
-          }
-        };
-        oldEl.addEventListener("transitionend", onTransitionEnd);
-        oldEl.style.transition =
-          "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
-        // Rotating slightly past 90° (rather than stopping exactly at
-        // it) reads as a page continuing its motion out of view rather
-        // than freezing edge-on to the viewer.
-        requestAnimationFrame(() => {
-          this.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1);
-        });
-        // A safety net in case `transitionend` never fires (e.g. the
-        // element was removed mid-transition by a rapid subsequent
-        // action) — never leave the turn hung indefinitely.
-        setTimeout(finish, 600);
-      });
-      containerEl.style.perspective = "";
-    }
+    await this.playPageTurnAnimation(oldHost.element, oldHost.element, direction);
 
     // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
     // `newEl` as the sole remaining child — reset its temporary
@@ -2170,6 +2216,120 @@ export class ReaderController {
     newEl.style.transform = "";
     newEl.style.zIndex = "";
     return newHost;
+  }
+
+  /** The two-page-spread equivalent of `animatePageTurn` — see that
+   * method's doc comment for the shared mechanics (incoming content
+   * built in a brand-new host underneath the outgoing one, animation
+   * skipped for `prefers-reduced-motion`). What actually *moves* differs
+   * by `this.pageTurnAnimationStyle`, per explicit product direction:
+   * "slide" treats the whole spread as one rigid sheet (both pages
+   * translate together, exactly like `animatePageTurn`'s single page,
+   * just wider); "rotate" instead flips only the *one* column nearest
+   * the spine — the right column turning forward, the left column
+   * turning back — like an actual book page turning over, while its
+   * companion column stays completely still. `elementToTurn` is what
+   * decides which element actually gets the transform in each case; see
+   * its own doc comment. */
+  private async animateSpreadTurn(
+    oldHost: SpreadPaginatedHost,
+    direction: 1 | -1,
+  ): Promise<SpreadPaginatedHost | undefined> {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const newHost = await this.prepareIncomingSpread(oldHost, direction);
+    if (!newHost) {
+      return undefined;
+    }
+    const newEl = newHost.element;
+
+    await this.playPageTurnAnimation(oldHost.element, this.elementToTurn(oldHost, direction), direction);
+
+    oldHost.dispose();
+    newEl.style.position = "";
+    newEl.style.top = "";
+    newEl.style.left = "";
+    newEl.style.transform = "";
+    newEl.style.zIndex = "";
+    return newHost;
+  }
+
+  /** Which element a page turn actually applies its `transform` to —
+   * always `oldHost.element` itself, *except* for a spread's "rotate"
+   * style, which turns only the single column nearest the spine (see
+   * `animateSpreadTurn`'s doc comment) rather than the whole two-page
+   * unit. Resolved via each column's own content document (same
+   * `defaultView.frameElement` technique `spreadFocusedColumn` uses) —
+   * `SpreadPaginatedHost` doesn't otherwise expose its two column
+   * elements individually. Falls back to the whole spread if that
+   * somehow can't be resolved (never observed in practice, just
+   * defensive) — degrading to the same "whole unit" motion "slide"
+   * already uses is a reasonable fallback, not a broken one. */
+  private elementToTurn(oldHost: PaginatedContentHost | SpreadPaginatedHost, direction: 1 | -1): HTMLElement {
+    if (!(oldHost instanceof SpreadPaginatedHost) || this.pageTurnAnimationStyle === "slide") {
+      return oldHost.element;
+    }
+    const columnIndex = direction === 1 ? 1 : 0;
+    const iframe = oldHost.contentDocuments()[columnIndex]?.defaultView?.frameElement;
+    return iframe instanceof HTMLElement ? iframe : oldHost.element;
+  }
+
+  /** The shared "play the turn, wait for it to finish" mechanics behind
+   * both `animatePageTurn` and `animateSpreadTurn`: elevates `hostEl`
+   * (the whole outgoing unit — one page, or a whole spread) above the
+   * incoming content already waiting underneath it (see
+   * `stagePageTurn`), animates `turnEl`'s `transform` (usually the same
+   * element as `hostEl`, except a spread's "rotate" style — see
+   * `elementToTurn`), and resolves once that transition actually
+   * finishes (or a safety-net timeout, or immediately at all if
+   * `prefers-reduced-motion` is set). Leaves `this.containerEl`'s
+   * `perspective` reset back to empty afterward either way. Does *not*
+   * dispose anything or swap in the new host — every caller does that
+   * itself immediately after, since exactly what "the new host" means
+   * differs between single-page and spread turns. */
+  private async playPageTurnAnimation(
+    hostEl: HTMLElement,
+    turnEl: HTMLElement,
+    direction: 1 | -1,
+  ): Promise<void> {
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (reduceMotion) {
+      return;
+    }
+    this.stagePageTurn(hostEl, turnEl, direction);
+
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        turnEl.removeEventListener("transitionend", onTransitionEnd);
+        resolve();
+      };
+      const onTransitionEnd = (event: TransitionEvent): void => {
+        if (event.target === turnEl && event.propertyName === "transform") {
+          finish();
+        }
+      };
+      turnEl.addEventListener("transitionend", onTransitionEnd);
+      turnEl.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+      // Rotating slightly past 90° (rather than stopping exactly at
+      // it) reads as a page continuing its motion out of view rather
+      // than freezing edge-on to the viewer.
+      requestAnimationFrame(() => {
+        this.setPageTurnTransform(turnEl, direction === 1 ? -100 : 100, 1);
+      });
+      // A safety net in case `transitionend` never fires (e.g. the
+      // element was removed mid-transition by a rapid subsequent
+      // action) — never leave the turn hung indefinitely.
+      setTimeout(finish, 600);
+    });
+    if (this.containerEl) {
+      this.containerEl.style.perspective = "";
+    }
   }
 
   /** Builds and returns the incoming page for a turn away from
@@ -2236,30 +2396,110 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Puts `oldHost.element` into "ready to turn" state without yet
-   * touching its `transform` — shared setup between the click-triggered
-   * (`animatePageTurn`) and drag-driven (`beginDragPageTurn`) turn
-   * mechanics, for whichever style `this.pageTurnAnimationStyle` is
-   * currently set to.
+  /** The two-page-spread equivalent of `prepareIncomingPage` — builds a
+   * whole new `SpreadPaginatedHost` for the *target spread* (both
+   * columns), positioned to sit exactly beneath `oldHost.element`,
+   * exactly the same way. `targetIndex` is the new primary (left)
+   * column's page index — mirrors `SpreadPaginatedHost.nextSpread`/
+   * `previousSpread`'s own two-pages-at-a-time clamping, since those are
+   * what this replaces for an animated turn. Returns `undefined` only
+   * when `oldHost` is already at that edge of the chapter (there's
+   * nothing to turn *to*) — unlike the single-page version, a spread one
+   * page short of the end still has a valid (if lopsided) next spread to
+   * turn to, so this is checked directly rather than by an out-of-range
+   * page index. */
+  private async prepareIncomingSpread(
+    oldHost: SpreadPaginatedHost,
+    direction: 1 | -1,
+  ): Promise<SpreadPaginatedHost | undefined> {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 1 : oldHost.pageIndex <= 0) {
+      return undefined;
+    }
+    const targetIndex =
+      direction === 1
+        ? Math.min(oldHost.pageIndex + 2, oldHost.pageCount - 1)
+        : Math.max(oldHost.pageIndex - 2, 0);
+
+    const containerEl = this.containerEl;
+    const newHost = new SpreadPaginatedHost(this.width, this.height);
+    const newEl = newHost.element;
+    newEl.style.position = "absolute";
+    newEl.style.top = "0";
+    newEl.style.left = "50%";
+    newEl.style.transform = "translateX(-50%)";
+    newEl.style.zIndex = "1";
+    containerEl.appendChild(newEl);
+
+    await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
+    const newDocs = newHost.contentDocuments();
+    for (const newDoc of newDocs) {
+      ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
+    }
+    if (
+      this.fontScale !== 1 ||
+      this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
+      this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
+      this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
+      this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
+    ) {
+      for (const newDoc of newDocs) {
+        ReadingTheme.applyFontScale(newDoc, this.fontScale);
+        ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
+        ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
+        ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
+        ReadingTheme.applyContentWidth(newDoc, this.contentWidthEm);
+      }
+      newHost.relayout(this.width, this.height);
+    }
+    newHost.goToPageIndex(targetIndex);
+    newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`);
+    return newHost;
+  }
+
+  /** Puts `hostEl` (the whole outgoing unit) into "ready to turn" state
+   * — elevated above the incoming content already waiting underneath it
+   * — without yet touching anyone's `transform`. Shared setup between
+   * the click-triggered (`animatePageTurn`/`animateSpreadTurn`) and
+   * drag-driven (`beginDragPageTurn`, single-page only — see
+   * `setUpDragPageTurn`'s doc comment on why a spread has no drag
+   * gesture) turn mechanics, for whichever style
+   * `this.pageTurnAnimationStyle` is currently set to.
    *
-   * "rotate" needs perspective on the container, the correct hinge edge
-   * for `direction`, and a hidden backface; "slide" needs none of that —
-   * it's a flat 2D translate of a page that's already sitting in the
-   * exact same spot the incoming page occupies underneath it (see
-   * `prepareIncomingPage`), so simply sliding it aside reveals the next
-   * page with no 3D setup at all. */
-  private stagePageTurn(oldHost: PaginatedContentHost, direction: 1 | -1): void {
+   * `turnEl` is the element that will actually receive the animated
+   * `transform` — the same as `hostEl` for a single page, or for a
+   * spread's "slide" style (the *whole* two-page unit slides together,
+   * per explicit product direction: it should read as one sheet moving,
+   * not each page independently); but for a spread's "rotate" style,
+   * `turnEl` is just the one column nearest the spine (see
+   * `elementToTurn`), while `hostEl` is still the whole spread — needed
+   * so `hostEl`'s *companion* column (which never animates at all) stays
+   * elevated above the incoming spread underneath it too, not just the
+   * column that's actually turning.
+   *
+   * "rotate" needs perspective on the container (and `transform-style:
+   * preserve-3d` on `hostEl`, so that perspective still reaches `turnEl`
+   * when it's a grandchild — a spread's column iframes sit one level
+   * inside the spread's own wrapper element), the correct hinge edge for
+   * `direction`, and a hidden backface; "slide" needs none of that —
+   * it's a flat 2D translate of something that's already sitting in the
+   * exact same spot the incoming content occupies underneath it (see
+   * `prepareIncomingPage`/`prepareIncomingSpread`), so simply sliding it
+   * aside reveals what's next with no 3D setup at all. */
+  private stagePageTurn(hostEl: HTMLElement, turnEl: HTMLElement, direction: 1 | -1): void {
     if (!this.containerEl) {
       return;
     }
-    const oldEl = oldHost.element;
-    oldEl.style.position = "relative";
-    oldEl.style.zIndex = "2";
+    hostEl.style.position = "relative";
+    hostEl.style.zIndex = "2";
     if (this.pageTurnAnimationStyle === "slide") {
       return;
     }
     this.containerEl.style.perspective = "2200px";
-    oldEl.style.backfaceVisibility = "hidden";
+    hostEl.style.transformStyle = "preserve-3d";
+    turnEl.style.backfaceVisibility = "hidden";
     // The hinge is the spine edge the page turns away from: the left
     // edge turning forward (the right/free edge lifts up and toward the
     // viewer, like turning the right-hand page of a physical book), the
@@ -2267,8 +2507,11 @@ export class ReaderController {
     // viewer instead). Confirmed empirically against an isolated CSS 3D
     // transform test — `rotateY`'s sign only reads as "toward the
     // viewer" when paired with the hinge on the *opposite* side from the
-    // edge that's lifting.
-    oldEl.style.transformOrigin = `${direction === 1 ? "left" : "right"} center`;
+    // edge that's lifting. Still correct for a spread's single-column
+    // "rotate" turn: the right column's own left edge, and the left
+    // column's own right edge, both *are* the spine, exactly where a
+    // real page's hinge sits.
+    turnEl.style.transformOrigin = `${direction === 1 ? "left" : "right"} center`;
   }
 
   /** Scales a 0–1 drag fraction into `this.pageTurnAnimationStyle`'s own
@@ -2282,23 +2525,27 @@ export class ReaderController {
     return direction * -scale * fraction;
   }
 
-  /** Sets `oldEl`'s in-progress transform directly (no transition) for
+  /** Sets `el`'s in-progress transform directly (no transition) for
    * whichever style is active — `amount` is degrees (rotate) or percent
    * (slide); `fraction` (0 to 1) scales a deepening drop shadow
    * alongside it, so a partial drag reads as the page physically
-   * lifting/sliding, not just moving in place. */
-  private setPageTurnTransform(oldEl: HTMLIFrameElement, amount: number, fraction: number): void {
+   * lifting/sliding, not just moving in place. `el` is whatever
+   * `stagePageTurn`'s own `turnEl` was — an iframe for a single page, or
+   * (for a spread's "rotate" style) a single column's iframe rather than
+   * the whole spread wrapper; the plain `HTMLElement` type here doesn't
+   * care which. */
+  private setPageTurnTransform(el: HTMLElement, amount: number, fraction: number): void {
     if (this.pageTurnAnimationStyle === "slide") {
-      oldEl.style.transform = `translateX(${amount}%)`;
+      el.style.transform = `translateX(${amount}%)`;
       // The shadow falls on the trailing edge — the side most recently
       // uncovered — which is the opposite side from the direction of
       // travel (negative `amount` = moving left = shadow on the right).
       const edge = amount < 0 ? "" : "-";
-      oldEl.style.boxShadow = `${edge}16px 0 32px rgba(0, 0, 0, ${(0.3 * fraction).toFixed(3)})`;
+      el.style.boxShadow = `${edge}16px 0 32px rgba(0, 0, 0, ${(0.3 * fraction).toFixed(3)})`;
       return;
     }
-    oldEl.style.transform = `rotateY(${amount}deg)`;
-    oldEl.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
+    el.style.transform = `rotateY(${amount}deg)`;
+    el.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
   }
 
   /** Fraction of the reader pane's width a drag must cross before
@@ -2490,7 +2737,7 @@ export class ReaderController {
             return;
           }
           if (prepared) {
-            this.stagePageTurn(oldHost, lockedDirection);
+            this.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);
             this.setPageTurnTransform(
               oldHost.element,
               this.pageTurnPartialAmount(lockedDirection, latestFraction),
@@ -2687,6 +2934,7 @@ export class ReaderController {
       this.dragCleanup?.();
       this.dragCleanup = undefined;
       this.host = newHost;
+      this.clearStaleHostWrapper();
       this.updateContentTitle();
       this.reattachKeyboardNav();
       this.setUpContentInteraction();
@@ -2914,6 +3162,26 @@ export class ReaderController {
     stagingEl.appendChild(el);
     containerEl.appendChild(stagingEl);
     return stagingEl;
+  }
+
+  /** An animated page/spread turn (`animatePageTurn`/`animateSpreadTurn`)
+   * swaps in a brand-new host attached *directly* to `containerEl` (see
+   * `prepareIncomingPage`/`prepareIncomingSpread`) rather than inside
+   * whatever wrapper `openSpineItem`'s staged-hidden-host swap (see
+   * `stageHiddenHostElement`) mounted the *previous* host in — so once a
+   * turn commits, `this.hostWrapperEl` is stale: it still refers to that
+   * now-empty wrapper (the old host it contained was just disposed by
+   * the turn), not anything actually holding the new host. Harmless to
+   * leave sitting in the DOM indefinitely — it's invisible, and (being
+   * earlier in DOM order with no explicit stacking of its own) paints
+   * behind the real content, so it never intercepts a click meant for
+   * anything real — but confusing and wrong to leave `this.hostWrapperEl`
+   * pointing at it. Call this right after swapping in an animated turn's
+   * new host so the field accurately reflects "not currently wrapped"
+   * until the next `openSpineItem` call wraps a fresh host again. */
+  private clearStaleHostWrapper(): void {
+    this.hostWrapperEl?.remove();
+    this.hostWrapperEl = undefined;
   }
 
   private async openSpineItem(
