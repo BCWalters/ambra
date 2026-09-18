@@ -245,16 +245,6 @@ export const Toolbar: FC<ToolbarProps> = ({
           />
         </Tooltip>
 
-        <Tooltip content={isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search")} relationship="label">
-          <ToggleButton
-            appearance="subtle"
-            size="small"
-            checked={isSearchOpen}
-            icon={<SearchRegular />}
-            onClick={onToggleSearch}
-          />
-        </Tooltip>
-
         <Tooltip
           content={isAnnotationsOpen ? t("toolbar.hideBookmarksAndHighlights") : t("toolbar.bookmarksAndHighlights")}
           relationship="label"
@@ -704,6 +694,16 @@ export const Toolbar: FC<ToolbarProps> = ({
           </MenuPopover>
         </Menu>
 
+        <Tooltip content={isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search")} relationship="label">
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isSearchOpen}
+            icon={<SearchRegular />}
+            onClick={onToggleSearch}
+          />
+        </Tooltip>
+
         <Tooltip
           content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}
           relationship="label"
@@ -718,11 +718,14 @@ export const Toolbar: FC<ToolbarProps> = ({
         </Tooltip>
 
         {/* Bookmark stands alone at the far right, set apart from the
-            Text/Settings/Details group with some extra breathing room
-            (beyond the toolbar's own uniform `gap`) — per explicit
+            Text/Settings/Search/Details group with some extra breathing
+            room (beyond the toolbar's own uniform `gap`) — per explicit
             design direction, the toolbar reads as three loose clusters
-            left to right: Navigate, then Text/Settings/Details grouped
-            together, then Bookmark on its own at the end.
+            left to right: Navigate, then Text/Settings/Search/Details
+            grouped together (issue #68: Search moved here from beside
+            Contents/Bookmarks — it now docks alongside Book Details on
+            the same, opposite edge of the reader pane, see `SearchPanel`'s
+            doc comment), then Bookmark on its own at the end.
 
             A single toggle rather than a plain "add" action (issue
             #47): pressed/filled whenever any bookmark already falls on

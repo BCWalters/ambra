@@ -82,21 +82,42 @@ const ReaderAppInner: FC = () => {
     goToSearchResult,
     dismissError,
   } = useReaderController();
-  // Exactly one of these three "left panels" (Contents/Search/Bookmarks
-  // & Highlights) can be shown at a time — see `activePanel`'s doc
-  // comment (issue #65). Book Details is a separate, independent panel
-  // on the opposite side of the reader pane, not part of this family.
-  type LeftPanel = "toc" | "search" | "annotations";
+  // Exactly one of these two "left panels" (Contents/Bookmarks & Highlights)
+  // can be shown at a time — see `activePanel`'s doc comment (issue #65).
+  // Search and Book Details are their own separate, mutually-exclusive
+  // pair on the *opposite* side of the reader pane (issue #68: search
+  // moved from the left, alongside TOC, over to the right, alongside Book
+  // Details — most readers expect a search/results affordance on the
+  // same side as other "about this book" tools, not mixed in with pure
+  // navigation panels).
+  type LeftPanel = "toc" | "annotations";
   const [activePanel, setActivePanel] = useState<LeftPanel | undefined>(undefined);
   const [isActivePanelPinned, setIsActivePanelPinned] = useState(false);
   const isTocOpen = activePanel === "toc";
-  const isSearchOpen = activePanel === "search";
   const isAnnotationsOpen = activePanel === "annotations";
   const isTocPinned = isTocOpen && isActivePanelPinned;
-  const isSearchPinned = isSearchOpen && isActivePanelPinned;
   const isAnnotationsPinned = isAnnotationsOpen && isActivePanelPinned;
 
-  /** Toggles one of the three left panels open/closed, per the "wonky"
+  // The right-side pair: Search and Book Details. Only Search supports a
+  // pinned/docked mode (see `SearchPanel`'s doc comment) — Book Details is
+  // deliberately glance-and-close-only (see `BookDetailsPanel`'s doc
+  // comment), so it gets no pin state of its own. `isSearchPinned` is
+  // derived from *both* `isSearchOpen` and the raw pinned-toggle state
+  // (mirroring `isTocPinned`/`isAnnotationsPinned` above) rather than
+  // being the raw state directly — otherwise switching to Book Details
+  // while Search happened to be pinned would leave Search's docked panel
+  // rendered indefinitely (`SearchPanel` treats `pinned` as "stay shown
+  // regardless of `open`"), a real bug caught via direct Chromium
+  // testing: opening Book Details didn't actually replace a pinned
+  // Search panel, it just showed both at once.
+  type RightPanel = "search" | "details";
+  const [rightPanel, setRightPanel] = useState<RightPanel | undefined>(undefined);
+  const [isSearchPinnedToggle, setIsSearchPinnedToggle] = useState(false);
+  const isSearchOpen = rightPanel === "search";
+  const isDetailsOpen = rightPanel === "details";
+  const isSearchPinned = isSearchOpen && isSearchPinnedToggle;
+
+  /** Toggles one of the two left panels open/closed, per the "wonky"
    * behavior explicitly called out in issue #65: closes whichever other
    * left panel was showing (if any) rather than letting more than one
    * be open/docked at once — including a *pinned* one, which simply
@@ -107,7 +128,12 @@ const ReaderAppInner: FC = () => {
   const toggleLeftPanel = (panel: LeftPanel): void => {
     setActivePanel((current) => (current === panel ? undefined : panel));
   };
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  /** Same idea as `toggleLeftPanel`, for the right-side Search/Book
+   * Details pair (issue #68). */
+  const toggleRightPanel = (panel: RightPanel): void => {
+    setRightPanel((current) => (current === panel ? undefined : panel));
+  };
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
@@ -117,11 +143,11 @@ const ReaderAppInner: FC = () => {
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
   // (and potentially out-of-sync) visibility state. Kept visible
-  // whenever any flyout panel (a left panel, or Book Details) is open —
-  // both are "pinned" reasons to keep the chrome from auto-hiding out
-  // from under an open panel.
+  // whenever any flyout panel (either side) is open — all are "pinned"
+  // reasons to keep the chrome from auto-hiding out from under an open
+  // panel.
   const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
-    activePanel !== undefined || isDetailsOpen,
+    activePanel !== undefined || rightPanel !== undefined,
     snapshot?.contentPointerActivityId,
   );
 
@@ -238,7 +264,7 @@ const ReaderAppInner: FC = () => {
   const handleSelectSearchResult = (cfi: string): void => {
     void goToSearchResult(cfi);
     if (!isSearchPinned) {
-      setActivePanel(undefined);
+      setRightPanel(undefined);
     }
   };
 
@@ -342,22 +368,6 @@ const ReaderAppInner: FC = () => {
             scrubberVisible={scrubberVisible}
           />
 
-          <SearchPanel
-            query={snapshot.searchQuery}
-            results={snapshot.searchResults}
-            isSearching={snapshot.isSearching}
-            onSearch={search}
-            onSelect={handleSelectSearchResult}
-            open={isSearchOpen}
-            pinned={isSearchPinned}
-            onTogglePin={() => setIsActivePanelPinned((pinned) => !pinned)}
-            onRequestClose={() => {
-              setActivePanel(undefined);
-              restoreContentFocus();
-            }}
-            scrubberVisible={scrubberVisible}
-          />
-
           <AnnotationsPanel
             bookmarks={bookmarks}
             onSelectBookmark={handleSelectBookmark}
@@ -457,7 +467,7 @@ const ReaderAppInner: FC = () => {
                 if (isSearchOpen) {
                   restoreContentFocus();
                 }
-                toggleLeftPanel("search");
+                toggleRightPanel("search");
               }}
               isAnnotationsOpen={isAnnotationsOpen}
               onToggleAnnotations={() => {
@@ -471,7 +481,7 @@ const ReaderAppInner: FC = () => {
                 if (isDetailsOpen) {
                   restoreContentFocus();
                 }
-                setIsDetailsOpen((open) => !open);
+                toggleRightPanel("details");
               }}
               onTurnPage={turnPage}
               onGoToChapter={goToChapter}
@@ -493,7 +503,7 @@ const ReaderAppInner: FC = () => {
             <BookDetailsPanel
               open={isDetailsOpen}
               onRequestClose={() => {
-                setIsDetailsOpen(false);
+                setRightPanel(undefined);
                 restoreContentFocus();
               }}
               details={bookDetails}
@@ -537,6 +547,22 @@ const ReaderAppInner: FC = () => {
               />
             )}
           </div>
+
+          <SearchPanel
+            query={snapshot.searchQuery}
+            results={snapshot.searchResults}
+            isSearching={snapshot.isSearching}
+            onSearch={search}
+            onSelect={handleSelectSearchResult}
+            open={isSearchOpen}
+            pinned={isSearchPinned}
+            onTogglePin={() => setIsSearchPinnedToggle((pinned) => !pinned)}
+            onRequestClose={() => {
+              setRightPanel(undefined);
+              restoreContentFocus();
+            }}
+            scrubberVisible={scrubberVisible}
+          />
         </div>
 
         <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />

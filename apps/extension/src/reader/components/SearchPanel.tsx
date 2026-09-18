@@ -53,9 +53,14 @@ export interface SearchPanelProps {
  * feature behind an extra click and made "browsing the book's
  * structure" and "searching its text" compete for the same limited
  * panel space. Structurally a near-twin of `TocPanel`/`AnnotationsPanel`
- * (flyout-by-default, pin-to-dock, Escape/outside-click dismiss) so all
- * three read as one consistent family of panels, just with search's own
- * single-purpose content instead of a tab strip.
+ * (flyout-by-default, pin-to-dock, Escape/outside-click dismiss), just
+ * with search's own single-purpose content instead of a tab strip —
+ * though it now docks on the *opposite* edge of the reader pane from
+ * those two (issue #68: most readers expect search alongside other
+ * "about this book" tools like Book Details, not mixed in with pure
+ * navigation panels like Contents/Bookmarks), mutually exclusive with
+ * `BookDetailsPanel` rather than with `TocPanel`/`AnnotationsPanel` now
+ * (see `ReaderApp`'s `rightPanel` state).
  *
  * No pre-built search index: results for earlier chapters appear
  * immediately while later ones are still being searched (see
@@ -136,7 +141,10 @@ export const SearchPanel: FC<SearchPanelProps> = ({
           // otherwise put its own header directly underneath the
           // toolbar's identical top:0 row.
           top: pinned ? 0 : 44,
-          left: 0,
+          // Docks/flies out from the *right* edge now (issue #68),
+          // mirroring `BookDetailsPanel` rather than `TocPanel`/
+          // `AnnotationsPanel` on the left.
+          right: 0,
           bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
           zIndex: 8,
           width: 300,
@@ -145,10 +153,10 @@ export const SearchPanel: FC<SearchPanelProps> = ({
           flexDirection: "column",
           background: chromeTheme.backgroundSolid,
           backdropFilter: pinned ? undefined : "blur(16px)",
-          borderRight: `1px solid ${CHROME_BORDER}`,
-          borderRadius: pinned ? 0 : "0 12px 12px 0",
+          borderLeft: `1px solid ${CHROME_BORDER}`,
+          borderRadius: pinned ? 0 : "12px 0 0 12px",
           boxShadow: pinned ? "none" : CHROME_SHADOW,
-          transform: pinned ? "none" : `translateX(${open ? "0" : "-100%"})`,
+          transform: pinned ? "none" : `translateX(${open ? "0" : "100%"})`,
           opacity: pinned || open ? 1 : 0,
           pointerEvents: pinned || open ? "auto" : "none",
           visibility: pinned || open ? "visible" : "hidden",
