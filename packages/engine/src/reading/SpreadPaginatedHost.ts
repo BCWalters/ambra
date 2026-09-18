@@ -242,9 +242,22 @@ export class SpreadPaginatedHost {
     }
   }
 
+  /** Disposes both columns *and* removes this host's own wrapper element
+   * (`this.containerEl`, holding the now-empty divider) from the DOM —
+   * a real, previously-latent bug: disposing only `left`/`right` left an
+   * orphaned wrapper/divider behind, invisible as long as every caller
+   * happened to immediately overwrite it via `containerEl.replaceChildren(...)`
+   * (which nukes *all* existing children as a side effect, masking the
+   * leak) — see `ReaderController.openSpineItem`'s staged-hidden-host
+   * swap, which disposes the previous host and moves the new one's
+   * element in individually rather than replacing every child
+   * unconditionally, and so surfaced this the moment it shipped: a
+   * leftover 40px-wide (`GUTTER_WIDTH`) sliver accumulating in the
+   * content pane on every single spread-mode chapter navigation. */
   public dispose(): void {
     this.left.dispose();
     this.right.dispose();
+    this.containerEl.remove();
   }
 
   /** `true` if `totalWidth` is wide enough to show two columns of at

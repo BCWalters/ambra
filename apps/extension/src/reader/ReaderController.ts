@@ -284,6 +284,14 @@ export interface ImageViewerState {
 export class ReaderController {
   private host:
     PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | undefined;
+  /** The wrapper element `stageHiddenHostElement` created around
+   * `this.host`'s own element — kept around purely so it can be
+   * `.remove()`-d once `this.host` is replaced (see `openSpineItem`).
+   * Never anything else touches its children after the initial staging:
+   * critically, `this.host.element` itself is *never* moved to a
+   * different parent once loaded — see `stageHiddenHostElement`'s doc
+   * comment for the real, confirmed hazard that guards against. */
+  private hostWrapperEl: HTMLDivElement | undefined;
   /** Defaults to "paginated", but `open` overwrites this from the saved
    * `view-mode-preference` (if any) before the controller is ever used. */
   private viewMode: ViewMode = "paginated";
@@ -2820,15 +2828,31 @@ export class ReaderController {
   }
 
   /** Creates a hidden, out-of-flow staging wrapper inside `containerEl`
-   * and attaches `el` to it. Used by `openSpineItem` to load a new
+   * and attaches `el` to it — used by `openSpineItem` to load a new
    * spine item's host *without* disturbing whatever is currently
-   * displayed — the new host still needs to be attached to a live
-   * document for its own `open()` to lay out/paginate correctly (see
-   * `prepareIncomingPage`'s doc comment for the same constraint), but
-   * `visibility: hidden` plus `position: absolute` keeps it invisible
-   * and out of the normal-flow flex layout the currently-visible host
-   * relies on for centering, so the old content is completely
-   * undisturbed until/unless the new load actually succeeds. */
+   * displayed. `visibility: hidden` plus `position: absolute` keeps it
+   * invisible and out of the normal-flow flex layout the currently-
+   * visible host relies on for centering, so the old content is
+   * completely undisturbed until/unless the new load actually succeeds.
+   *
+   * Critically, whatever's inside this wrapper is *never* moved to a
+   * different parent afterwards — only ever revealed in place by
+   * clearing the wrapper's own `visibility`/`pointer-events`, or removed
+   * outright (wrapper and all) via `.remove()`. This was a real,
+   * confirmed regression the first version of this mechanism had: moving
+   * an already-loaded `<iframe>` to a new DOM parent (even within the
+   * same still-attached document) reloads its content in most browsers
+   * — silently discarding every JS mutation applied to that content
+   * after it first loaded, including `PaginatedContentHost.open`'s own
+   * `iframeDocument.documentElement.style.overflow = "hidden"`. The
+   * *outer* iframe element's own styling (`clip-path`/`transform`, which
+   * `PaginatedContentHost` also sets, and which live on the iframe
+   * element itself, not inside its content document) survived the
+   * reload, so pagination still looked correct — but the reloaded
+   * content's overflow was back to its un-hidden default, exposing the
+   * content's own native scrollbar as a visible artifact. See the
+   * same hazard already documented on `prepareIncomingPage`, which this
+   * mechanism now follows the same discipline as. */
   private stageHiddenHostElement(el: HTMLElement): HTMLDivElement {
     const containerEl = this.containerEl!;
     const stagingEl = containerEl.ownerDocument.createElement("div");
@@ -2839,6 +2863,16 @@ export class ReaderController {
     stagingEl.style.display = "flex";
     stagingEl.style.justifyContent = "center";
     stagingEl.style.alignItems = "flex-start";
+    // The current host's element (once revealed) sits one level deeper
+    // in the DOM than it used to (a child of this wrapper, not of
+    // `containerEl` directly) — `transform-style: preserve-3d` here lets
+    // `containerEl.style.perspective` (set for the "rotate" page-turn
+    // animation — see `animatePageTurn`) still apply through this
+    // wrapper to reach it, exactly as if it were still a direct child.
+    // Without this, `perspective` only establishes a 3D space for an
+    // element's own *direct* children, and the rotate animation would
+    // silently fall flat (a plain 2D transform, no hinge depth).
+    stagingEl.style.transformStyle = "preserve-3d";
     stagingEl.appendChild(el);
     containerEl.appendChild(stagingEl);
     return stagingEl;
@@ -2890,15 +2924,21 @@ export class ReaderController {
       // the catch block below actually true rather than a stale
       // reference to an already-disposed host.
       const previousHost = this.host;
+      const previousWrapperEl = this.hostWrapperEl;
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
         this.pkg.metadata.renditionLayout,
       );
       let stagingEl: HTMLDivElement | undefined;
-      let newHost: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost;
+      // Assigned as soon as the host object is *constructed* (not once
+      // `open()` succeeds) so the catch block below can always dispose
+      // whatever was created, even a load that never finished — without
+      // this, a failed load leaked that attempt's blob URL(s) forever.
+      let createdHost: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined;
       let applyDisplaySettings = false;
       try {
         if (resolvedLayout === "pre-paginated") {
           const fixedHost = new FixedContentHost(this.width, this.height);
+          createdHost = fixedHost;
           stagingEl = this.stageHiddenHostElement(fixedHost.element);
           await fixedHost.open(
             this.contentLoader,
@@ -2906,50 +2946,60 @@ export class ReaderController {
             spineIndex,
             this.pkg.metadata.renditionViewport,
           );
-          newHost = fixedHost;
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
           const host = new SpreadPaginatedHost(this.width, this.height);
+          createdHost = host;
           stagingEl = this.stageHiddenHostElement(host.element);
           await host.open(this.contentLoader, this.resolver, spineIndex);
-          newHost = host;
           applyDisplaySettings = true;
         } else {
           const host =
             this.viewMode === "paginated"
               ? new PaginatedContentHost(this.width, this.height)
               : new ScrollContentHost(this.width, this.height);
+          createdHost = host;
           stagingEl = this.stageHiddenHostElement(host.element);
           await host.open(this.contentLoader, this.resolver, spineIndex);
-          newHost = host;
           applyDisplaySettings = true;
         }
       } catch (err) {
-        // The failed host's own element is inside `stagingEl`, never
-        // shown, and never touched `this.host` — `previousHost` (if any)
-        // is still exactly as it was.
+        // `.remove()`-ing `stagingEl` (rather than moving anything out of
+        // it first) is a plain DOM removal, not a reparent — no risk of
+        // the reload hazard `stageHiddenHostElement` documents. Disposing
+        // `createdHost` too (not just discarding the wrapper) matters
+        // even though its iframe is about to be removed either way: a
+        // `PaginatedContentHost`/etc. also owns a blob URL for its
+        // content, only released via its own `dispose()`.
+        createdHost?.dispose();
         stagingEl?.remove();
         throw err;
       }
+      const newHost = createdHost;
 
       if (token !== this.spineOpenToken) {
         this.diagnostics.record(
           `openSpineItem stale-discard spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
         );
         newHost.dispose();
-        stagingEl?.remove();
+        stagingEl.remove();
         return;
       }
 
       // Success: reveal the new host in place of whatever was showing
-      // before. `previousHost.dispose()` removes its own element from
-      // `containerEl`, and only then is it safe to move the new host's
-      // element out of the (about to be discarded) staging wrapper and
-      // into `containerEl` directly, as a normal flex child again.
+      // before, *without ever moving either host's element to a
+      // different parent* (see `stageHiddenHostElement`'s doc comment on
+      // why that specifically must never happen to an already-loaded
+      // iframe). `previousHost.dispose()` removes its own iframe(s) from
+      // `previousWrapperEl`, which — now empty — is simply removed
+      // outright; the new host's wrapper, in turn, is just revealed in
+      // place by clearing the hiding styles `stageHiddenHostElement` set,
+      // never touching its child's parentage at all.
       previousHost?.dispose();
-      newHost.element.style.visibility = "";
-      this.containerEl.appendChild(newHost.element);
-      stagingEl?.remove();
+      previousWrapperEl?.remove();
+      stagingEl.style.visibility = "";
+      stagingEl.style.pointerEvents = "";
       this.host = newHost;
+      this.hostWrapperEl = stagingEl;
       if (applyDisplaySettings) {
         this.applyPersistedDisplaySettingsToFreshHost();
       }
@@ -3081,6 +3131,7 @@ export class ReaderController {
     this.highlightSelectionCleanup?.();
     this.bookSearch.cancel();
     this.host?.dispose();
+    this.hostWrapperEl?.remove();
     this.bookPagination?.dispose();
     this.hiddenMeasureContainer?.remove();
     this.resolver.dispose();
