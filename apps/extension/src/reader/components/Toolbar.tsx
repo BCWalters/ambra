@@ -27,6 +27,7 @@ import {
   ChevronLeftRegular,
   ChevronRightRegular,
   CompassNorthwestRegular,
+  DocumentOnePageColumnsRegular,
   ReadingListRegular,
   SettingsRegular,
   TextBulletListRegular,
@@ -463,18 +464,15 @@ export const Toolbar: FC<ToolbarProps> = ({
             persistOnItemClick
             checkedValues={{
               [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
-              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
             }}
             onCheckedValueChange={(_event, data) => {
               if (data.name === FONT_FAMILY_GROUP_NAME) {
                 onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
-              } else if (data.name === PAGE_THEME_GROUP_NAME) {
-                onSetPageTheme(data.checkedItems[0] as PageTheme);
               }
             }}
           >
             <MenuTrigger disableButtonEnhancement>
-              <Tooltip content={t("toolbar.textAndPageLayout")} relationship="label">
+              <Tooltip content={t("toolbar.textOptions")} relationship="label">
                 <Button
                   appearance="subtle"
                   size="small"
@@ -531,27 +529,6 @@ export const Toolbar: FC<ToolbarProps> = ({
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>
-                  {/* Labeled by the underlying value it directly controls
-                      (a wider value = a wider text column) rather than
-                      "Margins" (the inverse framing some readers use,
-                      where turning it up means *narrower* text/more
-                      margin) — avoids an inverted slider whose visual
-                      direction wouldn't match its own value. */}
-                  <MenuGroupHeader>Text Width</MenuGroupHeader>
-                  <div style={{ padding: "6px 12px 10px" }}>
-                    <Slider
-                      min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
-                      max={ReadingTheme.MAX_CONTENT_WIDTH_EM}
-                      step={ReadingTheme.CONTENT_WIDTH_STEP}
-                      value={snapshot.contentWidthEm}
-                      onChange={(_event, data) => onSetContentWidth(data.value)}
-                      aria-label="Text width"
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                </MenuGroup>
-                <MenuDivider />
-                <MenuGroup>
                   <MenuGroupHeader>Font</MenuGroupHeader>
                   {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
                     // Preview each option in its own typeface (falling back
@@ -572,6 +549,50 @@ export const Toolbar: FC<ToolbarProps> = ({
                       </MenuItemRadio>
                     );
                   })}
+                </MenuGroup>
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+        )}
+
+        {!snapshot.isFixedLayout && (
+          <Menu
+            persistOnItemClick
+            checkedValues={{
+              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
+            }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === PAGE_THEME_GROUP_NAME) {
+                onSetPageTheme(data.checkedItems[0] as PageTheme);
+              }
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <Tooltip content={t("toolbar.pageOptions")} relationship="label">
+                <Button appearance="subtle" size="small" icon={<DocumentOnePageColumnsRegular />} />
+              </Tooltip>
+            </MenuTrigger>
+            <MenuPopover>
+              <MenuList>
+                <MenuGroup>
+                  {/* Labeled by the underlying value it directly controls
+                      (a wider value = a wider text column) rather than
+                      "Margins" (the inverse framing some readers use,
+                      where turning it up means *narrower* text/more
+                      margin) — avoids an inverted slider whose visual
+                      direction wouldn't match its own value. */}
+                  <MenuGroupHeader>Page Text Width</MenuGroupHeader>
+                  <div style={{ padding: "6px 12px 10px" }}>
+                    <Slider
+                      min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
+                      max={ReadingTheme.MAX_CONTENT_WIDTH_EM}
+                      step={ReadingTheme.CONTENT_WIDTH_STEP}
+                      value={snapshot.contentWidthEm}
+                      onChange={(_event, data) => onSetContentWidth(data.value)}
+                      aria-label="Page text width"
+                      style={{ width: "100%" }}
+                    />
+                  </div>
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>

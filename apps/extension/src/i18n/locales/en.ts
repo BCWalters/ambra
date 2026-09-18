@@ -30,7 +30,8 @@ export interface StringCatalog {
   "toolbar.nextPage": string;
   "toolbar.goToPage": string;
   "toolbar.goToPercentage": string;
-  "toolbar.textAndPageLayout": string;
+  "toolbar.textOptions": string;
+  "toolbar.pageOptions": string;
   "toolbar.settings": string;
   "toolbar.bookDetails": string;
   "toolbar.hideBookDetails": string;
@@ -52,7 +53,8 @@ export const en: StringCatalog = {
   "toolbar.nextPage": "Next Page",
   "toolbar.goToPage": "Go to Page…",
   "toolbar.goToPercentage": "Go to Percentage…",
-  "toolbar.textAndPageLayout": "Text and page layout",
+  "toolbar.textOptions": "Text options",
+  "toolbar.pageOptions": "Page options",
   "toolbar.settings": "Settings",
   "toolbar.bookDetails": "Book details",
   "toolbar.hideBookDetails": "Hide book details",
