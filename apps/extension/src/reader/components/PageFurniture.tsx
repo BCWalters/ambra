@@ -2,20 +2,11 @@ import type { FC } from "react";
 import { Caption1 } from "@fluentui/react-components";
 import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderController.js";
+import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
 
 export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
 }
-
-/** How far below the top of the reserved header band (`PAGE_INSET_TOP`)
- * the running header's own text sits — deliberately near the *top* of
- * that band (not vertically centered within it) so the text sits well
- * within the toolbar's own footprint when it's shown, rather than
- * peeking out just below it. Paired with the toolbar's own height (see
- * `Toolbar.tsx`) — the two are tuned together so the toolbar always
- * fully covers this text, never partially, which previously read as an
- * awkward visual glitch when the two only barely overlapped. */
-const HEADER_TEXT_TOP_OFFSET = 14;
 
 /** Rounds a page position to a whole-number percentage, or `undefined`
  * if either input isn't known yet — never `0%`/`100%` by construction
@@ -53,6 +44,15 @@ function percent(current: number | undefined, total: number | undefined): number
  * active `ReadingTheme` page theme's own foreground color, so it reads
  * correctly against white, sepia, or dark pages alike, without needing
  * its own separate light/dark variants.
+ *
+ * The per-page header/footer bands (but not the book-wide percentage
+ * indicator below) are suppressed entirely while
+ * `snapshot.isAnimatingPageTurn` is set — during that window,
+ * `ReaderController` is animating its own imperative "turn furniture"
+ * overlay (built fresh per turn, positioned to exactly match whichever
+ * content element is actually moving) in lockstep with the real
+ * page-turn transform, so this static, declarative version would
+ * otherwise render on top of it, unmoving, for the whole transition.
  *
  * Scoped to paginated/spread reflowable content only — the same scope
  * `pageIndex`/`pageCount`/`bookPageIndex`/`bookPageCount` already have in
@@ -108,88 +108,92 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
 
   return (
     <>
-      {headerTexts ? (
-        columnBands.map((band, index) => (
-          <div
-            key={index}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: band.left,
-              right: band.right,
-              width: band.width,
-              height: ReadingTheme.PAGE_INSET_TOP,
-              zIndex: 5,
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
-              pointerEvents: "none",
-              overflow: "hidden",
-            }}
-          >
-            <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
-              {headerTexts[index]}
-            </Caption1>
-          </div>
-        ))
-      ) : (
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: ReadingTheme.PAGE_INSET_TOP,
-            zIndex: 5,
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
-            pointerEvents: "none",
-            overflow: "hidden",
-          }}
-        >
-          <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
-            {snapshot.title}
-          </Caption1>
-          <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>
-            {snapshot.currentChapterLabel}
-          </Caption1>
-        </div>
-      )}
+      {!snapshot.isAnimatingPageTurn && (
+        <>
+          {headerTexts ? (
+            columnBands.map((band, index) => (
+              <div
+                key={index}
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: band.left,
+                  right: band.right,
+                  width: band.width,
+                  height: ReadingTheme.PAGE_INSET_TOP,
+                  zIndex: 5,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "center",
+                  padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
+                  pointerEvents: "none",
+                  overflow: "hidden",
+                }}
+              >
+                <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
+                  {headerTexts[index]}
+                </Caption1>
+              </div>
+            ))
+          ) : (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: ReadingTheme.PAGE_INSET_TOP,
+                zIndex: 5,
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
+                pointerEvents: "none",
+                overflow: "hidden",
+              }}
+            >
+              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
+                {snapshot.title}
+              </Caption1>
+              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>
+                {snapshot.currentChapterLabel}
+              </Caption1>
+            </div>
+          )}
 
-      {columnBands.map((band, index) => {
-        const pageNumber = footerNumbers[index];
-        if (pageNumber === undefined) {
-          return null;
-        }
-        return (
-          <div
-            key={index}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: band.left,
-              right: band.right,
-              width: band.width,
-              height: ReadingTheme.PAGE_INSET_BOTTOM,
-              zIndex: 5,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              pointerEvents: "none",
-            }}
-          >
-            <Caption1 as="span" style={textStyle}>
-              {`Page ${pageNumber}`}
-            </Caption1>
-          </div>
-        );
-      })}
+          {columnBands.map((band, index) => {
+            const pageNumber = footerNumbers[index];
+            if (pageNumber === undefined) {
+              return null;
+            }
+            return (
+              <div
+                key={index}
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: band.left,
+                  right: band.right,
+                  width: band.width,
+                  height: ReadingTheme.PAGE_INSET_BOTTOM,
+                  zIndex: 5,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <Caption1 as="span" style={textStyle}>
+                  {`Page ${pageNumber}`}
+                </Caption1>
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {/* A single "how far through the book" indicator, anchored to the
           bottom-right of the whole reader pane — deliberately not

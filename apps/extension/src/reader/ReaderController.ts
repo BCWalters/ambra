@@ -35,6 +35,7 @@ import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { ViewMode } from "./ViewMode.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
+import { HEADER_TEXT_TOP_OFFSET } from "./furnitureLayout.js";
 
 /** The smallest a rendered image is allowed to be (in *both* CSS px
  * dimensions) for a click/keypress on it to open the image viewer — see
@@ -151,6 +152,15 @@ export interface ReaderSnapshot {
    * running header can center itself on each visible page in spread
    * mode, rather than guessing at where the two columns actually sit. */
   paneWidth: number;
+  /** `true` for the duration of an animated page-turn transition
+   * (`animatePageTurn`/`animateSpreadTurn`) — tells `PageFurniture` to
+   * suspend its own static per-page header/footer rendering while the
+   * controller's own imperative "turn furniture" overlay (built and
+   * animated in lockstep with the actual content) is standing in for it
+   * instead, so the two never render on top of each other. The
+   * book-wide percentage indicator stays up throughout regardless — it
+   * describes overall progress, not either individual page turning. */
+  isAnimatingPageTurn: boolean;
   /** The current reader-controlled font-size multiplier (see
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
@@ -459,6 +469,8 @@ export class ReaderController {
    * `setUpDragPageTurn`. Re-created every time the primary content
    * document changes, same lifecycle as `contentInteractionCleanup`. */
   private dragCleanup: (() => void) | undefined;
+  /** See `ReaderSnapshot.isAnimatingPageTurn`'s doc comment. */
+  private isAnimatingPageTurn = false;
   /** Background-paginates the whole book to derive book-wide page
    * numbers (see `BookPaginationEstimator`) — `undefined` until `mount`
    * creates it (it needs `hiddenMeasureContainer` to exist first). */
@@ -585,6 +597,7 @@ export class ReaderController {
         secondPageIndex:
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         paneWidth: this.width,
+        isAnimatingPageTurn: this.isAnimatingPageTurn,
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         lineSpacing:
           this.host instanceof FixedContentHost ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
@@ -2168,6 +2181,127 @@ export class ReaderController {
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
   }
 
+  /** Whether the user has `prefers-reduced-motion: reduce` set — checked
+   * up front by both `animatePageTurn`/`animateSpreadTurn` (to skip
+   * building "turn furniture" overlays at all when there'll be no
+   * animation to play them alongside) and by `playPageTurnAnimation`
+   * itself (to skip the actual transition). */
+  private prefersReducedMotion(): boolean {
+    return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  }
+
+  /** The page number the running footer should show for `pageIndex` of
+   * `spineIndex`'s `pageCount` total pages — book-wide via
+   * `bookPagination` once its background measurement has reached that
+   * far, falling back to the plain per-chapter page number otherwise.
+   * Mirrors `PageFurniture`'s own `primaryPageNumber` computation exactly
+   * (see that component), since `buildTurnFurnitureOverlay`'s imperative
+   * footer text needs to read identically to the static one it hands off
+   * to/from at the start/end of a turn. */
+  private furniturePageNumber(spineIndex: number, pageIndex: number, pageCount: number): number | undefined {
+    const bookPageIndex = this.bookPagination?.positionFor(spineIndex, pageIndex).currentPage;
+    return bookPageIndex ?? (pageCount > 0 ? pageIndex + 1 : undefined);
+  }
+
+  /** Builds the running header/footer overlay for one side of an
+   * animated page turn — either the outgoing page's current furniture or
+   * the incoming page's furniture-to-be, depending on which host/element
+   * the caller passes in. Returns `undefined` if `this.containerEl` isn't
+   * mounted (shouldn't happen mid-turn, just defensive).
+   *
+   * Positioned via `matchEl.getBoundingClientRect()` rather than by
+   * reasoning about `matchEl`'s own layout/transform state — this is
+   * deliberately a *separate* sibling element, not a child of `matchEl`
+   * itself (an iframe, for a single page or a spread's "rotate" turn
+   * element, can't hold light-DOM overlay children at all), so the only
+   * way to line it up exactly is to measure where `matchEl` currently
+   * sits on screen and place this overlay directly on top of it, in
+   * `this.containerEl`'s own coordinate space. Once placed, `stagePageTurn`/
+   * `setPageTurnTransform` apply the *exact same* transform to this
+   * overlay as to `matchEl` (see `playPageTurnAnimation`'s `extraTurnEls`),
+   * so the two move as if they were one piece despite being independent
+   * elements.
+   *
+   * `bands` describes one visual "page" worth of header+footer content —
+   * one entry for a single page or a spread's "rotate" turn (which only
+   * ever animates one column), two for a spread's "slide" turn (the
+   * whole two-page unit moves as one, so both columns' furniture rides
+   * along together). Each band's `left`/`width` are relative to
+   * `matchEl`'s own rect, not the whole container — for the single-band
+   * cases that's just `{ left: 0, width: matchEl's full width }`; for
+   * the two-band spread case it's each column's offset within the whole
+   * spread, exactly mirroring `PageFurniture`'s own `columnBands` (just
+   * computed against `matchEl`'s own measured width rather than the full
+   * pane width, since there's no side margin to account for once we're
+   * already positioned to coincide with the spread element itself). */
+  private buildTurnFurnitureOverlay(
+    matchEl: HTMLElement,
+    bands: Array<{
+      left: number;
+      width: number;
+      header: { mode: "split"; left: string; right: string } | { mode: "single"; text: string };
+      footerText: string | undefined;
+    }>,
+  ): HTMLDivElement | undefined {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const containerRect = this.containerEl.getBoundingClientRect();
+    const matchRect = matchEl.getBoundingClientRect();
+    const foreground = ReadingTheme.PAGE_THEMES[this.pageTheme].foreground;
+
+    const overlay = document.createElement("div");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.position = "absolute";
+    overlay.style.left = `${matchRect.left - containerRect.left}px`;
+    overlay.style.top = `${matchRect.top - containerRect.top}px`;
+    overlay.style.width = `${matchRect.width}px`;
+    overlay.style.height = `${matchRect.height}px`;
+    overlay.style.pointerEvents = "none";
+
+    const textStyle =
+      `color: ${foreground}; opacity: 0.55; min-width: 0; ` +
+      `font: 400 12px/16px "Segoe UI", "Helvetica Neue", Arial, sans-serif; ` +
+      `white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`;
+
+    for (const band of bands) {
+      const header = document.createElement("div");
+      header.style.cssText =
+        `position: absolute; top: 0; left: ${band.left}px; width: ${band.width}px; ` +
+        `height: ${ReadingTheme.PAGE_INSET_TOP}px; display: flex; align-items: flex-start; ` +
+        `justify-content: ${band.header.mode === "split" ? "space-between" : "center"}; ` +
+        `padding: ${HEADER_TEXT_TOP_OFFSET}px 20px 0; overflow: hidden;`;
+      if (band.header.mode === "split") {
+        const left = document.createElement("span");
+        left.style.cssText = textStyle;
+        left.textContent = band.header.left;
+        const right = document.createElement("span");
+        right.style.cssText = `${textStyle} text-align: right;`;
+        right.textContent = band.header.right;
+        header.append(left, right);
+      } else {
+        const span = document.createElement("span");
+        span.style.cssText = `${textStyle} text-align: center;`;
+        span.textContent = band.header.text;
+        header.append(span);
+      }
+      overlay.appendChild(header);
+
+      if (band.footerText !== undefined) {
+        const footer = document.createElement("div");
+        footer.style.cssText =
+          `position: absolute; bottom: 0; left: ${band.left}px; width: ${band.width}px; ` +
+          `height: ${ReadingTheme.PAGE_INSET_BOTTOM}px; display: flex; align-items: center; justify-content: center;`;
+        const span = document.createElement("span");
+        span.style.cssText = textStyle;
+        span.textContent = band.footerText;
+        footer.appendChild(span);
+        overlay.appendChild(footer);
+      }
+    }
+    return overlay;
+  }
+
   /** Plays a book-like page-turn flip and returns the fully-paginated
    * *new* host to swap in as `this.host` — or `undefined` if `direction`
    * would cross a chapter boundary (the caller falls back to its normal
@@ -2209,7 +2343,62 @@ export class ReaderController {
     // sit higher than a full page's would. No need to restore
     // afterward — `oldHost.dispose()` right below discards it outright.
     oldHost.growToFullHeight(this.height);
-    await this.playPageTurnAnimation(oldHost.element, oldHost.element, direction);
+
+    // Build the outgoing/incoming "turn furniture" overlays (see
+    // `buildTurnFurnitureOverlay`) so the running header/footer turns
+    // with the page instead of sitting static on top of it throughout —
+    // title/chapter never change mid-turn (an animated turn never
+    // crosses a chapter boundary — see `prepareIncomingPage`), only the
+    // page number does. `PageFurniture`'s own static rendering is
+    // suspended for the duration via `isAnimatingPageTurn` so the two
+    // never show on top of each other. Skipped entirely when there's no
+    // animation to play them alongside anyway.
+    let outgoingOverlay: HTMLDivElement | undefined;
+    let incomingOverlay: HTMLDivElement | undefined;
+    if (!this.prefersReducedMotion()) {
+      const title = this.pkg.metadata.title;
+      const chapterLabel = this.chapterLabel(this.spineIndex);
+      const outgoingNumber = this.furniturePageNumber(this.spineIndex, oldHost.currentPageIndex, oldHost.pageCount);
+      const incomingNumber = this.furniturePageNumber(this.spineIndex, newHost.currentPageIndex, newHost.pageCount);
+      const header = { mode: "split" as const, left: title, right: chapterLabel };
+      outgoingOverlay = this.buildTurnFurnitureOverlay(oldHost.element, [
+        {
+          left: 0,
+          width: oldHost.element.getBoundingClientRect().width,
+          header,
+          footerText: outgoingNumber !== undefined ? `Page ${outgoingNumber}` : undefined,
+        },
+      ]);
+      incomingOverlay = this.buildTurnFurnitureOverlay(newEl, [
+        {
+          left: 0,
+          width: newEl.getBoundingClientRect().width,
+          header,
+          footerText: incomingNumber !== undefined ? `Page ${incomingNumber}` : undefined,
+        },
+      ]);
+      if (incomingOverlay) {
+        incomingOverlay.style.zIndex = "1";
+        this.containerEl.appendChild(incomingOverlay);
+      }
+      if (outgoingOverlay) {
+        outgoingOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(outgoingOverlay);
+      }
+      this.isAnimatingPageTurn = true;
+      this.notify();
+    }
+
+    await this.playPageTurnAnimation(
+      oldHost.element,
+      oldHost.element,
+      direction,
+      outgoingOverlay ? [outgoingOverlay] : [],
+    );
+
+    outgoingOverlay?.remove();
+    incomingOverlay?.remove();
+    this.isAnimatingPageTurn = false;
 
     // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
     // `newEl` as the sole remaining child — reset its temporary
@@ -2260,7 +2449,87 @@ export class ReaderController {
     if (this.pageTurnAnimationStyle === "rotate") {
       oldHost.growColumnToFullHeight(direction === 1 ? "right" : "left", this.height);
     }
-    await this.playPageTurnAnimation(oldHost.element, this.elementToTurn(oldHost, direction), direction);
+    const turnEl = this.elementToTurn(oldHost, direction);
+
+    // Same "turn furniture" treatment as `animatePageTurn` — see
+    // `buildTurnFurnitureOverlay`'s doc comment. Title/chapter never
+    // change mid-turn (same reasoning as the single-page case); only
+    // the page number(s) do. "slide" needs *both* columns' furniture
+    // (the whole spread moves as one sheet); "rotate" needs only the
+    // one column that's actually turning, matched to `turnEl` itself.
+    // Skipped entirely when there's no animation to play them alongside.
+    let outgoingOverlay: HTMLDivElement | undefined;
+    let incomingOverlay: HTMLDivElement | undefined;
+    if (!this.prefersReducedMotion()) {
+      const title = this.pkg.metadata.title;
+      const chapterLabel = this.chapterLabel(this.spineIndex);
+      const outgoingPrimary = this.furniturePageNumber(this.spineIndex, oldHost.pageIndex, oldHost.pageCount);
+      const outgoingSecondary =
+        oldHost.secondPageIndex !== undefined && outgoingPrimary !== undefined ? outgoingPrimary + 1 : undefined;
+      const incomingPrimary = this.furniturePageNumber(this.spineIndex, newHost.pageIndex, newHost.pageCount);
+      const incomingSecondary =
+        newHost.secondPageIndex !== undefined && incomingPrimary !== undefined ? incomingPrimary + 1 : undefined;
+
+      if (this.pageTurnAnimationStyle === "slide") {
+        const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+        const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
+        const bands = (primary: number | undefined, secondary: number | undefined) => [
+          {
+            left: 0,
+            width: columnWidth,
+            header: { mode: "single" as const, text: title },
+            footerText: primary !== undefined ? `Page ${primary}` : undefined,
+          },
+          {
+            left: columnWidth + gutter,
+            width: columnWidth,
+            header: { mode: "single" as const, text: chapterLabel },
+            footerText: secondary !== undefined ? `Page ${secondary}` : undefined,
+          },
+        ];
+        outgoingOverlay = this.buildTurnFurnitureOverlay(oldHost.element, bands(outgoingPrimary, outgoingSecondary));
+        incomingOverlay = this.buildTurnFurnitureOverlay(newEl, bands(incomingPrimary, incomingSecondary));
+      } else {
+        const columnIndex = direction === 1 ? 1 : 0;
+        const isLeftColumn = columnIndex === 0;
+        const newColumnEl = this.spreadColumnElement(newHost, columnIndex);
+        const header = { mode: "single" as const, text: isLeftColumn ? title : chapterLabel };
+        const outgoingNumber = isLeftColumn ? outgoingPrimary : outgoingSecondary;
+        const incomingNumber = isLeftColumn ? incomingPrimary : incomingSecondary;
+        outgoingOverlay = this.buildTurnFurnitureOverlay(turnEl, [
+          {
+            left: 0,
+            width: turnEl.getBoundingClientRect().width,
+            header,
+            footerText: outgoingNumber !== undefined ? `Page ${outgoingNumber}` : undefined,
+          },
+        ]);
+        incomingOverlay = this.buildTurnFurnitureOverlay(newColumnEl, [
+          {
+            left: 0,
+            width: newColumnEl.getBoundingClientRect().width,
+            header,
+            footerText: incomingNumber !== undefined ? `Page ${incomingNumber}` : undefined,
+          },
+        ]);
+      }
+      if (incomingOverlay) {
+        incomingOverlay.style.zIndex = "1";
+        this.containerEl.appendChild(incomingOverlay);
+      }
+      if (outgoingOverlay) {
+        outgoingOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(outgoingOverlay);
+      }
+      this.isAnimatingPageTurn = true;
+      this.notify();
+    }
+
+    await this.playPageTurnAnimation(oldHost.element, turnEl, direction, outgoingOverlay ? [outgoingOverlay] : []);
+
+    outgoingOverlay?.remove();
+    incomingOverlay?.remove();
+    this.isAnimatingPageTurn = false;
 
     oldHost.dispose();
     newEl.style.position = "";
@@ -2275,20 +2544,31 @@ export class ReaderController {
    * always `oldHost.element` itself, *except* for a spread's "rotate"
    * style, which turns only the single column nearest the spine (see
    * `animateSpreadTurn`'s doc comment) rather than the whole two-page
-   * unit. Resolved via each column's own content document (same
-   * `defaultView.frameElement` technique `spreadFocusedColumn` uses) —
-   * `SpreadPaginatedHost` doesn't otherwise expose its two column
-   * elements individually. Falls back to the whole spread if that
-   * somehow can't be resolved (never observed in practice, just
-   * defensive) — degrading to the same "whole unit" motion "slide"
-   * already uses is a reasonable fallback, not a broken one. */
+   * unit. Resolved via `spreadColumnElement`. Falls back to the whole
+   * spread if that somehow can't be resolved (never observed in
+   * practice, just defensive) — degrading to the same "whole unit"
+   * motion "slide" already uses is a reasonable fallback, not a broken
+   * one. */
   private elementToTurn(oldHost: PaginatedContentHost | SpreadPaginatedHost, direction: 1 | -1): HTMLElement {
     if (!(oldHost instanceof SpreadPaginatedHost) || this.pageTurnAnimationStyle === "slide") {
       return oldHost.element;
     }
-    const columnIndex = direction === 1 ? 1 : 0;
-    const iframe = oldHost.contentDocuments()[columnIndex]?.defaultView?.frameElement;
-    return iframe instanceof HTMLElement ? iframe : oldHost.element;
+    return this.spreadColumnElement(oldHost, direction === 1 ? 1 : 0);
+  }
+
+  /** Resolves one column's actual iframe element out of a
+   * `SpreadPaginatedHost` — used both by `elementToTurn` (which column
+   * a "rotate" turn actually applies its transform to) and by
+   * `animateSpreadTurn` (to find the *incoming* spread's matching
+   * column, to position that side's furniture overlay against). Same
+   * `defaultView.frameElement` technique `spreadFocusedColumn` uses,
+   * since `SpreadPaginatedHost` doesn't otherwise expose its two column
+   * elements individually. Falls back to the whole spread element if
+   * that somehow can't be resolved (never observed in practice, just
+   * defensive). */
+  private spreadColumnElement(host: SpreadPaginatedHost, columnIndex: 0 | 1): HTMLElement {
+    const iframe = host.contentDocuments()[columnIndex]?.defaultView?.frameElement;
+    return iframe instanceof HTMLElement ? iframe : host.element;
   }
 
   /** The shared "play the turn, wait for it to finish" mechanics behind
@@ -2303,17 +2583,27 @@ export class ReaderController {
    * `perspective` reset back to empty afterward either way. Does *not*
    * dispose anything or swap in the new host — every caller does that
    * itself immediately after, since exactly what "the new host" means
-   * differs between single-page and spread turns. */
+   * differs between single-page and spread turns.
+   *
+   * `extraTurnEls` — the outgoing "turn furniture" overlay(s) built by
+   * `buildTurnFurnitureOverlay`, if any — get every style mutation
+   * `turnEl` itself gets (staging, transform, shadow, transition),
+   * applied in the same tick, so the running header/footer visually
+   * turns as one piece with the content beneath it rather than staying
+   * still while only the page moves. Only `turnEl` is actually listened
+   * to for `transitionend`/the safety-net timeout — one reliable signal
+   * is enough to resolve the whole turn, and every element here always
+   * shares the same 380ms duration regardless. */
   private async playPageTurnAnimation(
     hostEl: HTMLElement,
     turnEl: HTMLElement,
     direction: 1 | -1,
+    extraTurnEls: HTMLElement[] = [],
   ): Promise<void> {
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    if (reduceMotion) {
+    if (this.prefersReducedMotion()) {
       return;
     }
-    this.stagePageTurn(hostEl, turnEl, direction);
+    this.stagePageTurn(hostEl, turnEl, direction, extraTurnEls);
 
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -2331,12 +2621,29 @@ export class ReaderController {
         }
       };
       turnEl.addEventListener("transitionend", onTransitionEnd);
-      turnEl.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+      const transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+      for (const el of [turnEl, ...extraTurnEls]) {
+        // A freshly-created-and-inserted element (the "turn furniture"
+        // overlays built by `buildTurnFurnitureOverlay` always are —
+        // `turnEl` itself never is, it was already mounted well before
+        // this turn started) hasn't had a style/layout pass committed
+        // for its *current* (untransformed) state yet. Setting
+        // `transition` and then changing `transform` in the very next
+        // frame, with no committed "before" state in between, collapses
+        // the whole transition into an instant jump to the final value
+        // — confirmed via direct mid-animation DOM inspection, not just
+        // guessed at. Reading `offsetHeight` forces the browser to
+        // actually compute and commit layout for the element's current
+        // style *now*, giving the upcoming transform change something
+        // real to animate away from.
+        void el.offsetHeight;
+        el.style.transition = transition;
+      }
       // Rotating slightly past 90° (rather than stopping exactly at
       // it) reads as a page continuing its motion out of view rather
       // than freezing edge-on to the viewer.
       requestAnimationFrame(() => {
-        this.setPageTurnTransform(turnEl, direction === 1 ? -100 : 100, 1);
+        this.setPageTurnTransform(turnEl, direction === 1 ? -100 : 100, 1, extraTurnEls);
       });
       // A safety net in case `transitionend` never fires (e.g. the
       // element was removed mid-transition by a rapid subsequent
@@ -2503,8 +2810,20 @@ export class ReaderController {
    * it's a flat 2D translate of something that's already sitting in the
    * exact same spot the incoming content occupies underneath it (see
    * `prepareIncomingPage`/`prepareIncomingSpread`), so simply sliding it
-   * aside reveals what's next with no 3D setup at all. */
-  private stagePageTurn(hostEl: HTMLElement, turnEl: HTMLElement, direction: 1 | -1): void {
+   * aside reveals what's next with no 3D setup at all.
+   *
+   * `extraTurnEls` (see `playPageTurnAnimation`'s own doc comment) get
+   * the exact same rotate-specific staging as `turnEl` itself — they're
+   * always a separate sibling element (the "turn furniture" overlay
+   * built by `buildTurnFurnitureOverlay`), positioned to exactly
+   * coincide with `turnEl`'s own on-screen rect, so treating them
+   * identically keeps them moving as if they were part of it. */
+  private stagePageTurn(
+    hostEl: HTMLElement,
+    turnEl: HTMLElement,
+    direction: 1 | -1,
+    extraTurnEls: HTMLElement[] = [],
+  ): void {
     if (!this.containerEl) {
       return;
     }
@@ -2515,19 +2834,22 @@ export class ReaderController {
     }
     this.containerEl.style.perspective = "2200px";
     hostEl.style.transformStyle = "preserve-3d";
-    turnEl.style.backfaceVisibility = "hidden";
-    // The hinge is the spine edge the page turns away from: the left
-    // edge turning forward (the right/free edge lifts up and toward the
-    // viewer, like turning the right-hand page of a physical book), the
-    // right edge turning back (the left/free edge lifts toward the
-    // viewer instead). Confirmed empirically against an isolated CSS 3D
-    // transform test — `rotateY`'s sign only reads as "toward the
-    // viewer" when paired with the hinge on the *opposite* side from the
-    // edge that's lifting. Still correct for a spread's single-column
-    // "rotate" turn: the right column's own left edge, and the left
-    // column's own right edge, both *are* the spine, exactly where a
-    // real page's hinge sits.
-    turnEl.style.transformOrigin = `${direction === 1 ? "left" : "right"} center`;
+    const transformOrigin = `${direction === 1 ? "left" : "right"} center`;
+    for (const el of [turnEl, ...extraTurnEls]) {
+      el.style.backfaceVisibility = "hidden";
+      // The hinge is the spine edge the page turns away from: the left
+      // edge turning forward (the right/free edge lifts up and toward
+      // the viewer, like turning the right-hand page of a physical
+      // book), the right edge turning back (the left/free edge lifts
+      // toward the viewer instead). Confirmed empirically against an
+      // isolated CSS 3D transform test — `rotateY`'s sign only reads as
+      // "toward the viewer" when paired with the hinge on the *opposite*
+      // side from the edge that's lifting. Still correct for a spread's
+      // single-column "rotate" turn: the right column's own left edge,
+      // and the left column's own right edge, both *are* the spine,
+      // exactly where a real page's hinge sits.
+      el.style.transformOrigin = transformOrigin;
+    }
   }
 
   /** Scales a 0–1 drag fraction into `this.pageTurnAnimationStyle`'s own
@@ -2549,19 +2871,22 @@ export class ReaderController {
    * `stagePageTurn`'s own `turnEl` was — an iframe for a single page, or
    * (for a spread's "rotate" style) a single column's iframe rather than
    * the whole spread wrapper; the plain `HTMLElement` type here doesn't
-   * care which. */
-  private setPageTurnTransform(el: HTMLElement, amount: number, fraction: number): void {
-    if (this.pageTurnAnimationStyle === "slide") {
-      el.style.transform = `translateX(${amount}%)`;
-      // The shadow falls on the trailing edge — the side most recently
-      // uncovered — which is the opposite side from the direction of
-      // travel (negative `amount` = moving left = shadow on the right).
-      const edge = amount < 0 ? "" : "-";
-      el.style.boxShadow = `${edge}16px 0 32px rgba(0, 0, 0, ${(0.3 * fraction).toFixed(3)})`;
-      return;
+   * care which. `extraEls` (see `playPageTurnAnimation`) get the exact
+   * same transform/shadow applied in lockstep. */
+  private setPageTurnTransform(el: HTMLElement, amount: number, fraction: number, extraEls: HTMLElement[] = []): void {
+    for (const target of [el, ...extraEls]) {
+      if (this.pageTurnAnimationStyle === "slide") {
+        target.style.transform = `translateX(${amount}%)`;
+        // The shadow falls on the trailing edge — the side most recently
+        // uncovered — which is the opposite side from the direction of
+        // travel (negative `amount` = moving left = shadow on the right).
+        const edge = amount < 0 ? "" : "-";
+        target.style.boxShadow = `${edge}16px 0 32px rgba(0, 0, 0, ${(0.3 * fraction).toFixed(3)})`;
+        continue;
+      }
+      target.style.transform = `rotateY(${amount}deg)`;
+      target.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
     }
-    el.style.transform = `rotateY(${amount}deg)`;
-    el.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
   }
 
   /** Fraction of the reader pane's width a drag must cross before
