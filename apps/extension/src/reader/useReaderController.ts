@@ -43,6 +43,7 @@ export interface UseReaderControllerResult {
   goToSearchResult: (cfi: string) => Promise<void>;
   goToHighlight: (cfi: string) => Promise<void>;
   dismissSelectionToolbar: () => void;
+  dismissActiveHighlight: () => void;
   dismissError: () => void;
 }
 
@@ -310,6 +311,10 @@ export function useReaderController(): UseReaderControllerResult {
     controller?.dismissSelectionToolbar();
   }, [controller]);
 
+  const dismissActiveHighlight = useCallback(() => {
+    controller?.dismissActiveHighlight();
+  }, [controller]);
+
   const dismissError = useCallback(() => {
     controller?.dismissError();
   }, [controller]);
@@ -348,6 +353,7 @@ export function useReaderController(): UseReaderControllerResult {
     goToSearchResult,
     goToHighlight,
     dismissSelectionToolbar,
+    dismissActiveHighlight,
     dismissError,
   };
 }

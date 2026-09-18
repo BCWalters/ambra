@@ -11,6 +11,7 @@ import { AnnotationsPanel } from "./components/AnnotationsPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
+import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
 import { FriendlyError } from "./components/FriendlyError.js";
 import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
@@ -64,6 +65,7 @@ export const ReaderApp: FC = () => {
     removeHighlight,
     goToHighlight,
     setHighlightNote,
+    dismissActiveHighlight,
     search,
     goToSearchResult,
     dismissError,
@@ -429,6 +431,13 @@ export const ReaderApp: FC = () => {
             <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
 
             <SelectionToolbar state={snapshot.selectionToolbar} onPick={handleAddHighlight} />
+
+            <HighlightActionPopup
+              state={snapshot.activeHighlight}
+              onSetNote={(id, note) => void setHighlightNote(id, note)}
+              onRemove={(id) => void removeHighlight(id)}
+              onDismiss={dismissActiveHighlight}
+            />
 
             <ProgressScrubber
               snapshot={snapshot}

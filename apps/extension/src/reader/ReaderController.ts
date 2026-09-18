@@ -239,6 +239,13 @@ export interface ReaderSnapshot {
    * content is fixed-layout (highlighting is reflowable-content-only,
    * matching every other reader-controlled reading feature). */
   selectionToolbar: SelectionToolbarState | undefined;
+  /** An existing highlight the reader just tapped/clicked on while
+   * reading (see `checkExistingHighlightClick`) — positioned the same
+   * way `selectionToolbar` is, for a popup offering the same actions
+   * available in the Highlights panel (add/edit a note, delete)
+   * directly in the book, per explicit product direction (issue #48).
+   * `undefined` whenever nothing's currently "opened" this way. */
+  activeHighlight: ActiveHighlightState | undefined;
   /** Every highlight in the book, across all spine items, oldest first
    * — for the Highlights tab (see `TocPanel`). Read straight from the
    * in-memory cache (`highlightsBySpineIndex`) on every snapshot, not a
@@ -258,6 +265,13 @@ export interface ReaderSnapshot {
 
 /** See `ReaderSnapshot.selectionToolbar`. */
 export interface SelectionToolbarState {
+  readonly left: number;
+  readonly top: number;
+}
+
+/** See `ReaderSnapshot.activeHighlight`. */
+export interface ActiveHighlightState {
+  readonly highlight: Highlight;
   readonly left: number;
   readonly top: number;
 }
@@ -460,6 +474,16 @@ export class ReaderController {
    * from the content iframe, and re-querying at that point is a needless
    * risk when the original `Range` object is still perfectly valid. */
   private pendingSelectionRange: Range | undefined;
+  /** See `ReaderSnapshot.activeHighlight` — the currently "opened" *existing*
+   * highlight, tapped/clicked while reading (not a fresh selection — see
+   * `checkExistingHighlightClick`), with a note editor and delete action.
+   * Independent of `selectionToolbar`: only one of the two is ever set at
+   * once in practice (a fresh selection and clicking an existing highlight
+   * are mutually exclusive user actions), but they're deliberately separate
+   * fields rather than one union, since the shell's popup UI for each is
+   * different enough (color swatches vs. note/delete) to not want to
+   * force-fit into a shared shape. */
+  private activeHighlight: ActiveHighlightState | undefined;
   /** Detaches the primary content document's selection-tracking
    * listeners (see `setUpHighlightSelection`) — same re-created-per-
    * spine-item lifecycle as `contentInteractionCleanup`. */
@@ -638,6 +662,7 @@ export class ReaderController {
         contentPointerActivityId: this.contentPointerActivityId,
         imageViewer: this.imageViewer,
         selectionToolbar: this.selectionToolbar,
+        activeHighlight: this.activeHighlight,
         highlights: Array.from(this.highlightsBySpineIndex.values())
           .flat()
           .sort((a, b) => a.createdAt - b.createdAt),
@@ -2006,13 +2031,12 @@ export class ReaderController {
         continue;
       }
 
-      const updateFromSelection = (): void => {
+      const updateFromSelection = (): boolean => {
         const selection = doc.getSelection();
         if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
           this.pendingSelectionRange = undefined;
           this.selectionToolbar = undefined;
-          this.notify();
-          return;
+          return false;
         }
         const range = selection.getRangeAt(0);
         const rangeRect = range.getBoundingClientRect();
@@ -2022,8 +2046,7 @@ export class ReaderController {
           // rather than showing a toolbar with nowhere sensible to anchor.
           this.pendingSelectionRange = undefined;
           this.selectionToolbar = undefined;
-          this.notify();
-          return;
+          return false;
         }
         const iframeRect = iframeEl.getBoundingClientRect();
         this.pendingSelectionRange = range.cloneRange();
@@ -2031,14 +2054,34 @@ export class ReaderController {
           left: iframeRect.left + rangeRect.left + rangeRect.width / 2,
           top: iframeRect.top + rangeRect.top,
         };
+        return true;
+      };
+
+      const onPointerUp = (event: PointerEvent): void => {
+        const madeOrKeptSelection = updateFromSelection();
+        // No fresh/active selection to show a color picker for — check
+        // whether the click instead landed on an *existing* highlight
+        // (issue #48: everything the Highlights panel can do should also
+        // work directly in the book). A real drag-to-select gesture
+        // never reaches here (it's caught by `madeOrKeptSelection` above);
+        // this only ever fires for a plain tap/click.
+        if (!madeOrKeptSelection) {
+          this.checkExistingHighlightClick(doc, iframeEl, event.clientX, event.clientY);
+        } else {
+          this.activeHighlight = undefined;
+        }
+        this.notify();
+      };
+      const onKeyUp = (): void => {
+        updateFromSelection();
         this.notify();
       };
 
-      doc.addEventListener("pointerup", updateFromSelection);
-      doc.addEventListener("keyup", updateFromSelection);
+      doc.addEventListener("pointerup", onPointerUp);
+      doc.addEventListener("keyup", onKeyUp);
       cleanups.push(() => {
-        doc.removeEventListener("pointerup", updateFromSelection);
-        doc.removeEventListener("keyup", updateFromSelection);
+        doc.removeEventListener("pointerup", onPointerUp);
+        doc.removeEventListener("keyup", onKeyUp);
       });
     }
     this.highlightSelectionCleanup = () => {
@@ -2046,6 +2089,59 @@ export class ReaderController {
         cleanup();
       }
     };
+  }
+
+  /** Checks whether `(clientX, clientY)` — a plain click/tap that didn't
+   * make or keep a text selection (see `setUpHighlightSelection`) —
+   * landed on top of an existing highlight in `doc`, and if so, opens
+   * `activeHighlight` for it (a popup offering the note/delete actions
+   * also available in the Highlights panel, per issue #48). Uses
+   * `caretRangeFromPoint` to find the actual text position under the
+   * pointer (the CSS Custom Highlight API used to *paint* highlights —
+   * see `applyHighlightRanges` — has no hit-testing of its own; it's a
+   * paint-only overlay, not real DOM elements a click could target), then
+   * tests that position against each of the current spine item's
+   * highlights with the same `Range.comparePoint` technique `Page.
+   * containsPosition` uses. Clears `activeHighlight` (rather than
+   * leaving a stale one showing) if the click didn't land on any
+   * highlight, or if this browser lacks `caretRangeFromPoint` entirely
+   * (a non-standard but near-universally-supported API — treated as a
+   * graceful "feature not available" rather than a hard requirement). */
+  private checkExistingHighlightClick(doc: Document, iframeEl: Element, clientX: number, clientY: number): void {
+    const highlights = this.highlightsBySpineIndex.get(this.spineIndex);
+    const caretRangeFromPoint = (
+      doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+    ).caretRangeFromPoint;
+    if (!highlights || highlights.length === 0 || !caretRangeFromPoint) {
+      this.activeHighlight = undefined;
+      return;
+    }
+    const caretRange = caretRangeFromPoint.call(doc, clientX, clientY);
+    if (!caretRange) {
+      this.activeHighlight = undefined;
+      return;
+    }
+    for (const highlight of highlights) {
+      const range = this.resolveHighlightRange(highlight, this.spineIndex, doc);
+      if (!range) {
+        continue;
+      }
+      try {
+        if (range.comparePoint(caretRange.startContainer, caretRange.startOffset) !== 0) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      const iframeRect = iframeEl.getBoundingClientRect();
+      this.activeHighlight = {
+        highlight,
+        left: iframeRect.left + clientX,
+        top: iframeRect.top + range.getBoundingClientRect().top,
+      };
+      return;
+    }
+    this.activeHighlight = undefined;
   }
 
   /** Hides the selection toolbar and clears the current in-content text
@@ -2062,6 +2158,15 @@ export class ReaderController {
     }
     this.pendingSelectionRange = undefined;
     this.selectionToolbar = undefined;
+    this.notify();
+  }
+
+  /** Closes the "existing highlight" popup opened by clicking on a
+   * highlight while reading (see `checkExistingHighlightClick`) — an
+   * explicit dismiss (clicking elsewhere, Escape), or after acting on it
+   * (deleting it, saving/canceling a note edit). */
+  public dismissActiveHighlight(): void {
+    this.activeHighlight = undefined;
     this.notify();
   }
 
@@ -2131,6 +2236,9 @@ export class ReaderController {
         break;
       }
     }
+    if (this.activeHighlight?.highlight.id === id) {
+      this.activeHighlight = undefined;
+    }
     this.notify();
   }
 
@@ -2146,6 +2254,9 @@ export class ReaderController {
         const updated: Highlight = { ...highlights[index]!, note };
         await this.library.updateHighlight(updated);
         highlights[index] = updated;
+        if (this.activeHighlight?.highlight.id === id) {
+          this.activeHighlight = { ...this.activeHighlight, highlight: updated };
+        }
         this.notify();
         return;
       }
@@ -3801,6 +3912,7 @@ export class ReaderController {
       this.highlightSelectionCleanup = undefined;
       this.pendingSelectionRange = undefined;
       this.selectionToolbar = undefined;
+      this.activeHighlight = undefined;
 
       // The new host is opened hidden, alongside whatever is already on
       // screen, rather than disposing the old one up front — see
