@@ -2750,20 +2750,25 @@ export class ReaderController {
    * incoming page in a brand-new, independent `PaginatedContentHost` (see
    * `prepareIncomingPage`).
    *
-   * A **forward** turn (`direction === 1`) animates the *outgoing* page
-   * turning away — stacked *above* the incoming page already waiting
-   * underneath it, `backface-visibility: hidden` makes it disappear past
-   * 90°, revealing the incoming page beneath with no animation of its
-   * own. A **backward** turn does the *opposite*, per explicit product
-   * direction (issue #41): rather than the current page turning away to
-   * reveal the previous one sitting underneath (which reads as
-   * backwards for how a real book works — you're not un-covering
-   * something, you're placing a previously-turned page back down on
-   * top), the *incoming* (previous) page is instead built already
+   * For "rotate"/"slide": a **forward** turn (`direction === 1`) animates
+   * the *outgoing* page turning away — stacked *above* the incoming page
+   * already waiting underneath it, `backface-visibility: hidden` makes it
+   * disappear past 90°, revealing the incoming page beneath with no
+   * animation of its own. A **backward** turn does the *opposite*, per
+   * explicit product direction (issue #41): rather than the current page
+   * turning away to reveal the previous one sitting underneath (which
+   * reads as backwards for how a real book works — you're not
+   * un-covering something, you're placing a previously-turned page back
+   * down on top), the *incoming* (previous) page is instead built already
    * "turned away" (see `playPageTurnAnimation`'s `entering` mode),
    * stacked *above* the static, unanimated outgoing page, and animates
    * *in*, settling to rest and covering the current page as it arrives —
    * exactly like flipping a page back over onto the one you're leaving.
+   *
+   * "scroll" (issue #63) is fundamentally different — see
+   * `playScrollTurn`'s doc comment — and its own branch below skips the
+   * "only one side ever moves" machinery above entirely, since *both*
+   * the outgoing and incoming pages need to move together.
    *
    * Skips the animation (an instant page swap) when
    * `prefers-reduced-motion` is set, consistent with the rest of the
@@ -2785,16 +2790,23 @@ export class ReaderController {
     }
     const newEl = newHost.element;
     const entering = direction === -1;
+    const isScroll = this.pageTurnAnimationStyle === "scroll";
     // Whichever host is actually animating is the one whose own (often
     // shorter than full) content height needs masking for the duration
-    // — see `PaginatedContentHost.growToFullHeight`'s doc comment. For a
-    // forward turn that's the outgoing page (discarded right after, via
-    // `oldHost.dispose()`, so no need to ever restore it); for a
-    // backward turn it's the *incoming* page, which survives as the new
-    // `this.host` and must have its natural height restored once the
-    // turn settles.
+    // — see `PaginatedContentHost.growToFullHeight`'s doc comment. Only
+    // "rotate"/"slide" need this — they draw a box-shadow that traces
+    // the iframe's real edge, which is what the mismatch would show up
+    // in; "scroll" draws no such shadow (see `playScrollTurn`), so
+    // there's nothing for a short page's real height to visibly betray.
+    // For a forward turn that's the outgoing page (discarded right
+    // after, via `oldHost.dispose()`, so no need to ever restore it);
+    // for a backward turn it's the *incoming* page, which survives as
+    // the new `this.host` and must have its natural height restored
+    // once the turn settles.
     const animatingHost = entering ? newHost : oldHost;
-    animatingHost.growToFullHeight(this.height);
+    if (!isScroll) {
+      animatingHost.growToFullHeight(this.height);
+    }
 
     // Build the outgoing/incoming "turn furniture" overlays (see
     // `buildTurnFurnitureOverlay`) so the running header/footer turns
@@ -2829,31 +2841,54 @@ export class ReaderController {
           footerText: incomingNumber !== undefined ? `Page ${incomingNumber}` : undefined,
         },
       ]);
-      // Whichever overlay pairs with the animating page sits on top
-      // (z-index 2); the static one underneath gets 1 — same convention
-      // either direction, just swapped for which side is actually moving.
-      const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
-      const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
-      if (staticOverlay) {
-        staticOverlay.style.zIndex = "1";
-        this.containerEl.appendChild(staticOverlay);
-      }
-      if (animatedOverlay) {
-        animatedOverlay.style.zIndex = "2";
-        this.containerEl.appendChild(animatedOverlay);
+      if (isScroll) {
+        // Both overlays move (with their own page) rather than one
+        // sitting static underneath the other — z-index doesn't matter
+        // here since the two never overlap on screen (see
+        // `playScrollTurn`), but they still need to be *in* the
+        // document to animate at all.
+        if (outgoingOverlay) {
+          outgoingOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(outgoingOverlay);
+        }
+        if (incomingOverlay) {
+          incomingOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(incomingOverlay);
+        }
+      } else {
+        // Whichever overlay pairs with the animating page sits on top
+        // (z-index 2); the static one underneath gets 1 — same
+        // convention either direction, just swapped for which side is
+        // actually moving.
+        const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
+        const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
+        if (staticOverlay) {
+          staticOverlay.style.zIndex = "1";
+          this.containerEl.appendChild(staticOverlay);
+        }
+        if (animatedOverlay) {
+          animatedOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(animatedOverlay);
+        }
       }
       this.isAnimatingPageTurn = true;
       this.notify();
     }
 
-    const turnEl = entering ? newEl : oldHost.element;
-    await this.playPageTurnAnimation(
-      turnEl,
-      turnEl,
-      direction,
-      (entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : [],
-      entering,
-    );
+    if (isScroll) {
+      const oldGroup = [oldHost.element, ...(outgoingOverlay ? [outgoingOverlay] : [])];
+      const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
+      await this.playScrollTurn(oldGroup, newGroup, direction);
+    } else {
+      const turnEl = entering ? newEl : oldHost.element;
+      await this.playPageTurnAnimation(
+        turnEl,
+        turnEl,
+        direction,
+        (entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : [],
+        entering,
+      );
+    }
 
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
@@ -2883,14 +2918,18 @@ export class ReaderController {
    * built in a brand-new host underneath the outgoing one, animation
    * skipped for `prefers-reduced-motion`). What actually *moves* differs
    * by `this.pageTurnAnimationStyle`, per explicit product direction:
-   * "slide" treats the whole spread as one rigid sheet (both pages
-   * translate together, exactly like `animatePageTurn`'s single page,
-   * just wider); "rotate" instead flips only the *one* column nearest
-   * the spine — the right column turning forward, the left column
-   * turning back — like an actual book page turning over, while its
-   * companion column stays completely still. `elementToTurn` is what
-   * decides which element actually gets the transform in each case; see
-   * its own doc comment. */
+   * "slide"/"scroll" both treat the whole spread as one rigid sheet
+   * (both pages translate together, exactly like `animatePageTurn`'s
+   * single page, just wider); "rotate" instead flips only the *one*
+   * column nearest the spine — the right column turning forward, the
+   * left column turning back — like an actual book page turning over,
+   * while its companion column stays completely still. `elementToTurn`
+   * is what decides which element actually gets the transform in each
+   * case; see its own doc comment. "scroll" (issue #63) additionally
+   * moves *both* the outgoing and incoming spread simultaneously — see
+   * `playScrollTurn`'s doc comment — so it branches away from the
+   * shared "only one side ever moves" `playPageTurnAnimation` machinery
+   * below, same as `animatePageTurn` does for this style. */
   private async animateSpreadTurn(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -2904,13 +2943,14 @@ export class ReaderController {
     }
     const newEl = newHost.element;
     const entering = direction === -1;
+    const isScroll = this.pageTurnAnimationStyle === "scroll";
     // See `animatePageTurn`'s doc comment on why backward flips which
     // side actually animates.
     const turnHost = entering ? newHost : oldHost;
 
-    // Only "rotate" needs this: "slide" already moves the whole spread
-    // wrapper, which `SpreadPaginatedHost`'s own constructor fixes to
-    // the full pane height regardless of either column's content — see
+    // Only "rotate" needs this: "slide"/"scroll" already move the whole
+    // spread wrapper, which `SpreadPaginatedHost`'s own constructor fixes
+    // to the full pane height regardless of either column's content — see
     // `PaginatedContentHost.growToFullHeight`'s doc comment for why a
     // single turning column needs the same treatment "slide" gets for
     // free. Always the *right* column now — see `elementToTurn`'s doc
@@ -2926,11 +2966,11 @@ export class ReaderController {
     // Same "turn furniture" treatment as `animatePageTurn` — see
     // `buildTurnFurnitureOverlay`'s doc comment. Title/chapter never
     // change mid-turn (same reasoning as the single-page case); only
-    // the page number(s) do. "slide" needs *both* columns' furniture
-    // (the whole spread moves as one sheet); "rotate" needs only the
-    // right column (see `elementToTurn`), on whichever host is actually
-    // animating. Skipped entirely when there's no animation to play
-    // them alongside.
+    // the page number(s) do. "slide"/"scroll" both need *both* columns'
+    // furniture (the whole spread moves as one sheet); "rotate" needs
+    // only the right column (see `elementToTurn`), on whichever host is
+    // actually animating. Skipped entirely when there's no animation to
+    // play them alongside.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
     if (!this.shouldSkipPageTurnAnimation()) {
@@ -2943,7 +2983,7 @@ export class ReaderController {
       const incomingSecondary =
         newHost.secondPageIndex !== undefined && incomingPrimary !== undefined ? incomingPrimary + 1 : undefined;
 
-      if (this.pageTurnAnimationStyle === "slide") {
+      if (this.pageTurnAnimationStyle !== "rotate") {
         const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
         const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
         const bands = (primary: number | undefined, secondary: number | undefined) => [
@@ -2987,31 +3027,51 @@ export class ReaderController {
           },
         ]);
       }
-      // Whichever overlay pairs with the animating page sits on top
-      // (z-index 2); the static one underneath gets 1 — same convention
-      // either direction, just swapped for which side is actually moving.
-      const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
-      const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
-      if (staticOverlay) {
-        staticOverlay.style.zIndex = "1";
-        this.containerEl.appendChild(staticOverlay);
-      }
-      if (animatedOverlay) {
-        animatedOverlay.style.zIndex = "2";
-        this.containerEl.appendChild(animatedOverlay);
+      if (isScroll) {
+        // Both overlays move (with their own spread) rather than one
+        // sitting static underneath the other — see `animatePageTurn`'s
+        // identical reasoning.
+        if (outgoingOverlay) {
+          outgoingOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(outgoingOverlay);
+        }
+        if (incomingOverlay) {
+          incomingOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(incomingOverlay);
+        }
+      } else {
+        // Whichever overlay pairs with the animating page sits on top
+        // (z-index 2); the static one underneath gets 1 — same convention
+        // either direction, just swapped for which side is actually moving.
+        const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
+        const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
+        if (staticOverlay) {
+          staticOverlay.style.zIndex = "1";
+          this.containerEl.appendChild(staticOverlay);
+        }
+        if (animatedOverlay) {
+          animatedOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(animatedOverlay);
+        }
       }
       this.isAnimatingPageTurn = true;
       this.notify();
     }
 
-    const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
-    await this.playPageTurnAnimation(
-      turnHost.element,
-      turnEl,
-      direction,
-      animatedOverlayEl ? [animatedOverlayEl] : [],
-      entering,
-    );
+    if (isScroll) {
+      const oldGroup = [oldHost.element, ...(outgoingOverlay ? [outgoingOverlay] : [])];
+      const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
+      await this.playScrollTurn(oldGroup, newGroup, direction);
+    } else {
+      const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
+      await this.playPageTurnAnimation(
+        turnHost.element,
+        turnEl,
+        direction,
+        animatedOverlayEl ? [animatedOverlayEl] : [],
+        entering,
+      );
+    }
 
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
@@ -3047,7 +3107,7 @@ export class ReaderController {
    * defensive) — degrading to the same "whole unit" motion "slide"
    * already uses is a reasonable fallback, not a broken one. */
   private elementToTurn(host: PaginatedContentHost | SpreadPaginatedHost): HTMLElement {
-    if (!(host instanceof SpreadPaginatedHost) || this.pageTurnAnimationStyle === "slide") {
+    if (!(host instanceof SpreadPaginatedHost) || this.pageTurnAnimationStyle !== "rotate") {
       return host.element;
     }
     return this.spreadColumnElement(host, 1);
@@ -3177,6 +3237,89 @@ export class ReaderController {
     if (this.containerEl) {
       this.containerEl.style.perspective = "";
     }
+  }
+
+  /** The distinct "scroll"/filmstrip page-turn animation (issue #63):
+   * unlike "rotate"/"slide" (`playPageTurnAnimation`, above) — where
+   * only *one* side ever visibly moves, turning/sliding away to reveal a
+   * completely static page waiting underneath — "scroll" moves *both*
+   * the outgoing and incoming content simultaneously, by the same
+   * amount, in the same direction, so it reads as one continuous
+   * horizontal filmstrip the reader is scrolling through rather than a
+   * page being lifted off a motionless stack. `oldGroup`/`newGroup` are
+   * each the page (or spread) element plus its own "turn furniture"
+   * overlay, if built — every element within a group always moves in
+   * perfect lockstep, so a page's header/footer visibly travels with it
+   * instead of staying behind.
+   *
+   * The two groups never overlap on screen at any point during the
+   * transition (they stay a constant page-width apart throughout, like
+   * two train cars), so unlike `playPageTurnAnimation` there's no
+   * "elevate above what's underneath" staging step, no 3D perspective,
+   * and no box-shadow (see `animatePageTurn`'s `growToFullHeight` call
+   * being skipped for this style) — just a plain, flat `translateX` on
+   * both sides at once. */
+  private async playScrollTurn(
+    oldGroup: readonly HTMLElement[],
+    newGroup: readonly HTMLElement[],
+    direction: 1 | -1,
+  ): Promise<void> {
+    if (this.shouldSkipPageTurnAnimation()) {
+      return;
+    }
+    // Forward (direction 1): old exits left (-100%), new enters from the
+    // right (starts at +100%). Backward (direction -1): mirrored. Both
+    // groups always stay exactly 100% (one page-width) apart, so they
+    // never visually overlap mid-transition.
+    const exitAmount = direction * -100;
+    const enterStart = direction * 100;
+
+    for (const el of newGroup) {
+      el.style.transform = `translateX(${enterStart}%)`;
+    }
+    // Forces a reflow so the upcoming transition has a real committed
+    // "before" state to animate away from — same reasoning as
+    // `playPageTurnAnimation`'s identical step for freshly-inserted
+    // furniture overlays.
+    for (const el of [...oldGroup, ...newGroup]) {
+      void el.offsetHeight;
+    }
+
+    const transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1)";
+    const primaryEl = oldGroup[0];
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        primaryEl?.removeEventListener("transitionend", onTransitionEnd);
+        resolve();
+      };
+      const onTransitionEnd = (event: TransitionEvent): void => {
+        if (event.target === primaryEl && event.propertyName === "transform") {
+          finish();
+        }
+      };
+      if (primaryEl) {
+        primaryEl.addEventListener("transitionend", onTransitionEnd);
+      }
+      for (const el of [...oldGroup, ...newGroup]) {
+        el.style.transition = transition;
+      }
+      requestAnimationFrame(() => {
+        for (const el of oldGroup) {
+          el.style.transform = `translateX(${exitAmount}%)`;
+        }
+        for (const el of newGroup) {
+          el.style.transform = "translateX(0%)";
+        }
+      });
+      // Same safety net as `playPageTurnAnimation` — never leave the
+      // turn hung indefinitely if `transitionend` somehow never fires.
+      setTimeout(finish, 600);
+    });
   }
 
   /** Builds and returns the incoming page for a turn away from
@@ -3427,6 +3570,20 @@ export class ReaderController {
     return direction * -scale * fraction;
   }
 
+  /** The *entering* page's own transform amount during a "scroll"-style
+   * drag (issue #63) — the mirror image of `pageTurnPartialAmount`'s
+   * exiting-page amount: starts fully off-screen on the entering side
+   * (`direction * 100`) and approaches `0` (fully at rest, arrived) as
+   * `fraction` nears 1, so the incoming page arrives in perfect
+   * lockstep with the outgoing page leaving. Every other style leaves
+   * the entering page completely untouched during a drag — it's
+   * revealed statically underneath the one actually moving, not itself
+   * animated — so this is only ever called when `this.pageTurnAnimationStyle
+   * === "scroll"`. */
+  private scrollDragEnterAmount(direction: 1 | -1, fraction: number): number {
+    return direction * 100 * (1 - fraction);
+  }
+
   /** Sets `el`'s in-progress transform directly (no transition) for
    * whichever style is active — `amount` is degrees (rotate) or percent
    * (slide); `fraction` (0 to 1) scales a deepening drop shadow
@@ -3614,6 +3771,11 @@ export class ReaderController {
     const startX = startEvent.clientX;
     const startY = startEvent.clientY;
     const containerWidth = Math.max(1, this.width);
+    // "scroll" (issue #63) needs the incoming page to visibly move in
+    // lockstep with the outgoing one throughout the drag, not just sit
+    // revealed-but-static underneath it the way every other style
+    // treats it (see `scrollDragEnterAmount`).
+    const isScroll = this.pageTurnAnimationStyle === "scroll";
 
     let direction: 1 | -1 | undefined;
     let newHost: PaginatedContentHost | undefined;
@@ -3654,14 +3816,20 @@ export class ReaderController {
             // height for the duration of the drag, so its animated edge
             // doesn't visibly sit higher than a full page's would.
             // `settleDragPageTurn` restores it if the drag ends up
-            // reverting rather than committing.
-            oldHost.growToFullHeight(this.height);
+            // reverting rather than committing. Not needed for "scroll",
+            // which draws no such edge (see `playScrollTurn`).
+            if (!isScroll) {
+              oldHost.growToFullHeight(this.height);
+            }
             this.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);
             this.setPageTurnTransform(
               oldHost.element,
               this.pageTurnPartialAmount(lockedDirection, latestFraction),
               latestFraction,
             );
+            if (isScroll) {
+              prepared.element.style.transform = `translateX(${this.scrollDragEnterAmount(lockedDirection, latestFraction)}%)`;
+            }
           } else {
             // A chapter boundary — nothing to drag into in this pass.
             this.isTurningPage = false;
@@ -3674,6 +3842,9 @@ export class ReaderController {
       latestFraction = fraction;
       if (newHost && direction !== undefined) {
         this.setPageTurnTransform(oldHost.element, this.pageTurnPartialAmount(direction, fraction), fraction);
+        if (isScroll) {
+          newHost.element.style.transform = `translateX(${this.scrollDragEnterAmount(direction, fraction)}%)`;
+        }
       }
     };
 
@@ -3807,8 +3978,14 @@ export class ReaderController {
     // `iframeHasFocus`/`restoreFocusAfterHostSwap`'s doc comments.
     const hadKeyboardFocus = this.iframeHasFocus(oldHost);
     const oldEl = oldHost.element;
+    const newEl = newHost.element;
     const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
     const reduceMotion = this.shouldSkipPageTurnAnimation();
+    // "scroll" (issue #63) moved `newEl` in lockstep with `oldEl`
+    // throughout the drag (see `beginDragPageTurn`'s `scrollDragEnterAmount`
+    // calls) — every other style leaves it completely static, revealed
+    // rather than moved, so only "scroll" needs to also animate it here.
+    const isScroll = this.pageTurnAnimationStyle === "scroll";
 
     if (!reduceMotion) {
       const remainingFraction = commit ? 1 - fraction : fraction;
@@ -3829,12 +4006,26 @@ export class ReaderController {
           }
         };
         oldEl.addEventListener("transitionend", onTransitionEnd);
-        oldEl.style.transition = `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow ${duration}ms ease`;
+        // "scroll" draws no box-shadow (see `playScrollTurn`'s doc
+        // comment) — only the other styles need that second transitioned
+        // property.
+        oldEl.style.transition = isScroll
+          ? `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`
+          : `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow ${duration}ms ease`;
+        if (isScroll) {
+          newEl.style.transition = `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+        }
         requestAnimationFrame(() => {
           if (commit) {
             this.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1);
+            if (isScroll) {
+              newEl.style.transform = "translateX(0%)";
+            }
           } else {
             this.setPageTurnTransform(oldEl, 0, 0);
+            if (isScroll) {
+              newEl.style.transform = `translateX(${direction * 100}%)`;
+            }
           }
         });
         setTimeout(finish, duration + 250);
@@ -3870,7 +4061,6 @@ export class ReaderController {
       // otherwise invalidating a still-open highlight action popup.
       this.activeHighlight = undefined;
       oldHost.dispose();
-      const newEl = newHost.element;
       newEl.style.position = "";
       newEl.style.top = "";
       newEl.style.left = "";
