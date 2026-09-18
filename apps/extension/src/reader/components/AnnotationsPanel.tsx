@@ -1,0 +1,417 @@
+import { useEffect, useRef, useState } from "react";
+import type { FC } from "react";
+import { Body1, Button, Caption1, Tab, TabList, Textarea } from "@fluentui/react-components";
+import { BookmarkRegular, DismissRegular, HighlightRegular, NoteRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
+import { HighlightTheme } from "@ambra/engine";
+import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useFocusOnOpen } from "../useFocusOnOpen.js";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
+import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
+
+interface BookmarkListProps {
+  bookmarks: readonly Bookmark[];
+  onSelect: (cfi: string) => void;
+  onRemove: (id: string) => void;
+}
+
+/** The "Bookmarks" tab's contents — a flat, creation-order list (oldest
+ * first, matching `LibraryDatabase.listBookmarksForBook`), each showing
+ * its label (chapter + page — see `ReaderController.bookmarkLabel`) and
+ * an inline remove button. No "current position" highlight the way the
+ * TOC tree has one: unlike TOC entries, a bookmark is exactly one saved
+ * position, not a section the reader might currently be inside. */
+const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) => {
+  if (bookmarks.length === 0) {
+    return (
+      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
+        No bookmarks yet — use the bookmark button in the toolbar to save your place.
+      </Caption1>
+    );
+  }
+
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {bookmarks.map((bookmark) => (
+        <li key={bookmark.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button
+            type="button"
+            onClick={() => onSelect(bookmark.cfi)}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "none",
+              border: "none",
+              borderRadius: 6,
+              color: "var(--colorNeutralForeground2, #333)",
+              cursor: "pointer",
+              padding: "7px 10px",
+              textAlign: "left",
+              font: "inherit",
+              lineHeight: 1.35,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "none";
+            }}
+          >
+            <BookmarkRegular fontSize={16} style={{ flexShrink: 0, opacity: 0.7 }} />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {bookmark.label}
+            </span>
+          </button>
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<DismissRegular />}
+            aria-label={`Remove bookmark: ${bookmark.label}`}
+            onClick={() => onRemove(bookmark.id)}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+};
+
+interface HighlightListProps {
+  highlights: readonly Highlight[];
+  onSelect: (cfi: string) => void;
+  onRemove: (id: string) => void;
+  onSetNote: (id: string, note: string | undefined) => void;
+}
+
+/** The "Highlights" tab's contents — each entry shows a small color
+ * swatch (matching `HighlightTheme`'s style — an underline preview for
+ * that one style, same as the selection toolbar's own swatches), an
+ * excerpt of the highlighted text itself (snapshotted at creation time —
+ * see `Highlight.text` — so this never needs to re-resolve/re-extract
+ * from the DOM just to render a list), and its note (if any — see
+ * `HighlightListItem`). */
+const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove, onSetNote }) => {
+  if (highlights.length === 0) {
+    return (
+      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
+        No highlights yet — select some text while reading to highlight it.
+      </Caption1>
+    );
+  }
+
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {highlights.map((highlight) => (
+        <HighlightListItem
+          key={highlight.id}
+          highlight={highlight}
+          onSelect={onSelect}
+          onRemove={onRemove}
+          onSetNote={onSetNote}
+        />
+      ))}
+    </ul>
+  );
+};
+
+interface HighlightListItemProps {
+  highlight: Highlight;
+  onSelect: (cfi: string) => void;
+  onRemove: (id: string) => void;
+  onSetNote: (id: string, note: string | undefined) => void;
+}
+
+/** One highlight's row, plus its own local "note editor open?" state —
+ * split out from `HighlightList` specifically so each row can hold that
+ * state independently (a `useState` inside a `.map()` callback isn't
+ * possible; a real sub-component is the correct fix, not a workaround). */
+const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, onRemove, onSetNote }) => {
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [draftNote, setDraftNote] = useState(highlight.note ?? "");
+  const option = HighlightTheme.STYLES[highlight.style];
+
+  const saveNote = (): void => {
+    const trimmed = draftNote.trim();
+    onSetNote(highlight.id, trimmed === "" ? undefined : trimmed);
+    setIsEditingNote(false);
+  };
+
+  return (
+    <li style={{ padding: "2px 0" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
+        <button
+          type="button"
+          onClick={() => onSelect(highlight.startCfi)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            background: "none",
+            border: "none",
+            borderRadius: 6,
+            color: "var(--colorNeutralForeground2, #333)",
+            cursor: "pointer",
+            padding: "7px 10px",
+            textAlign: "left",
+            font: "inherit",
+            lineHeight: 1.35,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "none";
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              flexShrink: 0,
+              marginTop: 4,
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              border: "1px solid rgba(0, 0, 0, 0.15)",
+              background:
+                highlight.style === "underline"
+                  ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+                  : option.swatch,
+            }}
+          />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {highlight.text}
+            </span>
+            {highlight.note && !isEditingNote && (
+              <Caption1 as="span" block style={{ marginTop: 2, fontStyle: "italic", opacity: 0.75 }}>
+                {highlight.note}
+              </Caption1>
+            )}
+          </span>
+        </button>
+        <Button
+          appearance="subtle"
+          size="small"
+          icon={<NoteRegular />}
+          aria-label={highlight.note ? `Edit note: ${highlight.text}` : `Add note: ${highlight.text}`}
+          onClick={() => {
+            setDraftNote(highlight.note ?? "");
+            setIsEditingNote((open) => !open);
+          }}
+        />
+        <Button
+          appearance="subtle"
+          size="small"
+          icon={<DismissRegular />}
+          aria-label={`Remove highlight: ${highlight.text}`}
+          onClick={() => onRemove(highlight.id)}
+        />
+      </div>
+      {isEditingNote && (
+        <div style={{ padding: "0 10px 8px 34px" }}>
+          <Textarea
+            value={draftNote}
+            onChange={(_event, data) => setDraftNote(data.value)}
+            placeholder="Add a note…"
+            resize="vertical"
+            style={{ width: "100%" }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
+            <Button size="small" onClick={() => setIsEditingNote(false)}>
+              Cancel
+            </Button>
+            <Button size="small" appearance="primary" onClick={saveNote}>
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+};
+
+export interface AnnotationsPanelProps {
+  bookmarks: readonly Bookmark[];
+  onSelectBookmark: (cfi: string) => void;
+  onRemoveBookmark: (id: string) => void;
+  highlights: readonly Highlight[];
+  onSelectHighlight: (cfi: string) => void;
+  onRemoveHighlight: (id: string) => void;
+  onSetHighlightNote: (id: string, note: string | undefined) => void;
+  /** Whether the panel should currently be shown at all. Always rendered
+   * (never conditionally unmounted) so it can animate closed instead of
+   * simply vanishing — see the `transform`/`opacity` transition below. */
+  open: boolean;
+  /** `true` docks the panel in the normal layout flow, pushing the
+   * content pane over; `false` (the default) makes it fly out as a
+   * translucent overlay on top of the content pane instead,
+   * auto-dismissing on selection, an outside click, or Escape. */
+  pinned: boolean;
+  onTogglePin: () => void;
+  onRequestClose: () => void;
+}
+
+/** Bookmarks and highlights/annotations, sharing one panel with its own
+ * toolbar button — distinct from the Table of Contents (see `TocPanel`),
+ * per explicit product direction: bookmarks/annotations are things the
+ * *reader* created while reading, not part of the book's own authored
+ * structure, so they don't belong mixed into the same panel as the TOC.
+ * Structurally a near-twin of `TocPanel`'s own flyout/pin/close chrome
+ * (same behavior, same visual language) — intentionally duplicated
+ * rather than shared, since the two panels' actual *content* has nothing
+ * in common beyond that chrome. */
+export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
+  bookmarks,
+  onSelectBookmark,
+  onRemoveBookmark,
+  highlights,
+  onSelectHighlight,
+  onRemoveHighlight,
+  onSetHighlightNote,
+  open,
+  pinned,
+  onTogglePin,
+  onRequestClose,
+}) => {
+  const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
+
+  const chromeTheme = useChromeTheme();
+  const navRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    if (!open || pinned) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        onRequestClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, pinned, onRequestClose]);
+
+  // See `TocPanel`'s matching effect's doc comment for why this is
+  // needed at all (this panel is likewise rendered earlier in the DOM
+  // than the toolbar button that opens it).
+  useFocusOnOpen(navRef, open && !pinned);
+
+  return (
+    <>
+      {!pinned && (
+        <div
+          aria-hidden="true"
+          onClick={onRequestClose}
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 7,
+            background: "rgba(15, 23, 42, 0.18)",
+            opacity: open ? 1 : 0,
+            pointerEvents: open ? "auto" : "none",
+            transition: reduceMotion ? "none" : "opacity 260ms ease",
+          }}
+        />
+      )}
+
+      <nav
+        ref={navRef}
+        tabIndex={-1}
+        aria-label="Bookmarks and highlights"
+        style={{
+          position: pinned ? "relative" : "absolute",
+          outline: "none",
+          top: pinned ? 0 : 44,
+          left: 0,
+          bottom: pinned ? 0 : 8,
+          zIndex: 8,
+          width: 300,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          background: chromeTheme.backgroundSolid,
+          backdropFilter: pinned ? undefined : "blur(16px)",
+          borderRight: `1px solid ${CHROME_BORDER}`,
+          borderRadius: pinned ? 0 : "0 12px 12px 0",
+          boxShadow: pinned ? "none" : CHROME_SHADOW,
+          transform: pinned ? "none" : `translateX(${open ? "0" : "-100%"})`,
+          opacity: pinned || open ? 1 : 0,
+          pointerEvents: pinned || open ? "auto" : "none",
+          visibility: pinned || open ? "visible" : "hidden",
+          transition: reduceMotion
+            ? "none"
+            : "transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, visibility 280ms",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "10px 8px 10px 14px",
+            borderBottom: `1px solid ${CHROME_BORDER}`,
+          }}
+        >
+          <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
+            {activeTab === "bookmarks" ? "Bookmarks" : "Highlights"}
+          </Body1>
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={pinned ? <PinOffRegular /> : <PinRegular />}
+            aria-label={pinned ? "Unpin bookmarks panel" : "Pin bookmarks panel"}
+            title={pinned ? "Unpin" : "Pin open"}
+            onClick={onTogglePin}
+          />
+          {!pinned && (
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<DismissRegular />}
+              aria-label="Close bookmarks panel"
+              onClick={onRequestClose}
+            />
+          )}
+        </div>
+        <TabList
+          size="small"
+          selectedValue={activeTab}
+          onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
+          style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
+        >
+          <Tab value="bookmarks" icon={<BookmarkRegular />}>
+            Bookmarks{bookmarks.length > 0 ? ` (${bookmarks.length})` : ""}
+          </Tab>
+          <Tab value="highlights" icon={<HighlightRegular />}>
+            Highlights{highlights.length > 0 ? ` (${highlights.length})` : ""}
+          </Tab>
+        </TabList>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
+          {activeTab === "bookmarks" ? (
+            <BookmarkList bookmarks={bookmarks} onSelect={onSelectBookmark} onRemove={onRemoveBookmark} />
+          ) : (
+            <HighlightList
+              highlights={highlights}
+              onSelect={onSelectHighlight}
+              onRemove={onRemoveHighlight}
+              onSetNote={onSetHighlightNote}
+            />
+          )}
+        </div>
+      </nav>
+    </>
+  );
+};

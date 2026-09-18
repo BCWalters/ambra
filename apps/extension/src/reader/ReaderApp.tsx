@@ -7,6 +7,7 @@ import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
+import { AnnotationsPanel } from "./components/AnnotationsPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
@@ -69,6 +70,8 @@ export const ReaderApp: FC = () => {
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
+  const [isAnnotationsOpen, setIsAnnotationsOpen] = useState(false);
+  const [isAnnotationsPinned, setIsAnnotationsPinned] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -77,11 +80,11 @@ export const ReaderApp: FC = () => {
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
   // (and potentially out-of-sync) visibility state. Kept visible
-  // whenever either flyout panel (TOC or Book Details) is open, the
-  // same way `isTocOpen` alone did before — both are "pinned" reasons
-  // to keep the chrome from auto-hiding out from under an open panel.
+  // whenever any flyout panel (TOC, Bookmarks/Highlights, or Book
+  // Details) is open — all three are "pinned" reasons to keep the
+  // chrome from auto-hiding out from under an open panel.
   const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
-    isTocOpen || isDetailsOpen,
+    isTocOpen || isAnnotationsOpen || isDetailsOpen,
     snapshot?.contentPointerActivityId,
   );
 
@@ -119,12 +122,13 @@ export const ReaderApp: FC = () => {
     };
   }, [isDetailsOpen, bookDetails, getBookDetails]);
 
-  // Re-fetches every time the TOC panel opens (unlike book details above,
-  // which only ever needs fetching once per book) — bookmarks change far
-  // more often, via the toolbar's "Bookmark this page" button, so a
-  // stale list from an earlier open would routinely miss ones just added.
+  // Re-fetches every time the Bookmarks/Highlights panel opens (unlike
+  // book details above, which only ever needs fetching once per book) —
+  // bookmarks change far more often, via the toolbar's "Bookmark this
+  // page" button, so a stale list from an earlier open would routinely
+  // miss ones just added.
   useEffect(() => {
-    if (!isTocOpen) {
+    if (!isAnnotationsOpen) {
       return;
     }
     let cancelled = false;
@@ -136,7 +140,7 @@ export const ReaderApp: FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [isTocOpen, listBookmarks]);
+  }, [isAnnotationsOpen, listBookmarks]);
 
   const handleAddBookmark = (): void => {
     void addBookmark().then((added) => {
@@ -153,8 +157,8 @@ export const ReaderApp: FC = () => {
 
   const handleSelectBookmark = (cfi: string): void => {
     void goToBookmark(cfi);
-    if (!isTocPinned) {
-      setIsTocOpen(false);
+    if (!isAnnotationsPinned) {
+      setIsAnnotationsOpen(false);
     }
   };
 
@@ -172,8 +176,8 @@ export const ReaderApp: FC = () => {
 
   const handleSelectHighlight = (cfi: string): void => {
     void goToHighlight(cfi);
-    if (!isTocPinned) {
-      setIsTocOpen(false);
+    if (!isAnnotationsPinned) {
+      setIsAnnotationsOpen(false);
     }
   };
 
@@ -277,6 +281,14 @@ export const ReaderApp: FC = () => {
                 setIsTocOpen(false);
               }
             }}
+            searchQuery={snapshot.searchQuery}
+            searchResults={snapshot.searchResults}
+            isSearching={snapshot.isSearching}
+            onSearch={search}
+            onSelectSearchResult={handleSelectSearchResult}
+          />
+
+          <AnnotationsPanel
             bookmarks={bookmarks}
             onSelectBookmark={handleSelectBookmark}
             onRemoveBookmark={handleRemoveBookmark}
@@ -284,11 +296,13 @@ export const ReaderApp: FC = () => {
             onSelectHighlight={handleSelectHighlight}
             onRemoveHighlight={handleRemoveHighlight}
             onSetHighlightNote={handleSetHighlightNote}
-            searchQuery={snapshot.searchQuery}
-            searchResults={snapshot.searchResults}
-            isSearching={snapshot.isSearching}
-            onSearch={search}
-            onSelectSearchResult={handleSelectSearchResult}
+            open={isAnnotationsOpen}
+            pinned={isAnnotationsPinned}
+            onTogglePin={() => setIsAnnotationsPinned((pinned) => !pinned)}
+            onRequestClose={() => {
+              setIsAnnotationsOpen(false);
+              restoreContentFocus();
+            }}
           />
 
           <div
@@ -366,6 +380,13 @@ export const ReaderApp: FC = () => {
                   restoreContentFocus();
                 }
                 setIsTocOpen((open) => !open);
+              }}
+              isAnnotationsOpen={isAnnotationsOpen}
+              onToggleAnnotations={() => {
+                if (isAnnotationsOpen) {
+                  restoreContentFocus();
+                }
+                setIsAnnotationsOpen((open) => !open);
               }}
               isDetailsOpen={isDetailsOpen}
               onToggleDetails={() => {

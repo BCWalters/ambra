@@ -21,6 +21,7 @@ import {
   BookInformationRegular,
   BookOpenRegular,
   BookmarkAddRegular,
+  BookmarkRegular,
   ChevronDoubleLeftRegular,
   ChevronDoubleRightRegular,
   ChevronLeftRegular,
@@ -50,6 +51,8 @@ export interface ToolbarProps {
   snapshot: ReaderSnapshot;
   isTocOpen: boolean;
   onToggleToc: () => void;
+  isAnnotationsOpen: boolean;
+  onToggleAnnotations: () => void;
   isDetailsOpen: boolean;
   onToggleDetails: () => void;
   onTurnPage: (direction: 1 | -1) => void;
@@ -109,6 +112,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   snapshot,
   isTocOpen,
   onToggleToc,
+  isAnnotationsOpen,
+  onToggleAnnotations,
   isDetailsOpen,
   onToggleDetails,
   onTurnPage,
@@ -228,6 +233,19 @@ export const Toolbar: FC<ToolbarProps> = ({
             checked={isTocOpen}
             icon={<TextBulletListRegular />}
             onClick={onToggleToc}
+          />
+        </Tooltip>
+
+        <Tooltip
+          content={isAnnotationsOpen ? "Hide bookmarks and highlights" : "Bookmarks and highlights"}
+          relationship="label"
+        >
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isAnnotationsOpen}
+            icon={<BookmarkRegular />}
+            onClick={onToggleAnnotations}
           />
         </Tooltip>
 
