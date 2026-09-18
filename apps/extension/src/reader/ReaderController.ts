@@ -2642,7 +2642,14 @@ export class ReaderController {
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const cleanups: Array<() => void> = [];
 
-    for (const doc of host.contentDocuments()) {
+    host.contentDocuments().forEach((doc, columnIndex) => {
+      // `contentDocuments()` returns the left column first, right
+      // second (see its own doc comment) — the right column's own left
+      // margin sits at the spine, the *middle* of the whole spread, not
+      // its far edge, so a tap there should still mean "forward" like
+      // the rest of that page, not "back" (see `handleContentClick`'s
+      // `isRightColumn` parameter).
+      const isRightColumn = columnIndex === 1;
       let startX = 0;
       let startY = 0;
       const onPointerDown = (event: PointerEvent): void => {
@@ -2653,7 +2660,7 @@ export class ReaderController {
         startY = event.clientY;
       };
       const onPointerUp = (event: PointerEvent): void => {
-        this.handleContentClick(event, startX, startY, columnWidth);
+        this.handleContentClick(event, startX, startY, columnWidth, isRightColumn);
       };
       doc.addEventListener("pointerdown", onPointerDown);
       doc.addEventListener("pointerup", onPointerUp);
@@ -2661,7 +2668,7 @@ export class ReaderController {
         doc.removeEventListener("pointerdown", onPointerDown);
         doc.removeEventListener("pointerup", onPointerUp);
       });
-    }
+    });
 
     const containerEl = host.element;
     let containerStartX = 0;
@@ -2825,12 +2832,23 @@ export class ReaderController {
    * selection (the user was dragging to select, not tapping) and a click
    * that landed on an `<a href>` (already handled, and already
    * navigated, by `setUpContentInteraction`'s own click listener — turning
-   * the page *as well* would be a confusing double-navigation). */
+   * the page *as well* would be a confusing double-navigation).
+   *
+   * `isRightColumn` (spread mode only — always `false` for a single
+   * page, which has no "which column" to speak of) flips the left
+   * third's meaning from "back" to "forward": the right column's own
+   * left margin sits right at the book's spine, the *middle* of the
+   * whole two-page spread, not its far edge — physically nothing like
+   * the true "go back" gesture of tapping the spread's actual left
+   * edge (the left column's own left margin). Only that one zone means
+   * "back"; every other tap zone across the whole spread means
+   * "forward" (or is inert, for the two middle thirds). */
   private handleContentClick(
     upEvent: PointerEvent,
     startX: number,
     startY: number,
     containerWidth: number,
+    isRightColumn = false,
   ): void {
     const deltaX = Math.abs(upEvent.clientX - startX);
     const deltaY = Math.abs(upEvent.clientY - startY);
@@ -2853,7 +2871,7 @@ export class ReaderController {
 
     const thirdWidth = containerWidth / 3;
     if (startX < thirdWidth) {
-      void this.turnPage(-1);
+      void this.turnPage(isRightColumn ? 1 : -1);
     } else if (startX > containerWidth - thirdWidth) {
       void this.turnPage(1);
     }

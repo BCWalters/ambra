@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import {
   Body1,
@@ -132,6 +132,46 @@ export const Toolbar: FC<ToolbarProps> = ({
   const reduceMotion = usePrefersReducedMotion();
   const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
+  // Centers the title/chapter group within the space left over between
+  // the TOC toggle and the menu buttons whenever it comfortably fits
+  // there without truncating — falling back to today's left-aligned,
+  // chapter-truncates-first layout in narrower windows, per explicit
+  // design direction. `titleGroupRef`/`measureRef` render the *exact*
+  // same "Title — Chapter" text, but `measureRef`'s copy is always
+  // `white-space: nowrap` and invisible, existing purely so its
+  // `scrollWidth` reports the group's true, untruncated width — `<span
+  // style="text-overflow: ellipsis">`'s own `scrollWidth` would report
+  // the same untruncated width regardless (that's just how the CSS
+  // property works, not exclusive to visibly-truncated text), but only
+  // once *this* render's actual title/chapter text has painted, whereas
+  // the hidden measuring copy can be sized independently of whatever
+  // layout mode is currently active — deliberately avoiding a feedback
+  // loop where switching modes changes the exact thing being measured.
+  // `middleWrapperRef` is the flex:1 region between the two button
+  // groups — its own width is unaffected by whether the title/chapter
+  // inside it is a normal flex child or pulled out via `position:
+  // absolute` for centering, so comparing against it stays stable
+  // either way.
+  const titleGroupRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  const middleWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [canCenterTitle, setCanCenterTitle] = useState(false);
+
+  useEffect(() => {
+    const middleEl = middleWrapperRef.current;
+    const measureEl = measureRef.current;
+    if (!middleEl || !measureEl) {
+      return;
+    }
+    const check = (): void => {
+      setCanCenterTitle(measureEl.scrollWidth <= middleEl.clientWidth);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(middleEl);
+    return () => observer.disconnect();
+  }, [snapshot.title, snapshot.currentChapterLabel]);
+
   return (
     <>
       {/* A thin, always-present hover target at the very top edge of the
@@ -196,50 +236,126 @@ export const Toolbar: FC<ToolbarProps> = ({
             in the running header underneath — see `PageFurniture` — which
             this same toolbar covers whenever it's shown) is deliberately
             the first thing to truncate/disappear as the toolbar narrows,
-            never the book title. */}
+            never the book title.
+            
+            Centered within this region (see `canCenterTitle`'s doc
+            comment) whenever it comfortably fits without truncating,
+            falling back to the left-aligned/truncating layout below in
+            narrower windows. */}
         <div
+          ref={middleWrapperRef}
           style={{
             flex: 1,
             minWidth: 0,
-            display: "flex",
+            // When centered, both children of this wrapper (the hidden
+            // measuring clone, always, and the visible title group, once
+            // pulled out via `position: absolute` to center it) stop
+            // contributing to normal-flow height entirely — with nothing
+            // left in normal flow, the wrapper's own height collapses to
+            // 0, and `overflow: hidden` then clips the absolutely
+            // positioned title completely invisible even though it's
+            // "there" in the DOM with correct styles. `alignSelf: stretch`
+            // makes this flex item take the row's real height (set by the
+            // button siblings) instead of shrinking to its own
+            // (nonexistent) content height, so the title has room to
+            // paint regardless of which layout mode is active.
+            alignSelf: "stretch",
+            position: "relative",
+            display: canCenterTitle ? "block" : "flex",
             alignItems: "baseline",
             gap: 6,
             overflow: "hidden",
           }}
         >
-          <Body1
-            as="span"
+          <div
+            ref={measureRef}
+            aria-hidden="true"
             style={{
-              flexShrink: 0,
-              fontWeight: 600,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+              position: "absolute",
+              top: 0,
+              left: 0,
+              // Without an explicit width, an absolutely positioned box
+              // with `left` set but not `right` uses a shrink-to-fit
+              // algorithm that's capped by the *available* space in its
+              // containing block (`middleWrapperRef`) — so on a narrow
+              // window this clone would silently shrink to fit the
+              // available space instead of reporting the text's true,
+              // unconstrained width, making `scrollWidth` equal
+              // `clientWidth` (always "fits") even when the real title
+              // doesn't. `width: max-content` forces it to size to its
+              // actual content every time, which is the whole point of
+              // this hidden clone.
+              width: "max-content",
+              visibility: "hidden",
+              pointerEvents: "none",
               whiteSpace: "nowrap",
-              maxWidth: "100%",
+              display: "flex",
+              alignItems: "baseline",
+              gap: 6,
             }}
           >
-            {snapshot.title}
-          </Body1>
+            <Body1 as="span" style={{ fontWeight: 600 }}>
+              {snapshot.title}
+            </Body1>
+            <Caption1 as="span">— {snapshot.currentChapterLabel}</Caption1>
+          </div>
 
-          {/* The current chapter — shown only when there's room for it
-              (see the doc comment above): this wrapper takes whatever
-              space is left after the book title above (which never
-              shrinks below its own content size), so as the toolbar
-              narrows, the chapter name is always the first thing to
-              truncate and eventually disappear, never the book title. */}
-          <Caption1
-            as="span"
+          <div
+            ref={titleGroupRef}
             style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 6,
               minWidth: 0,
-              flex: 1,
               overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              color: "var(--colorNeutralForeground2, #444)",
+              ...(canCenterTitle
+                ? {
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    whiteSpace: "nowrap",
+                  }
+                : undefined),
             }}
           >
-            — {snapshot.currentChapterLabel}
-          </Caption1>
+            <Body1
+              as="span"
+              style={{
+                flexShrink: 0,
+                fontWeight: 600,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: "100%",
+              }}
+            >
+              {snapshot.title}
+            </Body1>
+
+            {/* The current chapter — shown only when there's room for it
+                (see the doc comment above): this wrapper takes whatever
+                space is left after the book title above (which never
+                shrinks below its own content size), so as the toolbar
+                narrows, the chapter name is always the first thing to
+                truncate and eventually disappear, never the book title.
+                When centered, it never needs to shrink at all — that's
+                exactly the case `canCenterTitle` already confirmed has
+                enough room. */}
+            <Caption1
+              as="span"
+              style={{
+                minWidth: 0,
+                flex: canCenterTitle ? undefined : 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "var(--colorNeutralForeground2, #444)",
+              }}
+            >
+              — {snapshot.currentChapterLabel}
+            </Caption1>
+          </div>
         </div>
 
         {/* No page-number display in the toolbar itself — it lives in
@@ -330,7 +446,12 @@ export const Toolbar: FC<ToolbarProps> = ({
           >
             <MenuTrigger disableButtonEnhancement>
               <Tooltip content="Text and page layout" relationship="label">
-                <Button appearance="subtle" size="small" icon={<TextFontRegular />} />
+                <Button
+                  appearance="subtle"
+                  size="small"
+                  icon={<TextFontRegular />}
+                  style={{ marginLeft: 8 }}
+                />
               </Tooltip>
             </MenuTrigger>
             <MenuPopover>
@@ -456,7 +577,17 @@ export const Toolbar: FC<ToolbarProps> = ({
         >
           <MenuTrigger disableButtonEnhancement>
             <Tooltip content="Settings" relationship="label">
-              <Button appearance="subtle" size="small" icon={<SettingsRegular />} />
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<SettingsRegular />}
+                // Only the "Aa" menu (Text and page layout) is skipped
+                // for fixed-layout books, at which point Settings becomes
+                // the first button in this group instead — it needs the
+                // same grouping gap "Aa" normally carries in that case,
+                // not an extra one stacked on top of it otherwise.
+                style={snapshot.isFixedLayout ? { marginLeft: 8 } : undefined}
+              />
             </Tooltip>
           </MenuTrigger>
           <MenuPopover>
@@ -505,15 +636,6 @@ export const Toolbar: FC<ToolbarProps> = ({
           </MenuPopover>
         </Menu>
 
-        <Tooltip content="Bookmark this page" relationship="label">
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={<BookmarkAddRegular />}
-            onClick={onAddBookmark}
-          />
-        </Tooltip>
-
         <Tooltip
           content={isDetailsOpen ? "Hide book details" : "Book details"}
           relationship="label"
@@ -524,6 +646,22 @@ export const Toolbar: FC<ToolbarProps> = ({
             checked={isDetailsOpen}
             icon={<BookInformationRegular />}
             onClick={onToggleDetails}
+          />
+        </Tooltip>
+
+        {/* Bookmark stands alone at the far right, set apart from the
+            Text/Settings/Details group with some extra breathing room
+            (beyond the toolbar's own uniform `gap`) — per explicit
+            design direction, the toolbar reads as three loose clusters
+            left to right: Navigate, then Text/Settings/Details grouped
+            together, then Bookmark on its own at the end. */}
+        <Tooltip content="Bookmark this page" relationship="label">
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<BookmarkAddRegular />}
+            onClick={onAddBookmark}
+            style={{ marginLeft: 8 }}
           />
         </Tooltip>
       </div>

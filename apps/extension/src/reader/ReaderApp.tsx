@@ -85,6 +85,19 @@ export const ReaderApp: FC = () => {
     snapshot?.contentPointerActivityId,
   );
 
+  // Names the browser tab after the book itself, rather than leaving it
+  // on the reader page's own generic title — the tab strip is often the
+  // only place a reader can tell which of several open books a given tab
+  // is, especially with more than one open at once. Runs whenever the
+  // title becomes available/changes (book open, or a different book
+  // loaded into the same tab via a fresh `?bookId=`), not just once on
+  // mount.
+  useEffect(() => {
+    if (snapshot?.title) {
+      document.title = snapshot.title;
+    }
+  }, [snapshot?.title]);
+
   // Fetches the book's details (cover/file name need an async
   // `LibraryDatabase` read the first time — see `ReaderController.
   // getBookDetails`) the first time the panel is opened, not on every
