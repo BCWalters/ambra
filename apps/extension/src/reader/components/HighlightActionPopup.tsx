@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Button, Textarea, Tooltip } from "@fluentui/react-components";
 import { DeleteRegular, DismissRegular, NoteRegular } from "@fluentui/react-icons";
@@ -28,11 +28,24 @@ export interface HighlightActionPopupProps {
  * represent genuinely different moments (making a new highlight vs.
  * acting on one that already exists) with different actions, and
  * forcing them into one shape would only make either harder to read.
+ *
+ * Unlike `SelectionToolbar`, this popup does *not* guard its own
+ * `onMouseDown` with `preventDefault()` (issue #61: an earlier version
+ * did, copied from `SelectionToolbar`'s pattern, and it silently broke
+ * focusing the "Add a note" `Textarea` — `preventDefault()` on
+ * `mousedown` suppresses the browser's own default focus-on-click
+ * behavior for *every* descendant, textarea included). That guard
+ * exists on `SelectionToolbar` to keep the content iframe's live
+ * `Selection` from collapsing when a color swatch is clicked in the
+ * parent document; this popup has no live `Selection` to protect at
+ * all (it acts on an already-created, CFI-anchored highlight), so
+ * there's nothing here that guard would actually be defending against.
  */
 export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onSetNote, onRemove, onDismiss }) => {
   const chromeTheme = useChromeTheme();
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState("");
+  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Resets the note editor's own open/draft state whenever a *different*
   // highlight is opened (or this one closes) — without this, closing and
@@ -42,6 +55,16 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
     setIsEditingNote(false);
     setDraftNote(state?.highlight.note ?? "");
   }, [state?.highlight.id]);
+
+  // Moves focus into the note textarea the moment it appears (clicking
+  // the note icon), rather than leaving a reader who wants to type a
+  // note to go find and click into it themselves — the field is the
+  // entire point of having just opened this editor.
+  useEffect(() => {
+    if (isEditingNote) {
+      noteTextareaRef.current?.focus();
+    }
+  }, [isEditingNote]);
 
   useEffect(() => {
     if (!state) {
@@ -72,10 +95,6 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
     <div
       role="dialog"
       aria-label="Highlight options"
-      // Same reasoning as `SelectionToolbar`'s own `onMouseDown` guard —
-      // prevents a click on this popup from being read as "clicked
-      // elsewhere in the content" and immediately dismissing itself.
-      onMouseDown={(event) => event.preventDefault()}
       style={{
         position: "fixed",
         left: state.left,
@@ -154,6 +173,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
       {isEditingNote && (
         <div>
           <Textarea
+            ref={noteTextareaRef}
             value={draftNote}
             onChange={(_event, data) => setDraftNote(data.value)}
             placeholder="Add a note…"
