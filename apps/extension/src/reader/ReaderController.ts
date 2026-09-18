@@ -255,6 +255,12 @@ export interface ReaderSnapshot {
    * `toggleBookmark`). Always `false` for scroll mode/fixed-layout
    * content, which have no discrete "page" for a bookmark to be "on". */
   isBookmarked: boolean;
+  /** Per-visible-page version of `isBookmarked` (see
+   * `bookmarkFlagsForCurrentPages`) — one boolean per currently-visible
+   * page, in the same primary-then-secondary order `PageFurniture`'s own
+   * `columnBands` uses, so a spread with a bookmark on only one of its
+   * two pages draws the on-page ribbon (issue #51) on just that one. */
+  bookmarkedPages: readonly boolean[];
   /** The current reader-controlled font-size multiplier (see
    * `ReadingTheme`) — `1` is the theme's own default size. Always `1` for
    * a fixed-layout spine item, which has no reader-adjustable typography. */
@@ -744,6 +750,7 @@ export class ReaderController {
         paneWidth: this.width,
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarksOnCurrentPage().length > 0,
+        bookmarkedPages: this.bookmarkFlagsForCurrentPages(),
         fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
         lineSpacing:
           this.host instanceof FixedContentHost ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
@@ -1053,6 +1060,36 @@ export class ReaderController {
       }
     }
     return matches;
+  }
+
+  /** Per-visible-page version of `bookmarksOnCurrentPage` — one boolean
+   * per entry in `currentPagesAndDocuments()` (so, in the same primary-
+   * then-secondary order `PageFurniture`'s own `columnBands` uses),
+   * rather than one aggregate "is any of them bookmarked" answer. Backs
+   * `ReaderSnapshot.bookmarkedPages`, which `PageFurniture` uses to draw
+   * a bookmark ribbon on exactly the page(s) that actually have one —
+   * in a two-page spread, a bookmark on the left page shouldn't paint a
+   * ribbon on the right page too. */
+  private bookmarkFlagsForCurrentPages(): boolean[] {
+    const pagesAndDocuments = this.currentPagesAndDocuments();
+    if (pagesAndDocuments.length === 0 || this.bookmarksCache.length === 0) {
+      return pagesAndDocuments.map(() => false);
+    }
+    return pagesAndDocuments.map(({ page, document }) => {
+      for (const bookmark of this.bookmarksCache) {
+        const locator = new Locator(bookmark.cfi);
+        try {
+          const resolved = this.locatorResolver.resolveInDocument(locator, this.spineIndex, document);
+          if (page.containsPosition(resolved.node, resolved.characterOffset ?? 0, document)) {
+            return true;
+          }
+        } catch {
+          // Different spine item, or otherwise unresolvable against this
+          // page's document — not on this page; try the next bookmark.
+        }
+      }
+      return false;
+    });
   }
 
   /** The toolbar's single bookmark button, per explicit product

@@ -1,5 +1,6 @@
 import type { FC } from "react";
 import { Caption1 } from "@fluentui/react-components";
+import { BookmarkFilled } from "@fluentui/react-icons";
 import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderController.js";
 import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
@@ -7,6 +8,11 @@ import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
 export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
 }
+
+/** The ribbon's own width/height (a small square icon box) — used both
+ * to size it and to inset it from a page's right edge so it reads as
+ * "hanging off this specific page's corner," not the reader pane's. */
+const BOOKMARK_RIBBON_SIZE = 22;
 
 /** Rounds a page position to a whole-number percentage, or `undefined`
  * if either input isn't known yet — never `0%`/`100%` by construction
@@ -106,6 +112,18 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
   const headerTexts = columnBands.length > 1 ? [snapshot.title, snapshot.currentChapterLabel] : undefined;
   const footerNumbers = columnBands.length > 1 ? [primaryPageNumber, secondaryPageNumber] : [primaryPageNumber];
 
+  // Where each band's own *right* edge sits, for the bookmark ribbon
+  // (issue #51) — deliberately not reusing `band.left`/`band.right`
+  // directly, since those describe the far side used to *center* header
+  // text within the band, not necessarily this page's own right corner:
+  // the left column of a spread has its right edge at `left + width`,
+  // not at `right` (which is `"auto"` for that column).
+  const columnRightEdges: { left?: number; right?: number | string }[] = columnBands.map((band) =>
+    typeof band.left === "number" && typeof band.width === "number"
+      ? { left: band.left + band.width - BOOKMARK_RIBBON_SIZE }
+      : { right: band.right === "auto" ? 0 : band.right },
+  );
+
   return (
     <>
       {!snapshot.isAnimatingPageTurn && (
@@ -190,6 +208,48 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
                   {`Page ${pageNumber}`}
                 </Caption1>
               </div>
+            );
+          })}
+
+          {/* A small bookmark ribbon in a page's own top-right corner
+              (issue #51) whenever a saved bookmark resolves onto that
+              specific page — nothing drawn at all otherwise, per the
+              same "silence is the no-bookmark state" convention the
+              toolbar's own bookmark toggle already uses. One per visible
+              page (see `columnRightEdges`/`ReaderSnapshot.bookmarkedPages`),
+              so a spread with a bookmark on only one of its two pages
+              draws the ribbon on just that one, not both. */}
+          {columnBands.map((_band, index) => {
+            if (!snapshot.bookmarkedPages[index]) {
+              return null;
+            }
+            const edge = columnRightEdges[index];
+            return (
+              <BookmarkFilled
+                key={index}
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  ...edge,
+                  width: BOOKMARK_RIBBON_SIZE,
+                  height: BOOKMARK_RIBBON_SIZE,
+                  // Deliberately *above* the toolbar (zIndex 10) rather
+                  // than sharing the rest of this component's zIndex 5 —
+                  // unlike the running header/footer text (informational,
+                  // fine to sit "underneath" the toolbar exactly like a
+                  // printed book's own header would be covered by a
+                  // dust jacket), a bookmark is the one piece of page
+                  // furniture a reader actually wants to glance at and
+                  // confirm at any time, chrome visible or not — the
+                  // same reason a real paper bookmark ribbon still pokes
+                  // out above a closed book's cover.
+                  zIndex: 11,
+                  color: "#dc3d3d",
+                  filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))",
+                  pointerEvents: "none",
+                }}
+              />
             );
           })}
         </>
