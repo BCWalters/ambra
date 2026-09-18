@@ -2311,11 +2311,22 @@ export class ReaderController {
    * *simultaneously* mid-turn, which a single iframe fundamentally can't
    * do (it only ever shows one page at a time) — so this builds the
    * incoming page in a brand-new, independent `PaginatedContentHost` (see
-   * `prepareIncomingPage`), stacks it *underneath* the outgoing page, and
-   * animates only the outgoing page rotating away — `backface-visibility:
-   * hidden` makes it disappear past 90°, revealing the already-fully-
-   * rendered incoming page beneath it without that page needing any
-   * animation of its own.
+   * `prepareIncomingPage`).
+   *
+   * A **forward** turn (`direction === 1`) animates the *outgoing* page
+   * turning away — stacked *above* the incoming page already waiting
+   * underneath it, `backface-visibility: hidden` makes it disappear past
+   * 90°, revealing the incoming page beneath with no animation of its
+   * own. A **backward** turn does the *opposite*, per explicit product
+   * direction (issue #41): rather than the current page turning away to
+   * reveal the previous one sitting underneath (which reads as
+   * backwards for how a real book works — you're not un-covering
+   * something, you're placing a previously-turned page back down on
+   * top), the *incoming* (previous) page is instead built already
+   * "turned away" (see `playPageTurnAnimation`'s `entering` mode),
+   * stacked *above* the static, unanimated outgoing page, and animates
+   * *in*, settling to rest and covering the current page as it arrives —
+   * exactly like flipping a page back over onto the one you're leaving.
    *
    * Skips the animation (an instant page swap) when
    * `prefers-reduced-motion` is set, consistent with the rest of the
@@ -2336,13 +2347,17 @@ export class ReaderController {
       return undefined;
     }
     const newEl = newHost.element;
-
-    // See `PaginatedContentHost.growToFullHeight`'s doc comment: masks
-    // this page's own (often shorter than full) content height for the
-    // duration of the animation, so its animated edge doesn't visibly
-    // sit higher than a full page's would. No need to restore
-    // afterward — `oldHost.dispose()` right below discards it outright.
-    oldHost.growToFullHeight(this.height);
+    const entering = direction === -1;
+    // Whichever host is actually animating is the one whose own (often
+    // shorter than full) content height needs masking for the duration
+    // — see `PaginatedContentHost.growToFullHeight`'s doc comment. For a
+    // forward turn that's the outgoing page (discarded right after, via
+    // `oldHost.dispose()`, so no need to ever restore it); for a
+    // backward turn it's the *incoming* page, which survives as the new
+    // `this.host` and must have its natural height restored once the
+    // turn settles.
+    const animatingHost = entering ? newHost : oldHost;
+    animatingHost.growToFullHeight(this.height);
 
     // Build the outgoing/incoming "turn furniture" overlays (see
     // `buildTurnFurnitureOverlay`) so the running header/footer turns
@@ -2377,28 +2392,41 @@ export class ReaderController {
           footerText: incomingNumber !== undefined ? `Page ${incomingNumber}` : undefined,
         },
       ]);
-      if (incomingOverlay) {
-        incomingOverlay.style.zIndex = "1";
-        this.containerEl.appendChild(incomingOverlay);
+      // Whichever overlay pairs with the animating page sits on top
+      // (z-index 2); the static one underneath gets 1 — same convention
+      // either direction, just swapped for which side is actually moving.
+      const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
+      const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
+      if (staticOverlay) {
+        staticOverlay.style.zIndex = "1";
+        this.containerEl.appendChild(staticOverlay);
       }
-      if (outgoingOverlay) {
-        outgoingOverlay.style.zIndex = "2";
-        this.containerEl.appendChild(outgoingOverlay);
+      if (animatedOverlay) {
+        animatedOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(animatedOverlay);
       }
       this.isAnimatingPageTurn = true;
       this.notify();
     }
 
+    const turnEl = entering ? newEl : oldHost.element;
     await this.playPageTurnAnimation(
-      oldHost.element,
-      oldHost.element,
+      turnEl,
+      turnEl,
       direction,
-      outgoingOverlay ? [outgoingOverlay] : [],
+      (entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : [],
+      entering,
     );
 
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     this.isAnimatingPageTurn = false;
+    if (entering) {
+      // The incoming host survives as the new `this.host` — unlike a
+      // forward turn's outgoing host (discarded right below), its
+      // temporary full-height mask must actually be undone.
+      newHost.restoreNaturalHeight();
+    }
 
     // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
     // `newEl` as the sole remaining child — reset its temporary
@@ -2438,26 +2466,34 @@ export class ReaderController {
       return undefined;
     }
     const newEl = newHost.element;
+    const entering = direction === -1;
+    // See `animatePageTurn`'s doc comment on why backward flips which
+    // side actually animates.
+    const turnHost = entering ? newHost : oldHost;
 
     // Only "rotate" needs this: "slide" already moves the whole spread
     // wrapper, which `SpreadPaginatedHost`'s own constructor fixes to
     // the full pane height regardless of either column's content — see
     // `PaginatedContentHost.growToFullHeight`'s doc comment for why a
     // single turning column needs the same treatment "slide" gets for
-    // free. No restore needed — `oldHost.dispose()` below discards the
-    // whole spread outright either way.
+    // free. Always the *right* column now — see `elementToTurn`'s doc
+    // comment. Restored explicitly for a backward turn, whose animating
+    // host (`newHost`) survives as the new `this.host`; a forward turn's
+    // animating host (`oldHost`) is simply discarded, so needs no
+    // restore.
     if (this.pageTurnAnimationStyle === "rotate") {
-      oldHost.growColumnToFullHeight(direction === 1 ? "right" : "left", this.height);
+      turnHost.growColumnToFullHeight("right", this.height);
     }
-    const turnEl = this.elementToTurn(oldHost, direction);
+    const turnEl = this.elementToTurn(turnHost);
 
     // Same "turn furniture" treatment as `animatePageTurn` — see
     // `buildTurnFurnitureOverlay`'s doc comment. Title/chapter never
     // change mid-turn (same reasoning as the single-page case); only
     // the page number(s) do. "slide" needs *both* columns' furniture
     // (the whole spread moves as one sheet); "rotate" needs only the
-    // one column that's actually turning, matched to `turnEl` itself.
-    // Skipped entirely when there's no animation to play them alongside.
+    // right column (see `elementToTurn`), on whichever host is actually
+    // animating. Skipped entirely when there's no animation to play
+    // them alongside.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
     if (!this.prefersReducedMotion()) {
@@ -2490,18 +2526,19 @@ export class ReaderController {
         outgoingOverlay = this.buildTurnFurnitureOverlay(oldHost.element, bands(outgoingPrimary, outgoingSecondary));
         incomingOverlay = this.buildTurnFurnitureOverlay(newEl, bands(incomingPrimary, incomingSecondary));
       } else {
-        const columnIndex = direction === 1 ? 1 : 0;
-        const isLeftColumn = columnIndex === 0;
-        const newColumnEl = this.spreadColumnElement(newHost, columnIndex);
-        const header = { mode: "single" as const, text: isLeftColumn ? title : chapterLabel };
-        const outgoingNumber = isLeftColumn ? outgoingPrimary : outgoingSecondary;
-        const incomingNumber = isLeftColumn ? incomingPrimary : incomingSecondary;
-        outgoingOverlay = this.buildTurnFurnitureOverlay(turnEl, [
+        // Always the right column now (see `elementToTurn`), which
+        // always shows the chapter label + its own "secondary" page
+        // number, matching `PageFurniture`'s own left-title/right-
+        // chapter convention.
+        const header = { mode: "single" as const, text: chapterLabel };
+        const oldColumnEl = this.spreadColumnElement(oldHost, 1);
+        const newColumnEl = this.spreadColumnElement(newHost, 1);
+        outgoingOverlay = this.buildTurnFurnitureOverlay(oldColumnEl, [
           {
             left: 0,
-            width: turnEl.getBoundingClientRect().width,
+            width: oldColumnEl.getBoundingClientRect().width,
             header,
-            footerText: outgoingNumber !== undefined ? `Page ${outgoingNumber}` : undefined,
+            footerText: outgoingSecondary !== undefined ? `Page ${outgoingSecondary}` : undefined,
           },
         ]);
         incomingOverlay = this.buildTurnFurnitureOverlay(newColumnEl, [
@@ -2509,27 +2546,42 @@ export class ReaderController {
             left: 0,
             width: newColumnEl.getBoundingClientRect().width,
             header,
-            footerText: incomingNumber !== undefined ? `Page ${incomingNumber}` : undefined,
+            footerText: incomingSecondary !== undefined ? `Page ${incomingSecondary}` : undefined,
           },
         ]);
       }
-      if (incomingOverlay) {
-        incomingOverlay.style.zIndex = "1";
-        this.containerEl.appendChild(incomingOverlay);
+      // Whichever overlay pairs with the animating page sits on top
+      // (z-index 2); the static one underneath gets 1 — same convention
+      // either direction, just swapped for which side is actually moving.
+      const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
+      const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
+      if (staticOverlay) {
+        staticOverlay.style.zIndex = "1";
+        this.containerEl.appendChild(staticOverlay);
       }
-      if (outgoingOverlay) {
-        outgoingOverlay.style.zIndex = "2";
-        this.containerEl.appendChild(outgoingOverlay);
+      if (animatedOverlay) {
+        animatedOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(animatedOverlay);
       }
       this.isAnimatingPageTurn = true;
       this.notify();
     }
 
-    await this.playPageTurnAnimation(oldHost.element, turnEl, direction, outgoingOverlay ? [outgoingOverlay] : []);
+    const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
+    await this.playPageTurnAnimation(
+      turnHost.element,
+      turnEl,
+      direction,
+      animatedOverlayEl ? [animatedOverlayEl] : [],
+      entering,
+    );
 
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     this.isAnimatingPageTurn = false;
+    if (entering && this.pageTurnAnimationStyle === "rotate") {
+      newHost.restoreColumnNaturalHeight("right");
+    }
 
     oldHost.dispose();
     newEl.style.position = "";
@@ -2541,19 +2593,27 @@ export class ReaderController {
   }
 
   /** Which element a page turn actually applies its `transform` to —
-   * always `oldHost.element` itself, *except* for a spread's "rotate"
-   * style, which turns only the single column nearest the spine (see
-   * `animateSpreadTurn`'s doc comment) rather than the whole two-page
-   * unit. Resolved via `spreadColumnElement`. Falls back to the whole
-   * spread if that somehow can't be resolved (never observed in
-   * practice, just defensive) — degrading to the same "whole unit"
-   * motion "slide" already uses is a reasonable fallback, not a broken
-   * one. */
-  private elementToTurn(oldHost: PaginatedContentHost | SpreadPaginatedHost, direction: 1 | -1): HTMLElement {
-    if (!(oldHost instanceof SpreadPaginatedHost) || this.pageTurnAnimationStyle === "slide") {
-      return oldHost.element;
+   * always the relevant host's own `.element`, *except* for a spread's
+   * "rotate" style, which turns only the single column nearest the
+   * spine (see `animateSpreadTurn`'s doc comment) rather than the whole
+   * two-page unit. `host` is whichever side is actually animating —
+   * the *outgoing* host for a forward (exiting) turn, or the *incoming*
+   * host for a backward (entering) turn (see `playPageTurnAnimation`'s
+   * doc comment) — always the *right* column: for a forward exit
+   * that's the outgoing spread's right column turning away (hinged at
+   * its own left/spine edge); for a backward entry that's the incoming
+   * (previous) spread's right column — the page immediately before the
+   * current view — swinging back down into place over the current
+   * spread's left column, hinged the same way. Resolved via
+   * `spreadColumnElement`. Falls back to the whole spread if that
+   * somehow can't be resolved (never observed in practice, just
+   * defensive) — degrading to the same "whole unit" motion "slide"
+   * already uses is a reasonable fallback, not a broken one. */
+  private elementToTurn(host: PaginatedContentHost | SpreadPaginatedHost): HTMLElement {
+    if (!(host instanceof SpreadPaginatedHost) || this.pageTurnAnimationStyle === "slide") {
+      return host.element;
     }
-    return this.spreadColumnElement(oldHost, direction === 1 ? 1 : 0);
+    return this.spreadColumnElement(host, 1);
   }
 
   /** Resolves one column's actual iframe element out of a
@@ -2593,17 +2653,47 @@ export class ReaderController {
    * still while only the page moves. Only `turnEl` is actually listened
    * to for `transitionend`/the safety-net timeout — one reliable signal
    * is enough to resolve the whole turn, and every element here always
-   * shares the same 380ms duration regardless. */
+   * shares the same 380ms duration regardless.
+   *
+   * `entering` (used for a *backward* turn — see `animatePageTurn`'s doc
+   * comment on why backward flips which side actually animates) reverses
+   * the whole sequence: instead of `turnEl` starting at rest and turning
+   * away to reveal what's underneath, it starts already fully turned
+   * away (the mirror image of what a forward turn's *end* position looks
+   * like — since a backward turn is conceptually "un-doing" whichever
+   * forward turn originally got here) and animates *down to* rest,
+   * sliding/rotating into view on top of whatever's underneath. */
   private async playPageTurnAnimation(
     hostEl: HTMLElement,
     turnEl: HTMLElement,
     direction: 1 | -1,
     extraTurnEls: HTMLElement[] = [],
+    entering = false,
   ): Promise<void> {
     if (this.prefersReducedMotion()) {
       return;
     }
-    this.stagePageTurn(hostEl, turnEl, direction, extraTurnEls);
+    this.stagePageTurn(hostEl, turnEl, direction, extraTurnEls, entering);
+
+    // Rotating slightly past 90° (rather than stopping exactly at it)
+    // reads as a page continuing its motion out of view rather than
+    // freezing edge-on to the viewer — so "fully turned" overshoots to
+    // 100 (translate %, or rotate degrees) rather than stopping at 90.
+    const fullyTurnedAmount = direction === 1 ? -100 : 100;
+
+    if (entering) {
+      // Establish the "fully turned away" starting point *before* the
+      // transition is even set up — mirrored sign, since this is the
+      // reverse of whichever forward turn originally sent this same
+      // page away. Forcing a reflow (see the loop below) ensures the
+      // *next* style change (the transition + final transform) has a
+      // real committed "before" state to animate away from, exactly the
+      // same reasoning as for a freshly-inserted furniture overlay.
+      this.setPageTurnTransform(turnEl, -fullyTurnedAmount, 1, extraTurnEls);
+      for (const el of [turnEl, ...extraTurnEls]) {
+        void el.offsetHeight;
+      }
+    }
 
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -2639,11 +2729,8 @@ export class ReaderController {
         void el.offsetHeight;
         el.style.transition = transition;
       }
-      // Rotating slightly past 90° (rather than stopping exactly at
-      // it) reads as a page continuing its motion out of view rather
-      // than freezing edge-on to the viewer.
       requestAnimationFrame(() => {
-        this.setPageTurnTransform(turnEl, direction === 1 ? -100 : 100, 1, extraTurnEls);
+        this.setPageTurnTransform(turnEl, entering ? 0 : fullyTurnedAmount, entering ? 0 : 1, extraTurnEls);
       });
       // A safety net in case `transitionend` never fires (e.g. the
       // element was removed mid-transition by a rapid subsequent
@@ -2690,8 +2777,15 @@ export class ReaderController {
     const newEl = newHost.element;
     newEl.style.position = "absolute";
     newEl.style.top = "0";
-    newEl.style.left = "50%";
-    newEl.style.transform = "translateX(-50%)";
+    // `PaginatedContentHost` is always constructed with `this.width` —
+    // the container's own full width — so `left: 0` alone already lines
+    // it up exactly; no centering transform is needed (and, unlike the
+    // `left: 50%; transform: translateX(-50%)` this used to be, `left:
+    // 0` alone leaves `transform` free for `setPageTurnTransform` to set
+    // outright during a backward/"entering" turn, where *this* element
+    // becomes the one being animated rather than the one revealed
+    // statically underneath — see `animatePageTurn`'s doc comment).
+    newEl.style.left = "0";
     newEl.style.zIndex = "1";
     containerEl.appendChild(newEl);
 
@@ -2751,8 +2845,11 @@ export class ReaderController {
     const newEl = newHost.element;
     newEl.style.position = "absolute";
     newEl.style.top = "0";
-    newEl.style.left = "50%";
-    newEl.style.transform = "translateX(-50%)";
+    // See `prepareIncomingPage`'s matching comment — `SpreadPaginatedHost`
+    // is likewise always constructed with `this.width`, so `left: 0`
+    // alone lines it up exactly, leaving `transform` free for a
+    // backward/"entering" turn to set outright.
+    newEl.style.left = "0";
     newEl.style.zIndex = "1";
     containerEl.appendChild(newEl);
 
@@ -2823,18 +2920,41 @@ export class ReaderController {
     turnEl: HTMLElement,
     direction: 1 | -1,
     extraTurnEls: HTMLElement[] = [],
+    entering = false,
   ): void {
     if (!this.containerEl) {
       return;
     }
-    hostEl.style.position = "relative";
+    // For a forward (exiting) turn, `hostEl` is the outgoing host,
+    // still sitting in normal flex flow (never explicitly positioned) —
+    // `position: relative` elevates it via `z-index` without removing it
+    // from flow. For a backward (entering) turn, `hostEl` is the
+    // *incoming* host instead, which `prepareIncomingPage`/
+    // `prepareIncomingSpread` already made `position: absolute; left:
+    // 50%; transform: translateX(-50%)` specifically to overlap the
+    // outgoing host exactly — downgrading that to `relative` here would
+    // drop it back into normal flex flow as a *sibling* of the outgoing
+    // host instead (a real bug, caught via direct DOM inspection: both
+    // ended up rendering side by side, each squeezed to half width,
+    // instead of stacked on top of each other). Only ever assign
+    // `position` when it isn't already meaningfully set.
+    if (hostEl.style.position !== "absolute") {
+      hostEl.style.position = "relative";
+    }
     hostEl.style.zIndex = "2";
     if (this.pageTurnAnimationStyle === "slide") {
       return;
     }
     this.containerEl.style.perspective = "2200px";
     hostEl.style.transformStyle = "preserve-3d";
-    const transformOrigin = `${direction === 1 ? "left" : "right"} center`;
+    // The physical hinge never moves for a given page — only which way
+    // it's currently swinging does. A backward turn's `entering` element
+    // is the *same page* a forward turn would have sent away in the
+    // opposite direction, so its hinge is the mirror of what plain
+    // `direction` alone would compute (see `playPageTurnAnimation`'s doc
+    // comment on why backward flips the whole sequence).
+    const hingeDirection = entering ? (direction === 1 ? -1 : 1) : direction;
+    const transformOrigin = `${hingeDirection === 1 ? "left" : "right"} center`;
     for (const el of [turnEl, ...extraTurnEls]) {
       el.style.backfaceVisibility = "hidden";
       // The hinge is the spine edge the page turns away from: the left
