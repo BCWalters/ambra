@@ -108,4 +108,47 @@ export class EpubCfi {
 
     return new EpubCfi(packageSteps, contentSteps, characterOffset);
   }
+
+  /** Orders two CFI strings by book reading order — earlier spine item
+   * first, then earlier position within that item, purely by comparing
+   * their parsed step sequences (no live DOM resolution needed at all,
+   * since sibling nodes are always numbered by document position — see
+   * `CfiTree`'s own step-numbering rule — comparing step indices
+   * lexicographically is exactly comparing document position). Returns a
+   * negative number if `a` comes first, positive if `b` does, `0` if
+   * they resolve to the exact same position. Used to sort bookmarks/
+   * highlights by where they actually fall in the book (issue #49)
+   * rather than by creation order. Throws `EpubCfiParseError` if either
+   * string isn't a well-formed CFI — callers with potentially-stale/
+   * corrupted stored CFIs should catch this themselves, the same way
+   * every other CFI-resolving call site in the app already does. */
+  public static compare(a: string, b: string): number {
+    const cfiA = EpubCfi.parse(a);
+    const cfiB = EpubCfi.parse(b);
+    const packageComparison = EpubCfi.compareSteps(cfiA.packageSteps, cfiB.packageSteps);
+    if (packageComparison !== 0) {
+      return packageComparison;
+    }
+    const contentComparison = EpubCfi.compareSteps(cfiA.contentSteps, cfiB.contentSteps);
+    if (contentComparison !== 0) {
+      return contentComparison;
+    }
+    return (cfiA.characterOffset ?? 0) - (cfiB.characterOffset ?? 0);
+  }
+
+  /** Lexicographic comparison of two step sequences — the shared core of
+   * `compare`, applied first to `packageSteps` (which spine item) and
+   * then to `contentSteps` (position within it). A shorter sequence that
+   * otherwise exactly matches a longer one's prefix sorts first (it names
+   * an ancestor of the more specific position, i.e. an earlier point). */
+  private static compareSteps(a: readonly CfiStep[], b: readonly CfiStep[]): number {
+    const length = Math.min(a.length, b.length);
+    for (let i = 0; i < length; i++) {
+      const diff = a[i]!.index - b[i]!.index;
+      if (diff !== 0) {
+        return diff;
+      }
+    }
+    return a.length - b.length;
+  }
 }

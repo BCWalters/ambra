@@ -1,7 +1,23 @@
+import { EpubCfi } from "@ambra/engine";
 import type { PageTheme, FontFamilyChoice, HighlightStyle } from "@ambra/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
+
+/** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
+ * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
+ * if either CFI fails to parse — vanishingly unlikely for CFIs this app
+ * generated itself, but a stored bookmark/highlight predating some
+ * future CFI format change, or any other unexpected corruption, should
+ * degrade to the old creation-order sort rather than throwing out of a
+ * list view entirely. */
+function compareByCfiThenCreatedAt(cfiA: string, cfiB: string, fallbackA: number, fallbackB: number): number {
+  try {
+    return EpubCfi.compare(cfiA, cfiB);
+  } catch {
+    return fallbackA - fallbackB;
+  }
+}
 
 /** Book metadata as stored in the library — small enough to list in bulk
  * without touching the (potentially large) book file/cover blobs, which
@@ -368,13 +384,18 @@ export class LibraryDatabase {
     await this.delete(BOOKMARKS_STORE, id);
   }
 
-  /** All bookmarks for `bookId`, oldest first — fetches every bookmark
-   * in the store and filters client-side rather than via an IndexedDB
-   * index, which is simpler and plenty fast at the scale a single
-   * reader's bookmark list actually reaches. */
+  /** All bookmarks for `bookId`, in book reading order (see
+   * `EpubCfi.compare`, and issue #49 — previously sorted by creation
+   * order, which reads oddly once a reader has jumped around adding
+   * bookmarks out of sequence) — fetches every bookmark in the store and
+   * filters client-side rather than via an IndexedDB index, which is
+   * simpler and plenty fast at the scale a single reader's bookmark list
+   * actually reaches. */
   public async listBookmarksForBook(bookId: string): Promise<Bookmark[]> {
     const all = await this.getAll<Bookmark>(BOOKMARKS_STORE);
-    return all.filter((bookmark) => bookmark.bookId === bookId).sort((a, b) => a.createdAt - b.createdAt);
+    return all
+      .filter((bookmark) => bookmark.bookId === bookId)
+      .sort((a, b) => compareByCfiThenCreatedAt(a.cfi, b.cfi, a.createdAt, b.createdAt));
   }
 
   /** Creates a new highlight (see `Highlight`'s doc comment) and returns
@@ -401,12 +422,14 @@ export class LibraryDatabase {
     await this.put(HIGHLIGHTS_STORE, highlight);
   }
 
-  /** All highlights for `bookId`, oldest first — same "fetch all, filter
-   * client-side" approach as `listBookmarksForBook`, for the same
-   * reason. */
+  /** All highlights for `bookId`, in book reading order — same "fetch
+   * all, filter client-side" approach and book-order sort as
+   * `listBookmarksForBook`, for the same reasons. */
   public async listHighlightsForBook(bookId: string): Promise<Highlight[]> {
     const all = await this.getAll<Highlight>(HIGHLIGHTS_STORE);
-    return all.filter((highlight) => highlight.bookId === bookId).sort((a, b) => a.createdAt - b.createdAt);
+    return all
+      .filter((highlight) => highlight.bookId === bookId)
+      .sort((a, b) => compareByCfiThenCreatedAt(a.startCfi, b.startCfi, a.createdAt, b.createdAt));
   }
 
   public close(): void {

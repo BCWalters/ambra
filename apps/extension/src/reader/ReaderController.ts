@@ -665,7 +665,7 @@ export class ReaderController {
         activeHighlight: this.activeHighlight,
         highlights: Array.from(this.highlightsBySpineIndex.values())
           .flat()
-          .sort((a, b) => a.createdAt - b.createdAt),
+          .sort((a, b) => this.compareHighlightsByBookOrder(a, b)),
         searchQuery: this.searchQuery,
         searchResults: this.searchResults,
         isSearching: this.isSearching,
@@ -853,6 +853,22 @@ export class ReaderController {
       return bookmark;
     } catch {
       return undefined;
+    }
+  }
+
+  /** Orders two highlights by book reading order (`startCfi` — see
+   * `EpubCfi.compare`), falling back to creation order if either CFI
+   * somehow fails to parse — same defensive reasoning as
+   * `LibraryDatabase`'s own identical fallback for the initial DB fetch;
+   * this is the *in-memory* cache's own sort, needed since a highlight
+   * added mid-session is simply pushed onto `highlightsBySpineIndex`
+   * without re-sorting (see `addHighlight`), so the cache's order can
+   * drift out of book order between a fresh DB load and this. */
+  private compareHighlightsByBookOrder(a: Highlight, b: Highlight): number {
+    try {
+      return EpubCfi.compare(a.startCfi, b.startCfi);
+    } catch {
+      return a.createdAt - b.createdAt;
     }
   }
 

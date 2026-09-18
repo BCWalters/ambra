@@ -77,3 +77,52 @@ describe("EpubCfi.parse / toString round-trip", () => {
     expect(() => EpubCfi.parse("epubcfi(/6/4!)")).toThrow(EpubCfiParseError);
   });
 });
+
+describe("EpubCfi.compare", () => {
+  it("orders by spine item (package steps) first", () => {
+    const earlierSpine = "epubcfi(/6/4!/4/2/1:50)";
+    const laterSpine = "epubcfi(/6/6!/4/2/1:0)";
+
+    expect(EpubCfi.compare(earlierSpine, laterSpine)).toBeLessThan(0);
+    expect(EpubCfi.compare(laterSpine, earlierSpine)).toBeGreaterThan(0);
+  });
+
+  it("orders by content steps within the same spine item", () => {
+    const earlierInChapter = "epubcfi(/6/4!/4/2/1:0)";
+    const laterInChapter = "epubcfi(/6/4!/4/2/3:0)";
+
+    expect(EpubCfi.compare(earlierInChapter, laterInChapter)).toBeLessThan(0);
+  });
+
+  it("orders by character offset when the content steps are identical", () => {
+    const earlierOffset = "epubcfi(/6/4!/4/2/1:5)";
+    const laterOffset = "epubcfi(/6/4!/4/2/1:50)";
+
+    expect(EpubCfi.compare(earlierOffset, laterOffset)).toBeLessThan(0);
+  });
+
+  it("treats a shorter content-step prefix as earlier than a longer, more specific descendant", () => {
+    // /4/2 names an ancestor element of /4/2/1 — a position "at" that
+    // ancestor reads as coming before a position further down inside it.
+    const ancestor = "epubcfi(/6/4!/4/2:0)";
+    const descendant = "epubcfi(/6/4!/4/2/1:0)";
+
+    expect(EpubCfi.compare(ancestor, descendant)).toBeLessThan(0);
+  });
+
+  it("returns 0 for two identical CFIs", () => {
+    const cfi = "epubcfi(/6/4!/4/2/1:5)";
+
+    expect(EpubCfi.compare(cfi, cfi)).toBe(0);
+  });
+
+  it("is usable directly as an Array.prototype.sort comparator", () => {
+    const cfis = ["epubcfi(/6/6!/4/2:0)", "epubcfi(/6/4!/4/8:0)", "epubcfi(/6/4!/4/2:0)"];
+
+    expect([...cfis].sort(EpubCfi.compare)).toEqual([
+      "epubcfi(/6/4!/4/2:0)",
+      "epubcfi(/6/4!/4/8:0)",
+      "epubcfi(/6/6!/4/2:0)",
+    ]);
+  });
+});
