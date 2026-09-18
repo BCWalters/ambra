@@ -4,6 +4,7 @@ import { BookmarkFilled } from "@fluentui/react-icons";
 import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderController.js";
 import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 
 export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
@@ -67,6 +68,7 @@ function percent(current: number | undefined, total: number | undefined): number
  * page design this must never draw on top of).
  */
 export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
+  const t = useTranslation();
   if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
     return null;
   }
@@ -205,7 +207,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
                 }}
               >
                 <Caption1 as="span" style={textStyle}>
-                  {`Page ${pageNumber}`}
+                  {t("pageFurniture.pageNumber", { number: pageNumber })}
                 </Caption1>
               </div>
             );

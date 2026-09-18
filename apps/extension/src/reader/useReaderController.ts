@@ -5,7 +5,7 @@ import type { HighlightStyle } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
-import type { BookDetails, EpubInspectionData, ReaderSnapshot, ViewMode } from "./ReaderController.js";
+import type { BookDetails, EpubInspectionData, PreviewPosition, ReaderSnapshot, ViewMode } from "./ReaderController.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 
@@ -25,7 +25,7 @@ export interface UseReaderControllerResult {
   setPageTheme: (theme: PageTheme) => void;
   setChromeTheme: (theme: ChromeThemeChoice) => void;
   setPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
-  previewSeek: (fraction: number) => { label: string; chapterLabel: string };
+  previewSeek: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
   getEpubInspectionData: () => EpubInspectionData | undefined;
@@ -214,7 +214,7 @@ export function useReaderController(): UseReaderControllerResult {
 
   const previewSeek = useCallback(
     (fraction: number) => {
-      return controller?.previewSeek(fraction) ?? { label: "", chapterLabel: "" };
+      return controller?.previewSeek(fraction) ?? { position: { kind: "chapter" as const, current: 0, total: 0 }, chapterLabel: "" };
     },
     [controller],
   );

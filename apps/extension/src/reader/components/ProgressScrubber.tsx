@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FC, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { Caption1 } from "@fluentui/react-components";
-import type { ReaderSnapshot } from "../ReaderController.js";
+import type { PreviewPosition, ReaderSnapshot } from "../ReaderController.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 
 /** Smallest gap the drag preview popup is ever allowed from the browser
  * window's left/right edges — purely cosmetic breathing room, not a
@@ -23,7 +24,7 @@ export interface ProgressScrubberProps {
   };
   /** A live, side-effect-free preview of where a drag at `fraction`
    * would land — see `ReaderController.previewSeek`. */
-  onPreview: (fraction: number) => { label: string; chapterLabel: string };
+  onPreview: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
   /** Commits a drag's final position — see `ReaderController.
    * seekToFraction`. Called once, on release. Returns a `Promise` (not
    * fire-and-forget) so `endDrag` can keep showing the drag's own
@@ -93,6 +94,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
 }) => {
   const chromeTheme = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
+  const t = useTranslation();
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
@@ -114,6 +116,11 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const activePointerIdRef = useRef<number | undefined>(undefined);
 
   const preview = dragFraction !== undefined ? onPreview(dragFraction) : undefined;
+  const previewLabel = preview
+    ? preview.position.kind === "page"
+      ? t("scrubber.pageOfTotal", { current: preview.position.current, total: preview.position.total })
+      : t("scrubber.chapterOfTotal", { current: preview.position.current, total: preview.position.total })
+    : undefined;
 
   useLayoutEffect(() => {
     const bar = barRef.current;
@@ -134,11 +141,11 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       Math.max(minCenter, desiredCenterInViewport),
     );
     setPopupCenterPx(clampedCenterInViewport - barRect.left);
-    // `preview.label`/`preview.chapterLabel` deliberately included: the
+    // `previewLabel`/`preview.chapterLabel` deliberately included: the
     // popup's rendered width changes as its text does (e.g. "Page 9 of
     // 12" vs "Page 100 of 120"), which can itself push it back into (or
     // out of) needing to be clamped, even without `dragFraction` moving.
-  }, [dragFraction, preview?.label, preview?.chapterLabel]);
+  }, [dragFraction, previewLabel, preview?.chapterLabel]);
 
   const fractionAt = (clientX: number): number => {
     const track = trackRef.current;
@@ -298,10 +305,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const pagesLeftLabel =
     pagesLeftInChapter === undefined
       ? undefined
-      : `${pagesLeftInChapter} page${pagesLeftInChapter === 1 ? "" : "s"} left in this chapter`;
+      : t(pagesLeftInChapter === 1 ? "scrubber.pagesLeftInChapterOne" : "scrubber.pagesLeftInChapterOther", {
+          count: pagesLeftInChapter,
+        });
   const bookPageLabel =
     snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined
-      ? `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount}`
+      ? t("scrubber.pageOfTotal", { current: snapshot.bookPageIndex, total: snapshot.bookPageCount })
       : undefined;
   // Still exposed as one combined string for the slider's own
   // `aria-valuetext` (see below) — a screen reader doesn't care how the
@@ -463,7 +472,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           }}
         >
           <Caption1 as="span" block style={{ fontWeight: 600 }}>
-            {preview.label}
+            {previewLabel}
           </Caption1>
           <Caption1 as="span" block style={{ color: "var(--colorNeutralForeground2, #444)" }}>
             {preview.chapterLabel}
@@ -477,7 +486,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         onKeyDown={handleKeyDown}
         role="slider"
         tabIndex={0}
-        aria-label="Position in book"
+        aria-label={t("scrubber.positionInBook")}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(displayFraction * 100)}

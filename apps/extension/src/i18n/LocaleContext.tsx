@@ -102,14 +102,34 @@ export function useLocale(): LocaleContextValue {
   return useContext(LocaleContext);
 }
 
-/** Returns `t(key)`, looking up `key` in the current locale's string
- * catalog (see `StringCatalog`) — falls back to the English string if
- * the active locale is somehow missing a key (shouldn't happen, since
- * every locale file is typechecked against the exact same key set, but
- * defensive against a future partial/in-progress translation file that
- * intentionally omits some keys). */
-export function useTranslation(): (key: keyof StringCatalog) => string {
+/** Returns `t(key, params?)`, looking up `key` in the current locale's
+ * string catalog (see `StringCatalog`) — falls back to the English
+ * string if the active locale is somehow missing a key (shouldn't
+ * happen, since every locale file is typechecked against the exact same
+ * key set, but defensive against a future partial/in-progress
+ * translation file that intentionally omits some keys).
+ *
+ * `params`, when given, fills in `{placeholder}` tokens in the looked-up
+ * string (e.g. `t("scrubber.pageOfTotal", { current: 3, total: 20 })` on
+ * a catalog entry of `"Page {current} of {total}"`) — a deliberately
+ * minimal, dependency-free stand-in for a real ICU MessageFormat engine,
+ * sufficient for this app's actual needs (a handful of simple numeric
+ * substitutions, no complex plural/gender rules beyond the manual
+ * "One"/"Other" key pairs already used for the couple of counts that
+ * need one — see e.g. `scrubber.pagesLeftInChapterOne`/`...Other`). */
+export function useTranslation(): (key: keyof StringCatalog, params?: Record<string, string | number>) => string {
   const { locale } = useLocale();
   const catalog = CATALOGS[locale];
-  return useCallback((key: keyof StringCatalog) => catalog[key] ?? en[key], [catalog]);
+  return useCallback(
+    (key: keyof StringCatalog, params?: Record<string, string | number>) => {
+      const template = catalog[key] ?? en[key];
+      if (!params) {
+        return template;
+      }
+      return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+        name in params ? String(params[name]) : match,
+      );
+    },
+    [catalog],
+  );
 }

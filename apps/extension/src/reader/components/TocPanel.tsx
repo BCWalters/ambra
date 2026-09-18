@@ -8,6 +8,7 @@ import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { SearchResultItem } from "../ReaderController.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
  * document order) — used to detect whether the TOC's own first entry
@@ -152,6 +153,7 @@ const SEARCH_DEBOUNCE_MS = 250;
  * panel. */
 const SearchTab: FC<SearchTabProps> = ({ query, results, isSearching, onSearch, onSelect }) => {
   const [input, setInput] = useState(query);
+  const t = useTranslation();
 
   useEffect(() => {
     const timeout = setTimeout(() => onSearch(input), SEARCH_DEBOUNCE_MS);
@@ -166,13 +168,13 @@ const SearchTab: FC<SearchTabProps> = ({ query, results, isSearching, onSearch, 
         <SearchBox
           value={input}
           onChange={(_event, data) => setInput(data.value)}
-          placeholder="Search this book…"
+          placeholder={t("toc.searchPlaceholder")}
           style={{ width: "100%" }}
         />
       </div>
       {input.trim().length > 0 && input.trim().length < 3 && (
         <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
-          Keep typing — searches start at 3 characters.
+          {t("toc.searchMinCharacters")}
         </Caption1>
       )}
       {results.map((result, index) => (
@@ -222,13 +224,13 @@ const SearchTab: FC<SearchTabProps> = ({ query, results, isSearching, onSearch, 
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
           <Spinner size="tiny" />
           <Caption1 as="span" style={{ opacity: 0.6 }}>
-            Searching…
+            {t("toc.searching")}
           </Caption1>
         </div>
       )}
       {!isSearching && input.trim().length >= 3 && results.length === 0 && (
         <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
-          No matches found.
+          {t("toc.noMatchesFound")}
         </Caption1>
       )}
     </>
@@ -317,6 +319,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
+  const t = useTranslation();
 
   useEffect(() => {
     if (!open || pinned) {
@@ -367,7 +370,7 @@ export const TocPanel: FC<TocPanelProps> = ({
       <nav
         ref={navRef}
         tabIndex={-1}
-        aria-label="Table of contents"
+        aria-label={t("toc.tableOfContents")}
         style={{
           position: pinned ? "relative" : "absolute",
           outline: "none",
@@ -412,14 +415,14 @@ export const TocPanel: FC<TocPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "contents" ? "Contents" : "Search"}
+            {activeTab === "contents" ? t("toc.contents") : t("toc.search")}
           </Body1>
           <Button
             appearance="subtle"
             size="small"
             icon={pinned ? <PinOffRegular /> : <PinRegular />}
-            aria-label={pinned ? "Unpin contents panel" : "Pin contents panel"}
-            title={pinned ? "Unpin" : "Pin open"}
+            aria-label={pinned ? t("toc.unpinContentsPanel") : t("toc.pinContentsPanel")}
+            title={pinned ? t("toc.unpin") : t("toc.pinOpen")}
             onClick={onTogglePin}
           />
           {!pinned && (
@@ -427,7 +430,7 @@ export const TocPanel: FC<TocPanelProps> = ({
               appearance="subtle"
               size="small"
               icon={<DismissRegular />}
-              aria-label="Close contents panel"
+              aria-label={t("toc.closeContentsPanel")}
               onClick={onRequestClose}
             />
           )}
@@ -439,10 +442,10 @@ export const TocPanel: FC<TocPanelProps> = ({
           style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
         >
           <Tab value="contents" icon={<HomeRegular />}>
-            Contents
+            {t("toc.contents")}
           </Tab>
           <Tab value="search" icon={<SearchRegular />}>
-            Search
+            {t("toc.search")}
           </Tab>
         </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
@@ -459,7 +462,7 @@ export const TocPanel: FC<TocPanelProps> = ({
               {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
                 <button
                   type="button"
-                  onClick={() => onSelect(new NavPoint("Start of Book", firstSpinePath, undefined, []))}
+                  onClick={() => onSelect(new NavPoint(t("toc.startOfBook"), firstSpinePath, undefined, []))}
                   aria-current={currentPath === firstSpinePath ? "location" : undefined}
                   style={{
                     display: "flex",
@@ -495,7 +498,7 @@ export const TocPanel: FC<TocPanelProps> = ({
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <HomeRegular fontSize={16} />
-                    Start of Book
+                    {t("toc.startOfBook")}
                   </span>
                   {pageNumbers.get(firstSpinePath) !== undefined && (
                     <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>

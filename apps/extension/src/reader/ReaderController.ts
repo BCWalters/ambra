@@ -60,6 +60,18 @@ const MIN_ZOOMABLE_IMAGE_SIZE = 100;
  * forever for a book that will plainly never have one. */
 const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
 
+/** Raw data behind `previewSeek`'s drag-preview label — either an exact
+ * book-wide page number (once `bookPagination` has fully measured the
+ * book) or a coarser chapter-index fallback before that. Kept as plain
+ * data rather than a pre-formatted string so `ProgressScrubber` (a React
+ * component, unlike `ReaderController` itself) can format it via
+ * `useTranslation()`'s `t("scrubber.pageOfTotal", ...)`/
+ * `t("scrubber.chapterOfTotal", ...)` in whatever the current UI locale
+ * is. */
+export type PreviewPosition =
+  | { readonly kind: "page"; readonly current: number; readonly total: number }
+  | { readonly kind: "chapter"; readonly current: number; readonly total: number };
+
 /** Everything the Book Details panel shows, combined from two sources
  * that otherwise live in separate layers: `PackageDocument.metadata`
  * (title/creator/description/publisher/identifiers/language — already
@@ -4049,8 +4061,18 @@ export class ReaderController {
    * on release) actually commits it. Prefers an exact, book-wide page
    * number when `bookPagination` has fully measured the book; falls
    * back to a coarser chapter-level preview otherwise (see
-   * `seekToFraction`'s doc comment for why). */
-  public previewSeek(fraction: number): { label: string; chapterLabel: string } {
+   * `seekToFraction`'s doc comment for why).
+   *
+   * Returns raw position data (`position`) rather than an already-
+   * formatted string — this class has no access to the current UI
+   * locale (it isn't a React component and can't call
+   * `useTranslation()`), so `ProgressScrubber` itself does the actual
+   * `t("scrubber.pageOfTotal", ...)`/`t("scrubber.chapterOfTotal", ...)`
+   * formatting once this data reaches it. `chapterLabel` is different:
+   * it's the book's *own* chapter name (from its TOC), not a piece of
+   * this app's UI text, so there's nothing to translate there — it's
+   * passed through as-is regardless of UI locale. */
+  public previewSeek(fraction: number): { position: PreviewPosition; chapterLabel: string } {
     const clamped = Math.max(0, Math.min(1, fraction));
     const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
     if (totalPages !== undefined && totalPages > 0) {
@@ -4058,14 +4080,14 @@ export class ReaderController {
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
         return {
-          label: `Page ${targetGlobalPage} of ${totalPages}`,
+          position: { kind: "page", current: targetGlobalPage, total: totalPages },
           chapterLabel: this.chapterLabel(resolved.spineIndex),
         };
       }
     }
     const { spineIndex: targetSpineIndex } = this.resolveSpineFraction(clamped);
     return {
-      label: `Chapter ${targetSpineIndex + 1} of ${this.pkg.spine.length}`,
+      position: { kind: "chapter", current: targetSpineIndex + 1, total: this.pkg.spine.length },
       chapterLabel: this.chapterLabel(targetSpineIndex),
     };
   }
