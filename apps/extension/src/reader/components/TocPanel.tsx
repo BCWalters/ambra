@@ -3,7 +3,7 @@ import type { FC } from "react";
 import { Body1, Button, Caption1 } from "@fluentui/react-components";
 import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { NavPoint } from "@ambra/engine";
-import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
+import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
@@ -150,6 +150,12 @@ export interface TocPanelProps {
   pinned: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
+  /** Whether the progress scrubber is currently shown (paginated
+   * reflowable content only — see `ProgressScrubber`'s own identical
+   * condition) — this panel needs to stop *above* it rather than
+   * running the full pane height, or the scrubber bar ends up covering
+   * its last few rows (issue #59). */
+  scrubberVisible: boolean;
 }
 
 /** The reader's Table of Contents: by default a flyout that slides in
@@ -188,6 +194,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   pinned,
   onTogglePin,
   onRequestClose,
+  scrubberVisible,
 }) => {
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
@@ -258,7 +265,7 @@ export const TocPanel: FC<TocPanelProps> = ({
           // there in the first place.
           top: pinned ? 0 : 44,
           left: 0,
-          bottom: pinned ? 0 : 8,
+          bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
           zIndex: 8,
           width: 300,
           flexShrink: 0,

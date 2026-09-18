@@ -33,6 +33,20 @@ export const CHROME_HOVER_BACKGROUND = "rgba(15, 23, 42, 0.05)";
 export const CHROME_SELECTED_BACKGROUND = "rgba(15, 23, 42, 0.08)";
 export const CHROME_BACKDROP_FILTER = "blur(12px) saturate(1.1)";
 
+/** The progress scrubber's own total rendered height (see
+ * `ProgressScrubber`) — the flyout panels (TOC/Search/Bookmarks &
+ * Highlights) need this to stop *above* it rather than running the
+ * full height of the reader pane (issue #59: they previously left only
+ * a flat 8px gap at the bottom, far short of the scrubber's real
+ * height, so its last several rows/list items ended up hidden
+ * underneath the scrubber bar). Measured from the real rendered
+ * scrubber (padding + page-position label row + track), not computed
+ * from its individual style values, since small font-metric rounding
+ * differences would make a computed value an unreliable source of
+ * truth — a plain constant kept in sync by hand is simpler and exact
+ * enough for a fixed-size, non-user-resizable bar. */
+export const SCRUBBER_HEIGHT = 52;
+
 /** The reader's own chrome color, as opposed to `PageTheme` (the book
  * *page's* background, picked in the font menu, renamed "Page Style" to
  * avoid the two being confused as the same setting) — this one lives in

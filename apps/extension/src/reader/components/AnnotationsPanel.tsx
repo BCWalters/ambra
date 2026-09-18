@@ -3,7 +3,7 @@ import type { FC } from "react";
 import { Body1, Button, Caption1, Tab, TabList, Textarea } from "@fluentui/react-components";
 import { BookmarkRegular, DismissRegular, HighlightRegular, NoteRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
-import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
+import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
@@ -261,6 +261,12 @@ export interface AnnotationsPanelProps {
   pinned: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
+  /** Whether the progress scrubber is currently shown (paginated
+   * reflowable content only — see `ProgressScrubber`'s own identical
+   * condition) — this panel needs to stop *above* it rather than
+   * running the full pane height, or the scrubber bar ends up covering
+   * its last few rows (issue #59). */
+  scrubberVisible: boolean;
 }
 
 /** Bookmarks and highlights/annotations, sharing one panel with its own
@@ -284,6 +290,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   pinned,
   onTogglePin,
   onRequestClose,
+  scrubberVisible,
 }) => {
   const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
 
@@ -336,7 +343,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           outline: "none",
           top: pinned ? 0 : 44,
           left: 0,
-          bottom: pinned ? 0 : 8,
+          bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
           zIndex: 8,
           width: 300,
           flexShrink: 0,

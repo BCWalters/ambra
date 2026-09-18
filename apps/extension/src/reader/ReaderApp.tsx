@@ -287,6 +287,10 @@ const ReaderAppInner: FC = () => {
   const pageBackground = snapshot.isFixedLayout
     ? "#e5e5e5"
     : ReadingTheme.PAGE_THEMES[snapshot.pageTheme].background;
+  // Mirrors `ProgressScrubber`'s own identical early-return condition —
+  // the flyout panels need to know this too so they can stop above the
+  // scrubber bar instead of running underneath it (issue #59).
+  const scrubberVisible = !snapshot.isFixedLayout && snapshot.viewMode === "paginated";
 
   return (
     <ChromeThemeProvider theme={snapshot.chromeTheme}>
@@ -316,6 +320,7 @@ const ReaderAppInner: FC = () => {
                 setIsTocOpen(false);
               }
             }}
+            scrubberVisible={scrubberVisible}
           />
 
           <SearchPanel
@@ -331,6 +336,7 @@ const ReaderAppInner: FC = () => {
               setIsSearchOpen(false);
               restoreContentFocus();
             }}
+            scrubberVisible={scrubberVisible}
           />
 
           <AnnotationsPanel
@@ -348,6 +354,7 @@ const ReaderAppInner: FC = () => {
               setIsAnnotationsOpen(false);
               restoreContentFocus();
             }}
+            scrubberVisible={scrubberVisible}
           />
 
           <div
