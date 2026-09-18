@@ -37,10 +37,11 @@ export interface StringCatalog {
   "toolbar.hideBookDetails": string;
   "toolbar.bookmarkThisPage": string;
   "toolbar.removeBookmark": string;
+  "toolbar.search": string;
+  "toolbar.hideSearch": string;
   "settings.language": string;
   "settings.languageSystemDefault": string;
   "toc.contents": string;
-  "toc.search": string;
   "toc.tableOfContents": string;
   "toc.pinContentsPanel": string;
   "toc.unpinContentsPanel": string;
@@ -48,10 +49,14 @@ export interface StringCatalog {
   "toc.unpin": string;
   "toc.closeContentsPanel": string;
   "toc.startOfBook": string;
-  "toc.searchPlaceholder": string;
-  "toc.searchMinCharacters": string;
-  "toc.searching": string;
-  "toc.noMatchesFound": string;
+  "search.title": string;
+  "search.placeholder": string;
+  "search.minCharacters": string;
+  "search.searching": string;
+  "search.noMatchesFound": string;
+  "search.pinSearchPanel": string;
+  "search.unpinSearchPanel": string;
+  "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
   "scrubber.pageOfTotal": string;
   "scrubber.chapterOfTotal": string;
@@ -79,10 +84,11 @@ export const en: StringCatalog = {
   "toolbar.hideBookDetails": "Hide book details",
   "toolbar.bookmarkThisPage": "Bookmark this page",
   "toolbar.removeBookmark": "Remove bookmark",
+  "toolbar.search": "Search",
+  "toolbar.hideSearch": "Hide search",
   "settings.language": "Language",
   "settings.languageSystemDefault": "System default",
   "toc.contents": "Contents",
-  "toc.search": "Search",
   "toc.tableOfContents": "Table of contents",
   "toc.pinContentsPanel": "Pin contents panel",
   "toc.unpinContentsPanel": "Unpin contents panel",
@@ -90,10 +96,14 @@ export const en: StringCatalog = {
   "toc.unpin": "Unpin",
   "toc.closeContentsPanel": "Close contents panel",
   "toc.startOfBook": "Start of book",
-  "toc.searchPlaceholder": "Search this book…",
-  "toc.searchMinCharacters": "Keep typing — searches start at 3 characters.",
-  "toc.searching": "Searching…",
-  "toc.noMatchesFound": "No matches found.",
+  "search.title": "Search",
+  "search.placeholder": "Search this book…",
+  "search.minCharacters": "Keep typing — searches start at 3 characters.",
+  "search.searching": "Searching…",
+  "search.noMatchesFound": "No matches found.",
+  "search.pinSearchPanel": "Pin search panel",
+  "search.unpinSearchPanel": "Unpin search panel",
+  "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
   "scrubber.pageOfTotal": "Page {current} of {total}",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",

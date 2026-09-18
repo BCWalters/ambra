@@ -29,6 +29,7 @@ import {
   CompassNorthwestRegular,
   DocumentOnePageColumnsRegular,
   ReadingListRegular,
+  SearchRegular,
   SettingsRegular,
   TextBulletListRegular,
   TextColumnOneRegular,
@@ -54,6 +55,8 @@ export interface ToolbarProps {
   snapshot: ReaderSnapshot;
   isTocOpen: boolean;
   onToggleToc: () => void;
+  isSearchOpen: boolean;
+  onToggleSearch: () => void;
   isAnnotationsOpen: boolean;
   onToggleAnnotations: () => void;
   isDetailsOpen: boolean;
@@ -115,6 +118,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   snapshot,
   isTocOpen,
   onToggleToc,
+  isSearchOpen,
+  onToggleSearch,
   isAnnotationsOpen,
   onToggleAnnotations,
   isDetailsOpen,
@@ -237,6 +242,16 @@ export const Toolbar: FC<ToolbarProps> = ({
             checked={isTocOpen}
             icon={<TextBulletListRegular />}
             onClick={onToggleToc}
+          />
+        </Tooltip>
+
+        <Tooltip content={isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search")} relationship="label">
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isSearchOpen}
+            icon={<SearchRegular />}
+            onClick={onToggleSearch}
           />
         </Tooltip>
 

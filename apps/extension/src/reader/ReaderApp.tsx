@@ -7,6 +7,7 @@ import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
+import { SearchPanel } from "./components/SearchPanel.js";
 import { AnnotationsPanel } from "./components/AnnotationsPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { EpubInspectorPanel } from "./components/EpubInspectorPanel.js";
@@ -83,6 +84,8 @@ const ReaderAppInner: FC = () => {
   } = useReaderController();
   const [isTocOpen, setIsTocOpen] = useState(false);
   const [isTocPinned, setIsTocPinned] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchPinned, setIsSearchPinned] = useState(false);
   const [isAnnotationsOpen, setIsAnnotationsOpen] = useState(false);
   const [isAnnotationsPinned, setIsAnnotationsPinned] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -95,11 +98,11 @@ const ReaderAppInner: FC = () => {
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
   // (and potentially out-of-sync) visibility state. Kept visible
-  // whenever any flyout panel (TOC, Bookmarks/Highlights, or Book
-  // Details) is open — all three are "pinned" reasons to keep the
+  // whenever any flyout panel (TOC, Search, Bookmarks/Highlights, or
+  // Book Details) is open — all four are "pinned" reasons to keep the
   // chrome from auto-hiding out from under an open panel.
   const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
-    isTocOpen || isAnnotationsOpen || isDetailsOpen,
+    isTocOpen || isSearchOpen || isAnnotationsOpen || isDetailsOpen,
     snapshot?.contentPointerActivityId,
   );
 
@@ -215,8 +218,8 @@ const ReaderAppInner: FC = () => {
 
   const handleSelectSearchResult = (cfi: string): void => {
     void goToSearchResult(cfi);
-    if (!isTocPinned) {
-      setIsTocOpen(false);
+    if (!isSearchPinned) {
+      setIsSearchOpen(false);
     }
   };
 
@@ -313,11 +316,21 @@ const ReaderAppInner: FC = () => {
                 setIsTocOpen(false);
               }
             }}
-            searchQuery={snapshot.searchQuery}
-            searchResults={snapshot.searchResults}
+          />
+
+          <SearchPanel
+            query={snapshot.searchQuery}
+            results={snapshot.searchResults}
             isSearching={snapshot.isSearching}
             onSearch={search}
-            onSelectSearchResult={handleSelectSearchResult}
+            onSelect={handleSelectSearchResult}
+            open={isSearchOpen}
+            pinned={isSearchPinned}
+            onTogglePin={() => setIsSearchPinned((pinned) => !pinned)}
+            onRequestClose={() => {
+              setIsSearchOpen(false);
+              restoreContentFocus();
+            }}
           />
 
           <AnnotationsPanel
@@ -412,6 +425,13 @@ const ReaderAppInner: FC = () => {
                   restoreContentFocus();
                 }
                 setIsTocOpen((open) => !open);
+              }}
+              isSearchOpen={isSearchOpen}
+              onToggleSearch={() => {
+                if (isSearchOpen) {
+                  restoreContentFocus();
+                }
+                setIsSearchOpen((open) => !open);
               }}
               isAnnotationsOpen={isAnnotationsOpen}
               onToggleAnnotations={() => {

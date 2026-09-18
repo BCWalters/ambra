@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, SearchBox, Spinner, Tab, TabList } from "@fluentui/react-components";
-import { DismissRegular, HomeRegular, PinOffRegular, PinRegular, SearchRegular } from "@fluentui/react-icons";
+import { Body1, Button, Caption1 } from "@fluentui/react-components";
+import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { NavPoint } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
-import type { SearchResultItem } from "../ReaderController.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
@@ -123,120 +122,6 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
   );
 };
 
-interface SearchTabProps {
-  /** The last query actually *submitted* to `ReaderController.search`
-   * (see `ReaderSnapshot.searchQuery`) — used only to initialize the
-   * input's local state on first mount, so reopening the panel after a
-   * previous search still shows what was searched for; typing itself is
-   * tracked as its own local state below; not read on every render. */
-  query: string;
-  results: readonly SearchResultItem[];
-  isSearching: boolean;
-  onSearch: (query: string) => void;
-  onSelect: (cfi: string) => void;
-}
-
-/** How long to wait after the reader stops typing before actually
- * running a search — `BookSearch` itself cancels a stale search cheaply
- * (see its own doc comment), but debouncing here still avoids kicking
- * off a search-then-immediately-cancel for every single keystroke,
- * which would otherwise re-open/re-read every already-searched spine
- * item's content document from scratch on each one. */
-const SEARCH_DEBOUNCE_MS = 250;
-
-/** The "Search" tab's contents — a search box plus a progressively-
- * growing results list (see `ReaderController.search`/`BookSearch`: no
- * pre-built index, so results for earlier chapters appear immediately
- * while later ones are still being searched, shown via `isSearching`).
- * Each result shows its chapter label and an excerpt with the match
- * itself bolded, and navigates on click like every other list in this
- * panel. */
-const SearchTab: FC<SearchTabProps> = ({ query, results, isSearching, onSearch, onSelect }) => {
-  const [input, setInput] = useState(query);
-  const t = useTranslation();
-
-  useEffect(() => {
-    const timeout = setTimeout(() => onSearch(input), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
-    // `onSearch` is a stable callback (see `ReaderApp`) — only `input`
-    // itself should ever re-arm this debounce timer.
-  }, [input]);
-
-  return (
-    <>
-      <div style={{ padding: "0 4px 8px" }}>
-        <SearchBox
-          value={input}
-          onChange={(_event, data) => setInput(data.value)}
-          placeholder={t("toc.searchPlaceholder")}
-          style={{ width: "100%" }}
-        />
-      </div>
-      {input.trim().length > 0 && input.trim().length < 3 && (
-        <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
-          {t("toc.searchMinCharacters")}
-        </Caption1>
-      )}
-      {results.map((result, index) => (
-        <button
-          key={`${result.spineIndex}-${index}`}
-          type="button"
-          onClick={() => onSelect(result.cfi)}
-          style={{
-            display: "block",
-            width: "100%",
-            background: "none",
-            border: "none",
-            borderRadius: 6,
-            color: "var(--colorNeutralForeground2, #333)",
-            cursor: "pointer",
-            padding: "7px 10px",
-            textAlign: "left",
-            font: "inherit",
-            lineHeight: 1.35,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "none";
-          }}
-        >
-          <Caption1 as="p" block style={{ margin: "0 0 2px", opacity: 0.6 }}>
-            {result.chapterLabel}
-          </Caption1>
-          {/* Trims `before` down to a short prefix right at render time
-              (rather than shortening it in `BookSearch` itself) so the
-              highlighted match always stays within the visible,
-              single-line-truncated width — a longer `before` value is
-              still stored/available for a possible future wider layout,
-              but here it would otherwise routinely push the match itself
-              past the ellipsis cutoff, defeating the whole point of
-              showing an excerpt. */}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-            …{result.before.slice(-18)}
-            <strong>{result.match}</strong>
-            {result.after}…
-          </span>
-        </button>
-      ))}
-      {isSearching && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
-          <Spinner size="tiny" />
-          <Caption1 as="span" style={{ opacity: 0.6 }}>
-            {t("toc.searching")}
-          </Caption1>
-        </div>
-      )}
-      {!isSearching && input.trim().length >= 3 && results.length === 0 && (
-        <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
-          {t("toc.noMatchesFound")}
-        </Caption1>
-      )}
-    </>
-  );
-};
-
 export interface TocPanelProps {
   items: readonly NavPoint[];
   /** Archive-relative path of the currently-open spine item (see
@@ -265,13 +150,6 @@ export interface TocPanelProps {
   pinned: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
-  /** Book-wide full-text search (see the "Search" tab) — read straight
-   * from `ReaderSnapshot.searchQuery`/`searchResults`/`isSearching`. */
-  searchQuery: string;
-  searchResults: readonly SearchResultItem[];
-  isSearching: boolean;
-  onSearch: (query: string) => void;
-  onSelectSearchResult: (cfi: string) => void;
 }
 
 /** The reader's Table of Contents: by default a flyout that slides in
@@ -293,11 +171,13 @@ export interface TocPanelProps {
  * otherwise leave no way to get back to the literal beginning of the
  * book once you've navigated away from it.
  *
- * Scoped to the book's own authored structure (contents + full-text
- * search) only — bookmarks and highlights/annotations, which the
- * *reader* creates while reading rather than the book's author, live in
- * their own separate `AnnotationsPanel` with its own toolbar button,
- * per explicit product direction. */
+ * Scoped to the book's own authored structure (its table of contents)
+ * only — full-text search now lives in its own `SearchPanel` (issue
+ * #55: previously a second tab bolted onto this panel), and bookmarks/
+ * highlights/annotations, which the *reader* creates while reading
+ * rather than the book's author, live in their own separate
+ * `AnnotationsPanel`. Each gets its own toolbar button, per explicit
+ * product direction. */
 export const TocPanel: FC<TocPanelProps> = ({
   items,
   currentPath,
@@ -308,14 +188,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   pinned,
   onTogglePin,
   onRequestClose,
-  searchQuery,
-  searchResults,
-  isSearching,
-  onSearch,
-  onSelectSearchResult,
 }) => {
-  const [activeTab, setActiveTab] = useState<"contents" | "search">("contents");
-
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -415,7 +288,7 @@ export const TocPanel: FC<TocPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "contents" ? t("toc.contents") : t("toc.search")}
+            {t("toc.contents")}
           </Body1>
           <Button
             appearance="subtle"
@@ -435,81 +308,56 @@ export const TocPanel: FC<TocPanelProps> = ({
             />
           )}
         </div>
-        <TabList
-          size="small"
-          selectedValue={activeTab}
-          onTabSelect={(_event, data) => setActiveTab(data.value as "contents" | "search")}
-          style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
-        >
-          <Tab value="contents" icon={<HomeRegular />}>
-            {t("toc.contents")}
-          </Tab>
-          <Tab value="search" icon={<SearchRegular />}>
-            {t("toc.search")}
-          </Tab>
-        </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-          {activeTab === "search" ? (
-            <SearchTab
-              query={searchQuery}
-              results={searchResults}
-              isSearching={isSearching}
-              onSearch={onSearch}
-              onSelect={onSelectSearchResult}
-            />
-          ) : (
-            <>
-              {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
-                <button
-                  type="button"
-                  onClick={() => onSelect(new NavPoint(t("toc.startOfBook"), firstSpinePath, undefined, []))}
-                  aria-current={currentPath === firstSpinePath ? "location" : undefined}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    width: "100%",
-                    background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
-                    border: "none",
-                    borderRadius: 6,
-                    color:
-                      currentPath === firstSpinePath
-                        ? "var(--colorNeutralForeground1, #1a1a1a)"
-                        : "var(--colorNeutralForeground2, #333)",
-                    fontWeight: currentPath === firstSpinePath ? 600 : 400,
-                    cursor: "pointer",
-                    padding: "7px 10px",
-                    marginBottom: 4,
-                    textAlign: "left",
-                    font: "inherit",
-                    lineHeight: 1.35,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (currentPath !== firstSpinePath) {
-                      e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (currentPath !== firstSpinePath) {
-                      e.currentTarget.style.background = "none";
-                    }
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                    <HomeRegular fontSize={16} />
-                    {t("toc.startOfBook")}
-                  </span>
-                  {pageNumbers.get(firstSpinePath) !== undefined && (
-                    <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
-                      {pageNumbers.get(firstSpinePath)}
-                    </Caption1>
-                  )}
-                </button>
+          {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
+            <button
+              type="button"
+              onClick={() => onSelect(new NavPoint(t("toc.startOfBook"), firstSpinePath, undefined, []))}
+              aria-current={currentPath === firstSpinePath ? "location" : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                width: "100%",
+                background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
+                border: "none",
+                borderRadius: 6,
+                color:
+                  currentPath === firstSpinePath
+                    ? "var(--colorNeutralForeground1, #1a1a1a)"
+                    : "var(--colorNeutralForeground2, #333)",
+                fontWeight: currentPath === firstSpinePath ? 600 : 400,
+                cursor: "pointer",
+                padding: "7px 10px",
+                marginBottom: 4,
+                textAlign: "left",
+                font: "inherit",
+                lineHeight: 1.35,
+              }}
+              onMouseEnter={(e) => {
+                if (currentPath !== firstSpinePath) {
+                  e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (currentPath !== firstSpinePath) {
+                  e.currentTarget.style.background = "none";
+                }
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <HomeRegular fontSize={16} />
+                {t("toc.startOfBook")}
+              </span>
+              {pageNumbers.get(firstSpinePath) !== undefined && (
+                <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
+                  {pageNumbers.get(firstSpinePath)}
+                </Caption1>
               )}
-              <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} pageNumbers={pageNumbers} />
-            </>
+            </button>
           )}
+          <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} pageNumbers={pageNumbers} />
         </div>
       </nav>
     </>

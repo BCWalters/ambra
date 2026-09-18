@@ -1,0 +1,254 @@
+import { useEffect, useRef, useState } from "react";
+import type { FC } from "react";
+import { Body1, Button, Caption1, SearchBox, Spinner } from "@fluentui/react-components";
+import { DismissRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
+import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useFocusOnOpen } from "../useFocusOnOpen.js";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
+import type { SearchResultItem } from "../ReaderController.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
+
+/** Debounces the search box's `onChange` before actually calling
+ * `ReaderController.search` (see `TocPanel`'s former identical
+ * constant, before search was split into its own panel — issue #55),
+ * since a book-wide full-text search re-reads every not-yet-searched
+ * spine item's content document from scratch and shouldn't restart on
+ * every single keystroke. */
+const SEARCH_DEBOUNCE_MS = 250;
+
+export interface SearchPanelProps {
+  /** The last query actually *submitted* to `ReaderController.search`
+   * (see `ReaderSnapshot.searchQuery`) — used only to initialize the
+   * input's local state on first mount, so reopening the panel after a
+   * previous search still shows what was searched for. */
+  query: string;
+  results: readonly SearchResultItem[];
+  isSearching: boolean;
+  onSearch: (query: string) => void;
+  onSelect: (cfi: string) => void;
+  /** Whether the panel should currently be shown at all. Always
+   * rendered (never conditionally unmounted) so it can animate closed
+   * instead of simply vanishing — mirrors `TocPanel`/`AnnotationsPanel`. */
+  open: boolean;
+  /** `true` docks the panel in the normal layout flow, pushing the
+   * content pane over; `false` (the default) makes it fly out as a
+   * translucent overlay instead, auto-dismissing on selection, an
+   * outside click, or Escape. */
+  pinned: boolean;
+  onTogglePin: () => void;
+  onRequestClose: () => void;
+}
+
+/**
+ * Book-wide full-text search, promoted to its own toolbar button and
+ * flyout panel (issue #55) — previously a second tab bolted onto the
+ * Table of Contents panel, which buried a genuinely first-class reading
+ * feature behind an extra click and made "browsing the book's
+ * structure" and "searching its text" compete for the same limited
+ * panel space. Structurally a near-twin of `TocPanel`/`AnnotationsPanel`
+ * (flyout-by-default, pin-to-dock, Escape/outside-click dismiss) so all
+ * three read as one consistent family of panels, just with search's own
+ * single-purpose content instead of a tab strip.
+ *
+ * No pre-built search index: results for earlier chapters appear
+ * immediately while later ones are still being searched (see
+ * `isSearching`), matching `ReaderController.search`/`BookSearch`'s own
+ * incremental-results design.
+ */
+export const SearchPanel: FC<SearchPanelProps> = ({
+  query,
+  results,
+  isSearching,
+  onSearch,
+  onSelect,
+  open,
+  pinned,
+  onTogglePin,
+  onRequestClose,
+}) => {
+  const [input, setInput] = useState(query);
+  const chromeTheme = useChromeTheme();
+  const navRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = usePrefersReducedMotion();
+  const t = useTranslation();
+
+  useEffect(() => {
+    const timeout = setTimeout(() => onSearch(input), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+    // `onSearch` is a stable callback (see `ReaderApp`) — only `input`
+    // itself should ever re-arm this debounce timer.
+  }, [input]);
+
+  useEffect(() => {
+    if (!open || pinned) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        onRequestClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, pinned, onRequestClose]);
+
+  // See `TocPanel`'s identical effect for why this matters — without
+  // it, a keyboard user pressing Tab right after opening this panel (via
+  // the toolbar's toggle button) has no guarantee of landing inside it
+  // next.
+  useFocusOnOpen(navRef, open && !pinned);
+
+  return (
+    <>
+      {!pinned && (
+        <div
+          aria-hidden="true"
+          onClick={onRequestClose}
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 7,
+            background: "rgba(15, 23, 42, 0.18)",
+            opacity: open ? 1 : 0,
+            pointerEvents: open ? "auto" : "none",
+            transition: reduceMotion ? "none" : "opacity 260ms ease",
+          }}
+        />
+      )}
+
+      <nav
+        ref={navRef}
+        tabIndex={-1}
+        aria-label={t("search.title")}
+        style={{
+          position: pinned ? "relative" : "absolute",
+          outline: "none",
+          // See `TocPanel`'s identical positioning comment: in flyout
+          // mode this panel spans the full app row height, which would
+          // otherwise put its own header directly underneath the
+          // toolbar's identical top:0 row.
+          top: pinned ? 0 : 44,
+          left: 0,
+          bottom: pinned ? 0 : 8,
+          zIndex: 8,
+          width: 300,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          background: chromeTheme.backgroundSolid,
+          backdropFilter: pinned ? undefined : "blur(16px)",
+          borderRight: `1px solid ${CHROME_BORDER}`,
+          borderRadius: pinned ? 0 : "0 12px 12px 0",
+          boxShadow: pinned ? "none" : CHROME_SHADOW,
+          transform: pinned ? "none" : `translateX(${open ? "0" : "-100%"})`,
+          opacity: pinned || open ? 1 : 0,
+          pointerEvents: pinned || open ? "auto" : "none",
+          visibility: pinned || open ? "visible" : "hidden",
+          transition: reduceMotion
+            ? "none"
+            : "transform 280ms cubic-bezier(0.4, 0, 0.2, 1), opacity 200ms ease, visibility 280ms",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "10px 8px 10px 14px",
+            borderBottom: `1px solid ${CHROME_BORDER}`,
+          }}
+        >
+          <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
+            {t("search.title")}
+          </Body1>
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={pinned ? <PinOffRegular /> : <PinRegular />}
+            aria-label={pinned ? t("search.unpinSearchPanel") : t("search.pinSearchPanel")}
+            title={pinned ? t("toc.unpin") : t("toc.pinOpen")}
+            onClick={onTogglePin}
+          />
+          {!pinned && (
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<DismissRegular />}
+              aria-label={t("search.closeSearchPanel")}
+              onClick={onRequestClose}
+            />
+          )}
+        </div>
+
+        <div style={{ padding: "8px 10px 0" }}>
+          <SearchBox
+            value={input}
+            onChange={(_event, data) => setInput(data.value)}
+            placeholder={t("search.placeholder")}
+            style={{ width: "100%" }}
+          />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
+          {input.trim().length > 0 && input.trim().length < 3 && (
+            <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
+              {t("search.minCharacters")}
+            </Caption1>
+          )}
+          {results.map((result, index) => (
+            <button
+              key={`${result.spineIndex}-${index}`}
+              type="button"
+              onClick={() => onSelect(result.cfi)}
+              style={{
+                display: "block",
+                width: "100%",
+                background: "none",
+                border: "none",
+                borderRadius: 6,
+                color: "var(--colorNeutralForeground2, #333)",
+                cursor: "pointer",
+                padding: "7px 10px",
+                textAlign: "left",
+                font: "inherit",
+                lineHeight: 1.35,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "none";
+              }}
+            >
+              <Caption1 as="p" block style={{ margin: "0 0 2px", opacity: 0.6 }}>
+                {result.chapterLabel}
+              </Caption1>
+              {/* Trims `before` down to a short prefix right at render
+                  time (see `TocPanel`'s former identical comment) so the
+                  highlighted match always stays within the visible,
+                  single-line-truncated width. */}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                …{result.before.slice(-18)}
+                <strong>{result.match}</strong>
+                {result.after}…
+              </span>
+            </button>
+          ))}
+          {isSearching && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
+              <Spinner size="tiny" />
+              <Caption1 as="span" style={{ opacity: 0.6 }}>
+                {t("search.searching")}
+              </Caption1>
+            </div>
+          )}
+          {!isSearching && input.trim().length >= 3 && results.length === 0 && (
+            <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
+              {t("search.noMatchesFound")}
+            </Caption1>
+          )}
+        </div>
+      </nav>
+    </>
+  );
+};
