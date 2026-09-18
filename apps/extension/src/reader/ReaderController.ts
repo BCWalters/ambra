@@ -1397,6 +1397,13 @@ export class ReaderController {
         {
           onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
           onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
+          // Always "chapter", regardless of view mode — the Ctrl/Cmd+
+          // Arrow shortcut's whole point is jumping past however many
+          // pages/however much scroll remain in the current chapter, not
+          // just one more increment of whatever `onNext`/`onPrevious`
+          // already do.
+          onNextChapter: () => void this.goToChapter(1),
+          onPreviousChapter: () => void this.goToChapter(-1),
         },
         // Space keeps its native "scroll down one viewport" behavior in
         // continuous-scroll mode — already a well-understood, finer-

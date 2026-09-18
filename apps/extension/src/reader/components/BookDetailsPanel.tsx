@@ -1,12 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Spinner, Subtitle1 } from "@fluentui/react-components";
+import { Body1, Body1Strong, Button, Caption1, Spinner } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
+import { GoToDialog } from "./GoToDialog.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -32,18 +33,57 @@ export interface BookDetailsPanelProps {
    * `AnnotationsPanel` already got for issue #59 — `BookDetailsPanel`
    * predated that fix and was missed, which is what issue #72 caught. */
   scrubberVisible: boolean;
+  /** Whether the current view is paginated (vs. continuous scroll) —
+   * "Go to Page…" only makes sense in paginated mode, where a book-wide
+   * page number actually exists (see `bookPageCount`). Mirrors the old
+   * Navigate menu's identical condition, now relocated here (issue
+   * follow-up: the toolbar's "Navigate" button was removed for being
+   * redundant with the progress scrubber and the Table of Contents). */
+  isPaginated: boolean;
+  /** True for the current spine item's fixed-layout rendering, which has
+   * no book-wide page/percentage position to jump to at all — hides
+   * both "Go to" actions entirely, matching the old Navigate menu. */
+  isFixedLayout: boolean;
+  /** The book's total page count once known — see `GoToDialog`'s own
+   * doc comment; `undefined` disables "Go to Page…" until it's ready. */
+  bookPageCount: number | undefined;
+  onSeekToFraction: (fraction: number) => void;
+}
+
+/** `dc:identifier` values some EPUB-generation tools/starter templates
+ * leave behind unedited (e.g. a placeholder ID baked into a boilerplate
+ * template no one bothered to replace) — meaningless to a reader and
+ * actively confusing to show alongside a book's real identifiers (an
+ * ISBN, say), so they're filtered out of the list entirely rather than
+ * displayed. Matched case-insensitively as a substring, since these tend
+ * to appear as one segment of a larger URN/URL rather than the entire
+ * identifier value. Grow this list as more generator placeholders turn
+ * up in the wild. */
+const GENERIC_DEFAULT_IDENTIFIER_SUBSTRINGS = ["_simple_book"];
+
+function isGenericDefaultIdentifier(value: string): boolean {
+  const lower = value.toLowerCase();
+  return GENERIC_DEFAULT_IDENTIFIER_SUBSTRINGS.some((needle) => lower.includes(needle));
 }
 
 /** A single label/value row in the details list — skipped entirely
  * (renders nothing) when `value` is `undefined`, so a book missing some
  * piece of metadata (most books have no `dc:publisher`, for instance)
- * doesn't leave a blank, awkward-looking row. */
-const DetailRow: FC<{ label: string; value: string | undefined }> = ({ label, value }) => {
+ * doesn't leave a blank, awkward-looking row. `compact` tightens the
+ * bottom margin for use inside the cover/title/author identity block
+ * (Publisher, Copyright), which reads as one dense unit rather than the
+ * more loosely-spaced list of facts further down (ISBN, other
+ * identifiers). */
+const DetailRow: FC<{ label: string; value: string | undefined; compact?: boolean }> = ({
+  label,
+  value,
+  compact,
+}) => {
   if (!value) {
     return null;
   }
   return (
-    <div style={{ marginBottom: 10 }}>
+    <div style={{ marginBottom: compact ? 4 : 10, marginTop: compact ? 6 : 0 }}>
       <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
         {label}
       </Caption1>
@@ -54,14 +94,48 @@ const DetailRow: FC<{ label: string; value: string | undefined }> = ({ label, va
   );
 };
 
+/** `dc:rights` shown as "Copyright" — except most books' rights
+ * statements already start with the word "Copyright" themselves (e.g.
+ * "Copyright © 2020 Jane Doe"), in which case stacking a redundant
+ * "Copyright" caption directly above it just repeats the same word
+ * twice in a row. Detected as a simple case-insensitive prefix check,
+ * not a full parse — good enough for the overwhelmingly common phrasing
+ * without trying to understand every possible `dc:rights` value. */
+const RightsRow: FC<{ value: string | undefined }> = ({ value }) => {
+  if (!value) {
+    return null;
+  }
+  const startsWithCopyright = /^copyright\b/i.test(value.trim());
+  return (
+    <div style={{ marginBottom: 4, marginTop: 6 }}>
+      {!startsWithCopyright && (
+        <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
+          Copyright
+        </Caption1>
+      )}
+      <Body1 as="p" block style={{ margin: 0 }}>
+        {value}
+      </Body1>
+    </div>
+  );
+};
+
 /**
  * A right-side flyout panel showing whatever metadata is available for
  * the currently-open book — cover, title, author, description,
- * publisher, language, the original file name, and every `dc:identifier`
- * the OPF declares (labeling one "ISBN" if its `opf:scheme` says so).
- * Deliberately shows only what the EPUB itself provides; no internet
- * lookup for missing fields (a possible future enhancement, not this
- * one's scope).
+ * publisher, the original file name, and every `dc:identifier` the OPF
+ * declares (labeling one "ISBN" if its `opf:scheme` says so, and
+ * silently dropping known placeholder values — see
+ * `isGenericDefaultIdentifier`). Deliberately shows only what the EPUB
+ * itself provides beyond that; no internet lookup for missing fields (a
+ * possible future enhancement, not this one's scope).
+ *
+ * Also hosts "Go to Page…"/"Go to Percentage…" (via `GoToDialog`) —
+ * relocated here from the toolbar's old compass "Navigate" menu, which
+ * was removed for being redundant with the progress scrubber (drag-to-
+ * seek) and the Table of Contents (chapter jumps); chapter navigation
+ * itself is now a standard keyboard shortcut instead (see
+ * `AccessibilityController`'s `onNextChapter`/`onPreviousChapter`).
  *
  * Mirrors `TocPanel`'s flyout mechanics (always rendered so it can
  * animate closed, a click-outside backdrop, Escape to dismiss) but on
@@ -76,10 +150,15 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   details,
   onOpenInspector,
   scrubberVisible,
+  isPaginated,
+  isFixedLayout,
+  bookPageCount,
+  onSeekToFraction,
 }) => {
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
+  const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   useEffect(() => {
     if (!open) {
@@ -99,8 +178,11 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   // toolbar's toggle button) has no guarantee of landing inside it next.
   useFocusOnOpen(asideRef, open);
 
-  const isbn = details?.identifiers.find((id) => id.scheme?.toUpperCase() === "ISBN");
-  const otherIdentifiers = details?.identifiers.filter((id) => id !== isbn) ?? [];
+  const knownIdentifiers = (details?.identifiers ?? []).filter(
+    (id) => !isGenericDefaultIdentifier(id.value),
+  );
+  const isbn = knownIdentifiers.find((id) => id.scheme?.toUpperCase() === "ISBN");
+  const otherIdentifiers = knownIdentifiers.filter((id) => id !== isbn);
 
   return (
     <>
@@ -156,9 +238,9 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
             borderBottom: `1px solid ${CHROME_BORDER}`,
           }}
         >
-          <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
+          <Body1Strong as="span" style={{ flex: 1 }}>
             Book details
-          </Body1>
+          </Body1Strong>
           <Button
             appearance="subtle"
             size="small"
@@ -190,14 +272,32 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   />
                 )}
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <Subtitle1 as="h2" block style={{ margin: "0 0 4px" }}>
+                  {/* Sized to match the panel's own "Book details" header
+                      above (`Body1Strong`) rather than the larger
+                      `Subtitle1` this used to be — a book's title can run
+                      long, and at that size it was competing with (rather
+                      than deferring to) the cover art for attention.
+                      `Body1Strong` (not `Body1` plus an inline
+                      `fontWeight`) avoids fighting the CSS `font`
+                      shorthand Fluent's own typography presets already
+                      set — mixing the two triggers a React dev-mode
+                      warning about conflicting style updates. */}
+                  <Body1Strong as="h2" block style={{ margin: "0 0 4px" }}>
                     {details.title}
-                  </Subtitle1>
+                  </Body1Strong>
                   {details.creator && (
                     <Body1 as="p" block style={{ margin: 0, opacity: 0.75 }}>
                       {details.creator}
                     </Body1>
                   )}
+                  {/* Publisher/Copyright moved up here, directly under
+                      the author, rather than below the description —
+                      both are short, byline-like facts about the book
+                      itself, so they read more naturally as part of this
+                      identity block than mixed in with the longer-form
+                      description/identifiers further down. */}
+                  <DetailRow label="Publisher" value={details.publisher} compact />
+                  <RightsRow value={details.rights} />
                 </div>
               </div>
 
@@ -225,13 +325,30 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 </>
               )}
 
-              <DetailRow label="Publisher" value={details.publisher} />
-              <DetailRow label="Language" value={details.language} />
-              <DetailRow label="Copyright" value={details.rights} />
               <DetailRow label="ISBN" value={isbn?.value} />
               {otherIdentifiers.map((id, index) => (
                 <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
               ))}
+
+              {/* "Go to Page…"/"Go to Percentage…" — relocated from the
+                  toolbar's old Navigate menu (see this component's doc
+                  comment). Hidden entirely for fixed-layout content,
+                  which has no book-wide page/percentage position; "Go to
+                  Page" is further limited to paginated mode, where a
+                  page number actually means something (continuous
+                  scroll has no discrete pages to land on). */}
+              {!isFixedLayout && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                  {isPaginated && (
+                    <Button appearance="secondary" size="small" onClick={() => setGoToDialogMode("page")}>
+                      Go to Page…
+                    </Button>
+                  )}
+                  <Button appearance="secondary" size="small" onClick={() => setGoToDialogMode("percentage")}>
+                    Go to Percentage…
+                  </Button>
+                </div>
+              )}
 
               {/* An EPUB-author-facing tool, deliberately tucked away
                   down here rather than given its own toolbar button —
@@ -246,6 +363,20 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
           )}
         </div>
       </aside>
+
+      {goToDialogMode && (
+        <GoToDialog
+          mode={goToDialogMode}
+          open={goToDialogMode !== undefined}
+          onOpenChange={(dialogOpen) => {
+            if (!dialogOpen) {
+              setGoToDialogMode(undefined);
+            }
+          }}
+          bookPageCount={bookPageCount}
+          onGo={onSeekToFraction}
+        />
+      )}
     </>
   );
 };

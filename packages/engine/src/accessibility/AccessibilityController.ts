@@ -5,6 +5,13 @@
 export interface AccessibilityNavigationHandlers {
   onNext: () => void;
   onPrevious: () => void;
+  /** Jump a whole chapter forward/backward, bound to Ctrl/Cmd+ArrowRight/
+   * ArrowLeft — unlike `onNext`/`onPrevious`, this always means "chapter"
+   * regardless of view mode, distinct from a plain page turn. Optional
+   * (and simply not wired up) for any future caller that has no notion
+   * of chapters at all; every current caller provides both. */
+  onNextChapter?: () => void;
+  onPreviousChapter?: () => void;
 }
 
 /**
@@ -56,6 +63,16 @@ export class AccessibilityController {
    * scrolling" reasoning. Replaces any previously attached listener *for
    * this same document* — other documents already attached (see the
    * class doc comment on `attachments`) are left alone.
+   *
+   * Also wires Ctrl/Cmd+ArrowRight and Ctrl/Cmd+ArrowLeft to
+   * `onNextChapter`/`onPreviousChapter` (when provided) — a standard,
+   * discoverable "jump a whole chapter" shortcut, checked before the
+   * plain-arrow branch so the modifier key changes what the arrow does
+   * rather than triggering both. Added to replace the toolbar's old
+   * compass "Navigate" menu (issue follow-up: that menu's Chapter
+   * prev/next buttons were removed as redundant screen-clutter now that
+   * this shortcut exists, alongside the Table of Contents and progress
+   * scrubber for the same purpose).
    */
   public attach(
     document: Document,
@@ -66,7 +83,14 @@ export class AccessibilityController {
     const interceptSpace = options.interceptSpace ?? true;
 
     const keydownHandler = (event: KeyboardEvent): void => {
-      if (event.key === "ArrowRight") {
+      const chapterModifier = event.ctrlKey || event.metaKey;
+      if (chapterModifier && event.key === "ArrowRight") {
+        event.preventDefault();
+        handlers.onNextChapter?.();
+      } else if (chapterModifier && event.key === "ArrowLeft") {
+        event.preventDefault();
+        handlers.onPreviousChapter?.();
+      } else if (event.key === "ArrowRight") {
         event.preventDefault();
         handlers.onNext();
       } else if (event.key === "ArrowLeft") {

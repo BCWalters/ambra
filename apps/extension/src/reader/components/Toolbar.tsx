@@ -13,7 +13,6 @@ import {
   MenuList,
   MenuPopover,
   MenuTrigger,
-  Slider,
   ToggleButton,
   Tooltip,
 } from "@fluentui/react-components";
@@ -22,11 +21,6 @@ import {
   BookOpenRegular,
   BookmarkFilled,
   BookmarkRegular,
-  ChevronDoubleLeftRegular,
-  ChevronDoubleRightRegular,
-  ChevronLeftRegular,
-  ChevronRightRegular,
-  CompassNorthwestRegular,
   DocumentOnePageColumnsRegular,
   ReadingListRegular,
   SearchRegular,
@@ -49,7 +43,7 @@ import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
-import { GoToDialog } from "./GoToDialog.js";
+import { DefaultableSlider } from "./DefaultableSlider.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
@@ -61,9 +55,6 @@ export interface ToolbarProps {
   onToggleAnnotations: () => void;
   isDetailsOpen: boolean;
   onToggleDetails: () => void;
-  onTurnPage: (direction: 1 | -1) => void;
-  onGoToChapter: (direction: 1 | -1) => void;
-  onSeekToFraction: (fraction: number) => void;
   onToggleBookmark: () => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetFontScale: (scale: number) => void;
@@ -94,23 +85,54 @@ const PAGE_THEME_GROUP_NAME = "pageTheme";
 const CHROME_THEME_GROUP_NAME = "chromeTheme";
 const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
 
+/** A small color swatch shown in place of a plain icon beside each
+ * "Reader theme" option — an actual preview of that theme's own chrome
+ * background (the exact `backgroundSolid` gradient/color `chromeTheme.ts`
+ * paints the toolbar/panels with), not just a generic bullet, so a
+ * reader can tell at a glance what each named option actually looks
+ * like rather than having to apply it first to find out. Sits in
+ * `MenuItemRadio`'s `icon` slot, which accepts any element, not just a
+ * literal icon component. */
+const ThemeSwatch: FC<{ background: string }> = ({ background }) => (
+  <span
+    aria-hidden="true"
+    style={{
+      display: "inline-block",
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      background,
+      border: "1px solid rgba(0, 0, 0, 0.15)",
+      boxSizing: "border-box",
+    }}
+  />
+);
+
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
  * from the book page itself (see `chromeTheme`), rather than a chrome
  * bar permanently competing with the page for attention.
  *
- * Deliberately compact: chapter/page navigation lives in the "Navigate"
- * menu rather than as always-visible buttons (turning pages is normally
- * a keyboard-arrow/click/drag affair — see `ReaderController.turnPage`/
- * `beginDragPageTurn` — not a toolbar-button one, and folding four
- * buttons into one menu trigger is what keeps this bar a single
- * unobtrusive row instead of an ever-growing button strip). Typography
- * (font size, font family) lives in its own "Aa" menu, kept separate
- * from the gear "Settings" menu (page color theme, paginated/scroll)
- * since font choice is the setting readers reach for far more often —
- * splitting it out means it's never buried behind less-frequently-used
- * options. Both are a UX pattern deliberately built to scale to more
- * settings later (columns, margins) without needing another redesign.
+ * Deliberately compact — kept to a small, mostly-icon-only row rather
+ * than growing a button per feature. Chapter/page navigation has no
+ * toolbar button at all: it's a keyboard-arrow/click/drag affair (see
+ * `ReaderController.turnPage`/`beginDragPageTurn`) for pages, a standard
+ * Ctrl/Cmd+ArrowRight/Left shortcut for chapters (see
+ * `AccessibilityController`'s `onNextChapter`/`onPreviousChapter`), the
+ * Table of Contents for jumping to a specific one by name, and the
+ * progress scrubber for drag-to-seek — a dedicated "Navigate" menu
+ * (compass icon) used to duplicate all four of those in one place and
+ * was removed for being pure screen-clutter; "Go to Page…"/"Go to
+ * Percentage…" moved to the Book Details panel instead (see
+ * `BookDetailsPanel`). Typography and page-layout settings (font size/
+ * family, line/character spacing, page text width, page style) share
+ * one "Aa" menu with two cascading submenus ("Text"/"Page") rather than
+ * either a flat wall of every setting at once or two separate top-level
+ * buttons — kept apart from the gear "Settings" menu (reading mode, page
+ * turn animation, reader theme) since typography is what a reader
+ * reaches for far more often. Built to scale to more settings later
+ * (more submenus, not more top-level buttons) without needing another
+ * redesign.
  *
  * Persisting every chosen setting is `ReaderController`'s job, not this
  * component's — it just reflects/changes current state. */
@@ -124,9 +146,6 @@ export const Toolbar: FC<ToolbarProps> = ({
   onToggleAnnotations,
   isDetailsOpen,
   onToggleDetails,
-  onTurnPage,
-  onGoToChapter,
-  onSeekToFraction,
   onToggleBookmark,
   onSetViewMode,
   onSetFontScale,
@@ -140,11 +159,9 @@ export const Toolbar: FC<ToolbarProps> = ({
   visible,
   handlers,
 }) => {
-  const isPaginated = snapshot.viewMode === "paginated";
   const chromePalette = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
-  const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   // Centers the title/chapter group within the space left over between
   // the TOC toggle and the menu buttons whenever it comfortably fits
@@ -397,85 +414,23 @@ export const Toolbar: FC<ToolbarProps> = ({
             the running footer (see `PageFurniture`) instead. Showing it
             here too was confusing: chapter-relative vs. book-wide page
             numbers side by side (footer + toolbar) read as two different,
-            possibly conflicting counts. */}
+            possibly conflicting counts.
 
-        <Menu>
-          <MenuTrigger disableButtonEnhancement>
-            <Tooltip content={t("toolbar.navigate")} relationship="label">
-              <Button appearance="subtle" size="small" icon={<CompassNorthwestRegular />} />
-            </Tooltip>
-          </MenuTrigger>
-          <MenuPopover>
-            <MenuList>
-              <MenuGroup>
-                <MenuGroupHeader>Chapter</MenuGroupHeader>
-                <MenuItem
-                  icon={<ChevronDoubleLeftRegular />}
-                  disabled={snapshot.spineIndex <= 0}
-                  onClick={() => onGoToChapter(-1)}
-                >
-                  {t("toolbar.previousChapter")}
-                </MenuItem>
-                <MenuItem
-                  icon={<ChevronDoubleRightRegular />}
-                  disabled={snapshot.spineIndex >= snapshot.spineLength - 1}
-                  onClick={() => onGoToChapter(1)}
-                >
-                  {t("toolbar.nextChapter")}
-                </MenuItem>
-              </MenuGroup>
-              {isPaginated && !snapshot.isFixedLayout && (
-                <>
-                  <MenuDivider />
-                  <MenuGroup>
-                    <MenuGroupHeader>Page</MenuGroupHeader>
-                    <MenuItem
-                      icon={<ChevronLeftRegular />}
-                      disabled={snapshot.pageIndex <= 0}
-                      onClick={() => onTurnPage(-1)}
-                    >
-                      {t("toolbar.previousPage")}
-                    </MenuItem>
-                    <MenuItem
-                      icon={<ChevronRightRegular />}
-                      disabled={snapshot.pageIndex >= snapshot.pageCount - 1}
-                      onClick={() => onTurnPage(1)}
-                    >
-                      {t("toolbar.nextPage")}
-                    </MenuItem>
-                  </MenuGroup>
-                </>
-              )}
-              {!snapshot.isFixedLayout && (
-                <>
-                  <MenuDivider />
-                  <MenuGroup>
-                    <MenuGroupHeader>Go to</MenuGroupHeader>
-                    {isPaginated && (
-                      <MenuItem onClick={() => setGoToDialogMode("page")}>{t("toolbar.goToPage")}</MenuItem>
-                    )}
-                    <MenuItem onClick={() => setGoToDialogMode("percentage")}>
-                      {t("toolbar.goToPercentage")}
-                    </MenuItem>
-                  </MenuGroup>
-                </>
-              )}
-            </MenuList>
-          </MenuPopover>
-        </Menu>
+            The compass "Navigate" menu that used to sit here (Chapter/
+            Page/Go to) was removed entirely: chapter jumps duplicated
+            the Table of Contents, page-by-page nav duplicated arrow-key/
+            click/drag turning, and "Go to" duplicated the progress
+            scrubber's own drag-to-seek — four buttons of screen-clutter
+            for actions a reader already had two or three other ways to
+            do. Chapter jumping now has a standard keyboard shortcut
+            instead (Ctrl/Cmd+ArrowRight/Left — see
+            `AccessibilityController`'s `onNextChapter`/`onPreviousChapter`
+            and `ReaderApp`'s parent-document mirror of the same
+            shortcut), and "Go to Page…"/"Go to Percentage…" moved to the
+            Book Details panel (see `BookDetailsPanel`). */}
 
         {!snapshot.isFixedLayout && (
-          <Menu
-            persistOnItemClick
-            checkedValues={{
-              [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
-            }}
-            onCheckedValueChange={(_event, data) => {
-              if (data.name === FONT_FAMILY_GROUP_NAME) {
-                onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
-              }
-            }}
-          >
+          <Menu>
             <MenuTrigger disableButtonEnhancement>
               <Tooltip content={t("toolbar.textOptions")} relationship="label">
                 <Button
@@ -488,126 +443,151 @@ export const Toolbar: FC<ToolbarProps> = ({
             </MenuTrigger>
             <MenuPopover>
               <MenuList>
-                <MenuGroup>
-                  <MenuGroupHeader>Size</MenuGroupHeader>
-                  <div style={{ padding: "6px 12px 10px" }}>
-                    <Slider
-                      min={ReadingTheme.MIN_FONT_SCALE}
-                      max={ReadingTheme.MAX_FONT_SCALE}
-                      step={ReadingTheme.FONT_SCALE_STEP}
-                      value={snapshot.fontScale}
-                      onChange={(_event, data) => onSetFontScale(data.value)}
-                      aria-label="Font size"
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                </MenuGroup>
-                <MenuDivider />
-                <MenuGroup>
-                  <MenuGroupHeader>Line spacing</MenuGroupHeader>
-                  <div style={{ padding: "6px 12px 10px" }}>
-                    <Slider
-                      min={ReadingTheme.MIN_LINE_SPACING}
-                      max={ReadingTheme.MAX_LINE_SPACING}
-                      step={ReadingTheme.LINE_SPACING_STEP}
-                      value={snapshot.lineSpacing}
-                      onChange={(_event, data) => onSetLineSpacing(data.value)}
-                      aria-label="Line spacing"
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                </MenuGroup>
-                <MenuDivider />
-                <MenuGroup>
-                  <MenuGroupHeader>Character spacing</MenuGroupHeader>
-                  <div style={{ padding: "6px 12px 10px" }}>
-                    <Slider
-                      min={ReadingTheme.MIN_LETTER_SPACING}
-                      max={ReadingTheme.MAX_LETTER_SPACING}
-                      step={ReadingTheme.LETTER_SPACING_STEP}
-                      value={snapshot.letterSpacing}
-                      onChange={(_event, data) => onSetLetterSpacing(data.value)}
-                      aria-label="Character spacing"
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                </MenuGroup>
-                <MenuDivider />
-                <MenuGroup>
-                  <MenuGroupHeader>Font</MenuGroupHeader>
-                  {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
-                    // Preview each option in its own typeface (falling back
-                    // to the toolbar's own font for "Book default", which
-                    // has no fixed stack of its own by design — it defers
-                    // to whatever the book itself specifies) so the user
-                    // can see the difference between options before picking
-                    // one, rather than reading identical-looking labels.
-                    const stack = ReadingTheme.FONT_FAMILIES[key].stack;
-                    return (
-                      <MenuItemRadio
-                        key={key}
-                        name={FONT_FAMILY_GROUP_NAME}
-                        value={key}
-                        style={stack ? { fontFamily: stack } : undefined}
-                      >
-                        {ReadingTheme.FONT_FAMILIES[key].label}
-                      </MenuItemRadio>
-                    );
-                  })}
-                </MenuGroup>
-              </MenuList>
-            </MenuPopover>
-          </Menu>
-        )}
+                {/* Two cascading submenus ("Text"/"Page") rather than one
+                    flat list of four groups — each opens its own popover
+                    on hover/Enter/ArrowRight, Fluent's standard nested-
+                    menu pattern (built-in ARIA: `aria-haspopup`, arrow-key
+                    open/close, `Escape` steps back one level rather than
+                    closing everything at once). Each nested `<Menu>` gets
+                    its own `checkedValues`/`onCheckedValueChange`, scoped
+                    to just the radio group(s) inside it — simpler and
+                    more robust than trying to thread one shared context
+                    through the submenu boundary. */}
+                <Menu
+                  persistOnItemClick
+                  checkedValues={{
+                    [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
+                  }}
+                  onCheckedValueChange={(_event, data) => {
+                    if (data.name === FONT_FAMILY_GROUP_NAME) {
+                      onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
+                    }
+                  }}
+                >
+                  <MenuTrigger disableButtonEnhancement>
+                    <MenuItem icon={<TextFontRegular />}>Text</MenuItem>
+                  </MenuTrigger>
+                  <MenuPopover>
+                    <MenuList>
+                      <MenuGroup>
+                        <MenuGroupHeader>Size</MenuGroupHeader>
+                        <div style={{ padding: "6px 12px 10px" }}>
+                          <DefaultableSlider
+                            min={ReadingTheme.MIN_FONT_SCALE}
+                            max={ReadingTheme.MAX_FONT_SCALE}
+                            step={ReadingTheme.FONT_SCALE_STEP}
+                            value={snapshot.fontScale}
+                            defaultValue={ReadingTheme.DEFAULT_FONT_SCALE}
+                            onChange={onSetFontScale}
+                            aria-label="Font size"
+                          />
+                        </div>
+                      </MenuGroup>
+                      <MenuDivider />
+                      <MenuGroup>
+                        <MenuGroupHeader>Line spacing</MenuGroupHeader>
+                        <div style={{ padding: "6px 12px 10px" }}>
+                          <DefaultableSlider
+                            min={ReadingTheme.MIN_LINE_SPACING}
+                            max={ReadingTheme.MAX_LINE_SPACING}
+                            step={ReadingTheme.LINE_SPACING_STEP}
+                            value={snapshot.lineSpacing}
+                            defaultValue={ReadingTheme.DEFAULT_LINE_SPACING}
+                            onChange={onSetLineSpacing}
+                            aria-label="Line spacing"
+                          />
+                        </div>
+                      </MenuGroup>
+                      <MenuDivider />
+                      <MenuGroup>
+                        <MenuGroupHeader>Character spacing</MenuGroupHeader>
+                        <div style={{ padding: "6px 12px 10px" }}>
+                          <DefaultableSlider
+                            min={ReadingTheme.MIN_LETTER_SPACING}
+                            max={ReadingTheme.MAX_LETTER_SPACING}
+                            step={ReadingTheme.LETTER_SPACING_STEP}
+                            value={snapshot.letterSpacing}
+                            defaultValue={ReadingTheme.DEFAULT_LETTER_SPACING}
+                            onChange={onSetLetterSpacing}
+                            aria-label="Character spacing"
+                          />
+                        </div>
+                      </MenuGroup>
+                      <MenuDivider />
+                      <MenuGroup>
+                        <MenuGroupHeader>Font</MenuGroupHeader>
+                        {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
+                          // Preview each option in its own typeface (falling back
+                          // to the toolbar's own font for "Book default", which
+                          // has no fixed stack of its own by design — it defers
+                          // to whatever the book itself specifies) so the user
+                          // can see the difference between options before picking
+                          // one, rather than reading identical-looking labels.
+                          const stack = ReadingTheme.FONT_FAMILIES[key].stack;
+                          return (
+                            <MenuItemRadio
+                              key={key}
+                              name={FONT_FAMILY_GROUP_NAME}
+                              value={key}
+                              style={stack ? { fontFamily: stack } : undefined}
+                            >
+                              {ReadingTheme.FONT_FAMILIES[key].label}
+                            </MenuItemRadio>
+                          );
+                        })}
+                      </MenuGroup>
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
 
-        {!snapshot.isFixedLayout && (
-          <Menu
-            persistOnItemClick
-            checkedValues={{
-              [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
-            }}
-            onCheckedValueChange={(_event, data) => {
-              if (data.name === PAGE_THEME_GROUP_NAME) {
-                onSetPageTheme(data.checkedItems[0] as PageTheme);
-              }
-            }}
-          >
-            <MenuTrigger disableButtonEnhancement>
-              <Tooltip content={t("toolbar.pageOptions")} relationship="label">
-                <Button appearance="subtle" size="small" icon={<DocumentOnePageColumnsRegular />} />
-              </Tooltip>
-            </MenuTrigger>
-            <MenuPopover>
-              <MenuList>
-                <MenuGroup>
-                  {/* Labeled by the underlying value it directly controls
-                      (a wider value = a wider text column) rather than
-                      "Margins" (the inverse framing some readers use,
-                      where turning it up means *narrower* text/more
-                      margin) — avoids an inverted slider whose visual
-                      direction wouldn't match its own value. */}
-                  <MenuGroupHeader>Page text width</MenuGroupHeader>
-                  <div style={{ padding: "6px 12px 10px" }}>
-                    <Slider
-                      min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
-                      max={ReadingTheme.MAX_CONTENT_WIDTH_EM}
-                      step={ReadingTheme.CONTENT_WIDTH_STEP}
-                      value={snapshot.contentWidthEm}
-                      onChange={(_event, data) => onSetContentWidth(data.value)}
-                      aria-label="Page text width"
-                      style={{ width: "100%" }}
-                    />
-                  </div>
-                </MenuGroup>
-                <MenuDivider />
-                <MenuGroup>
-                  <MenuGroupHeader>Page style</MenuGroupHeader>
-                  {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
-                    <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
-                      {ReadingTheme.PAGE_THEMES[key].label}
-                    </MenuItemRadio>
-                  ))}
-                </MenuGroup>
+                <Menu
+                  persistOnItemClick
+                  checkedValues={{
+                    [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
+                  }}
+                  onCheckedValueChange={(_event, data) => {
+                    if (data.name === PAGE_THEME_GROUP_NAME) {
+                      onSetPageTheme(data.checkedItems[0] as PageTheme);
+                    }
+                  }}
+                >
+                  <MenuTrigger disableButtonEnhancement>
+                    <MenuItem icon={<DocumentOnePageColumnsRegular />}>Page</MenuItem>
+                  </MenuTrigger>
+                  <MenuPopover>
+                    <MenuList>
+                      <MenuGroup>
+                        {/* Labeled by the underlying value it directly controls
+                            (a wider value = a wider text column) rather than
+                            "Margins" (the inverse framing some readers use,
+                            where turning it up means *narrower* text/more
+                            margin) — avoids an inverted slider whose visual
+                            direction wouldn't match its own value. */}
+                        <MenuGroupHeader>Page text width</MenuGroupHeader>
+                        <div style={{ padding: "6px 12px 10px" }}>
+                          <DefaultableSlider
+                            min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
+                            max={ReadingTheme.MAX_CONTENT_WIDTH_EM}
+                            step={ReadingTheme.CONTENT_WIDTH_STEP}
+                            value={snapshot.contentWidthEm}
+                            defaultValue={ReadingTheme.DEFAULT_CONTENT_WIDTH_EM}
+                            onChange={onSetContentWidth}
+                            aria-label="Page text width"
+                          />
+                        </div>
+                      </MenuGroup>
+                      <MenuDivider />
+                      <MenuGroup>
+                        <MenuGroupHeader>Page style</MenuGroupHeader>
+                        {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
+                          <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
+                            {ReadingTheme.PAGE_THEMES[key].label}
+                          </MenuItemRadio>
+                        ))}
+                      </MenuGroup>
+                    </MenuList>
+                  </MenuPopover>
+                </Menu>
               </MenuList>
             </MenuPopover>
           </Menu>
@@ -688,7 +668,12 @@ export const Toolbar: FC<ToolbarProps> = ({
               <MenuGroup>
                 <MenuGroupHeader>Reader theme</MenuGroupHeader>
                 {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
-                  <MenuItemRadio key={key} name={CHROME_THEME_GROUP_NAME} value={key}>
+                  <MenuItemRadio
+                    key={key}
+                    name={CHROME_THEME_GROUP_NAME}
+                    value={key}
+                    icon={<ThemeSwatch background={CHROME_THEMES[key].backgroundSolid} />}
+                  >
                     {CHROME_THEMES[key].label}
                   </MenuItemRadio>
                 ))}
@@ -723,12 +708,14 @@ export const Toolbar: FC<ToolbarProps> = ({
         {/* Bookmark stands alone at the far right, set apart from the
             Text/Settings/Search/Details group with some extra breathing
             room (beyond the toolbar's own uniform `gap`) — per explicit
-            design direction, the toolbar reads as three loose clusters
-            left to right: Navigate, then Text/Settings/Search/Details
-            grouped together (issue #68: Search moved here from beside
-            Contents/Bookmarks — it now docks alongside Book Details on
-            the same, opposite edge of the reader pane, see `SearchPanel`'s
-            doc comment), then Bookmark on its own at the end.
+            design direction, the toolbar reads as two loose clusters
+            left to right: Text/Settings/Search/Details grouped together
+            (issue #68: Search moved here from beside Contents/Bookmarks
+            — it now docks alongside Book Details on the same, opposite
+            edge of the reader pane, see `SearchPanel`'s doc comment),
+            then Bookmark on its own at the end. (A third "Navigate"
+            cluster used to sit further left — removed as redundant
+            clutter, see this file's doc comment.)
 
             A single toggle rather than a plain "add" action (issue
             #47): pressed/filled whenever any bookmark already falls on
@@ -752,20 +739,6 @@ export const Toolbar: FC<ToolbarProps> = ({
           />
         </Tooltip>
       </div>
-
-      {goToDialogMode && (
-        <GoToDialog
-          mode={goToDialogMode}
-          open={goToDialogMode !== undefined}
-          onOpenChange={(open) => {
-            if (!open) {
-              setGoToDialogMode(undefined);
-            }
-          }}
-          bookPageCount={snapshot.bookPageCount}
-          onGo={onSeekToFraction}
-        />
-      )}
     </>
   );
 };

@@ -48,7 +48,6 @@ const ReaderAppInner: FC = () => {
     snapshot,
     contentHostRef,
     openBook,
-    turnPage,
     goToChapter,
     goToNavPoint,
     setViewMode,
@@ -196,6 +195,33 @@ const ReaderAppInner: FC = () => {
     }
     setInspectionData(getEpubInspectionData());
   }, [isInspectorOpen, inspectionData, getEpubInspectionData]);
+
+  // Ctrl/Cmd+ArrowRight/Left jump a whole chapter — the same shortcut
+  // `AccessibilityController` wires directly onto each content iframe's
+  // own document (see `ReaderController.reattachKeyboardNav`), mirrored
+  // here on the parent document for when focus is somewhere in the
+  // surrounding chrome instead (the toolbar, an open panel) rather than
+  // in the book content itself. Keydown events never bubble out of the
+  // content iframe's own browsing context into this listener, so the two
+  // can never double-fire for the same keypress. Replaces the toolbar's
+  // old compass "Navigate" menu's Chapter prev/next buttons (removed as
+  // redundant with the Table of Contents/scrubber).
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        void goToChapter(1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        void goToChapter(-1);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [goToChapter]);
 
   // Re-fetches every time the Bookmarks/Highlights panel opens (unlike
   // book details above, which only ever needs fetching once per book) —
@@ -491,9 +517,6 @@ const ReaderAppInner: FC = () => {
                 }
                 toggleRightPanel("details");
               }}
-              onTurnPage={turnPage}
-              onGoToChapter={goToChapter}
-              onSeekToFraction={(fraction) => void seekToFraction(fraction)}
               onToggleBookmark={handleToggleBookmark}
               onSetViewMode={setViewMode}
               onSetFontScale={setFontScale}
@@ -517,6 +540,10 @@ const ReaderAppInner: FC = () => {
               details={bookDetails}
               onOpenInspector={() => setIsInspectorOpen(true)}
               scrubberVisible={scrubberVisible}
+              isPaginated={snapshot.viewMode === "paginated"}
+              isFixedLayout={snapshot.isFixedLayout}
+              bookPageCount={snapshot.bookPageCount}
+              onSeekToFraction={(fraction) => void seekToFraction(fraction)}
             />
 
             <EpubInspectorPanel

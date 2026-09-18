@@ -23,15 +23,7 @@ export interface StringCatalog {
   "toolbar.hideContents": string;
   "toolbar.bookmarksAndHighlights": string;
   "toolbar.hideBookmarksAndHighlights": string;
-  "toolbar.navigate": string;
-  "toolbar.previousChapter": string;
-  "toolbar.nextChapter": string;
-  "toolbar.previousPage": string;
-  "toolbar.nextPage": string;
-  "toolbar.goToPage": string;
-  "toolbar.goToPercentage": string;
   "toolbar.textOptions": string;
-  "toolbar.pageOptions": string;
   "toolbar.settings": string;
   "toolbar.bookDetails": string;
   "toolbar.hideBookDetails": string;
@@ -70,15 +62,7 @@ export const en: StringCatalog = {
   "toolbar.hideContents": "Hide contents",
   "toolbar.bookmarksAndHighlights": "Bookmarks and highlights",
   "toolbar.hideBookmarksAndHighlights": "Hide bookmarks and highlights",
-  "toolbar.navigate": "Navigate",
-  "toolbar.previousChapter": "Previous chapter",
-  "toolbar.nextChapter": "Next chapter",
-  "toolbar.previousPage": "Previous page",
-  "toolbar.nextPage": "Next page",
-  "toolbar.goToPage": "Go to page…",
-  "toolbar.goToPercentage": "Go to percentage…",
-  "toolbar.textOptions": "Text options",
-  "toolbar.pageOptions": "Page options",
+  "toolbar.textOptions": "Text and page options",
   "toolbar.settings": "Settings",
   "toolbar.bookDetails": "Book details",
   "toolbar.hideBookDetails": "Hide book details",

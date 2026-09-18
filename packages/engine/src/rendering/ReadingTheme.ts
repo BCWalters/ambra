@@ -131,6 +131,9 @@ export class ReadingTheme {
   public static readonly MIN_FONT_SCALE = 0.75;
   public static readonly MAX_FONT_SCALE = 2;
   public static readonly FONT_SCALE_STEP = 0.125;
+  /** The multiplier that reproduces a book's own untouched font size —
+   * see `FONT_SCALE_PROPERTY`'s own CSS default, `1`, above. */
+  public static readonly DEFAULT_FONT_SCALE = 1;
 
   /** A multiplier on the theme's own base line-height (1.65 — see `CSS`),
    * not an absolute value, the same way `FONT_SCALE_PROPERTY` multiplies

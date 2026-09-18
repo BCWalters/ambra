@@ -30,7 +30,9 @@ export interface GoToDialogProps {
 
 /** A small dialog for jumping straight to a book-wide page number or a
  * percentage through the book — the "Go to Page…"/"Go to Percentage…"
- * items in the toolbar's Navigate menu (see issue #23). Both reduce to
+ * actions in the Book Details panel (originally the toolbar's Navigate
+ * menu — see issue #23 — relocated when that menu was removed as
+ * redundant screen-clutter). Both reduce to
  * the exact same underlying mechanism, `ReaderController.seekToFraction`
  * (already used by `ProgressScrubber`'s drag-to-seek) — this dialog's
  * only job is turning a page number or percentage into that 0-to-1
