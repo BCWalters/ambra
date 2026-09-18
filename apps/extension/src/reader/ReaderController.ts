@@ -1054,35 +1054,49 @@ export class ReaderController {
     }
   }
 
-  /** (Re-)attaches `ArrowLeft`/`ArrowRight` keyboard navigation to the
-   * current content host's primary iframe document, *without* moving
-   * focus — split out from `setUpAccessibility` so a plain in-chapter
-   * page turn (including an animated one — see `animatePageTurn`, which
-   * swaps in a brand-new host/document each turn) can re-arm keyboard
-   * navigation for that new document without stealing focus away from
-   * wherever the reader currently has it, consistent with page turns
-   * never forcing focus (only chapter changes/TOC jumps/fragment
-   * navigation do — see `setUpAccessibility`). */
+  /** (Re-)attaches `ArrowLeft`/`ArrowRight` keyboard navigation to every
+   * content document the current host has, *without* moving focus —
+   * split out from `setUpAccessibility` so a plain in-chapter page turn
+   * (including an animated one — see `animatePageTurn`, which swaps in a
+   * brand-new host/document each turn) can re-arm keyboard navigation
+   * for that new document without stealing focus away from wherever the
+   * reader currently has it, consistent with page turns never forcing
+   * focus (only chapter changes/TOC jumps/fragment navigation do — see
+   * `setUpAccessibility`).
+   *
+   * Every content document (not just the primary one) gets the exact
+   * same handlers — for every host type except `SpreadPaginatedHost`
+   * that's one document anyway, but a spread has two, and a reader who
+   * clicks into the companion (right) column to read it directly still
+   * expects the arrow keys to keep turning pages from there. The
+   * *managed-focus* side of accessibility (`setUpAccessibility`'s
+   * `focusContent` call, screen-reader-oriented) stays scoped to the
+   * primary column only — see `SpreadPaginatedHost`'s own doc comment —
+   * this is purely about keyboard navigation continuing to work for
+   * whichever column a sighted mouse/keyboard user happens to have
+   * clicked into. */
   private reattachKeyboardNav(): void {
-    const iframeDocument = this.primaryContentDocument();
-    if (!iframeDocument) {
+    const documents = this.allContentDocuments();
+    if (documents.length === 0) {
       return;
     }
     const isPaginated =
       this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
-    this.accessibility.attach(
-      iframeDocument,
-      {
-        onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
-        onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
-      },
-      // Space keeps its native "scroll down one viewport" behavior in
-      // continuous-scroll mode — already a well-understood, finer-
-      // grained way to move forward through the book than a hypothetical
-      // "next chapter" binding would be (see `AccessibilityController.
-      // attach`'s doc comment).
-      { interceptSpace: !(this.host instanceof ScrollContentHost) },
-    );
+    for (const iframeDocument of documents) {
+      this.accessibility.attach(
+        iframeDocument,
+        {
+          onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
+          onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
+        },
+        // Space keeps its native "scroll down one viewport" behavior in
+        // continuous-scroll mode — already a well-understood, finer-
+        // grained way to move forward through the book than a
+        // hypothetical "next chapter" binding would be (see
+        // `AccessibilityController.attach`'s doc comment).
+        { interceptSpace: !(this.host instanceof ScrollContentHost) },
+      );
+    }
   }
 
   /** `true` if `host`'s own iframe element currently has the parent
@@ -1792,13 +1806,18 @@ export class ReaderController {
     }
   }
 
-  /** Attaches selection tracking to the current content host's primary
-   * document (the same one `AccessibilityController`'s keyboard listener
-   * uses, and — in spread mode — the same left-column-only scope
-   * everything selection-adjacent already uses): whenever the reader
-   * finishes making (or clears) a text selection, updates
-   * `selectionToolbar` so the shell can show/hide a floating
-   * highlight-color picker positioned just above it. Listens for
+  /** Attaches selection tracking to every content document the current
+   * host has: whenever the reader finishes making (or clears) a text
+   * selection in *either* column of a two-page spread — not just the
+   * primary (left) one — updates `selectionToolbar` so the shell can
+   * show/hide a floating highlight-color picker positioned just above
+   * wherever that selection actually is. `AccessibilityController`'s
+   * keyboard listener now follows this same "every document" scope (see
+   * `reattachKeyboardNav`); only the *managed-focus* side of
+   * accessibility (`setUpAccessibility`'s `focusContent` call) stays
+   * scoped to the primary column, since that part is specifically for
+   * screen readers, which only ever need the one column's complete text
+   * (see `SpreadPaginatedHost`'s own doc comment). Listens for
    * `pointerup` (mouse/touch selection) and `keyup` (keyboard selection
    * via Shift+arrows) — the two ways a selection can actually finish
    * changing. No-op for fixed-layout content.
@@ -1824,53 +1843,72 @@ export class ReaderController {
     if (this.host instanceof FixedContentHost) {
       return;
     }
-    const doc = this.primaryContentDocument();
-    const iframeEl = doc?.defaultView?.frameElement;
-    if (!doc || !iframeEl) {
+    const documents = this.allContentDocuments();
+    if (documents.length === 0) {
       return;
     }
 
-    const updateFromSelection = (): void => {
-      const selection = doc.getSelection();
-      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-        this.pendingSelectionRange = undefined;
-        this.selectionToolbar = undefined;
-        this.notify();
-        return;
+    const cleanups: Array<() => void> = [];
+    for (const doc of documents) {
+      const iframeEl = doc.defaultView?.frameElement;
+      if (!iframeEl) {
+        continue;
       }
-      const range = selection.getRangeAt(0);
-      const rangeRect = range.getBoundingClientRect();
-      if (rangeRect.width === 0 && rangeRect.height === 0) {
-        // A selection can momentarily report a zero-size rect (e.g. right
-        // as it's being cleared) — treat exactly like "no selection"
-        // rather than showing a toolbar with nowhere sensible to anchor.
-        this.pendingSelectionRange = undefined;
-        this.selectionToolbar = undefined;
-        this.notify();
-        return;
-      }
-      const iframeRect = iframeEl.getBoundingClientRect();
-      this.pendingSelectionRange = range.cloneRange();
-      this.selectionToolbar = {
-        left: iframeRect.left + rangeRect.left + rangeRect.width / 2,
-        top: iframeRect.top + rangeRect.top,
-      };
-      this.notify();
-    };
 
-    doc.addEventListener("pointerup", updateFromSelection);
-    doc.addEventListener("keyup", updateFromSelection);
+      const updateFromSelection = (): void => {
+        const selection = doc.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+          this.pendingSelectionRange = undefined;
+          this.selectionToolbar = undefined;
+          this.notify();
+          return;
+        }
+        const range = selection.getRangeAt(0);
+        const rangeRect = range.getBoundingClientRect();
+        if (rangeRect.width === 0 && rangeRect.height === 0) {
+          // A selection can momentarily report a zero-size rect (e.g. right
+          // as it's being cleared) — treat exactly like "no selection"
+          // rather than showing a toolbar with nowhere sensible to anchor.
+          this.pendingSelectionRange = undefined;
+          this.selectionToolbar = undefined;
+          this.notify();
+          return;
+        }
+        const iframeRect = iframeEl.getBoundingClientRect();
+        this.pendingSelectionRange = range.cloneRange();
+        this.selectionToolbar = {
+          left: iframeRect.left + rangeRect.left + rangeRect.width / 2,
+          top: iframeRect.top + rangeRect.top,
+        };
+        this.notify();
+      };
+
+      doc.addEventListener("pointerup", updateFromSelection);
+      doc.addEventListener("keyup", updateFromSelection);
+      cleanups.push(() => {
+        doc.removeEventListener("pointerup", updateFromSelection);
+        doc.removeEventListener("keyup", updateFromSelection);
+      });
+    }
     this.highlightSelectionCleanup = () => {
-      doc.removeEventListener("pointerup", updateFromSelection);
-      doc.removeEventListener("keyup", updateFromSelection);
+      for (const cleanup of cleanups) {
+        cleanup();
+      }
     };
   }
 
   /** Hides the selection toolbar and clears the current in-content text
    * selection — called after committing a highlight, and available to
-   * the shell for an explicit dismiss (e.g. clicking elsewhere). */
+   * the shell for an explicit dismiss (e.g. clicking elsewhere). Clears
+   * the native selection on *every* content document, not just the
+   * primary one — the pending selection this is dismissing could belong
+   * to either column of a two-page spread (see `setUpHighlightSelection`),
+   * and clearing a document with no active selection is a harmless
+   * no-op, so there's no need to track which one it actually was. */
   public dismissSelectionToolbar(): void {
-    this.primaryContentDocument()?.getSelection()?.removeAllRanges();
+    for (const doc of this.allContentDocuments()) {
+      doc.getSelection()?.removeAllRanges();
+    }
     this.pendingSelectionRange = undefined;
     this.selectionToolbar = undefined;
     this.notify();

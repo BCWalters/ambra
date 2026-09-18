@@ -14,10 +14,22 @@ export interface AccessibilityNavigationHandlers {
  * UI are the reader page's own responsibility (see `apps/extension`'s
  * `ReaderApp`/`Toolbar`) — this class is scoped to the sandboxed content
  * document itself, which the shell doesn't otherwise reach into.
+ *
+ * Usually manages exactly one attached document (whichever content host
+ * is current), but supports more than one at once — see `attachments` —
+ * for a two-page spread's companion column.
  */
 export class AccessibilityController {
-  private document: Document | undefined;
-  private keydownHandler: ((event: KeyboardEvent) => void) | undefined;
+  /** One keydown handler per currently-attached document — almost always
+   * just the single primary content document, but a two-page spread (see
+   * `SpreadPaginatedHost`) attaches a *second* entry for its companion
+   * column too, so that a reader who clicks into the right-hand page (to
+   * read it, or to select text there) still has working keyboard page
+   * navigation — see `ReaderController.reattachKeyboardNav`. Keyed by
+   * `Document` rather than a single field so `attach`ing a new document
+   * never disturbs whichever other document(s) already have their own
+   * listener. */
+  private readonly attachments = new Map<Document, (event: KeyboardEvent) => void>();
 
   /**
    * Wires `ArrowLeft`/`ArrowRight` (and, unless `interceptSpace` is
@@ -41,14 +53,16 @@ export class AccessibilityController {
    * would be — overriding it there would take away a well-understood
    * browser behavior for a strictly worse replacement. Up/Down/PageUp/
    * PageDown are always left untouched for the same "don't fight native
-   * scrolling" reasoning. Replaces any previously attached listener.
+   * scrolling" reasoning. Replaces any previously attached listener *for
+   * this same document* — other documents already attached (see the
+   * class doc comment on `attachments`) are left alone.
    */
   public attach(
     document: Document,
     handlers: AccessibilityNavigationHandlers,
     options: { interceptSpace?: boolean } = {},
   ): void {
-    this.detach();
+    this.detach(document);
     const interceptSpace = options.interceptSpace ?? true;
 
     const keydownHandler = (event: KeyboardEvent): void => {
@@ -69,19 +83,26 @@ export class AccessibilityController {
     };
 
     document.addEventListener("keydown", keydownHandler);
-    this.document = document;
-    this.keydownHandler = keydownHandler;
+    this.attachments.set(document, keydownHandler);
   }
 
-  /** Removes the currently-attached keyboard listener, if any — call
-   * before attaching to a new document (e.g. a fresh spine item's iframe;
-   * `attach` already does this itself) or when tearing down entirely. */
-  public detach(): void {
-    if (this.document && this.keydownHandler) {
-      this.document.removeEventListener("keydown", this.keydownHandler);
+  /** Removes the keyboard listener for `document`, if any — or, when
+   * called with no argument, every currently-attached document at once
+   * (the common case: tearing down before a fresh spine item's iframe(s)
+   * take over, or on full controller disposal). */
+  public detach(document?: Document): void {
+    if (document) {
+      const handler = this.attachments.get(document);
+      if (handler) {
+        document.removeEventListener("keydown", handler);
+        this.attachments.delete(document);
+      }
+      return;
     }
-    this.document = undefined;
-    this.keydownHandler = undefined;
+    for (const [attachedDocument, handler] of this.attachments) {
+      attachedDocument.removeEventListener("keydown", handler);
+    }
+    this.attachments.clear();
   }
 
   /**
