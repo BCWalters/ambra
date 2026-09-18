@@ -246,6 +246,14 @@ const ReaderAppInner: FC = () => {
     void addHighlight(style);
   };
 
+  /** Issue #60: "Add note" in the selection toolbar — creates the
+   * highlight (in the toolbar's own default/first style) and, unlike
+   * `handleAddHighlight`, immediately opens its note editor rather than
+   * requiring the reader to click the highlight again afterward. */
+  const handleAddHighlightWithNote = (): void => {
+    void addHighlight("yellow", true);
+  };
+
   const handleRemoveHighlight = (id: string): void => {
     void removeHighlight(id);
   };
@@ -521,7 +529,11 @@ const ReaderAppInner: FC = () => {
 
             <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
 
-            <SelectionToolbar state={snapshot.selectionToolbar} onPick={handleAddHighlight} />
+            <SelectionToolbar
+              state={snapshot.selectionToolbar}
+              onPick={handleAddHighlight}
+              onAddNote={handleAddHighlightWithNote}
+            />
 
             <HighlightActionPopup
               state={snapshot.activeHighlight}

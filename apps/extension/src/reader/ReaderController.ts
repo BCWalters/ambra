@@ -379,6 +379,12 @@ export interface ActiveHighlightState {
   readonly highlight: Highlight;
   readonly left: number;
   readonly top: number;
+  /** `true` only right after `addHighlight(style, true)` creates this
+   * highlight (issue #60) — tells `HighlightActionPopup` to open already
+   * in note-editing mode instead of its normal closed-note-editor
+   * default. Never set for a highlight opened by clicking on it later
+   * (`checkExistingHighlightClick`). */
+  readonly openNoteEditor?: boolean;
 }
 
 /** See `ReaderSnapshot.searchResults` — a `SearchResult` (see the engine)
@@ -2372,12 +2378,23 @@ export class ReaderController {
    * dismisses the selection toolbar. A no-op if there's no pending
    * selection (the toolbar isn't showing, or it's since been dismissed)
    * — defensive, since the shell should never be able to call this
-   * without one, but never worth crashing over if it somehow did. */
-  public async addHighlight(style: HighlightStyle): Promise<void> {
+   * without one, but never worth crashing over if it somehow did.
+   *
+   * `openNoteEditor` (issue #60: "add a note directly from the
+   * selection menu — no need to highlight, then click, then add a
+   * note") skips straight to `activeHighlight`'s note-editing mode for
+   * the highlight just created, at the same position the selection
+   * toolbar itself was anchored to — the reader never has to go find
+   * and re-click the highlight they just made. */
+  public async addHighlight(style: HighlightStyle, openNoteEditor = false): Promise<void> {
     const range = this.pendingSelectionRange;
     if (!range || this.host instanceof FixedContentHost) {
       return;
     }
+    // Captured before `dismissSelectionToolbar` (in `finally`, below)
+    // clears `this.selectionToolbar` — the note editor opens at the
+    // exact same anchor point the selection toolbar itself used.
+    const anchor = this.selectionToolbar;
     try {
       const startLocator = this.locatorResolver.generate(this.spineIndex, range.startContainer, range.startOffset);
       const endLocator = this.locatorResolver.generate(this.spineIndex, range.endContainer, range.endOffset);
@@ -2398,6 +2415,9 @@ export class ReaderController {
       }
       this.applyHighlightsToCurrentHost();
       this.announce("Highlight added");
+      if (openNoteEditor && anchor) {
+        this.activeHighlight = { highlight, left: anchor.left, top: anchor.top, openNoteEditor: true };
+      }
     } catch {
       // Best-effort — see `saveProgress`'s identical reasoning; a failed
       // highlight save shouldn't surface an error to the reader mid-flow.

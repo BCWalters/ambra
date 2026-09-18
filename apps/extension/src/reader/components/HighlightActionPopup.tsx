@@ -50,9 +50,12 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
   // Resets the note editor's own open/draft state whenever a *different*
   // highlight is opened (or this one closes) — without this, closing and
   // reopening a note editor on a second highlight would show the first
-  // highlight's leftover draft text for a moment.
+  // highlight's leftover draft text for a moment. Starts already open
+  // when `openNoteEditor` says so (issue #60: adding a note directly
+  // from the selection menu skips straight here instead of the reader
+  // having to click the note icon themselves).
   useEffect(() => {
-    setIsEditingNote(false);
+    setIsEditingNote(state?.openNoteEditor ?? false);
     setDraftNote(state?.highlight.note ?? "");
   }, [state?.highlight.id]);
 

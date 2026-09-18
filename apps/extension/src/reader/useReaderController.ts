@@ -39,7 +39,7 @@ export interface UseReaderControllerResult {
   listBookmarks: () => Promise<Bookmark[]>;
   removeBookmark: (id: string) => Promise<void>;
   goToBookmark: (cfi: string) => Promise<void>;
-  addHighlight: (style: HighlightStyle) => Promise<void>;
+  addHighlight: (style: HighlightStyle, openNoteEditor?: boolean) => Promise<void>;
   removeHighlight: (id: string) => Promise<void>;
   setHighlightNote: (id: string, note: string | undefined) => Promise<void>;
   search: (query: string) => void;
@@ -293,8 +293,8 @@ export function useReaderController(): UseReaderControllerResult {
   );
 
   const addHighlight = useCallback(
-    async (style: HighlightStyle) => {
-      await controller?.addHighlight(style);
+    async (style: HighlightStyle, openNoteEditor?: boolean) => {
+      await controller?.addHighlight(style, openNoteEditor);
     },
     [controller],
   );
