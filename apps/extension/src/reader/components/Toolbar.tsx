@@ -445,7 +445,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 <>
                   <MenuDivider />
                   <MenuGroup>
-                    <MenuGroupHeader>Go To</MenuGroupHeader>
+                    <MenuGroupHeader>Go to</MenuGroupHeader>
                     {isPaginated && (
                       <MenuItem onClick={() => setGoToDialogMode("page")}>{t("toolbar.goToPage")}</MenuItem>
                     )}
@@ -499,7 +499,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>
-                  <MenuGroupHeader>Line Spacing</MenuGroupHeader>
+                  <MenuGroupHeader>Line spacing</MenuGroupHeader>
                   <div style={{ padding: "6px 12px 10px" }}>
                     <Slider
                       min={ReadingTheme.MIN_LINE_SPACING}
@@ -514,7 +514,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>
-                  <MenuGroupHeader>Character Spacing</MenuGroupHeader>
+                  <MenuGroupHeader>Character spacing</MenuGroupHeader>
                   <div style={{ padding: "6px 12px 10px" }}>
                     <Slider
                       min={ReadingTheme.MIN_LETTER_SPACING}
@@ -532,7 +532,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                   <MenuGroupHeader>Font</MenuGroupHeader>
                   {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
                     // Preview each option in its own typeface (falling back
-                    // to the toolbar's own font for "Book Default", which
+                    // to the toolbar's own font for "Book default", which
                     // has no fixed stack of its own by design — it defers
                     // to whatever the book itself specifies) so the user
                     // can see the difference between options before picking
@@ -581,7 +581,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                       where turning it up means *narrower* text/more
                       margin) — avoids an inverted slider whose visual
                       direction wouldn't match its own value. */}
-                  <MenuGroupHeader>Page Text Width</MenuGroupHeader>
+                  <MenuGroupHeader>Page text width</MenuGroupHeader>
                   <div style={{ padding: "6px 12px 10px" }}>
                     <Slider
                       min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
@@ -596,7 +596,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 </MenuGroup>
                 <MenuDivider />
                 <MenuGroup>
-                  <MenuGroupHeader>Page Style</MenuGroupHeader>
+                  <MenuGroupHeader>Page style</MenuGroupHeader>
                   {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
                     <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
                       {ReadingTheme.PAGE_THEMES[key].label}
@@ -645,7 +645,7 @@ export const Toolbar: FC<ToolbarProps> = ({
               {!snapshot.isFixedLayout && (
                 <>
                   <MenuGroup>
-                    <MenuGroupHeader>Reading Mode</MenuGroupHeader>
+                    <MenuGroupHeader>Reading mode</MenuGroupHeader>
                     <MenuItemRadio
                       name={VIEW_MODE_GROUP_NAME}
                       value="paginated"
@@ -663,7 +663,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                   </MenuGroup>
                   <MenuDivider />
                   <MenuGroup>
-                    <MenuGroupHeader>Page Turn</MenuGroupHeader>
+                    <MenuGroupHeader>Page turn</MenuGroupHeader>
                     <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="rotate">
                       Rotate
                     </MenuItemRadio>
@@ -675,7 +675,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 </>
               )}
               <MenuGroup>
-                <MenuGroupHeader>Reader Theme</MenuGroupHeader>
+                <MenuGroupHeader>Reader theme</MenuGroupHeader>
                 {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
                   <MenuItemRadio key={key} name={CHROME_THEME_GROUP_NAME} value={key}>
                     {CHROME_THEMES[key].label}

@@ -196,7 +196,7 @@ export class ReadingTheme {
       stack: `"Avenir Next", "Century Gothic", "Segoe UI", "Helvetica Neue", Arial, sans-serif`,
     },
     "book-default": {
-      label: "Book Default",
+      label: "Book default",
       stack: undefined,
     },
   };

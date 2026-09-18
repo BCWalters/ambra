@@ -143,7 +143,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            Book Details
+            Book details
           </Body1>
           <Button
             appearance="subtle"
