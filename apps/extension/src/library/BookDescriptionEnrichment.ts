@@ -47,7 +47,45 @@ function truncate(text: string): string {
   if (trimmed.length <= MAX_DESCRIPTION_LENGTH) {
     return trimmed;
   }
-  return `${trimmed.slice(0, MAX_DESCRIPTION_LENGTH).trimEnd()}…`;
+  const hardCut = trimmed.slice(0, MAX_DESCRIPTION_LENGTH);
+  // Prefers breaking at the end of a whole sentence within the budget
+  // (reads as a complete thought, not a fragment) — issue #71: "try to
+  // make these descriptions break cleanly when possible". Only takes
+  // that shorter cut when the nearest sentence end is reasonably close
+  // to the limit already, so a description whose first sentence ends
+  // very early doesn't get needlessly truncated far short of the actual
+  // budget just to land on a period.
+  const sentenceEnds = [". ", ".\n", "? ", "! "].map((needle) => hardCut.lastIndexOf(needle));
+  const lastSentenceEnd = Math.max(...sentenceEnds);
+  if (lastSentenceEnd > MAX_DESCRIPTION_LENGTH * 0.6) {
+    return hardCut.slice(0, lastSentenceEnd + 1).trimEnd();
+  }
+  // No sentence end close enough — fall back to the last whole word
+  // instead of `truncate`'s old behavior of cutting wherever the
+  // character budget happened to land, which could sever a word (or, as
+  // in issue #71, a Markdown link) mid-way through.
+  const lastSpace = hardCut.lastIndexOf(" ");
+  const wordBoundaryCut = lastSpace > 0 ? hardCut.slice(0, lastSpace) : hardCut;
+  return `${wordBoundaryCut.trimEnd()}…`;
+}
+
+/** Open Library descriptions conventionally end with their own
+ * "([source](url))" Markdown note pointing back to wherever *they*
+ * scraped the description from — always redundant here since the Book
+ * Details panel already shows its own "via Open Library" attribution
+ * link (see this module's doc comment), and worse, `truncate` cutting
+ * through the middle of one left a dangling, half-rendered link visible
+ * to the reader (issue #71). Stripped from the *raw*, untruncated text
+ * before `truncate` ever sees it, rather than trying to detect/repair a
+ * partial link after the fact. Wikipedia's REST summary extract has no
+ * equivalent convention, so this is only ever applied to Open Library's
+ * own description field. */
+function stripTrailingSourceNote(text: string): string {
+  const match = text.match(/\(\s*\[source\][\s\S]*\)\s*$/i);
+  if (!match || match.index === undefined) {
+    return text;
+  }
+  return text.slice(0, match.index).trimEnd();
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -94,7 +132,7 @@ async function tryOpenLibrary(
       const inlineDescription = extractOpenLibraryDescription(edition.description);
       if (inlineDescription) {
         return {
-          description: truncate(inlineDescription),
+          description: truncate(stripTrailingSourceNote(inlineDescription)),
           sourceName: "Open Library",
           sourceUrl: `https://openlibrary.org/isbn/${normalizedIsbn}`,
         };
@@ -131,7 +169,7 @@ async function tryOpenLibrary(
       return undefined;
     }
     return {
-      description: truncate(description),
+      description: truncate(stripTrailingSourceNote(description)),
       sourceName: "Open Library",
       sourceUrl: `https://openlibrary.org${workKey}`,
     };
