@@ -99,6 +99,14 @@ export class ContentLoader {
     return this.container.requireEntry(path).readText();
   }
 
+  /** Reads the raw bytes of an arbitrary archive path — the binary
+   * counterpart to `readArchiveFileText`, for the inspection feature's
+   * image/audio/video previews (issue #46 follow-up), where decoding as
+   * text would silently produce mojibake instead of a usable preview. */
+  public async readArchiveFileBytes(path: string): Promise<Uint8Array> {
+    return this.container.requireEntry(path).read();
+  }
+
   /** Loads and parses the spine item at `spineIndex` as a `ContentDocument`. */
   public async loadSpineDocument(spineIndex: number): Promise<ContentDocument> {
     const spineRef = this.pkg.spine[spineIndex];

@@ -45,9 +45,7 @@ import type { ChromeThemeChoice } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
-import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
-import { LOCALE_NATIVE_NAMES, SUPPORTED_LOCALES } from "../../i18n/Locale.js";
-import type { LocalePreference } from "../../i18n/Locale.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 import { GoToDialog } from "./GoToDialog.js";
 
 export interface ToolbarProps {
@@ -90,7 +88,6 @@ const FONT_FAMILY_GROUP_NAME = "fontFamily";
 const PAGE_THEME_GROUP_NAME = "pageTheme";
 const CHROME_THEME_GROUP_NAME = "chromeTheme";
 const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
-const LOCALE_GROUP_NAME = "locale";
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
@@ -140,7 +137,6 @@ export const Toolbar: FC<ToolbarProps> = ({
   const chromePalette = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
-  const { preference: localePreference, setPreference: setLocalePreference } = useLocale();
   const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   // Centers the title/chapter group within the space left over between
@@ -588,7 +584,6 @@ export const Toolbar: FC<ToolbarProps> = ({
             [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
             [CHROME_THEME_GROUP_NAME]: [snapshot.chromeTheme],
             [PAGE_TURN_ANIMATION_GROUP_NAME]: [snapshot.pageTurnAnimationStyle],
-            [LOCALE_GROUP_NAME]: [localePreference],
           }}
           onCheckedValueChange={(_event, data) => {
             if (data.name === VIEW_MODE_GROUP_NAME) {
@@ -597,8 +592,6 @@ export const Toolbar: FC<ToolbarProps> = ({
               onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
             } else if (data.name === PAGE_TURN_ANIMATION_GROUP_NAME) {
               onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
-            } else if (data.name === LOCALE_GROUP_NAME) {
-              setLocalePreference(data.checkedItems[0] as LocalePreference);
             }
           }}
         >
@@ -656,18 +649,6 @@ export const Toolbar: FC<ToolbarProps> = ({
                 {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
                   <MenuItemRadio key={key} name={CHROME_THEME_GROUP_NAME} value={key}>
                     {CHROME_THEMES[key].label}
-                  </MenuItemRadio>
-                ))}
-              </MenuGroup>
-              <MenuDivider />
-              <MenuGroup>
-                <MenuGroupHeader>{t("settings.language")}</MenuGroupHeader>
-                <MenuItemRadio name={LOCALE_GROUP_NAME} value="system">
-                  {t("settings.languageSystemDefault")}
-                </MenuItemRadio>
-                {SUPPORTED_LOCALES.map((localeOption) => (
-                  <MenuItemRadio key={localeOption} name={LOCALE_GROUP_NAME} value={localeOption}>
-                    {LOCALE_NATIVE_NAMES[localeOption]}
                   </MenuItemRadio>
                 ))}
               </MenuGroup>

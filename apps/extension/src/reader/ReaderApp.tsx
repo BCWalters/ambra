@@ -64,6 +64,7 @@ const ReaderAppInner: FC = () => {
     getBookDetails,
     getEpubInspectionData,
     readInspectionFileText,
+    getInspectionFilePreviewUrl,
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,
@@ -457,7 +458,9 @@ const ReaderAppInner: FC = () => {
               open={isInspectorOpen}
               onOpenChange={setIsInspectorOpen}
               data={inspectionData}
+              fileName={bookDetails?.fileName}
               onReadFile={readInspectionFileText}
+              onGetPreviewUrl={getInspectionFilePreviewUrl}
             />
 
             <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />

@@ -30,6 +30,7 @@ export interface UseReaderControllerResult {
   getBookDetails: () => Promise<BookDetails | undefined>;
   getEpubInspectionData: () => EpubInspectionData | undefined;
   readInspectionFileText: (path: string) => Promise<string>;
+  getInspectionFilePreviewUrl: (path: string, mediaType: string) => Promise<string>;
   closeImageViewer: () => void;
   restoreContentFocus: () => void;
   getDiagnosticsText: () => string | undefined;
@@ -243,6 +244,16 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const getInspectionFilePreviewUrl = useCallback(
+    async (path: string, mediaType: string) => {
+      if (!controller) {
+        throw new Error("No book is open.");
+      }
+      return controller.getInspectionFilePreviewUrl(path, mediaType);
+    },
+    [controller],
+  );
+
   const closeImageViewer = useCallback(() => {
     controller?.closeImageViewer();
   }, [controller]);
@@ -356,6 +367,7 @@ export function useReaderController(): UseReaderControllerResult {
     getBookDetails,
     getEpubInspectionData,
     readInspectionFileText,
+    getInspectionFilePreviewUrl,
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,

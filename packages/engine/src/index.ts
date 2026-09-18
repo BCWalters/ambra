@@ -9,7 +9,7 @@ export {
   NCX_MEDIA_TYPE,
   parseViewportDimensions,
 } from "./container/PackageDocument.js";
-export type { RenditionLayout, ViewportSize, BookIdentifier } from "./container/PackageDocument.js";
+export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry } from "./container/PackageDocument.js";
 export { resolveEpubPath, directoryOf, splitHrefFragment } from "./container/EpubPath.js";
 export {
   NavigationDocument,

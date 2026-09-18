@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Spinner, Title3 } from "@fluentui/react-components";
+import { Body1, Button, Caption1, Spinner, Subtitle1 } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
@@ -159,29 +159,33 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
             <Spinner label="Loading…" />
           ) : (
             <>
-              {details.coverUrl && (
-                <img
-                  src={details.coverUrl}
-                  alt=""
-                  style={{
-                    display: "block",
-                    maxWidth: "100%",
-                    maxHeight: 280,
-                    margin: "0 auto 16px",
-                    borderRadius: 4,
-                    boxShadow: "0 2px 10px rgba(15, 23, 42, 0.18)",
-                  }}
-                />
-              )}
-
-              <Title3 as="h2" block style={{ margin: "0 0 4px" }}>
-                {details.title}
-              </Title3>
-              {details.creator && (
-                <Body1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
-                  {details.creator}
-                </Body1>
-              )}
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 16 }}>
+                {details.coverUrl && (
+                  <img
+                    src={details.coverUrl}
+                    alt=""
+                    style={{
+                      display: "block",
+                      width: 84,
+                      height: 126,
+                      flexShrink: 0,
+                      objectFit: "cover",
+                      borderRadius: 4,
+                      boxShadow: "0 2px 10px rgba(15, 23, 42, 0.18)",
+                    }}
+                  />
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <Subtitle1 as="h2" block style={{ margin: "0 0 4px" }}>
+                    {details.title}
+                  </Subtitle1>
+                  {details.creator && (
+                    <Body1 as="p" block style={{ margin: 0, opacity: 0.75 }}>
+                      {details.creator}
+                    </Body1>
+                  )}
+                </div>
+              </div>
 
               {details.description && (
                 <Body1 as="p" block style={{ margin: "0 0 16px", whiteSpace: "pre-wrap" }}>
@@ -191,15 +195,18 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
 
               <DetailRow label="Publisher" value={details.publisher} />
               <DetailRow label="Language" value={details.language} />
+              <DetailRow label="Copyright" value={details.rights} />
               <DetailRow label="ISBN" value={isbn?.value} />
               {otherIdentifiers.map((id, index) => (
                 <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
               ))}
-              <DetailRow label="File name" value={details.fileName} />
 
               {/* An EPUB-author-facing tool, deliberately tucked away
                   down here rather than given its own toolbar button —
-                  see `EpubInspectorPanel`'s doc comment. */}
+                  see `EpubInspectorPanel`'s doc comment. The file name
+                  (issue follow-up) now lives there too, alongside the
+                  rest of the book's raw metadata, rather than cluttering
+                  this reader-facing summary. */}
               <Button appearance="secondary" style={{ marginTop: 8 }} onClick={onOpenInspector}>
                 EPUB Inspector
               </Button>

@@ -91,6 +91,25 @@ export interface ViewportSize {
   readonly height: number;
 }
 
+/** One `<meta>` element from the OPF `<metadata>` block, captured
+ * generically (rather than only the handful this parser specifically
+ * understands, like `rendition:layout`) so the EPUB Inspector can
+ * surface *every* piece of metadata a book declares — including
+ * publisher-specific extensions this engine has no special knowledge of
+ * at all (e.g. Calibre's `calibre:series`, or EPUB3 collection/series
+ * metadata via `belongs-to-collection`). Covers both the EPUB3
+ * `<meta property="...">value</meta>` form and the legacy OPF2
+ * `<meta name="..." content="...">` form under one shape. */
+export interface OpfMetaEntry {
+  /** The `property` (EPUB3) or `name` (OPF2) attribute value. */
+  readonly key: string;
+  readonly value: string;
+  /** EPUB3 refinement target: the `refines` attribute with its leading
+   * `#` stripped, if present (e.g. a `role`/`file-as` meta refining a
+   * particular `dc:creator`'s `id`). `undefined` for a top-level meta. */
+  readonly refines: string | undefined;
+}
+
 /** One `dc:identifier` element from the OPF metadata — a book commonly
  * has several (e.g. an ISBN alongside a UUID or a publisher's own
  * catalog id), only one of which is *the* unique identifier
@@ -147,6 +166,35 @@ export class PackageMetadata {
      * see `identifier`), for the Book Details panel to show alongside
      * whatever scheme each is marked with (e.g. "ISBN"). */
     public readonly identifiers: readonly BookIdentifier[],
+    /** `dc:rights` — the book's copyright/license statement (e.g.
+     * "Copyright © 2020 Jane Author"). Shown as "Copyright" in the Book
+     * Details panel when present; entirely optional per spec. */
+    public readonly rights: string | undefined,
+    /** `dc:date` — publication date, in whatever form the book declares
+     * it (full ISO date, year-month, or bare year are all common). When
+     * multiple `dc:date` elements are present (rare, but legal — e.g.
+     * distinguishing original vs. this edition's publication date via
+     * `opf:event`), the one marked `opf:event="publication"` is
+     * preferred, falling back to the first if none is marked. */
+    public readonly date: string | undefined,
+    /** Every `dc:subject` element (genre/tag/BISAC-code style
+     * classifications) — a book may declare several, or none. */
+    public readonly subjects: readonly string[],
+    /** Every `dc:contributor` element (translator, illustrator, editor,
+     * etc. — distinct from `dc:creator`, the primary author(s)). */
+    public readonly contributors: readonly string[],
+    /** Every `<meta>` element in the OPF metadata, captured generically
+     * (see `OpfMetaEntry`) — the EPUB Inspector's Metadata tab surfaces
+     * these so an author can see *everything* their OPF declares, not
+     * just the handful of fields (rendition layout/viewport) this
+     * engine specifically interprets for rendering. */
+    public readonly metaEntries: readonly OpfMetaEntry[],
+    /** Every `dc:creator` element present (not just the first — see
+     * `creator`) — the EPUB Inspector's Metadata tab shows the full list
+     * for books with multiple authors/editors; `creator` remains
+     * singular for the handful of other consumers (Book Details, the
+     * library list) that only ever showed one name anyway. */
+    public readonly creators: readonly string[],
   ) {}
 }
 
@@ -273,6 +321,12 @@ export class PackageDocument {
     const description = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "description");
     const publisher = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "publisher");
     const identifiers = PackageDocument.parseIdentifiers(metadataEl);
+    const rights = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "rights");
+    const date = PackageDocument.parseDate(metadataEl);
+    const subjects = getElementsTextNS(metadataEl, DC_NAMESPACE, "subject");
+    const contributors = getElementsTextNS(metadataEl, DC_NAMESPACE, "contributor");
+    const metaEntries = PackageDocument.parseMetaEntries(metadataEl);
+    const creators = getElementsTextNS(metadataEl, DC_NAMESPACE, "creator");
 
     return new PackageMetadata(
       identifier,
@@ -284,7 +338,49 @@ export class PackageDocument {
       description,
       publisher,
       identifiers,
+      rights,
+      date,
+      subjects,
+      contributors,
+      metaEntries,
+      creators,
     );
+  }
+
+  /** Resolves `dc:date`, preferring an element specifically marked
+   * `opf:event="publication"` (the conventional way a book distinguishes
+   * its original publication date from other dates like this edition's
+   * conversion date) over just taking the first `dc:date` present. */
+  private static parseDate(metadataEl: Element): string | undefined {
+    const dateElements = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "date");
+    const publicationDate = dateElements.find(
+      (el) => getNamespacedAttribute(el, OPF_NAMESPACE, "event") === "publication",
+    );
+    const text = (publicationDate ?? dateElements[0])?.textContent?.trim();
+    return text || undefined;
+  }
+
+  /** Every `<meta>` element in the OPF metadata, captured generically —
+   * see `OpfMetaEntry`. Covers both the EPUB3 `property`/text-content
+   * form and the legacy OPF2 `name`/`content`-attribute form; an element
+   * matching neither shape (missing both `property` and `name`) is
+   * skipped, since it carries no identifiable key. */
+  private static parseMetaEntries(metadataEl: Element): OpfMetaEntry[] {
+    const metaElements = getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta");
+    return metaElements
+      .map((meta): OpfMetaEntry | undefined => {
+        const key = meta.getAttribute("property") ?? meta.getAttribute("name");
+        const value = meta.getAttribute("property") !== null
+          ? meta.textContent?.trim()
+          : (meta.getAttribute("content")?.trim() ?? undefined);
+        if (!key || !value) {
+          return undefined;
+        }
+        const refinesAttr = meta.getAttribute("refines");
+        const refines = refinesAttr?.startsWith("#") ? refinesAttr.slice(1) : (refinesAttr ?? undefined);
+        return { key, value, refines };
+      })
+      .filter((entry): entry is OpfMetaEntry => entry !== undefined);
   }
 
   /** Every `dc:identifier` element in the metadata (not just the unique
@@ -424,6 +520,16 @@ function getFirstElementTextNS(
 ): string | undefined {
   const element = getFirstDescendantElementByNS(parent, namespace, localName);
   return element?.textContent?.trim() || undefined;
+}
+
+/** Every matching element's trimmed text content (not just the first) —
+ * for repeatable Dublin Core elements like `dc:subject`/`dc:contributor`
+ * where a book may legitimately declare several. Elements with no (or
+ * all-whitespace) text content are skipped. */
+function getElementsTextNS(parent: Element, namespace: string, localName: string): string[] {
+  return getDescendantElementsByNS(parent, namespace, localName)
+    .map((el) => el.textContent?.trim())
+    .filter((text): text is string => Boolean(text));
 }
 
 function requireAttribute(

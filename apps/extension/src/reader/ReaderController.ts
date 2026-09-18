@@ -9,6 +9,7 @@ import {
   Locator,
   LocatorResolver,
   NavigationDocument,
+  NCX_MEDIA_TYPE,
   PaginatedContentHost,
   ReadingTheme,
   ResourceUrlResolver,
@@ -22,6 +23,7 @@ import type {
   FontFamilyChoice,
   HighlightStyle,
   NavPoint,
+  OpfMetaEntry,
   PackageDocument,
   Page,
   PageTheme,
@@ -64,6 +66,8 @@ export interface BookDetails {
   readonly language: string;
   readonly identifiers: readonly BookIdentifier[];
   readonly fileName: string | undefined;
+  /** `dc:rights` — shown as "Copyright" when the book declares one. */
+  readonly rights: string | undefined;
   /** An object URL for the book's cover image, or `undefined` if it has
    * none. Valid only for the lifetime of this `ReaderController` — never
    * revoked until `dispose()`, so it's safe to keep using the same URL
@@ -81,6 +85,13 @@ export interface EpubInspectionFile {
   readonly path: string;
   readonly size: number;
   readonly isDirectory: boolean;
+  /** The manifest media type for this path, if it's a manifest resource
+   * — used to classify the file (text/image/audio/video/binary) for
+   * the Files tab's preview, and to pick a syntax-highlighting language
+   * for text files. `undefined` for archive members outside the
+   * manifest (e.g. `mimetype`, `META-INF/container.xml`), which fall
+   * back to an extension-based guess (see `classifyInspectionFile`). */
+  readonly mediaType: string | undefined;
 }
 
 /** One manifest entry, for the "Metadata" half of the inspection
@@ -115,9 +126,19 @@ export interface EpubInspectionData {
   readonly identifiers: readonly BookIdentifier[];
   readonly language: string;
   readonly creator: string | undefined;
+  /** Every `dc:creator` element (not just the first — see `creator`). */
+  readonly creators: readonly string[];
   readonly publisher: string | undefined;
   readonly description: string | undefined;
   readonly renditionLayout: string;
+  readonly rights: string | undefined;
+  readonly date: string | undefined;
+  readonly subjects: readonly string[];
+  readonly contributors: readonly string[];
+  /** Every `<meta>` element the OPF declares, verbatim — see
+   * `OpfMetaEntry`. Surfaces publisher-specific/EPUB3-collection
+   * metadata this engine has no dedicated field for. */
+  readonly metaEntries: readonly OpfMetaEntry[];
   readonly manifest: readonly EpubInspectionManifestItem[];
   readonly spine: readonly EpubInspectionSpineItem[];
 }
@@ -577,6 +598,12 @@ export class ReaderController {
   /** Lazily created by `getBookDetails`, kept for the controller's whole
    * lifetime (revoked only in `dispose`) — see `BookDetails.coverUrl`. */
   private cachedCoverUrl: string | undefined;
+  /** Lazily created per-path by `getInspectionFilePreviewUrl` (issue #46
+   * follow-up: image/audio/video previews in the Inspector's Files tab),
+   * kept for the controller's whole lifetime and all revoked together in
+   * `dispose` — same reasoning as `cachedCoverUrl`, just keyed by path
+   * since the Inspector can preview many different files per session. */
+  private readonly inspectionPreviewUrlCache = new Map<string, string>();
   /** The OCF rootfile path (e.g. `OEBPS/content.opf`) — set once in
    * `open`. Only used by `getEpubInspectionData` (issue #46); nothing
    * about actually reading the book needs it, since every other engine
@@ -3749,6 +3776,7 @@ export class ReaderController {
       language: this.pkg.metadata.language,
       identifiers: this.pkg.metadata.identifiers,
       fileName: libraryRecord?.fileName,
+      rights: this.pkg.metadata.rights,
       coverUrl: this.cachedCoverUrl,
     };
   }
@@ -3760,18 +3788,33 @@ export class ReaderController {
    * only reading a *specific* file's raw source (see
    * `readInspectionFileText`) touches the archive again. */
   public getEpubInspectionData(): EpubInspectionData {
+    const manifestMediaTypeByPath = new Map(this.pkg.manifest.map((item) => [item.path, item.mediaType]));
+
     return {
-      files: this.contentLoader.archiveEntries
-        .filter((entry) => !entry.isDirectory)
-        .map((entry) => ({ path: entry.fileName, size: entry.uncompressedSize, isDirectory: entry.isDirectory })),
+      files: this.orderInspectionFiles(
+        this.contentLoader.archiveEntries
+          .filter((entry) => !entry.isDirectory)
+          .map((entry) => ({
+            path: entry.fileName,
+            size: entry.uncompressedSize,
+            isDirectory: entry.isDirectory,
+            mediaType: manifestMediaTypeByPath.get(entry.fileName),
+          })),
+      ),
       rootFilePath: this.rootFilePath,
       title: this.pkg.metadata.title,
       identifiers: this.pkg.metadata.identifiers,
       language: this.pkg.metadata.language,
       creator: this.pkg.metadata.creator,
+      creators: this.pkg.metadata.creators,
       publisher: this.pkg.metadata.publisher,
       description: this.pkg.metadata.description,
       renditionLayout: this.pkg.metadata.renditionLayout,
+      rights: this.pkg.metadata.rights,
+      date: this.pkg.metadata.date,
+      subjects: this.pkg.metadata.subjects,
+      contributors: this.pkg.metadata.contributors,
+      metaEntries: this.pkg.metadata.metaEntries,
       manifest: this.pkg.manifest.map((item) => ({
         id: item.id,
         path: item.path,
@@ -3786,6 +3829,64 @@ export class ReaderController {
     };
   }
 
+  /** Orders the Inspector's file list so the "standard" EPUB structure
+   * files (the mimetype marker, the OCF container's own META-INF/*
+   * files, the OPF package document, the NCX, and the Nav Document) come
+   * first — the handful of files that establish how the rest of the book
+   * is organized — followed by the spine's chapters in reading order,
+   * then every other manifest resource (images/fonts/css/etc.), and
+   * finally anything left over that isn't a manifest resource at all.
+   * Without this, the list is just whatever order the ZIP's central
+   * directory happened to store entries in, which tells an author
+   * nothing about the book's actual structure. */
+  private orderInspectionFiles(
+    files: readonly { path: string; size: number; isDirectory: boolean; mediaType: string | undefined }[],
+  ): EpubInspectionFile[] {
+    const rootFilePath = this.rootFilePath;
+    const navPath = this.pkg.manifest.find((item) => item.isNavDocument)?.path;
+    const ncxPath = this.pkg.manifest.find((item) => item.mediaType === NCX_MEDIA_TYPE)?.path;
+    const spineOrder = new Map(this.pkg.spine.map((ref, index) => [ref.manifestItem.path, index]));
+
+    function groupOf(path: string): number {
+      if (path === "mimetype") {
+        return 0;
+      }
+      if (path.startsWith("META-INF/")) {
+        return 1;
+      }
+      if (path === rootFilePath) {
+        return 2;
+      }
+      if (path === ncxPath) {
+        return 3;
+      }
+      if (path === navPath) {
+        return 4;
+      }
+      if (spineOrder.has(path)) {
+        return 5;
+      }
+      return 6;
+    }
+
+    return files
+      .map((file, originalIndex) => ({ file, originalIndex }))
+      .sort((a, b) => {
+        const groupA = groupOf(a.file.path);
+        const groupB = groupOf(b.file.path);
+        if (groupA !== groupB) {
+          return groupA - groupB;
+        }
+        if (groupA === 5) {
+          // Within the spine group, reading order rather than original
+          // archive order — the whole point of singling this group out.
+          return (spineOrder.get(a.file.path) ?? 0) - (spineOrder.get(b.file.path) ?? 0);
+        }
+        return a.originalIndex - b.originalIndex;
+      })
+      .map(({ file }) => file);
+  }
+
   /** Reads one archive file's raw text as-is, for the EPUB Inspector's
    * file browser (issue #46) — an EPUB author viewing their own book's
    * actual OPF/NCX/Nav/CSS/etc. source, not a rendering path (no XHTML
@@ -3795,6 +3896,25 @@ export class ReaderController {
    * call this with a path taken from `getEpubInspectionData().files`. */
   public readInspectionFileText(path: string): Promise<string> {
     return this.contentLoader.readArchiveFileText(path);
+  }
+
+  /** Builds (and caches, per path) an object URL for an archive member
+   * the Inspector's Files tab wants to preview as an image/audio/video
+   * element rather than text — the binary counterpart to
+   * `readInspectionFileText`, since those media types should never be
+   * decoded and displayed as text (see `classifyInspectionFile`). The
+   * caller supplies `mediaType` (already resolved via
+   * `classifyInspectionFile`/`guessMediaType`) so the `Blob` carries the
+   * right type for the `<img>`/`<audio>`/`<video>` element to use it. */
+  public async getInspectionFilePreviewUrl(path: string, mediaType: string): Promise<string> {
+    const cached = this.inspectionPreviewUrlCache.get(path);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const bytes = await this.contentLoader.readArchiveFileBytes(path);
+    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mediaType }));
+    this.inspectionPreviewUrlCache.set(path, url);
+    return url;
   }
 
   /** Basic reader state, gathered fresh each time — included alongside
@@ -4255,6 +4375,9 @@ export class ReaderController {
     this.resolver.dispose();
     if (this.cachedCoverUrl !== undefined) {
       URL.revokeObjectURL(this.cachedCoverUrl);
+    }
+    for (const url of this.inspectionPreviewUrlCache.values()) {
+      URL.revokeObjectURL(url);
     }
     this.library.close();
   }
