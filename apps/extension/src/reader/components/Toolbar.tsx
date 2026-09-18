@@ -429,6 +429,24 @@ export const Toolbar: FC<ToolbarProps> = ({
             shortcut), and "Go to Page…"/"Go to Percentage…" moved to the
             Book Details panel (see `BookDetailsPanel`). */}
 
+        {/* Search now stands on its own, separated by a gap from the
+            Text/Settings/Details cluster that follows (issue #78) —
+            previously grouped tightly alongside them, which read as
+            "one more settings-ish button" even though searching the
+            book isn't a settings/configuration action at all. Text
+            options, Settings, and Book Details stay grouped closely
+            together immediately after, per the same explicit direction. */}
+        <Tooltip content={isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search")} relationship="label">
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isSearchOpen}
+            icon={<SearchRegular />}
+            onClick={onToggleSearch}
+            style={{ marginLeft: 8 }}
+          />
+        </Tooltip>
+
         {!snapshot.isFixedLayout && (
           <Menu>
             <MenuTrigger disableButtonEnhancement>
@@ -687,16 +705,6 @@ export const Toolbar: FC<ToolbarProps> = ({
           </MenuPopover>
         </Menu>
 
-        <Tooltip content={isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search")} relationship="label">
-          <ToggleButton
-            appearance="subtle"
-            size="small"
-            checked={isSearchOpen}
-            icon={<SearchRegular />}
-            onClick={onToggleSearch}
-          />
-        </Tooltip>
-
         <Tooltip
           content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}
           relationship="label"
@@ -711,16 +719,19 @@ export const Toolbar: FC<ToolbarProps> = ({
         </Tooltip>
 
         {/* Bookmark stands alone at the far right, set apart from the
-            Text/Settings/Search/Details group with some extra breathing
-            room (beyond the toolbar's own uniform `gap`) — per explicit
-            design direction, the toolbar reads as two loose clusters
-            left to right: Text/Settings/Search/Details grouped together
-            (issue #68: Search moved here from beside Contents/Bookmarks
-            — it now docks alongside Book Details on the same, opposite
-            edge of the reader pane, see `SearchPanel`'s doc comment),
-            then Bookmark on its own at the end. (A third "Navigate"
-            cluster used to sit further left — removed as redundant
-            clutter, see this file's doc comment.)
+            Text/Settings/Details group with some extra breathing room
+            (beyond the toolbar's own uniform `gap`) — per explicit
+            design direction, the toolbar reads as three loose clusters
+            left to right: Search on its own (issue #78: previously
+            grouped tightly with Text/Settings/Details, which read as
+            "one more settings-ish button" even though searching isn't
+            a settings/configuration action), then Text/Settings/Details
+            grouped closely together (issue #68: Search used to dock
+            here too, alongside Book Details on the same, opposite edge
+            of the reader pane — see `SearchPanel`'s doc comment), then
+            Bookmark on its own at the end. (A fourth "Navigate" cluster
+            used to sit further left — removed as redundant clutter, see
+            this file's doc comment.)
 
             A single toggle rather than a plain "add" action (issue
             #47): pressed/filled whenever any bookmark already falls on
