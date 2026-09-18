@@ -34,6 +34,26 @@ export interface BookMetadata {
    * before this field existed; not worth a migration for a single,
    * purely-informational display field. */
   readonly fileName: string | undefined;
+  /** A fetched fallback description for a book whose EPUB doesn't
+   * declare its own `dc:description` — see
+   * `BookDescriptionEnrichment.fetchBookDescription` and
+   * `ReaderController`'s one-time-per-open fetch trigger. Never
+   * overwrites (or is preferred over) an EPUB-provided description;
+   * only ever read when the book has none of its own. `undefined` for
+   * books imported before this field existed, or where no fetch has
+   * succeeded yet. */
+  readonly fetchedDescription: string | undefined;
+  /** Which free source `fetchedDescription` came from — shown as an
+   * attribution/"via ..." link in the Book Details panel, since neither
+   * source's terms allow presenting their content without credit. */
+  readonly fetchedDescriptionSourceName: "Open Library" | "Wikipedia" | undefined;
+  readonly fetchedDescriptionSourceUrl: string | undefined;
+  /** How many times a description fetch has been attempted and found
+   * nothing usable — capped at `MAX_DESCRIPTION_FETCH_ATTEMPTS` in
+   * `ReaderController` so a book with no discoverable description isn't
+   * retried forever on every single open. `undefined` (treated as `0`)
+   * for books that have never had a fetch attempted. */
+  readonly descriptionFetchAttempts: number | undefined;
 }
 
 /** Where a reader last left off in a given book — a CFI, since it's the
@@ -208,6 +228,31 @@ export class LibraryDatabase {
    * open `PackageDocument` (description, publisher, every identifier). */
   public getBookMetadata(id: string): Promise<BookMetadata | undefined> {
     return this.get<BookMetadata>(BOOKS_STORE, id);
+  }
+
+  /** Persists the outcome of one description-fetch attempt (see
+   * `BookDescriptionEnrichment.fetchBookDescription`, triggered from
+   * `ReaderController`) — either a found description (with its source,
+   * for attribution) or nothing, in which case only the attempt counter
+   * advances so a book with no discoverable description eventually stops
+   * being retried (see `MAX_DESCRIPTION_FETCH_ATTEMPTS`). A no-op if the
+   * book has since been removed from the library. */
+  public async recordDescriptionFetchResult(
+    bookId: string,
+    result: { description: string; sourceName: "Open Library" | "Wikipedia"; sourceUrl: string } | undefined,
+  ): Promise<void> {
+    const record = await this.getBookMetadata(bookId);
+    if (!record) {
+      return;
+    }
+    const updated: BookMetadata = {
+      ...record,
+      fetchedDescription: result?.description ?? record.fetchedDescription,
+      fetchedDescriptionSourceName: result?.sourceName ?? record.fetchedDescriptionSourceName,
+      fetchedDescriptionSourceUrl: result?.sourceUrl ?? record.fetchedDescriptionSourceUrl,
+      descriptionFetchAttempts: (record.descriptionFetchAttempts ?? 0) + (result ? 0 : 1),
+    };
+    await this.put(BOOKS_STORE, updated);
   }
 
   public async getBookFile(id: string): Promise<Blob | undefined> {

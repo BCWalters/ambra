@@ -188,9 +188,27 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
               </div>
 
               {details.description && (
-                <Body1 as="p" block style={{ margin: "0 0 16px", whiteSpace: "pre-wrap" }}>
-                  {details.description}
-                </Body1>
+                <>
+                  <Body1
+                    as="p"
+                    block
+                    style={{ margin: details.descriptionSourceName ? "0 0 4px" : "0 0 16px", whiteSpace: "pre-wrap" }}
+                  >
+                    {details.description}
+                  </Body1>
+                  {/* Attribution for a fetched fallback description
+                      (issue follow-up: books with no dc:description of
+                      their own) — required by both free sources' terms,
+                      and a useful "read more" link either way. */}
+                  {details.descriptionSourceName && (
+                    <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.6 }}>
+                      via{" "}
+                      <a href={details.descriptionSourceUrl} target="_blank" rel="noreferrer">
+                        {details.descriptionSourceName}
+                      </a>
+                    </Caption1>
+                  )}
+                </>
               )}
 
               <DetailRow label="Publisher" value={details.publisher} />

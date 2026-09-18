@@ -31,6 +31,7 @@ import type {
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
+import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
 import { applyHighlightRanges } from "./HighlightRenderer.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
@@ -51,6 +52,14 @@ import { HEADER_TEXT_TOP_OFFSET } from "./furnitureLayout.js";
  * distinguishes "worth zooming" content from decoration in practice. */
 const MIN_ZOOMABLE_IMAGE_SIZE = 100;
 
+/** Caps how many times a book with no discoverable description (an
+ * obscure or self-published work neither Open Library nor Wikipedia has
+ * ever heard of) gets a fresh fetch attempt on subsequent opens — after
+ * this many failed attempts across however many sessions, `open()` stops
+ * retrying, rather than making a network request on every single open
+ * forever for a book that will plainly never have one. */
+const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
+
 /** Everything the Book Details panel shows, combined from two sources
  * that otherwise live in separate layers: `PackageDocument.metadata`
  * (title/creator/description/publisher/identifiers/language — already
@@ -62,6 +71,13 @@ export interface BookDetails {
   readonly title: string;
   readonly creator: string | undefined;
   readonly description: string | undefined;
+  /** Set only when `description` came from `fetchBookDescription`
+   * rather than the EPUB's own `dc:description` — the Book Details
+   * panel shows a "via ..." attribution link whenever this is present,
+   * since neither free source's terms allow presenting their content
+   * without credit. */
+  readonly descriptionSourceName: "Open Library" | "Wikipedia" | undefined;
+  readonly descriptionSourceUrl: string | undefined;
   readonly publisher: string | undefined;
   readonly language: string;
   readonly identifiers: readonly BookIdentifier[];
@@ -666,6 +682,11 @@ export class ReaderController {
       (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
     controller.reloadHighlightsCache(await library.listHighlightsForBook(bookId));
     controller.bookmarksCache = await library.listBookmarksForBook(bookId);
+    // Fire-and-forget: never awaited, and any failure inside is already
+    // caught by `fetchBookDescription` itself — a slow or failing
+    // network request must never delay (or be able to break) opening
+    // the book itself.
+    void controller.maybeEnrichDescription();
     return controller;
   }
 
@@ -3768,10 +3789,17 @@ export class ReaderController {
       }
     }
 
+    // The EPUB's own author-supplied description always wins; the
+    // fetched fallback is only ever shown in its absence, and only ever
+    // rendered with attribution back to whichever free source it came
+    // from (see `BookDetails.descriptionSourceName`).
+    const hasOwnDescription = Boolean(this.pkg.metadata.description);
     return {
       title: this.pkg.metadata.title,
       creator: this.pkg.metadata.creator,
-      description: this.pkg.metadata.description,
+      description: this.pkg.metadata.description ?? libraryRecord?.fetchedDescription,
+      descriptionSourceName: hasOwnDescription ? undefined : libraryRecord?.fetchedDescriptionSourceName,
+      descriptionSourceUrl: hasOwnDescription ? undefined : libraryRecord?.fetchedDescriptionSourceUrl,
       publisher: this.pkg.metadata.publisher,
       language: this.pkg.metadata.language,
       identifiers: this.pkg.metadata.identifiers,
@@ -3779,6 +3807,32 @@ export class ReaderController {
       rights: this.pkg.metadata.rights,
       coverUrl: this.cachedCoverUrl,
     };
+  }
+
+  /** Triggered once from `open()` (fire-and-forget, never awaited) for
+   * every book that has no author-supplied `dc:description` — tries to
+   * fetch a free fallback description (see
+   * `BookDescriptionEnrichment.fetchBookDescription`) and persists
+   * whatever the result is (found, or "nothing, attempt N") back to
+   * `LibraryDatabase`. Skips entirely, with no network request at all,
+   * once a description has already been found or the retry budget
+   * (`MAX_DESCRIPTION_FETCH_ATTEMPTS`) is used up — so a book that will
+   * plainly never have one doesn't cause a request on every future open. */
+  private async maybeEnrichDescription(): Promise<void> {
+    if (this.pkg.metadata.description) {
+      return;
+    }
+    const libraryRecord = await this.library.getBookMetadata(this.bookId);
+    if (!libraryRecord || libraryRecord.fetchedDescription) {
+      return;
+    }
+    if ((libraryRecord.descriptionFetchAttempts ?? 0) >= MAX_DESCRIPTION_FETCH_ATTEMPTS) {
+      return;
+    }
+
+    const isbn = this.pkg.metadata.identifiers.find((id) => id.scheme?.toUpperCase() === "ISBN")?.value;
+    const result = await fetchBookDescription(this.pkg.metadata.title, this.pkg.metadata.creator, isbn);
+    await this.library.recordDescriptionFetchResult(this.bookId, result);
   }
 
   /** Assembles the EPUB Inspector panel's data (issue #46) — the raw
