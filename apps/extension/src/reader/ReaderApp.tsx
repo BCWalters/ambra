@@ -9,6 +9,7 @@ import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { AnnotationsPanel } from "./components/AnnotationsPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
+import { EpubInspectorPanel } from "./components/EpubInspectorPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
 import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
@@ -18,7 +19,7 @@ import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
-import type { BookDetails } from "./ReaderController.js";
+import type { BookDetails, EpubInspectionData } from "./ReaderController.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 
 /**
@@ -54,6 +55,8 @@ export const ReaderApp: FC = () => {
     previewSeek,
     seekToFraction,
     getBookDetails,
+    getEpubInspectionData,
+    readInspectionFileText,
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,
@@ -76,6 +79,8 @@ export const ReaderApp: FC = () => {
   const [isAnnotationsPinned, setIsAnnotationsPinned] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [openError, setOpenError] = useState<string | null>(null);
   // Shared between the toolbar and the progress scrubber (see
@@ -123,6 +128,18 @@ export const ReaderApp: FC = () => {
       cancelled = true;
     };
   }, [isDetailsOpen, bookDetails, getBookDetails]);
+
+  // Same "fetch once, cache for the controller's lifetime" pattern as
+  // `bookDetails` above — the EPUB Inspector's data (issue #46) is
+  // already fully parsed and in memory by the time the reader's even
+  // looking at it, so unlike bookmarks below there's genuinely nothing
+  // to go stale between opens.
+  useEffect(() => {
+    if (!isInspectorOpen || inspectionData !== undefined) {
+      return;
+    }
+    setInspectionData(getEpubInspectionData());
+  }, [isInspectorOpen, inspectionData, getEpubInspectionData]);
 
   // Re-fetches every time the Bookmarks/Highlights panel opens (unlike
   // book details above, which only ever needs fetching once per book) —
@@ -426,6 +443,14 @@ export const ReaderApp: FC = () => {
                 restoreContentFocus();
               }}
               details={bookDetails}
+              onOpenInspector={() => setIsInspectorOpen(true)}
+            />
+
+            <EpubInspectorPanel
+              open={isInspectorOpen}
+              onOpenChange={setIsInspectorOpen}
+              data={inspectionData}
+              onReadFile={readInspectionFileText}
             />
 
             <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />

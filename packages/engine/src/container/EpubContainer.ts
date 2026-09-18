@@ -93,6 +93,15 @@ export class EpubContainer {
     return this.encryptionDocument ?? undefined;
   }
 
+  /** Every entry in the underlying ZIP archive, in the order they appear
+   * in the archive's central directory — the raw "file structure" of the
+   * EPUB, for the EPUB-author-facing inspection feature (issue #46).
+   * Includes directory entries (see `ZipEntry.isDirectory`); callers that
+   * only want actual files should filter those out themselves. */
+  public get entries(): readonly ZipEntry[] {
+    return this.archive.entries;
+  }
+
   public getEntry(path: string): ZipEntry | undefined {
     return this.archive.getEntry(path);
   }

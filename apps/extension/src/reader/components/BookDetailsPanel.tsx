@@ -20,6 +20,10 @@ export interface BookDetailsPanelProps {
    * see `ReaderController.getBookDetails`) — shows a spinner instead of
    * an empty panel for that brief gap. */
   details: BookDetails | undefined;
+  /** Opens the EPUB Inspector (issue #46) — a separate, author-facing
+   * tool (file structure + parsed metadata) reachable only from here,
+   * so an ordinary reader never stumbles into it. */
+  onOpenInspector: () => void;
 }
 
 /** A single label/value row in the details list — skipped entirely
@@ -58,7 +62,7 @@ const DetailRow: FC<{ label: string; value: string | undefined }> = ({ label, va
  * reader keeps open continuously alongside the page the way the TOC's
  * pin mode supports.
  */
-export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClose, details }) => {
+export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClose, details, onOpenInspector }) => {
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -192,6 +196,13 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({ open, onRequestClo
                 <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
               ))}
               <DetailRow label="File name" value={details.fileName} />
+
+              {/* An EPUB-author-facing tool, deliberately tucked away
+                  down here rather than given its own toolbar button —
+                  see `EpubInspectorPanel`'s doc comment. */}
+              <Button appearance="secondary" style={{ marginTop: 8 }} onClick={onOpenInspector}>
+                EPUB Inspector
+              </Button>
             </>
           )}
         </div>

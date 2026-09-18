@@ -72,6 +72,56 @@ export interface BookDetails {
   readonly coverUrl: string | undefined;
 }
 
+/** One file inside the EPUB's underlying ZIP archive — the "file
+ * structure" half of the EPUB inspection feature (issue #46), a tool
+ * for EPUB *authors* checking their own book's actual on-disk shape,
+ * reachable only via a dedicated button in the Book Details panel (not
+ * exposed anywhere an ordinary reader would stumble into it). */
+export interface EpubInspectionFile {
+  readonly path: string;
+  readonly size: number;
+  readonly isDirectory: boolean;
+}
+
+/** One manifest entry, for the "Metadata" half of the inspection
+ * feature's parsed view — plain data mirroring `ManifestItem`, since the
+ * engine class itself isn't meant to be handed directly to React. */
+export interface EpubInspectionManifestItem {
+  readonly id: string;
+  readonly path: string;
+  readonly mediaType: string;
+  readonly properties: readonly string[];
+}
+
+/** One spine entry, in reading order. */
+export interface EpubInspectionSpineItem {
+  readonly path: string;
+  readonly linear: boolean;
+  readonly mediaType: string;
+}
+
+/** Everything the EPUB inspection panel shows: the raw archive's file
+ * list (see `EpubInspectionFile`) and a parsed view of the book's own
+ * metadata/manifest/spine — deliberately *not* the raw XML source of
+ * every file up front (that's fetched on demand, per selected file, via
+ * `ReaderController.readInspectionFileText`, since a book can have
+ * hundreds of resources and there's no reason to read them all just to
+ * show the file list). Validation/accessibility-checking actions are
+ * explicitly out of scope for this pass (see the issue). */
+export interface EpubInspectionData {
+  readonly files: readonly EpubInspectionFile[];
+  readonly rootFilePath: string;
+  readonly title: string;
+  readonly identifiers: readonly BookIdentifier[];
+  readonly language: string;
+  readonly creator: string | undefined;
+  readonly publisher: string | undefined;
+  readonly description: string | undefined;
+  readonly renditionLayout: string;
+  readonly manifest: readonly EpubInspectionManifestItem[];
+  readonly spine: readonly EpubInspectionSpineItem[];
+}
+
 export type { ViewMode } from "./ViewMode.js";
 
 /** A plain-data snapshot of `ReaderController`'s current state, the shape
@@ -527,6 +577,12 @@ export class ReaderController {
   /** Lazily created by `getBookDetails`, kept for the controller's whole
    * lifetime (revoked only in `dispose`) — see `BookDetails.coverUrl`. */
   private cachedCoverUrl: string | undefined;
+  /** The OCF rootfile path (e.g. `OEBPS/content.opf`) — set once in
+   * `open`. Only used by `getEpubInspectionData` (issue #46); nothing
+   * about actually reading the book needs it, since every other engine
+   * object already resolves paths relative to the archive root
+   * internally. */
+  private rootFilePath = "";
 
   private constructor(
     private readonly contentLoader: ContentLoader,
@@ -566,6 +622,7 @@ export class ReaderController {
       bookId,
       library,
     );
+    controller.rootFilePath = container.rootFilePath;
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
     controller.lineSpacing =
@@ -3694,6 +3751,50 @@ export class ReaderController {
       fileName: libraryRecord?.fileName,
       coverUrl: this.cachedCoverUrl,
     };
+  }
+
+  /** Assembles the EPUB Inspector panel's data (issue #46) — the raw
+   * archive's file list plus a parsed view of the book's own metadata/
+   * manifest/spine. Everything here is already in memory (parsed once
+   * at `open`), so unlike `getBookDetails` this needs no I/O at all —
+   * only reading a *specific* file's raw source (see
+   * `readInspectionFileText`) touches the archive again. */
+  public getEpubInspectionData(): EpubInspectionData {
+    return {
+      files: this.contentLoader.archiveEntries
+        .filter((entry) => !entry.isDirectory)
+        .map((entry) => ({ path: entry.fileName, size: entry.uncompressedSize, isDirectory: entry.isDirectory })),
+      rootFilePath: this.rootFilePath,
+      title: this.pkg.metadata.title,
+      identifiers: this.pkg.metadata.identifiers,
+      language: this.pkg.metadata.language,
+      creator: this.pkg.metadata.creator,
+      publisher: this.pkg.metadata.publisher,
+      description: this.pkg.metadata.description,
+      renditionLayout: this.pkg.metadata.renditionLayout,
+      manifest: this.pkg.manifest.map((item) => ({
+        id: item.id,
+        path: item.path,
+        mediaType: item.mediaType,
+        properties: Array.from(item.properties),
+      })),
+      spine: this.pkg.spine.map((spineItemRef) => ({
+        path: spineItemRef.manifestItem.path,
+        linear: spineItemRef.linear,
+        mediaType: spineItemRef.manifestItem.mediaType,
+      })),
+    };
+  }
+
+  /** Reads one archive file's raw text as-is, for the EPUB Inspector's
+   * file browser (issue #46) — an EPUB author viewing their own book's
+   * actual OPF/NCX/Nav/CSS/etc. source, not a rendering path (no XHTML
+   * parsing, no CSP/resource-URL rewriting the way `ContentLoader.
+   * loadContentDocument` does for the reading surface). Rejects if
+   * `path` doesn't exist in the archive — the shell should only ever
+   * call this with a path taken from `getEpubInspectionData().files`. */
+  public readInspectionFileText(path: string): Promise<string> {
+    return this.contentLoader.readArchiveFileText(path);
   }
 
   /** Basic reader state, gathered fresh each time — included alongside

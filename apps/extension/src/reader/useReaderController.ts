@@ -5,7 +5,7 @@ import type { HighlightStyle } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ReaderController } from "./ReaderController.js";
-import type { BookDetails, ReaderSnapshot, ViewMode } from "./ReaderController.js";
+import type { BookDetails, EpubInspectionData, ReaderSnapshot, ViewMode } from "./ReaderController.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 
@@ -28,6 +28,8 @@ export interface UseReaderControllerResult {
   previewSeek: (fraction: number) => { label: string; chapterLabel: string };
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
+  getEpubInspectionData: () => EpubInspectionData | undefined;
+  readInspectionFileText: (path: string) => Promise<string>;
   closeImageViewer: () => void;
   restoreContentFocus: () => void;
   getDiagnosticsText: () => string | undefined;
@@ -227,6 +229,20 @@ export function useReaderController(): UseReaderControllerResult {
     return controller?.getBookDetails();
   }, [controller]);
 
+  const getEpubInspectionData = useCallback(() => {
+    return controller?.getEpubInspectionData();
+  }, [controller]);
+
+  const readInspectionFileText = useCallback(
+    async (path: string) => {
+      if (!controller) {
+        throw new Error("No book is open.");
+      }
+      return controller.readInspectionFileText(path);
+    },
+    [controller],
+  );
+
   const closeImageViewer = useCallback(() => {
     controller?.closeImageViewer();
   }, [controller]);
@@ -338,6 +354,8 @@ export function useReaderController(): UseReaderControllerResult {
     previewSeek,
     seekToFraction,
     getBookDetails,
+    getEpubInspectionData,
+    readInspectionFileText,
     closeImageViewer,
     restoreContentFocus,
     getDiagnosticsText,

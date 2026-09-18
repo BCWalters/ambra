@@ -1,4 +1,5 @@
 import { EpubContainer } from "../container/EpubContainer.js";
+import type { ZipEntry } from "../container/ZipArchive.js";
 import { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
 import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
 import { getDescendantElementsByNS, getNamespacedAttributeName } from "../container/Xml.js";
@@ -79,6 +80,23 @@ export class ContentLoader {
 
   public get packageDocument(): PackageDocument {
     return this.pkg;
+  }
+
+  /** Every entry in the underlying ZIP archive — the raw "file
+   * structure" of the EPUB, for the EPUB-author-facing inspection
+   * feature (issue #46). See `EpubContainer.entries`. */
+  public get archiveEntries(): readonly ZipEntry[] {
+    return this.container.entries;
+  }
+
+  /** Reads the raw text of an arbitrary archive path — not scoped to
+   * manifest items the way `loadContentDocument` is, so it also works
+   * for `META-INF/container.xml`, the OPF/NCX/Nav documents themselves,
+   * or any other file the inspection feature's file browser lets an
+   * EPUB author open, as-is (no XHTML parsing, no CSP/resource
+   * rewriting — this is for *looking at* the source, not rendering it). */
+  public async readArchiveFileText(path: string): Promise<string> {
+    return this.container.requireEntry(path).readText();
   }
 
   /** Loads and parses the spine item at `spineIndex` as a `ContentDocument`. */
