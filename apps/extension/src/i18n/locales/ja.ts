@@ -39,4 +39,5 @@ export const ja: StringCatalog = {
   "scrubber.pagesLeftInChapterOne": "この章残り1ページ",
   "scrubber.pagesLeftInChapterOther": "この章残り{count}ページ",
   "pageFurniture.pageNumber": "{number}ページ",
+  "error.somethingWentWrongHeadline": "とほほ、何か問題が発生しました。",
 };

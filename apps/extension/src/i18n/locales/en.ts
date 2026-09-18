@@ -55,6 +55,12 @@ export interface StringCatalog {
   "scrubber.pagesLeftInChapterOne": string;
   "scrubber.pagesLeftInChapterOther": string;
   "pageFurniture.pageNumber": string;
+  /** The blocking `FriendlyError` card's headline (issue #73) — always
+   * "Oh [a silly word], something went wrong," with the silly word
+   * itself localized to something with the same warm, self-deprecating
+   * goofiness in each language, not a literal translation of
+   * "snickerdoodles" (which means nothing in most of them). */
+  "error.somethingWentWrongHeadline": string;
 }
 
 export const en: StringCatalog = {
@@ -94,4 +100,5 @@ export const en: StringCatalog = {
   "scrubber.pagesLeftInChapterOne": "1 page left in this chapter",
   "scrubber.pagesLeftInChapterOther": "{count} pages left in this chapter",
   "pageFurniture.pageNumber": "Page {number}",
+  "error.somethingWentWrongHeadline": "Oh snickerdoodles, something went wrong.",
 };

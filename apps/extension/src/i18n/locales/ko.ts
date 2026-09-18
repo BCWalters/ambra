@@ -39,4 +39,5 @@ export const ko: StringCatalog = {
   "scrubber.pagesLeftInChapterOne": "이 장에 1페이지 남음",
   "scrubber.pagesLeftInChapterOther": "이 장에 {count}페이지 남음",
   "pageFurniture.pageNumber": "{number}페이지",
+  "error.somethingWentWrongHeadline": "아이고, 문제가 발생했어요.",
 };

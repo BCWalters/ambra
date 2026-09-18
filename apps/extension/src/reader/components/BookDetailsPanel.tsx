@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { FC } from "react";
+import type { CSSProperties, FC } from "react";
 import { Body1, Body1Strong, Button, Caption1, Spinner } from "@fluentui/react-components";
-import { DismissRegular } from "@fluentui/react-icons";
+import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, TextPercentRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -64,6 +64,19 @@ const GENERIC_DEFAULT_IDENTIFIER_SUBSTRINGS = ["_simple_book"];
 function isGenericDefaultIdentifier(value: string): boolean {
   const lower = value.toLowerCase();
   return GENERIC_DEFAULT_IDENTIFIER_SUBSTRINGS.some((needle) => lower.includes(needle));
+}
+
+/** The "Go to Page…"/"Go to Percentage…" buttons' shared style (issue
+ * #75) — filled with the reader's current chrome theme gradient, same
+ * as this panel's own background, but with its own visible border and
+ * a small drop shadow so it still reads as a distinct, raised button
+ * rather than dissolving into the identically-colored panel behind it. */
+function goToButtonStyle(themeBackgroundSolid: string): CSSProperties {
+  return {
+    background: themeBackgroundSolid,
+    borderColor: "rgba(15, 23, 42, 0.22)",
+    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.16)",
+  };
 }
 
 /** A single label/value row in the details list — skipped entirely
@@ -336,15 +349,40 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   which has no book-wide page/percentage position; "Go to
                   Page" is further limited to paginated mode, where a
                   page number actually means something (continuous
-                  scroll has no discrete pages to land on). */}
+                  scroll has no discrete pages to land on).
+                  
+                  Styled with the reader's own *current* chrome theme
+                  (issue #75) — the same gradient the toolbar/scrubber/
+                  this very panel already wear — rather than a plain,
+                  theme-agnostic gray "secondary" button, so these two
+                  actions read as native to whichever accent color the
+                  reader has picked instead of looking pasted-in from a
+                  generic component library. A visible border/shadow on
+                  top of that gradient (rather than the gradient alone)
+                  keeps the button legible as a *button* even when the
+                  surrounding panel happens to share the exact same
+                  background — which it always does, since both draw
+                  from the same `chromeTheme.backgroundSolid`. */}
               {!isFixedLayout && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                   {isPaginated && (
-                    <Button appearance="secondary" size="small" onClick={() => setGoToDialogMode("page")}>
+                    <Button
+                      appearance="secondary"
+                      size="small"
+                      icon={<DocumentPageNumberRegular />}
+                      onClick={() => setGoToDialogMode("page")}
+                      style={goToButtonStyle(chromeTheme.backgroundSolid)}
+                    >
                       Go to Page…
                     </Button>
                   )}
-                  <Button appearance="secondary" size="small" onClick={() => setGoToDialogMode("percentage")}>
+                  <Button
+                    appearance="secondary"
+                    size="small"
+                    icon={<TextPercentRegular />}
+                    onClick={() => setGoToDialogMode("percentage")}
+                    style={goToButtonStyle(chromeTheme.backgroundSolid)}
+                  >
                     Go to Percentage…
                   </Button>
                 </div>
@@ -355,8 +393,28 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   see `EpubInspectorPanel`'s doc comment. The file name
                   (issue follow-up) now lives there too, alongside the
                   rest of the book's raw metadata, rather than cluttering
-                  this reader-facing summary. */}
-              <Button appearance="secondary" style={{ marginTop: 8 }} onClick={onOpenInspector}>
+                  this reader-facing summary.
+
+                  Given a deliberately distinct, "developer tool" look
+                  (issue #76) — a dark, code-editor-like background and
+                  monospaced label, a genuinely different visual register
+                  from every other (light, Fluent-neutral) control in
+                  this panel — so it reads as the power-user/debugging
+                  escape hatch it actually is, not just one more ordinary
+                  button in the list. */}
+              <Button
+                appearance="secondary"
+                icon={<CodeCircleRegular />}
+                onClick={onOpenInspector}
+                style={{
+                  marginTop: 8,
+                  background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",
+                  borderColor: "rgba(126, 232, 250, 0.35)",
+                  color: "#7ee8fa",
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+                }}
+              >
                 EPUB Inspector
               </Button>
             </>

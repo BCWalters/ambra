@@ -39,4 +39,5 @@ export const zh: StringCatalog = {
   "scrubber.pagesLeftInChapterOne": "本章还剩 1 页",
   "scrubber.pagesLeftInChapterOther": "本章还剩 {count} 页",
   "pageFurniture.pageNumber": "第 {number} 页",
+  "error.somethingWentWrongHeadline": "哎呀，出了点问题。",
 };

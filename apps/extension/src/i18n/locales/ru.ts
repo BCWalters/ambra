@@ -39,4 +39,5 @@ export const ru: StringCatalog = {
   "scrubber.pagesLeftInChapterOne": "Осталась 1 страница в этой главе",
   "scrubber.pagesLeftInChapterOther": "Осталось {count} страниц в этой главе",
   "pageFurniture.pageNumber": "Страница {number}",
+  "error.somethingWentWrongHeadline": "Ёлки-палки, что-то пошло не так.",
 };

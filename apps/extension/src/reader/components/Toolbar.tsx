@@ -125,7 +125,7 @@ const ThemeSwatch: FC<{ background: string }> = ({ background }) => (
  * was removed for being pure screen-clutter; "Go to Page…"/"Go to
  * Percentage…" moved to the Book Details panel instead (see
  * `BookDetailsPanel`). Typography and page-layout settings (font size/
- * family, line/character spacing, page text width, page style) share
+ * family, line/character spacing, column width, page style) share
  * one "Aa" menu with two cascading submenus ("Text"/"Page") rather than
  * either a flat wall of every setting at once or two separate top-level
  * buttons — kept apart from the gear "Settings" menu (reading mode, page
@@ -562,8 +562,13 @@ export const Toolbar: FC<ToolbarProps> = ({
                             "Margins" (the inverse framing some readers use,
                             where turning it up means *narrower* text/more
                             margin) — avoids an inverted slider whose visual
-                            direction wouldn't match its own value. */}
-                        <MenuGroupHeader>Page text width</MenuGroupHeader>
+                            direction wouldn't match its own value. Named
+                            "Column width" (issue #77), not "Page text
+                            width" — this is a two-page spread's column
+                            measure just as much as a single page's, and
+                            "column" is the more precise, print-typography
+                            term for what's actually being adjusted. */}
+                        <MenuGroupHeader>Column width</MenuGroupHeader>
                         <div style={{ padding: "6px 12px 10px" }}>
                           <DefaultableSlider
                             min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
@@ -572,7 +577,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                             value={snapshot.contentWidthEm}
                             defaultValue={ReadingTheme.DEFAULT_CONTENT_WIDTH_EM}
                             onChange={onSetContentWidth}
-                            aria-label="Page text width"
+                            aria-label="Column width"
                           />
                         </div>
                       </MenuGroup>

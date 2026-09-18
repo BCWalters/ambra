@@ -39,4 +39,5 @@ export const es: StringCatalog = {
   "scrubber.pagesLeftInChapterOne": "Queda 1 página en este capítulo",
   "scrubber.pagesLeftInChapterOther": "Quedan {count} páginas en este capítulo",
   "pageFurniture.pageNumber": "Página {number}",
+  "error.somethingWentWrongHeadline": "Oh caramba, algo salió mal.",
 };

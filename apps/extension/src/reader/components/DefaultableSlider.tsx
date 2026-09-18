@@ -10,7 +10,7 @@ export interface DefaultableSliderProps {
   /** Where this slider started out, before any change — shown as a
    * small tick mark on the rail and, via the adjoining reset button, one
    * click to return to. Every reading-preference slider in the toolbar
-   * (font size, line spacing, character spacing, page text width) has a
+   * (font size, line spacing, character spacing, column width) has a
    * meaningful "book default" a reader may want to find their way back
    * to after experimenting, but a bare `Slider` gives no visual hint at
    * all of where that was — this wrapper is that hint. */

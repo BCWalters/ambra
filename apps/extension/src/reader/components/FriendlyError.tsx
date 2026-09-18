@@ -4,6 +4,7 @@ import { Body1, Button, Caption1 } from "@fluentui/react-components";
 import { BookTroubleIllustration } from "./BookTroubleIllustration.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 
 /** How long a "transient" toast stays up before auto-dismissing itself —
  * long enough to read a short message and, if wanted, click "Copy
@@ -44,6 +45,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   getDiagnosticsText,
 }) => {
   const chromeTheme = useChromeTheme();
+  const t = useTranslation();
   const [copied, setCopied] = useState(false);
   const headingRef = useRef<HTMLDivElement | null>(null);
 
@@ -105,7 +107,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         <BookTroubleIllustration />
         <div ref={headingRef} tabIndex={-1} style={{ outline: "none" }}>
           <Body1 as="p" style={{ margin: 0, fontWeight: 600 }}>
-            Oh rats, something went wrong.
+            {t("error.somethingWentWrongHeadline")}
           </Body1>
         </div>
         <Caption1 as="p" style={{ margin: 0, maxWidth: 360, opacity: 0.75 }}>
