@@ -2585,9 +2585,26 @@ export class ReaderController {
    * up front by both `animatePageTurn`/`animateSpreadTurn` (to skip
    * building "turn furniture" overlays at all when there'll be no
    * animation to play them alongside) and by `playPageTurnAnimation`
-   * itself (to skip the actual transition). */
+   * itself (to skip the actual transition). See `shouldSkipPageTurnAnimation`
+   * for the combined check that also honors the reader's own explicit
+   * "off" page-turn-animation-style choice (issue #69). */
   private prefersReducedMotion(): boolean {
     return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  }
+
+  /** The actual gate every page-turn animation call site should check
+   * before playing a transition — true whenever `prefersReducedMotion()`
+   * is set *or* the reader has explicitly chosen the "none" page-turn
+   * animation style (issue #69). Kept as its own method (rather than
+   * folding the style check directly into `prefersReducedMotion`) since
+   * the two are conceptually distinct: one reflects an OS-level
+   * accessibility preference the reader never has to think about, the
+   * other an explicit in-app choice — but every actual call site wants
+   * both honored together, so callers should use this, not
+   * `prefersReducedMotion` directly, unless they specifically mean the
+   * OS preference alone. */
+  private shouldSkipPageTurnAnimation(): boolean {
+    return this.pageTurnAnimationStyle === "none" || this.prefersReducedMotion();
   }
 
   /** The page number the running footer should show for `pageIndex` of
@@ -2770,7 +2787,7 @@ export class ReaderController {
     // animation to play them alongside anyway.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
-    if (!this.prefersReducedMotion()) {
+    if (!this.shouldSkipPageTurnAnimation()) {
       const title = this.pkg.metadata.title;
       const chapterLabel = this.chapterLabel(this.spineIndex);
       const outgoingNumber = this.furniturePageNumber(this.spineIndex, oldHost.currentPageIndex, oldHost.pageCount);
@@ -2896,7 +2913,7 @@ export class ReaderController {
     // them alongside.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
-    if (!this.prefersReducedMotion()) {
+    if (!this.shouldSkipPageTurnAnimation()) {
       const title = this.pkg.metadata.title;
       const chapterLabel = this.chapterLabel(this.spineIndex);
       const outgoingPrimary = this.furniturePageNumber(this.spineIndex, oldHost.pageIndex, oldHost.pageCount);
@@ -3070,7 +3087,7 @@ export class ReaderController {
     extraTurnEls: HTMLElement[] = [],
     entering = false,
   ): Promise<void> {
-    if (this.prefersReducedMotion()) {
+    if (this.shouldSkipPageTurnAnimation()) {
       return;
     }
     this.stagePageTurn(hostEl, turnEl, direction, extraTurnEls, entering);
@@ -3342,7 +3359,13 @@ export class ReaderController {
       hostEl.style.position = "relative";
     }
     hostEl.style.zIndex = "2";
-    if (this.pageTurnAnimationStyle === "slide") {
+    // "none" gets the same flat (non-3D) treatment as "slide" here —
+    // there's no sensible "no animation" analogue of a 3D perspective
+    // flip for the *live*, pointer-driven drag preview (something has
+    // to visually track the pointer while actively dragging), so it
+    // falls back to the least flourish-y option rather than showing a
+    // 3D flip mid-drag only to then snap instantly on release.
+    if (this.pageTurnAnimationStyle !== "rotate") {
       return;
     }
     this.containerEl.style.perspective = "2200px";
@@ -3374,12 +3397,13 @@ export class ReaderController {
 
   /** Scales a 0–1 drag fraction into `this.pageTurnAnimationStyle`'s own
    * natural unit for `setPageTurnTransform` — degrees for "rotate" (a
-   * quarter turn at `fraction=1`), percent for "slide" (a full page-width
-   * translate at `fraction=1`) — signed so the outgoing page always
-   * moves the same "out of view" way for a given `direction` regardless
-   * of which style is active. */
+   * quarter turn at `fraction=1`), percent for "slide"/"none" (a full
+   * page-width translate at `fraction=1` — see `stagePageTurn`'s doc
+   * comment on why "none" shares "slide"'s flatter treatment here) —
+   * signed so the outgoing page always moves the same "out of view" way
+   * for a given `direction` regardless of which style is active. */
   private pageTurnPartialAmount(direction: 1 | -1, fraction: number): number {
-    const scale = this.pageTurnAnimationStyle === "slide" ? 100 : 90;
+    const scale = this.pageTurnAnimationStyle !== "rotate" ? 100 : 90;
     return direction * -scale * fraction;
   }
 
@@ -3395,7 +3419,7 @@ export class ReaderController {
    * same transform/shadow applied in lockstep. */
   private setPageTurnTransform(el: HTMLElement, amount: number, fraction: number, extraEls: HTMLElement[] = []): void {
     for (const target of [el, ...extraEls]) {
-      if (this.pageTurnAnimationStyle === "slide") {
+      if (this.pageTurnAnimationStyle !== "rotate") {
         target.style.transform = `translateX(${amount}%)`;
         // The shadow falls on the trailing edge — the side most recently
         // uncovered — which is the opposite side from the direction of
@@ -3764,7 +3788,7 @@ export class ReaderController {
     const hadKeyboardFocus = this.iframeHasFocus(oldHost);
     const oldEl = oldHost.element;
     const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const reduceMotion = this.shouldSkipPageTurnAnimation();
 
     if (!reduceMotion) {
       const remainingFraction = commit ? 1 - fraction : fraction;

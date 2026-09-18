@@ -685,6 +685,9 @@ export const Toolbar: FC<ToolbarProps> = ({
                     <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
                       Slide
                     </MenuItemRadio>
+                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
+                      Off
+                    </MenuItemRadio>
                   </MenuGroup>
                   <MenuDivider />
                 </>
