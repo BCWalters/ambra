@@ -27,6 +27,7 @@ import {
   ChevronLeftRegular,
   ChevronRightRegular,
   CompassNorthwestRegular,
+  ReadingListRegular,
   SettingsRegular,
   TextBulletListRegular,
   TextColumnOneRegular,
@@ -246,7 +247,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             appearance="subtle"
             size="small"
             checked={isAnnotationsOpen}
-            icon={<BookmarkRegular />}
+            icon={<ReadingListRegular />}
             onClick={onToggleAnnotations}
           />
         </Tooltip>
@@ -623,7 +624,7 @@ export const Toolbar: FC<ToolbarProps> = ({
               {!snapshot.isFixedLayout && (
                 <>
                   <MenuGroup>
-                    <MenuGroupHeader>Book</MenuGroupHeader>
+                    <MenuGroupHeader>Reading Mode</MenuGroupHeader>
                     <MenuItemRadio
                       name={VIEW_MODE_GROUP_NAME}
                       value="paginated"
