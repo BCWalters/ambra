@@ -2261,35 +2261,31 @@ export class ReaderController {
     };
   }
 
-  /** Checks whether `(clientX, clientY)` — a plain click/tap that didn't
-   * make or keep a text selection (see `setUpHighlightSelection`) —
-   * landed on top of an existing highlight in `doc`, and if so, opens
-   * `activeHighlight` for it (a popup offering the note/delete actions
-   * also available in the Highlights panel, per issue #48). Uses
-   * `caretRangeFromPoint` to find the actual text position under the
-   * pointer (the CSS Custom Highlight API used to *paint* highlights —
-   * see `applyHighlightRanges` — has no hit-testing of its own; it's a
-   * paint-only overlay, not real DOM elements a click could target), then
-   * tests that position against each of the current spine item's
-   * highlights with the same `Range.comparePoint` technique `Page.
-   * containsPosition` uses. Clears `activeHighlight` (rather than
-   * leaving a stale one showing) if the click didn't land on any
-   * highlight, or if this browser lacks `caretRangeFromPoint` entirely
-   * (a non-standard but near-universally-supported API — treated as a
-   * graceful "feature not available" rather than a hard requirement). */
-  private checkExistingHighlightClick(doc: Document, iframeEl: Element, clientX: number, clientY: number): void {
+  /** Finds whichever of the current spine item's highlights (if any)
+   * covers the document position at `(clientX, clientY)` — the shared
+   * hit-testing core behind both `checkExistingHighlightClick` (opens
+   * the highlight's action popup) and `handleContentClick` (issue #62:
+   * must *not* also treat that same click as a page-turn tap, which it
+   * previously did whenever a highlight happened to sit in one of the
+   * left/right third-of-the-page turn zones — clicking a highlight
+   * there would open its popup *and* turn the page out from under it in
+   * the same gesture, leaving a popup referencing a highlight no longer
+   * on screen). Uses `caretRangeFromPoint` to find the actual text
+   * position under the pointer (the CSS Custom Highlight API used to
+   * *paint* highlights — see `applyHighlightRanges` — has no
+   * hit-testing of its own; it's a paint-only overlay, not real DOM
+   * elements a click could target). */
+  private findHighlightAtPoint(doc: Document, clientX: number, clientY: number): Highlight | undefined {
     const highlights = this.highlightsBySpineIndex.get(this.spineIndex);
     const caretRangeFromPoint = (
       doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
     ).caretRangeFromPoint;
     if (!highlights || highlights.length === 0 || !caretRangeFromPoint) {
-      this.activeHighlight = undefined;
-      return;
+      return undefined;
     }
     const caretRange = caretRangeFromPoint.call(doc, clientX, clientY);
     if (!caretRange) {
-      this.activeHighlight = undefined;
-      return;
+      return undefined;
     }
     for (const highlight of highlights) {
       const range = this.resolveHighlightRange(highlight, this.spineIndex, doc);
@@ -2303,15 +2299,34 @@ export class ReaderController {
       } catch {
         continue;
       }
-      const iframeRect = iframeEl.getBoundingClientRect();
-      this.activeHighlight = {
-        highlight,
-        left: iframeRect.left + clientX,
-        top: iframeRect.top + range.getBoundingClientRect().top,
-      };
+      return highlight;
+    }
+    return undefined;
+  }
+
+  /** Checks whether `(clientX, clientY)` — a plain click/tap that didn't
+   * make or keep a text selection (see `setUpHighlightSelection`) —
+   * landed on top of an existing highlight in `doc`, and if so, opens
+   * `activeHighlight` for it (a popup offering the note/delete actions
+   * also available in the Highlights panel, per issue #48). Clears
+   * `activeHighlight` (rather than leaving a stale one showing) if the
+   * click didn't land on any highlight, or if this browser lacks
+   * `caretRangeFromPoint` entirely (a non-standard but
+   * near-universally-supported API — treated as a graceful "feature not
+   * available" rather than a hard requirement). */
+  private checkExistingHighlightClick(doc: Document, iframeEl: Element, clientX: number, clientY: number): void {
+    const highlight = this.findHighlightAtPoint(doc, clientX, clientY);
+    if (!highlight) {
+      this.activeHighlight = undefined;
       return;
     }
-    this.activeHighlight = undefined;
+    const range = this.resolveHighlightRange(highlight, this.spineIndex, doc);
+    const iframeRect = iframeEl.getBoundingClientRect();
+    this.activeHighlight = {
+      highlight,
+      left: iframeRect.left + clientX,
+      top: iframeRect.top + (range?.getBoundingClientRect().top ?? clientY),
+    };
   }
 
   /** Hides the selection toolbar and clears the current in-content text
@@ -2457,6 +2472,15 @@ export class ReaderController {
   }
 
   private async turnPageInternal(direction: 1 | -1, token: number): Promise<void> {
+    // A page turn (unlike a chapter change — see `openSpineItem`, which
+    // already does this) doesn't rebuild the content document, so
+    // nothing else naturally invalidates a still-open highlight action
+    // popup — left alone, it would keep referencing a highlight that,
+    // after this turn, is no longer on screen at all (issue #62's
+    // second half: this is the fallback for any page turn that manages
+    // to happen anyway, not just the specific click-race the same issue
+    // also reports and `handleContentClick` now prevents directly).
+    this.activeHighlight = undefined;
     let moved: boolean;
     let announcement: string;
     if (this.host instanceof SpreadPaginatedHost) {
@@ -3690,6 +3714,19 @@ export class ReaderController {
       return;
     }
 
+    // A tap that landed on an existing highlight (issue #62): don't
+    // *also* treat it as a page-turn tap just because it happens to sit
+    // in one of the left/right third-of-the-page turn zones —
+    // `setUpHighlightSelection`'s own `pointerup` listener is about to
+    // open that highlight's action popup for this exact same click, and
+    // turning the page out from under it at the same time left a popup
+    // referencing a highlight no longer on screen (its "close" was
+    // still wired to the page that's no longer there).
+    const doc = upEvent.target instanceof Node ? upEvent.target.ownerDocument : undefined;
+    if (doc && this.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
+      return;
+    }
+
     const thirdWidth = containerWidth / 3;
     if (startX < thirdWidth) {
       void this.turnPage(isRightColumn ? 1 : -1);
@@ -3784,6 +3821,10 @@ export class ReaderController {
     }
 
     if (commit) {
+      // Same reasoning as `turnPageInternal`'s identical line — a
+      // committed drag page turn also swaps in new content without
+      // otherwise invalidating a still-open highlight action popup.
+      this.activeHighlight = undefined;
       oldHost.dispose();
       const newEl = newHost.element;
       newEl.style.position = "";
