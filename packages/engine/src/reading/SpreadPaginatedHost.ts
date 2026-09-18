@@ -242,6 +242,23 @@ export class SpreadPaginatedHost {
     }
   }
 
+  /** Delegates to the given column's own `PaginatedContentHost.
+   * growToFullHeight` — see that method's doc comment for why this
+   * matters. Used by a spread's "rotate" page-turn animation, which
+   * turns only the one column nearest the spine rather than the whole
+   * spread (see `ReaderController.animateSpreadTurn`), so only that
+   * column (not its untouched companion) needs its short-page height
+   * masked for the animation's duration. */
+  public growColumnToFullHeight(column: "left" | "right", fullHeight: number): void {
+    (column === "left" ? this.left : this.right).growToFullHeight(fullHeight);
+  }
+
+  /** Delegates to the given column's own `PaginatedContentHost.
+   * restoreNaturalHeight` — see `growColumnToFullHeight`. */
+  public restoreColumnNaturalHeight(column: "left" | "right"): void {
+    (column === "left" ? this.left : this.right).restoreNaturalHeight();
+  }
+
   /** Disposes both columns *and* removes this host's own wrapper element
    * (`this.containerEl`, holding the now-empty divider) from the DOM —
    * a real, previously-latent bug: disposing only `left`/`right` left an

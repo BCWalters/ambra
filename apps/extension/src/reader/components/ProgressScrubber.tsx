@@ -178,6 +178,26 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // the thumb would jump back to the old position for the async gap,
   // then jump again to the new one once it resolved, a jarring
   // double-jump instead of one smooth settle.
+  //
+  // `onSeek`'s own promise resolving is *not* a reliable enough signal
+  // on its own to clear `dragFraction` immediately — a second, related
+  // reported bug, worse the longer the seek takes (e.g. crossing into a
+  // chapter that hasn't been loaded/paginated yet, versus a same-
+  // chapter seek that settles almost instantly): `useSyncExternalStore`
+  // propagates `ReaderController`'s final `notify()` for this seek and
+  // this promise's own resolution as two independently-scheduled
+  // continuations, with no guarantee the snapshot update actually lands
+  // *before* this `.finally()` callback runs. Clearing `dragFraction`
+  // even one render too early falls back to `currentFraction(snapshot)`
+  // while it's still momentarily stale, reading as the exact "jump back
+  // to the old position" this was already meant to prevent. Waiting two
+  // animation frames (not just one — the first only guarantees *a*
+  // paint happened, not specifically the one carrying this update)
+  // before clearing is a small, deliberately conservative safety margin
+  // for that propagation to finish, at the cost of the thumb settling
+  // two frames later than the instant `onSeek` technically resolved —
+  // imperceptible next to the seek itself, and far better than a visible
+  // flash back to the wrong position.
   const finishDrag = (fraction: number): void => {
     const track = trackRef.current;
     const pointerId = activePointerIdRef.current;
@@ -187,7 +207,11 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     activePointerIdRef.current = undefined;
     setDragFraction(fraction);
     void onSeek(fraction).finally(() => {
-      setDragFraction(undefined);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setDragFraction(undefined);
+        });
+      });
     });
   };
 
@@ -248,28 +272,44 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
 
   const displayFraction = dragFraction ?? currentFraction(snapshot);
 
-  // "Page X of Y - Z pages left in this chapter" - the reader's actual
-  // current position, not tied to a drag at all (unlike everything else
-  // in this bar) - deliberately styled/positioned as its own row above
-  // the track, not overlapping the drag-preview popup's own space (which
-  // floats above the *entire* bar via `bottom: 100%`, so adding a row
-  // inside the bar doesn't move it), so the two don't read as the same
-  // thing even though they're visually close together. "Pages left" only
-  // needs this chapter's own page count, known immediately on open; the
-  // book-wide "Page X of Y" prefix needs `BookPaginationEstimator` to
-  // have reached this point in a possibly-still-measuring book, so it's
-  // dropped (not shown as a placeholder) until that's known, consistent
-  // with how the rest of the reader's chrome degrades gracefully.
+  // "Page X of Y" and "Z pages left in this chapter" — the reader's
+  // actual current position, not tied to a drag at all (unlike
+  // everything else in this bar) — deliberately styled/positioned as
+  // its own row above the track, not overlapping the drag-preview
+  // popup's own space (which floats above the *entire* bar via `bottom:
+  // 100%`, so adding a row inside the bar doesn't move it), so the two
+  // don't read as the same thing even though they're visually close
+  // together.
+  //
+  // Kept as two separate pieces (a centered "Page X of Y" and a
+  // far-right "Z pages left in this chapter"), not one hyphen-joined
+  // string — per explicit design direction, "pages left in this
+  // chapter" reads as a secondary, more detailed stat that shouldn't
+  // compete for the same centered emphasis as the book-wide page count.
+  // "Pages left" only needs this chapter's own page count, known
+  // immediately on open; the book-wide "Page X of Y" needs
+  // `BookPaginationEstimator` to have reached this point in a possibly-
+  // still-measuring book, so it's dropped (not shown as a placeholder)
+  // until that's known, consistent with how the rest of the reader's
+  // chrome degrades gracefully — the far-right label still shows on its
+  // own in that case, since it doesn't depend on the same thing.
   const pagesLeftInChapter =
     snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
-  const currentPositionLabel =
+  const pagesLeftLabel =
     pagesLeftInChapter === undefined
       ? undefined
-      : `${
-          snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined
-            ? `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount} - `
-            : ""
-        }${pagesLeftInChapter} page${pagesLeftInChapter === 1 ? "" : "s"} left in this chapter`;
+      : `${pagesLeftInChapter} page${pagesLeftInChapter === 1 ? "" : "s"} left in this chapter`;
+  const bookPageLabel =
+    snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined
+      ? `Page ${snapshot.bookPageIndex} of ${snapshot.bookPageCount}`
+      : undefined;
+  // Still exposed as one combined string for the slider's own
+  // `aria-valuetext` (see below) — a screen reader doesn't care how the
+  // two pieces are laid out visually, just that both are announced.
+  const currentPositionLabel =
+    bookPageLabel && pagesLeftLabel
+      ? `${bookPageLabel} - ${pagesLeftLabel}`
+      : (bookPageLabel ?? pagesLeftLabel);
 
   // Keyboard operability for the `role="slider"` track — required by the
   // ARIA slider pattern, not optional polish: without this, the track was
@@ -363,20 +403,25 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
       }}
     >
-      {currentPositionLabel && (
-        <Caption1
-          as="p"
-          block
+      {(bookPageLabel || pagesLeftLabel) && (
+        <div
           aria-hidden="true"
           style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            alignItems: "baseline",
             margin: "0 0 6px",
-            textAlign: "center",
-            opacity: 0.55,
             pointerEvents: "none",
           }}
         >
-          {currentPositionLabel}
-        </Caption1>
+          <span />
+          <Caption1 as="p" block style={{ margin: 0, textAlign: "center", opacity: 0.55 }}>
+            {bookPageLabel}
+          </Caption1>
+          <Caption1 as="p" block style={{ margin: 0, textAlign: "right", opacity: 0.55 }}>
+            {pagesLeftLabel}
+          </Caption1>
+        </div>
       )}
 
       {preview && (

@@ -2203,6 +2203,12 @@ export class ReaderController {
     }
     const newEl = newHost.element;
 
+    // See `PaginatedContentHost.growToFullHeight`'s doc comment: masks
+    // this page's own (often shorter than full) content height for the
+    // duration of the animation, so its animated edge doesn't visibly
+    // sit higher than a full page's would. No need to restore
+    // afterward — `oldHost.dispose()` right below discards it outright.
+    oldHost.growToFullHeight(this.height);
     await this.playPageTurnAnimation(oldHost.element, oldHost.element, direction);
 
     // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
@@ -2244,6 +2250,16 @@ export class ReaderController {
     }
     const newEl = newHost.element;
 
+    // Only "rotate" needs this: "slide" already moves the whole spread
+    // wrapper, which `SpreadPaginatedHost`'s own constructor fixes to
+    // the full pane height regardless of either column's content — see
+    // `PaginatedContentHost.growToFullHeight`'s doc comment for why a
+    // single turning column needs the same treatment "slide" gets for
+    // free. No restore needed — `oldHost.dispose()` below discards the
+    // whole spread outright either way.
+    if (this.pageTurnAnimationStyle === "rotate") {
+      oldHost.growColumnToFullHeight(direction === 1 ? "right" : "left", this.height);
+    }
     await this.playPageTurnAnimation(oldHost.element, this.elementToTurn(oldHost, direction), direction);
 
     oldHost.dispose();
@@ -2737,6 +2753,13 @@ export class ReaderController {
             return;
           }
           if (prepared) {
+            // See `PaginatedContentHost.growToFullHeight`'s doc comment
+            // — masks this page's own (often shorter than full) content
+            // height for the duration of the drag, so its animated edge
+            // doesn't visibly sit higher than a full page's would.
+            // `settleDragPageTurn` restores it if the drag ends up
+            // reverting rather than committing.
+            oldHost.growToFullHeight(this.height);
             this.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);
             this.setPageTurnTransform(
               oldHost.element,
@@ -2915,6 +2938,7 @@ export class ReaderController {
         oldEl.style.transition = "";
         oldEl.style.transform = "";
         oldEl.style.boxShadow = "";
+        oldHost.restoreNaturalHeight();
       }
       this.isTurningPage = false;
       return;
@@ -2953,6 +2977,7 @@ export class ReaderController {
       oldEl.style.transition = "";
       oldEl.style.transform = "";
       oldEl.style.boxShadow = "";
+      oldHost.restoreNaturalHeight();
       newHost.dispose();
     }
     this.isTurningPage = false;

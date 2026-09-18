@@ -245,6 +245,55 @@ export class PaginatedContentHost {
     // how much natural gap the surrounding content has.
     this.sandboxedHost.element.style.clipPath = `inset(${ReadingTheme.PAGE_INSET_TOP}px 0 ${ReadingTheme.PAGE_INSET_BOTTOM}px 0)`;
   }
+
+  /** Temporarily grows this host's iframe to `fullHeight` (the reader
+   * pane's own full height) for the duration of a page-turn animation,
+   * widening the clip-path's bottom inset by the same amount so the
+   * *visible* clipped window stays exactly this page's own content
+   * height — nothing new is revealed; the extra height is simply
+   * clipped away, letting whatever's behind the iframe (the reader
+   * pane's own page-themed background) show through beneath the real
+   * text, indistinguishable from a full page with blank space at the
+   * bottom.
+   *
+   * This exists because `showCurrentPage` only ever sizes the iframe to
+   * *this specific page's* own content height — often noticeably
+   * shorter than a full page (most pages don't end exactly at the page
+   * boundary). Normally invisible (a static short page's own background
+   * already fills the reader pane behind it), but a page-turn
+   * animation's box-shadow traces the iframe's *real* box exactly, so a
+   * short page's animated edge visibly sat higher than a full page's
+   * would — a real, reported bug ("the bottom of the page in the
+   * animation starts a few lines above the actual bottom of the page"),
+   * intermittent because it only showed up on pages short enough for
+   * the gap to be noticeable. A no-op if this page is already at least
+   * `fullHeight` tall. Call `restoreNaturalHeight` once the animation
+   * finishes (whether it committed or reverted) to undo this. */
+  public growToFullHeight(fullHeight: number): void {
+    const page = this.pages[this.pageIndex];
+    if (!page) {
+      return;
+    }
+    const naturalHeight = page.height + ReadingTheme.PAGE_INSET_TOP + ReadingTheme.PAGE_INSET_BOTTOM;
+    if (fullHeight <= naturalHeight) {
+      return;
+    }
+    const extra = fullHeight - naturalHeight;
+    this.sandboxedHost.element.style.height = `${fullHeight}px`;
+    this.sandboxedHost.element.style.clipPath = `inset(${ReadingTheme.PAGE_INSET_TOP}px 0 ${ReadingTheme.PAGE_INSET_BOTTOM + extra}px 0)`;
+  }
+
+  /** Undoes `growToFullHeight`, restoring this host's natural per-page
+   * height/clip — call once a page-turn animation involving this host
+   * has finished *and it wasn't disposed* (a reverted drag, not a
+   * committed turn, which disposes the old host outright and so has no
+   * need to restore anything). Just re-applies whatever `showCurrentPage`
+   * already computes for the current page, so it's safe to call even if
+   * `growToFullHeight` was never actually called. */
+  public restoreNaturalHeight(): void {
+    this.showCurrentPage();
+  }
+
   public dispose(): void {
     this.sandboxedHost.dispose();
   }
