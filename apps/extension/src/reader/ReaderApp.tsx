@@ -400,7 +400,7 @@ const ReaderAppInner: FC = () => {
                 transition: "transform 240ms ease",
               }}
             />
-            <PageFurniture snapshot={snapshot} />
+            <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
             {snapshot.isLoading && (
               <Spinner
                 label="Loading…"

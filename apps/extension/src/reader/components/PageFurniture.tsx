@@ -8,6 +8,16 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
 
 export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
+  /** Whether the toolbar chrome is currently shown — see `ReaderApp`'s
+   * `useAutoHideChrome`. The bookmark ribbon (issue #64) is hidden
+   * outright while this is `true`, rather than relying on the toolbar's
+   * own (translucent, blurred) background to visually cover it the way
+   * the rest of this component's running header/footer text already
+   * does — that partial-opacity background still let the ribbon's
+   * solid, drop-shadowed shape show through as a faint smear, which was
+   * fine for small gray header text but not for something this visually
+   * prominent. */
+  chromeVisible: boolean;
 }
 
 /** The ribbon's own width/height (a small square icon box) — used both
@@ -67,7 +77,7 @@ function percent(current: number | undefined, total: number | undefined): number
  * furniture to; fixed-layout content has its own complete, intentional
  * page design this must never draw on top of).
  */
-export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
+export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible }) => {
   const t = useTranslation();
   if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
     return null;
@@ -220,40 +230,41 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot }) => {
               toolbar's own bookmark toggle already uses. One per visible
               page (see `columnRightEdges`/`ReaderSnapshot.bookmarkedPages`),
               so a spread with a bookmark on only one of its two pages
-              draws the ribbon on just that one, not both. */}
-          {columnBands.map((_band, index) => {
-            if (!snapshot.bookmarkedPages[index]) {
-              return null;
-            }
-            const edge = columnRightEdges[index];
-            return (
-              <BookmarkFilled
-                key={index}
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  ...edge,
-                  width: BOOKMARK_RIBBON_SIZE,
-                  height: BOOKMARK_RIBBON_SIZE,
-                  // Deliberately *above* the toolbar (zIndex 10) rather
-                  // than sharing the rest of this component's zIndex 5 —
-                  // unlike the running header/footer text (informational,
-                  // fine to sit "underneath" the toolbar exactly like a
-                  // printed book's own header would be covered by a
-                  // dust jacket), a bookmark is the one piece of page
-                  // furniture a reader actually wants to glance at and
-                  // confirm at any time, chrome visible or not — the
-                  // same reason a real paper bookmark ribbon still pokes
-                  // out above a closed book's cover.
-                  zIndex: 11,
-                  color: "#dc3d3d",
-                  filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))",
-                  pointerEvents: "none",
-                }}
-              />
-            );
-          })}
+              draws the ribbon on just that one, not both.
+
+              Suppressed outright while `chromeVisible` (issue #64): an
+              earlier version relied on the toolbar's own translucent,
+              blurred background to visually cover this the same way it
+              covers the header/footer text below — but that ~90%-opaque
+              background still let the ribbon's solid, drop-shadowed
+              shape show through as a faint smear, fine for small gray
+              text but not for something this visually prominent. Hiding
+              it outright while the toolbar's shown is simpler and fully
+              reliable. */}
+          {!chromeVisible &&
+            columnBands.map((_band, index) => {
+              if (!snapshot.bookmarkedPages[index]) {
+                return null;
+              }
+              const edge = columnRightEdges[index];
+              return (
+                <BookmarkFilled
+                  key={index}
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    ...edge,
+                    width: BOOKMARK_RIBBON_SIZE,
+                    height: BOOKMARK_RIBBON_SIZE,
+                    zIndex: 5,
+                    color: "#dc3d3d",
+                    filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))",
+                    pointerEvents: "none",
+                  }}
+                />
+              );
+            })}
         </>
       )}
 
