@@ -60,17 +60,34 @@ Running this suite never disturbs that.
 
 `fixtures/long-content.epub` — a small synthetic single-chapter book (30
 numbered paragraphs, `packages/engine/test/fixtures/long-content-epub-src`
-is its source) used for the exact-content-accounting tests, since its
-paragraph numbering makes "was anything skipped or duplicated" a simple,
-precise check.
+is its source) used by `tests/navigation-correctness.spec.ts`'s exact
+content-accounting checks, since its paragraph numbering makes "was
+anything skipped or duplicated" a simple, precise check.
 
-For a broader, slower pass against real-world EPUB formatting quirks
-(footnotes, images, varied typography, RTL/vertical text, etc.) beyond
-what synthetic fixtures cover, see the session's own notes on downloading
-public-domain books from Project Gutenberg / the IDPF EPUB3 samples
-collection for occasional manual or scripted spot-checks — those aren't
-checked into this repo (licensing and repo-size reasons), so they're not
-part of this automated suite yet.
+## Real-book smoke suite
+
+Synthetic fixtures are precise but narrow — real EPUB3 files routinely
+have formatting quirks no fixture's own author would think to construct.
+`tests/real-books.spec.ts` opens a small, diverse set of real books
+(a full Project Gutenberg novel; IDPF's own official EPUB3 samples
+covering span-heading nav/TOC-in-spine, accessibility-focused authoring,
+RTL/BIDI Hebrew content, and internal-link navigation) and checks each
+one actually renders content, never dead-ends on a click, and produces no
+unexpected console errors.
+
+These book files are **not committed to this repo** (third-party
+content, plus repo-size reasons) — download them first:
+
+```sh
+node scripts/download-real-books.mjs
+```
+
+`real-books.spec.ts` skips (not fails) any book whose file isn't present,
+so a fresh clone's first `test:e2e` run doesn't spuriously fail before
+anyone's run the download script. To add another real book to the suite,
+add an entry to both `BOOKS` arrays (the download script and the spec
+file) with a direct download URL and a one-line description of what makes
+it worth including.
 
 ## Adding a new test
 
