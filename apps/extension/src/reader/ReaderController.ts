@@ -2901,6 +2901,7 @@ export class ReaderController {
     const containerRect = this.containerEl.getBoundingClientRect();
     const matchRect = matchEl.getBoundingClientRect();
     const foreground = ReadingTheme.PAGE_THEMES[this.pageTheme].foreground;
+    const background = ReadingTheme.PAGE_THEMES[this.pageTheme].background;
 
     const overlay = document.createElement("div");
     overlay.setAttribute("aria-hidden", "true");
@@ -2937,7 +2938,27 @@ export class ReaderController {
         `position: absolute; top: 0; left: ${band.left}px; width: ${band.width}px; ` +
         `box-sizing: border-box; height: ${ReadingTheme.PAGE_INSET_TOP}px; display: flex; ` +
         `align-items: flex-start; justify-content: ${band.header.mode === "split" ? "space-between" : "center"}; ` +
-        `padding: ${HEADER_TEXT_TOP_OFFSET}px 20px 0; overflow: hidden;`;
+        `padding: ${HEADER_TEXT_TOP_OFFSET}px 20px 0; overflow: hidden; background: ${background};`;
+      // This band's own opaque `background` (added above) is doing real
+      // work, not just matching the page theme for looks: every call
+      // site that builds this overlay has *also* called
+      // `suppressClipPathForAnimation` on `matchEl` (a prerequisite for
+      // dropping `clip-path`, itself required to work around the
+      // Chromium overlapping-iframe compositing bug — see that
+      // method's own doc comment), which leaves this exact top inset
+      // band (`PAGE_INSET_TOP` tall) as part of `matchEl`'s box with
+      // nothing clipping it anymore. That band is only blank *by
+      // convention* — the previous page's last line sits just above it
+      // in the underlying linear flow, routinely far less than
+      // `PAGE_INSET_TOP` away — so without an opaque cover here, the
+      // previous page's tail visibly bled in above this page's own
+      // running header for the whole animation (a real, reported bug:
+      // "content above ... the page that should be clipped"). The
+      // symmetric bottom-band equivalent of this same risk is handled
+      // separately, by `buildTurnGrowthMask`/shrinking `matchEl` itself
+      // — but *this* band exists on every animated host regardless of
+      // style or which side is moving, unlike that one, so it's fixed
+      // once here rather than duplicated at every call site.
       if (band.header.mode === "split") {
         const left = document.createElement("span");
         left.style.cssText = textStyle;
@@ -2959,7 +2980,7 @@ export class ReaderController {
         footer.style.cssText =
           `position: absolute; bottom: 0; left: ${band.left}px; width: ${band.width}px; ` +
           `box-sizing: border-box; height: ${ReadingTheme.PAGE_INSET_BOTTOM}px; display: flex; ` +
-          `align-items: center; justify-content: center;`;
+          `align-items: center; justify-content: center; background: ${background};`;
         const span = document.createElement("span");
         span.style.cssText = textStyle;
         span.textContent = band.footerText;
