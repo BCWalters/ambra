@@ -1341,12 +1341,19 @@ export class ReaderController {
   /** Every content document the reader might receive a click in — one for
    * every host type except `SpreadPaginatedHost`, which has two (both
    * columns get working in-content links, even though only the left one
-   * participates in keyboard/focus accessibility). */
-  private allContentDocuments(): Document[] {
-    if (this.host instanceof SpreadPaginatedHost) {
-      return this.host.contentDocuments();
+   * participates in keyboard/focus accessibility). Defaults to
+   * `this.host`, but accepts an explicit one too — see
+   * `applyDisplaySettingsToHost`'s matching parameter, needed by
+   * `openSpineItem`'s chapter-crossing animation (issue #83), which
+   * must apply settings to the *incoming* host before `this.host` is
+   * actually reassigned to it. */
+  private allContentDocuments(
+    host: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined = this.host,
+  ): Document[] {
+    if (host instanceof SpreadPaginatedHost) {
+      return host.contentDocuments();
     }
-    const doc = this.host?.element.contentDocument;
+    const doc = host?.element.contentDocument;
     return doc ? [doc] : [];
   }
 
@@ -2043,12 +2050,22 @@ export class ReaderController {
    * fixed-layout content, which never gets the reading theme at all. In
    * spread mode, both columns are independent documents and need the
    * properties set individually before the shared relayout re-measures
-   * them together. */
-  private applyDisplaySettingsToHost(options: { relayout: boolean }): void {
-    if (this.host instanceof FixedContentHost) {
+   * them together.
+   *
+   * Defaults to `this.host`, but accepts an explicit one too — needed
+   * by `openSpineItem`'s chapter-crossing turn animation (issue #83),
+   * which must apply settings to the *incoming* host, correctly
+   * positioned, before the turn actually plays and well before
+   * `this.host` is reassigned to it (see `allContentDocuments`'s
+   * matching parameter). */
+  private applyDisplaySettingsToHost(
+    options: { relayout: boolean },
+    host: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined = this.host,
+  ): void {
+    if (!host || host instanceof FixedContentHost) {
       return;
     }
-    const documents = this.allContentDocuments();
+    const documents = this.allContentDocuments(host);
     if (documents.length === 0) {
       return;
     }
@@ -2063,10 +2080,10 @@ export class ReaderController {
     if (!options.relayout) {
       return;
     }
-    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
-      this.host.relayout(this.width, this.height);
-    } else if (this.host instanceof ScrollContentHost) {
-      this.host.resize(this.width, this.height);
+    if (host instanceof PaginatedContentHost || host instanceof SpreadPaginatedHost) {
+      host.relayout(this.width, this.height);
+    } else if (host instanceof ScrollContentHost) {
+      host.resize(this.width, this.height);
     }
   }
 
@@ -2077,8 +2094,16 @@ export class ReaderController {
    * non-default settings looks correct immediately. Skips the (fairly
    * expensive) relayout pass entirely when every setting is already at
    * its theme-default value, since the freshly-opened host was already
-   * paginated at those defaults by its own `open()` call. */
-  private applyPersistedDisplaySettingsToFreshHost(): void {
+   * paginated at those defaults by its own `open()` call.
+   *
+   * Defaults to `this.host` (the normal case — see
+   * `applyDisplaySettingsToHost`'s matching parameter), but accepts an
+   * explicit one for `openSpineItem`'s chapter-crossing animation
+   * (issue #83), which needs this applied to the *incoming* host before
+   * `this.host` actually becomes it. */
+  private applyPersistedDisplaySettingsToFreshHost(
+    host: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined = this.host,
+  ): void {
     const needsRelayout =
       this.fontScale !== 1 ||
       this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
@@ -2086,7 +2111,7 @@ export class ReaderController {
       this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
       this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
     if (needsRelayout || this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME) {
-      this.applyDisplaySettingsToHost({ relayout: needsRelayout });
+      this.applyDisplaySettingsToHost({ relayout: needsRelayout }, host);
     }
   }
 
@@ -2634,7 +2659,7 @@ export class ReaderController {
     if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
       return;
     }
-    await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
+    await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1, animateDirection: direction });
   }
 
   /** Whether the user has `prefers-reduced-motion: reduce` set — checked
@@ -4917,6 +4942,243 @@ export class ReaderController {
     await this.openSpineItem(spineIndex, { fragment: navPoint.fragment });
   }
 
+  /** Animates the reveal of `stagingEl` (an already-loaded
+   * `openSpineItem` host, correctly positioned at its opening
+   * page/spread, but still hidden per `stageHiddenHostElement`) in
+   * place of whatever `previousWrapperEl` (or `previousHost.element`,
+   * if the previous turn was itself an animated one that left no
+   * wrapper — see `clearStaleHostWrapper`) currently shows — playing
+   * the *same* slide/scroll page-turn animation an in-chapter page turn
+   * already uses, so crossing a chapter boundary via `turnPage` reads
+   * as "just another page turn" instead of the abrupt instant snap it
+   * used to be (issue #83).
+   *
+   * Deliberately narrower in scope than `animatePageTurn`/
+   * `animateSpreadTurn`: only "slide" and "scroll" are supported here —
+   * "rotate" is skipped entirely (returns `false`, doing nothing, so
+   * the caller falls through to `openSpineItem`'s normal instant
+   * reveal), since its spread variant turns only the single column
+   * nearest the spine (see `elementToTurn`), a distinction that stops
+   * making much sense across a whole chapter boundary, and needs
+   * `growToFullHeight`/`buildRotateBackFace` on top of that — real
+   * extra complexity for a style that's no longer even the default.
+   * An honest, documented limitation, not a silently-missing feature.
+   *
+   * Requires `previousHost`/`newHost` to be the same concrete type as
+   * each other (both `PaginatedContentHost` or both
+   * `SpreadPaginatedHost`) — always true in practice, since the
+   * reader's width and view mode (which together decide which of the
+   * two a spine item resolves to) never change mid-turn — and returns
+   * `false` without doing anything if that invariant somehow doesn't
+   * hold, rather than throwing.
+   *
+   * Follows `animatePageTurn`'s own "entering" convention exactly (see
+   * its doc comment): a backward turn (`direction === -1`) plays as the
+   * *incoming* (previous chapter's) content turning in on top, not the
+   * current content turning away to reveal it underneath — crossing a
+   * chapter boundary should feel identical to turning within one.
+   *
+   * Returns `true` once the animation has actually played (the caller
+   * should then treat `stagingEl` as already fully revealed); `false`
+   * if skipped for any reason above, `prefers-reduced-motion`, or the
+   * reader's own "none" choice (`shouldSkipPageTurnAnimation`) — the
+   * caller's own existing instant-reveal code runs unconditionally
+   * right after regardless, which is a harmless no-op once this has
+   * already revealed everything itself. */
+  private async animateChapterCrossingReveal(
+    previousHost: PaginatedContentHost | SpreadPaginatedHost,
+    previousWrapperEl: HTMLDivElement | undefined,
+    newHost: PaginatedContentHost | SpreadPaginatedHost,
+    stagingEl: HTMLDivElement,
+    direction: 1 | -1,
+    oldSpineIndex: number,
+    newSpineIndex: number,
+  ): Promise<boolean> {
+    if (!this.containerEl || this.shouldSkipPageTurnAnimation() || this.pageTurnAnimationStyle === "rotate") {
+      return false;
+    }
+    const bothSingle = previousHost instanceof PaginatedContentHost && newHost instanceof PaginatedContentHost;
+    const bothSpread = previousHost instanceof SpreadPaginatedHost && newHost instanceof SpreadPaginatedHost;
+    if (!bothSingle && !bothSpread) {
+      return false;
+    }
+
+    const oldEl = previousWrapperEl ?? previousHost.element;
+    const newEl = stagingEl;
+    const isScroll = this.pageTurnAnimationStyle === "scroll";
+    const entering = direction === -1;
+    const animatingEl = entering ? newEl : oldEl;
+    const otherEl = entering ? oldEl : newEl;
+
+    if (this.pageTurnAnimationStyle === "slide") {
+      // See `animatePageTurn`'s identical reasoning (issues #81/#84):
+      // every overlapping-iframe style needs `clip-path` dropped from
+      // *both* sides for the whole duration, regardless of which one
+      // is actually animating.
+      if (bothSpread) {
+        (previousHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("left");
+        (previousHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("right");
+        (newHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("left");
+        (newHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("right");
+      } else {
+        (previousHost as PaginatedContentHost).suppressClipPathForAnimation();
+        (newHost as PaginatedContentHost).suppressClipPathForAnimation();
+      }
+    }
+
+    // Reveal the staging element so it can actually participate in the
+    // animation — its content is already fully loaded and positioned on
+    // the correct opening page/spread (see `openSpineItem`'s caller).
+    // Also clears the loading spinner (`openSpineItem`'s `isLoading`)
+    // before it would otherwise hang, centered, over the whole ~380ms
+    // transition — a real, would-be-reported bug of its own otherwise.
+    stagingEl.style.visibility = "";
+    stagingEl.style.pointerEvents = "";
+    this.isLoading = false;
+
+    let turnBackdrop: HTMLDivElement | undefined;
+    if (this.pageTurnAnimationStyle === "slide") {
+      turnBackdrop = this.buildTurnBackdrop(animatingEl);
+      if (turnBackdrop) {
+        turnBackdrop.style.zIndex = "2";
+        animatingEl.parentElement?.insertBefore(turnBackdrop, animatingEl);
+      }
+    }
+
+    const title = this.pkg.metadata.title;
+    const oldChapterLabel = this.chapterLabel(oldSpineIndex);
+    const newChapterLabel = this.chapterLabel(newSpineIndex);
+    let outgoingOverlay: HTMLDivElement | undefined;
+    let incomingOverlay: HTMLDivElement | undefined;
+    if (bothSpread) {
+      const oldSpread = previousHost as SpreadPaginatedHost;
+      const newSpread = newHost as SpreadPaginatedHost;
+      const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+      const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
+      const bands = (chapterLabel: string, primary: number | undefined, secondary: number | undefined) => [
+        {
+          left: 0,
+          width: columnWidth,
+          header: { mode: "single" as const, text: title },
+          footerText: primary !== undefined ? `Page ${primary}` : undefined,
+        },
+        {
+          left: columnWidth + gutter,
+          width: columnWidth,
+          header: { mode: "single" as const, text: chapterLabel },
+          footerText: secondary !== undefined ? `Page ${secondary}` : undefined,
+        },
+      ];
+      const oldPrimary = this.furniturePageNumber(oldSpineIndex, oldSpread.pageIndex, oldSpread.pageCount);
+      const oldSecondary =
+        oldSpread.secondPageIndex !== undefined && oldPrimary !== undefined ? oldPrimary + 1 : undefined;
+      const newPrimary = this.furniturePageNumber(newSpineIndex, newSpread.pageIndex, newSpread.pageCount);
+      const newSecondary =
+        newSpread.secondPageIndex !== undefined && newPrimary !== undefined ? newPrimary + 1 : undefined;
+      outgoingOverlay = this.buildTurnFurnitureOverlay(oldEl, bands(oldChapterLabel, oldPrimary, oldSecondary));
+      incomingOverlay = this.buildTurnFurnitureOverlay(newEl, bands(newChapterLabel, newPrimary, newSecondary));
+    } else {
+      const oldSingle = previousHost as PaginatedContentHost;
+      const newSingle = newHost as PaginatedContentHost;
+      const oldNumber = this.furniturePageNumber(oldSpineIndex, oldSingle.currentPageIndex, oldSingle.pageCount);
+      const newNumber = this.furniturePageNumber(newSpineIndex, newSingle.currentPageIndex, newSingle.pageCount);
+      outgoingOverlay = this.buildTurnFurnitureOverlay(oldEl, [
+        {
+          left: 0,
+          width: oldEl.getBoundingClientRect().width,
+          header: { mode: "split" as const, left: title, right: oldChapterLabel },
+          footerText: oldNumber !== undefined ? `Page ${oldNumber}` : undefined,
+        },
+      ]);
+      incomingOverlay = this.buildTurnFurnitureOverlay(newEl, [
+        {
+          left: 0,
+          width: newEl.getBoundingClientRect().width,
+          header: { mode: "split" as const, left: title, right: newChapterLabel },
+          footerText: newNumber !== undefined ? `Page ${newNumber}` : undefined,
+        },
+      ]);
+    }
+
+    if (isScroll) {
+      // Both overlays move (with their own page) rather than one
+      // sitting static underneath the other — see `animatePageTurn`'s
+      // identical reasoning.
+      if (outgoingOverlay) {
+        outgoingOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(outgoingOverlay);
+      }
+      if (incomingOverlay) {
+        incomingOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(incomingOverlay);
+      }
+    } else {
+      const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
+      const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
+      if (staticOverlay) {
+        staticOverlay.style.zIndex = "1";
+        this.containerEl.appendChild(staticOverlay);
+      }
+      if (animatedOverlay) {
+        animatedOverlay.style.zIndex = "2";
+        this.containerEl.appendChild(animatedOverlay);
+      }
+    }
+    this.isAnimatingPageTurn = true;
+    this.notify();
+
+    if (isScroll) {
+      const oldGroup = [oldEl, ...(outgoingOverlay ? [outgoingOverlay] : [])];
+      const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
+      await this.playScrollTurn(oldGroup, newGroup, direction);
+    } else {
+      const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
+      await this.playPageTurnAnimation(
+        animatingEl,
+        animatingEl,
+        direction,
+        [...(animatedOverlayEl ? [animatedOverlayEl] : []), ...(turnBackdrop ? [turnBackdrop] : [])],
+        entering,
+      );
+    }
+
+    outgoingOverlay?.remove();
+    incomingOverlay?.remove();
+    turnBackdrop?.remove();
+    this.isAnimatingPageTurn = false;
+
+    if (this.pageTurnAnimationStyle === "slide") {
+      // `newHost` always survives this turn (the caller disposes
+      // `previousHost` right after) — restore whatever clip-path
+      // suppression may have touched on it, mirroring
+      // `animatePageTurn`'s identical cleanup.
+      if (bothSpread) {
+        (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("left");
+        (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("right");
+      } else {
+        (newHost as PaginatedContentHost).restoreNaturalHeight();
+      }
+    }
+
+    // Only `stagingEl` survives this turn (`oldEl`/`previousWrapperEl`
+    // is disposed by the caller right after) — reset whatever transform/
+    // z-index/box-shadow the animation above may have applied to it
+    // (only actually touched when `entering`, i.e. `animatingEl ===
+    // newEl === stagingEl`; a harmless no-op otherwise) back to
+    // `stageHiddenHostElement`'s own plain resting state.
+    stagingEl.style.transform = "";
+    stagingEl.style.zIndex = "";
+    stagingEl.style.boxShadow = "";
+    stagingEl.style.transition = "";
+    if (otherEl === oldEl) {
+      // Defensive only — `oldEl` is about to be disposed by the caller
+      // regardless, but leaves nothing dangling if that ever changes.
+      otherEl.style.zIndex = "";
+    }
+
+    return true;
+  }
+
   /** Creates a hidden, out-of-flow staging wrapper inside `containerEl`
    * and attaches `el` to it — used by `openSpineItem` to load a new
    * spine item's host *without* disturbing whatever is currently
@@ -4996,6 +5258,15 @@ export class ReaderController {
       landOnLastPage?: boolean;
       landOnPageIndex?: number;
       landOnFractionInItem?: number;
+      /** Set by `turnPageInternal`'s chapter-boundary fallback (issue
+       * #83) — plays the same slide/scroll page-turn animation an
+       * in-chapter turn already uses for this chapter *crossing*
+       * instead of the instant snap every other `openSpineItem` caller
+       * gets (TOC jumps, resume-reading, deep links, etc., which have
+       * no "direction" to animate along in the first place). See
+       * `animateChapterCrossingReveal`'s own doc comment for exactly
+       * which styles/host types this actually covers. */
+      animateDirection?: 1 | -1;
     } = {},
   ): Promise<void> {
     if (!this.containerEl) {
@@ -5096,6 +5367,46 @@ export class ReaderController {
         return;
       }
 
+      // Play the chapter-crossing turn animation (issue #83) before the
+      // reveal below, if eligible — see `animateChapterCrossingReveal`'s
+      // own doc comment for exactly when this applies. Positions the
+      // new host on its target page *first* (`landOnLastPage` normally
+      // gets applied further down, well after the reveal — too late for
+      // an animation to show the right content throughout), since
+      // everything else about "which page to land on" for this specific
+      // caller (`turnPageInternal`'s chapter-boundary fallback) is
+      // already fully decided by `landOnLastPage` alone (a forward
+      // crossing already lands on page 0 by default, no options.* need
+      // apply at all). Persisted font/theme settings likewise need to
+      // land *before* the animation plays, not after — otherwise the
+      // turn would visibly play at default settings and only snap to
+      // the reader's actual choices once the (normally `this.host`-
+      // dependent, called again further below) reveal step ran —
+      // hence explicitly passing `newHost` to both here rather than
+      // waiting for `this.host` to actually become it.
+      let animatedReveal = false;
+      if (
+        options.animateDirection !== undefined &&
+        (previousHost instanceof PaginatedContentHost || previousHost instanceof SpreadPaginatedHost) &&
+        (newHost instanceof PaginatedContentHost || newHost instanceof SpreadPaginatedHost)
+      ) {
+        if (options.landOnLastPage) {
+          newHost.goToLastPage();
+        }
+        if (applyDisplaySettings) {
+          this.applyPersistedDisplaySettingsToFreshHost(newHost);
+        }
+        animatedReveal = await this.animateChapterCrossingReveal(
+          previousHost,
+          previousWrapperEl,
+          newHost,
+          stagingEl,
+          options.animateDirection,
+          this.spineIndex,
+          spineIndex,
+        );
+      }
+
       // Success: reveal the new host in place of whatever was showing
       // before, *without ever moving either host's element to a
       // different parent* (see `stageHiddenHostElement`'s doc comment on
@@ -5103,15 +5414,19 @@ export class ReaderController {
       // iframe). `previousHost.dispose()` removes its own iframe(s) from
       // `previousWrapperEl`, which — now empty — is simply removed
       // outright; the new host's wrapper, in turn, is just revealed in
-      // place by clearing the hiding styles `stageHiddenHostElement` set,
-      // never touching its child's parentage at all.
+      // place by clearing the hiding styles `stageHiddenHostElement` set
+      // (a no-op if `animatedReveal` already did, right above) — never
+      // touching its child's parentage at all.
       previousHost?.dispose();
       previousWrapperEl?.remove();
       stagingEl.style.visibility = "";
       stagingEl.style.pointerEvents = "";
       this.host = newHost;
       this.hostWrapperEl = stagingEl;
-      if (applyDisplaySettings) {
+      // Skipped if the animation above already applied these — no need
+      // to pay for a second (potentially real, relayout-triggering)
+      // pass of the exact same settings against the exact same host.
+      if (applyDisplaySettings && !animatedReveal) {
         this.applyPersistedDisplaySettingsToFreshHost();
       }
 
