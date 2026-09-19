@@ -19,8 +19,6 @@ export interface SelectionToolbarProps {
   onAddNote: () => void;
 }
 
-const STYLE_ORDER: readonly HighlightStyle[] = ["yellow", "green", "blue", "pink", "purple", "underline"];
-
 /**
  * A small floating toolbar of highlight-color swatches (plus underline)
  * and a "add note" shortcut, anchored just above whatever text the
@@ -67,7 +65,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
         boxShadow: CHROME_SHADOW,
       }}
     >
-      {STYLE_ORDER.map((style) => {
+      {HighlightTheme.STYLE_ORDER.map((style) => {
         const option = HighlightTheme.STYLES[style];
         return (
           <Tooltip key={style} content={option.label} relationship="label">

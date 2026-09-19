@@ -2475,6 +2475,35 @@ export class ReaderController {
     }
   }
 
+  /** Changes an existing highlight's color/style directly from the
+   * inline action popup (issue #79) — previously the only way to
+   * change a highlight's color was to delete it and re-select the text
+   * to make a new one. Mirrors `setHighlightNote`'s find-update-persist
+   * shape, but — unlike a note, which has no visual presence on the
+   * highlighted text itself — a style change *does* need
+   * `applyHighlightsToCurrentHost` to actually repaint it, and only
+   * when the highlight belongs to the spine item currently open (the
+   * Highlights list can act on a highlight from any spine item, most of
+   * which have no live host to repaint right now). */
+  public async setHighlightStyle(id: string, style: HighlightStyle): Promise<void> {
+    for (const [spineIndex, highlights] of this.highlightsBySpineIndex) {
+      const index = highlights.findIndex((highlight) => highlight.id === id);
+      if (index !== -1) {
+        const updated: Highlight = { ...highlights[index]!, style };
+        await this.library.updateHighlight(updated);
+        highlights[index] = updated;
+        if (this.activeHighlight?.highlight.id === id) {
+          this.activeHighlight = { ...this.activeHighlight, highlight: updated };
+        }
+        if (spineIndex === this.spineIndex) {
+          this.applyHighlightsToCurrentHost();
+        }
+        this.notify();
+        return;
+      }
+    }
+  }
+
   /** Turns one page (or one spread, in spread mode) in paginated mode. In
    * scroll mode, this is a no-op — scrolling is continuous and has no
    * discrete "page" concept; use native scrolling within the content host

@@ -3,6 +3,7 @@ import type { FC } from "react";
 import { Button, Textarea, Tooltip } from "@fluentui/react-components";
 import { DeleteRegular, DismissRegular, NoteRegular } from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
+import type { HighlightStyle } from "@ambra/engine";
 import type { ActiveHighlightState } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -12,16 +13,25 @@ export interface HighlightActionPopupProps {
    * `ReaderController.checkExistingHighlightClick`. */
   state: ActiveHighlightState | undefined;
   onSetNote: (id: string, note: string | undefined) => void;
+  /** Issue #79: changes this highlight's color/style directly from the
+   * popup, the same set of swatches `SelectionToolbar` offers when
+   * first creating one — previously the only way to change color was
+   * deleting the highlight and re-selecting the text to make a new
+   * one. */
+  onSetStyle: (id: string, style: HighlightStyle) => void;
   onRemove: (id: string) => void;
   onDismiss: () => void;
 }
 
 /**
  * A small floating popup for an *existing* highlight tapped/clicked
- * while reading — offering the same note/delete actions the Highlights
- * panel already has (see `HighlightListItem`), directly in the book, per
- * explicit product direction (issue #48: "anything I do inside the
- * annotations tab, I should also be able to do directly in the book").
+ * while reading — offering the same note/delete/color actions the
+ * Highlights panel already has (see `HighlightListItem`), directly in
+ * the book, per explicit product direction (issue #48: "anything I do
+ * inside the annotations tab, I should also be able to do directly in
+ * the book"). The color swatch row (issue #79) toggles open the same
+ * way the note editor does — click the leading color dot instead of
+ * the note icon.
  *
  * Deliberately a separate component from `SelectionToolbar` (a *fresh*
  * selection's color picker) rather than one shared popup — the two
@@ -41,9 +51,16 @@ export interface HighlightActionPopupProps {
  * all (it acts on an already-created, CFI-anchored highlight), so
  * there's nothing here that guard would actually be defending against.
  */
-export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onSetNote, onRemove, onDismiss }) => {
+export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
+  state,
+  onSetNote,
+  onSetStyle,
+  onRemove,
+  onDismiss,
+}) => {
   const chromeTheme = useChromeTheme();
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [isPickingColor, setIsPickingColor] = useState(false);
   const [draftNote, setDraftNote] = useState("");
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -53,9 +70,12 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
   // highlight's leftover draft text for a moment. Starts already open
   // when `openNoteEditor` says so (issue #60: adding a note directly
   // from the selection menu skips straight here instead of the reader
-  // having to click the note icon themselves).
+  // having to click the note icon themselves). The color picker (issue
+  // #79) gets the same "reset when the highlight changes" treatment,
+  // always starting closed.
   useEffect(() => {
     setIsEditingNote(state?.openNoteEditor ?? false);
+    setIsPickingColor(false);
     setDraftNote(state?.highlight.note ?? "");
   }, [state?.highlight.id]);
 
@@ -117,20 +137,27 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            flexShrink: 0,
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            border: "1px solid rgba(0, 0, 0, 0.15)",
-            background:
-              highlight.style === "underline"
-                ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
-                : option.swatch,
-          }}
-        />
+        <Tooltip content="Change color" relationship="label">
+          <button
+            type="button"
+            aria-label="Change color"
+            aria-pressed={isPickingColor}
+            onClick={() => setIsPickingColor((open) => !open)}
+            style={{
+              flexShrink: 0,
+              width: 16,
+              height: 16,
+              borderRadius: "50%",
+              border: "1px solid rgba(0, 0, 0, 0.15)",
+              cursor: "pointer",
+              padding: 0,
+              background:
+                highlight.style === "underline"
+                  ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+                  : option.swatch,
+            }}
+          />
+        </Tooltip>
         <span
           style={{
             flex: 1,
@@ -168,6 +195,42 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({ state, onS
           <Button appearance="subtle" size="small" icon={<DismissRegular />} aria-label="Close" onClick={onDismiss} />
         </Tooltip>
       </div>
+
+      {isPickingColor && (
+        <div role="radiogroup" aria-label="Highlight color" style={{ display: "flex", gap: 6 }}>
+          {HighlightTheme.STYLE_ORDER.map((style) => {
+            const swatchOption = HighlightTheme.STYLES[style];
+            const selected = style === highlight.style;
+            return (
+              <Tooltip key={style} content={swatchOption.label} relationship="label">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={swatchOption.label}
+                  onClick={() => {
+                    onSetStyle(highlight.id, style);
+                    setIsPickingColor(false);
+                  }}
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    border: selected ? "2px solid rgba(15, 23, 42, 0.75)" : "1px solid rgba(0, 0, 0, 0.15)",
+                    boxShadow: selected ? "0 0 0 2px rgba(255, 255, 255, 0.9)" : "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    background:
+                      style === "underline"
+                        ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${swatchOption.swatch} 65%, ${swatchOption.swatch} 80%, transparent 80%)`
+                        : swatchOption.swatch,
+                  }}
+                />
+              </Tooltip>
+            );
+          })}
+        </div>
+      )}
 
       {!isEditingNote && highlight.note && (
         <span style={{ fontSize: 13, fontStyle: "italic", opacity: 0.75 }}>{highlight.note}</span>

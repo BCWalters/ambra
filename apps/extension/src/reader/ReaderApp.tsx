@@ -76,6 +76,7 @@ const ReaderAppInner: FC = () => {
     removeHighlight,
     goToHighlight,
     setHighlightNote,
+    setHighlightStyle,
     dismissActiveHighlight,
     search,
     goToSearchResult,
@@ -566,6 +567,7 @@ const ReaderAppInner: FC = () => {
             <HighlightActionPopup
               state={snapshot.activeHighlight}
               onSetNote={(id, note) => void setHighlightNote(id, note)}
+              onSetStyle={(id, style) => void setHighlightStyle(id, style)}
               onRemove={(id) => void removeHighlight(id)}
               onDismiss={dismissActiveHighlight}
             />

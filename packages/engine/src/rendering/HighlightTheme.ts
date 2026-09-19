@@ -45,6 +45,21 @@ export class HighlightTheme {
     underline: { label: "Underline", swatch: "#8a8a8a" },
   };
 
+  /** The fixed display order every color-swatch picker shows these
+   * styles in — both the "new selection" picker (`SelectionToolbar`)
+   * and the "change an existing highlight's color" one
+   * (`HighlightActionPopup`, issue #79) share this single order rather
+   * than each hard-coding their own copy, so the two pickers can never
+   * silently drift out of sync with each other. */
+  public static readonly STYLE_ORDER: readonly HighlightStyle[] = [
+    "yellow",
+    "green",
+    "blue",
+    "pink",
+    "purple",
+    "underline",
+  ];
+
   /** The `::highlight()` name for `style` — shared by the CSS this class
    * injects and whatever code populates `CSS.highlights` with that
    * style's ranges, so the two always agree without either hard-coding

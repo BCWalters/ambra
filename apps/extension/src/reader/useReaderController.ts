@@ -42,6 +42,7 @@ export interface UseReaderControllerResult {
   addHighlight: (style: HighlightStyle, openNoteEditor?: boolean) => Promise<void>;
   removeHighlight: (id: string) => Promise<void>;
   setHighlightNote: (id: string, note: string | undefined) => Promise<void>;
+  setHighlightStyle: (id: string, style: HighlightStyle) => Promise<void>;
   search: (query: string) => void;
   goToSearchResult: (cfi: string) => Promise<void>;
   goToHighlight: (cfi: string) => Promise<void>;
@@ -313,6 +314,13 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const setHighlightStyle = useCallback(
+    async (id: string, style: HighlightStyle) => {
+      await controller?.setHighlightStyle(id, style);
+    },
+    [controller],
+  );
+
   const search = useCallback(
     (query: string) => {
       controller?.search(query);
@@ -379,6 +387,7 @@ export function useReaderController(): UseReaderControllerResult {
     addHighlight,
     removeHighlight,
     setHighlightNote,
+    setHighlightStyle,
     search,
     goToSearchResult,
     goToHighlight,
