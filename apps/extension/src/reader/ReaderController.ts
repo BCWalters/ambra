@@ -4948,21 +4948,23 @@ export class ReaderController {
    * place of whatever `previousWrapperEl` (or `previousHost.element`,
    * if the previous turn was itself an animated one that left no
    * wrapper — see `clearStaleHostWrapper`) currently shows — playing
-   * the *same* slide/scroll page-turn animation an in-chapter page turn
-   * already uses, so crossing a chapter boundary via `turnPage` reads
-   * as "just another page turn" instead of the abrupt instant snap it
-   * used to be (issue #83).
+   * the *same* rotate/slide/scroll page-turn animation an in-chapter
+   * page turn already uses, so crossing a chapter boundary via
+   * `turnPage` reads as "just another page turn" instead of the abrupt
+   * instant snap it used to be (issue #83).
    *
-   * Deliberately narrower in scope than `animatePageTurn`/
-   * `animateSpreadTurn`: only "slide" and "scroll" are supported here —
-   * "rotate" is skipped entirely (returns `false`, doing nothing, so
-   * the caller falls through to `openSpineItem`'s normal instant
-   * reveal), since its spread variant turns only the single column
-   * nearest the spine (see `elementToTurn`), a distinction that stops
-   * making much sense across a whole chapter boundary, and needs
-   * `growToFullHeight`/`buildRotateBackFace` on top of that — real
-   * extra complexity for a style that's no longer even the default.
-   * An honest, documented limitation, not a silently-missing feature.
+   * "rotate" is treated the same way `animatePageTurn`'s single-page
+   * case treats it (growing the animating side to full height, no
+   * `buildRotateBackFace`/full-180° completion) even in spread mode —
+   * deliberately simpler than `animateSpreadTurn`'s own "rotate" turn,
+   * which flips only the single column nearest the spine (see
+   * `elementToTurn`): a distinction that stops making much sense across
+   * a whole chapter boundary, where the *entire* incoming spread is a
+   * new unit, not "the back of the same physical leaf" the way a
+   * same-chapter spread turn's column swap is. Reads as a slightly
+   * plainer flip than an in-chapter spread turn, but consistent and
+   * correct rather than needing its own bespoke back-face geometry for
+   * a style that's no longer even the default.
    *
    * Requires `previousHost`/`newHost` to be the same concrete type as
    * each other (both `PaginatedContentHost` or both
@@ -4994,7 +4996,7 @@ export class ReaderController {
     oldSpineIndex: number,
     newSpineIndex: number,
   ): Promise<boolean> {
-    if (!this.containerEl || this.shouldSkipPageTurnAnimation() || this.pageTurnAnimationStyle === "rotate") {
+    if (!this.containerEl || this.shouldSkipPageTurnAnimation()) {
       return false;
     }
     const bothSingle = previousHost instanceof PaginatedContentHost && newHost instanceof PaginatedContentHost;
@@ -5009,8 +5011,25 @@ export class ReaderController {
     const entering = direction === -1;
     const animatingEl = entering ? newEl : oldEl;
     const otherEl = entering ? oldEl : newEl;
+    const animatingHost = entering ? newHost : previousHost;
+    const otherHost = entering ? previousHost : newHost;
 
-    if (this.pageTurnAnimationStyle === "slide") {
+    if (this.pageTurnAnimationStyle === "rotate") {
+      // See `animatePageTurn`'s identical single-page reasoning: the
+      // animating side grows to `this.height` (its own, separate box-
+      // shadow-position fix), while the other side just needs
+      // `clip-path` dropped so it doesn't fail to composite opaquely
+      // against the animating side's own 3D transform (issue #81).
+      if (bothSpread) {
+        (animatingHost as SpreadPaginatedHost).growColumnToFullHeight("left", this.height);
+        (animatingHost as SpreadPaginatedHost).growColumnToFullHeight("right", this.height);
+        (otherHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("left");
+        (otherHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("right");
+      } else {
+        (animatingHost as PaginatedContentHost).growToFullHeight(this.height);
+        (otherHost as PaginatedContentHost).suppressClipPathForAnimation();
+      }
+    } else if (this.pageTurnAnimationStyle === "slide") {
       // See `animatePageTurn`'s identical reasoning (issues #81/#84):
       // every overlapping-iframe style needs `clip-path` dropped from
       // *both* sides for the whole duration, regardless of which one
@@ -5032,7 +5051,7 @@ export class ReaderController {
     // Also clears the loading spinner (`openSpineItem`'s `isLoading`)
     // before it would otherwise hang, centered, over the whole ~380ms
     // transition — a real, would-be-reported bug of its own otherwise.
-    stagingEl.style.visibility = "";
+    stagingEl.style.opacity = "";
     stagingEl.style.pointerEvents = "";
     this.isLoading = false;
 
@@ -5147,11 +5166,14 @@ export class ReaderController {
     turnBackdrop?.remove();
     this.isAnimatingPageTurn = false;
 
-    if (this.pageTurnAnimationStyle === "slide") {
+    if (this.pageTurnAnimationStyle === "slide" || this.pageTurnAnimationStyle === "rotate") {
       // `newHost` always survives this turn (the caller disposes
-      // `previousHost` right after) — restore whatever clip-path
-      // suppression may have touched on it, mirroring
-      // `animatePageTurn`'s identical cleanup.
+      // `previousHost` right after) — restore whatever
+      // `growColumnToFullHeight`/`suppressColumnClipPathForAnimation`/
+      // `suppressClipPathForAnimation` may have touched on it,
+      // mirroring `animatePageTurn`'s identical cleanup (a no-op, via
+      // `showCurrentPage`, for whichever style never actually needed
+      // it).
       if (bothSpread) {
         (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("left");
         (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("right");
@@ -5182,14 +5204,14 @@ export class ReaderController {
   /** Creates a hidden, out-of-flow staging wrapper inside `containerEl`
    * and attaches `el` to it — used by `openSpineItem` to load a new
    * spine item's host *without* disturbing whatever is currently
-   * displayed. `visibility: hidden` plus `position: absolute` keeps it
+   * displayed. `opacity: 0` plus `position: absolute` keeps it
    * invisible and out of the normal-flow flex layout the currently-
    * visible host relies on for centering, so the old content is
    * completely undisturbed until/unless the new load actually succeeds.
    *
    * Critically, whatever's inside this wrapper is *never* moved to a
    * different parent afterwards — only ever revealed in place by
-   * clearing the wrapper's own `visibility`/`pointer-events`, or removed
+   * clearing the wrapper's own `opacity`/`pointer-events`, or removed
    * outright (wrapper and all) via `.remove()`. This was a real,
    * confirmed regression the first version of this mechanism had: moving
    * an already-loaded `<iframe>` to a new DOM parent (even within the
@@ -5210,7 +5232,19 @@ export class ReaderController {
     const stagingEl = containerEl.ownerDocument.createElement("div");
     stagingEl.style.position = "absolute";
     stagingEl.style.inset = "0";
-    stagingEl.style.visibility = "hidden";
+    // `opacity: 0`, not `visibility: hidden` — see `prepareIncomingPage`/
+    // `prepareIncomingSpread`'s identical fix (issue #84) for the
+    // confirmed reason: a `SpreadPaginatedHost`'s right column sets its
+    // *own* explicit `visibility` (`syncRight`, called by `open()`
+    // itself as soon as the opening page has a companion) — which
+    // overrides an ancestor's inherited `hidden` state, so the right
+    // column could flash its own (still being paginated, momentarily
+    // unclipped/oversized) content on top of whatever this wrapper was
+    // supposed to be hiding it behind. `opacity` has no such override:
+    // every ancestor's opacity always multiplies into a descendant's
+    // final rendered alpha, regardless of what the descendant sets its
+    // own opacity to.
+    stagingEl.style.opacity = "0";
     stagingEl.style.pointerEvents = "none";
     stagingEl.style.display = "flex";
     stagingEl.style.justifyContent = "center";
@@ -5419,7 +5453,7 @@ export class ReaderController {
       // touching its child's parentage at all.
       previousHost?.dispose();
       previousWrapperEl?.remove();
-      stagingEl.style.visibility = "";
+      stagingEl.style.opacity = "";
       stagingEl.style.pointerEvents = "";
       this.host = newHost;
       this.hostWrapperEl = stagingEl;
