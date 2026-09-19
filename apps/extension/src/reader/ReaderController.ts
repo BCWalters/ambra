@@ -3658,7 +3658,90 @@ export class ReaderController {
       this.beginDragPageTurn(event, iframeDocument);
     };
     iframeDocument.addEventListener("pointerdown", onPointerDown);
-    this.dragCleanup = () => iframeDocument.removeEventListener("pointerdown", onPointerDown);
+    const containerCleanup = this.setUpBelowPageClickFallback();
+    this.dragCleanup = () => {
+      iframeDocument.removeEventListener("pointerdown", onPointerDown);
+      containerCleanup();
+    };
+  }
+
+  /** Single-column counterpart to `setUpSpreadClickToNavigate`'s own
+   * container-level fallback listener, for the exact same underlying
+   * reason (issue #82): `PaginatedContentHost` sizes its iframe to only
+   * *this specific page's* own content height (see
+   * `PaginatedContentHost.showCurrentPage`), often noticeably shorter
+   * than a full page — most commonly a chapter's very last page. A
+   * click landing in the resulting gap below that shrink-wrapped iframe
+   * never reaches it at all: from the browser's perspective, that point
+   * in the reader pane simply isn't covered by any element with a
+   * page-turn listener on it, so it was silently swallowed with no
+   * visible effect. Reported as needing "an extra click" to advance at
+   * a chapter's end — in practice, depending on how short that last
+   * page's real content was, it ranged from "click a little higher" to
+   * whole pages near a chapter's end going almost completely inert.
+   *
+   * Attached to `this.containerEl` — the reader pane's own content-host
+   * div (see `ReaderApp.tsx`'s `contentHostRef`), which always spans
+   * the full fixed page area regardless of which host is currently
+   * mounted inside it or how tall that host's own iframe happens to be
+   * — rather than to any specific host element. Reuses the same left/
+   * middle/right-third zones as `handleContentClick`, measured against
+   * `this.width` (the whole reader pane), since a fallback click here
+   * is by definition not on any specific host's own content. */
+  private setUpBelowPageClickFallback(): () => void {
+    const containerEl = this.containerEl;
+    if (!containerEl) {
+      return () => {};
+    }
+    // Each gesture gets its own self-contained, one-shot `pointerup`
+    // listener (attached from inside `pointerdown`, removing itself once
+    // it fires) rather than a `pointerup` listener shared across every
+    // gesture with the start position stashed in an outer closure
+    // variable — a real, confirmed bug caught via testing: `setUpDragPageTurn`
+    // (which builds this fallback) is explicitly documented, on
+    // `handleWindowRefocus`, as safe to call repeatedly at any time,
+    // including — as real automated interaction testing demonstrated —
+    // in the middle of an already-started gesture (a spurious `window`
+    // focus event arriving between one `pointerdown` and its matching
+    // `pointerup`). With a shared outer closure, that rebuild throws away
+    // the listener pair mid-gesture and attaches a fresh one with its
+    // start position back at its unset default, silently misreading
+    // where the gesture actually began. A gesture-scoped listener like
+    // this one is naturally immune: only the *outer* `pointerdown`
+    // listener is ever torn down by a rebuild (via the cleanup this
+    // method returns) — a `pointerup` listener already attached for a
+    // gesture already in progress keeps its own captured start position
+    // and fires normally regardless of how many times the outer listener
+    // gets rebuilt around it.
+    const onContainerPointerDown = (event: PointerEvent): void => {
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+      this.bumpContentActivity();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const onPointerUp = (upEvent: PointerEvent): void => {
+        containerEl.removeEventListener("pointerup", onPointerUp);
+        const deltaX = Math.abs(upEvent.clientX - startX);
+        const deltaY = Math.abs(upEvent.clientY - startY);
+        if (
+          deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
+          deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
+        ) {
+          return;
+        }
+        const thirdWidth = this.width / 3;
+        if (startX < thirdWidth) {
+          void this.turnPage(-1);
+        } else if (startX > this.width - thirdWidth) {
+          void this.turnPage(1);
+        }
+        // Middle third: no-op, exactly like `handleContentClick`.
+      };
+      containerEl.addEventListener("pointerup", onPointerUp);
+    };
+    containerEl.addEventListener("pointerdown", onContainerPointerDown);
+    return () => containerEl.removeEventListener("pointerdown", onContainerPointerDown);
   }
 
   /** Click-to-navigate for spread mode: no drag/flip animation (see
@@ -3690,7 +3773,16 @@ export class ReaderController {
    * (there's no content there to reference thirds against).
    *
    * Returns a single cleanup function for all three listeners, for
-   * `setUpDragPageTurn`'s `dragCleanup` to call as one unit. */
+   * `setUpDragPageTurn`'s `dragCleanup` to call as one unit. Every
+   * listener pair here is a self-contained, one-shot `pointerup`
+   * (attached from inside `pointerdown`, removing itself once it
+   * fires) rather than a `pointerup` sharing start-position state with
+   * `pointerdown` via an outer closure variable — see
+   * `setUpBelowPageClickFallback`'s doc comment for why: this whole
+   * method can be, and per `handleWindowRefocus` routinely is, rebuilt
+   * in the middle of an already-started gesture, which would otherwise
+   * silently separate a `pointerup` from the `pointerdown` that started
+   * it. */
   private setUpSpreadClickToNavigate(host: SpreadPaginatedHost): () => void {
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const cleanups: Array<() => void> = [];
@@ -3703,54 +3795,46 @@ export class ReaderController {
       // the rest of that page, not "back" (see `handleContentClick`'s
       // `isRightColumn` parameter).
       const isRightColumn = columnIndex === 1;
-      let startX = 0;
-      let startY = 0;
       const onPointerDown = (event: PointerEvent): void => {
         if (event.pointerType === "mouse" && event.button !== 0) {
           return;
         }
-        startX = event.clientX;
-        startY = event.clientY;
-      };
-      const onPointerUp = (event: PointerEvent): void => {
-        this.handleContentClick(event, startX, startY, columnWidth, doc, isRightColumn);
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const onPointerUp = (upEvent: PointerEvent): void => {
+          doc.removeEventListener("pointerup", onPointerUp);
+          this.handleContentClick(upEvent, startX, startY, columnWidth, doc, isRightColumn);
+        };
+        doc.addEventListener("pointerup", onPointerUp);
       };
       doc.addEventListener("pointerdown", onPointerDown);
-      doc.addEventListener("pointerup", onPointerUp);
-      cleanups.push(() => {
-        doc.removeEventListener("pointerdown", onPointerDown);
-        doc.removeEventListener("pointerup", onPointerUp);
-      });
+      cleanups.push(() => doc.removeEventListener("pointerdown", onPointerDown));
     });
 
     const containerEl = host.element;
-    let containerStartX = 0;
-    let containerStartY = 0;
     const onContainerPointerDown = (event: PointerEvent): void => {
       this.bumpContentActivity();
       if (event.pointerType === "mouse" && event.button !== 0) {
         return;
       }
-      containerStartX = event.clientX;
-      containerStartY = event.clientY;
-    };
-    const onContainerPointerUp = (event: PointerEvent): void => {
-      const deltaX = Math.abs(event.clientX - containerStartX);
-      const deltaY = Math.abs(event.clientY - containerStartY);
-      if (
-        deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
-        deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
-      ) {
-        return;
-      }
-      void this.turnPage(1);
+      const containerStartX = event.clientX;
+      const containerStartY = event.clientY;
+      const onContainerPointerUp = (event: PointerEvent): void => {
+        containerEl.removeEventListener("pointerup", onContainerPointerUp);
+        const deltaX = Math.abs(event.clientX - containerStartX);
+        const deltaY = Math.abs(event.clientY - containerStartY);
+        if (
+          deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
+          deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
+        ) {
+          return;
+        }
+        void this.turnPage(1);
+      };
+      containerEl.addEventListener("pointerup", onContainerPointerUp);
     };
     containerEl.addEventListener("pointerdown", onContainerPointerDown);
-    containerEl.addEventListener("pointerup", onContainerPointerUp);
-    cleanups.push(() => {
-      containerEl.removeEventListener("pointerdown", onContainerPointerDown);
-      containerEl.removeEventListener("pointerup", onContainerPointerUp);
-    });
+    cleanups.push(() => containerEl.removeEventListener("pointerdown", onContainerPointerDown));
 
     return () => {
       for (const cleanup of cleanups) {
