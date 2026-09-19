@@ -2827,36 +2827,39 @@ export class ReaderController {
     const newEl = newHost.element;
     const entering = direction === -1;
     const isScroll = this.pageTurnAnimationStyle === "scroll";
-    // Whichever host is actually animating is the one whose own (often
-    // shorter than full) content height needs masking for the duration
-    // — see `PaginatedContentHost.growToFullHeight`'s doc comment. Only
-    // "rotate"/"slide" need this — they draw a box-shadow that traces
-    // the iframe's real edge, which is what the mismatch would show up
-    // in; "scroll" draws no such shadow (see `playScrollTurn`), so
-    // there's nothing for a short page's real height to visibly betray.
-    // For a forward turn that's the outgoing page (discarded right
-    // after, via `oldHost.dispose()`, so no need to ever restore it);
-    // for a backward turn it's the *incoming* page, which survives as
-    // the new `this.host` and must have its natural height restored
-    // once the turn settles.
     const animatingHost = entering ? newHost : oldHost;
-    if (!isScroll) {
-      animatingHost.growToFullHeight(this.height);
-    }
-    // The *other* host (statically revealed underneath, never itself
-    // rotating) still needs its own `clip-path` dropped for a "rotate"
-    // turn specifically — see `PaginatedContentHost.
-    // suppressClipPathForAnimation`'s doc comment (issue #81) for the
-    // confirmed Chromium rendering bug this works around: an untouched,
-    // fully static iframe with a `clip-path` still loses proper opaque
-    // compositing against another overlapping iframe as long as *any*
-    // sibling sharing the same `perspective` context (set up by
-    // `stagePageTurn`, only for "rotate") has a live `rotateY`
-    // transform running — even though this host itself never moves at
-    // all. Only "rotate" sets up that shared 3D context in the first
-    // place (see `stagePageTurn`), so only it needs this.
     const otherHost = entering ? oldHost : newHost;
+    // Every overlapping-iframe style ("rotate"/"slide" — "scroll" moves
+    // both sides together and they never overlap on screen at all, see
+    // `playScrollTurn`) needs `clip-path` dropped from *both* hosts for
+    // the animation's duration, not just whichever one is actually
+    // moving — see `PaginatedContentHost.suppressClipPathForAnimation`'s
+    // doc comment (issue #81) for the confirmed Chromium rendering bug
+    // this works around: *any* two overlapping iframes where either one
+    // has a `clip-path` set fail to composite opaquely against each
+    // other, blending both pages' text together — confirmed via an
+    // isolated repro using a plain `translateX`, no rotation/perspective
+    // involved at all, so this isn't specific to "rotate"'s 3D transform
+    // the way it first looked (issue #81 only ever exercised "rotate").
+    //
+    // Only "rotate" also grows the animating host's height to
+    // `this.height` (see `growToFullHeight`'s doc comment: its own,
+    // separate box-shadow-position fix) — "slide" must *not* do the
+    // same, a real, confirmed bug of its own: growing a short page's
+    // iframe *without* a clip-path to bound it exposes however much
+    // more of that page's own document flow happens to fit in the
+    // extra height, which reads as stray paragraph fragments bleeding
+    // in below the intended page (issue reported directly: "content
+    // above and below the visible page that should be clipped"). Left
+    // at its natural height, the iframe's own box already bounds what
+    // paints regardless of `clip-path` being absent — nothing new is
+    // exposed beyond the (already tiny, inset-only) band `clip-path`
+    // was ever hiding in the first place.
     if (this.pageTurnAnimationStyle === "rotate") {
+      animatingHost.growToFullHeight(this.height);
+      otherHost.suppressClipPathForAnimation();
+    } else if (this.pageTurnAnimationStyle === "slide") {
+      animatingHost.suppressClipPathForAnimation();
       otherHost.suppressClipPathForAnimation();
     }
 
@@ -3001,29 +3004,44 @@ export class ReaderController {
     const turnHost = entering ? newHost : oldHost;
     const otherHost = entering ? oldHost : newHost;
 
-    // Only "rotate" needs any of this: "slide"/"scroll" already move the
-    // whole spread wrapper, which `SpreadPaginatedHost`'s own
-    // constructor fixes to the full pane height regardless of either
-    // column's content — see `PaginatedContentHost.growToFullHeight`'s
-    // doc comment for why a single turning column needs the same
-    // treatment "slide" gets for free. Always the *right* column now —
-    // see `elementToTurn`'s doc comment.
+    // "rotate" turns only the single column nearest the spine — see
+    // `elementToTurn`'s doc comment — and additionally grows that one
+    // column's height to `this.height` (see
+    // `PaginatedContentHost.growToFullHeight`'s doc comment: its own,
+    // separate box-shadow-position fix; `SpreadPaginatedHost`'s own
+    // wrapper is already fixed to the full pane height regardless of
+    // either column's content, so only the turning column itself needs
+    // this, not its already-full-height companion). "slide" moves the
+    // *whole* spread as one rigid sheet instead (see this method's own
+    // doc comment) and must *not* grow any column's height to match —
+    // a real, confirmed bug of its own: growing a short column's iframe
+    // *without* a clip-path to bound it exposes however much more of
+    // that column's own document flow happens to fit in the extra
+    // height, reading as stray paragraph fragments bleeding in below
+    // the intended page. Left at its natural height, each column's own
+    // box already bounds what paints regardless of `clip-path` being
+    // absent.
     //
-    // Every other column — `turnHost`'s own static companion (left) and
-    // *both* of `otherHost`'s columns — additionally needs its
-    // `clip-path` dropped (not just the one actually rotating), per
+    // Every column on *both* sides — not just whichever one is
+    // "turning" — needs its own `clip-path` dropped for the whole
+    // animation's duration, for *both* styles: see
     // `PaginatedContentHost.suppressClipPathForAnimation`'s doc comment
-    // (issue #81): the real Chromium bug it works around affects *any*
-    // clip-pathed iframe sharing the turning column's `perspective`
-    // context, not just the one being transformed — confirmed via
-    // direct testing to visibly blend two *different* pages' text
-    // together on the spread's own untouched, fully static column,
-    // purely because the *other* column happened to be mid-rotate.
-    // Restored on whichever host actually survives the turn (always
-    // `newHost` — see the bottom of this method).
+    // (issue #81) for the confirmed Chromium rendering bug this works
+    // around — *any* two overlapping iframes where either has a
+    // `clip-path` set fail to composite opaquely, blending both pages'
+    // text together, confirmed with a plain `translateX` and no
+    // rotation/perspective involved at all (i.e. this affects "slide"
+    // just as much as "rotate", not something specific to a 3D
+    // transform). Restored on whichever host actually survives the turn
+    // (always `newHost` — see the bottom of this method).
     if (this.pageTurnAnimationStyle === "rotate") {
       turnHost.growColumnToFullHeight("right", this.height);
       turnHost.suppressColumnClipPathForAnimation("left");
+      otherHost.suppressColumnClipPathForAnimation("left");
+      otherHost.suppressColumnClipPathForAnimation("right");
+    } else if (this.pageTurnAnimationStyle === "slide") {
+      turnHost.suppressColumnClipPathForAnimation("left");
+      turnHost.suppressColumnClipPathForAnimation("right");
       otherHost.suppressColumnClipPathForAnimation("left");
       otherHost.suppressColumnClipPathForAnimation("right");
     }
@@ -3167,7 +3185,7 @@ export class ReaderController {
     // `growColumnToFullHeight`/`suppressColumnClipPathForAnimation` may
     // have touched on either (a no-op, via `showCurrentPage`, for
     // whichever one — or both — never actually needed it).
-    if (this.pageTurnAnimationStyle === "rotate") {
+    if (this.pageTurnAnimationStyle === "rotate" || this.pageTurnAnimationStyle === "slide") {
       newHost.restoreColumnNaturalHeight("left");
       newHost.restoreColumnNaturalHeight("right");
     }
@@ -4065,30 +4083,29 @@ export class ReaderController {
             return;
           }
           if (prepared) {
-            // See `PaginatedContentHost.growToFullHeight`'s doc comment
-            // — masks this page's own (often shorter than full) content
-            // height for the duration of the drag, so its animated edge
-            // doesn't visibly sit higher than a full page's would.
-            // `settleDragPageTurn` restores it if the drag ends up
-            // reverting rather than committing. Not needed for "scroll",
-            // which draws no such edge (see `playScrollTurn`).
-            if (!isScroll) {
-              oldHost.growToFullHeight(this.height);
-            }
-            // `prepared` (the incoming page, revealed statically
-            // underneath for the whole drag) also needs its own
-            // `clip-path` dropped for "rotate" specifically — see
-            // `PaginatedContentHost.suppressClipPathForAnimation`'s doc
-            // comment (issue #81): it's a real, confirmed Chromium bug
-            // that isn't limited to whichever iframe is actually being
-            // dragged/rotated. `settleDragPageTurn` restores this the
-            // same way it restores the height mask, if the drag reverts
-            // rather than commits (a commit discards `oldHost` outright
-            // and moves on with `prepared` untouched — its own natural
-            // `showCurrentPage` state was never disturbed in the first
-            // place, since only `oldHost` — not `prepared` — ever had
-            // its height grown here).
+            // Every overlapping-iframe style needs `clip-path` dropped
+            // from *both* sides for the drag's duration — see
+            // `animatePageTurn`'s identical reasoning (issue #81's
+            // Chromium compositing bug isn't specific to "rotate" or to
+            // a committed/animated turn; it applies just as much to
+            // this interactive drag preview). Only "rotate" also grows
+            // `oldHost`'s height to `this.height` (its own, separate
+            // box-shadow-position fix — see `growToFullHeight`'s doc
+            // comment); "slide" must not, since growing a short page's
+            // iframe *without* a clip-path to bound it would expose
+            // however much more of its own document flow fits in the
+            // extra height. `settleDragPageTurn` restores whichever of
+            // these was actually touched if the drag ends up reverting
+            // rather than committing (a commit discards `oldHost`
+            // outright and moves on with `prepared` untouched — its own
+            // natural `showCurrentPage` state was never disturbed in
+            // the first place, since only `oldHost` — never `prepared`
+            // — ever had its height grown here).
             if (this.pageTurnAnimationStyle === "rotate") {
+              oldHost.growToFullHeight(this.height);
+              prepared.suppressClipPathForAnimation();
+            } else if (this.pageTurnAnimationStyle === "slide") {
+              oldHost.suppressClipPathForAnimation();
               prepared.suppressClipPathForAnimation();
             }
             this.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);

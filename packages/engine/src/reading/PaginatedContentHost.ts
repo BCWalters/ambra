@@ -289,37 +289,50 @@ export class PaginatedContentHost {
     this.sandboxedHost.element.style.height = `${fullHeight}px`;
   }
 
-  /** Drops this host's iframe `clip-path` entirely (without touching
-   * its height) for the duration of a page-turn animation — call on
-   * *every* host/column involved in an animated "rotate" turn, not just
-   * whichever one is actually being visibly rotated (`growToFullHeight`
-   * already does this for that one specifically; this is for the
-   * others — e.g. a spread's non-turning companion column, or a
-   * single-page turn's revealed incoming/outgoing host — which don't
-   * need their height grown at all, just this).
+  /** Drops this host's iframe `clip-path` entirely, and shrinks its
+   * height to exactly its real visible content (no reserved-but-empty
+   * bottom inset band at all) for the duration of a page-turn animation
+   * — call on *every* host/column involved in an animated "rotate" or
+   * "slide" turn, not just whichever one is actually moving
+   * (`growToFullHeight` additionally *grows* height past this for
+   * "rotate" specifically, once its own box-shadow-position need is
+   * met — see its doc comment for why the two can't be combined into
+   * one always-grow-never-shrink method).
    *
-   * This exists because of a real, confirmed Chromium rendering defect
-   * found via direct testing (issue #81): *any* iframe with a
+   * The `clip-path` removal exists because of a real, confirmed
+   * Chromium rendering defect found via direct testing (issue #81):
+   * *any* two iframes overlapping on screen, where *either* one has a
    * `clip-path` set — even one that doesn't visually exclude anything —
-   * fails to composite as reliably opaque against *another*, unrelated
-   * iframe stacked somewhere behind it, as soon as `perspective` is
-   * active on a shared ancestor and *any* sibling within that same 3D
-   * context has a live `rotateY` transform running — even a sibling
-   * that isn't the clip-pathed iframe itself, and isn't animating in
-   * any way of its own. In practice this showed up as two *different*
-   * pages' text visibly blended together on a spread's own static,
-   * entirely uninvolved column, purely because the *other* column
-   * happened to be mid-rotate at the time. `clip-path` is otherwise
-   * load-bearing (see `showCurrentPage`'s doc comment on hiding
-   * inset-band bleed) and safe to drop only for the animation's brief
-   * (~380ms) duration — the reader never notices a few lines of
-   * ordinarily-hidden bleed for that long, especially given every
-   * "rotate" turn is already moving/rotating something on screen at the
-   * same time. Call `restoreNaturalHeight` (safe regardless of whether
-   * `growToFullHeight` was also called) once the turn finishes to
-   * restore it. */
+   * fail to composite opaquely against each other, blending both pages'
+   * text together. Confirmed with a plain `translateX` and no
+   * rotation/perspective involved at all, so this isn't specific to a
+   * 3D transform or to whichever side is actually moving; every
+   * overlapping host/column needs this for the animation's duration,
+   * full stop.
+   *
+   * But `clip-path` was *also* the only thing hiding the reserved (by
+   * convention, not by any actual layout stop — see `showCurrentPage`'s
+   * doc comment) blank band below this page's real content, where the
+   * *next* page's own text continues in the underlying linear flow with
+   * nothing else in its way. Dropping `clip-path` without also
+   * addressing that reopened exactly the bug `clip-path` was introduced
+   * to fix in the first place, just for the animation's duration
+   * instead of permanently — a real, reported regression ("content
+   * above and below the visible page that should be clipped during the
+   * animation"). Shrinking the iframe's own *height* to end precisely
+   * where this page's real content does (rather than relying on any
+   * form of CSS clipping, which is exactly what triggers the
+   * compositing bug) sidesteps this: an iframe never paints anything
+   * beyond its own box regardless of `clip-path`, so there is no longer
+   * any reserved space left for the next page's continuation to bleed
+   * into. Call `restoreNaturalHeight` once the turn finishes to restore
+   * both. */
   public suppressClipPathForAnimation(): void {
     this.sandboxedHost.element.style.clipPath = "";
+    const page = this.pages[this.pageIndex];
+    if (page) {
+      this.sandboxedHost.element.style.height = `${ReadingTheme.PAGE_INSET_TOP + page.height}px`;
+    }
   }
 
   /** Undoes `growToFullHeight`/`suppressClipPathForAnimation`, restoring
