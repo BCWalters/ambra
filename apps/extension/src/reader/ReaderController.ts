@@ -3963,7 +3963,16 @@ export class ReaderController {
    * nothing to turn *to*) — unlike the single-page version, a spread one
    * page short of the end still has a valid (if lopsided) next spread to
    * turn to, so this is checked directly rather than by an out-of-range
-   * page index. */
+   * page index. The forward check is against `pageCount - 2`, not
+   * `pageCount - 1` — see `nextSpread`'s identical fix (issue #91) for
+   * why: once the right column already shows the chapter's actual last
+   * page, there's nothing left to turn to, even though the left column's
+   * own index never reaches `pageCount - 1` itself for an even page
+   * count. Checking against `pageCount - 1` here was the animated
+   * turn's own copy of that same bug — one page turn past the last full
+   * spread redisplayed that identical spread (the last page now alone
+   * in the left column) instead of correctly falling through to the
+   * next chapter. */
   private async prepareIncomingSpread(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -3971,7 +3980,7 @@ export class ReaderController {
     if (!this.containerEl) {
       return undefined;
     }
-    if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 1 : oldHost.pageIndex <= 0) {
+    if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 2 : oldHost.pageIndex <= 0) {
       return undefined;
     }
     const targetIndex =

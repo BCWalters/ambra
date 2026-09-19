@@ -5,6 +5,7 @@ import { launchReader, currentPageLabel, currentPageText, clickForwardAndWait } 
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epub");
+const TWO_CHAPTER_EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
 const TOTAL_PARAGRAPHS = 30;
 
 function paragraphNumbers(text: string): number[] {
@@ -108,6 +109,112 @@ test.describe("paginated reflowable navigation correctness", () => {
         (n) => !uniqueSeen.includes(n),
       );
       expect(missing, "paragraphs missing across the whole spread-mode run (skipped content)").toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("two-page spread: crossing a chapter boundary never redisplays the same spread (issue #91)", async () => {
+    // `TWO_CHAPTER_EPUB`'s chapter one is long enough (120 short
+    // paragraphs) to land its last spread exactly full — both columns
+    // showing real content, no lone trailing page — regardless of
+    // reasonable font-size/viewport variation, the specific condition
+    // issue #91 needed: `SpreadPaginatedHost.nextSpread`/
+    // `ReaderController.prepareIncomingSpread` both checked whether
+    // there was "more to turn to" against `pageCount - 1` rather than
+    // `pageCount - 2` — so once the right column already showed the
+    // chapter's actual last page, a further "next" wrongly believed there
+    // was still another spread to turn to, clamped back down to that
+    // same last page (now alone in the left column) instead of
+    // correctly falling through to chapter two.
+    const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      // Visible (not just "anywhere in the DOM") paragraph numbers for
+      // whichever columns are actually shown — `contentDocument.body
+      // .innerText` alone (what `currentPageText` and the spread test
+      // above both use) reflects the *entire* flowing document
+      // regardless of scroll position, so it can't tell "was this
+      // exact spread redisplayed" from "did the reader advance
+      // normally" the way this regression specifically needs; sampling
+      // `elementFromPoint` down each visible column's own height does
+      // reflect what's actually on screen. Hidden columns (the lone
+      // last page of an odd-length chapter) are skipped — a hidden
+      // iframe's `elementFromPoint` doesn't reliably reflect its last
+      // *visible* layout, and it's never what the reader could see.
+      async function visibleParagraphs(): Promise<string[]> {
+        return readerPage.evaluate(() => {
+          const iframes = Array.from(document.querySelectorAll("iframe")).filter(
+            (el) => el.getBoundingClientRect().width > 600 && getComputedStyle(el).visibility !== "hidden",
+          );
+          const seen = new Set<string>();
+          for (const frame of iframes) {
+            const doc = (frame as HTMLIFrameElement).contentDocument;
+            if (!doc) continue;
+            for (let y = 20; y < 850; y += 40) {
+              const el = doc.elementFromPoint(300, y);
+              const text = el?.closest("p")?.textContent ?? el?.textContent ?? "";
+              const match = text.match(/C(\d)Para (\d+)/);
+              if (match) {
+                seen.add(`${match[1]}:${match[2]}`);
+              }
+            }
+          }
+          return [...seen];
+        });
+      }
+
+      // Track the highest paragraph number seen in either chapter so
+      // far — real forward progress must strictly increase this every
+      // click, until the book's own true end. A plain "is this click's
+      // spread identical to the last one" check isn't enough: issue
+      // #91's actual failure mode is subtler than an exact repeat — the
+      // chapter's real last page (already visible, paired in the right
+      // column) gets shown *again*, now alone in the left column, which
+      // changes the on-screen spread (the right column's content
+      // disappears) without making any *new* progress at all.
+      function maxParagraph(visible: string[], chapter: string): number {
+        return visible
+          .filter((p) => p.startsWith(`${chapter}:`))
+          .map((p) => Number(p.split(":")[1]))
+          .reduce((max, n) => Math.max(max, n), 0);
+      }
+
+      let bestC1 = 0;
+      let bestC2 = 0;
+      let sawChapterTwo = false;
+      for (let click = 0; click < 20; click++) {
+        const visible = await visibleParagraphs();
+        const c1 = maxParagraph(visible, "1");
+        const c2 = maxParagraph(visible, "2");
+        if (c2 > 0) {
+          sawChapterTwo = true;
+        }
+        // Chapter one is fully done (its real last page, 120, already
+        // seen) once chapter two's own content starts appearing — from
+        // then on chapter one naturally stops advancing further, which
+        // is expected, not a regression. Chapter two's own last page
+        // (60) is this fixture's (and the whole book's) genuine end —
+        // once reached, further clicks correctly have nothing left to
+        // advance to.
+        const chapterOneDone = sawChapterTwo || bestC1 >= 120;
+        const chapterTwoDone = bestC2 >= 60;
+        const madeProgress = (!chapterOneDone && c1 > bestC1) || (sawChapterTwo && !chapterTwoDone && c2 > bestC2);
+        const alreadyAtBookEnd = chapterOneDone && chapterTwoDone;
+        expect(
+          madeProgress || alreadyAtBookEnd,
+          `click ${click} made no forward progress (chapter one max ${bestC1}, chapter two max ${bestC2}, ` +
+            `currently visible [${visible.sort().join(",")}]) — a page turn silently failed to advance`,
+        ).toBe(true);
+        bestC1 = Math.max(bestC1, c1);
+        bestC2 = Math.max(bestC2, c2);
+        await readerPage.mouse.click(1200, 450);
+        await readerPage.waitForTimeout(500);
+      }
+      expect(sawChapterTwo, "never reached chapter two's content").toBe(true);
+      expect(bestC1, "never reached chapter one's actual last paragraph").toBe(120);
+      expect(bestC2, "never reached chapter two's actual last paragraph").toBe(60);
     } finally {
       await context.close();
     }

@@ -228,9 +228,20 @@ export class SpreadPaginatedHost {
   }
 
   /** Turns the spread forward by two pages. Returns `false` (without
-   * effect) if the left column is already on the chapter's last page. */
+   * effect) if the left column is already on the chapter's last spread —
+   * checked against `pageCount - 2`, not `pageCount - 1`: once the
+   * *right* column is showing the chapter's actual last page, there is
+   * nothing left to advance to, even though the *left* column's own
+   * index hasn't reached `pageCount - 1` itself (it never does, for an
+   * even page count — the last spread pairs `pageCount - 2` with
+   * `pageCount - 1`). Checking against `pageCount - 1` here was a real,
+   * confirmed bug (issue #91): from that last full spread, "next" would
+   * pass this check, then clamp `currentPageIndex + 2` back down to
+   * `pageCount - 1` anyway — redisplaying the *same* last page, now
+   * alone in the left column, instead of correctly reporting "no more
+   * spread here" so the caller advances to the next chapter. */
   public nextSpread(): boolean {
-    if (this.left.currentPageIndex >= this.left.pageCount - 1) {
+    if (this.left.currentPageIndex >= this.left.pageCount - 2) {
       return false;
     }
     this.left.goToPageIndex(Math.min(this.left.currentPageIndex + 2, this.left.pageCount - 1));
