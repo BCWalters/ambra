@@ -2751,6 +2751,52 @@ export class ReaderController {
     return backdrop;
   }
 
+  /** Builds a plain, page-themed rectangle covering exactly the region
+   * `growToFullHeight`/`growColumnToFullHeight` newly exposed on
+   * `matchEl` — from its own natural height (`naturalHeight`, measured
+   * *before* growing it) down to the pane's full height — for the
+   * duration of a "rotate" turn. A real, reported bug otherwise
+   * (matching "slide"'s own short-page bleed, issue #84, but via a
+   * different mechanism): growing height needs `clip-path` dropped
+   * too (see `growToFullHeight`'s own doc comment on why the two can't
+   * be separated), and without it, a short page's iframe doesn't just
+   * sit at a shorter box — enlarging it exposes however much more of
+   * that *same* document's own subsequent flow happens to fit in the
+   * newly available height (the next paragraph, or an unrelated image
+   * immediately following it in the source document — confirmed
+   * directly: a chapter's image-right-after-a-short-page layout showed
+   * the image bleeding in below the short page's own text during a
+   * rotate turn). Painted *on top* of `matchEl` (unlike
+   * `buildTurnBackdrop`, which sits *behind* the animating side to mask
+   * a gap the *other* host would otherwise show through) — the bleed
+   * here is `matchEl`'s own content, not something behind it. Callers
+   * must append this *after* `matchEl` in DOM order (so it paints over
+   * it, not under it) and give it the same z-index, and add it to
+   * `playPageTurnAnimation`'s `extraTurnEls` so it rotates in lockstep
+   * — exactly like the furniture overlay and `buildTurnBackdrop`
+   * already do. */
+  private buildTurnGrowthMask(matchEl: HTMLElement, naturalHeight: number): HTMLDivElement | undefined {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const containerRect = this.containerEl.getBoundingClientRect();
+    const matchRect = matchEl.getBoundingClientRect();
+    const maskHeight = this.height - naturalHeight;
+    if (maskHeight <= 0) {
+      return undefined;
+    }
+    const mask = document.createElement("div");
+    mask.setAttribute("aria-hidden", "true");
+    mask.style.position = "absolute";
+    mask.style.left = `${matchRect.left - containerRect.left}px`;
+    mask.style.top = `${matchRect.top - containerRect.top + naturalHeight}px`;
+    mask.style.width = `${matchRect.width}px`;
+    mask.style.height = `${maskHeight}px`;
+    mask.style.pointerEvents = "none";
+    mask.style.background = ReadingTheme.PAGE_THEMES[this.pageTheme].background;
+    return mask;
+  }
+
   /** Builds the running header/footer overlay for one side of an
    * animated page turn — either the outgoing page's current furniture or
    * the incoming page's furniture-to-be, depending on which host/element
@@ -2978,6 +3024,23 @@ export class ReaderController {
     // paints regardless of `clip-path` being absent — nothing new is
     // exposed beyond the (already tiny, inset-only) band `clip-path`
     // was ever hiding in the first place.
+    //
+    // "rotate" has this *exact same* bleed risk for its own grown
+    // height, though (a real, reported bug of its own — see
+    // `buildTurnGrowthMask`'s doc comment). `growToFullHeight` itself
+    // calls `suppressClipPathForAnimation` first (shrinking away the
+    // bottom inset band) *before* growing — so measuring height before
+    // calling it at all would capture the *pre-shrink* value (with that
+    // inset band still included), leaving a real, confirmed gap exactly
+    // that band's height tall for bleed to sneak through unmasked.
+    // Calling `suppressClipPathForAnimation` explicitly first (a no-op
+    // repeat of what `growToFullHeight` does internally, safe to call
+    // twice) and measuring *after* that gets the true natural height
+    // `buildTurnGrowthMask` needs.
+    if (this.pageTurnAnimationStyle === "rotate") {
+      animatingHost.suppressClipPathForAnimation();
+    }
+    const animatingNaturalHeight = animatingHost.element.getBoundingClientRect().height;
     if (this.pageTurnAnimationStyle === "rotate") {
       animatingHost.growToFullHeight(this.height);
       otherHost.suppressClipPathForAnimation();
@@ -3003,6 +3066,14 @@ export class ReaderController {
       if (turnBackdrop) {
         turnBackdrop.style.zIndex = "2";
         animatingHost.element.parentElement?.insertBefore(turnBackdrop, animatingHost.element);
+      }
+    }
+    let turnGrowthMask: HTMLDivElement | undefined;
+    if (!this.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "rotate") {
+      turnGrowthMask = this.buildTurnGrowthMask(animatingHost.element, animatingNaturalHeight);
+      if (turnGrowthMask) {
+        turnGrowthMask.style.zIndex = "2";
+        animatingHost.element.parentElement?.insertBefore(turnGrowthMask, animatingHost.element.nextSibling);
       }
     }
 
@@ -3082,6 +3153,7 @@ export class ReaderController {
       const extraTurnEls = [
         ...((entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : []),
         ...(turnBackdrop ? [turnBackdrop] : []),
+        ...(turnGrowthMask ? [turnGrowthMask] : []),
       ];
       await this.playPageTurnAnimation(turnEl, turnEl, direction, extraTurnEls, entering);
     }
@@ -3089,6 +3161,7 @@ export class ReaderController {
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     turnBackdrop?.remove();
+    turnGrowthMask?.remove();
     this.isAnimatingPageTurn = false;
     // `newHost` always survives as the new `this.host` (unlike
     // `oldHost`, unconditionally disposed right below) — restore
@@ -3177,6 +3250,10 @@ export class ReaderController {
     // transform). Restored on whichever host actually survives the turn
     // (always `newHost` — see the bottom of this method).
     if (this.pageTurnAnimationStyle === "rotate") {
+      turnHost.suppressColumnClipPathForAnimation("right");
+    }
+    const turnColumnNaturalHeight = this.spreadColumnElement(turnHost, 1).getBoundingClientRect().height;
+    if (this.pageTurnAnimationStyle === "rotate") {
       turnHost.growColumnToFullHeight("right", this.height);
       turnHost.suppressColumnClipPathForAnimation("left");
       otherHost.suppressColumnClipPathForAnimation("left");
@@ -3204,6 +3281,18 @@ export class ReaderController {
       if (turnBackdrop) {
         turnBackdrop.style.zIndex = "2";
         turnHost.element.parentElement?.insertBefore(turnBackdrop, turnHost.element);
+      }
+    }
+    // See `buildTurnGrowthMask`'s doc comment / `animatePageTurn`'s
+    // identical use of it — "rotate" grows just the turning (right)
+    // column to full height, which needs its own bleed masked exactly
+    // like the single-page case does.
+    let turnGrowthMask: HTMLDivElement | undefined;
+    if (!this.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "rotate") {
+      turnGrowthMask = this.buildTurnGrowthMask(turnEl, turnColumnNaturalHeight);
+      if (turnGrowthMask) {
+        turnGrowthMask.style.zIndex = "2";
+        turnEl.parentElement?.insertBefore(turnGrowthMask, turnEl.nextSibling);
       }
     }
 
@@ -3333,6 +3422,7 @@ export class ReaderController {
           ...(animatedOverlayEl ? [animatedOverlayEl] : []),
           ...(rotateBackFace ? [rotateBackFace] : []),
           ...(turnBackdrop ? [turnBackdrop] : []),
+          ...(turnGrowthMask ? [turnGrowthMask] : []),
         ],
         entering,
         rotateBackFace ? 180 : undefined,
@@ -3343,6 +3433,7 @@ export class ReaderController {
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     turnBackdrop?.remove();
+    turnGrowthMask?.remove();
     this.isAnimatingPageTurn = false;
     // `newHost` always survives as the new `this.host` (unlike
     // `oldHost`, unconditionally disposed right below) — restore both
@@ -4258,6 +4349,16 @@ export class ReaderController {
     let released = false;
     let latestFraction = 0;
     let capturedToken: number | undefined;
+    // See `animatePageTurn`'s identical use of both — "slide" needs a
+    // backdrop behind `oldHost.element` masking the gap a short page's
+    // dropped clip-path would otherwise let `prepared` show through;
+    // "rotate" needs a mask over the region `growToFullHeight` newly
+    // exposes on `oldHost.element` itself. Built once, as soon as
+    // `direction` locks in and `prepared` resolves (see below) — same
+    // lifetime as the drag gesture itself, cleaned up by
+    // `settleDragPageTurn` once the drag finishes either way.
+    let turnBackdrop: HTMLDivElement | undefined;
+    let turnGrowthMask: HTMLDivElement | undefined;
 
     const cleanupListeners = (): void => {
       doc.removeEventListener("pointermove", onPointerMove);
@@ -4282,7 +4383,15 @@ export class ReaderController {
           preparing = false;
           newHost = prepared;
           if (released) {
-            void this.settleDragPageTurn(oldHost, prepared, lockedDirection, latestFraction, token);
+            void this.settleDragPageTurn(
+              oldHost,
+              prepared,
+              lockedDirection,
+              latestFraction,
+              token,
+              turnBackdrop,
+              turnGrowthMask,
+            );
             return;
           }
           if (prepared) {
@@ -4304,18 +4413,40 @@ export class ReaderController {
             // natural `showCurrentPage` state was never disturbed in
             // the first place, since only `oldHost` — never `prepared`
             // — ever had its height grown here).
+            //
+            // "slide"/"rotate" also need the exact same bleed-masking
+            // this same-style committed turn needs (issue #84's gap
+            // bleed for "slide"; the newly-exposed-grown-height bleed
+            // for "rotate" — see `buildTurnBackdrop`/
+            // `buildTurnGrowthMask`'s own doc comments) — a real,
+            // previously-missing gap in this interactive preview path
+            // specifically, only ever fixed for the click-triggered
+            // committed turn until now.
             if (this.pageTurnAnimationStyle === "rotate") {
+              oldHost.suppressClipPathForAnimation();
+              const naturalHeight = oldHost.element.getBoundingClientRect().height;
               oldHost.growToFullHeight(this.height);
               prepared.suppressClipPathForAnimation();
+              turnGrowthMask = this.buildTurnGrowthMask(oldHost.element, naturalHeight);
+              if (turnGrowthMask) {
+                turnGrowthMask.style.zIndex = "2";
+                oldHost.element.parentElement?.insertBefore(turnGrowthMask, oldHost.element.nextSibling);
+              }
             } else if (this.pageTurnAnimationStyle === "slide") {
               oldHost.suppressClipPathForAnimation();
               prepared.suppressClipPathForAnimation();
+              turnBackdrop = this.buildTurnBackdrop(oldHost.element);
+              if (turnBackdrop) {
+                turnBackdrop.style.zIndex = "2";
+                oldHost.element.parentElement?.insertBefore(turnBackdrop, oldHost.element);
+              }
             }
             this.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);
             this.setPageTurnTransform(
               oldHost.element,
               this.pageTurnPartialAmount(lockedDirection, latestFraction),
               latestFraction,
+              [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])],
             );
             if (isScroll) {
               prepared.element.style.transform = `translateX(${this.scrollDragEnterAmount(lockedDirection, latestFraction)}%)`;
@@ -4331,7 +4462,12 @@ export class ReaderController {
       const fraction = Math.max(0, Math.min(1, Math.abs(deltaX) / containerWidth));
       latestFraction = fraction;
       if (newHost && direction !== undefined) {
-        this.setPageTurnTransform(oldHost.element, this.pageTurnPartialAmount(direction, fraction), fraction);
+        this.setPageTurnTransform(
+          oldHost.element,
+          this.pageTurnPartialAmount(direction, fraction),
+          fraction,
+          [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])],
+        );
         if (isScroll) {
           newHost.element.style.transform = `translateX(${this.scrollDragEnterAmount(direction, fraction)}%)`;
         }
@@ -4356,7 +4492,7 @@ export class ReaderController {
         // incoming page finishes loading.
         return;
       }
-      void this.settleDragPageTurn(oldHost, newHost, direction, latestFraction, capturedToken);
+      void this.settleDragPageTurn(oldHost, newHost, direction, latestFraction, capturedToken, turnBackdrop, turnGrowthMask);
     };
 
     doc.addEventListener("pointermove", onPointerMove);
@@ -4472,9 +4608,13 @@ export class ReaderController {
     direction: 1 | -1,
     fraction: number,
     token: number,
+    turnBackdrop?: HTMLDivElement,
+    turnGrowthMask?: HTMLDivElement,
   ): Promise<void> {
     if (!newHost) {
       this.isTurningPage = false;
+      turnBackdrop?.remove();
+      turnGrowthMask?.remove();
       return;
     }
 
@@ -4490,6 +4630,7 @@ export class ReaderController {
     // calls) — every other style leaves it completely static, revealed
     // rather than moved, so only "scroll" needs to also animate it here.
     const isScroll = this.pageTurnAnimationStyle === "scroll";
+    const extraEls = [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])];
 
     if (!reduceMotion) {
       const remainingFraction = commit ? 1 - fraction : fraction;
@@ -4513,20 +4654,22 @@ export class ReaderController {
         // "scroll" draws no box-shadow (see `playScrollTurn`'s doc
         // comment) — only the other styles need that second transitioned
         // property.
-        oldEl.style.transition = isScroll
-          ? `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`
-          : `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow ${duration}ms ease`;
+        for (const el of [oldEl, ...extraEls]) {
+          el.style.transition = isScroll
+            ? `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`
+            : `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow ${duration}ms ease`;
+        }
         if (isScroll) {
           newEl.style.transition = `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
         }
         requestAnimationFrame(() => {
           if (commit) {
-            this.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1);
+            this.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1, extraEls);
             if (isScroll) {
               newEl.style.transform = "translateX(0%)";
             }
           } else {
-            this.setPageTurnTransform(oldEl, 0, 0);
+            this.setPageTurnTransform(oldEl, 0, 0, extraEls);
             if (isScroll) {
               newEl.style.transform = `translateX(${direction * 100}%)`;
             }
@@ -4535,6 +4678,8 @@ export class ReaderController {
         setTimeout(finish, duration + 250);
       });
     }
+    turnBackdrop?.remove();
+    turnGrowthMask?.remove();
 
     if (this.containerEl) {
       this.containerEl.style.perspective = "";
@@ -5014,20 +5159,70 @@ export class ReaderController {
     const animatingHost = entering ? newHost : previousHost;
     const otherHost = entering ? previousHost : newHost;
 
+    let turnGrowthMaskLeft: HTMLDivElement | undefined;
+    let turnGrowthMaskRight: HTMLDivElement | undefined;
     if (this.pageTurnAnimationStyle === "rotate") {
       // See `animatePageTurn`'s identical single-page reasoning: the
       // animating side grows to `this.height` (its own, separate box-
       // shadow-position fix), while the other side just needs
       // `clip-path` dropped so it doesn't fail to composite opaquely
       // against the animating side's own 3D transform (issue #81).
+      //
+      // Measuring natural height *after* `suppressClipPathForAnimation`
+      // (which `growToFullHeight`/`growColumnToFullHeight` call
+      // internally anyway, first thing, before growing) rather than
+      // before it — see `buildTurnGrowthMask`'s doc comment and
+      // `animatePageTurn`'s identical fix: measuring before it would
+      // capture the *pre-shrink* height (with the bottom inset band
+      // still included), leaving a real gap exactly that band's height
+      // tall for bleed to sneak through unmasked.
+      //
+      // Both masks are inserted as *siblings of `animatingEl`* (not of
+      // the column/iframe element `buildTurnGrowthMask` measured to
+      // position them) — unlike the single-page/same-chapter case,
+      // where the iframe getting the rotation transform *is*
+      // `animatingEl` itself, here `animatingEl` is the *wrapper*
+      // (`stageHiddenHostElement`'s div, or a previous turn's leftover
+      // one) with the actual iframe(s) nested one level inside it.
+      // Inserting a mask as a *child* of that wrapper (a sibling of the
+      // iframe) would have it inherit the wrapper's own rotation
+      // transform from `playPageTurnAnimation` *and* get its own
+      // (`extraTurnEls`) applied on top — doubling the rotation. As a
+      // sibling of the wrapper instead, it only ever gets the one
+      // rotation `extraTurnEls` applies directly.
       if (bothSpread) {
-        (animatingHost as SpreadPaginatedHost).growColumnToFullHeight("left", this.height);
-        (animatingHost as SpreadPaginatedHost).growColumnToFullHeight("right", this.height);
+        const spreadAnimatingHost = animatingHost as SpreadPaginatedHost;
+        const leftEl = this.spreadColumnElement(spreadAnimatingHost, 0);
+        const rightEl = this.spreadColumnElement(spreadAnimatingHost, 1);
+        spreadAnimatingHost.suppressColumnClipPathForAnimation("left");
+        spreadAnimatingHost.suppressColumnClipPathForAnimation("right");
+        const leftNaturalHeight = leftEl.getBoundingClientRect().height;
+        const rightNaturalHeight = rightEl.getBoundingClientRect().height;
+        spreadAnimatingHost.growColumnToFullHeight("left", this.height);
+        spreadAnimatingHost.growColumnToFullHeight("right", this.height);
         (otherHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("left");
         (otherHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("right");
+        turnGrowthMaskLeft = this.buildTurnGrowthMask(leftEl, leftNaturalHeight);
+        turnGrowthMaskRight = this.buildTurnGrowthMask(rightEl, rightNaturalHeight);
+        if (turnGrowthMaskLeft) {
+          turnGrowthMaskLeft.style.zIndex = "2";
+          animatingEl.parentElement?.insertBefore(turnGrowthMaskLeft, animatingEl.nextSibling);
+        }
+        if (turnGrowthMaskRight) {
+          turnGrowthMaskRight.style.zIndex = "2";
+          animatingEl.parentElement?.insertBefore(turnGrowthMaskRight, animatingEl.nextSibling);
+        }
       } else {
-        (animatingHost as PaginatedContentHost).growToFullHeight(this.height);
+        const singleAnimatingHost = animatingHost as PaginatedContentHost;
+        singleAnimatingHost.suppressClipPathForAnimation();
+        const naturalHeight = singleAnimatingHost.element.getBoundingClientRect().height;
+        singleAnimatingHost.growToFullHeight(this.height);
         (otherHost as PaginatedContentHost).suppressClipPathForAnimation();
+        turnGrowthMaskLeft = this.buildTurnGrowthMask(singleAnimatingHost.element, naturalHeight);
+        if (turnGrowthMaskLeft) {
+          turnGrowthMaskLeft.style.zIndex = "2";
+          animatingEl.parentElement?.insertBefore(turnGrowthMaskLeft, animatingEl.nextSibling);
+        }
       }
     } else if (this.pageTurnAnimationStyle === "slide") {
       // See `animatePageTurn`'s identical reasoning (issues #81/#84):
@@ -5156,7 +5351,12 @@ export class ReaderController {
         animatingEl,
         animatingEl,
         direction,
-        [...(animatedOverlayEl ? [animatedOverlayEl] : []), ...(turnBackdrop ? [turnBackdrop] : [])],
+        [
+          ...(animatedOverlayEl ? [animatedOverlayEl] : []),
+          ...(turnBackdrop ? [turnBackdrop] : []),
+          ...(turnGrowthMaskLeft ? [turnGrowthMaskLeft] : []),
+          ...(turnGrowthMaskRight ? [turnGrowthMaskRight] : []),
+        ],
         entering,
       );
     }
@@ -5164,6 +5364,8 @@ export class ReaderController {
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     turnBackdrop?.remove();
+    turnGrowthMaskLeft?.remove();
+    turnGrowthMaskRight?.remove();
     this.isAnimatingPageTurn = false;
 
     if (this.pageTurnAnimationStyle === "slide" || this.pageTurnAnimationStyle === "rotate") {
