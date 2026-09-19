@@ -42,6 +42,23 @@ const MIN_SPREAD_COLUMN_WIDTH = 480;
  * users still get working in-content links on *both* columns, since
  * `ReaderController.setUpLinkInterception` attaches to every document
  * `contentDocuments()` returns, not just the primary one.
+ *
+ * Every chapter begins with one blank spacer page in the left column,
+ * so its own real first page always lands in the *right* column instead
+ * (issue #90) — the familiar book convention of a chapter opening on a
+ * fresh right-hand (recto) page, rather than however the previous
+ * chapter's own page count happened to land. `pageIndex`/`goToPageIndex`/
+ * etc. all still operate purely in terms of *real* page indices (0 is
+ * still this spine item's own first page) — the blank spacer is an
+ * internal bookkeeping detail (see `virtualIndex`), never something a
+ * caller needs to know about or account for. The spacer is a plain
+ * overlay drawn *on top of* the left column's iframe, not a substitute
+ * for it or a `visibility: hidden` left column the way the right column
+ * sometimes is — the left column's iframe must stay fully present and
+ * unhidden for assistive technology even while a spacer visually covers
+ * it for sighted readers, since (per the previous paragraph) it's the
+ * *only* copy of this spine item's complete text a screen reader ever
+ * sees, regardless of which page is currently visible on screen.
  */
 export class SpreadPaginatedHost {
   /** The gap between the two columns — wide enough to read as a genuine
@@ -56,6 +73,18 @@ export class SpreadPaginatedHost {
   private readonly left: PaginatedContentHost;
   private readonly right: PaginatedContentHost;
   private readonly containerEl: HTMLDivElement;
+  private readonly leftWrapperEl: HTMLDivElement;
+  private readonly blankSpacerEl: HTMLDivElement;
+  /** This spread's position, counting the chapter-opening blank spacer
+   * (see the class doc comment) as index 0 — i.e. one *higher* than the
+   * real page index it's paired with. Always even (left shows
+   * `virtualIndex - 1`, right shows `virtualIndex`), advancing/
+   * retreating by exactly 2 per `nextSpread`/`previousSpread` call, the
+   * same as a real page index would without the spacer. `virtualIndex
+   * - 1 < 0` (only ever true at `virtualIndex === 0`) is what actually
+   * triggers showing the blank spacer instead of a real page in the
+   * left column — see `sync`. */
+  private virtualIndex = 0;
 
   public constructor(width: number, height: number, ownerDocument?: Document) {
     const doc = ownerDocument ?? document;
@@ -68,6 +97,24 @@ export class SpreadPaginatedHost {
     // never presents as confusing duplicate content.
     this.right.element.setAttribute("aria-hidden", "true");
     this.right.element.setAttribute("tabindex", "-1");
+
+    // See the class doc comment's note on why this is a plain overlay
+    // rather than hiding `left.element` itself. Background color is
+    // refreshed from the left column's own current page theme every time
+    // `sync` runs (rather than requiring every caller that ever changes
+    // the page theme to *also* remember to tell this class about it
+    // separately) — see `sync`.
+    this.blankSpacerEl = doc.createElement("div");
+    this.blankSpacerEl.setAttribute("aria-hidden", "true");
+    this.blankSpacerEl.style.position = "absolute";
+    this.blankSpacerEl.style.inset = "0";
+    this.blankSpacerEl.style.display = "none";
+
+    this.leftWrapperEl = doc.createElement("div");
+    this.leftWrapperEl.style.position = "relative";
+    this.leftWrapperEl.style.width = `${columnWidth}px`;
+    this.leftWrapperEl.style.flexShrink = "0";
+    this.leftWrapperEl.append(this.left.element, this.blankSpacerEl);
 
     const divider = doc.createElement("div");
     divider.style.width = `${SpreadPaginatedHost.GUTTER_WIDTH}px`;
@@ -91,27 +138,44 @@ export class SpreadPaginatedHost {
     // the divider's bottom and the window's bottom edge, whose size
     // varied with however much text happened to be on that page.
     this.containerEl.style.height = `${height}px`;
-    this.containerEl.append(this.left.element, divider, this.right.element);
+    this.containerEl.append(this.leftWrapperEl, divider, this.right.element);
   }
 
   public get element(): HTMLDivElement {
     return this.containerEl;
   }
 
+  /** This spine item's own real page index currently shown — 0 is
+   * always this chapter's actual first page, regardless of the blank
+   * spacer that precedes it in the left column (see the class doc
+   * comment) — `virtualIndex` is this class's own internal bookkeeping,
+   * never something callers need to translate themselves. Reports the
+   * *right* column's real index while the spacer is showing (there's no
+   * real left-column page to report yet at that point). */
   public get pageIndex(): number {
-    return this.left.currentPageIndex;
+    return Math.max(0, this.virtualIndex - 1);
   }
 
   public get pageCount(): number {
     return this.left.pageCount;
   }
 
+  /** Whether the left column is currently showing the chapter-opening
+   * blank spacer (see the class doc comment) rather than a real page —
+   * lets a caller's own *static* running header/footer (`PageFurniture`,
+   * which has no other way to know this — `pageIndex`/`secondPageIndex`
+   * alone can't tell "really is page 0" apart from "the spacer is still
+   * showing") skip drawing a title/page-number over a page that's
+   * supposed to look genuinely blank. */
+  public get isShowingBlankSpacer(): boolean {
+    return this.virtualIndex === 0;
+  }
+
   /** The companion column's page index, or `undefined` if there isn't one
    * to show (the primary column is on the last page of the chapter) — for
    * the shell's "Pages X–Y of Z" display. */
   public get secondPageIndex(): number | undefined {
-    const index = this.left.currentPageIndex + 1;
-    return index < this.left.pageCount ? index : undefined;
+    return this.virtualIndex < this.left.pageCount ? this.virtualIndex : undefined;
   }
 
   /** All content documents currently rendering this spine item — both
@@ -149,26 +213,31 @@ export class SpreadPaginatedHost {
   public async open(contentLoader: ContentLoader, resolver: ResourceUrlResolver, spineIndex: number): Promise<void> {
     await this.left.open(contentLoader, resolver, spineIndex);
     await this.right.open(contentLoader, resolver, spineIndex);
-    this.syncRight();
+    this.virtualIndex = 0;
+    this.sync();
   }
 
   /** The left column's current position — see `PaginatedContentHost.
    * currentPosition`. The right column has no independent reading
    * position of its own to preserve; it always just mirrors "one page
-   * after the left column" (see `syncRight`). */
+   * after the left column" (see `sync`). Reports `undefined` while the
+   * blank spacer is showing (there's no real position in the left
+   * column to report — callers fall back to the right column's own
+   * page via `currentPagesAndDocuments`, same as always). */
   public currentPosition(): DomBreakPoint | undefined {
-    return this.left.currentPosition();
+    return this.virtualIndex === 0 ? undefined : this.left.currentPosition();
   }
 
   /** Both currently-visible columns' `{ page, document }` pairs (see
    * `PaginatedContentHost.currentPageAndDocument`) — just the left
    * column's if the right one is hidden (the chapter's last, unpaired
-   * page — see `syncRight`). Used to test whether some other DOM
-   * position (e.g. a saved bookmark) falls on *either* visible page of
-   * the spread, not just the primary one. */
+   * page — see `sync`), or just the right column's while the blank
+   * spacer is showing in the left column. Used to test whether some
+   * other DOM position (e.g. a saved bookmark) falls on *either* visible
+   * page of the spread, not just the primary one. */
   public currentPagesAndDocuments(): Array<{ page: Page; document: Document }> {
     const result: Array<{ page: Page; document: Document }> = [];
-    const leftEntry = this.left.currentPageAndDocument();
+    const leftEntry = this.virtualIndex === 0 ? undefined : this.left.currentPageAndDocument();
     if (leftEntry) {
       result.push(leftEntry);
     }
@@ -188,87 +257,149 @@ export class SpreadPaginatedHost {
   public relayout(width: number, height: number): void {
     const columnWidth = SpreadPaginatedHost.columnWidth(width);
     this.containerEl.style.height = `${height}px`;
+    this.leftWrapperEl.style.width = `${columnWidth}px`;
     this.left.relayout(columnWidth, height);
     this.right.relayout(columnWidth, height);
-    this.syncRight();
+    this.sync();
   }
 
   /** Jumps the left column to `(node, offset)` — used for TOC/fragment
    * navigation, bridged CFI restores, and in-content links, exactly like
-   * `PaginatedContentHost.goToPosition` — then re-syncs the right column. */
+   * `PaginatedContentHost.goToPosition` — then re-syncs the right column.
+   * Always lands the target in the left column and its immediate next
+   * page in the right (i.e. `virtualIndex` becomes whatever real page
+   * `left` landed on, plus 1) regardless of the usual left/right parity
+   * `goToPageIndex`/`nextSpread`/etc. otherwise maintain — an arbitrary
+   * jump doesn't owe the surrounding pagination any particular
+   * alignment, and ordinary forward/backward turns from here on simply
+   * continue alternating from this new position exactly as they always
+   * do. */
   public goToPosition(node: Node, offset: number): void {
     this.left.goToPosition(node, offset);
-    this.syncRight();
+    this.virtualIndex = this.left.currentPageIndex + 1;
+    this.sync();
   }
 
-  /** Jumps directly to `index` in the left column and re-syncs the right
-   * column to show its companion page — used by the progress scrubber's
-   * exact/proportional seeking (see `ReaderController.openSpineItem`'s
+  /** Jumps to `index` (a real page index — see the class doc comment on
+   * why callers never need to think about the blank spacer) and re-syncs
+   * the companion column — used by the progress scrubber's exact/
+   * proportional seeking (see `ReaderController.openSpineItem`'s
    * `landOnPageIndex`/`landOnFractionInItem` options), which previously
    * had no way to land on a specific page in spread mode at all and
    * silently fell back to the chapter's default first page instead — a
    * real bug, since it meant a scrubber release could land somewhere
    * completely different from what its own drag preview had just shown.
-   * A no-op if `index` is out of range, matching
+   * Lands `index` in whichever column the spacer-shifted left/right
+   * parity puts it in — not always the left column the way it would
+   * without the spacer — rather than forcing it into the left column
+   * regardless, which would silently break that parity for every page
+   * after it. A no-op if `index` is out of range, matching
    * `PaginatedContentHost.goToPageIndex`. */
   public goToPageIndex(index: number): void {
-    this.left.goToPageIndex(index);
-    this.syncRight();
+    if (index < 0 || index >= this.left.pageCount) {
+      return;
+    }
+    this.virtualIndex = index % 2 === 0 ? index : index + 1;
+    this.sync();
   }
 
   /** Shows the final spread of the chapter — used when navigating
-   * backward into this spine item from the one after it. Lands one page
-   * short of the last page (rather than the last page itself as the
-   * *left* column) so the very last page of the chapter is still visible,
-   * as the companion column, instead of past the edge of the spread. */
+   * backward into this spine item from the one after it. Simply lands on
+   * the chapter's actual last real page via `goToPageIndex`, whichever
+   * column the spacer-shifted parity puts it in (alone in the left
+   * column, with no companion, for an odd total *extended* page count —
+   * see `nextSpread` — exactly matching where forward navigation would
+   * have arrived on its own; landing anywhere else here would be a
+   * discontinuity the instant the reader turned back forward again). */
   public goToLastPage(): void {
-    const lastIndex = Math.max(0, this.left.pageCount - 1);
-    this.left.goToPageIndex(Math.max(0, lastIndex - 1));
-    this.syncRight();
+    this.goToPageIndex(Math.max(0, this.left.pageCount - 1));
+  }
+
+  /** Whether there's a further spread within this chapter to turn
+   * forward to — i.e. whether `nextSpread` would have any effect.
+   * Checked against `pageCount - 1`, not `pageCount` (`virtualIndex`'s
+   * own effective total, counting the blank spacer as one extra page —
+   * see the class doc comment): once the *right* column is showing the
+   * chapter's actual last page, there is nothing left to advance to,
+   * even though `virtualIndex` hasn't reached its own maximum yet (it
+   * never does, for an even real page count — the last spread pairs
+   * `pageCount - 2` with `pageCount - 1`). This is `SpreadPaginatedHost`'s
+   * own copy of a real, confirmed bug (issue #91) originally found (and
+   * fixed) in terms of real page indices, before the blank spacer added
+   * its own extra "virtual" page to the count — the exact same
+   * off-by-one, just re-derived here against `virtualIndex`'s own
+   * effective total instead. Exposed separately from `nextSpread` itself
+   * so a caller (the animated turn's own `prepareIncomingSpread`) can
+   * check this without side effects. */
+  public hasNextSpread(): boolean {
+    return this.virtualIndex < this.left.pageCount - 1;
+  }
+
+  /** Whether there's a further spread within this chapter to turn
+   * backward to — `false` once the left column is already on the
+   * chapter's first spread (`virtualIndex === 0`, the blank spacer
+   * paired with the chapter's own real first page). */
+  public hasPreviousSpread(): boolean {
+    return this.virtualIndex > 0;
   }
 
   /** Turns the spread forward by two pages. Returns `false` (without
-   * effect) if the left column is already on the chapter's last spread —
-   * checked against `pageCount - 2`, not `pageCount - 1`: once the
-   * *right* column is showing the chapter's actual last page, there is
-   * nothing left to advance to, even though the *left* column's own
-   * index hasn't reached `pageCount - 1` itself (it never does, for an
-   * even page count — the last spread pairs `pageCount - 2` with
-   * `pageCount - 1`). Checking against `pageCount - 1` here was a real,
-   * confirmed bug (issue #91): from that last full spread, "next" would
-   * pass this check, then clamp `currentPageIndex + 2` back down to
-   * `pageCount - 1` anyway — redisplaying the *same* last page, now
-   * alone in the left column, instead of correctly reporting "no more
-   * spread here" so the caller advances to the next chapter. */
+   * effect, see `hasNextSpread`) if already on the chapter's last
+   * spread. */
   public nextSpread(): boolean {
-    if (this.left.currentPageIndex >= this.left.pageCount - 2) {
+    if (!this.hasNextSpread()) {
       return false;
     }
-    this.left.goToPageIndex(Math.min(this.left.currentPageIndex + 2, this.left.pageCount - 1));
-    this.syncRight();
+    this.virtualIndex = Math.min(this.virtualIndex + 2, this.left.pageCount);
+    this.sync();
     return true;
   }
 
   /** Turns the spread backward by two pages. Returns `false` (without
-   * effect) if the left column is already on the chapter's first page. */
+   * effect, see `hasPreviousSpread`) if already on the chapter's first
+   * spread. */
   public previousSpread(): boolean {
-    if (this.left.currentPageIndex <= 0) {
+    if (!this.hasPreviousSpread()) {
       return false;
     }
-    this.left.goToPageIndex(Math.max(this.left.currentPageIndex - 2, 0));
-    this.syncRight();
+    this.virtualIndex = Math.max(this.virtualIndex - 2, 0);
+    this.sync();
     return true;
   }
 
-  /** Shows `left.currentPageIndex + 1` in the right column, or hides it
-   * (rather than showing stale content) if that would run past the end
-   * of the chapter — e.g. an odd total page count leaves the very last
-   * page without a companion, same as a real book's blank facing page. */
-  private syncRight(): void {
-    const index = this.left.currentPageIndex + 1;
-    if (index < this.right.pageCount) {
+  /** Shows `virtualIndex - 1` in the left column (or, at `virtualIndex
+   * === 0`, the blank spacer instead — see the class doc comment) and
+   * `virtualIndex` in the right column, hiding the latter (rather than
+   * showing stale content) if that would run past the end of the
+   * chapter — e.g. an odd total page count leaves the very last page
+   * without a companion, same as a real book's blank facing page. Also
+   * refreshes the blank spacer's own background color from the left
+   * column's current page theme, so it stays looking like a genuine
+   * blank page rather than needing every future caller that changes the
+   * page theme to separately remember to tell this class about it too. */
+  private sync(): void {
+    const leftIndex = this.virtualIndex - 1;
+    const showSpacer = leftIndex < 0;
+    this.blankSpacerEl.style.display = showSpacer ? "block" : "none";
+    if (!showSpacer) {
+      this.left.goToPageIndex(leftIndex);
+    }
+    // `getComputedStyle` (not reading `documentElement.style` directly)
+    // because the *default* page theme is never actually set as an
+    // inline style at all — it's only ever a plain CSS custom property
+    // default in the content document's own baked-in stylesheet (see
+    // `ReadingTheme.CSS`), which only `getComputedStyle` resolves;
+    // `applyPageTheme`'s inline `:root` override, once a reader actually
+    // changes the theme, works either way.
+    const leftBody = this.left.element.contentDocument?.body;
+    if (leftBody) {
+      this.blankSpacerEl.style.background = getComputedStyle(leftBody).backgroundColor;
+    }
+
+    const rightIndex = this.virtualIndex;
+    if (rightIndex < this.right.pageCount) {
       this.right.element.style.visibility = "visible";
-      this.right.goToPageIndex(index);
+      this.right.goToPageIndex(rightIndex);
     } else {
       this.right.element.style.visibility = "hidden";
     }

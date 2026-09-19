@@ -134,7 +134,12 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
         ]
       : [{ left: 0, right: 0, width: "auto" }];
   const headerTexts = columnBands.length > 1 ? [snapshot.title, snapshot.currentChapterLabel] : undefined;
-  const footerNumbers = columnBands.length > 1 ? [primaryPageNumber, secondaryPageNumber] : [primaryPageNumber];
+  // No footer number over the left column's blank spacer either — see
+  // the header band's identical check just above in the JSX below.
+  const footerNumbers =
+    columnBands.length > 1
+      ? [snapshot.isPrimaryPageBlankSpacer ? undefined : primaryPageNumber, secondaryPageNumber]
+      : [primaryPageNumber];
 
   // Where each band's own *right* edge sits, for the bookmark ribbon
   // (issue #51) — deliberately not reusing `band.left`/`band.right`
@@ -153,32 +158,42 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
       {!snapshot.isAnimatingPageTurn && (
         <>
           {headerTexts ? (
-            columnBands.map((band, index) => (
-              <div
-                key={index}
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: band.left,
-                  right: band.right,
-                  width: band.width,
-                  boxSizing: "border-box",
-                  height: ReadingTheme.PAGE_INSET_TOP,
-                  zIndex: 5,
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "center",
-                  padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
-                  pointerEvents: "none",
-                  overflow: "hidden",
-                }}
-              >
-                <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
-                  {headerTexts[index]}
-                </Caption1>
-              </div>
-            ))
+            columnBands.map((band, index) => {
+              // The left column's own band entirely, not just its text —
+              // see `ReaderSnapshot.isPrimaryPageBlankSpacer`'s doc
+              // comment (issue #90): a chapter-opening blank spacer page
+              // should look genuinely blank, not carry a running header
+              // for content that isn't actually showing there.
+              if (index === 0 && snapshot.isPrimaryPageBlankSpacer) {
+                return null;
+              }
+              return (
+                <div
+                  key={index}
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: band.left,
+                    right: band.right,
+                    width: band.width,
+                    boxSizing: "border-box",
+                    height: ReadingTheme.PAGE_INSET_TOP,
+                    zIndex: 5,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "center",
+                    padding: `${HEADER_TEXT_TOP_OFFSET}px 20px 0`,
+                    pointerEvents: "none",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
+                    {headerTexts[index]}
+                  </Caption1>
+                </div>
+              );
+            })
           ) : (
             <div
               aria-hidden="true"

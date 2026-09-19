@@ -220,6 +220,73 @@ test.describe("paginated reflowable navigation correctness", () => {
     }
   });
 
+  test("two-page spread: every chapter begins with a blank left column (issue #90)", async () => {
+    const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      async function leftColumnState(): Promise<{ spacerVisible: boolean; accessible: boolean }> {
+        return readerPage.evaluate(() => {
+          const iframes = Array.from(document.querySelectorAll("iframe")).filter(
+            (el) => el.getBoundingClientRect().x === 0 && el.getBoundingClientRect().width > 600,
+          );
+          const left = iframes[0] as HTMLIFrameElement | undefined;
+          // The blank spacer overlay is a plain sibling `<div>` next to
+          // the left column's own iframe (see `SpreadPaginatedHost`'s
+          // constructor) — checking *its* visibility directly is the
+          // only reliable signal here: the iframe's own internal scroll
+          // position is left untouched while the spacer covers it (see
+          // `sync`), so both `body.innerText` (always reflects the
+          // entire document regardless of scroll — pagination never
+          // fragments the DOM) *and* `elementFromPoint` called on the
+          // iframe's own document (unaffected by an overlay that isn't
+          // even part of that document) would still report real content
+          // there either way, telling this check nothing useful.
+          const spacer = left?.nextElementSibling as HTMLElement | null;
+          return {
+            spacerVisible: spacer?.getAttribute("aria-hidden") === "true" && getComputedStyle(spacer).display !== "none",
+            // Left must stay fully present to assistive technology even
+            // while visually blank — see `SpreadPaginatedHost`'s own doc
+            // comment on why hiding it outright (the way the redundant
+            // right column is *intentionally* hidden) would be a real
+            // accessibility regression, not just a cosmetic wrinkle.
+            accessible: left !== undefined && left.getAttribute("aria-hidden") === null && left.style.visibility !== "hidden",
+          };
+        });
+      }
+
+      // Chapter one's very first spread: left column must look blank
+      // (the spacer overlay showing) but remain accessible.
+      const atBookStart = await leftColumnState();
+      expect(atBookStart.spacerVisible, "chapter one's opening spread has no blank spacer showing").toBe(true);
+      expect(atBookStart.accessible, "left column was hidden from assistive technology").toBe(true);
+
+      // Cross into chapter two (this fixture's chapter one is 120
+      // paragraphs long, comfortably reached in under 15 forward clicks
+      // — see the previous test) and confirm its own opening spread
+      // gets the identical treatment.
+      let sawChapterTwoBlankStart = false;
+      for (let click = 0; click < 15 && !sawChapterTwoBlankStart; click++) {
+        await readerPage.mouse.click(1200, 450);
+        await readerPage.waitForTimeout(500);
+        const chapterTwoVisible = await readerPage.evaluate(() => {
+          const iframes = Array.from(document.querySelectorAll("iframe"));
+          return iframes.some((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText?.includes("CHAPTER TWO"));
+        });
+        if (!chapterTwoVisible) {
+          continue;
+        }
+        const state = await leftColumnState();
+        expect(state.spacerVisible, "chapter two's opening spread has no blank spacer showing").toBe(true);
+        expect(state.accessible, "left column was hidden from assistive technology").toBe(true);
+        sawChapterTwoBlankStart = true;
+      }
+      expect(sawChapterTwoBlankStart, "never reached chapter two's own opening spread").toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
   test("keyboard navigation (ArrowRight) advances the same way clicking does", async () => {
     const { context, readerPage } = await launchReader(LONG_CONTENT_EPUB, {
       viewport: { width: 760, height: 900 },

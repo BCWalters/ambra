@@ -246,6 +246,13 @@ export interface ReaderSnapshot {
    * — `undefined` outside spread mode, or if there's no companion page
    * (the chapter's last page has no facing page). */
   secondPageIndex: number | undefined;
+  /** `true` when the left column of a spread is currently showing the
+   * chapter-opening blank spacer (see `SpreadPaginatedHost`'s own doc
+   * comment on why every chapter begins with one — issue #90) rather
+   * than a real page — tells `PageFurniture` to skip drawing a running
+   * header/footer over that column entirely, the same way it already
+   * skips them for a hidden companion column with no page to show. */
+  isPrimaryPageBlankSpacer: boolean;
   /** The reader pane's current width in CSS pixels — lets `PageFurniture`
    * replicate `SpreadPaginatedHost`'s own column/gutter geometry exactly
    * (via `SpreadPaginatedHost.effectiveColumnWidth`/`GUTTER_WIDTH`) so its
@@ -784,6 +791,7 @@ export class ReaderController {
         isSpread: this.host instanceof SpreadPaginatedHost,
         secondPageIndex:
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
+        isPrimaryPageBlankSpacer: this.host instanceof SpreadPaginatedHost ? this.host.isShowingBlankSpacer : false,
         paneWidth: this.width,
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarksOnCurrentPage().length > 0,
@@ -3962,17 +3970,14 @@ export class ReaderController {
    * when `oldHost` is already at that edge of the chapter (there's
    * nothing to turn *to*) — unlike the single-page version, a spread one
    * page short of the end still has a valid (if lopsided) next spread to
-   * turn to, so this is checked directly rather than by an out-of-range
-   * page index. The forward check is against `pageCount - 2`, not
-   * `pageCount - 1` — see `nextSpread`'s identical fix (issue #91) for
-   * why: once the right column already shows the chapter's actual last
-   * page, there's nothing left to turn to, even though the left column's
-   * own index never reaches `pageCount - 1` itself for an even page
-   * count. Checking against `pageCount - 1` here was the animated
-   * turn's own copy of that same bug — one page turn past the last full
-   * spread redisplayed that identical spread (the last page now alone
-   * in the left column) instead of correctly falling through to the
-   * next chapter. */
+   * turn to, so this is checked directly via `hasNextSpread`/
+   * `hasPreviousSpread` rather than by an out-of-range page index (a
+   * plain `pageIndex`/`pageCount` comparison here isn't reliable enough
+   * on its own once chapters can begin with a blank spacer page — issue
+   * #90 — since `pageIndex` reports 0 both for "really is at the
+   * chapter's first real page" and for "the spacer is still showing",
+   * two states `SpreadPaginatedHost` itself needs to tell apart but this
+   * check does not). */
   private async prepareIncomingSpread(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -3980,7 +3985,7 @@ export class ReaderController {
     if (!this.containerEl) {
       return undefined;
     }
-    if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 2 : oldHost.pageIndex <= 0) {
+    if (direction === 1 ? !oldHost.hasNextSpread() : !oldHost.hasPreviousSpread()) {
       return undefined;
     }
     const targetIndex =
