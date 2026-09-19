@@ -220,7 +220,7 @@ test.describe("paginated reflowable navigation correctness", () => {
     }
   });
 
-  test("two-page spread: a chapter starting right after the previous one's unpaired last page merges into the same spread, never a blank page (issue #90/#92)", async () => {
+  test("two-page spread: a chapter starting right after the previous one's unpaired last page merges into the same spread, never a blank page (issue #90)", async () => {
     // A width chosen so `TWO_CHAPTER_EPUB`'s chapter one (120 short
     // paragraphs) lands its own real last page *unpaired* — alone in the
     // left column, the right column hidden — the opposite condition
