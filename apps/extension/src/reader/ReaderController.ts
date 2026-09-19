@@ -478,7 +478,26 @@ export class ReaderController {
    * its own drift into the just-restored position. */
   private appliedWidth = 0;
   private appliedHeight = 0;
+  /** Drives the `Spinner` overlay `ReaderApp` shows — deliberately
+   * *not* set the instant a spine-item load starts (see
+   * `openSpineItem`'s own `loadingTimeout`, issue #88): most loads,
+   * including every chapter-boundary crossing while turning pages,
+   * resolve near-instantly, and flashing a spinner for a handful of
+   * milliseconds reads as more distracting than showing nothing at
+   * all. `isLoadInFlight` below is the *immediate*, un-delayed
+   * "something is loading" signal other internal logic (`resize`'s
+   * own deferral) still needs right away — the two used to be the
+   * same field, which would have made `resize` briefly blind to an
+   * in-progress load during the new delay window. */
   private isLoading = false;
+  /** `true` for the *entire* duration of an in-progress `openSpineItem`
+   * call, set/cleared synchronously with no delay — unlike
+   * `isLoading` above (the delayed, purely visual spinner flag), any
+   * logic that needs to know *right now* whether it's unsafe to act
+   * (currently just `resize`, deferring itself via `pendingResize`
+   * rather than racing a host that's still being created) must check
+   * this one instead. */
+  private isLoadInFlight = false;
   /** Guards against overlapping `turnPage` calls — a real bug caught via
    * Chromium testing: rapid repeated clicks/keypresses could start a
    * second animated page turn (see `animatePageTurn`) while a first was
@@ -835,7 +854,14 @@ export class ReaderController {
     // (while `getProgress` is in flight) where it otherwise wouldn't be
     // set yet, letting a resize slip through against a not-yet-created
     // host. This exact race was caught via real-Chromium testing.
+    //
+    // Shown immediately here (unlike `openSpineItem`'s own delayed
+    // spinner, issue #88) — this is the very first load, with no
+    // existing content on screen yet to make a brief delay
+    // unnoticeable, so there's no "distracting flash" concern the way
+    // there is for a fast in-session chapter turn.
     this.isLoading = true;
+    this.isLoadInFlight = true;
     this.notify();
 
     const resumed = await this.tryResume();
@@ -1756,11 +1782,11 @@ export class ReaderController {
    * host swap rather than a plain relayout, since a spread is
    * architecturally two iframes, not one. */
   public resize(width: number, height: number): void {
-    this.diagnostics.record(`resize width=${width} height=${height} isLoading=${this.isLoading}`);
+    this.diagnostics.record(`resize width=${width} height=${height} isLoadInFlight=${this.isLoadInFlight}`);
     this.width = width;
     this.height = height;
 
-    if (this.isLoading) {
+    if (this.isLoadInFlight) {
       this.pendingResize = { width, height };
       return;
     }
@@ -5509,14 +5535,31 @@ export class ReaderController {
       return;
     }
 
-    this.isLoading = true;
     this.error = undefined;
     this.errorSeverity = undefined;
-    this.notify();
+    this.isLoadInFlight = true;
     // See this method's doc comment on `spineOpenToken` for why every
     // return path below (including the catch block) must check this
     // before touching any shared state.
     const token = ++this.spineOpenToken;
+    // Issue #88: only actually *show* the loading spinner if this load
+    // takes long enough to be worth interrupting the reader over — most
+    // spine-item loads (including every chapter-boundary crossing while
+    // turning pages) resolve near-instantly, and flashing a spinner for
+    // a handful of milliseconds read as more distracting than no
+    // feedback at all. `finished` (not just `token === this.spineOpenToken`,
+    // which stays true for this exact call until a *newer* one starts)
+    // guards against the timer firing after this same call has already
+    // completed — e.g. a fast load finishing before the 200ms elapses —
+    // which would otherwise flip the spinner back on with nothing left
+    // to ever turn it back off again.
+    let finished = false;
+    const loadingTimeout = setTimeout(() => {
+      if (!finished && token === this.spineOpenToken) {
+        this.isLoading = true;
+        this.notify();
+      }
+    }, 200);
     this.diagnostics.record(
       `openSpineItem start spineIndex=${spineIndex} token=${token} options=${JSON.stringify(options)}`,
     );
@@ -5741,8 +5784,11 @@ export class ReaderController {
       // especially since the newer navigation it lost to has already
       // shown *something* in its place.
     } finally {
+      finished = true;
+      clearTimeout(loadingTimeout);
       if (token === this.spineOpenToken) {
         this.isLoading = false;
+        this.isLoadInFlight = false;
         this.notify();
 
         if (this.pendingResize) {
