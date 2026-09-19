@@ -3370,6 +3370,26 @@ export class ReaderController {
     // play them alongside.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
+    // "rotate" only ever builds `outgoingOverlay`/`incomingOverlay` for
+    // the *right* column (see below — the one that actually turns, or
+    // is revealed by the turn). The *left* column of both `oldHost` and
+    // `newHost` also gets its `clip-path` suppressed further down (the
+    // same Chromium overlapping-iframe fix, issue #81 — both left
+    // columns occupy the exact same rect throughout, so both need it
+    // regardless of which is actually visible), but — unlike the right
+    // column — neither ever received a matching furniture-overlay mask,
+    // leaving whichever one is actually on top (`oldHost.left` for a
+    // forward/exiting turn, `newHost.left` for a backward/entering one
+    // — see `stagePageTurn`'s `hostEl.style.zIndex = "2"`, applied to
+    // the *whole* turning host, both its columns) with its own top/
+    // bottom inset bands exposed and nothing covering them for the
+    // turn's whole duration: a real, reported bug ("clipping issues on
+    // the pages being covered/uncovered, not the flipping page"). Built
+    // unconditionally for both sides, exactly mirroring the redundant-
+    // safety pattern already used for the right column, since it's
+    // cheap and removes any doubt about which side ends up visible.
+    let outgoingLeftOverlay: HTMLDivElement | undefined;
+    let incomingLeftOverlay: HTMLDivElement | undefined;
     if (!this.shouldSkipPageTurnAnimation()) {
       const title = this.pkg.metadata.title;
       const chapterLabel = this.chapterLabel(this.spineIndex);
@@ -3423,6 +3443,31 @@ export class ReaderController {
             footerText: incomingSecondary !== undefined ? `Page ${incomingSecondary}` : undefined,
           },
         ]);
+
+        // The left column's own overlay — see `outgoingLeftOverlay`'s
+        // declaration above for why this is needed at all. Same
+        // left-title/page-number convention the non-"rotate" branch's
+        // own `bands()` helper uses for this column, since the content
+        // shown there doesn't depend on turn style.
+        const oldLeftColumnEl = this.spreadColumnElement(oldHost, 0);
+        const newLeftColumnEl = this.spreadColumnElement(newHost, 0);
+        const leftHeader = { mode: "single" as const, text: title };
+        outgoingLeftOverlay = this.buildTurnFurnitureOverlay(oldLeftColumnEl, [
+          {
+            left: 0,
+            width: oldLeftColumnEl.getBoundingClientRect().width,
+            header: leftHeader,
+            footerText: outgoingPrimary !== undefined ? `Page ${outgoingPrimary}` : undefined,
+          },
+        ]);
+        incomingLeftOverlay = this.buildTurnFurnitureOverlay(newLeftColumnEl, [
+          {
+            left: 0,
+            width: newLeftColumnEl.getBoundingClientRect().width,
+            header: leftHeader,
+            footerText: incomingPrimary !== undefined ? `Page ${incomingPrimary}` : undefined,
+          },
+        ]);
       }
       if (isScroll) {
         // Both overlays move (with their own spread) rather than one
@@ -3449,6 +3494,24 @@ export class ReaderController {
         if (animatedOverlay) {
           animatedOverlay.style.zIndex = "2";
           this.containerEl.appendChild(animatedOverlay);
+        }
+        // The left-column overlays (see `outgoingLeftOverlay`'s
+        // declaration) never themselves move, but need the exact same
+        // z-index split — whichever host is actually `turnHost` (see
+        // `stagePageTurn`'s `hostEl.style.zIndex = "2"`, applied to that
+        // whole host, both columns) is the one whose left column is
+        // visually on top throughout, so its overlay needs to match at
+        // "2"; the other one only needs to sit at "1" in case anything
+        // about the exact stacking ever changes.
+        const turnLeftOverlay = entering ? incomingLeftOverlay : outgoingLeftOverlay;
+        const otherLeftOverlay = entering ? outgoingLeftOverlay : incomingLeftOverlay;
+        if (otherLeftOverlay) {
+          otherLeftOverlay.style.zIndex = "1";
+          this.containerEl.appendChild(otherLeftOverlay);
+        }
+        if (turnLeftOverlay) {
+          turnLeftOverlay.style.zIndex = "2";
+          this.containerEl.appendChild(turnLeftOverlay);
         }
       }
       this.isAnimatingPageTurn = true;
@@ -3479,6 +3542,8 @@ export class ReaderController {
     rotateBackFace?.remove();
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
+    outgoingLeftOverlay?.remove();
+    incomingLeftOverlay?.remove();
     turnBackdrop?.remove();
     turnGrowthMask?.remove();
     this.isAnimatingPageTurn = false;

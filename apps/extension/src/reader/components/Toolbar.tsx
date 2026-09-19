@@ -672,7 +672,11 @@ export const Toolbar: FC<ToolbarProps> = ({
                   <MenuDivider />
                   <MenuGroup>
                     <MenuGroupHeader>Page turn</MenuGroupHeader>
-                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="rotate">
+                    <MenuItemRadio
+                      name={PAGE_TURN_ANIMATION_GROUP_NAME}
+                      value="rotate"
+                      secondaryContent="Experimental"
+                    >
                       Page flip
                     </MenuItemRadio>
                     <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
