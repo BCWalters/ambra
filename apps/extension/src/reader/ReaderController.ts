@@ -2695,6 +2695,23 @@ export class ReaderController {
    * so the two move as if they were one piece despite being independent
    * elements.
    *
+   * The overlay's own *height*, though, deliberately uses `this.height`
+   * (the reader pane's full fixed height) rather than `matchEl`'s own
+   * measured height — a real, reported bug otherwise: `matchEl` (an
+   * iframe) is sized to *this specific page's* own content height (see
+   * `PaginatedContentHost.showCurrentPage`), often noticeably shorter
+   * than a full page — most commonly a chapter's last page. The footer
+   * band below is positioned `bottom: 0` *within this overlay*, so
+   * sizing the overlay to match a short `matchEl` pulled the footer's
+   * "Page N" text up toward the visible text instead of leaving it at
+   * the reader pane's actual bottom edge, snapping back down the moment
+   * the turn settled and the static `PageFurniture` (which *does*
+   * position against the full pane, never against any one host's own
+   * height) took back over. Safe regardless of `matchEl`'s own height,
+   * since every host is always top-aligned within the reader pane (see
+   * `stageHiddenHostElement`'s `alignItems: "flex-start"`) — `matchEl`'s
+   * top edge and the pane's own top edge always coincide.
+   *
    * `bands` describes one visual "page" worth of header+footer content —
    * one entry for a single page or a spread's "rotate" turn (which only
    * ever animates one column), two for a spread's "slide" turn (the
@@ -2706,7 +2723,22 @@ export class ReaderController {
    * spread, exactly mirroring `PageFurniture`'s own `columnBands` (just
    * computed against `matchEl`'s own measured width rather than the full
    * pane width, since there's no side margin to account for once we're
-   * already positioned to coincide with the spread element itself). */
+   * already positioned to coincide with the spread element itself).
+   *
+   * Both the header and footer bands below set `box-sizing: border-box`
+   * explicitly — a real, reported bug otherwise (the "jump" at the end
+   * of a turn, in both single-page and spread mode): with the default
+   * `content-box` sizing, an explicit `width` plus non-zero horizontal
+   * `padding` (the header band always has 20px each side) adds the
+   * padding *outside* that width, so a "space-between"/"center" header
+   * actually lays its text out across `band.width + 40px`, not
+   * `band.width` — 20px further right than intended on each side. The
+   * *static* `PageFurniture` never hits this, since it positions its
+   * bands via `left`/`right` (not an explicit `width`) — box-sizing only
+   * matters when `width` is one of the properties in play — so the
+   * overlay's text visibly sat ~20-40px off from where `PageFurniture`
+   * placed the same text the instant the turn settled and control
+   * handed back to it. */
   private buildTurnFurnitureOverlay(
     matchEl: HTMLElement,
     bands: Array<{
@@ -2729,7 +2761,7 @@ export class ReaderController {
     overlay.style.left = `${matchRect.left - containerRect.left}px`;
     overlay.style.top = `${matchRect.top - containerRect.top}px`;
     overlay.style.width = `${matchRect.width}px`;
-    overlay.style.height = `${matchRect.height}px`;
+    overlay.style.height = `${this.height}px`;
     overlay.style.pointerEvents = "none";
 
     const textStyle =
@@ -2741,8 +2773,8 @@ export class ReaderController {
       const header = document.createElement("div");
       header.style.cssText =
         `position: absolute; top: 0; left: ${band.left}px; width: ${band.width}px; ` +
-        `height: ${ReadingTheme.PAGE_INSET_TOP}px; display: flex; align-items: flex-start; ` +
-        `justify-content: ${band.header.mode === "split" ? "space-between" : "center"}; ` +
+        `box-sizing: border-box; height: ${ReadingTheme.PAGE_INSET_TOP}px; display: flex; ` +
+        `align-items: flex-start; justify-content: ${band.header.mode === "split" ? "space-between" : "center"}; ` +
         `padding: ${HEADER_TEXT_TOP_OFFSET}px 20px 0; overflow: hidden;`;
       if (band.header.mode === "split") {
         const left = document.createElement("span");
@@ -2764,7 +2796,8 @@ export class ReaderController {
         const footer = document.createElement("div");
         footer.style.cssText =
           `position: absolute; bottom: 0; left: ${band.left}px; width: ${band.width}px; ` +
-          `height: ${ReadingTheme.PAGE_INSET_BOTTOM}px; display: flex; align-items: center; justify-content: center;`;
+          `box-sizing: border-box; height: ${ReadingTheme.PAGE_INSET_BOTTOM}px; display: flex; ` +
+          `align-items: center; justify-content: center;`;
         const span = document.createElement("span");
         span.style.cssText = textStyle;
         span.textContent = band.footerText;

@@ -109,6 +109,18 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
   // `SpreadPaginatedHost`'s own column/gutter geometry (not guessed) so
   // every band lines up exactly with the page beneath it, and shared
   // between the header and footer below rather than recomputed twice.
+  //
+  // Each band's header div below sets `boxSizing: "border-box"` so its
+  // `width` (this exact column's own true width) plus its horizontal
+  // padding never together exceed that width — a real, subtle bug
+  // otherwise: with the default `content-box` sizing, the div's actual
+  // rendered box became `width + 40px` (the header's 20px-per-side
+  // padding added *outside* the intended width), silently centering
+  // each column's title ~20px off from that column's own true center,
+  // toward the gutter — most visible as a "jump" the instant an
+  // animated page turn (whose imperative overlay, `buildTurnFurnitureOverlay`,
+  // got this right from the start) settled and handed back to this
+  // static rendering.
   const columnWidth = snapshot.isSpread ? SpreadPaginatedHost.effectiveColumnWidth(snapshot.paneWidth) : undefined;
   const sideMargin =
     columnWidth !== undefined
@@ -151,6 +163,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
                   left: band.left,
                   right: band.right,
                   width: band.width,
+                  boxSizing: "border-box",
                   height: ReadingTheme.PAGE_INSET_TOP,
                   zIndex: 5,
                   display: "flex",
@@ -174,6 +187,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
                 top: 0,
                 left: 0,
                 right: 0,
+                boxSizing: "border-box",
                 height: ReadingTheme.PAGE_INSET_TOP,
                 zIndex: 5,
                 display: "flex",
