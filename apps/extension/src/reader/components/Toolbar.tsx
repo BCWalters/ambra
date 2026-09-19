@@ -679,7 +679,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                       Slide
                     </MenuItemRadio>
                     <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
-                      Horizontal scroll
+                      Film strip
                     </MenuItemRadio>
                     <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
                       Off
