@@ -268,14 +268,27 @@ export class SpreadPaginatedHost {
    * matters. Used by a spread's "rotate" page-turn animation, which
    * turns only the one column nearest the spine rather than the whole
    * spread (see `ReaderController.animateSpreadTurn`), so only that
-   * column (not its untouched companion) needs its short-page height
-   * masked for the animation's duration. */
+   * column (not its untouched companion — see `suppressColumnClipPathForAnimation`
+   * for what *that* one still needs) needs its short-page height masked
+   * for the animation's duration. */
   public growColumnToFullHeight(column: "left" | "right", fullHeight: number): void {
     (column === "left" ? this.left : this.right).growToFullHeight(fullHeight);
   }
 
   /** Delegates to the given column's own `PaginatedContentHost.
-   * restoreNaturalHeight` — see `growColumnToFullHeight`. */
+   * suppressClipPathForAnimation` — see that method's doc comment
+   * (issue #81) for why *every* column of *both* the outgoing and
+   * incoming spread needs this for the duration of a "rotate" turn, not
+   * just whichever single column is actually being visibly rotated. */
+  public suppressColumnClipPathForAnimation(column: "left" | "right"): void {
+    (column === "left" ? this.left : this.right).suppressClipPathForAnimation();
+  }
+
+  /** Delegates to the given column's own `PaginatedContentHost.
+   * restoreNaturalHeight` — see `growColumnToFullHeight`/
+   * `suppressColumnClipPathForAnimation`. Safe to call on a column that
+   * only ever had its clip-path suppressed (never grown), or on one
+   * where neither happened at all. */
   public restoreColumnNaturalHeight(column: "left" | "right"): void {
     (column === "left" ? this.left : this.right).restoreNaturalHeight();
   }

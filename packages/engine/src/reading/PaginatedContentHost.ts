@@ -260,28 +260,24 @@ export class PaginatedContentHost {
 
   /** Temporarily grows this host's iframe to `fullHeight` (the reader
    * pane's own full height) for the duration of a page-turn animation,
-   * widening the clip-path's bottom inset by the same amount so the
-   * *visible* clipped window stays exactly this page's own content
-   * height — nothing new is revealed; the extra height is simply
-   * clipped away, letting whatever's behind the iframe (the reader
-   * pane's own page-themed background) show through beneath the real
-   * text, indistinguishable from a full page with blank space at the
-   * bottom.
+   * and drops its `clip-path` entirely (see `suppressClipPathForAnimation`,
+   * which this calls — read that doc comment for why `clip-path` can't
+   * simply be widened to match, the way this method used to handle it).
    *
-   * This exists because `showCurrentPage` only ever sizes the iframe to
-   * *this specific page's* own content height — often noticeably
-   * shorter than a full page (most pages don't end exactly at the page
-   * boundary). Normally invisible (a static short page's own background
-   * already fills the reader pane behind it), but a page-turn
-   * animation's box-shadow traces the iframe's *real* box exactly, so a
-   * short page's animated edge visibly sat higher than a full page's
-   * would — a real, reported bug ("the bottom of the page in the
-   * animation starts a few lines above the actual bottom of the page"),
-   * intermittent because it only showed up on pages short enough for
-   * the gap to be noticeable. A no-op if this page is already at least
-   * `fullHeight` tall. Call `restoreNaturalHeight` once the animation
-   * finishes (whether it committed or reverted) to undo this. */
+   * The height grow specifically fixes its own, separate bug:
+   * `showCurrentPage` only ever sizes the iframe to *this specific
+   * page's* own content height — often noticeably shorter than a full
+   * page (most pages don't end exactly at the page boundary) — and a
+   * page-turn animation's box-shadow traces the iframe's *real* box
+   * exactly, so a short page's animated edge visibly sat higher than a
+   * full page's would ("the bottom of the page in the animation starts
+   * a few lines above the actual bottom of the page"). A no-op (for the
+   * height part only — `clip-path` is still dropped) if this page is
+   * already at least `fullHeight` tall. Call `restoreNaturalHeight` once
+   * the animation finishes (whether it committed or reverted) to undo
+   * both. */
   public growToFullHeight(fullHeight: number): void {
+    this.suppressClipPathForAnimation();
     const page = this.pages[this.pageIndex];
     if (!page) {
       return;
@@ -290,18 +286,50 @@ export class PaginatedContentHost {
     if (fullHeight <= naturalHeight) {
       return;
     }
-    const extra = fullHeight - naturalHeight;
     this.sandboxedHost.element.style.height = `${fullHeight}px`;
-    this.sandboxedHost.element.style.clipPath = `inset(${ReadingTheme.PAGE_INSET_TOP}px 0 ${ReadingTheme.PAGE_INSET_BOTTOM + extra}px 0)`;
   }
 
-  /** Undoes `growToFullHeight`, restoring this host's natural per-page
-   * height/clip — call once a page-turn animation involving this host
-   * has finished *and it wasn't disposed* (a reverted drag, not a
-   * committed turn, which disposes the old host outright and so has no
-   * need to restore anything). Just re-applies whatever `showCurrentPage`
-   * already computes for the current page, so it's safe to call even if
-   * `growToFullHeight` was never actually called. */
+  /** Drops this host's iframe `clip-path` entirely (without touching
+   * its height) for the duration of a page-turn animation — call on
+   * *every* host/column involved in an animated "rotate" turn, not just
+   * whichever one is actually being visibly rotated (`growToFullHeight`
+   * already does this for that one specifically; this is for the
+   * others — e.g. a spread's non-turning companion column, or a
+   * single-page turn's revealed incoming/outgoing host — which don't
+   * need their height grown at all, just this).
+   *
+   * This exists because of a real, confirmed Chromium rendering defect
+   * found via direct testing (issue #81): *any* iframe with a
+   * `clip-path` set — even one that doesn't visually exclude anything —
+   * fails to composite as reliably opaque against *another*, unrelated
+   * iframe stacked somewhere behind it, as soon as `perspective` is
+   * active on a shared ancestor and *any* sibling within that same 3D
+   * context has a live `rotateY` transform running — even a sibling
+   * that isn't the clip-pathed iframe itself, and isn't animating in
+   * any way of its own. In practice this showed up as two *different*
+   * pages' text visibly blended together on a spread's own static,
+   * entirely uninvolved column, purely because the *other* column
+   * happened to be mid-rotate at the time. `clip-path` is otherwise
+   * load-bearing (see `showCurrentPage`'s doc comment on hiding
+   * inset-band bleed) and safe to drop only for the animation's brief
+   * (~380ms) duration — the reader never notices a few lines of
+   * ordinarily-hidden bleed for that long, especially given every
+   * "rotate" turn is already moving/rotating something on screen at the
+   * same time. Call `restoreNaturalHeight` (safe regardless of whether
+   * `growToFullHeight` was also called) once the turn finishes to
+   * restore it. */
+  public suppressClipPathForAnimation(): void {
+    this.sandboxedHost.element.style.clipPath = "";
+  }
+
+  /** Undoes `growToFullHeight`/`suppressClipPathForAnimation`, restoring
+   * this host's natural per-page height and `clip-path` — call once a
+   * page-turn animation involving this host has finished *and it wasn't
+   * disposed* (a reverted drag, not a committed turn, which disposes
+   * the old host outright and so has no need to restore anything). Just
+   * re-applies whatever `showCurrentPage` already computes for the
+   * current page, so it's safe to call even if neither of those was
+   * ever actually called. */
   public restoreNaturalHeight(): void {
     this.showCurrentPage();
   }

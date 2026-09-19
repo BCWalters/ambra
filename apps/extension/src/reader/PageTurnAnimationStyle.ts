@@ -1,6 +1,11 @@
 /** The page-turn animation styles a reader can choose between: a 3D
  * "rotate" flip (the outgoing page lifts and turns away from its hinge
- * edge, like a physical page), a flatter "slide" (the outgoing page
+ * edge, like a physical page — labeled "Page flip" in the toolbar's own
+ * settings menu, issue #81: "rotate" reads as an odd, overly-technical
+ * name for what a reader actually sees; the internal type/storage value
+ * is unchanged, since every other part of the codebase already spells
+ * it "rotate" and renaming that too would touch far more than the one
+ * user-facing label actually in question), a flatter "slide" (the outgoing page
  * slides sideways off-screen to reveal the next/previous page sitting
  * underneath, which stays completely static), "scroll" (issue #63: the
  * outgoing *and* incoming pages both slide together, in the same

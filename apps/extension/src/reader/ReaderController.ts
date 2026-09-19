@@ -2814,6 +2814,22 @@ export class ReaderController {
     if (!isScroll) {
       animatingHost.growToFullHeight(this.height);
     }
+    // The *other* host (statically revealed underneath, never itself
+    // rotating) still needs its own `clip-path` dropped for a "rotate"
+    // turn specifically — see `PaginatedContentHost.
+    // suppressClipPathForAnimation`'s doc comment (issue #81) for the
+    // confirmed Chromium rendering bug this works around: an untouched,
+    // fully static iframe with a `clip-path` still loses proper opaque
+    // compositing against another overlapping iframe as long as *any*
+    // sibling sharing the same `perspective` context (set up by
+    // `stagePageTurn`, only for "rotate") has a live `rotateY`
+    // transform running — even though this host itself never moves at
+    // all. Only "rotate" sets up that shared 3D context in the first
+    // place (see `stagePageTurn`), so only it needs this.
+    const otherHost = entering ? oldHost : newHost;
+    if (this.pageTurnAnimationStyle === "rotate") {
+      otherHost.suppressClipPathForAnimation();
+    }
 
     // Build the outgoing/incoming "turn furniture" overlays (see
     // `buildTurnFurnitureOverlay`) so the running header/footer turns
@@ -2900,12 +2916,12 @@ export class ReaderController {
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     this.isAnimatingPageTurn = false;
-    if (entering) {
-      // The incoming host survives as the new `this.host` — unlike a
-      // forward turn's outgoing host (discarded right below), its
-      // temporary full-height mask must actually be undone.
-      newHost.restoreNaturalHeight();
-    }
+    // `newHost` always survives as the new `this.host` (unlike
+    // `oldHost`, unconditionally disposed right below) — restore
+    // whatever `growToFullHeight`/`suppressClipPathForAnimation` may
+    // have touched on it, regardless of turn direction (it's a no-op,
+    // via `showCurrentPage`, if neither ever actually applied to it).
+    newHost.restoreNaturalHeight();
 
     // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
     // `newEl` as the sole remaining child — reset its temporary
@@ -2954,21 +2970,52 @@ export class ReaderController {
     // See `animatePageTurn`'s doc comment on why backward flips which
     // side actually animates.
     const turnHost = entering ? newHost : oldHost;
+    const otherHost = entering ? oldHost : newHost;
 
-    // Only "rotate" needs this: "slide"/"scroll" already move the whole
-    // spread wrapper, which `SpreadPaginatedHost`'s own constructor fixes
-    // to the full pane height regardless of either column's content — see
-    // `PaginatedContentHost.growToFullHeight`'s doc comment for why a
-    // single turning column needs the same treatment "slide" gets for
-    // free. Always the *right* column now — see `elementToTurn`'s doc
-    // comment. Restored explicitly for a backward turn, whose animating
-    // host (`newHost`) survives as the new `this.host`; a forward turn's
-    // animating host (`oldHost`) is simply discarded, so needs no
-    // restore.
+    // Only "rotate" needs any of this: "slide"/"scroll" already move the
+    // whole spread wrapper, which `SpreadPaginatedHost`'s own
+    // constructor fixes to the full pane height regardless of either
+    // column's content — see `PaginatedContentHost.growToFullHeight`'s
+    // doc comment for why a single turning column needs the same
+    // treatment "slide" gets for free. Always the *right* column now —
+    // see `elementToTurn`'s doc comment.
+    //
+    // Every other column — `turnHost`'s own static companion (left) and
+    // *both* of `otherHost`'s columns — additionally needs its
+    // `clip-path` dropped (not just the one actually rotating), per
+    // `PaginatedContentHost.suppressClipPathForAnimation`'s doc comment
+    // (issue #81): the real Chromium bug it works around affects *any*
+    // clip-pathed iframe sharing the turning column's `perspective`
+    // context, not just the one being transformed — confirmed via
+    // direct testing to visibly blend two *different* pages' text
+    // together on the spread's own untouched, fully static column,
+    // purely because the *other* column happened to be mid-rotate.
+    // Restored on whichever host actually survives the turn (always
+    // `newHost` — see the bottom of this method).
     if (this.pageTurnAnimationStyle === "rotate") {
       turnHost.growColumnToFullHeight("right", this.height);
+      turnHost.suppressColumnClipPathForAnimation("left");
+      otherHost.suppressColumnClipPathForAnimation("left");
+      otherHost.suppressColumnClipPathForAnimation("right");
     }
     const turnEl = this.elementToTurn(turnHost);
+
+    // Issue #81: "complete" the spread's rotate turn — previously it
+    // only ever swung the turning column to ~100° (just past edge-on)
+    // before the turn's *other* side (the incoming spread, already
+    // fully built and sitting statically underneath the whole time —
+    // see `prepareIncomingSpread`) simply showed through once
+    // `backface-visibility: hidden` made the turning column vanish.
+    // That's a real page lifting up toward vertical and disappearing,
+    // but it never actually finishes coming back *down* into the left
+    // slot the way an actual page turn does — so build a "back face"
+    // for it to land on, and let the same rotation run all the way to
+    // 180° instead of stopping just past 90 (see `fullTurnDegrees`
+    // passed to `playPageTurnAnimation` below).
+    const rotateBackFace =
+      this.pageTurnAnimationStyle === "rotate" && !this.shouldSkipPageTurnAnimation()
+        ? this.buildRotateBackFace(turnEl)
+        : undefined;
 
     // Same "turn furniture" treatment as `animatePageTurn` — see
     // `buildTurnFurnitureOverlay`'s doc comment. Title/chapter never
@@ -3075,15 +3122,24 @@ export class ReaderController {
         turnHost.element,
         turnEl,
         direction,
-        animatedOverlayEl ? [animatedOverlayEl] : [],
+        [...(animatedOverlayEl ? [animatedOverlayEl] : []), ...(rotateBackFace ? [rotateBackFace] : [])],
         entering,
+        rotateBackFace ? 180 : undefined,
       );
     }
 
+    rotateBackFace?.remove();
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
     this.isAnimatingPageTurn = false;
-    if (entering && this.pageTurnAnimationStyle === "rotate") {
+    // `newHost` always survives as the new `this.host` (unlike
+    // `oldHost`, unconditionally disposed right below) — restore both
+    // of its columns regardless of turn direction, undoing whatever
+    // `growColumnToFullHeight`/`suppressColumnClipPathForAnimation` may
+    // have touched on either (a no-op, via `showCurrentPage`, for
+    // whichever one — or both — never actually needed it).
+    if (this.pageTurnAnimationStyle === "rotate") {
+      newHost.restoreColumnNaturalHeight("left");
       newHost.restoreColumnNaturalHeight("right");
     }
 
@@ -3135,6 +3191,65 @@ export class ReaderController {
     return iframe instanceof HTMLElement ? iframe : host.element;
   }
 
+  /** Builds the "back face" a spread's rotate turn (issue #81) needs to
+   * complete the flip past 90° instead of stopping just short of it —
+   * see `animateSpreadTurn`'s doc comment on `rotateBackFace` for why.
+   * Currently a plain page-themed sheet (no mirrored text of its own —
+   * genuinely rendering the *other* side of the same leaf would mean
+   * loading and paginating that content a second time purely for this
+   * ~380ms animation, a real cost not worth paying yet); still reads as
+   * an actual, opaque page landing into place rather than the turning
+   * column simply vanishing mid-air, which is what happened before.
+   *
+   * A plain sibling of `turnEl` (not a wrapper around it — `turnEl`
+   * itself, an already-loaded iframe, must never be reparented; see
+   * `stageHiddenHostElement`'s doc comment on why that silently reloads
+   * an iframe's content in most browsers), sized and positioned to
+   * exactly overlay it. Two nested layers: an *outer* div — added to
+   * `playPageTurnAnimation`'s `extraTurnEls` by the caller, so it
+   * receives the exact same `rotateY` angle/transition/transform-origin
+   * as `turnEl` every frame, for free — containing an *inner* div with
+   * its own fixed, never-animated `rotateY(180deg)`. Same-axis
+   * rotations compose additively, so the inner's effective on-screen
+   * angle is always exactly 180° ahead of the outer's (and therefore of
+   * `turnEl`'s own): invisible (facing away, `backface-visibility:
+   * hidden`) while the outer sits at 0° (matching `turnEl`'s own
+   * resting, fully-visible state), and facing the viewer square-on
+   * exactly when the outer reaches 180° (matching `turnEl`'s own
+   * fully-turned-away, invisible state) — i.e. precisely the "shows up
+   * once the front disappears past the midpoint, finishes facing the
+   * viewer as the turn completes" behavior the front and back of a
+   * single physical sheet actually have. */
+  private buildRotateBackFace(turnEl: HTMLElement): HTMLDivElement | undefined {
+    const parent = turnEl.parentElement;
+    if (!parent) {
+      return undefined;
+    }
+    const doc = parent.ownerDocument;
+    const parentRect = parent.getBoundingClientRect();
+    const turnRect = turnEl.getBoundingClientRect();
+
+    const outer = doc.createElement("div");
+    outer.style.position = "absolute";
+    outer.style.left = `${turnRect.left - parentRect.left}px`;
+    outer.style.top = `${turnRect.top - parentRect.top}px`;
+    outer.style.width = `${turnRect.width}px`;
+    outer.style.height = `${turnRect.height}px`;
+    outer.style.transformStyle = "preserve-3d";
+    outer.style.pointerEvents = "none";
+
+    const inner = doc.createElement("div");
+    inner.style.position = "absolute";
+    inner.style.inset = "0";
+    inner.style.background = ReadingTheme.PAGE_THEMES[this.pageTheme].background;
+    inner.style.backfaceVisibility = "hidden";
+    inner.style.transform = "rotateY(180deg)";
+    outer.appendChild(inner);
+
+    parent.appendChild(outer);
+    return outer;
+  }
+
   /** The shared "play the turn, wait for it to finish" mechanics behind
    * both `animatePageTurn` and `animateSpreadTurn`: elevates `hostEl`
    * (the whole outgoing unit — one page, or a whole spread) above the
@@ -3173,6 +3288,7 @@ export class ReaderController {
     direction: 1 | -1,
     extraTurnEls: HTMLElement[] = [],
     entering = false,
+    fullTurnDegrees?: number,
   ): Promise<void> {
     if (this.shouldSkipPageTurnAnimation()) {
       return;
@@ -3183,7 +3299,12 @@ export class ReaderController {
     // reads as a page continuing its motion out of view rather than
     // freezing edge-on to the viewer — so "fully turned" overshoots to
     // 100 (translate %, or rotate degrees) rather than stopping at 90.
-    const fullyTurnedAmount = direction === 1 ? -100 : 100;
+    // `fullTurnDegrees` (issue #81) overrides this to a full 180 for a
+    // spread's "rotate" turn specifically, continuing the same motion
+    // all the way down flat onto its own "back face" (see
+    // `animateSpreadTurn`'s `rotateBackFace`) instead of stopping just
+    // past vertical — every other style/case keeps the original 100.
+    const fullyTurnedAmount = direction === 1 ? -(fullTurnDegrees ?? 100) : (fullTurnDegrees ?? 100);
 
     if (entering) {
       // Establish the "fully turned away" starting point *before* the
@@ -3593,9 +3714,10 @@ export class ReaderController {
 
   /** Sets `el`'s in-progress transform directly (no transition) for
    * whichever style is active — `amount` is degrees (rotate) or percent
-   * (slide); `fraction` (0 to 1) scales a deepening drop shadow
-   * alongside it, so a partial drag reads as the page physically
-   * lifting/sliding, not just moving in place. `el` is whatever
+   * (slide); `fraction` (0 to 1) scales a deepening drop shadow (and,
+   * for "rotate" specifically, a self-shading inset shadow — see the
+   * "rotate" branch below) alongside it, so a partial drag reads as the
+   * page physically lifting/sliding, not just moving in place. `el` is whatever
    * `stagePageTurn`'s own `turnEl` was — an iframe for a single page, or
    * (for a spread's "rotate" style) a single column's iframe rather than
    * the whole spread wrapper; the plain `HTMLElement` type here doesn't
@@ -3613,7 +3735,19 @@ export class ReaderController {
         continue;
       }
       target.style.transform = `rotateY(${amount}deg)`;
-      target.style.boxShadow = `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)})`;
+      // Two shadows: the outer one (unchanged) casts the page's lift
+      // onto whatever's behind it; the *inset* one is new (issue #81,
+      // "the page seems transparent as it turns... it needs to look
+      // more solid") — a real page catches its own shadow as it turns
+      // away from the light, growing visibly darker toward a full
+      // profile-on turn, not just thinner. A flat 2D rotation with no
+      // shading of its own reads as a thin, glassy pane rather than a
+      // sheet of paper with actual weight. Scales with the same
+      // `fraction` as the outer shadow so both deepen together.
+      const selfShade = (0.3 * fraction).toFixed(3);
+      target.style.boxShadow =
+        `0 12px 40px rgba(0, 0, 0, ${(0.35 * fraction).toFixed(3)}), ` +
+        `inset 0 0 ${Math.round(60 * fraction)}px rgba(0, 0, 0, ${selfShade})`;
     }
   }
 
@@ -3912,6 +4046,22 @@ export class ReaderController {
             if (!isScroll) {
               oldHost.growToFullHeight(this.height);
             }
+            // `prepared` (the incoming page, revealed statically
+            // underneath for the whole drag) also needs its own
+            // `clip-path` dropped for "rotate" specifically — see
+            // `PaginatedContentHost.suppressClipPathForAnimation`'s doc
+            // comment (issue #81): it's a real, confirmed Chromium bug
+            // that isn't limited to whichever iframe is actually being
+            // dragged/rotated. `settleDragPageTurn` restores this the
+            // same way it restores the height mask, if the drag reverts
+            // rather than commits (a commit discards `oldHost` outright
+            // and moves on with `prepared` untouched — its own natural
+            // `showCurrentPage` state was never disturbed in the first
+            // place, since only `oldHost` — not `prepared` — ever had
+            // its height grown here).
+            if (this.pageTurnAnimationStyle === "rotate") {
+              prepared.suppressClipPathForAnimation();
+            }
             this.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);
             this.setPageTurnTransform(
               oldHost.element,
@@ -4171,6 +4321,12 @@ export class ReaderController {
       newEl.style.left = "";
       newEl.style.transform = "";
       newEl.style.zIndex = "";
+      // `newHost` survives as the new `this.host` — restore whatever
+      // `suppressClipPathForAnimation` (see `beginDragPageTurn`) may
+      // have touched on it while it sat revealed underneath for the
+      // drag's duration (a no-op, via `showCurrentPage`, if it never
+      // actually applied).
+      newHost.restoreNaturalHeight();
 
       this.contentInteractionCleanup?.();
       this.contentInteractionCleanup = undefined;
