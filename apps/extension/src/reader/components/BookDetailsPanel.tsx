@@ -402,21 +402,22 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   this panel — so it reads as the power-user/debugging
                   escape hatch it actually is, not just one more ordinary
                   button in the list. */}
-              <Button
-                appearance="secondary"
-                icon={<CodeCircleRegular />}
-                onClick={onOpenInspector}
-                style={{
-                  marginTop: 8,
-                  background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",
-                  borderColor: "rgba(126, 232, 250, 0.35)",
-                  color: "#7ee8fa",
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
-                }}
-              >
-                EPUB Inspector
-              </Button>
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+                <Button
+                  appearance="secondary"
+                  icon={<CodeCircleRegular />}
+                  onClick={onOpenInspector}
+                  style={{
+                    background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",
+                    borderColor: "rgba(126, 232, 250, 0.35)",
+                    color: "#7ee8fa",
+                    fontFamily:
+                      "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+                  }}
+                >
+                  EPUB Inspector
+                </Button>
+              </div>
             </>
           )}
         </div>
