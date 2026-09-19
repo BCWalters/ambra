@@ -517,7 +517,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             width: `${displayFraction * 100}%`,
             height: 4,
             borderRadius: 2,
-            background: "var(--colorBrandBackground, #0b57a4)",
+            background: chromeTheme.accent,
           }}
         />
         <div
@@ -528,7 +528,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             height: 12,
             borderRadius: "50%",
             transform: "translateX(-50%)",
-            background: "var(--colorBrandBackground, #0b57a4)",
+            background: chromeTheme.accent,
             boxShadow: "0 1px 4px rgba(0, 0, 0, 0.3)",
           }}
         />

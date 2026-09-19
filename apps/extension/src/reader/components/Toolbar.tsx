@@ -92,11 +92,17 @@ const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
  * reader can tell at a glance what each named option actually looks
  * like rather than having to apply it first to find out. Sits in
  * `MenuItemRadio`'s `icon` slot, which accepts any element, not just a
- * literal icon component. */
-const ThemeSwatch: FC<{ background: string }> = ({ background }) => (
+ * literal icon component.
+ *
+ * The small dot in the corner previews `accent` (issue #86) — the same
+ * saturated color the progress scrubber picks up for that theme — so
+ * this menu is also where a reader first sees that a theme now carries
+ * a genuine accent color, not just its own soft background tint. */
+const ThemeSwatch: FC<{ background: string; accent: string }> = ({ background, accent }) => (
   <span
     aria-hidden="true"
     style={{
+      position: "relative",
       display: "inline-block",
       width: 20,
       height: 20,
@@ -105,7 +111,21 @@ const ThemeSwatch: FC<{ background: string }> = ({ background }) => (
       border: "1px solid rgba(0, 0, 0, 0.15)",
       boxSizing: "border-box",
     }}
-  />
+  >
+    <span
+      style={{
+        position: "absolute",
+        bottom: -2,
+        right: -2,
+        width: 9,
+        height: 9,
+        borderRadius: "50%",
+        background: accent,
+        border: "1.5px solid var(--colorNeutralBackground1, #fff)",
+        boxSizing: "border-box",
+      }}
+    />
+  </span>
 );
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
@@ -699,7 +719,12 @@ export const Toolbar: FC<ToolbarProps> = ({
                     key={key}
                     name={CHROME_THEME_GROUP_NAME}
                     value={key}
-                    icon={<ThemeSwatch background={CHROME_THEMES[key].backgroundSolid} />}
+                    icon={
+                      <ThemeSwatch
+                        background={CHROME_THEMES[key].backgroundSolid}
+                        accent={CHROME_THEMES[key].accent}
+                      />
+                    }
                   >
                     {CHROME_THEMES[key].label}
                   </MenuItemRadio>

@@ -64,6 +64,20 @@ interface ChromeThemePalette {
    * (unlike the toolbar/scrubber, these can cover a large portion of
    * the page). */
   readonly backgroundSolid: string;
+  /** A small, genuinely saturated dose of this theme's own color (issue
+   * #86) — everything above stays deliberately soft/light (for text
+   * contrast, over a large area), which alone left "Ambra" barely
+   * reading as amber-anything at all, let alone tied to the extension's
+   * own icon (a rich, gem-toned amber/orange, nothing like the pale
+   * wash its chrome background alone can afford to be). Used only for
+   * small, purely decorative accents that don't carry text of their own
+   * and so aren't bound by the same contrast rules — currently the
+   * progress scrubber's filled track/thumb (previously a flat,
+   * un-themed Fluent brand blue regardless of which reader theme was
+   * active) and the theme picker's own preview swatch. Every other
+   * theme got one too, not just Ambra, so the same idea pays off across
+   * the board — see the issue's own suggestion to do this. */
+  readonly accent: string;
 }
 
 export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "silver";
@@ -78,25 +92,35 @@ export const CHROME_THEMES: Readonly<Record<ChromeThemeChoice, ChromeThemePalett
     label: "Silver",
     background: "linear-gradient(135deg, rgba(244, 245, 248, 0.90), rgba(222, 225, 231, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(244, 245, 248), rgb(222, 225, 231))",
+    accent: "#5b6472",
   },
   green: {
     label: "Green",
     background: "linear-gradient(135deg, rgba(206, 231, 218, 0.90), rgba(178, 212, 194, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(206, 231, 218), rgb(178, 212, 194))",
+    accent: "#1f7a4d",
   },
   blue: {
     label: "Blue",
     background: "linear-gradient(135deg, rgba(199, 215, 236, 0.90), rgba(176, 199, 226, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(199, 215, 236), rgb(176, 199, 226))",
+    accent: "#1d5aa8",
   },
   purple: {
     label: "Purple",
     background: "linear-gradient(135deg, rgba(227, 212, 233, 0.90), rgba(211, 189, 223, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(227, 212, 233), rgb(211, 189, 223))",
+    accent: "#7c3fa0",
   },
   ambra: {
     label: "Ambra",
     background: "linear-gradient(135deg, rgba(255, 232, 189, 0.90), rgba(240, 196, 140, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(255, 232, 189), rgb(240, 196, 140))",
+    // Sampled straight from the extension icon's own gem gradient (see
+    // `icon-source/icon.svg`) — the exact mid-tone the icon itself
+    // uses, not a fresh guess at "amber" — so this is the one place in
+    // the whole chrome that actually reads as the same amber gem the
+    // icon shows, addressing the issue's core complaint directly.
+    accent: "#f5a531",
   },
 };
