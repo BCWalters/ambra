@@ -220,68 +220,99 @@ test.describe("paginated reflowable navigation correctness", () => {
     }
   });
 
-  test("two-page spread: every chapter begins with a blank left column (issue #90)", async () => {
+  test("two-page spread: a chapter starting right after the previous one's unpaired last page merges into the same spread, never a blank page (issue #90/#92)", async () => {
+    // A width chosen so `TWO_CHAPTER_EPUB`'s chapter one (120 short
+    // paragraphs) lands its own real last page *unpaired* — alone in the
+    // left column, the right column hidden — the opposite condition
+    // from the test above (which needs chapter one's last page *paired*)
+    // and the specific one this regression needs: forward-turning off
+    // that unpaired last page must show chapter two's own real first
+    // page immediately in the *same* spread's right column, alongside
+    // chapter one's own last page still in the left — never a whole
+    // separate spread with a blank facing page on either side of it.
     const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
-      viewport: { width: 1400, height: 900 },
+      viewport: { width: 1200, height: 900 },
     });
     try {
-      async function leftColumnState(): Promise<{ spacerVisible: boolean; accessible: boolean }> {
+      // Same technique as the test above — see its own doc comment for
+      // why `elementFromPoint` sampling (not `innerText`, which reflects
+      // a spine item's entire flowing document regardless of scroll
+      // position) is what actually reflects which page(s) are on screen.
+      async function visibleParagraphs(): Promise<string[]> {
         return readerPage.evaluate(() => {
+          // `> 400`, not `600` (the test above's own threshold, correct
+          // for *its* 1400px-wide/680px-column viewport) — this test's
+          // narrower 1200px viewport gives each column only 580px
+          // (`SpreadPaginatedHost`'s own `MIN_SPREAD_COLUMN_WIDTH` is
+          // 480), which a 600px threshold would wrongly exclude
+          // entirely, same as an actually-narrow/non-spread column
+          // should be.
           const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) => el.getBoundingClientRect().x === 0 && el.getBoundingClientRect().width > 600,
+            (el) => el.getBoundingClientRect().width > 400 && getComputedStyle(el).visibility !== "hidden",
           );
-          const left = iframes[0] as HTMLIFrameElement | undefined;
-          // The blank spacer overlay is a plain sibling `<div>` next to
-          // the left column's own iframe (see `SpreadPaginatedHost`'s
-          // constructor) — checking *its* visibility directly is the
-          // only reliable signal here: the iframe's own internal scroll
-          // position is left untouched while the spacer covers it (see
-          // `sync`), so both `body.innerText` (always reflects the
-          // entire document regardless of scroll — pagination never
-          // fragments the DOM) *and* `elementFromPoint` called on the
-          // iframe's own document (unaffected by an overlay that isn't
-          // even part of that document) would still report real content
-          // there either way, telling this check nothing useful.
-          const spacer = left?.nextElementSibling as HTMLElement | null;
-          return {
-            spacerVisible: spacer?.getAttribute("aria-hidden") === "true" && getComputedStyle(spacer).display !== "none",
-            // Left must stay fully present to assistive technology even
-            // while visually blank — see `SpreadPaginatedHost`'s own doc
-            // comment on why hiding it outright (the way the redundant
-            // right column is *intentionally* hidden) would be a real
-            // accessibility regression, not just a cosmetic wrinkle.
-            accessible: left !== undefined && left.getAttribute("aria-hidden") === null && left.style.visibility !== "hidden",
-          };
+          const seen = new Set<string>();
+          for (const frame of iframes) {
+            const doc = (frame as HTMLIFrameElement).contentDocument;
+            if (!doc) continue;
+            for (let y = 20; y < 850; y += 40) {
+              const el = doc.elementFromPoint(300, y);
+              const text = el?.closest("p")?.textContent ?? el?.textContent ?? "";
+              const match = text.match(/C(\d)Para (\d+)/);
+              if (match) {
+                seen.add(`${match[1]}:${match[2]}`);
+              }
+            }
+          }
+          return [...seen];
         });
       }
 
-      // Chapter one's very first spread: left column must look blank
-      // (the spacer overlay showing) but remain accessible.
-      const atBookStart = await leftColumnState();
-      expect(atBookStart.spacerVisible, "chapter one's opening spread has no blank spacer showing").toBe(true);
-      expect(atBookStart.accessible, "left column was hidden from assistive technology").toBe(true);
-
-      // Cross into chapter two (this fixture's chapter one is 120
-      // paragraphs long, comfortably reached in under 15 forward clicks
-      // — see the previous test) and confirm its own opening spread
-      // gets the identical treatment.
-      let sawChapterTwoBlankStart = false;
-      for (let click = 0; click < 15 && !sawChapterTwoBlankStart; click++) {
-        await readerPage.mouse.click(1200, 450);
-        await readerPage.waitForTimeout(500);
-        const chapterTwoVisible = await readerPage.evaluate(() => {
-          const iframes = Array.from(document.querySelectorAll("iframe"));
-          return iframes.some((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText?.includes("CHAPTER TWO"));
-        });
-        if (!chapterTwoVisible) {
-          continue;
+      let sawUnpairedChapterOneEnd = false;
+      let sawMergedSpread = false;
+      let sawBlankAfterUnpaired = false;
+      for (let click = 0; click < 20; click++) {
+        const visible = await visibleParagraphs();
+        const hasChapterOneEnd = visible.includes("1:120");
+        const hasChapterTwo = visible.some((p) => p.startsWith("2:"));
+        if (hasChapterOneEnd && !hasChapterTwo) {
+          sawUnpairedChapterOneEnd = true;
+        } else if (sawUnpairedChapterOneEnd && !sawMergedSpread) {
+          // The very next state reached *after* chapter one's own
+          // unpaired last page must be the merge (both visible at
+          // once) — anything else here (chapter two alone, with no
+          // trace of chapter one's last page in the other column) means
+          // a whole separate spread opened instead, with a blank page
+          // where chapter one's last page — or chapter two's first —
+          // should still be visible.
+          if (hasChapterOneEnd && hasChapterTwo) {
+            sawMergedSpread = true;
+          } else {
+            sawBlankAfterUnpaired = true;
+          }
         }
-        const state = await leftColumnState();
-        expect(state.spacerVisible, "chapter two's opening spread has no blank spacer showing").toBe(true);
-        expect(state.accessible, "left column was hidden from assistive technology").toBe(true);
-        sawChapterTwoBlankStart = true;
+        if (sawMergedSpread) {
+          break;
+        }
+        // Comfortably inside the 1200px-wide pane (not right at its
+        // edge, which risks landing outside the page entirely and
+        // silently doing nothing — a real, confirmed flake at this
+        // narrower width, unlike the 1400px-wide test above where 1200
+        // is safely central).
+        await readerPage.mouse.click(1100, 450);
+        await readerPage.waitForTimeout(500);
       }
-      expect(sawChapterTwoBlankStart, "never reached chapter two's own opening spread").toBe(true);
+      expect(
+        sawUnpairedChapterOneEnd,
+        "never reached chapter one's own unpaired last page — check the fixture/viewport still produces an odd page count",
+      ).toBe(true);
+      expect(
+        sawBlankAfterUnpaired,
+        "a separate spread (missing either chapter's content) appeared between chapter one's unpaired last page and the merge",
+      ).toBe(false);
+      expect(
+        sawMergedSpread,
+        "chapter one's last page and chapter two's first page were never shown together in the same spread",
+      ).toBe(true);
     } finally {
       await context.close();
     }

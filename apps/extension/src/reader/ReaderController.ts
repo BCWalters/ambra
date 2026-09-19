@@ -246,13 +246,14 @@ export interface ReaderSnapshot {
    * — `undefined` outside spread mode, or if there's no companion page
    * (the chapter's last page has no facing page). */
   secondPageIndex: number | undefined;
-  /** `true` when the left column of a spread is currently showing the
-   * chapter-opening blank spacer (see `SpreadPaginatedHost`'s own doc
-   * comment on why every chapter begins with one — issue #90) rather
-   * than a real page — tells `PageFurniture` to skip drawing a running
-   * header/footer over that column entirely, the same way it already
-   * skips them for a hidden companion column with no page to show. */
-  isPrimaryPageBlankSpacer: boolean;
+  /** `true` when the left column of a spread is showing the *previous*
+   * chapter's borrowed last page rather than this chapter's own content
+   * (see `SpreadPaginatedHost.isShowingMergedTail`, issue #90/#92) —
+   * `bookPageIndex`/`pageIndex` here already describe the *right*
+   * column's page (this chapter's own real page 0), not the left
+   * column's, so `PageFurniture` needs this to know not to label the
+   * left column with a number that's actually the right column's. */
+  isPrimaryPageMergedTail: boolean;
   /** The reader pane's current width in CSS pixels — lets `PageFurniture`
    * replicate `SpreadPaginatedHost`'s own column/gutter geometry exactly
    * (via `SpreadPaginatedHost.effectiveColumnWidth`/`GUTTER_WIDTH`) so its
@@ -516,6 +517,17 @@ export class ReaderController {
    * than queuing it — consistent with how physical book pages can't be
    * turned faster than one at a time anyway. */
   private isTurningPage = false;
+  /** Set by `prepareMergedIncomingSpread` right before returning a
+   * successfully-built merged host — the spine index `turnPageInternal`
+   * must adopt as `this.spineIndex` (and refresh every other piece of
+   * chapter-scoped bookkeeping against — title, TOC, highlights,
+   * progress) once it commits to that host, since unlike an ordinary
+   * in-chapter turn, this one *did* cross a chapter boundary even
+   * though it went through the same "just another spread turn"
+   * animation path as one. Read-and-cleared by `turnPageInternal`
+   * immediately after `animateSpreadTurn` returns, so a *plain*
+   * in-chapter turn right after never sees a stale value. */
+  private pendingSpreadMergeSpineIndex: number | undefined;
   /** Incremented every time a new page-turn gesture (click or drag)
    * begins, and captured by that gesture's own async operations. Before
    * any turn actually commits (mutates `this.host`), it checks its
@@ -791,7 +803,8 @@ export class ReaderController {
         isSpread: this.host instanceof SpreadPaginatedHost,
         secondPageIndex:
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
-        isPrimaryPageBlankSpacer: this.host instanceof SpreadPaginatedHost ? this.host.isShowingBlankSpacer : false,
+        isPrimaryPageMergedTail:
+          this.host instanceof SpreadPaginatedHost ? this.host.isShowingMergedTail : false,
         paneWidth: this.width,
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarksOnCurrentPage().length > 0,
@@ -1472,22 +1485,22 @@ export class ReaderController {
   }
 
   /** The spread-mode equivalent of `iframeHasFocus`: which of `host`'s
-   * two columns (if either) currently has focus — `0` for the primary
-   * (left) column, `1` for the companion (right) one, `undefined` if
-   * neither does (a mouse/touch-driven turn, which never moves focus
-   * into the content at all). Both columns are checked, not just the
-   * primary one, since a reader can click directly into the right
-   * column and drive keyboard navigation from there (see
-   * `reattachKeyboardNav`'s "every content document" scope) — an
-   * animated spread turn disposes *both* of the old spread's iframes,
-   * so restoring focus correctly needs to know which one (if either)
-   * actually held it. */
-  private spreadFocusedColumn(host: SpreadPaginatedHost): 0 | 1 | undefined {
-    const docs = host.contentDocuments();
-    for (let index = 0; index < docs.length; index++) {
-      const iframe = docs[index]?.defaultView?.frameElement;
-      if (iframe instanceof HTMLElement && iframe.ownerDocument.activeElement === iframe) {
-        return index as 0 | 1;
+   * two columns (if either) currently has focus — `"left"` or `"right"`
+   * (see `SpreadPaginatedHost.columnElement` — "left" means whichever
+   * element is actually occupying that slot right now, `mergedTailHost`
+   * included), `undefined` if neither does (a mouse/touch-driven turn,
+   * which never moves focus into the content at all). Both columns are
+   * checked, not just the primary one, since a reader can click
+   * directly into the right column and drive keyboard navigation from
+   * there (see `reattachKeyboardNav`'s "every content document" scope)
+   * — an animated spread turn disposes *both* of the old spread's
+   * iframes, so restoring focus correctly needs to know which one (if
+   * either) actually held it. */
+  private spreadFocusedColumn(host: SpreadPaginatedHost): "left" | "right" | undefined {
+    for (const column of ["left", "right"] as const) {
+      const iframe = host.columnElement(column);
+      if (iframe.ownerDocument.activeElement === iframe) {
+        return column;
       }
     }
     return undefined;
@@ -1524,12 +1537,12 @@ export class ReaderController {
    * ordinary mouse/touch-driven turn). */
   private restoreSpreadFocusAfterHostSwap(
     newHost: SpreadPaginatedHost,
-    focusedColumn: 0 | 1 | undefined,
+    focusedColumn: "left" | "right" | undefined,
   ): void {
     if (focusedColumn === undefined) {
       return;
     }
-    const doc = newHost.contentDocuments()[focusedColumn];
+    const doc = newHost.columnElement(focusedColumn).contentDocument;
     if (doc) {
       this.accessibility.focusContent(doc);
     }
@@ -1637,11 +1650,23 @@ export class ReaderController {
    * keyboard/focus accessibility.
    */
   private setUpContentInteraction(): void {
-    const currentPath = this.pkg.spine[this.spineIndex]?.manifestItem.path;
     const documents = this.allContentDocuments();
-    if (documents.length === 0 || !currentPath) {
+    if (documents.length === 0) {
       return;
     }
+    // A merged spread's borrowed tail document (see `SpreadPaginatedHost.
+    // mergedTailDocument`) belongs to the *previous* spine item — links
+    // within it must resolve relative to *that* item's own path/spine
+    // index, not `this.spineIndex`, or an in-book link clicked on that
+    // still-fully-interactive borrowed page would resolve against the
+    // wrong document entirely (silently landing somewhere else in the
+    // book, or failing to resolve at all).
+    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
+    const pathAndSpineIndexFor = (doc: Document): { path: string; spineIndex: number } | undefined => {
+      const spineIndex = doc === tailDoc ? this.spineIndex - 1 : this.spineIndex;
+      const path = this.pkg.spine[spineIndex]?.manifestItem.path;
+      return path ? { path, spineIndex } : undefined;
+    };
 
     const focusDocument = this.primaryContentDocument();
     const cleanups: Array<() => void> = [];
@@ -1687,8 +1712,12 @@ export class ReaderController {
           return;
         }
 
+        const own = pathAndSpineIndexFor(iframeDocument);
+        if (!own) {
+          return;
+        }
         const { fragment } = splitHrefFragment(href);
-        const targetPath = resolveEpubPath(currentPath, href);
+        const targetPath = resolveEpubPath(own.path, href);
         const targetSpineIndex = this.pkg.spine.findIndex(
           (ref) => ref.manifestItem.path === targetPath,
         );
@@ -1699,7 +1728,7 @@ export class ReaderController {
           return;
         }
 
-        if (targetSpineIndex === this.spineIndex) {
+        if (targetSpineIndex === own.spineIndex) {
           if (fragment) {
             const focusTarget = this.goToFragment(fragment);
             if (focusDocument) {
@@ -2201,12 +2230,31 @@ export class ReaderController {
    * theme settings `applyDisplaySettingsToHost` also applies, which skip
    * the work when already at their defaults — a spine item having zero
    * highlights isn't a meaningful "default" to detect ahead of time, so
-   * this always at least attempts the (cheap, no-op-if-empty) lookup). */
+   * this always at least attempts the (cheap, no-op-if-empty) lookup).
+   *
+   * A merged spread's borrowed tail document (see `SpreadPaginatedHost.
+   * mergedTailDocument`) is always the *previous* spine item, one lower
+   * than `this.spineIndex` — resolved and applied against that index
+   * specifically, not `this.spineIndex`. Getting this wrong was a real,
+   * confirmed bug: `applyHighlightRanges` *replaces* a document's entire
+   * highlight registry on every call (see its own doc comment), so
+   * naively applying `this.spineIndex`'s highlights to a document that
+   * actually belongs to a different spine item doesn't just fail to add
+   * anything — every highlight already correctly showing on that
+   * borrowed tail page visibly vanishes the instant the reader turns
+   * forward into the next chapter, immediately after having read it. */
   private applyHighlightsToCurrentHost(): void {
     if (this.host instanceof FixedContentHost) {
       return;
     }
+    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
+    if (tailDoc) {
+      this.applyHighlightsToDocument(tailDoc, this.spineIndex - 1);
+    }
     for (const doc of this.allContentDocuments()) {
+      if (doc === tailDoc) {
+        continue;
+      }
       this.applyHighlightsToDocument(doc, this.spineIndex);
     }
   }
@@ -2607,6 +2655,13 @@ export class ReaderController {
       // navigation from either column, not just the primary one).
       const focusedColumn = this.spreadFocusedColumn(this.host);
       const animatedSpread = await this.animateSpreadTurn(this.host, direction);
+      // Captured and cleared immediately — see its own doc comment.
+      // Only ever set right when `animateSpreadTurn` above actually
+      // returns a host (via `prepareMergedIncomingSpread`), so reading
+      // it in the `animatedSpread` branch below is always accurate; the
+      // plain in-chapter fallback further down never needs it at all.
+      const mergedIntoSpineIndex = this.pendingSpreadMergeSpineIndex;
+      this.pendingSpreadMergeSpineIndex = undefined;
       if (animatedSpread) {
         if (token !== this.turnToken) {
           animatedSpread.dispose();
@@ -2618,6 +2673,20 @@ export class ReaderController {
         this.dragCleanup = undefined;
         this.host = animatedSpread;
         this.clearStaleHostWrapper();
+        if (mergedIntoSpineIndex !== undefined) {
+          // This turn crossed a chapter boundary via a merge (issue
+          // #90/#92) even though it went through the exact same
+          // "just another spread turn" path as an in-chapter one —
+          // needs the same chapter-scoped bookkeeping an ordinary
+          // `openSpineItem` chapter change applies, just not *all* of
+          // it (no accessibility re-focus, no loading spinner, no
+          // display-settings reapplication — this never actually
+          // left paginated spread mode, and `prepareMergedIncomingSpread`
+          // already applied the current display settings to the new
+          // host itself).
+          this.spineIndex = mergedIntoSpineIndex;
+          this.refreshBookPagination();
+        }
         this.updateContentTitle();
         this.reattachKeyboardNav();
         this.setUpContentInteraction();
@@ -3400,18 +3469,42 @@ export class ReaderController {
     let incomingLeftOverlay: HTMLDivElement | undefined;
     if (!this.shouldSkipPageTurnAnimation()) {
       const title = this.pkg.metadata.title;
-      const chapterLabel = this.chapterLabel(this.spineIndex);
+      // A merge (issue #90/#92) crosses a chapter boundary via this same
+      // "just another spread turn" path — `pendingSpreadMergeSpineIndex`
+      // (set by `prepareMergedIncomingSpread`, read here *before*
+      // `turnPageInternal` adopts it into `this.spineIndex` once this
+      // whole method returns) is the *incoming* host's own real spine
+      // index in that case, which is one higher than `this.spineIndex`
+      // (still the *outgoing* chapter's, unchanged until then) — every
+      // "incoming" label/number below must use it instead, or they'd
+      // describe the wrong chapter entirely for the whole turn (a real,
+      // confirmed bug: this chapter's own title/page number showing
+      // "Chapter One" — the chapter being *left* — throughout a merge
+      // turn into "Chapter Two").
+      const incomingSpineIndex = this.pendingSpreadMergeSpineIndex ?? this.spineIndex;
+      const isMergeTurn = this.pendingSpreadMergeSpineIndex !== undefined;
+      const outgoingChapterLabel = this.chapterLabel(this.spineIndex);
+      const incomingChapterLabel = this.chapterLabel(incomingSpineIndex);
       const outgoingPrimary = this.furniturePageNumber(this.spineIndex, oldHost.pageIndex, oldHost.pageCount);
       const outgoingSecondary =
         oldHost.secondPageIndex !== undefined && outgoingPrimary !== undefined ? outgoingPrimary + 1 : undefined;
-      const incomingPrimary = this.furniturePageNumber(this.spineIndex, newHost.pageIndex, newHost.pageCount);
-      const incomingSecondary =
-        newHost.secondPageIndex !== undefined && incomingPrimary !== undefined ? incomingPrimary + 1 : undefined;
+      const incomingRightNumber = this.furniturePageNumber(incomingSpineIndex, newHost.pageIndex, newHost.pageCount);
+      // While merging, the incoming host's *left* column shows the
+      // previous chapter's borrowed last page (see `SpreadPaginatedHost.
+      // isShowingMergedTail`), not this chapter's own content — there's
+      // no correct number for it to show during the turn either, same
+      // as `PageFurniture`'s identical treatment once the turn settles.
+      const incomingPrimary = isMergeTurn ? undefined : incomingRightNumber;
+      const incomingSecondary = isMergeTurn
+        ? incomingRightNumber
+        : newHost.secondPageIndex !== undefined && incomingRightNumber !== undefined
+          ? incomingRightNumber + 1
+          : undefined;
 
       if (this.pageTurnAnimationStyle !== "rotate") {
         const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
         const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
-        const bands = (primary: number | undefined, secondary: number | undefined) => [
+        const bands = (chapterLabel: string, primary: number | undefined, secondary: number | undefined) => [
           {
             left: 0,
             width: columnWidth,
@@ -3425,21 +3518,26 @@ export class ReaderController {
             footerText: secondary !== undefined ? `Page ${secondary}` : undefined,
           },
         ];
-        outgoingOverlay = this.buildTurnFurnitureOverlay(oldHost.element, bands(outgoingPrimary, outgoingSecondary));
-        incomingOverlay = this.buildTurnFurnitureOverlay(newEl, bands(incomingPrimary, incomingSecondary));
+        outgoingOverlay = this.buildTurnFurnitureOverlay(
+          oldHost.element,
+          bands(outgoingChapterLabel, outgoingPrimary, outgoingSecondary),
+        );
+        incomingOverlay = this.buildTurnFurnitureOverlay(
+          newEl,
+          bands(incomingChapterLabel, incomingPrimary, incomingSecondary),
+        );
       } else {
         // Always the right column now (see `elementToTurn`), which
         // always shows the chapter label + its own "secondary" page
         // number, matching `PageFurniture`'s own left-title/right-
         // chapter convention.
-        const header = { mode: "single" as const, text: chapterLabel };
         const oldColumnEl = this.spreadColumnElement(oldHost, 1);
         const newColumnEl = this.spreadColumnElement(newHost, 1);
         outgoingOverlay = this.buildTurnFurnitureOverlay(oldColumnEl, [
           {
             left: 0,
             width: oldColumnEl.getBoundingClientRect().width,
-            header,
+            header: { mode: "single" as const, text: outgoingChapterLabel },
             footerText: outgoingSecondary !== undefined ? `Page ${outgoingSecondary}` : undefined,
           },
         ]);
@@ -3447,7 +3545,7 @@ export class ReaderController {
           {
             left: 0,
             width: newColumnEl.getBoundingClientRect().width,
-            header,
+            header: { mode: "single" as const, text: incomingChapterLabel },
             footerText: incomingSecondary !== undefined ? `Page ${incomingSecondary}` : undefined,
           },
         ]);
@@ -3603,15 +3701,16 @@ export class ReaderController {
    * `SpreadPaginatedHost` — used both by `elementToTurn` (which column
    * a "rotate" turn actually applies its transform to) and by
    * `animateSpreadTurn` (to find the *incoming* spread's matching
-   * column, to position that side's furniture overlay against). Same
-   * `defaultView.frameElement` technique `spreadFocusedColumn` uses,
-   * since `SpreadPaginatedHost` doesn't otherwise expose its two column
-   * elements individually. Falls back to the whole spread element if
-   * that somehow can't be resolved (never observed in practice, just
-   * defensive). */
+   * column, to position that side's furniture overlay against).
+   * Delegates directly to `SpreadPaginatedHost.columnElement`, which
+   * (unlike indexing into `contentDocuments()`) correctly resolves
+   * "left" to whichever element is actually occupying that slot right
+   * now even while merged (see that class's doc comment) — a plain
+   * index into `contentDocuments()` doesn't hold up there, since that
+   * array can have three entries (`mergedTailHost`, `left`, `right`)
+   * while merged, not always exactly two. */
   private spreadColumnElement(host: SpreadPaginatedHost, columnIndex: 0 | 1): HTMLElement {
-    const iframe = host.contentDocuments()[columnIndex]?.defaultView?.frameElement;
-    return iframe instanceof HTMLElement ? iframe : host.element;
+    return host.columnElement(columnIndex === 0 ? "left" : "right");
   }
 
   /** Builds the "back face" a spread's rotate turn (issue #81) needs to
@@ -3960,6 +4059,93 @@ export class ReaderController {
     return newHost;
   }
 
+  /** Builds the *merged* incoming spread for a forward turn off
+   * `oldHost`'s own last (unpaired) page (issue #90/#92) — the next
+   * chapter's real page 0 in the right column, paired with `oldHost`'s
+   * own last page (borrowed via `detachLeftForReuse`, still fully live)
+   * in the left, so the next chapter visibly starts on the right with
+   * no blank page anywhere, instead of a whole separate spread opening
+   * with a blank facing page next to it. Returns `undefined` (without
+   * touching `oldHost` at all) if there's no next chapter, or it isn't
+   * reflowable spread-eligible content a merge can continue into — the
+   * caller then falls back to the ordinary chapter-open path, with its
+   * usual blank facing page, exactly as before this existed.
+   *
+   * Sets `pendingSpreadMergeSpineIndex` once it succeeds, so
+   * `turnPageInternal` knows to adopt the next chapter's `spineIndex`
+   * (and refresh every other piece of chapter-scoped bookkeeping) once
+   * it commits to the returned host — unlike every other path through
+   * `prepareIncomingSpread`, this is the one case where "just another
+   * spread turn" *did* cross a chapter boundary. */
+  private async prepareMergedIncomingSpread(oldHost: SpreadPaginatedHost): Promise<SpreadPaginatedHost | undefined> {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const nextSpineIndex = this.spineIndex + 1;
+    const nextSpineItem = this.pkg.spine[nextSpineIndex];
+    if (!nextSpineItem) {
+      return undefined;
+    }
+    const resolvedLayout = nextSpineItem.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
+    if (resolvedLayout === "pre-paginated" || !SpreadPaginatedHost.isEligible(this.width)) {
+      return undefined;
+    }
+
+    const containerEl = this.containerEl;
+    const newHost = new SpreadPaginatedHost(this.width, this.height);
+    const newEl = newHost.element;
+    newEl.style.position = "absolute";
+    newEl.style.top = "0";
+    newEl.style.left = "0";
+    newEl.style.zIndex = "1";
+    // See `prepareIncomingSpread`'s identical `opacity`-not-`visibility`
+    // reasoning (issue #84) for why.
+    newEl.style.opacity = "0";
+    containerEl.appendChild(newEl);
+
+    // Only actually mutates `oldHost` (marking its own left column as
+    // handed off, not yet touching the DOM at all — see
+    // `openMergedWithPreviousTail`'s doc comment for why the actual move
+    // happens there, atomically) once every synchronous precondition
+    // above has already passed — see `reattachDetachedLeft` below for
+    // how this is undone if the async load that follows fails anyway.
+    const previousTail = oldHost.detachLeftForReuse();
+    try {
+      await newHost.openMergedWithPreviousTail(this.contentLoader, this.resolver, nextSpineIndex, previousTail);
+    } catch (err) {
+      oldHost.reattachDetachedLeft();
+      newHost.dispose();
+      newEl.remove();
+      throw err;
+    }
+
+
+    const newDocs = newHost.contentDocuments();
+    for (const newDoc of newDocs) {
+      ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
+    }
+    if (
+      this.fontScale !== 1 ||
+      this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
+      this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
+      this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
+      this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
+    ) {
+      for (const newDoc of newDocs) {
+        ReadingTheme.applyFontScale(newDoc, this.fontScale);
+        ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
+        ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
+        ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
+        ReadingTheme.applyContentWidth(newDoc, this.contentWidthEm);
+      }
+      newHost.relayout(this.width, this.height);
+    }
+    newEl.style.opacity = "";
+    newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(nextSpineIndex)}`);
+    this.pendingSpreadMergeSpineIndex = nextSpineIndex;
+    return newHost;
+  }
+
   /** The two-page-spread equivalent of `prepareIncomingPage` — builds a
    * whole new `SpreadPaginatedHost` for the *target spread* (both
    * columns), positioned to sit exactly beneath `oldHost.element`,
@@ -3970,14 +4156,25 @@ export class ReaderController {
    * when `oldHost` is already at that edge of the chapter (there's
    * nothing to turn *to*) — unlike the single-page version, a spread one
    * page short of the end still has a valid (if lopsided) next spread to
-   * turn to, so this is checked directly via `hasNextSpread`/
-   * `hasPreviousSpread` rather than by an out-of-range page index (a
-   * plain `pageIndex`/`pageCount` comparison here isn't reliable enough
-   * on its own once chapters can begin with a blank spacer page — issue
-   * #90 — since `pageIndex` reports 0 both for "really is at the
-   * chapter's first real page" and for "the spacer is still showing",
-   * two states `SpreadPaginatedHost` itself needs to tell apart but this
-   * check does not). */
+   * turn to, so this is checked directly rather than by an out-of-range
+   * page index. The forward check is against `pageCount - 2`, not
+   * `pageCount - 1` — see `nextSpread`'s identical fix (issue #91) for
+   * why: once the right column already shows the chapter's actual last
+   * page, there's nothing left to turn to, even though the left column's
+   * own index never reaches `pageCount - 1` itself for an even page
+   * count. Checking against `pageCount - 1` here was the animated
+   * turn's own copy of that same bug — one page turn past the last full
+   * spread redisplayed that identical spread (the last page now alone
+   * in the left column) instead of correctly falling through to the
+   * next chapter.
+   *
+   * A forward turn off `oldHost`'s own last (unpaired) page is handled
+   * *before* that bounds check even runs, by `prepareMergedIncomingSpread`
+   * instead (issue #90/#92) — see its own doc comment. Its result, once
+   * built, is exactly as valid an "incoming spread" as an in-chapter one
+   * from every other caller's point of view (`animateSpreadTurn` plays
+   * the identical turn animation either way), so it's folded in here
+   * rather than requiring its own separate animate/reveal machinery. */
   private async prepareIncomingSpread(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -3985,7 +4182,21 @@ export class ReaderController {
     if (!this.containerEl) {
       return undefined;
     }
-    if (direction === 1 ? !oldHost.hasNextSpread() : !oldHost.hasPreviousSpread()) {
+    this.pendingSpreadMergeSpineIndex = undefined;
+    if (direction === 1 && oldHost.secondPageIndex === undefined) {
+      const merged = await this.prepareMergedIncomingSpread(oldHost);
+      if (merged) {
+        return merged;
+      }
+      // No next chapter, or it isn't reflowable/spread-eligible content
+      // a merge can continue into — fall through to the ordinary bounds
+      // check below, which (correctly, since `oldHost` is genuinely on
+      // its last page either way) reports "no more spread here," so the
+      // caller's existing chapter-open fallback (issue #83's animation
+      // included) handles the crossing exactly as it always has, with
+      // the usual blank facing page rather than a merge.
+    }
+    if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 2 : oldHost.pageIndex <= 0) {
       return undefined;
     }
     const targetIndex =
