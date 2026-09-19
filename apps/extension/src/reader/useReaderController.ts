@@ -23,6 +23,7 @@ export interface UseReaderControllerResult {
   setContentWidth: (widthEm: number) => void;
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
+  setBrightness: (brightness: number) => void;
   setChromeTheme: (theme: ChromeThemeChoice) => void;
   setPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
   previewSeek: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
@@ -199,6 +200,13 @@ export function useReaderController(): UseReaderControllerResult {
     [controller],
   );
 
+  const setBrightness = useCallback(
+    (brightness: number) => {
+      void controller?.setBrightness(brightness);
+    },
+    [controller],
+  );
+
   const setChromeTheme = useCallback(
     (theme: ChromeThemeChoice) => {
       void controller?.setChromeTheme(theme);
@@ -368,6 +376,7 @@ export function useReaderController(): UseReaderControllerResult {
     setContentWidth,
     setFontFamily,
     setPageTheme,
+    setBrightness,
     setChromeTheme,
     setPageTurnAnimationStyle,
     previewSeek,

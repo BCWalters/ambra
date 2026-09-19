@@ -57,6 +57,7 @@ const ReaderAppInner: FC = () => {
     setContentWidth,
     setFontFamily,
     setPageTheme,
+    setBrightness,
     setChromeTheme,
     setPageTurnAnimationStyle,
     previewSeek,
@@ -526,6 +527,7 @@ const ReaderAppInner: FC = () => {
               onSetContentWidth={setContentWidth}
               onSetFontFamily={setFontFamily}
               onSetPageTheme={setPageTheme}
+              onSetBrightness={setBrightness}
               onSetChromeTheme={setChromeTheme}
               onSetPageTurnAnimationStyle={setPageTurnAnimationStyle}
               visible={chromeVisible}

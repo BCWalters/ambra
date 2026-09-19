@@ -63,6 +63,7 @@ export interface ToolbarProps {
   onSetContentWidth: (widthEm: number) => void;
   onSetFontFamily: (family: FontFamilyChoice) => void;
   onSetPageTheme: (theme: PageTheme) => void;
+  onSetBrightness: (brightness: number) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
   onSetPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
   /** Whether the toolbar should currently be shown, and the pointer/
@@ -174,6 +175,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetContentWidth,
   onSetFontFamily,
   onSetPageTheme,
+  onSetBrightness,
   onSetChromeTheme,
   onSetPageTurnAnimationStyle,
   visible,
@@ -627,6 +629,30 @@ export const Toolbar: FC<ToolbarProps> = ({
                             {ReadingTheme.PAGE_THEMES[key].label}
                           </MenuItemRadio>
                         ))}
+                      </MenuGroup>
+                      <MenuDivider />
+                      <MenuGroup>
+                        {/* Issue #92: dims the whole page (text, background,
+                            and any images) below whichever "Page style"
+                            theme is active — a single slider that works the
+                            same way across every theme, rather than a
+                            separate darkening mechanism per theme, since a
+                            plain brightness filter already dims a lighter
+                            theme's whole page while dimming mostly the
+                            *text* of the already-dark "Dark" theme, exactly
+                            the two behaviors asked for. */}
+                        <MenuGroupHeader>Brightness</MenuGroupHeader>
+                        <div style={{ padding: "6px 12px 10px" }}>
+                          <DefaultableSlider
+                            min={ReadingTheme.MIN_BRIGHTNESS}
+                            max={ReadingTheme.MAX_BRIGHTNESS}
+                            step={ReadingTheme.BRIGHTNESS_STEP}
+                            value={snapshot.brightness}
+                            defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
+                            onChange={onSetBrightness}
+                            aria-label="Brightness"
+                          />
+                        </div>
                       </MenuGroup>
                     </MenuList>
                   </MenuPopover>

@@ -298,6 +298,13 @@ export interface ReaderSnapshot {
    * see `ReadingTheme`. */
   fontFamily: FontFamilyChoice;
   pageTheme: PageTheme;
+  /** The current reader-controlled page brightness multiplier — see
+   * `ReadingTheme.applyBrightness`/issue #92. Like `pageTheme`, this
+   * needs no fixed-layout exception of its own: `ReadingTheme`'s CSS
+   * (including the `filter` this drives) is only ever injected into
+   * reflowable content in the first place, so it has no effect on
+   * fixed-layout content regardless of this value. */
+  brightness: number;
   /** The reader's own chrome color (toolbar/TOC/scrubber/details panel
    * — see `ChromeThemeChoice`), distinct from `pageTheme` (the book
    * page's own background). */
@@ -461,6 +468,9 @@ export class ReaderController {
   /** Defaults to `ReadingTheme.DEFAULT_PAGE_THEME`, but `open` overwrites
    * this from the saved preference (if any) — see `setPageTheme`. */
   private pageTheme: PageTheme = ReadingTheme.DEFAULT_PAGE_THEME;
+  /** Defaults to `ReadingTheme.DEFAULT_BRIGHTNESS`, but `open` overwrites
+   * this from the saved preference (if any) — see `setBrightness`. */
+  private brightness = ReadingTheme.DEFAULT_BRIGHTNESS;
   /** Defaults to `DEFAULT_CHROME_THEME`, but `open` overwrites this from
    * the saved preference (if any) — see `setChromeTheme`. Pure UI state,
    * never applied to a content document the way font/page settings are
@@ -739,6 +749,7 @@ export class ReaderController {
     controller.fontFamily =
       (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
     controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
+    controller.brightness = (await library.getDefaultBrightness()) ?? ReadingTheme.DEFAULT_BRIGHTNESS;
     controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
     controller.pageTurnAnimationStyle =
       (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
@@ -822,6 +833,7 @@ export class ReaderController {
             : this.contentWidthEm,
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
+        brightness: this.brightness,
         chromeTheme: this.chromeTheme,
         pageTurnAnimationStyle: this.pageTurnAnimationStyle,
         isLoading: this.isLoading,
@@ -2009,6 +2021,24 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Sets the reader-controlled page brightness multiplier and persists
+   * it (issue #92). Like `setPageTheme`, this never needs a relayout —
+   * a `filter` is a purely visual compositing effect that can't affect
+   * line-wrapping. A no-op for a fixed-layout spine item, same reason. */
+  public async setBrightness(brightness: number): Promise<void> {
+    const clamped = Math.min(
+      ReadingTheme.MAX_BRIGHTNESS,
+      Math.max(ReadingTheme.MIN_BRIGHTNESS, brightness),
+    );
+    if (clamped === this.brightness || this.host instanceof FixedContentHost) {
+      return;
+    }
+    this.brightness = clamped;
+    await this.library.setDefaultBrightness(clamped);
+    this.applyDisplaySettingsToHost({ relayout: false });
+    this.notify();
+  }
+
   /** Sets the reader's own chrome color and persists it. Pure UI state —
    * unlike `setPageTheme`/`setFontFamily`, this never touches a content
    * document at all (no fixed-layout exception needed either, since it
@@ -2139,6 +2169,7 @@ export class ReaderController {
       ReadingTheme.applyLetterSpacing(doc, this.letterSpacing);
       ReadingTheme.applyContentWidth(doc, this.contentWidthEm);
       ReadingTheme.applyPageTheme(doc, this.pageTheme);
+      ReadingTheme.applyBrightness(doc, this.brightness);
     }
     if (!options.relayout) {
       return;
@@ -2151,7 +2182,7 @@ export class ReaderController {
   }
 
   /** Applies the persisted font scale/family/line-spacing/letter-spacing/
-   * content-width/page theme to a freshly-opened host (see
+   * content-width/page theme/brightness to a freshly-opened host (see
    * `openSpineItem`) — every spine item load needs this, not just
    * explicit in-session changes, so a book opened mid-session at
    * non-default settings looks correct immediately. Skips the (fairly
@@ -2173,7 +2204,11 @@ export class ReaderController {
       this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
       this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
       this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
-    if (needsRelayout || this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME) {
+    if (
+      needsRelayout ||
+      this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME ||
+      this.brightness !== ReadingTheme.DEFAULT_BRIGHTNESS
+    ) {
       this.applyDisplaySettingsToHost({ relayout: needsRelayout }, host);
     }
   }
@@ -4038,6 +4073,7 @@ export class ReaderController {
     const newDoc = newHost.element.contentDocument;
     if (newDoc) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
+      ReadingTheme.applyBrightness(newDoc, this.brightness);
       if (
         this.fontScale !== 1 ||
         this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
@@ -4119,10 +4155,10 @@ export class ReaderController {
       throw err;
     }
 
-
     const newDocs = newHost.contentDocuments();
     for (const newDoc of newDocs) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
+      ReadingTheme.applyBrightness(newDoc, this.brightness);
     }
     if (
       this.fontScale !== 1 ||
@@ -4242,6 +4278,7 @@ export class ReaderController {
     const newDocs = newHost.contentDocuments();
     for (const newDoc of newDocs) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
+      ReadingTheme.applyBrightness(newDoc, this.brightness);
     }
     if (
       this.fontScale !== 1 ||

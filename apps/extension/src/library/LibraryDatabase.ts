@@ -151,6 +151,7 @@ const LINE_SPACING_PREFERENCE_KEY = "defaultLineSpacing";
 const LETTER_SPACING_PREFERENCE_KEY = "defaultLetterSpacing";
 const CONTENT_WIDTH_PREFERENCE_KEY = "defaultContentWidth";
 const PAGE_THEME_PREFERENCE_KEY = "defaultPageTheme";
+const BRIGHTNESS_PREFERENCE_KEY = "defaultBrightness";
 const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
@@ -356,6 +357,20 @@ export class LibraryDatabase {
 
   public async setDefaultPageTheme(theme: PageTheme): Promise<void> {
     const record: PreferenceRecord = { key: PAGE_THEME_PREFERENCE_KEY, value: theme };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** The reader-wide default page brightness multiplier (see
+   * `ReadingTheme.BRIGHTNESS_PROPERTY`, issue #92), persisted the same
+   * way as `getDefaultFontScale`. `undefined` if never set, in which
+   * case callers should fall back to `ReadingTheme.DEFAULT_BRIGHTNESS`. */
+  public async getDefaultBrightness(): Promise<number | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, BRIGHTNESS_PREFERENCE_KEY);
+    return record?.value as number | undefined;
+  }
+
+  public async setDefaultBrightness(brightness: number): Promise<void> {
+    const record: PreferenceRecord = { key: BRIGHTNESS_PREFERENCE_KEY, value: brightness };
     await this.put(PREFERENCES_STORE, record);
   }
 
