@@ -2676,6 +2676,56 @@ export class ReaderController {
     return bookPageIndex ?? (pageCount > 0 ? pageIndex + 1 : undefined);
   }
 
+  /** Builds an opaque, page-themed backdrop rectangle for the *animating*
+   * side of a "slide" turn — a real, reported bug (issue #84) otherwise:
+   * "slide" deliberately leaves the animating host at its own natural
+   * (often short) height rather than growing it (see the `slide` branch
+   * right below in `animatePageTurn`/`animateSpreadTurn`, and
+   * `suppressClipPathForAnimation`'s doc comment) — but with `clip-path`
+   * also gone for the whole turn's duration, a short page's iframe
+   * simply doesn't paint anything below its own (short) box. Without
+   * this backdrop, whatever's directly behind it — the *other*, static
+   * host, sitting fully rendered and unclipped at its own final resting
+   * page — visibly shows through that gap for as long as the animating
+   * page is short of the pane's full height, reading as "the wrong
+   * page's content" instead of the current one.
+   *
+   * A plain sibling (like `buildTurnFurnitureOverlay`'s own overlay),
+   * sized to `matchEl`'s width but the pane's *full* height (same
+   * reasoning as that overlay's own height fix), filled with the active
+   * `ReadingTheme` page background. Callers must insert this *before*
+   * `matchEl` in DOM order, as a sibling — i.e. via
+   * `matchEl.parentElement!.insertBefore(backdrop, matchEl)`, never
+   * assuming that parent is `this.containerEl` itself: `matchEl` may
+   * instead be nested one level deeper inside `stageHiddenHostElement`'s
+   * wrapper (any host still active from a normal, non-animated
+   * `openSpineItem` mount, e.g. the very first page turn after opening a
+   * book) — but that wrapper is always `inset: 0` within `containerEl`,
+   * so positioning this backdrop from `containerEl`'s own rect (below)
+   * still lines up correctly either way. This ordering makes it paint
+   * *underneath* `matchEl`'s own content at the same z-index — covering
+   * only the gap beyond `matchEl`'s own box, never the real content
+   * itself — and callers must add it to `playPageTurnAnimation`'s
+   * `extraTurnEls` so it slides away in lockstep with `matchEl`, exactly
+   * like the furniture overlay already does. */
+  private buildTurnBackdrop(matchEl: HTMLElement): HTMLDivElement | undefined {
+    if (!this.containerEl) {
+      return undefined;
+    }
+    const containerRect = this.containerEl.getBoundingClientRect();
+    const matchRect = matchEl.getBoundingClientRect();
+    const backdrop = document.createElement("div");
+    backdrop.setAttribute("aria-hidden", "true");
+    backdrop.style.position = "absolute";
+    backdrop.style.left = `${matchRect.left - containerRect.left}px`;
+    backdrop.style.top = `${matchRect.top - containerRect.top}px`;
+    backdrop.style.width = `${matchRect.width}px`;
+    backdrop.style.height = `${this.height}px`;
+    backdrop.style.pointerEvents = "none";
+    backdrop.style.background = ReadingTheme.PAGE_THEMES[this.pageTheme].background;
+    return backdrop;
+  }
+
   /** Builds the running header/footer overlay for one side of an
    * animated page turn — either the outgoing page's current furniture or
    * the incoming page's furniture-to-be, depending on which host/element
@@ -2764,9 +2814,24 @@ export class ReaderController {
     overlay.style.height = `${this.height}px`;
     overlay.style.pointerEvents = "none";
 
+    // Matches `PageFurniture`'s own `Caption1` text exactly by
+    // referencing Fluent's typography tokens as CSS custom properties
+    // (`--fontFamilyBase`/`--fontSizeBase200`/`--fontWeightRegular`/
+    // `--lineHeightBase200` — see `Caption1`'s own generated styles)
+    // rather than hardcoding literal values here — a real, reported bug
+    // otherwise (issue #85): a hardcoded font *stack* that happens to
+    // share the same first choice ("Segoe UI") as Fluent's real
+    // `--fontFamilyBase` can still resolve to a visibly different actual
+    // typeface once that first choice isn't installed (as on macOS,
+    // where this fell through to "Helvetica Neue" here but to Fluent's
+    // own next fallback, `-apple-system`/San Francisco, in the real
+    // static furniture) — different typefaces at the same nominal pixel
+    // size don't share the same x-height/stroke weight, reading as "the
+    // font size changed" even though the CSS `font-size` value never did.
     const textStyle =
       `color: ${foreground}; opacity: 0.55; min-width: 0; ` +
-      `font: 400 12px/16px "Segoe UI", "Helvetica Neue", Arial, sans-serif; ` +
+      `font-family: var(--fontFamilyBase); font-size: var(--fontSizeBase200); ` +
+      `font-weight: var(--fontWeightRegular); line-height: var(--lineHeightBase200); ` +
       `white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`;
 
     for (const band of bands) {
@@ -2896,6 +2961,26 @@ export class ReaderController {
       otherHost.suppressClipPathForAnimation();
     }
 
+    // Fixed a real bug (issue #84) for "slide" specifically: leaving the
+    // animating host at its own natural height (deliberately no
+    // `growToFullHeight`, per the comment above) means a short page's
+    // iframe doesn't paint below its own short box — and with
+    // `clip-path` also gone for the duration, the *other* host sitting
+    // fully rendered underneath showed straight through that gap,
+    // reading as "the wrong page" rather than the current one for
+    // however much of the pane the short page didn't fill. See
+    // `buildTurnBackdrop`'s own doc comment. Not needed for "rotate"
+    // (whose animating side is already grown to full height, so it has
+    // no such gap) or "scroll" (whose two sides never overlap at all).
+    let turnBackdrop: HTMLDivElement | undefined;
+    if (!this.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "slide") {
+      turnBackdrop = this.buildTurnBackdrop(animatingHost.element);
+      if (turnBackdrop) {
+        turnBackdrop.style.zIndex = "2";
+        animatingHost.element.parentElement?.insertBefore(turnBackdrop, animatingHost.element);
+      }
+    }
+
     // Build the outgoing/incoming "turn furniture" overlays (see
     // `buildTurnFurnitureOverlay`) so the running header/footer turns
     // with the page instead of sitting static on top of it throughout —
@@ -2969,17 +3054,16 @@ export class ReaderController {
       await this.playScrollTurn(oldGroup, newGroup, direction);
     } else {
       const turnEl = entering ? newEl : oldHost.element;
-      await this.playPageTurnAnimation(
-        turnEl,
-        turnEl,
-        direction,
-        (entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : [],
-        entering,
-      );
+      const extraTurnEls = [
+        ...((entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : []),
+        ...(turnBackdrop ? [turnBackdrop] : []),
+      ];
+      await this.playPageTurnAnimation(turnEl, turnEl, direction, extraTurnEls, entering);
     }
 
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
+    turnBackdrop?.remove();
     this.isAnimatingPageTurn = false;
     // `newHost` always survives as the new `this.host` (unlike
     // `oldHost`, unconditionally disposed right below) — restore
@@ -3079,6 +3163,24 @@ export class ReaderController {
       otherHost.suppressColumnClipPathForAnimation("right");
     }
     const turnEl = this.elementToTurn(turnHost);
+
+    // See `buildTurnBackdrop`'s doc comment / `animatePageTurn`'s
+    // identical use of it (issue #84) — the spread wrapper itself is
+    // always `this.height` tall (see `SpreadPaginatedHost`'s
+    // constructor), but a "slide" turn's individual *columns* are left
+    // at their own natural (often short) height with no `clip-path` to
+    // bound them, so a short column's gap let the *other* spread,
+    // sitting fully rendered directly underneath, show through it. One
+    // backdrop the full width of the whole spread (not one per column)
+    // is enough, since it sits behind the entire turning wrapper.
+    let turnBackdrop: HTMLDivElement | undefined;
+    if (!this.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "slide") {
+      turnBackdrop = this.buildTurnBackdrop(turnHost.element);
+      if (turnBackdrop) {
+        turnBackdrop.style.zIndex = "2";
+        turnHost.element.parentElement?.insertBefore(turnBackdrop, turnHost.element);
+      }
+    }
 
     // Issue #81: "complete" the spread's rotate turn — previously it
     // only ever swung the turning column to ~100° (just past edge-on)
@@ -3202,7 +3304,11 @@ export class ReaderController {
         turnHost.element,
         turnEl,
         direction,
-        [...(animatedOverlayEl ? [animatedOverlayEl] : []), ...(rotateBackFace ? [rotateBackFace] : [])],
+        [
+          ...(animatedOverlayEl ? [animatedOverlayEl] : []),
+          ...(rotateBackFace ? [rotateBackFace] : []),
+          ...(turnBackdrop ? [turnBackdrop] : []),
+        ],
         entering,
         rotateBackFace ? 180 : undefined,
       );
@@ -3211,6 +3317,7 @@ export class ReaderController {
     rotateBackFace?.remove();
     outgoingOverlay?.remove();
     incomingOverlay?.remove();
+    turnBackdrop?.remove();
     this.isAnimatingPageTurn = false;
     // `newHost` always survives as the new `this.host` (unlike
     // `oldHost`, unconditionally disposed right below) — restore both
@@ -3575,6 +3682,21 @@ export class ReaderController {
     // statically underneath — see `animatePageTurn`'s doc comment).
     newEl.style.left = "0";
     newEl.style.zIndex = "1";
+    // Hidden until fully positioned at `targetIndex` below — a real,
+    // reported bug otherwise (issue #84): `newEl` needs to be attached
+    // to the live document *before* `open()` even starts (see this
+    // method's own doc comment on why), but `open()` itself briefly
+    // renders the chapter's very first page while it loads/paginates
+    // (see `PaginatedContentHost.open()`), before `goToPageIndex` below
+    // corrects it — and since `newEl` is `position: absolute` (already
+    // elevated above `oldHost`'s own normal, non-positioned flow,
+    // regardless of z-index), that transient first-page render was
+    // visible on top of the current page for however long `open()`
+    // takes. `opacity: 0` (not `visibility: hidden` — see
+    // `prepareIncomingSpread`'s identical fix for why) keeps it fully
+    // out of the painted output without affecting layout/pagination
+    // measurement, until right before this method returns.
+    newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
     await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
@@ -3597,6 +3719,7 @@ export class ReaderController {
       }
     }
     newHost.goToPageIndex(targetIndex);
+    newEl.style.opacity = "";
     newEl.title = oldHost.element.title;
     return newHost;
   }
@@ -3639,6 +3762,27 @@ export class ReaderController {
     // backward/"entering" turn to set outright.
     newEl.style.left = "0";
     newEl.style.zIndex = "1";
+    // See `prepareIncomingPage`'s identical fix (issue #84) — doubly
+    // important here, since `SpreadPaginatedHost.open()` fully loads and
+    // paginates *two* independent columns in sequence (see its own doc
+    // comment on why they're separate hosts, not a shared one), roughly
+    // doubling the exposure window during which this freshly-attached,
+    // `position: absolute` element would otherwise paint its own
+    // still-loading (chapter-start) content on top of `oldHost`.
+    //
+    // `opacity: 0` specifically, not `visibility: hidden`: the right
+    // column independently sets its *own* explicit `visibility` (see
+    // `syncRight`, called by both `open()` and `goToPageIndex()` below)
+    // whenever a companion page exists — a real, confirmed gap this
+    // fix's first version had, found via direct DOM inspection: a
+    // descendant's own explicit `visibility` declaration overrides an
+    // ancestor's inherited one, so the right column could still flash
+    // its still-loading content visibly even while this wrapper itself
+    // was `visibility: hidden`. `opacity` has no such override — every
+    // ancestor's opacity always multiplies into a descendant's final
+    // rendered alpha, so a `0` here reliably hides both columns
+    // regardless of anything `syncRight` sets on either individually.
+    newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
     await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
@@ -3663,6 +3807,7 @@ export class ReaderController {
       newHost.relayout(this.width, this.height);
     }
     newHost.goToPageIndex(targetIndex);
+    newEl.style.opacity = "";
     newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`);
     return newHost;
   }
