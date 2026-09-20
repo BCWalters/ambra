@@ -220,6 +220,92 @@ test.describe("paginated reflowable navigation correctness", () => {
     }
   });
 
+  test("two-page spread: a chapter ending on a fully paired last spread opens the next chapter fresh, with no duplicate page or forced right-start (#94 regression fix)", async () => {
+    // The same 1400px viewport as the #91 test just above, for the same
+    // reason: it lands `TWO_CHAPTER_EPUB`'s chapter one last spread
+    // exactly *paired* (both columns showing real content, nothing left
+    // unpaired) — the opposite condition from the #90/#94 test below,
+    // and the specific one this test needs: crossing out of a chapter
+    // whose own ending needs no merge at all must still fall through to
+    // the *ordinary* chapter-open path, not get caught by the #94 fix
+    // meant only for a genuinely unpaired last page. A real, confirmed
+    // regression here: an off-by-one in that fix's own "would the next
+    // ordinary turn land on an unpaired page" check misfired right at
+    // *any* even-length chapter's true last spread — a `Math.min` clamp
+    // meant to detect "one more step lands unpaired" instead read
+    // "there's no further step at all" as if it were exactly that,
+    // wrongly duplicating the chapter's own already-visible last page
+    // into a merge and force-starting chapter two on the right.
+    const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      // Same sampling technique as the #91/#90/#94 tests above/below —
+      // see their own doc comments for why.
+      async function visibleParagraphs(): Promise<string[]> {
+        return readerPage.evaluate(() => {
+          const iframes = Array.from(document.querySelectorAll("iframe")).filter(
+            (el) => el.getBoundingClientRect().width > 600 && getComputedStyle(el).visibility !== "hidden",
+          );
+          const seen = new Set<string>();
+          for (const frame of iframes) {
+            const doc = (frame as HTMLIFrameElement).contentDocument;
+            if (!doc) continue;
+            for (let y = 20; y < 850; y += 40) {
+              const el = doc.elementFromPoint(300, y);
+              const text = el?.closest("p")?.textContent ?? el?.textContent ?? "";
+              const match = text.match(/C(\d)Para (\d+)/);
+              if (match) {
+                seen.add(`${match[1]}:${match[2]}`);
+              }
+            }
+          }
+          return [...seen];
+        });
+      }
+
+      let sawChapterOnePairedEnd = false;
+      let sawChapterTwoOpen = false;
+      let duplicatedLastPageIntoChapterTwoSpread = false;
+      for (let click = 0; click < 20; click++) {
+        const visible = await visibleParagraphs();
+        const hasChapterOneEnd = visible.includes("1:120");
+        const hasChapterTwo = visible.some((p) => p.startsWith("2:"));
+        if (hasChapterOneEnd && !hasChapterTwo) {
+          // Chapter one's own true last spread — both columns already
+          // real content (this viewport's whole point), so this is
+          // simply "still reading the end of chapter one," not a bug.
+          sawChapterOnePairedEnd = true;
+        }
+        if (hasChapterTwo) {
+          sawChapterTwoOpen = true;
+          if (hasChapterOneEnd) {
+            // The regression: chapter one's already-seen last page
+            // reappearing in the *same* spread as chapter two's first
+            // page — the merge path is only ever correct for a
+            // genuinely *unpaired* last page, never one that was just
+            // shown fully paired with its own real companion.
+            duplicatedLastPageIntoChapterTwoSpread = true;
+          }
+          break;
+        }
+        await readerPage.mouse.click(1200, 450);
+        await readerPage.waitForTimeout(500);
+      }
+      expect(
+        sawChapterOnePairedEnd,
+        "never reached chapter one's own fully paired last spread — check the fixture/viewport still lands an even page count",
+      ).toBe(true);
+      expect(
+        duplicatedLastPageIntoChapterTwoSpread,
+        "chapter one's already-seen last page reappeared alongside chapter two's first page — a paired last spread should never merge",
+      ).toBe(false);
+      expect(sawChapterTwoOpen, "never reached chapter two's content").toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
   test("two-page spread: a chapter starting right after the previous one's unpaired last page merges directly into the same spread, with no intervening blank/repeated page (issues #90/#94)", async () => {
     // A width chosen so `TWO_CHAPTER_EPUB`'s chapter one (120 short
     // paragraphs) lands its own real last page *unpaired* — alone in the

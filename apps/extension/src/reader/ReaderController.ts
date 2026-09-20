@@ -4335,7 +4335,11 @@ export class ReaderController {
       // caller's existing chapter-open fallback (issue #83's animation
       // included) handles the crossing exactly as it always has, with
       // the usual blank facing page rather than a merge.
-    } else if (direction === 1 && oldHost.secondPageIndex !== undefined) {
+    } else if (
+      direction === 1 &&
+      oldHost.secondPageIndex !== undefined &&
+      oldHost.pageIndex < oldHost.pageCount - 2
+    ) {
       // Issue #94: `oldHost` still has a companion page right now (it's
       // not yet the case above), but *this* forward turn's own ordinary
       // target would be the chapter's unpaired last page — the branch
@@ -4344,9 +4348,29 @@ export class ReaderController {
       // again" turn the issue was filed about. Catch it one turn
       // earlier instead, straight from the last genuinely paired
       // spread, so that blank-facing state is never displayed at all.
+      //
+      // The `oldHost.pageIndex < oldHost.pageCount - 2` guard matters
+      // just as much as the check inside it — it's the exact same
+      // condition the bounds check below uses to decide whether
+      // *any* further in-chapter turn is even possible. Without it,
+      // this branch misfired on the far more common case, an *even*
+      // total page count: right at the chapter's own true last spread
+      // (`pageIndex === pageCount - 2`, both columns already showing
+      // real content, nothing unpaired), `Math.min(pageIndex + 2,
+      // pageCount - 1)` below still clamps down to a "target" of
+      // `pageCount - 1` — the same page already on screen in the right
+      // column, not a genuine further step — which that target then
+      // (correctly, for a real further step, but wrongly here) read as
+      // "unpaired." The result was a real, confirmed regression: *every*
+      // even-length chapter's ordinary crossing got wrongly rewritten
+      // into a merge — duplicating its own already-seen last page into
+      // a new left column and force-starting the next chapter on the
+      // right, exactly backwards from the "chapters may start on either
+      // side, only an *actually* unpaired page ever merges" this whole
+      // feature is supposed to guarantee.
       const upcomingTarget = Math.min(oldHost.pageIndex + 2, oldHost.pageCount - 1);
       const upcomingTargetHasCompanion = upcomingTarget + 1 < oldHost.pageCount;
-      if (upcomingTarget !== oldHost.pageIndex && !upcomingTargetHasCompanion) {
+      if (!upcomingTargetHasCompanion) {
         const merged = await this.prepareMergedIncomingSpreadFromUpcomingLastPage();
         if (merged) {
           return merged;
