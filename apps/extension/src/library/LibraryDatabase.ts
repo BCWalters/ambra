@@ -361,7 +361,7 @@ export class LibraryDatabase {
   }
 
   /** The reader-wide default page brightness multiplier (see
-   * `ReadingTheme.BRIGHTNESS_PROPERTY`, issue #92), persisted the same
+   * `ReadingTheme.MIN_BRIGHTNESS`, issue #92), persisted the same
    * way as `getDefaultFontScale`. `undefined` if never set, in which
    * case callers should fall back to `ReadingTheme.DEFAULT_BRIGHTNESS`. */
   public async getDefaultBrightness(): Promise<number | undefined> {

@@ -299,11 +299,12 @@ export interface ReaderSnapshot {
   fontFamily: FontFamilyChoice;
   pageTheme: PageTheme;
   /** The current reader-controlled page brightness multiplier — see
-   * `ReadingTheme.applyBrightness`/issue #92. Like `pageTheme`, this
-   * needs no fixed-layout exception of its own: `ReadingTheme`'s CSS
-   * (including the `filter` this drives) is only ever injected into
-   * reflowable content in the first place, so it has no effect on
-   * fixed-layout content regardless of this value. */
+   * `ReadingTheme.MIN_BRIGHTNESS`/`setBrightness`. Applied by `ReaderApp`
+   * itself, as a single `filter` on the whole reading pane, rather than
+   * injected into each content document the way every other setting
+   * here is — so unlike `fontScale`/`contentWidthEm`/etc., this has no
+   * fixed-layout exception to speak of: the same reading-pane `filter`
+   * dims fixed-layout content exactly as well as reflowable content. */
   brightness: number;
   /** The reader's own chrome color (toolbar/TOC/scrubber/details panel
    * — see `ChromeThemeChoice`), distinct from `pageTheme` (the book
@@ -2022,20 +2023,25 @@ export class ReaderController {
   }
 
   /** Sets the reader-controlled page brightness multiplier and persists
-   * it (issue #92). Like `setPageTheme`, this never needs a relayout —
-   * a `filter` is a purely visual compositing effect that can't affect
-   * line-wrapping. A no-op for a fixed-layout spine item, same reason. */
+   * it (issue #92/#93). Pure UI state, like `setChromeTheme` — unlike
+   * every other display setting here, this never touches a content
+   * document at all: the reader shell applies it as a single `filter`
+   * on the whole reading pane (see `ReadingTheme`'s own doc comment on
+   * `MIN_BRIGHTNESS` for why there, not per-document), which dims the
+   * book's own content *and* the surrounding page background/margins in
+   * one pass, and — being a plain reactive style, not something baked
+   * into a paginated host at open time — works identically for
+   * fixed-layout content too, unlike every other reader-controlled
+   * typography/color setting. So this is just a state update, persist,
+   * and notify; `ReaderApp` reads `brightness` straight off the
+   * snapshot on every render. */
   public async setBrightness(brightness: number): Promise<void> {
-    const clamped = Math.min(
-      ReadingTheme.MAX_BRIGHTNESS,
-      Math.max(ReadingTheme.MIN_BRIGHTNESS, brightness),
-    );
-    if (clamped === this.brightness || this.host instanceof FixedContentHost) {
+    const clamped = ReadingTheme.clampBrightness(brightness);
+    if (clamped === this.brightness) {
       return;
     }
     this.brightness = clamped;
     await this.library.setDefaultBrightness(clamped);
-    this.applyDisplaySettingsToHost({ relayout: false });
     this.notify();
   }
 
@@ -2169,7 +2175,6 @@ export class ReaderController {
       ReadingTheme.applyLetterSpacing(doc, this.letterSpacing);
       ReadingTheme.applyContentWidth(doc, this.contentWidthEm);
       ReadingTheme.applyPageTheme(doc, this.pageTheme);
-      ReadingTheme.applyBrightness(doc, this.brightness);
     }
     if (!options.relayout) {
       return;
@@ -2182,13 +2187,15 @@ export class ReaderController {
   }
 
   /** Applies the persisted font scale/family/line-spacing/letter-spacing/
-   * content-width/page theme/brightness to a freshly-opened host (see
+   * content-width/page theme to a freshly-opened host (see
    * `openSpineItem`) — every spine item load needs this, not just
    * explicit in-session changes, so a book opened mid-session at
    * non-default settings looks correct immediately. Skips the (fairly
    * expensive) relayout pass entirely when every setting is already at
    * its theme-default value, since the freshly-opened host was already
-   * paginated at those defaults by its own `open()` call.
+   * paginated at those defaults by its own `open()` call. Brightness is
+   * *not* one of these — see `setBrightness`'s doc comment for why it's
+   * applied once, at the reader-shell level, rather than per-host.
    *
    * Defaults to `this.host` (the normal case — see
    * `applyDisplaySettingsToHost`'s matching parameter), but accepts an
@@ -2206,8 +2213,7 @@ export class ReaderController {
       this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
     if (
       needsRelayout ||
-      this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME ||
-      this.brightness !== ReadingTheme.DEFAULT_BRIGHTNESS
+      this.pageTheme !== ReadingTheme.DEFAULT_PAGE_THEME
     ) {
       this.applyDisplaySettingsToHost({ relayout: needsRelayout }, host);
     }
@@ -4073,7 +4079,6 @@ export class ReaderController {
     const newDoc = newHost.element.contentDocument;
     if (newDoc) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-      ReadingTheme.applyBrightness(newDoc, this.brightness);
       if (
         this.fontScale !== 1 ||
         this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
@@ -4095,39 +4100,46 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Builds the *merged* incoming spread for a forward turn off
-   * `oldHost`'s own last (unpaired) page (issue #90/#92) — the next
-   * chapter's real page 0 in the right column, paired with `oldHost`'s
-   * own last page (borrowed via `detachLeftForReuse`, still fully live)
-   * in the left, so the next chapter visibly starts on the right with
-   * no blank page anywhere, instead of a whole separate spread opening
-   * with a blank facing page next to it. Returns `undefined` (without
-   * touching `oldHost` at all) if there's no next chapter, or it isn't
-   * reflowable spread-eligible content a merge can continue into — the
-   * caller then falls back to the ordinary chapter-open path, with its
-   * usual blank facing page, exactly as before this existed.
-   *
-   * Sets `pendingSpreadMergeSpineIndex` once it succeeds, so
-   * `turnPageInternal` knows to adopt the next chapter's `spineIndex`
-   * (and refresh every other piece of chapter-scoped bookkeeping) once
-   * it commits to the returned host — unlike every other path through
-   * `prepareIncomingSpread`, this is the one case where "just another
-   * spread turn" *did* cross a chapter boundary. */
-  private async prepareMergedIncomingSpread(oldHost: SpreadPaginatedHost): Promise<SpreadPaginatedHost | undefined> {
+  /** Whether a forward spread turn can merge into `nextSpineIndex` at
+   * all (issue #90/#92/#94) — reflowable, spread-eligible content that
+   * actually exists as the next spine item. Shared by both
+   * `prepareMergedIncomingSpread` and
+   * `prepareMergedIncomingSpreadFromUpcomingLastPage` so each can check
+   * *before* doing anything else (detaching `oldHost`'s left column, or
+   * loading a whole standalone tail copy) that would otherwise need to
+   * be undone for nothing. */
+  private canMergeSpreadIntoNext(nextSpineIndex: number): boolean {
     if (!this.containerEl) {
-      return undefined;
+      return false;
     }
-    const nextSpineIndex = this.spineIndex + 1;
     const nextSpineItem = this.pkg.spine[nextSpineIndex];
     if (!nextSpineItem) {
-      return undefined;
+      return false;
     }
     const resolvedLayout = nextSpineItem.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
-    if (resolvedLayout === "pre-paginated" || !SpreadPaginatedHost.isEligible(this.width)) {
-      return undefined;
-    }
+    return resolvedLayout !== "pre-paginated" && SpreadPaginatedHost.isEligible(this.width);
+  }
 
+  /** The shared second half of both merge paths below, once each has
+   * its own `previousTail` in hand (still fully live, positioned on
+   * whichever real page it needs to show) — builds the actual merged
+   * `SpreadPaginatedHost`, applies every current display setting to its
+   * freshly-opened documents, and sets `pendingSpreadMergeSpineIndex` so
+   * `turnPageInternal` knows to adopt `nextSpineIndex` once it commits
+   * to the returned host. Throws (without disposing `previousTail`
+   * itself — that's each caller's own responsibility, since only they
+   * know whether it came from `oldHost` or a standalone load) if the
+   * merged host's own load fails; callers must call `newHost.dispose()`/
+   * `newEl.remove()` themselves in that case too, since this method's
+   * own partial work (attaching `newEl`) needs undoing either way. */
+  private async buildMergedSpreadHost(
+    nextSpineIndex: number,
+    previousTail: PaginatedContentHost,
+  ): Promise<SpreadPaginatedHost> {
     const containerEl = this.containerEl;
+    if (!containerEl) {
+      throw new Error("buildMergedSpreadHost called without a container element (unexpected).");
+    }
     const newHost = new SpreadPaginatedHost(this.width, this.height);
     const newEl = newHost.element;
     newEl.style.position = "absolute";
@@ -4139,17 +4151,9 @@ export class ReaderController {
     newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
-    // Only actually mutates `oldHost` (marking its own left column as
-    // handed off, not yet touching the DOM at all — see
-    // `openMergedWithPreviousTail`'s doc comment for why the actual move
-    // happens there, atomically) once every synchronous precondition
-    // above has already passed — see `reattachDetachedLeft` below for
-    // how this is undone if the async load that follows fails anyway.
-    const previousTail = oldHost.detachLeftForReuse();
     try {
       await newHost.openMergedWithPreviousTail(this.contentLoader, this.resolver, nextSpineIndex, previousTail);
     } catch (err) {
-      oldHost.reattachDetachedLeft();
       newHost.dispose();
       newEl.remove();
       throw err;
@@ -4158,7 +4162,6 @@ export class ReaderController {
     const newDocs = newHost.contentDocuments();
     for (const newDoc of newDocs) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-      ReadingTheme.applyBrightness(newDoc, this.brightness);
     }
     if (
       this.fontScale !== 1 ||
@@ -4180,6 +4183,107 @@ export class ReaderController {
     newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(nextSpineIndex)}`);
     this.pendingSpreadMergeSpineIndex = nextSpineIndex;
     return newHost;
+  }
+
+  /** Builds the *merged* incoming spread for a forward turn off
+   * `oldHost`'s own last (unpaired) page (issue #90/#92) — the next
+   * chapter's real page 0 in the right column, paired with `oldHost`'s
+   * own last page (borrowed via `detachLeftForReuse`, still fully live)
+   * in the left, so the next chapter visibly starts on the right with
+   * no blank page anywhere, instead of a whole separate spread opening
+   * with a blank facing page next to it. Returns `undefined` (without
+   * touching `oldHost` at all) if there's no next chapter, or it isn't
+   * reflowable spread-eligible content a merge can continue into — the
+   * caller then falls back to the ordinary chapter-open path, with its
+   * usual blank facing page, exactly as before this existed.
+   *
+   * Only reached when `oldHost` is *already* sitting on its own unpaired
+   * last page (`secondPageIndex === undefined`) — e.g. arrived at
+   * directly via a TOC/bookmark jump, or backward navigation from the
+   * next chapter, rather than a normal forward walk through this
+   * chapter's own pages (see `prepareMergedIncomingSpreadFromUpcomingLastPage`
+   * for that far more common case, issue #94). */
+  private async prepareMergedIncomingSpread(oldHost: SpreadPaginatedHost): Promise<SpreadPaginatedHost | undefined> {
+    const nextSpineIndex = this.spineIndex + 1;
+    if (!this.canMergeSpreadIntoNext(nextSpineIndex)) {
+      return undefined;
+    }
+    // Only actually mutates `oldHost` (marking its own left column as
+    // handed off, not yet touching the DOM at all — see
+    // `openMergedWithPreviousTail`'s doc comment for why the actual move
+    // happens there, atomically) once every precondition above has
+    // already passed — see `reattachDetachedLeft` below for how this is
+    // undone if the async load that follows fails anyway.
+    const previousTail = oldHost.detachLeftForReuse();
+    try {
+      return await this.buildMergedSpreadHost(nextSpineIndex, previousTail);
+    } catch (err) {
+      oldHost.reattachDetachedLeft();
+      throw err;
+    }
+  }
+
+  /** The far more common way a merge actually gets built (issue #94):
+   * `oldHost` is *not yet* on its own unpaired last page at all — it's
+   * still showing its last genuinely *paired* spread, one ordinary
+   * forward turn away from what would otherwise land on that unpaired
+   * page alone with a blank facing column for exactly one turn, before
+   * a *second* forward turn merges it into the next chapter. That
+   * intermediate blank-facing-page turn is exactly what this avoids:
+   * called instead of the ordinary in-chapter path whenever the
+   * upcoming target has no companion, it builds the merged spread
+   * directly off *this* forward turn, using a brand new, standalone
+   * `PaginatedContentHost` for this same chapter (loaded fresh, then
+   * moved straight to its own last page) as the tail — never reusing
+   * `oldHost.left` itself, which stays completely untouched, still
+   * showing its own current (paired, on-screen) spread as the valid
+   * outgoing side of the turn animation right up until it's disposed.
+   * Reusing `oldHost.left` here the way `prepareMergedIncomingSpread`
+   * does would instead force it to jump straight to the unpaired last
+   * page *before* the turn animation even starts (to have the right
+   * content ready to detach) — visibly flashing that blank-facing state
+   * on screen for an instant, the exact thing both merge paths exist to
+   * prevent. */
+  private async prepareMergedIncomingSpreadFromUpcomingLastPage(): Promise<SpreadPaginatedHost | undefined> {
+    const nextSpineIndex = this.spineIndex + 1;
+    if (!this.canMergeSpreadIntoNext(nextSpineIndex) || !this.containerEl) {
+      return undefined;
+    }
+    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+    const previousTail = new PaginatedContentHost(columnWidth, this.height);
+    // `SandboxedContentHost` (which `PaginatedContentHost.open` loads
+    // into) deliberately never attaches its own iframe — see its own
+    // doc comment: "where/when it becomes visible is a layout concern
+    // owned by the reader shell." A detached iframe never actually
+    // navigates (its `src` assignment never fires `load`), which was a
+    // real, confirmed hang here: `open()` awaited that `load` event
+    // forever (well, until `SandboxedContentHost`'s own 10s timeout),
+    // silently freezing every further page turn behind `isTurningPage`.
+    // `openMergedWithPreviousTail` (below) re-parents this same element
+    // into the merged host's own layout via one atomic `appendChild`
+    // once it succeeds — exactly as safe a move as `detachLeftForReuse`'s
+    // reuse of an *already*-loaded element (see its own doc comment),
+    // since nothing has been shown on screen yet for a mid-move reload
+    // to lose.
+    previousTail.element.style.position = "absolute";
+    previousTail.element.style.opacity = "0";
+    previousTail.element.style.pointerEvents = "none";
+    this.containerEl.appendChild(previousTail.element);
+    try {
+      await previousTail.open(this.contentLoader, this.resolver, this.spineIndex);
+    } catch (err) {
+      previousTail.element.remove();
+      previousTail.dispose();
+      throw err;
+    }
+    previousTail.goToLastPage();
+    try {
+      return await this.buildMergedSpreadHost(nextSpineIndex, previousTail);
+    } catch (err) {
+      previousTail.element.remove();
+      previousTail.dispose();
+      throw err;
+    }
   }
 
   /** The two-page-spread equivalent of `prepareIncomingPage` — builds a
@@ -4231,6 +4335,28 @@ export class ReaderController {
       // caller's existing chapter-open fallback (issue #83's animation
       // included) handles the crossing exactly as it always has, with
       // the usual blank facing page rather than a merge.
+    } else if (direction === 1 && oldHost.secondPageIndex !== undefined) {
+      // Issue #94: `oldHost` still has a companion page right now (it's
+      // not yet the case above), but *this* forward turn's own ordinary
+      // target would be the chapter's unpaired last page — the branch
+      // above only ever sees that once it's already on screen, which is
+      // exactly the extra "see the blank facing page, then navigate
+      // again" turn the issue was filed about. Catch it one turn
+      // earlier instead, straight from the last genuinely paired
+      // spread, so that blank-facing state is never displayed at all.
+      const upcomingTarget = Math.min(oldHost.pageIndex + 2, oldHost.pageCount - 1);
+      const upcomingTargetHasCompanion = upcomingTarget + 1 < oldHost.pageCount;
+      if (upcomingTarget !== oldHost.pageIndex && !upcomingTargetHasCompanion) {
+        const merged = await this.prepareMergedIncomingSpreadFromUpcomingLastPage();
+        if (merged) {
+          return merged;
+        }
+        // No next chapter, or it isn't eligible — fall through to the
+        // ordinary in-chapter path below, which lands on `oldHost`'s own
+        // unpaired last page exactly as it always did before this
+        // existed (the only difference from the branch above: getting
+        // there took one turn instead of already being there).
+      }
     }
     if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 2 : oldHost.pageIndex <= 0) {
       return undefined;
@@ -4278,7 +4404,6 @@ export class ReaderController {
     const newDocs = newHost.contentDocuments();
     for (const newDoc of newDocs) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-      ReadingTheme.applyBrightness(newDoc, this.brightness);
     }
     if (
       this.fontScale !== 1 ||

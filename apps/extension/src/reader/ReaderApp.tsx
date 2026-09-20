@@ -423,7 +423,7 @@ const ReaderAppInner: FC = () => {
           />
 
           <div
-            style={{ flex: 1, position: "relative", minHeight: 0, background: pageBackground }}
+            style={{ flex: 1, position: "relative", minHeight: 0 }}
             role="main"
             aria-label="Book content"
           >
@@ -434,12 +434,22 @@ const ReaderAppInner: FC = () => {
                 absolute; inset: 0` (rather than percentage width/height) sizes
                 it reliably regardless of how many layers of flexbox surround
                 it, which is what a real-Chromium test caught going wrong.
-                Deliberately no background of its own — it inherits the
-                surrounding `role="main"` div's background (kept in sync with
-                the active page color theme above), so the bottom slack under
-                a short last page and the spread gutter between two columns
-                (both of which show this div's background through, not the
-                content host's own) never visually mismatch the page. */}
+                Carries its own background (the active page color theme,
+                rather than "inheriting" it from the `role="main"` div around
+                it, since that div itself no longer paints one — see below) so
+                the bottom slack under a short last page and the spread gutter
+                between two columns (both of which show this div's background
+                through, not the content host's own) never visually mismatch
+                the page. `filter` lives here too, not on the `role="main"`
+                div around it: that outer div also contains the toolbar,
+                scrubber, and every other overlay panel, none of which should
+                ever dim along with the book's own content and margins (issue
+                #93) — scoping the `filter` to exactly this div (which a CSS
+                `filter` then applies to its *entire* rendered subtree,
+                including the content host's nested iframes — see
+                `ReadingTheme`'s own doc comment on `MIN_BRIGHTNESS`) dims
+                precisely the book's page(s) and the margins around them,
+                nothing else. */}
             <div
               ref={contentHostRef}
               style={{
@@ -449,6 +459,8 @@ const ReaderAppInner: FC = () => {
                 justifyContent: "center",
                 alignItems: "flex-start",
                 overflow: "hidden",
+                background: pageBackground,
+                filter: `brightness(${snapshot.brightness})`,
                 // Continuous scroll mode gets no baked-in top inset the
                 // way paginated pages do (see `ReadingTheme.PAGE_INSET_TOP`'s
                 // doc comment — it relies on normal document flow and the

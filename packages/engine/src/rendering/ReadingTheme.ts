@@ -115,7 +115,6 @@ export class ReadingTheme {
   public static readonly PAGE_BACKGROUND_PROPERTY = "--ambra-page-bg";
   public static readonly PAGE_FOREGROUND_PROPERTY = "--ambra-page-fg";
   public static readonly LINK_COLOR_PROPERTY = "--ambra-link-color";
-  public static readonly BRIGHTNESS_PROPERTY = "--ambra-brightness";
   /** The vertical budget (in CSS px) available for one paginated page's
    * content — see `EPUB_CSS_RESET`'s `img, svg` rule, which caps images
    * to this height (falling back to `none` when unset, e.g. in scroll or
@@ -166,22 +165,34 @@ export class ReadingTheme {
   public static readonly CONTENT_WIDTH_STEP = 1;
   public static readonly DEFAULT_CONTENT_WIDTH_EM = 34;
 
-  /** A `filter: brightness()` multiplier applied to the whole page (see
-   * `CSS`'s `html` rule) — issue #92: a reader may want to dim the page
+  /** A `filter: brightness()` multiplier the reader shell applies itself
+   * (see `ReaderApp`'s content-pane wrapper), covering both the book's
+   * own rendered page(s) *and* the surrounding page background/margins
+   * in one pass (issue #92/#93) — a reader may want to dim the page
    * further than any single fixed `PageTheme` choice alone allows,
-   * without switching away from whichever theme they're already
-   * reading in. Only ever dims, never brightens past each theme's own
-   * normal (`1`, `DEFAULT_BRIGHTNESS`) appearance — "let the user darken
-   * it as they like" was the explicit ask, not a general exposure
-   * control. Deliberately a single multiplier applied uniformly to the
-   * whole rendered page (text, background, and any images alike) rather
-   * than a separate per-theme mechanism: since a `filter` dims a
+   * without switching away from whichever theme they're already reading
+   * in. Only ever dims, never brightens past each theme's own normal
+   * (`1`, `DEFAULT_BRIGHTNESS`) appearance — "let the user darken it as
+   * they like" was the explicit ask, not a general exposure control.
+   * Deliberately a single multiplier applied uniformly to the whole
+   * reading pane (text, page background, margins, and any images alike)
+   * rather than a separate per-theme mechanism: since a `filter` dims a
    * *lighter* color proportionally more than an already-dark one (e.g.
    * at `0.5`, white `#fff` drops to a mid-gray, while `Dark` theme's
    * near-black `#232323` background barely changes at all), this one
    * mechanism naturally produces the light themes' own "whole page
    * dims" *and* `Dark`'s own "primarily the text dims" behavior the
-   * issue asked for, without needing separate logic for either. */
+   * issue asked for, without needing separate logic for either.
+   *
+   * Applied at the reader shell level (a plain CSS `filter` on the pane
+   * that contains both the content host and its background), not inside
+   * each content document the way every other `ReadingTheme` setting
+   * is: a `filter` is a purely visual compositing effect that applies to
+   * an element's *entire* rendered subtree, including nested iframes'
+   * own painted output — so one filter up there dims the book's content
+   * *and* the surrounding margins/gutter together, without the two
+   * separately-filtered layers compounding into something darker than
+   * either alone. */
   public static readonly MIN_BRIGHTNESS = 0.3;
   public static readonly MAX_BRIGHTNESS = 1;
   public static readonly BRIGHTNESS_STEP = 0.05;
@@ -323,17 +334,13 @@ export class ReadingTheme {
     style.setProperty(ReadingTheme.LINK_COLOR_PROPERTY, colors.linkColor);
   }
 
-  /** Sets the current page brightness multiplier on a content document,
-   * clamped to `[MIN_BRIGHTNESS, MAX_BRIGHTNESS]` — see
-   * `BRIGHTNESS_PROPERTY`. Like `applyPageTheme`, this never needs a
-   * re-paginate/re-measure — a `filter` is a purely visual compositing
-   * effect, applied after layout, so it can't affect line-wrapping. */
-  public static applyBrightness(doc: Document, brightness: number): void {
-    const clamped = Math.min(
-      ReadingTheme.MAX_BRIGHTNESS,
-      Math.max(ReadingTheme.MIN_BRIGHTNESS, brightness),
-    );
-    doc.documentElement.style.setProperty(ReadingTheme.BRIGHTNESS_PROPERTY, String(clamped));
+  /** Clamps a candidate brightness value to `[MIN_BRIGHTNESS,
+   * MAX_BRIGHTNESS]` — shared by `ReaderController.setBrightness` and
+   * `ReaderApp` (the latter via the already-clamped, persisted snapshot
+   * value) so every caller agrees on the same valid range without
+   * duplicating the clamp arithmetic itself. */
+  public static clampBrightness(brightness: number): number {
+    return Math.min(ReadingTheme.MAX_BRIGHTNESS, Math.max(ReadingTheme.MIN_BRIGHTNESS, brightness));
   }
 
   /** Sets the vertical budget available for one paginated page's content
@@ -387,18 +394,10 @@ export class ReadingTheme {
   ${ReadingTheme.PAGE_BACKGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].background};
   ${ReadingTheme.PAGE_FOREGROUND_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].foreground};
   ${ReadingTheme.LINK_COLOR_PROPERTY}: ${ReadingTheme.PAGE_THEMES[ReadingTheme.DEFAULT_PAGE_THEME].linkColor};
-  ${ReadingTheme.BRIGHTNESS_PROPERTY}: 1;
 }
 
 html {
   font-size: calc(1em * var(${ReadingTheme.FONT_SCALE_PROPERTY}, 1));
-  /* A single compositing effect over the whole rendered page (text,
-     background, and any images alike) — see applyBrightness's doc
-     comment for why this one mechanism, not a per-theme one, already
-     produces both "the whole page dims" (light themes) and "primarily
-     the text dims" (Dark, whose background has little headroom left
-     to dim further) without extra logic either way. */
-  filter: brightness(var(${ReadingTheme.BRIGHTNESS_PROPERTY}, 1));
 }
 
 html, body {

@@ -220,16 +220,21 @@ test.describe("paginated reflowable navigation correctness", () => {
     }
   });
 
-  test("two-page spread: a chapter starting right after the previous one's unpaired last page merges into the same spread, never a blank page (issue #90)", async () => {
+  test("two-page spread: a chapter starting right after the previous one's unpaired last page merges directly into the same spread, with no intervening blank/repeated page (issues #90/#94)", async () => {
     // A width chosen so `TWO_CHAPTER_EPUB`'s chapter one (120 short
     // paragraphs) lands its own real last page *unpaired* — alone in the
-    // left column, the right column hidden — the opposite condition
-    // from the test above (which needs chapter one's last page *paired*)
-    // and the specific one this regression needs: forward-turning off
-    // that unpaired last page must show chapter two's own real first
-    // page immediately in the *same* spread's right column, alongside
-    // chapter one's own last page still in the left — never a whole
-    // separate spread with a blank facing page on either side of it.
+    // left column, the right column empty — the opposite condition from
+    // the test above (which needs chapter one's last page *paired*) and
+    // the specific one this regression needs: the forward turn off
+    // chapter one's own last *paired* spread must land directly on the
+    // merged spread — chapter one's real last page in the left column,
+    // chapter two's real first page already in the right — without ever
+    // passing through an intermediate spread showing chapter one's last
+    // page *alone* first (issue #94: that intermediate blank-facing-page
+    // state, followed by a second turn that repeated chapter one's last
+    // page alongside chapter two's first, was exactly the bug — one
+    // extra turn, and one blank page, more than a reader should ever
+    // see).
     const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
       viewport: { width: 1200, height: 900 },
     });
@@ -267,30 +272,22 @@ test.describe("paginated reflowable navigation correctness", () => {
         });
       }
 
-      let sawUnpairedChapterOneEnd = false;
+      let sawUnpairedChapterOneEndAlone = false;
       let sawMergedSpread = false;
-      let sawBlankAfterUnpaired = false;
       for (let click = 0; click < 20; click++) {
         const visible = await visibleParagraphs();
         const hasChapterOneEnd = visible.includes("1:120");
         const hasChapterTwo = visible.some((p) => p.startsWith("2:"));
         if (hasChapterOneEnd && !hasChapterTwo) {
-          sawUnpairedChapterOneEnd = true;
-        } else if (sawUnpairedChapterOneEnd && !sawMergedSpread) {
-          // The very next state reached *after* chapter one's own
-          // unpaired last page must be the merge (both visible at
-          // once) — anything else here (chapter two alone, with no
-          // trace of chapter one's last page in the other column) means
-          // a whole separate spread opened instead, with a blank page
-          // where chapter one's last page — or chapter two's first —
-          // should still be visible.
-          if (hasChapterOneEnd && hasChapterTwo) {
-            sawMergedSpread = true;
-          } else {
-            sawBlankAfterUnpaired = true;
-          }
+          // The exact state issue #94 reports: chapter one's own last
+          // page shown *alone*, with no trace of chapter two yet — a
+          // blank facing column a reader has to turn *past* before ever
+          // reaching chapter two, instead of chapter two's first page
+          // already being right there alongside it.
+          sawUnpairedChapterOneEndAlone = true;
         }
-        if (sawMergedSpread) {
+        if (hasChapterOneEnd && hasChapterTwo) {
+          sawMergedSpread = true;
           break;
         }
         // Comfortably inside the 1200px-wide pane (not right at its
@@ -302,16 +299,12 @@ test.describe("paginated reflowable navigation correctness", () => {
         await readerPage.waitForTimeout(500);
       }
       expect(
-        sawUnpairedChapterOneEnd,
-        "never reached chapter one's own unpaired last page — check the fixture/viewport still produces an odd page count",
-      ).toBe(true);
-      expect(
-        sawBlankAfterUnpaired,
-        "a separate spread (missing either chapter's content) appeared between chapter one's unpaired last page and the merge",
+        sawUnpairedChapterOneEndAlone,
+        "chapter one's own unpaired last page was shown alone (with an empty facing column) at some point, instead of always merging directly into chapter two's first page in the very same spread",
       ).toBe(false);
       expect(
         sawMergedSpread,
-        "chapter one's last page and chapter two's first page were never shown together in the same spread",
+        "chapter one's last page and chapter two's first page were never shown together in the same spread — check the fixture/viewport still produces an odd page count",
       ).toBe(true);
     } finally {
       await context.close();

@@ -630,30 +630,6 @@ export const Toolbar: FC<ToolbarProps> = ({
                           </MenuItemRadio>
                         ))}
                       </MenuGroup>
-                      <MenuDivider />
-                      <MenuGroup>
-                        {/* Issue #92: dims the whole page (text, background,
-                            and any images) below whichever "Page style"
-                            theme is active — a single slider that works the
-                            same way across every theme, rather than a
-                            separate darkening mechanism per theme, since a
-                            plain brightness filter already dims a lighter
-                            theme's whole page while dimming mostly the
-                            *text* of the already-dark "Dark" theme, exactly
-                            the two behaviors asked for. */}
-                        <MenuGroupHeader>Brightness</MenuGroupHeader>
-                        <div style={{ padding: "6px 12px 10px" }}>
-                          <DefaultableSlider
-                            min={ReadingTheme.MIN_BRIGHTNESS}
-                            max={ReadingTheme.MAX_BRIGHTNESS}
-                            step={ReadingTheme.BRIGHTNESS_STEP}
-                            value={snapshot.brightness}
-                            defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
-                            onChange={onSetBrightness}
-                            aria-label="Brightness"
-                          />
-                        </div>
-                      </MenuGroup>
                     </MenuList>
                   </MenuPopover>
                 </Menu>
@@ -738,6 +714,37 @@ export const Toolbar: FC<ToolbarProps> = ({
                   <MenuDivider />
                 </>
               )}
+              <MenuGroup>
+                {/* Issue #92: dims the whole reading pane (text,
+                    background, margins, and any images) below whichever
+                    "Page style" theme is active — a single slider that
+                    works the same way across every theme, rather than a
+                    separate darkening mechanism per theme, since a plain
+                    brightness filter already dims a lighter theme's
+                    whole page while dimming mostly the *text* of the
+                    already-dark "Dark" theme, exactly the two behaviors
+                    asked for. Moved here from the "Aa" menu's "Page"
+                    submenu, and out from under the reflowable-only
+                    section above (issue #93) — it's a reading-chrome
+                    setting applied by the shell itself (see
+                    `ReaderController.setBrightness`'s doc comment), not
+                    a per-host typography/layout one, so — like "Reader
+                    theme" just below — it belongs here, and works for
+                    fixed-layout books too, not just reflowable ones. */}
+                <MenuGroupHeader>Brightness</MenuGroupHeader>
+                <div style={{ padding: "6px 12px 10px" }}>
+                  <DefaultableSlider
+                    min={ReadingTheme.MIN_BRIGHTNESS}
+                    max={ReadingTheme.MAX_BRIGHTNESS}
+                    step={ReadingTheme.BRIGHTNESS_STEP}
+                    value={snapshot.brightness}
+                    defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
+                    onChange={onSetBrightness}
+                    aria-label="Brightness"
+                  />
+                </div>
+              </MenuGroup>
+              <MenuDivider />
               <MenuGroup>
                 <MenuGroupHeader>Reader theme</MenuGroupHeader>
                 {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
