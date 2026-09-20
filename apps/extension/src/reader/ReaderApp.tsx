@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FC } from "react";
 import { Spinner, Title2 } from "@fluentui/react-components";
-import { ReadingTheme } from "@ambra/engine";
+import { FixedContentHost, ReadingTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { LiveRegion } from "./components/LiveRegion.js";
@@ -366,7 +366,7 @@ const ReaderAppInner: FC = () => {
   }
 
   const pageBackground = snapshot.isFixedLayout
-    ? "#e5e5e5"
+    ? FixedContentHost.LETTERBOX_BACKGROUND
     : ReadingTheme.PAGE_THEMES[snapshot.pageTheme].background;
   // Mirrors `ProgressScrubber`'s own identical early-return condition —
   // the flyout panels need to know this too so they can stop above the

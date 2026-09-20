@@ -29,12 +29,35 @@ const DEFAULT_VIEWPORT: ViewportSize = { width: 1000, height: 1400 };
  * author-designed page, and our own typography must never be layered
  * onto it.
  *
- * Deliberately out of scope for this pass: synthetic two-page spreads
- * (`rendition:spread`) — a real, separate feature (odd/even page
- * pairing, orientation, RTL page order) worth its own future work item.
- * Each spine item is always displayed as a single page here.
+ * Two-page spreads (`rendition:spread`) are handled one level up, by
+ * `FixedSpreadHost` (which owns two of these, one per column, for a
+ * `"pair"` spread) — see that class's own doc comment for why a
+ * pair's two columns must share exactly one externally-computed scale
+ * (`applyExternalScale`, below) rather than each independently
+ * scaling itself to fill its own half of the available width the way
+ * this class's own `open`/`resize` do for the single-page case.
  */
 export class FixedContentHost {
+  /** The neutral letterbox color a fixed-layout page's own margins (the
+   * space `applyScale`'s centering leaves around a page whose aspect
+   * ratio doesn't match the available pane) show through to — shared
+   * with `ReaderApp`'s reading-pane background (which normally paints
+   * this exact color behind a fixed-layout host's own transparent
+   * wrapper) and with `ReaderController.animateFixedSpreadTurn`, which
+   * needs to paint it *directly onto* the animating spread's own
+   * wrapper for the turn's duration: unlike reflowable content (never
+   * shorter than its own clip-boxed page, so nothing else ever shows
+   * through it — see that method's own doc comment), a fixed-layout
+   * spread's wrapper is exactly pane-sized but the page(s) *inside* it
+   * often aren't (any aspect-ratio mismatch at all), so without an
+   * opaque background of its own, whichever side is stacked underneath
+   * during an animated turn bled through the animating side's own
+   * letterboxed margins — a real, confirmed artifact (a stray shadow
+   * seam and, worse, the *next* page's colors visibly showing through
+   * the current page's own margins mid-rotation) caught via direct
+   * screenshot inspection, not a merely theoretical concern. */
+  public static readonly LETTERBOX_BACKGROUND = "#e5e5e5";
+
   private readonly sandboxedHost: SandboxedContentHost;
   private availableWidth: number;
   private availableHeight: number;
@@ -93,6 +116,15 @@ export class FixedContentHost {
     this.applyScale();
   }
 
+  /** This page's own intrinsic (unscaled) size, as read from its own
+   * `<meta name="viewport">`/the package-level fallback — only
+   * meaningful after `open` resolves. `FixedSpreadHost` reads this for
+   * both columns of a `"pair"` spread to compute the one shared scale
+   * they both need (see `applyExternalScale`'s own doc comment). */
+  public get naturalSize(): ViewportSize {
+    return { width: this.pageWidth, height: this.pageHeight };
+  }
+
   /** A fixed-layout spine item has no sub-page reading position to track
    * (the whole item *is* one page) — this returns the start of its body,
    * purely so callers that generically persist/restore position (see
@@ -102,14 +134,49 @@ export class FixedContentHost {
     return body ? { node: body, offset: 0 } : undefined;
   }
 
+  /** Applies an *externally computed* `scale` (rather than this host's
+   * own independently-computed `min(availableWidth/pageWidth, ...)`) —
+   * used by `FixedSpreadHost` for a `"pair"` spread, where both columns
+   * must share exactly one scale factor rather than each computing its
+   * own against its own half-share of the available width. That
+   * per-column independence was a real, reported bug of its own: as the
+   * reader pane widened past the two pages' own combined aspect ratio,
+   * each column kept scaling its own page up to fill its own
+   * (increasingly generous) half, letterboxing the *extra* space on
+   * both sides of *each* page individually — which visibly pushed the
+   * two pages apart from each other, when spread-heavy fixed-layout
+   * content (art spanning both pages, a common case in comics/picture
+   * books) needs them to stay tightly adjacent, with any leftover
+   * space pushed to the *outside* edges of the whole spread instead.
+   *
+   * `availableWidth`/`availableHeight` here describe *this column's own
+   * wrapper box* (not the whole spread) — same as `resize`'s own
+   * parameters, just paired with a scale the caller already computed
+   * instead of asking this host to compute its own. `FixedSpreadHost`
+   * always sizes a column's wrapper to exactly this page's own scaled
+   * width (so the centering math below reduces to a horizontal no-op —
+   * the page already exactly fills its wrapper's width), while the
+   * wrapper's height stays the full pane height (so this page still
+   * verticaly centers within it exactly as a lone `"single"` spread's
+   * page would, in case the two columns' own natural aspect ratios
+   * differ enough that one column's scaled page is shorter than the
+   * pane while the other's isn't). */
+  public applyExternalScale(scale: number, availableWidth: number, availableHeight: number): void {
+    this.availableWidth = availableWidth;
+    this.availableHeight = availableHeight;
+    this.applyScale(scale);
+  }
+
   /** Explicit `position: absolute` placement (computed from the *scaled*
    * size) rather than relying on a surrounding flex container's centering
    * — a transform only affects paint, not the box's contribution to
    * layout/overflow, so a flex container clipping based on this element's
    * unscaled (much larger) box could wrongly clip the visually-smaller
-   * scaled result. */
-  private applyScale(): void {
-    const scale = Math.min(this.availableWidth / this.pageWidth, this.availableHeight / this.pageHeight);
+   * scaled result. `overrideScale`, if given (see `applyExternalScale`),
+   * is used in place of this host's own independently-computed scale —
+   * every other part of the centering math is identical either way. */
+  private applyScale(overrideScale?: number): void {
+    const scale = overrideScale ?? Math.min(this.availableWidth / this.pageWidth, this.availableHeight / this.pageHeight);
     const scaledWidth = this.pageWidth * scale;
     const scaledHeight = this.pageHeight * scale;
 

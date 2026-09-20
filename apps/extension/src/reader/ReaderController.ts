@@ -3005,12 +3005,23 @@ export class ReaderController {
         newStagingEl.remove();
         return;
       }
+      // Play the page-turn animation (`animateFixedSpreadTurn`) *before*
+      // disposing `host`/removing its wrapper — unlike the reflowable
+      // chapter-crossing case (which has to juggle a `previousHost` that
+      // might still be needed for `landOnLastPage`/display-settings
+      // afterward), a fixed-layout turn's outgoing host is never touched
+      // again once this function returns, but it must still be fully
+      // intact and on screen throughout the animation itself (disposing
+      // it first would tear down the very content the turn is supposed
+      // to be visibly carrying away).
+      const previousWrapperEl = this.hostWrapperEl;
+      await this.animateFixedSpreadTurn(previousWrapperEl, newStagingEl, direction);
       this.contentInteractionCleanup?.();
       this.contentInteractionCleanup = undefined;
       this.dragCleanup?.();
       this.dragCleanup = undefined;
       host.dispose();
-      this.hostWrapperEl?.remove();
+      previousWrapperEl?.remove();
       newStagingEl.style.opacity = "";
       newStagingEl.style.pointerEvents = "";
       this.host = newHost;
@@ -3037,6 +3048,106 @@ export class ReaderController {
       return;
     }
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
+  }
+
+  /** Animates a fixed-layout (FXL) spread turn (`turnFixedSpread`), the
+   * same "rotate"/"slide"/"scroll" choice (`this.pageTurnAnimationStyle`)
+   * every reflowable turn already offers. Every FXL turn swaps in a
+   * brand-new `FixedSpreadHost` — there's no in-host pagination step the
+   * way reflowable's same-chapter turn has, since a fixed-layout "page"
+   * is always exactly one whole spine item (see `FixedSpreadHost`'s own
+   * doc comment) — so this is structurally identical to
+   * `animateChapterCrossingReveal` (a whole-host swap), not
+   * `animatePageTurn`/`animateSpreadTurn`'s in-chapter case. It's
+   * considerably simpler than either of those, though: fixed-layout
+   * content is never reflowed and has no per-page-number "turn
+   * furniture" overlay of its own (`refreshBookPagination` already opts
+   * fixed-layout hosts out of the book-wide pagination system furniture
+   * depends on), and — critically — `FixedContentHost`/`FixedSpreadHost`
+   * never apply `clip-path` and can never render at less than the
+   * pane's full declared height/width the way a reflowable chapter's
+   * own short last page can (`FixedContentHost.applyScale` always
+   * letterboxes to fill exactly `width`×`height`, scale factor aside).
+   * That means none of `buildTurnBackdrop`/`buildTurnGrowthMask`/
+   * `suppressClipPathForAnimation` (all workarounds for problems that
+   * simply don't exist here) apply at all — every style just moves the
+   * whole spread's own wrapper `<div>` (`stagingEl`/`previousWrapperEl`,
+   * both from `stageHiddenHostElement`, already `position: absolute;
+   * inset: 0`) as one rigid sheet, single page or two-column pair
+   * alike, exactly like `animateChapterCrossingReveal`'s own single-page
+   * case. "rotate" specifically follows that method's "no back-face,
+   * stop at ~100°" treatment (not `animateSpreadTurn`'s single-column-
+   * only turn) for the same reason it gives: there's no one "physical
+   * leaf" whose back face crossing into a whole new host implies here
+   * either — every FXL turn already *is* a "new host" turn.
+   *
+   * Returns `true` once played (the caller's own unconditional reveal
+   * code right after is then a harmless no-op re-set); `false` if
+   * skipped ("none"/reduced-motion/no previous wrapper to animate from
+   * — the very first spread a book opens on has none, and is revealed
+   * instantly regardless, same as every other host swap in this file). */
+  private async animateFixedSpreadTurn(
+    previousWrapperEl: HTMLDivElement | undefined,
+    stagingEl: HTMLDivElement,
+    direction: 1 | -1,
+  ): Promise<boolean> {
+    if (!this.containerEl || !previousWrapperEl || this.shouldSkipPageTurnAnimation()) {
+      return false;
+    }
+    const oldEl = previousWrapperEl;
+    const newEl = stagingEl;
+    const isScroll = this.pageTurnAnimationStyle === "scroll";
+    const entering = direction === -1;
+    const animatingEl = entering ? newEl : oldEl;
+
+    // Reveal the staging element so it can actually participate in the
+    // animation — see `animateChapterCrossingReveal`'s identical step.
+    stagingEl.style.opacity = "";
+    stagingEl.style.pointerEvents = "";
+
+    // A real, confirmed artifact caught via direct screenshot inspection
+    // while building this: a fixed-layout wrapper has no opaque
+    // background of its own (its actual page content is letterboxed
+    // inside it — see `FixedContentHost.applyScale` — with the wrapper's
+    // own margins left fully transparent), so for "rotate"/"slide"
+    // (where the animating side is stacked directly *on top of* the
+    // other, unlike "scroll"'s side-by-side groups that never overlap)
+    // the other side's colors bled straight through the animating
+    // side's own letterboxed margins mid-turn. Painting the animating
+    // wrapper opaque for the animation's duration only (restored right
+    // after) fixes it without touching either host's actual content.
+    if (!isScroll) {
+      animatingEl.style.background = FixedContentHost.LETTERBOX_BACKGROUND;
+    }
+
+    this.isAnimatingPageTurn = true;
+    this.notify();
+
+    if (isScroll) {
+      await this.playScrollTurn([oldEl], [newEl], direction);
+    } else {
+      await this.playPageTurnAnimation(animatingEl, animatingEl, direction, [], entering);
+    }
+
+    animatingEl.style.background = "";
+    this.isAnimatingPageTurn = false;
+    // Only `stagingEl` survives this turn (`previousWrapperEl` is
+    // disposed by the caller right after) — reset whatever transform/
+    // z-index/box-shadow/transition the animation above may have
+    // applied to it (only actually touched when `entering`, i.e.
+    // `animatingEl === newEl === stagingEl`; a harmless no-op
+    // otherwise) back to `stageHiddenHostElement`'s own plain resting
+    // state — see `animateChapterCrossingReveal`'s identical cleanup.
+    stagingEl.style.transform = "";
+    stagingEl.style.zIndex = "";
+    stagingEl.style.boxShadow = "";
+    stagingEl.style.transition = "";
+    if (animatingEl === oldEl) {
+      // Defensive only — `oldEl` is about to be disposed by the caller
+      // regardless, but leaves nothing dangling if that ever changes.
+      oldEl.style.zIndex = "";
+    }
+    return true;
   }
 
   /** Whether the user has `prefers-reduced-motion: reduce` set — checked

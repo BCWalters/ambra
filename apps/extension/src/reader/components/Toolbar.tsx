@@ -692,28 +692,41 @@ export const Toolbar: FC<ToolbarProps> = ({
                     </MenuItemRadio>
                   </MenuGroup>
                   <MenuDivider />
-                  <MenuGroup>
-                    <MenuGroupHeader>Page turn</MenuGroupHeader>
-                    <MenuItemRadio
-                      name={PAGE_TURN_ANIMATION_GROUP_NAME}
-                      value="rotate"
-                      secondaryContent="Experimental"
-                    >
-                      Page flip
-                    </MenuItemRadio>
-                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
-                      Slide
-                    </MenuItemRadio>
-                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
-                      Film strip
-                    </MenuItemRadio>
-                    <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
-                      Off
-                    </MenuItemRadio>
-                  </MenuGroup>
-                  <MenuDivider />
                 </>
               )}
+              {/* Moved out from under the reflowable-only section above
+                  (same reasoning issue #93 already gave for "Brightness"/
+                  "Reader theme" just below) once fixed-layout turns
+                  themselves gained page-turn animation support — every
+                  style here now applies equally to a fixed-layout book's
+                  own spread-to-spread turn (`ReaderController
+                  .animateFixedSpreadTurn`), not just a reflowable
+                  chapter/page turn, so hiding this whole group for
+                  fixed-layout content would leave no way to change it
+                  without first opening a reflowable book. "Reading mode"
+                  above stays reflowable-only, though — fixed-layout
+                  content has no equivalent of a continuous-scroll view;
+                  it's always shown one spread at a time. */}
+              <MenuGroup>
+                <MenuGroupHeader>Page turn</MenuGroupHeader>
+                <MenuItemRadio
+                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
+                  value="rotate"
+                  secondaryContent="Experimental"
+                >
+                  Page flip
+                </MenuItemRadio>
+                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
+                  Slide
+                </MenuItemRadio>
+                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
+                  Film strip
+                </MenuItemRadio>
+                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
+                  Off
+                </MenuItemRadio>
+              </MenuGroup>
+              <MenuDivider />
               <MenuGroup>
                 {/* Issue #92: dims the whole reading pane (text,
                     background, margins, and any images) below whichever
