@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FC, ReactNode } from "react";
 import {
   Body1,
@@ -15,13 +15,19 @@ import {
   Tooltip,
 } from "@fluentui/react-components";
 import {
+  ArchiveRegular,
+  ArrowLeftRegular,
   BracesRegular,
   CodeRegular,
   DismissRegular,
   DocumentCssRegular,
   DocumentRegular,
+  DocumentSettingsRegular,
+  FullScreenMaximizeRegular,
+  FullScreenMinimizeRegular,
   ImageRegular,
   MusicNote2Regular,
+  TextBulletListRegular,
   TextFontRegular,
   TextWrapOffRegular,
   TextWrapRegular,
@@ -36,8 +42,10 @@ import jsonLanguage from "highlight.js/lib/languages/json";
 import xmlFormat from "xml-formatter";
 import type { EpubInspectionData } from "../ReaderController.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
-import type { InspectorFileCategory } from "./inspectorFileKind.js";
-import { classifyInspectionFile, guessMediaType } from "./inspectorFileKind.js";
+import type { InspectorFileCategory, SpecialFileKind } from "./inspectorFileKind.js";
+import { classifyInspectionFile, guessMediaType, identifySpecialFiles } from "./inspectorFileKind.js";
+import { isNavigableLinkAttribute, resolveNavigableLinkTarget } from "./inspectorContentLinks.js";
+
 
 hljs.registerLanguage("xml", xmlLanguage);
 hljs.registerLanguage("css", cssLanguage);
@@ -97,6 +105,19 @@ const CATEGORY_STYLE: Readonly<Record<InspectorFileCategory, { icon: FluentIcon;
   binary: { icon: DocumentRegular, color: "#94a3b8" },
 };
 
+/** Icon + accent color + label for each of the handful of files that
+ * establish an EPUB's own structure (issue #95) — takes over from
+ * `CATEGORY_STYLE`'s generic per-category choice for exactly these
+ * paths (see `identifySpecialFiles`), so they stand out from the dozens
+ * of otherwise-identical-looking XHTML/XML entries in a real book's
+ * file list. */
+const SPECIAL_FILE_STYLE: Readonly<Record<SpecialFileKind, { icon: FluentIcon; color: string; label: string }>> = {
+  container: { icon: ArchiveRegular, color: "#64748b", label: "OCF container descriptor" },
+  opf: { icon: DocumentSettingsRegular, color: "#0891b2", label: "Package document (OPF)" },
+  toc: { icon: TextBulletListRegular, color: "#7c3aed", label: "Table of contents" },
+  cover: { icon: ImageRegular, color: "#d97706", label: "Cover image" },
+};
+
 /** A small custom highlight.js theme, defined inline (rather than
  * importing one of highlight.js's own bundled theme stylesheets) so the
  * palette matches the rest of this panel's plain, light styling instead
@@ -113,11 +134,18 @@ const HighlightTheme: FC = () => (
     .ambra-hljs .hljs-number, .ambra-hljs .hljs-literal { color: #b91c1c; }
     .ambra-hljs .hljs-keyword, .ambra-hljs .hljs-meta { color: #7c3aed; }
     .ambra-hljs .hljs-title, .ambra-hljs .hljs-function { color: #0f766e; }
+    /* Issue #95: an href/src attribute value that resolves to another
+       file in this same archive — marked clickable by a DOM walk over
+       this already-rendered markup (see FilePreview's own effect),
+       rather than styled inline, so a plain (non-navigable, e.g.
+       external) string keeps its ordinary hljs-string look. */
+    .ambra-hljs .ambra-navlink { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
+    .ambra-hljs .ambra-navlink:hover { color: #0f766e; }
   `}</style>
 );
 
-const FileTypeIcon: FC<{ category: InspectorFileCategory }> = ({ category }) => {
-  const { icon: Icon, color } = CATEGORY_STYLE[category];
+const FileTypeIcon: FC<{ category: InspectorFileCategory; special?: SpecialFileKind }> = ({ category, special }) => {
+  const { icon: Icon, color } = special ? SPECIAL_FILE_STYLE[special] : CATEGORY_STYLE[category];
   return <Icon style={{ color, flexShrink: 0 }} fontSize={16} />;
 };
 
@@ -131,11 +159,14 @@ const FilePreview: FC<{
   size: number;
   manifestMediaType: string | undefined;
   wrap: boolean;
+  knownFilePaths: ReadonlySet<string>;
   onReadFile: (path: string) => Promise<string>;
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
-}> = ({ path, size, manifestMediaType, wrap, onReadFile, onGetPreviewUrl }) => {
+  onNavigateToFile: (path: string) => void;
+}> = ({ path, size, manifestMediaType, wrap, knownFilePaths, onReadFile, onGetPreviewUrl, onNavigateToFile }) => {
   const classification = useMemo(() => classifyInspectionFile(path, manifestMediaType), [path, manifestMediaType]);
   const resolvedMediaType = guessMediaType(path, manifestMediaType);
+  const preRef = useRef<HTMLPreElement>(null);
 
   const [textHtml, setTextHtml] = useState<string | undefined>(undefined);
   const [plainText, setPlainText] = useState<string | undefined>(undefined);
@@ -200,6 +231,56 @@ const FilePreview: FC<{
     };
   }, [path, classification, onReadFile, onGetPreviewUrl, resolvedMediaType]);
 
+  // Issue #95: marks every `href`/`src` attribute value in the just-
+  // rendered markup that resolves to another file *this same archive
+  // actually has* as clickable — a plain DOM walk over the already-
+  // highlighted output (see `HighlightTheme`'s own doc comment on why
+  // this happens here, not as part of the highlighted HTML string
+  // itself). Re-runs whenever a new file's markup is rendered
+  // (`textHtml` change) — nothing to do for a file with no highlighted
+  // markup at all (images, binaries, non-XML text).
+  useEffect(() => {
+    const container = preRef.current;
+    if (!container || textHtml === undefined) {
+      return;
+    }
+    const stringSpans = container.querySelectorAll<HTMLElement>(".hljs-string");
+    for (const stringSpan of stringSpans) {
+      const attrSpan = stringSpan.previousElementSibling;
+      if (!attrSpan || !attrSpan.classList.contains("hljs-attr")) {
+        continue;
+      }
+      const attrName = attrSpan.textContent ?? "";
+      if (!isNavigableLinkAttribute(attrName)) {
+        continue;
+      }
+      // hljs's xml grammar always includes the quote characters
+      // themselves as part of the string token (e.g. `"chapter2.xhtml"`,
+      // quotes included) — strip one matching pair, if present, to get
+      // the raw attribute value underneath.
+      const raw = stringSpan.textContent ?? "";
+      const quote = raw.length >= 2 && (raw[0] === '"' || raw[0] === "'") && raw[0] === raw[raw.length - 1];
+      const rawHref = quote ? raw.slice(1, -1) : raw;
+      const target = resolveNavigableLinkTarget(path, rawHref, knownFilePaths);
+      if (!target) {
+        continue;
+      }
+      stringSpan.classList.add("ambra-navlink");
+      stringSpan.dataset.navPath = target;
+      stringSpan.setAttribute("role", "link");
+      stringSpan.setAttribute("tabindex", "0");
+      stringSpan.title = `Open ${target}`;
+    }
+  }, [textHtml, path, knownFilePaths]);
+
+  function handleContentLinkActivate(target: EventTarget | null): void {
+    const el = target instanceof Element ? target.closest<HTMLElement>("[data-nav-path]") : null;
+    const navPath = el?.dataset.navPath;
+    if (navPath) {
+      onNavigateToFile(navPath);
+    }
+  }
+
   if (isLoading) {
     return <Spinner label="Loading…" />;
   }
@@ -239,6 +320,7 @@ const FilePreview: FC<{
     <>
       <HighlightTheme />
       <pre
+        ref={preRef}
         className="ambra-hljs"
         style={{
           margin: 0,
@@ -247,9 +329,21 @@ const FilePreview: FC<{
           whiteSpace: wrap ? "pre-wrap" : "pre",
           wordBreak: wrap ? "break-word" : "normal",
         }}
+        // Lets a keyboard user Tab to a linkified `href`/`src` span (see
+        // the effect above, which gives each one `tabindex="0"`) and
+        // activate it with Enter/Space — the same expectation a real
+        // `<a>` would set.
+        onClick={(event) => handleContentLinkActivate(event.target)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            handleContentLinkActivate(event.target);
+          }
+        }}
         // Safe: highlight.js escapes the source text itself and only
         // wraps recognized tokens in `<span class="hljs-...">` — it
-        // never interprets the file's own content as markup.
+        // never interprets the file's own content as markup. The effect
+        // above only ever *adds* attributes/classes to elements hljs
+        // already produced; it never introduces new markup of its own.
         dangerouslySetInnerHTML={{ __html: textHtml }}
       />
     </>
@@ -270,10 +364,23 @@ const FilePreview: FC<{
 
 const FilesTab: FC<{
   data: EpubInspectionData;
+  selectedPath: string | undefined;
+  onSelectPath: (path: string) => void;
+  onNavigateToFile: (path: string) => void;
+  isFullScreen: boolean;
+  onToggleFullScreen: () => void;
   onReadFile: (path: string) => Promise<string>;
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
-}> = ({ data, onReadFile, onGetPreviewUrl }) => {
-  const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined);
+}> = ({
+  data,
+  selectedPath,
+  onSelectPath,
+  onNavigateToFile,
+  isFullScreen,
+  onToggleFullScreen,
+  onReadFile,
+  onGetPreviewUrl,
+}) => {
   // Defaults to off (issue #70) — spine item/markup source reads more
   // naturally with each line as its own row (indentation stays legible)
   // rather than wrapped, and a reader can always switch it back on for a
@@ -283,10 +390,30 @@ const FilesTab: FC<{
   const selectedClassification = selectedFile
     ? classifyInspectionFile(selectedFile.path, selectedFile.mediaType)
     : undefined;
+  const specialFiles = useMemo(() => identifySpecialFiles(data), [data]);
+  const knownFilePaths = useMemo(() => new Set(data.files.map((file) => file.path)), [data]);
+
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!selectedPath) {
+      return;
+    }
+    // Scrolls the sidebar's own already-selected entry into view — matters
+    // most for a cross-reference jump (a spine/manifest link, or an
+    // in-content href/src, see `onNavigateToFile`) landing on a file far
+    // down a long list, where "selected" would otherwise mean nothing
+    // visible actually changed. A plain sidebar click never needs this
+    // (the clicked entry is already on screen), but running it
+    // unconditionally on every selection change is a harmless no-op then.
+    sidebarRef.current
+      ?.querySelector<HTMLElement>(`[data-file-path="${CSS.escape(selectedPath)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedPath]);
 
   return (
     <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
       <div
+        ref={sidebarRef}
         style={{
           width: 300,
           flexShrink: 0,
@@ -297,11 +424,13 @@ const FilesTab: FC<{
       >
         {data.files.map((file) => {
           const classification = classifyInspectionFile(file.path, file.mediaType);
+          const special = specialFiles.get(file.path);
           return (
             <button
               key={file.path}
               type="button"
-              onClick={() => setSelectedPath(file.path)}
+              data-file-path={file.path}
+              onClick={() => onSelectPath(file.path)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -316,7 +445,11 @@ const FilesTab: FC<{
                 fontSize: 13,
               }}
             >
-              <FileTypeIcon category={classification.category} />
+              <Tooltip content={special ? SPECIAL_FILE_STYLE[special].label : ""} relationship="label" withArrow>
+                <span style={{ display: "flex" }}>
+                  <FileTypeIcon category={classification.category} special={special} />
+                </span>
+              </Tooltip>
               <span
                 style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
@@ -330,15 +463,16 @@ const FilesTab: FC<{
         })}
       </div>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {selectedClassification?.isText && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              padding: "4px 8px",
-              borderBottom: `1px solid ${CHROME_BORDER}`,
-            }}
-          >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 4,
+            padding: "4px 8px",
+            borderBottom: `1px solid ${CHROME_BORDER}`,
+          }}
+        >
+          {selectedClassification?.isText && (
             <Tooltip content={wrap ? "Turn off line wrapping" : "Turn on line wrapping"} relationship="label">
               <Button
                 appearance="subtle"
@@ -348,8 +482,21 @@ const FilesTab: FC<{
                 onClick={() => setWrap((value) => !value)}
               />
             </Tooltip>
-          </div>
-        )}
+          )}
+          {/* Issue #95: not on by default — a reader browsing a couple of
+              small files never needs it, but an author poking through a
+              large minified script or a long chapter benefits from
+              every extra pixel of width/height this can free up. */}
+          <Tooltip content={isFullScreen ? "Exit full screen" : "Full screen"} relationship="label">
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={isFullScreen ? <FullScreenMinimizeRegular /> : <FullScreenMaximizeRegular />}
+              aria-label={isFullScreen ? "Exit full screen" : "Full screen"}
+              onClick={onToggleFullScreen}
+            />
+          </Tooltip>
+        </div>
         <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12 }}>
           {!selectedFile ? (
             <Caption1 style={{ opacity: 0.6 }}>Select a file to view its contents.</Caption1>
@@ -360,8 +507,10 @@ const FilesTab: FC<{
               size={selectedFile.size}
               manifestMediaType={selectedFile.mediaType}
               wrap={wrap}
+              knownFilePaths={knownFilePaths}
               onReadFile={onReadFile}
               onGetPreviewUrl={onGetPreviewUrl}
+              onNavigateToFile={onNavigateToFile}
             />
           )}
         </div>
@@ -515,8 +664,45 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
   );
 };
 
-const SpineTab: FC<{ data: EpubInspectionData }> = ({ data }) => (
+/** A plain-looking inline link — used everywhere this panel offers "jump
+ * to this archive file in the Files tab" (issue #95): the OPF link atop
+ * the Spine/Manifest tabs, and each Spine row's own path. */
+const FileLink: FC<{ path: string; onNavigateToFile: (path: string) => void; children: ReactNode }> = ({
+  path,
+  onNavigateToFile,
+  children,
+}) => (
+  <button
+    type="button"
+    onClick={() => onNavigateToFile(path)}
+    style={{
+      background: "none",
+      border: "none",
+      padding: 0,
+      margin: 0,
+      font: "inherit",
+      color: "#0f766e",
+      textDecoration: "underline",
+      textDecorationStyle: "dotted",
+      cursor: "pointer",
+    }}
+  >
+    {children}
+  </button>
+);
+
+const SpineTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: string) => void }> = ({
+  data,
+  onNavigateToFile,
+}) => (
   <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
+    <Caption1 as="p" style={{ margin: "0 0 12px", opacity: 0.8 }}>
+      Reading order, as declared by{" "}
+      <FileLink path={data.rootFilePath} onNavigateToFile={onNavigateToFile}>
+        {data.rootFilePath}
+      </FileLink>
+      's own spine.
+    </Caption1>
     <table style={{ borderCollapse: "collapse", width: "100%" }}>
       <thead>
         <tr style={{ textAlign: "left", opacity: 0.6 }}>
@@ -530,7 +716,11 @@ const SpineTab: FC<{ data: EpubInspectionData }> = ({ data }) => (
         {data.spine.map((item, index) => (
           <tr key={index}>
             <td style={{ padding: "2px 12px 2px 0" }}>{index + 1}</td>
-            <td style={{ padding: "2px 12px 2px 0" }}>{item.path}</td>
+            <td style={{ padding: "2px 12px 2px 0" }}>
+              <FileLink path={item.path} onNavigateToFile={onNavigateToFile}>
+                {item.path}
+              </FileLink>
+            </td>
             <td style={{ padding: "2px 12px 2px 0" }}>{item.linear ? "yes" : "no"}</td>
             <td>{item.mediaType}</td>
           </tr>
@@ -540,8 +730,18 @@ const SpineTab: FC<{ data: EpubInspectionData }> = ({ data }) => (
   </div>
 );
 
-const ManifestTab: FC<{ data: EpubInspectionData }> = ({ data }) => (
+const ManifestTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: string) => void }> = ({
+  data,
+  onNavigateToFile,
+}) => (
   <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
+    <Caption1 as="p" style={{ margin: "0 0 12px", opacity: 0.8 }}>
+      Every resource declared in{" "}
+      <FileLink path={data.rootFilePath} onNavigateToFile={onNavigateToFile}>
+        {data.rootFilePath}
+      </FileLink>
+      's own manifest.
+    </Caption1>
     <table style={{ borderCollapse: "collapse", width: "100%" }}>
       <thead>
         <tr style={{ textAlign: "left", opacity: 0.6 }}>
@@ -567,6 +767,16 @@ const ManifestTab: FC<{ data: EpubInspectionData }> = ({ data }) => (
 
 type InspectorTab = "files" | "metadata" | "spine" | "manifest";
 
+/** One entry on the "Back" history stack (issue #95) — a full snapshot
+ * of which tab was showing and which file was selected, not just the
+ * file path alone, so "Back" correctly returns to the Spine/Manifest
+ * tab a jump *started* from, not just the previously-viewed file within
+ * the Files tab. */
+interface InspectorHistoryEntry {
+  readonly tab: InspectorTab;
+  readonly selectedFilePath: string | undefined;
+}
+
 /**
  * An EPUB-author-facing tool (issue #46), reachable only via a button
  * tucked into the Book Details panel — deliberately not given its own
@@ -578,6 +788,14 @@ type InspectorTab = "files" | "metadata" | "spine" | "manifest";
  * spine, each in their own tab. "Validate EPUB"/"check accessibility"-
  * style actions are explicitly out of scope for this pass, per the
  * issue — this is purely a read-only inspection view for now.
+ *
+ * Issue #95 added cross-referencing between tabs: the Spine/Manifest
+ * tabs' own OPF link, each Spine row's own path, and (inside the Files
+ * tab's own markup preview) any `href`/`src` that resolves to another
+ * file this same archive actually has are all clickable, jumping the
+ * Files tab straight to that file — everywhere a jump can originate
+ * from is tracked on a small "Back" history stack (`history` below) so
+ * a reader who followed a chain of such links can retrace their steps.
  */
 export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   open,
@@ -588,19 +806,62 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   onGetPreviewUrl,
 }) => {
   const [activeTab, setActiveTab] = useState<InspectorTab>("files");
+  const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(undefined);
+  const [history, setHistory] = useState<readonly InspectorHistoryEntry[]>([]);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Issue #95: a cross-reference jump (unlike an ordinary Files-tab
+  // sidebar click, or manually switching tabs — neither pushes history,
+  // both are already trivial to undo by hand) — records exactly where
+  // the jump came from, then lands on `path` in the Files tab.
+  function navigateToFile(path: string): void {
+    setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath }]);
+    setSelectedFilePath(path);
+    setActiveTab("files");
+  }
+
+  function goBack(): void {
+    setHistory((entries) => {
+      const previous = entries[entries.length - 1];
+      if (!previous) {
+        return entries;
+      }
+      setActiveTab(previous.tab);
+      setSelectedFilePath(previous.selectedFilePath);
+      return entries.slice(0, -1);
+    });
+  }
 
   return (
     <Dialog open={open} onOpenChange={(_event, dialogData) => onOpenChange(dialogData.open)}>
-      <DialogSurface style={{ maxWidth: 900, width: "90vw", height: "80vh" }}>
+      <DialogSurface
+        style={
+          isFullScreen
+            ? { maxWidth: "100vw", width: "100vw", height: "100vh", borderRadius: 0 }
+            : { maxWidth: 900, width: "90vw", height: "80vh" }
+        }
+      >
         <DialogBody style={{ height: "100%" }}>
           <DialogTitle
             action={
-              <Button
-                appearance="subtle"
-                icon={<DismissRegular />}
-                aria-label="Close EPUB Inspector"
-                onClick={() => onOpenChange(false)}
-              />
+              <div style={{ display: "flex", gap: 4 }}>
+                {history.length > 0 && (
+                  <Tooltip content="Back" relationship="label">
+                    <Button
+                      appearance="subtle"
+                      icon={<ArrowLeftRegular />}
+                      aria-label="Back"
+                      onClick={goBack}
+                    />
+                  </Tooltip>
+                )}
+                <Button
+                  appearance="subtle"
+                  icon={<DismissRegular />}
+                  aria-label="Close EPUB Inspector"
+                  onClick={() => onOpenChange(false)}
+                />
+              </div>
             }
           >
             EPUB Inspector
@@ -621,11 +882,20 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                 </TabList>
                 <div style={{ flex: 1, minHeight: 0, marginTop: 8 }}>
                   {activeTab === "files" && (
-                    <FilesTab data={data} onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} />
+                    <FilesTab
+                      data={data}
+                      selectedPath={selectedFilePath}
+                      onSelectPath={setSelectedFilePath}
+                      onNavigateToFile={navigateToFile}
+                      isFullScreen={isFullScreen}
+                      onToggleFullScreen={() => setIsFullScreen((value) => !value)}
+                      onReadFile={onReadFile}
+                      onGetPreviewUrl={onGetPreviewUrl}
+                    />
                   )}
                   {activeTab === "metadata" && <MetadataTab data={data} fileName={fileName} />}
-                  {activeTab === "spine" && <SpineTab data={data} />}
-                  {activeTab === "manifest" && <ManifestTab data={data} />}
+                  {activeTab === "spine" && <SpineTab data={data} onNavigateToFile={navigateToFile} />}
+                  {activeTab === "manifest" && <ManifestTab data={data} onNavigateToFile={navigateToFile} />}
                 </div>
               </>
             )}

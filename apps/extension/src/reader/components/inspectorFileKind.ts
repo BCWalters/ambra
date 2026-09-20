@@ -171,3 +171,69 @@ export function classifyInspectionFile(
     prettyPrintXml: category === "markup",
   };
 }
+
+/** The handful of files that establish an EPUB's own structure — given
+ * their own dedicated icon in the Files tab (issue #95) rather than the
+ * generic per-category one every other markup/XML file gets, since
+ * these specific ones are what an author most needs to find at a
+ * glance while poking around a book's raw archive layout. */
+export type SpecialFileKind = "container" | "opf" | "toc" | "cover";
+
+/** The fixed, spec-mandated path of the OCF container descriptor —
+ * never a manifest resource itself (nothing references it *from*
+ * inside the package), so it can only ever be recognized by this exact
+ * path, unlike every other special kind below. */
+const CONTAINER_XML_PATH = "META-INF/container.xml";
+
+const NCX_MEDIA_TYPE = "application/x-dtbncx+xml";
+
+/** The minimal shape `identifySpecialFiles` needs from `EpubInspectionData`
+ * — declared locally (rather than importing the real interface from
+ * `ReaderController`) so this stays a small, pure, independently
+ * testable function with no dependency on the rest of the reader. */
+export interface SpecialFileSource {
+  readonly files: readonly { path: string }[];
+  readonly rootFilePath: string;
+  readonly manifest: readonly { id: string; path: string; mediaType: string; properties: readonly string[] }[];
+  readonly metaEntries: readonly { key: string; value: string }[];
+}
+
+/** Maps each recognized special file's archive path to its `SpecialFileKind`
+ * — at most one entry per kind, since there's only ever one container
+ * descriptor, one package document, and (practically) one "the TOC" /
+ * "the cover" an author would think of as *the* one, even though EPUB
+ * technically allows a book to keep a legacy NCX around *alongside* an
+ * EPUB3 Nav Document (the Nav Document wins in that case — it's the
+ * one that's actually current) or declare a cover via either the EPUB3
+ * `cover-image` manifest property or the legacy OPF2 `<meta name="cover"
+ * content="...">` form (the former wins if both happen to be present). */
+export function identifySpecialFiles(data: SpecialFileSource): ReadonlyMap<string, SpecialFileKind> {
+  const result = new Map<string, SpecialFileKind>();
+
+  if (data.files.some((file) => file.path === CONTAINER_XML_PATH)) {
+    result.set(CONTAINER_XML_PATH, "container");
+  }
+  if (data.rootFilePath) {
+    result.set(data.rootFilePath, "opf");
+  }
+
+  const navItem = data.manifest.find((item) => item.properties.includes("nav"));
+  const ncxItem = data.manifest.find((item) => item.mediaType === NCX_MEDIA_TYPE);
+  const tocItem = navItem ?? ncxItem;
+  if (tocItem) {
+    result.set(tocItem.path, "toc");
+  }
+
+  const coverImageItem = data.manifest.find((item) => item.properties.includes("cover-image"));
+  const legacyCoverMeta = data.metaEntries.find((entry) => entry.key.toLowerCase() === "cover");
+  const legacyCoverItem = legacyCoverMeta
+    ? data.manifest.find((item) => item.id === legacyCoverMeta.value)
+    : undefined;
+  const coverItem = coverImageItem ?? legacyCoverItem;
+  if (coverItem) {
+    result.set(coverItem.path, "cover");
+  }
+
+  return result;
+}
+
