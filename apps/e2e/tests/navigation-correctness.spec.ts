@@ -7,6 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epub");
 const TWO_CHAPTER_EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
 const MERGED_TAIL_VISIBILITY_EPUB = path.resolve(here, "..", "fixtures", "merged-tail-visibility.epub");
+const BOOK_START_MERGE_EPUB = path.resolve(here, "..", "fixtures", "book-start-merge.epub");
 const TOTAL_PARAGRAPHS = 30;
 
 function paragraphNumbers(text: string): number[] {
@@ -480,6 +481,72 @@ test.describe("paginated reflowable navigation correctness", () => {
       expect(
         columns.some((column) => column.text.includes("Para 20")),
         `index.xhtml's own last paragraph never appeared alongside chapter two (label was "${label}")`,
+      ).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("two-page spread: the book's very first spread merges forward immediately, with no blank facing page and with working click-to-turn", async () => {
+    // A real, confirmed bug distinct from (though related to) the two
+    // above: this whole merge feature (issues #90/#92/#94) only ever
+    // triggered from a forward *page turn*, crossing from an
+    // already-on-screen chapter into the next one. It never applied to
+    // a spine item's own *first* open — most commonly hit by a lone
+    // cover image as the book's very first spine item (exactly one
+    // page, no companion): opening the book showed it alone with a
+    // permanently blank facing page, exactly the state this whole
+    // feature exists to eliminate everywhere else. `BOOK_START_MERGE_EPUB`'s
+    // own `cover.xhtml` is sized so this viewport lands it as a single,
+    // unpaired page, with `chapter1.xhtml` right behind it.
+    //
+    // Fixing that (`ReaderController.openSpineItem`'s own retroactive
+    // merge, checked immediately after any fresh spine-item open) hit a
+    // *second*, independent bug of its own along the way: the merged
+    // host was, at first, revealed the same way every other freshly-
+    // opened host here is — moved into a `stageHiddenHostElement`
+    // wrapper — but that unconditionally reparents whatever's passed to
+    // it, which reloads an *already-loaded* host's nested iframes (this
+    // one already fully built by `buildMergedSpreadHost`), silently
+    // discarding the click-to-turn listeners `setUpDragPageTurn` had
+    // just attached moments earlier. The reader looked completely
+    // correct on screen — right down to which page was showing — but
+    // every click did precisely nothing; only keyboard navigation still
+    // worked, since it doesn't depend on any content-iframe listener.
+    // This test's own second half is a direct regression test for
+    // exactly that: not just "no blank page," but "clicking the very
+    // first spread actually turns the page."
+    const { context, readerPage } = await launchReader(BOOK_START_MERGE_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      await readerPage.waitForTimeout(500);
+
+      const visibleColumnsText = async (): Promise<string[]> =>
+        readerPage.evaluate(() =>
+          Array.from(document.querySelectorAll("iframe"))
+            .filter((f) => getComputedStyle(f).visibility !== "hidden")
+            .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText ?? ""),
+        );
+
+      const initialColumns = await visibleColumnsText();
+      expect(
+        initialColumns.some((text) => text.includes("Cover Para 1")),
+        "the cover's own content never appeared on the book's very first spread",
+      ).toBe(true);
+      expect(
+        initialColumns.some((text) => text.includes("C1 Para 1")),
+        "chapter1's own opening content never appeared alongside the cover — the facing page was left blank instead of merging forward",
+      ).toBe(true);
+      expect(
+        initialColumns.every((text) => text.trim().length > 0),
+        "a visible column on the book's very first spread was blank",
+      ).toBe(true);
+
+      const result = await clickForwardAndWait(readerPage, { x: 1300, y: 450 });
+      expect(
+        result.changed,
+        `clicking the book's very first (merged) spread did not turn the page (label stayed "${result.before}") — the merge's own listeners were likely attached to since-reloaded, no-longer-on-screen documents`,
       ).toBe(true);
     } finally {
       await context.close();

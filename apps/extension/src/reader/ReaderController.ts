@@ -4219,9 +4219,24 @@ export class ReaderController {
    * directly via a TOC/bookmark jump, or backward navigation from the
    * next chapter, rather than a normal forward walk through this
    * chapter's own pages (see `prepareMergedIncomingSpreadFromUpcomingLastPage`
-   * for that far more common case, issue #94). */
-  private async prepareMergedIncomingSpread(oldHost: SpreadPaginatedHost): Promise<SpreadPaginatedHost | undefined> {
-    const nextSpineIndex = this.spineIndex + 1;
+   * for that far more common case, issue #94).
+   *
+   * `currentSpineIndex` defaults to `this.spineIndex` — the right value
+   * for every *turn*-driven caller (`prepareIncomingSpread`), since
+   * `this.spineIndex` still describes `oldHost` there (only updated once
+   * `openSpineItem` commits to whatever this call returns). `openSpineItem`
+   * itself, though, calls this directly on a host it just opened at some
+   * *other* `spineIndex` than whatever `this.spineIndex` currently is
+   * (the previous chapter, not yet updated this call) — passing that
+   * exact value explicitly is what makes this reusable for landing
+   * directly on a lone unpaired page (e.g. this book's own first spine
+   * item, often a standalone cover image) with no prior turn involved at
+   * all, not just a forward turn's own incoming spread. */
+  private async prepareMergedIncomingSpread(
+    oldHost: SpreadPaginatedHost,
+    currentSpineIndex: number = this.spineIndex,
+  ): Promise<SpreadPaginatedHost | undefined> {
+    const nextSpineIndex = currentSpineIndex + 1;
     if (!this.canMergeSpreadIntoNext(nextSpineIndex)) {
       return undefined;
     }
@@ -5974,7 +5989,17 @@ export class ReaderController {
    * content's overflow was back to its un-hidden default, exposing the
    * content's own native scrollbar as a visible artifact. See the
    * same hazard already documented on `prepareIncomingPage`, which this
-   * mechanism now follows the same discipline as. */
+   * mechanism now follows the same discipline as.
+   *
+   * Confirmed (via testing this exact hazard a second time, for
+   * `openSpineItem`'s own retroactive book-open merge — see its own doc
+   * comment) that this holds *regardless of ordering*: connecting an
+   * empty wrapper to the live document first and moving already-loaded
+   * content into it *second* reloads every iframe inside that content
+   * just the same as the reverse order — there is no safe way to move
+   * an already-loaded host through this method at all. Every call site
+   * here only ever passes a *freshly constructed, not-yet-opened* host's
+   * element, for exactly this reason. */
   private stageHiddenHostElement(el: HTMLElement): HTMLDivElement {
     const containerEl = this.containerEl!;
     const stagingEl = containerEl.ownerDocument.createElement("div");
@@ -6133,6 +6158,87 @@ export class ReaderController {
           stagingEl = this.stageHiddenHostElement(host.element);
           await host.open(this.contentLoader, this.resolver, spineIndex);
           applyDisplaySettings = true;
+
+          // A real, confirmed bug: a spine item whose own real page
+          // count is odd (a lone cover image is the most common case —
+          // exactly one page, no companion) otherwise opens with a
+          // permanently blank facing column — precisely the state the
+          // #90/#92/#94 merge feature already exists to eliminate for a
+          // *forward turn* crossing into such a page, but never for
+          // landing on it directly this way (a fresh mount, a "Start of
+          // Book" TOC jump, etc.), since this whole staged-hidden-host
+          // path never went through `prepareIncomingSpread` at all.
+          // Retroactively merges forward into the next chapter right
+          // here, before this host is ever revealed, the same as if the
+          // reader had turned there — *except* when the caller asked to
+          // land on a *specific* saved position within this exact spine
+          // item (`bridgeCfi`/`fragment`/`landOnPageIndex`/
+          // `landOnFractionInItem`), where merging forward would
+          // silently relocate the reader past the exact position being
+          // restored. Also skipped whenever `landOnLastPage` is present
+          // *at all* (`true` or `false` — every caller that passes it
+          // explicitly, not just `undefined`): `true` means backward
+          // chapter-crossing, where merging forward would immediately
+          // land right back in the very chapter just left; `false` means
+          // `turnPageInternal`'s own forward chapter-crossing fallback,
+          // which already went through its own turn-based merge attempt
+          // (`prepareIncomingSpread`) and fell all the way through to a
+          // plain `openSpineItem` only because that returned undefined —
+          // a narrower, rarer edge case (this freshly-opened chapter
+          // itself *also* being one page long) deliberately left for
+          // later rather than risking a second, independent merge
+          // attempt interacting with that path's own `animateDirection`/
+          // `pendingSpreadMergeSpineIndex` handling in ways not yet
+          // fully reasoned through.
+          if (
+            host.secondPageIndex === undefined &&
+            options.bridgeCfi === undefined &&
+            options.fragment === undefined &&
+            options.landOnLastPage === undefined &&
+            options.landOnPageIndex === undefined &&
+            options.landOnFractionInItem === undefined
+          ) {
+            const merged = await this.prepareMergedIncomingSpread(host, spineIndex);
+            if (merged) {
+              host.dispose();
+              stagingEl.remove();
+              // `buildMergedSpreadHost` already attached `merged.element`
+              // directly to `containerEl` itself (not through any staging
+              // wrapper) and positioned it as an absolute overlay, ready
+              // to sit on top of an outgoing spread mid-animation (see
+              // its own doc comment) — exactly what every *turn*-driven
+              // merge caller needs, but not this one. Reset those
+              // transient overlay styles back to plain, in-flow
+              // positioning, the same as any other host displays once
+              // revealed through `stageHiddenHostElement` — but
+              // *without* actually moving it through a
+              // `stageHiddenHostElement`-style wrapper at all, unlike
+              // every other branch here: a real, confirmed bug found via
+              // testing (see `stageHiddenHostElement`'s own doc comment)
+              // — moving an *already-loaded* host's element through any
+              // wrapper, in either order, reloads every iframe nested
+              // inside it, discarding the click/keyboard listeners
+              // `setUpDragPageTurn`/`setUpContentInteraction` are about
+              // to attach a few lines below. `stagingEl` is deliberately
+              // left `undefined` from here on — mirroring
+              // `clearStaleHostWrapper`'s identical situation for the
+              // *turn*-driven merge/animation path, which also always
+              // leaves its own incoming host as a direct `containerEl`
+              // child with no wrapper of its own: `merged.element` never
+              // moves again after this, so there's nothing left for a
+              // wrapper to ever need to reveal or remove separately from
+              // `merged` itself (disposing `this.host`, the next time
+              // this runs, already removes `merged.element` from the DOM
+              // as a normal part of disposing it).
+              merged.element.style.position = "";
+              merged.element.style.top = "";
+              merged.element.style.left = "";
+              merged.element.style.zIndex = "";
+              createdHost = merged;
+              stagingEl = undefined;
+              spineIndex += 1;
+            }
+          }
         } else {
           const host =
             this.viewMode === "paginated"
@@ -6162,7 +6268,7 @@ export class ReaderController {
           `openSpineItem stale-discard spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
         );
         newHost.dispose();
-        stagingEl.remove();
+        stagingEl?.remove();
         return;
       }
 
@@ -6182,10 +6288,20 @@ export class ReaderController {
       // the reader's actual choices once the (normally `this.host`-
       // dependent, called again further below) reveal step ran —
       // hence explicitly passing `newHost` to both here rather than
-      // waiting for `this.host` to actually become it.
+      // waiting for `this.host` to actually become it. `stagingEl !==
+      // undefined` is defensive rather than load-bearing: the only
+      // caller that ever sets `animateDirection` always sets
+      // `landOnLastPage` alongside it, which is one of the exact
+      // conditions `openSpineItem`'s own retroactive merge (the one
+      // case that leaves `stagingEl` `undefined`) already excludes
+      // itself for — so the two are never actually both true at once —
+      // but guarding it explicitly here means that invariant only has
+      // to hold, not be re-derived by whoever next touches either side
+      // of it.
       let animatedReveal = false;
       if (
         options.animateDirection !== undefined &&
+        stagingEl !== undefined &&
         (previousHost instanceof PaginatedContentHost || previousHost instanceof SpreadPaginatedHost) &&
         (newHost instanceof PaginatedContentHost || newHost instanceof SpreadPaginatedHost)
       ) {
@@ -6215,11 +6331,15 @@ export class ReaderController {
       // outright; the new host's wrapper, in turn, is just revealed in
       // place by clearing the hiding styles `stageHiddenHostElement` set
       // (a no-op if `animatedReveal` already did, right above) — never
-      // touching its child's parentage at all.
+      // touching its child's parentage at all. `stagingEl` is `undefined`
+      // for `openSpineItem`'s own retroactive book-open merge (see
+      // above) — its host is already fully revealed in place with
+      // nothing left to un-hide, exactly like `clearStaleHostWrapper`'s
+      // identical situation for the turn-driven merge/animation path.
       previousHost?.dispose();
       previousWrapperEl?.remove();
-      stagingEl.style.opacity = "";
-      stagingEl.style.pointerEvents = "";
+      stagingEl?.style.setProperty("opacity", "");
+      stagingEl?.style.setProperty("pointer-events", "");
       this.host = newHost;
       this.hostWrapperEl = stagingEl;
       // Skipped if the animation above already applied these — no need
