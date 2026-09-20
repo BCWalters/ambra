@@ -6,6 +6,8 @@ import {
   EpubCfi,
   EpubContainer,
   FixedContentHost,
+  FixedLayoutSpreadPlanner,
+  FixedSpreadHost,
   Locator,
   LocatorResolver,
   NavigationDocument,
@@ -441,7 +443,7 @@ export interface ImageViewerState {
  */
 export class ReaderController {
   private host:
-    PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | undefined;
+    PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | FixedSpreadHost | undefined;
   /** The wrapper element `stageHiddenHostElement` created around
    * `this.host`'s own element — kept around purely so it can be
    * `.remove()`-d once `this.host` is replaced (see `openSpineItem`).
@@ -497,6 +499,13 @@ export class ReaderController {
    * its own drift into the just-restored position. */
   private appliedWidth = 0;
   private appliedHeight = 0;
+  /** Whether `FixedLayoutSpreadPlanner.isSpreadModeEligible` was `true`
+   * at the moment the *currently open* `FixedSpreadHost` was last built
+   * — see `shouldSwitchSpreadMode`'s own doc comment for why this is
+   * tracked explicitly rather than re-derived from the host's current
+   * `spread.kind`. `undefined` whenever the current host isn't a
+   * `FixedSpreadHost` at all. */
+  private fixedLayoutSpreadEligible: boolean | undefined;
   /** Drives the `Spinner` overlay `ReaderApp` shows — deliberately
    * *not* set the instant a spine-item load starts (see
    * `openSpineItem`'s own `loadingTimeout`, issue #88): most loads,
@@ -784,12 +793,18 @@ export class ReaderController {
       // Book-wide numbers only make sense in paginated/spread mode — the
       // same reason `pageIndex`/`pageCount` above stay `0` in scroll
       // mode, which has no discrete "page" concept of its own to place
-      // within a book-wide count either.
+      // within a book-wide count either. Fixed-layout content *does*
+      // still get one (every `FixedSpreadHost` spine item counts as
+      // exactly one page — see `BookPaginationEstimator`'s own doc
+      // comment), computed at `pageIndex` 0 since there's no per-item
+      // sub-pagination to place it within.
       let bookPageIndex: number | undefined;
       let bookPageCount: number | undefined;
       if (
         this.bookPagination &&
-        (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
+        (this.host instanceof PaginatedContentHost ||
+          this.host instanceof SpreadPaginatedHost ||
+          this.host instanceof FixedSpreadHost)
       ) {
         const position = this.bookPagination.positionFor(this.spineIndex, pageIndex);
         bookPageIndex = position.currentPage;
@@ -807,12 +822,14 @@ export class ReaderController {
         tocPageNumbers: this.computeTocPageNumbers(),
         currentChapterLabel: this.chapterLabel(this.spineIndex),
         viewMode: this.viewMode,
-        isFixedLayout: this.host instanceof FixedContentHost,
+        isFixedLayout: this.isFixedLayoutHost(this.host),
         pageIndex,
         pageCount,
         bookPageIndex,
         bookPageCount,
-        isSpread: this.host instanceof SpreadPaginatedHost,
+        isSpread:
+          this.host instanceof SpreadPaginatedHost ||
+          (this.host instanceof FixedSpreadHost && this.host.spread?.kind === "pair"),
         secondPageIndex:
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         isPrimaryPageMergedTail:
@@ -821,17 +838,14 @@ export class ReaderController {
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarksOnCurrentPage().length > 0,
         bookmarkedPages: this.bookmarkFlagsForCurrentPages(),
-        fontScale: this.host instanceof FixedContentHost ? 1 : this.fontScale,
-        lineSpacing:
-          this.host instanceof FixedContentHost ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
-        letterSpacing:
-          this.host instanceof FixedContentHost
-            ? ReadingTheme.DEFAULT_LETTER_SPACING
-            : this.letterSpacing,
-        contentWidthEm:
-          this.host instanceof FixedContentHost
-            ? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
-            : this.contentWidthEm,
+        fontScale: this.isFixedLayoutHost(this.host) ? 1 : this.fontScale,
+        lineSpacing: this.isFixedLayoutHost(this.host) ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
+        letterSpacing: this.isFixedLayoutHost(this.host)
+          ? ReadingTheme.DEFAULT_LETTER_SPACING
+          : this.letterSpacing,
+        contentWidthEm: this.isFixedLayoutHost(this.host)
+          ? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
+          : this.contentWidthEm,
         fontFamily: this.fontFamily,
         pageTheme: this.pageTheme,
         brightness: this.brightness,
@@ -944,7 +958,7 @@ export class ReaderController {
    * column's own (narrower) width, not the whole reader pane's — so a
    * book-wide page number always agrees with what's actually on screen. */
   private refreshBookPagination(): void {
-    if (!this.bookPagination || this.host instanceof FixedContentHost) {
+    if (!this.bookPagination || this.isFixedLayoutHost(this.host)) {
       return;
     }
     const measureWidth =
@@ -1386,31 +1400,62 @@ export class ReaderController {
     return result;
   }
 
+  /** Whether `host` is fixed-layout content — either a single-page
+   * `FixedContentHost` or a (possibly two-page) `FixedSpreadHost` —
+   * i.e. author-designed, pixel-precise content our own typography
+   * settings/highlighting must never be layered onto (see
+   * `FixedContentHost`'s own class doc comment: it deliberately opts
+   * out of `ReadingTheme` entirely). Centralizes what would otherwise
+   * be an `instanceof FixedContentHost || instanceof FixedSpreadHost`
+   * check repeated at every one of the many call sites that need to
+   * treat both exactly alike. */
+  private isFixedLayoutHost(
+    host:
+      | FixedContentHost
+      | SpreadPaginatedHost
+      | FixedSpreadHost
+      | PaginatedContentHost
+      | ScrollContentHost
+      | undefined,
+  ): host is FixedContentHost | FixedSpreadHost {
+    return host instanceof FixedContentHost || host instanceof FixedSpreadHost;
+  }
+
   /** The content document accessibility (keyboard navigation, focus
    * management) and CFI/fragment resolution key off — the *only* document
-   * for every host type except `SpreadPaginatedHost`, where it's
-   * specifically the primary (left) column; see that class's doc comment
-   * for why the right column is deliberately excluded. */
+   * for every host type except `SpreadPaginatedHost`/`FixedSpreadHost`,
+   * where it's specifically the primary (left) column; see
+   * `SpreadPaginatedHost`'s own doc comment for why the right column is
+   * deliberately excluded (`FixedSpreadHost` follows the identical
+   * convention for its own two-page spreads, for the same reason: a
+   * screen reader needs one unambiguous document, not two visually
+   * side-by-side copies of "the current position"). */
   private primaryContentDocument(): Document | undefined {
-    if (this.host instanceof SpreadPaginatedHost) {
+    if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
       return this.host.primaryContentDocument();
     }
     return this.host?.element.contentDocument ?? undefined;
   }
 
   /** Every content document the reader might receive a click in — one for
-   * every host type except `SpreadPaginatedHost`, which has two (both
-   * columns get working in-content links, even though only the left one
-   * participates in keyboard/focus accessibility). Defaults to
-   * `this.host`, but accepts an explicit one too — see
-   * `applyDisplaySettingsToHost`'s matching parameter, needed by
+   * every host type except `SpreadPaginatedHost`/`FixedSpreadHost`, which
+   * have two apiece (both columns get working in-content links, even
+   * though only the left one participates in keyboard/focus
+   * accessibility). Defaults to `this.host`, but accepts an explicit one
+   * too — see `applyDisplaySettingsToHost`'s matching parameter, needed by
    * `openSpineItem`'s chapter-crossing animation (issue #83), which
    * must apply settings to the *incoming* host before `this.host` is
    * actually reassigned to it. */
   private allContentDocuments(
-    host: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined = this.host,
+    host:
+      | FixedContentHost
+      | SpreadPaginatedHost
+      | FixedSpreadHost
+      | PaginatedContentHost
+      | ScrollContentHost
+      | undefined = this.host,
   ): Document[] {
-    if (host instanceof SpreadPaginatedHost) {
+    if (host instanceof SpreadPaginatedHost || host instanceof FixedSpreadHost) {
       return host.contentDocuments();
     }
     const doc = host?.element.contentDocument;
@@ -1423,7 +1468,7 @@ export class ReaderController {
    * through the full `setUpAccessibility` flow, can keep it in sync too. */
   private updateContentTitle(): void {
     const title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
-    if (this.host instanceof SpreadPaginatedHost) {
+    if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
       this.host.setTitle(title);
     } else if (this.host) {
       this.host.element.title = title;
@@ -1457,7 +1502,9 @@ export class ReaderController {
       return;
     }
     const isPaginated =
-      this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost;
+      this.host instanceof PaginatedContentHost ||
+      this.host instanceof SpreadPaginatedHost ||
+      this.host instanceof FixedSpreadHost;
     for (const iframeDocument of documents) {
       this.accessibility.attach(
         iframeDocument,
@@ -1675,8 +1722,26 @@ export class ReaderController {
     // wrong document entirely (silently landing somewhere else in the
     // book, or failing to resolve at all).
     const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
+    // A `FixedSpreadHost` "pair" is the fixed-layout equivalent of that
+    // same problem, just without any single "current chapter" to
+    // default to at all: its left and right columns are two genuinely
+    // *different* spine items (unlike every reflowable host, where
+    // every visible document — outside a merge's own borrowed tail —
+    // belongs to the same one, `this.spineIndex`), so a link clicked in
+    // whichever one *isn't* `this.spineIndex` itself (normalized to the
+    // pair's reading-order-*first* item — see `openSpineItem`) needs the
+    // *other* one's own spine index, not this chapter's.
+    const fixedSpread = this.host instanceof FixedSpreadHost ? this.host.spread : undefined;
+    const fixedSpreadDocs = this.host instanceof FixedSpreadHost ? this.host.contentDocuments() : [];
     const pathAndSpineIndexFor = (doc: Document): { path: string; spineIndex: number } | undefined => {
-      const spineIndex = doc === tailDoc ? this.spineIndex - 1 : this.spineIndex;
+      let spineIndex = doc === tailDoc ? this.spineIndex - 1 : this.spineIndex;
+      if (fixedSpread?.kind === "pair") {
+        if (doc === fixedSpreadDocs[0]) {
+          spineIndex = fixedSpread.leftSpineIndex;
+        } else if (doc === fixedSpreadDocs[1]) {
+          spineIndex = fixedSpread.rightSpineIndex;
+        }
+      }
       const path = this.pkg.spine[spineIndex]?.manifestItem.path;
       return path ? { path, spineIndex } : undefined;
     };
@@ -1685,6 +1750,20 @@ export class ReaderController {
     const cleanups: Array<() => void> = [];
 
     const isZoomableImage = (element: Element): element is HTMLImageElement => {
+      // Fixed-layout content never opens the zoom viewer at all — a
+      // real, confirmed conflict found via testing: a comic/manga page
+      // (the quintessential fixed-layout use case) is very often
+      // *entirely* one full-page `<img>`, so without this exclusion,
+      // literally every click anywhere on the visible page opened the
+      // zoom lightbox instead of turning the page — the reader's
+      // primary interaction for this content type was effectively
+      // unusable. Fixed-layout content is already shown at whatever
+      // scale fits the reader pane (see `FixedContentHost.applyScale`),
+      // so "zoom" isn't a meaningful separate action the way it is for
+      // an inline image embedded in otherwise-reflowable text.
+      if (this.isFixedLayoutHost(this.host)) {
+        return false;
+      }
       // Deliberately `localName` rather than `instanceof HTMLImageElement`
       // (`element` was obtained from the *content iframe's own* document,
       // a separate JS realm with its own `HTMLImageElement` constructor;
@@ -1855,7 +1934,7 @@ export class ReaderController {
 
     if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
       this.host.relayout(width, height);
-    } else if (this.host instanceof ScrollContentHost || this.host instanceof FixedContentHost) {
+    } else if (this.host instanceof ScrollContentHost || this.isFixedLayoutHost(this.host)) {
       this.host.resize(width, height);
     }
     this.refreshBookPagination();
@@ -1863,11 +1942,27 @@ export class ReaderController {
   }
 
   /** `true` if the reader pane just crossed the two-page-spread width
-   * threshold (`SpreadPaginatedHost.isEligible`) while in paginated mode
-   * on a reflowable spine item. Fixed-layout content and scroll mode
-   * never use a spread — see `SpreadPaginatedHost`'s doc comment. */
+   * threshold (`SpreadPaginatedHost.isEligible` for reflowable content,
+   * `FixedLayoutSpreadPlanner.isSpreadModeEligible` for fixed-layout —
+   * tracked against `fixedLayoutSpreadEligible`, what the *currently
+   * open* `FixedSpreadHost` was actually built with, rather than
+   * re-deriving "should this be paired or single" from the new width
+   * directly: a `FixedSpread` can be `"single"` for reasons that have
+   * nothing to do with viewport width at all — a `page-spread-center`
+   * item, or a lone unpaired page at either end of a run — and must
+   * not be treated as "spread mode became ineligible" just because it
+   * happens to not currently be paired). Scroll mode never uses a
+   * spread — see `SpreadPaginatedHost`'s doc comment. */
   private shouldSwitchSpreadMode(width: number): boolean {
-    if (this.viewMode !== "paginated" || this.host instanceof FixedContentHost) {
+    if (this.host instanceof FixedSpreadHost) {
+      const eligible = FixedLayoutSpreadPlanner.isSpreadModeEligible(
+        this.pkg.metadata.renditionSpread,
+        width,
+        this.height,
+      );
+      return eligible !== this.fixedLayoutSpreadEligible;
+    }
+    if (this.viewMode !== "paginated" || this.isFixedLayoutHost(this.host)) {
       return false;
     }
     return SpreadPaginatedHost.isEligible(width) !== this.host instanceof SpreadPaginatedHost;
@@ -1919,7 +2014,7 @@ export class ReaderController {
       ReadingTheme.MAX_FONT_SCALE,
       Math.max(ReadingTheme.MIN_FONT_SCALE, scale),
     );
-    if (clamped === this.fontScale || this.host instanceof FixedContentHost) {
+    if (clamped === this.fontScale || this.isFixedLayoutHost(this.host)) {
       return;
     }
     this.fontScale = clamped;
@@ -1935,7 +2030,7 @@ export class ReaderController {
    * metrics, so this reflows content the same way a font-scale change
    * does. A no-op for a fixed-layout spine item. */
   public async setFontFamily(family: FontFamilyChoice): Promise<void> {
-    if (family === this.fontFamily || this.host instanceof FixedContentHost) {
+    if (family === this.fontFamily || this.isFixedLayoutHost(this.host)) {
       return;
     }
     this.fontFamily = family;
@@ -1956,7 +2051,7 @@ export class ReaderController {
       ReadingTheme.MAX_LINE_SPACING,
       Math.max(ReadingTheme.MIN_LINE_SPACING, spacing),
     );
-    if (clamped === this.lineSpacing || this.host instanceof FixedContentHost) {
+    if (clamped === this.lineSpacing || this.isFixedLayoutHost(this.host)) {
       return;
     }
     this.lineSpacing = clamped;
@@ -1976,7 +2071,7 @@ export class ReaderController {
       ReadingTheme.MAX_LETTER_SPACING,
       Math.max(ReadingTheme.MIN_LETTER_SPACING, spacing),
     );
-    if (clamped === this.letterSpacing || this.host instanceof FixedContentHost) {
+    if (clamped === this.letterSpacing || this.isFixedLayoutHost(this.host)) {
       return;
     }
     this.letterSpacing = clamped;
@@ -1998,7 +2093,7 @@ export class ReaderController {
       ReadingTheme.MAX_CONTENT_WIDTH_EM,
       Math.max(ReadingTheme.MIN_CONTENT_WIDTH_EM, widthEm),
     );
-    if (clamped === this.contentWidthEm || this.host instanceof FixedContentHost) {
+    if (clamped === this.contentWidthEm || this.isFixedLayoutHost(this.host)) {
       return;
     }
     this.contentWidthEm = clamped;
@@ -2013,7 +2108,7 @@ export class ReaderController {
    * font scale/family, this never needs a relayout — colors don't affect
    * line-wrapping. A no-op for a fixed-layout spine item. */
   public async setPageTheme(theme: PageTheme): Promise<void> {
-    if (theme === this.pageTheme || this.host instanceof FixedContentHost) {
+    if (theme === this.pageTheme || this.isFixedLayoutHost(this.host)) {
       return;
     }
     this.pageTheme = theme;
@@ -2159,9 +2254,15 @@ export class ReaderController {
    * matching parameter). */
   private applyDisplaySettingsToHost(
     options: { relayout: boolean },
-    host: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined = this.host,
+    host:
+      | FixedContentHost
+      | SpreadPaginatedHost
+      | FixedSpreadHost
+      | PaginatedContentHost
+      | ScrollContentHost
+      | undefined = this.host,
   ): void {
-    if (!host || host instanceof FixedContentHost) {
+    if (!host || this.isFixedLayoutHost(host)) {
       return;
     }
     const documents = this.allContentDocuments(host);
@@ -2203,7 +2304,13 @@ export class ReaderController {
    * (issue #83), which needs this applied to the *incoming* host before
    * `this.host` actually becomes it. */
   private applyPersistedDisplaySettingsToFreshHost(
-    host: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined = this.host,
+    host:
+      | FixedContentHost
+      | SpreadPaginatedHost
+      | FixedSpreadHost
+      | PaginatedContentHost
+      | ScrollContentHost
+      | undefined = this.host,
   ): void {
     const needsRelayout =
       this.fontScale !== 1 ||
@@ -2285,7 +2392,7 @@ export class ReaderController {
    * borrowed tail page visibly vanishes the instant the reader turns
    * forward into the next chapter, immediately after having read it. */
   private applyHighlightsToCurrentHost(): void {
-    if (this.host instanceof FixedContentHost) {
+    if (this.isFixedLayoutHost(this.host)) {
       return;
     }
     const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
@@ -2347,7 +2454,7 @@ export class ReaderController {
   private setUpHighlightSelection(): void {
     this.highlightSelectionCleanup?.();
     this.highlightSelectionCleanup = undefined;
-    if (this.host instanceof FixedContentHost) {
+    if (this.isFixedLayoutHost(this.host)) {
       return;
     }
     const documents = this.allContentDocuments();
@@ -2543,7 +2650,7 @@ export class ReaderController {
    * and re-click the highlight they just made. */
   public async addHighlight(style: HighlightStyle, openNoteEditor = false): Promise<void> {
     const range = this.pendingSelectionRange;
-    if (!range || this.host instanceof FixedContentHost) {
+    if (!range || this.isFixedLayoutHost(this.host)) {
       return;
     }
     // Captured before `dismissSelectionToolbar` (in `finally`, below)
@@ -2788,6 +2895,18 @@ export class ReaderController {
       }
       moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
       announcement = `Page ${this.host.currentPageIndex + 1} of ${this.host.pageCount}`;
+    } else if (this.host instanceof FixedSpreadHost) {
+      // Fixed-layout content has no sub-item pagination at all (every
+      // "page" is a whole spine item — see `FixedSpreadHost`'s own doc
+      // comment), so there's no equivalent of `nextPage`/`nextSpread`'s
+      // own in-chapter step to attempt first; `turnFixedSpread` always
+      // either fully completes the turn itself (a further `FixedSpread`
+      // exists in this direction) or falls through to the ordinary
+      // chapter-crossing path on its own — either way, nothing further
+      // for this method's own shared `moved`/`announcement` handling
+      // below to do.
+      await this.turnFixedSpread(this.host, direction, token);
+      return;
     } else {
       return;
     }
@@ -2804,6 +2923,120 @@ export class ReaderController {
       return;
     }
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1, animateDirection: direction });
+  }
+
+  /** The fixed-layout counterpart to the reflowable turn paths above —
+   * builds the next/previous `FixedSpread` (via `FixedLayoutSpreadPlanner`)
+   * and swaps it in if one exists and is still pre-paginated content;
+   * otherwise falls through to the ordinary `openSpineItem` chapter-
+   * crossing path itself, starting from *this* spread's own outer edge
+   * (`Math.max`/`Math.min` of its `spineIndices`, not simply
+   * `this.spineIndex + direction`, which could land back *inside* an
+   * still-open two-item pair instead of past it — a real risk this
+   * class's own `spineIndex` normalization, see `openSpineItem`, means
+   * `this.spineIndex` is only ever the *first* half of a pair, never
+   * the second). No page-turn animation (unlike every reflowable path
+   * above) — deliberately out of scope for this pass, the same way
+   * `FixedContentHost`'s own class doc comment already scopes synthetic
+   * spreads themselves out of an earlier pass; a plain instant swap is
+   * still correct, just not yet as polished. */
+  private async turnFixedSpread(host: FixedSpreadHost, direction: 1 | -1, token: number): Promise<void> {
+    const currentSpread = host.spread;
+    const indices = host.spineIndices;
+    if (!currentSpread || indices.length === 0) {
+      return;
+    }
+
+    const spreadEligible = this.fixedLayoutSpreadEligible ?? false;
+    const nextSpread =
+      direction === 1
+        ? FixedLayoutSpreadPlanner.nextSpread(
+            this.pkg.spine,
+            this.pkg.metadata.renditionLayout,
+            this.pkg.pageProgressionDirection,
+            spreadEligible,
+            currentSpread,
+          )
+        : FixedLayoutSpreadPlanner.previousSpread(
+            this.pkg.spine,
+            this.pkg.metadata.renditionLayout,
+            this.pkg.pageProgressionDirection,
+            spreadEligible,
+            currentSpread,
+          );
+    const nextPrimaryIndex =
+      nextSpread === undefined
+        ? undefined
+        : nextSpread.kind === "single"
+          ? nextSpread.spineIndex
+          : Math.min(nextSpread.leftSpineIndex, nextSpread.rightSpineIndex);
+    const stillPrePaginated =
+      nextPrimaryIndex !== undefined &&
+      this.pkg.spine[nextPrimaryIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) ===
+        "pre-paginated";
+
+    if (nextSpread && stillPrePaginated && this.containerEl) {
+      const newHost = new FixedSpreadHost(this.width, this.height);
+      // Must be attached to the live document *before* `open()` is
+      // called — a real, confirmed hang otherwise (the same hazard
+      // `prepareMergedIncomingSpreadFromUpcomingLastPage`'s own doc
+      // comment already documents for the identical reason): a
+      // detached iframe's `src` assignment never actually navigates, so
+      // `SandboxedContentHost.render`'s own `load`-event wait inside
+      // `open()` never resolves. `stageHiddenHostElement` (the same
+      // helper every `openSpineItem` host uses) keeps it invisible and
+      // out of the current layout while it loads, exactly like every
+      // other "load next, then reveal" host swap in this file.
+      const newStagingEl = this.stageHiddenHostElement(newHost.element);
+      try {
+        await newHost.open(this.contentLoader, this.resolver, nextSpread, this.pkg.metadata.renditionViewport);
+      } catch (err) {
+        newHost.dispose();
+        newStagingEl.remove();
+        throw err;
+      }
+      if (token !== this.turnToken) {
+        // A newer turn (or a chapter change) has since started and
+        // finished while this one's incoming spread was still loading —
+        // see `turnToken`'s own doc comment on why discarding this
+        // stale result (rather than clobbering whatever's now current)
+        // is the correct response.
+        newHost.dispose();
+        newStagingEl.remove();
+        return;
+      }
+      this.contentInteractionCleanup?.();
+      this.contentInteractionCleanup = undefined;
+      this.dragCleanup?.();
+      this.dragCleanup = undefined;
+      host.dispose();
+      this.hostWrapperEl?.remove();
+      newStagingEl.style.opacity = "";
+      newStagingEl.style.pointerEvents = "";
+      this.host = newHost;
+      this.hostWrapperEl = newStagingEl;
+      this.spineIndex = Math.min(...newHost.spineIndices);
+      this.updateContentTitle();
+      this.reattachKeyboardNav();
+      this.setUpContentInteraction();
+      this.setUpDragPageTurn();
+      const newIndices = newHost.spineIndices;
+      this.announce(
+        newIndices.length > 1
+          ? `Pages ${newIndices[0]! + 1}–${newIndices[1]! + 1} of ${this.pkg.spine.length}`
+          : `Page ${newIndices[0]! + 1} of ${this.pkg.spine.length}`,
+      );
+      this.notify();
+      await this.saveProgress();
+      return;
+    }
+
+    const edgeSpineIndex = direction === 1 ? Math.max(...indices) : Math.min(...indices);
+    const nextSpineIndex = edgeSpineIndex + direction;
+    if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
+      return;
+    }
+    await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
   }
 
   /** Whether the user has `prefers-reduced-motion: reduce` set — checked
@@ -4679,6 +4912,14 @@ export class ReaderController {
       return;
     }
 
+    if (this.host instanceof FixedSpreadHost) {
+      // No drag-to-turn animation for fixed-layout content (see
+      // `turnFixedSpread`'s own doc comment on why that's deliberately
+      // out of scope for this pass) — click-to-navigate only.
+      this.dragCleanup = this.setUpFixedSpreadClickToNavigate(this.host);
+      return;
+    }
+
     if (!(this.host instanceof PaginatedContentHost)) {
       return;
     }
@@ -4829,8 +5070,9 @@ export class ReaderController {
       // margin sits at the spine, the *middle* of the whole spread, not
       // its far edge, so a tap there should still mean "forward" like
       // the rest of that page, not "back" (see `handleContentClick`'s
-      // `isRightColumn` parameter).
+      // `leftThirdAction`/`rightThirdAction` parameters).
       const isRightColumn = columnIndex === 1;
+      const leftThirdAction: 1 | -1 = isRightColumn ? 1 : -1;
       const onPointerDown = (event: PointerEvent): void => {
         if (event.pointerType === "mouse" && event.button !== 0) {
           return;
@@ -4839,7 +5081,7 @@ export class ReaderController {
         const startY = event.clientY;
         const onPointerUp = (upEvent: PointerEvent): void => {
           doc.removeEventListener("pointerup", onPointerUp);
-          this.handleContentClick(upEvent, startX, startY, columnWidth, doc, isRightColumn);
+          this.handleContentClick(upEvent, startX, startY, columnWidth, doc, leftThirdAction, 1);
         };
         doc.addEventListener("pointerup", onPointerUp);
       };
@@ -4877,6 +5119,136 @@ export class ReaderController {
         cleanup();
       }
     };
+  }
+
+  /** `setUpSpreadClickToNavigate`'s fixed-layout counterpart — click-to-
+   * navigate for a `FixedSpreadHost` (both `"single"` and `"pair"`
+   * `FixedSpread`s), same left/right-third tap-zone convention as every
+   * other host type. Deliberately its own separate method rather than a
+   * generalization of `setUpSpreadClickToNavigate`: a fixed-layout
+   * page's iframe is *scaled* via CSS `transform` to fit the available
+   * space (see `FixedContentHost.applyScale`) — a transform changes
+   * only how an element *paints*, never the coordinate space pointer
+   * events inside it report in, so a click landing anywhere on a scaled
+   * page still reports `clientX`/`clientY` against that page's own
+   * *intrinsic*, unscaled width, not whatever width it currently
+   * happens to render at on screen. Reflowable columns have no such gap
+   * (their iframe's own CSS width already *is* the effective column
+   * width, never transformed) — `setUpSpreadClickToNavigate` can safely
+   * use one precomputed constant for the entire gesture; this method
+   * instead reads each document's own live `defaultView.innerWidth` at
+   * the moment of the click, which self-corrects for whatever width
+   * that specific page's content document is actually reporting,
+   * scaled or not.
+   *
+   * Also attaches a container-level fallback (on `host.element` itself,
+   * mirroring `setUpSpreadClickToNavigate`'s own) — but unlike that
+   * one, which always means "continue forward" (its only blank-margin
+   * case, an odd-length reflowable chapter's unpaired last page, is
+   * always the *trailing* side), a fixed-layout page is very often
+   * letterboxed on *both* sides at once (a portrait page centered in a
+   * landscape-ish reader pane — real, confirmed with `page-blanche
+   * .epub` itself), so this fallback buckets by thirds of the *whole*
+   * available width, same as a real per-page tap would, rather than
+   * assuming one fixed direction. */
+  private setUpFixedSpreadClickToNavigate(host: FixedSpreadHost): () => void {
+    const cleanups: Array<() => void> = [];
+    const rtl = this.pkg.pageProgressionDirection === "rtl";
+
+    host.contentDocuments().forEach((doc, columnIndex) => {
+      // Only meaningful for a `"pair"` spread (two columns) — a
+      // `"single"` spread's lone document is always column 0.
+      const columnRole: "single" | "left" | "right" =
+        host.spread?.kind === "pair" ? (columnIndex === 1 ? "right" : "left") : "single";
+      const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(columnRole, rtl);
+      const onPointerDown = (event: PointerEvent): void => {
+        if (event.pointerType === "mouse" && event.button !== 0) {
+          return;
+        }
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const containerWidth = doc.defaultView?.innerWidth ?? this.width;
+        const onPointerUp = (upEvent: PointerEvent): void => {
+          doc.removeEventListener("pointerup", onPointerUp);
+          this.handleContentClick(upEvent, startX, startY, containerWidth, doc, leftThirdAction, rightThirdAction);
+        };
+        doc.addEventListener("pointerup", onPointerUp);
+      };
+      doc.addEventListener("pointerdown", onPointerDown);
+      cleanups.push(() => doc.removeEventListener("pointerdown", onPointerDown));
+    });
+
+    const containerEl = host.element;
+    // The container-level fallback (for a click that lands in the
+    // letterboxed margin outside any actual page) has no single column
+    // of its own to speak of — treated as `"single"`, the same
+    // left/right convention a lone unpaired page already uses, which
+    // is exactly the outermost-edge convention this fallback should
+    // apply regardless of how many columns are actually mounted right
+    // now (a margin click is, by definition, outside all of them).
+    const { left: containerLeftAction, right: containerRightAction } = this.fixedSpreadThirdActions("single", rtl);
+    const onContainerPointerDown = (event: PointerEvent): void => {
+      this.bumpContentActivity();
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const onContainerPointerUp = (upEvent: PointerEvent): void => {
+        containerEl.removeEventListener("pointerup", onContainerPointerUp);
+        // A plain container-relative `handleContentClick` call, same as
+        // every per-column one above — `containerEl`'s own client rect
+        // (not a content document) is the right frame of reference here
+        // since this listener only ever fires for a click that missed
+        // every actual page (there's no scaling/transform gap to
+        // correct for on the *container* itself, only on the pages
+        // inside it).
+        this.handleContentClick(
+          upEvent,
+          startX,
+          startY,
+          this.width,
+          containerEl.ownerDocument,
+          containerLeftAction,
+          containerRightAction,
+        );
+      };
+      containerEl.addEventListener("pointerup", onContainerPointerUp);
+    };
+    containerEl.addEventListener("pointerdown", onContainerPointerDown);
+    cleanups.push(() => containerEl.removeEventListener("pointerdown", onContainerPointerDown));
+
+    return () => {
+      for (const cleanup of cleanups) {
+        cleanup();
+      }
+    };
+  }
+
+  /** The `leftThirdAction`/`rightThirdAction` `handleContentClick` needs
+   * for one specific column of a `FixedSpreadHost` click zone — see
+   * `handleContentClick`'s own doc comment for why these can't just be
+   * inferred from a single "which column" flag the way reflowable
+   * spreads' simpler (never-RTL) convention can. Reasoned out fully
+   * (all six `columnRole`×`rtl` combinations) in this session's own
+   * design notes; summarized here:
+   *
+   * - Non-RTL: only the *left* column's (or a `"single"` page's) own
+   *   left-third — the true, unambiguous left edge of the whole
+   *   spread — ever means "back." Every other zone (both of the right
+   *   column's thirds, and the left column's own right-third, which
+   *   only ever sits at the *gutter*, not a true edge) means "forward."
+   * - RTL: exactly mirrored — only the *right* column's (or a
+   *   `"single"` page's) own right-third, the true right edge, means
+   *   "back"; everything else means "forward." */
+  private fixedSpreadThirdActions(
+    columnRole: "single" | "left" | "right",
+    rtl: boolean,
+  ): { left: 1 | -1; right: 1 | -1 } {
+    if (!rtl) {
+      return columnRole === "right" ? { left: 1, right: 1 } : { left: -1, right: 1 };
+    }
+    return columnRole === "left" ? { left: 1, right: 1 } : { left: 1, right: -1 };
   }
 
   /** Tracks one pointer gesture from `pointerdown` through release,
@@ -5081,22 +5453,29 @@ export class ReaderController {
    * navigated, by `setUpContentInteraction`'s own click listener — turning
    * the page *as well* would be a confusing double-navigation).
    *
-   * `isRightColumn` (spread mode only — always `false` for a single
-   * page, which has no "which column" to speak of) flips the left
-   * third's meaning from "back" to "forward": the right column's own
-   * left margin sits right at the book's spine, the *middle* of the
-   * whole two-page spread, not its far edge — physically nothing like
-   * the true "go back" gesture of tapping the spread's actual left
-   * edge (the left column's own left margin). Only that one zone means
-   * "back"; every other tap zone across the whole spread means
-   * "forward" (or is inert, for the two middle thirds). */
+   * `leftThirdAction`/`rightThirdAction` are which direction (`1`
+   * forward, `-1` back) each *specific* third actually means for
+   * *this* caller's own column/edge — deliberately left fully explicit
+   * rather than inferred from a single "which column" flag, because
+   * which literal edge of the whole spread means "back" isn't always
+   * the spread's own left edge: it depends on both which column this
+   * particular tap landed in (the gutter-adjacent third of *either*
+   * column is never a true spread-edge, and always means "forward,"
+   * exactly like every other non-edge zone) *and* on
+   * `page-progression-direction` for fixed-layout content specifically
+   * (an RTL manga/comic page turns backward on its own *right* side,
+   * not its left — see `setUpFixedSpreadClickToNavigate`'s own call
+   * sites for the exact per-column/per-direction derivation). Default
+   * (`-1`/`1`) matches every caller that never needs anything but the
+   * plain, single-page/LTR-left-column convention. */
   private handleContentClick(
     upEvent: PointerEvent,
     startX: number,
     startY: number,
     containerWidth: number,
     doc: Document,
-    isRightColumn = false,
+    leftThirdAction: 1 | -1 = -1,
+    rightThirdAction: 1 | -1 = 1,
   ): void {
     const deltaX = Math.abs(upEvent.clientX - startX);
     const deltaY = Math.abs(upEvent.clientY - startY);
@@ -5145,9 +5524,9 @@ export class ReaderController {
 
     const thirdWidth = containerWidth / 3;
     if (startX < thirdWidth) {
-      void this.turnPage(isRightColumn ? 1 : -1);
+      void this.turnPage(leftThirdAction);
     } else if (startX > containerWidth - thirdWidth) {
-      void this.turnPage(1);
+      void this.turnPage(rightThirdAction);
     }
     // Middle third: no-op for now.
   }
@@ -6139,20 +6518,47 @@ export class ReaderController {
       // `open()` succeeds) so the catch block below can always dispose
       // whatever was created, even a load that never finished — without
       // this, a failed load leaked that attempt's blob URL(s) forever.
-      let createdHost: FixedContentHost | SpreadPaginatedHost | PaginatedContentHost | ScrollContentHost | undefined;
+      let createdHost:
+        | FixedContentHost
+        | SpreadPaginatedHost
+        | FixedSpreadHost
+        | PaginatedContentHost
+        | ScrollContentHost
+        | undefined;
       let applyDisplaySettings = false;
       try {
         if (resolvedLayout === "pre-paginated") {
-          const fixedHost = new FixedContentHost(this.width, this.height);
+          // Fixed-layout content always goes through `FixedSpreadHost`,
+          // even when it ends up showing only a single page — see that
+          // class's own doc comment: it's just as correct (and much
+          // simpler than juggling two different host types) for a
+          // `"single"` `FixedSpread` as for a `"pair"`. `spineIndex`
+          // itself might not be the spread's own reading-order-first
+          // item (e.g. landing directly on the *second* half of an
+          // already-paired spread via a TOC/deep link) — normalized
+          // below, once the actual spread is known, the same way a
+          // merged reflowable spread adopts whichever spine index it
+          // actually ended up covering.
+          const spreadEligible = FixedLayoutSpreadPlanner.isSpreadModeEligible(
+            this.pkg.metadata.renditionSpread,
+            this.width,
+            this.height,
+          );
+          const spread = FixedLayoutSpreadPlanner.spreadContaining(
+            this.pkg.spine,
+            this.pkg.metadata.renditionLayout,
+            this.pkg.pageProgressionDirection,
+            spreadEligible,
+            spineIndex,
+          );
+          const fixedHost = new FixedSpreadHost(this.width, this.height);
           createdHost = fixedHost;
           stagingEl = this.stageHiddenHostElement(fixedHost.element);
-          await fixedHost.open(
-            this.contentLoader,
-            this.resolver,
-            spineIndex,
-            this.pkg.metadata.renditionViewport,
-          );
+          await fixedHost.open(this.contentLoader, this.resolver, spread, this.pkg.metadata.renditionViewport);
+          this.fixedLayoutSpreadEligible = spreadEligible;
+          spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
+          this.fixedLayoutSpreadEligible = undefined;
           const host = new SpreadPaginatedHost(this.width, this.height);
           createdHost = host;
           stagingEl = this.stageHiddenHostElement(host.element);
@@ -6240,6 +6646,7 @@ export class ReaderController {
             }
           }
         } else {
+          this.fixedLayoutSpreadEligible = undefined;
           const host =
             this.viewMode === "paginated"
               ? new PaginatedContentHost(this.width, this.height)

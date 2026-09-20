@@ -10,6 +10,11 @@ export {
   parseViewportDimensions,
 } from "./container/PackageDocument.js";
 export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry } from "./container/PackageDocument.js";
+export type {
+  RenditionSpread,
+  PageProgressionDirection,
+  PageSpreadSide,
+} from "./container/PackageDocument.js";
 export { resolveEpubPath, directoryOf, splitHrefFragment } from "./container/EpubPath.js";
 export {
   NavigationDocument,
@@ -58,6 +63,9 @@ export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";
 export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";
+export { FixedSpreadHost } from "./reading/FixedSpreadHost.js";
+export { FixedLayoutSpreadPlanner } from "./reading/FixedLayoutSpreadPlanner.js";
+export type { FixedSpread } from "./reading/FixedLayoutSpreadPlanner.js";
 export { loadAssembledSpineItem } from "./reading/SpineItemAssembler.js";
 export { BookPaginationEstimator } from "./reading/BookPaginationEstimator.js";
 export type { BookPosition } from "./reading/BookPaginationEstimator.js";
