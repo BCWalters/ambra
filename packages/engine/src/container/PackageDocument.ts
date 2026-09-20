@@ -21,6 +21,39 @@ export class PackageDocumentError extends Error {
  * spine item — the central signal for reflowable vs fixed-layout rendering. */
 export type RenditionLayout = "reflowable" | "pre-paginated";
 
+/** The publication-wide `rendition:spread` hint (`<meta property=
+ * "rendition:spread">`): whether/when a fixed-layout reading system should
+ * combine two adjacent spine items into one synthetic two-page spread.
+ * `"portrait"` is a deprecated value the spec now says to treat exactly
+ * like `"both"` (unconditional spreading) — see `parseRenditionSpreadMeta`
+ * — so it's folded in at parse time rather than kept as its own case
+ * every consumer would otherwise have to remember to treat identically.
+ * Absent/unrecognized defaults to `"auto"` (reading-system's choice —
+ * this engine treats that the same as `"both"`, spreading whenever the
+ * viewport is wide enough, mirroring how reflowable spread-mode already
+ * decides eligibility purely from available width). */
+export type RenditionSpread = "none" | "landscape" | "both" | "auto";
+
+/** The spine's `page-progression-direction` attribute: which visual
+ * direction "forward" advances in, and (per spec) the side a spine item
+ * with no explicit `page-spread-*` property defaults to within a
+ * synthetic spread — see `SpineItemRef.pageSpread` and
+ * `FixedLayoutSpreadPlanner`. `"default"` (the OPF default, spec-wise
+ * equivalent to omitting the attribute entirely) lets the reading system
+ * choose; this engine treats it identically to `"ltr"`, the overwhelmingly
+ * common case for the vast majority of scripts/books that don't declare
+ * this attribute at all. */
+export type PageProgressionDirection = "ltr" | "rtl" | "default";
+
+/** One of the three mutually-exclusive `page-spread-*` spine itemref
+ * properties (with or without their `rendition:` prefix — both forms are
+ * explicitly valid per spec, see `SpineItemRef.pageSpread`'s doc comment)
+ * — which physical slot of a synthetic spread this spine item must
+ * render in, overriding the default left/right alternation. `"center"`
+ * additionally means "never pair with a neighbor at all" (spec: an alias
+ * of `rendition:spread-none` scoped to just this one item). */
+export type PageSpreadSide = "left" | "right" | "center";
+
 /** A single `<item>` in the OPF `<manifest>`: a resource belonging to the
  * publication (spine content, images, fonts, styles, nav document, etc.). */
 export class ManifestItem {
@@ -80,6 +113,34 @@ export class SpineItemRef {
       return "reflowable";
     }
     return packageDefault;
+  }
+
+  /** This spine item's explicit `page-spread-*` override, or `undefined`
+   * if it declares none (in which case `FixedLayoutSpreadPlanner` falls
+   * back to the default left/right alternation). Checks both the
+   * `rendition:`-prefixed and unprefixed property spellings — the spec
+   * explicitly allows (and real books sometimes declare) both on the same
+   * itemref at once, "in case reading systems only support one of [the]
+   * properties" (e.g. `properties="rendition:page-spread-left
+   * page-spread-left"`), so this must never require exactly one spelling
+   * to be present. Only one *side* (left vs. right vs. center) is ever
+   * legal per itemref per spec — epubcheck rejects a book that declares
+   * conflicting sides — so encountering more than one here (a malformed
+   * book epubcheck would have already flagged) resolves by simple
+   * priority (left, then right, then center) rather than throwing; this
+   * engine already generally prefers tolerating malformed real-world
+   * input over failing to open a book at all. */
+  public get pageSpread(): PageSpreadSide | undefined {
+    if (this.hasProperty("page-spread-left") || this.hasProperty("rendition:page-spread-left")) {
+      return "left";
+    }
+    if (this.hasProperty("page-spread-right") || this.hasProperty("rendition:page-spread-right")) {
+      return "right";
+    }
+    if (this.hasProperty("page-spread-center") || this.hasProperty("rendition:page-spread-center")) {
+      return "center";
+    }
+    return undefined;
   }
 }
 
@@ -195,6 +256,12 @@ export class PackageMetadata {
      * singular for the handful of other consumers (Book Details, the
      * library list) that only ever showed one name anyway. */
     public readonly creators: readonly string[],
+    /** The publication-wide `rendition:spread` hint — see
+     * `RenditionSpread`'s own doc comment for exactly what each value
+     * means and how the deprecated `"portrait"` value is folded in.
+     * Individual spine items have no per-item override for this property
+     * (unlike `rendition:layout`) — spec defines it package-wide only. */
+    public readonly renditionSpread: RenditionSpread,
   ) {}
 }
 
@@ -218,6 +285,14 @@ export class PackageDocument {
      * document even in an EPUB3 package (kept for backward compatibility,
      * per spec). See `findNcxDocument`. */
     private readonly tocManifestId: string | undefined,
+    /** The `<spine page-progression-direction="...">` attribute — see
+     * `PageProgressionDirection`'s own doc comment for exactly what each
+     * value means for fixed-layout spread pairing (`FixedLayoutSpreadPlanner`)
+     * and forward/backward navigation direction. Lives on `<spine>`
+     * itself per spec, not `<metadata>`, hence its own top-level field
+     * here rather than living on `PackageMetadata` alongside
+     * `renditionSpread`/`renditionLayout`. */
+    public readonly pageProgressionDirection: PageProgressionDirection,
   ) {
     this.manifestById = new Map(manifestItems.map((item) => [item.id, item]));
   }
@@ -296,8 +371,23 @@ export class PackageDocument {
     const manifestById = new Map(manifestItems.map((item) => [item.id, item]));
     const spine = PackageDocument.parseSpine(packageEl, spineEl, manifestById, opfPath);
     const tocManifestId = spineEl.getAttribute("toc") ?? undefined;
+    const pageProgressionDirection = PackageDocument.parsePageProgressionDirection(spineEl);
 
-    return new PackageDocument(metadata, manifestItems, spine, tocManifestId);
+    return new PackageDocument(metadata, manifestItems, spine, tocManifestId, pageProgressionDirection);
+  }
+
+  /** Parses `<spine page-progression-direction="ltr"|"rtl"|"default">` —
+   * see `PageProgressionDirection`'s own doc comment for how each value
+   * (including the attribute being entirely absent, treated the same as
+   * an explicit `"default"`) is interpreted. Any other, non-conformant
+   * value is also treated as `"default"` rather than thrown on — this is
+   * a presentation hint, not something worth failing to open a book over. */
+  private static parsePageProgressionDirection(spineEl: Element): PageProgressionDirection {
+    const value = spineEl.getAttribute("page-progression-direction");
+    if (value === "ltr" || value === "rtl") {
+      return value;
+    }
+    return "default";
   }
 
   private static parseMetadata(
@@ -318,6 +408,7 @@ export class PackageDocument {
 
     const renditionLayout = PackageDocument.parseRenditionLayoutMeta(metadataEl);
     const renditionViewport = PackageDocument.parseRenditionViewportMeta(metadataEl);
+    const renditionSpread = PackageDocument.parseRenditionSpreadMeta(metadataEl);
     const description = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "description");
     const publisher = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "publisher");
     const identifiers = PackageDocument.parseIdentifiers(metadataEl);
@@ -344,6 +435,7 @@ export class PackageDocument {
       contributors,
       metaEntries,
       creators,
+      renditionSpread,
     );
   }
 
@@ -437,6 +529,30 @@ export class PackageDocument {
     );
     const content = layoutMeta?.textContent?.trim();
     return content === "pre-paginated" ? "pre-paginated" : "reflowable";
+  }
+
+  /** Parses the package-level `rendition:spread` property — see
+   * `RenditionSpread`'s own doc comment for exactly what each value
+   * means. The deprecated `"portrait"` value is folded into `"both"`
+   * here, at the parse boundary, rather than left for every downstream
+   * consumer (`FixedLayoutSpreadPlanner`, the EPUB Inspector, etc.) to
+   * separately remember are synonyms — current EPUB 3.3 spec text: "RSs
+   * SHOULD behave as if the both value had been specified" whenever
+   * `"portrait"` is encountered. Absent, empty, or any other
+   * unrecognized value defaults to `"auto"` (the spec's own default). */
+  private static parseRenditionSpreadMeta(metadataEl: Element): RenditionSpread {
+    const metaElements = getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta");
+    const spreadMeta = metaElements.find(
+      (meta) => meta.getAttribute("property") === "rendition:spread",
+    );
+    const content = spreadMeta?.textContent?.trim();
+    if (content === "none" || content === "landscape" || content === "both") {
+      return content;
+    }
+    if (content === "portrait") {
+      return "both";
+    }
+    return "auto";
   }
 
   /** Parses the package-level `rendition:viewport` property, e.g.

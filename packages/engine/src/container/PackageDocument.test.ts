@@ -65,6 +65,11 @@ describe("PackageDocument (reflowable fixture)", () => {
     expect(pkg.metadata.renditionLayout).toBe("reflowable");
   });
 
+  it("defaults rendition:spread to auto and page-progression-direction to default when neither is declared", () => {
+    expect(pkg.metadata.renditionSpread).toBe("auto");
+    expect(pkg.pageProgressionDirection).toBe("default");
+  });
+
   it("resolves manifest item hrefs to archive-relative paths", () => {
     const nav = pkg.getManifestItem("nav");
     const chapter1 = pkg.getManifestItem("chapter1");
@@ -111,6 +116,10 @@ describe("PackageDocument (fixed-layout fixture)", () => {
     expect(pkg.metadata.renditionLayout).toBe("pre-paginated");
   });
 
+  it("reads the package-level rendition:spread (folded from the fixture's own 'both')", () => {
+    expect(pkg.metadata.renditionSpread).toBe("both");
+  });
+
   it("reads the package-level rendition:viewport", () => {
     expect(pkg.metadata.renditionViewport).toEqual({ width: 1200, height: 1600 });
   });
@@ -153,6 +162,43 @@ describe("PackageDocument (fixed-layout fixture)", () => {
     const tamperedSteps = realSteps.map((s) => new CfiStep(s.index, "not-the-real-id"));
 
     expect(pkg.findSpineIndexByPackageCfiSteps(tamperedSteps)).toBe(1);
+  });
+
+  it("defaults page-progression-direction to default when the spine doesn't declare one", () => {
+    expect(pkg.pageProgressionDirection).toBe("default");
+  });
+
+  it("leaves pageSpread undefined for a spine item with no page-spread-* property", () => {
+    expect(pkg.spine[0]?.pageSpread).toBeUndefined();
+  });
+});
+
+describe("PackageDocument (fixed-layout-spread fixture)", () => {
+  let pkg: PackageDocument;
+
+  beforeAll(async () => {
+    const container = await EpubContainer.open(await loadFixture("fixed-layout-spread.epub"));
+    pkg = await container.getPackageDocument();
+  });
+
+  it("reads the package-level rendition:spread", () => {
+    expect(pkg.metadata.renditionSpread).toBe("landscape");
+  });
+
+  it("reads the spine's page-progression-direction", () => {
+    expect(pkg.pageProgressionDirection).toBe("rtl");
+  });
+
+  it("resolves page-spread-right/left/center properties to the matching PageSpreadSide", () => {
+    const page1 = pkg.spine.find((ref) => ref.manifestItem.id === "page1");
+    const page2 = pkg.spine.find((ref) => ref.manifestItem.id === "page2");
+    const page3 = pkg.spine.find((ref) => ref.manifestItem.id === "page3");
+    const page4 = pkg.spine.find((ref) => ref.manifestItem.id === "page4");
+
+    expect(page1?.pageSpread).toBe("right");
+    expect(page2?.pageSpread).toBe("left");
+    expect(page3?.pageSpread).toBe("center");
+    expect(page4?.pageSpread).toBeUndefined();
   });
 });
 
