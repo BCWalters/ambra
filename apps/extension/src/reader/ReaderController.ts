@@ -4180,6 +4180,23 @@ export class ReaderController {
       newHost.relayout(this.width, this.height);
     }
     newEl.style.opacity = "";
+    // `previousTail.element` may have been given its own,
+    // separate `opacity: 0`/`pointer-events: none` while it was still a
+    // standalone element loading inside `containerEl` (see
+    // `prepareMergedIncomingSpreadFromUpcomingLastPage`) — a real,
+    // confirmed bug: that inline style survives the move into this
+    // host's own `leftWrapperEl` (nothing else ever clears it), so
+    // *even once* `sync()` marks it the visible column, it stayed
+    // permanently invisible (and unclickable) — the borrowed tail page
+    // that should show the previous chapter's own last line rendered as
+    // a blank page instead, indistinguishable from the very blank page
+    // this whole merge feature exists to eliminate. Resetting both here
+    // (unconditionally — a harmless no-op for `prepareMergedIncomingSpread`'s
+    // own `previousTail`, detached already-visible/-interactive from
+    // `oldHost` and never touched this way) is the one place both
+    // callers' successful result passes through.
+    previousTail.element.style.opacity = "";
+    previousTail.element.style.pointerEvents = "";
     newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(nextSpineIndex)}`);
     this.pendingSpreadMergeSpineIndex = nextSpineIndex;
     return newHost;
@@ -4266,6 +4283,12 @@ export class ReaderController {
     // since nothing has been shown on screen yet for a mid-move reload
     // to lose.
     previousTail.element.style.position = "absolute";
+    // Hidden/inert while it's still just a standalone, still-loading
+    // element sitting directly in `containerEl` — otherwise, positioned
+    // `absolute` at the container's own origin, it would flash on top
+    // of whatever's currently on screen before ever being moved into
+    // place. Cleared once `buildMergedSpreadHost` succeeds (see its own
+    // doc comment on why *there*, not here).
     previousTail.element.style.opacity = "0";
     previousTail.element.style.pointerEvents = "none";
     this.containerEl.appendChild(previousTail.element);

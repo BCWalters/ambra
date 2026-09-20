@@ -341,6 +341,12 @@ export class SpreadPaginatedHost {
     // resource) replacement — so this reliably lands on the *correct*
     // page's content either way, not just "whatever happened to load".
     previousTail.goToPageIndex(previousTail.currentPageIndex);
+    // Same reload risk, same "reapply after the reload's had time to
+    // finish" reasoning — see `reapplyOverflowHidden`'s own doc comment
+    // for the *other* thing a reload silently undoes here (the JS-only
+    // scrollbar suppression `open()` originally set, on whatever the
+    // *previous* document object was).
+    previousTail.reapplyOverflowHidden();
     this.merged = true;
     this.virtualIndex = 0;
     this.sync();

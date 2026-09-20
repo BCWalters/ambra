@@ -6,6 +6,7 @@ import { launchReader, currentPageLabel, currentPageText, clickForwardAndWait } 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epub");
 const TWO_CHAPTER_EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
+const MERGED_TAIL_VISIBILITY_EPUB = path.resolve(here, "..", "fixtures", "merged-tail-visibility.epub");
 const TOTAL_PARAGRAPHS = 30;
 
 function paragraphNumbers(text: string): number[] {
@@ -391,6 +392,94 @@ test.describe("paginated reflowable navigation correctness", () => {
       expect(
         sawMergedSpread,
         "chapter one's last page and chapter two's first page were never shown together in the same spread — check the fixture/viewport still produces an odd page count",
+      ).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("two-page spread: the merged tail column is actually visible, not just structurally present", async () => {
+    // A real, confirmed bug in the #90/#94 merge itself: the borrowed
+    // tail page (see `ReaderController.prepareMergedIncomingSpreadFromUpcomingLastPage`)
+    // is built as a standalone element, hidden (`opacity: 0`, `pointer-
+    // events: none`) while it's still loading off to the side — exactly
+    // the same "hide until ready" pattern every other incoming host
+    // here uses. But *unlike* every other one, nothing ever reset it
+    // back once the merge succeeded, so the tail stayed permanently
+    // invisible (and unclickable) even after `sync()` correctly marked
+    // it the visible column — indistinguishable from the very blank
+    // page this whole feature exists to eliminate, and only "fixed"
+    // itself by building a *different* incoming host from scratch (an
+    // ordinary chapter-open, no merge at all) on the next crossing.
+    // `MERGED_TAIL_VISIBILITY_EPUB`'s own `index.xhtml` is sized so this
+    // viewport lands its real last page unpaired, needing exactly this
+    // merge to reach chapter two without an intervening blank spread.
+    const { context, readerPage } = await launchReader(MERGED_TAIL_VISIBILITY_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      await readerPage.mouse.click(1000, 450);
+      await readerPage.waitForTimeout(300);
+
+      let label = await currentPageLabel(readerPage);
+      let hasChapterTwo = false;
+      for (let click = 0; click < 8 && !hasChapterTwo; click++) {
+        const result = await clickForwardAndWait(readerPage, { x: 1300, y: 450 });
+        label = result.after;
+        hasChapterTwo = await readerPage.evaluate(() =>
+          Array.from(document.querySelectorAll("iframe")).some((f) =>
+            (f as HTMLIFrameElement).contentDocument?.body?.innerText?.includes("Chapter Two"),
+          ),
+        );
+      }
+      expect(hasChapterTwo, "never reached the merged spread (chapter two never appeared)").toBe(true);
+
+      const columns = await readerPage.evaluate(() => {
+        return Array.from(document.querySelectorAll("iframe"))
+          .filter((el) => getComputedStyle(el).visibility !== "hidden")
+          .map((el) => {
+            const doc = (el as HTMLIFrameElement).contentDocument;
+            return {
+              opacity: getComputedStyle(el).opacity,
+              text: doc?.body?.innerText ?? "",
+              htmlOverflow: doc ? getComputedStyle(doc.documentElement).overflow : undefined,
+              bodyOverflow: doc?.body ? getComputedStyle(doc.body).overflow : undefined,
+            };
+          });
+      });
+      for (const column of columns) {
+        expect(
+          column.opacity,
+          `a visible column had opacity "${column.opacity}" instead of fully opaque — content present in the DOM but invisible on screen is exactly this bug (label was "${label}")`,
+        ).toBe("1");
+        // A second, related bug found right after fixing the first: the
+        // borrowed tail's own document has its native scrollbar-
+        // suppressing `overflow: hidden` (set once by `PaginatedContentHost
+        // .open()`) silently lost — the same cross-origin-iframe-move
+        // reload `openMergedWithPreviousTail`'s own defensive
+        // `goToPageIndex` reapplication already exists for (see
+        // `PaginatedContentHost.reapplyOverflowHidden`'s doc comment) —
+        // masked until the tail became visible at all, then showing up
+        // as a real native scrollbar on the tail page. Content taller
+        // than one page must always be clipped by the pagination
+        // engine's own transform/height, never left to native scrolling.
+        expect(
+          column.htmlOverflow,
+          `a visible column's own document had "overflow: ${column.htmlOverflow}" on <html> instead of "hidden" — its native scrollbar-suppression was lost (label was "${label}")`,
+        ).toBe("hidden");
+        expect(
+          column.bodyOverflow,
+          `a visible column's own document had "overflow: ${column.bodyOverflow}" on <body> instead of "hidden" — its native scrollbar-suppression was lost (label was "${label}")`,
+        ).toBe("hidden");
+      }
+      // The left column specifically must show `index.xhtml`'s own last
+      // real paragraph (its borrowed tail), not just chapter two's —
+      // opacity alone wouldn't catch the tail existing but being blank
+      // for some *other* reason (e.g. never actually landing on the
+      // right page within its own document).
+      expect(
+        columns.some((column) => column.text.includes("Para 20")),
+        `index.xhtml's own last paragraph never appeared alongside chapter two (label was "${label}")`,
       ).toBe(true);
     } finally {
       await context.close();

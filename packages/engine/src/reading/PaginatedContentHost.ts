@@ -195,6 +195,32 @@ export class PaginatedContentHost {
     this.showCurrentPage();
   }
 
+  /** Re-suppresses this host's own native scrollbar (see `open()`'s
+   * identical assignment, which this exactly mirrors) — callable on its
+   * own, not just something `open()` sets once, because a sandboxed
+   * iframe moved to a new DOM parent isn't guaranteed to preserve
+   * anything set via JS on its *previous* document object if the
+   * browser discards and reloads it as part of the move (see
+   * `SpreadPaginatedHost.openMergedWithPreviousTail`'s own defensive
+   * `goToPageIndex` reapplication for the identical underlying
+   * reasoning, applied there to this page's transform instead — and its
+   * own doc comment confirming a reload *did* empirically happen there).
+   * A real, confirmed bug of that same reload: reapplying the transform
+   * alone left the *reloaded* document's own default (`visible`)
+   * overflow in place, silently reintroducing a native scrollbar on a
+   * borrowed tail page that should never show one — masked until a
+   * separate fix made that tail page visible at all. A no-op if nothing
+   * actually reloaded (this host's own document already has this set
+   * from `open()`). */
+  public reapplyOverflowHidden(): void {
+    const iframeDocument = this.sandboxedHost.element.contentDocument;
+    if (!iframeDocument) {
+      return;
+    }
+    iframeDocument.documentElement.style.overflow = "hidden";
+    iframeDocument.body.style.overflow = "hidden";
+  }
+
   /** Jumps to `(node, offset)` — used for TOC/fragment navigation within
    * an already-open spine item, in-content link targets, and restoring a
    * bridged position after a scroll-to-paginated mode switch. Re-paginates
