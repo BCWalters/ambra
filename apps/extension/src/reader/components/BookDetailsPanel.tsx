@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, FC } from "react";
-import { Body1, Body1Strong, Button, Caption1, Spinner } from "@fluentui/react-components";
+import { Body1, Body1Strong, Button, Caption1, Spinner, Tooltip } from "@fluentui/react-components";
 import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, TextPercentRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
@@ -257,13 +257,9 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
           <Body1Strong as="span" style={{ flex: 1 }}>
             {t("toolbar.bookDetails")}
           </Body1Strong>
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={<DismissRegular />}
-            aria-label={t("bookDetails.closePanel")}
-            onClick={onRequestClose}
-          />
+          <Tooltip content={t("bookDetails.closePanel")} relationship="label">
+            <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={onRequestClose} />
+          </Tooltip>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>

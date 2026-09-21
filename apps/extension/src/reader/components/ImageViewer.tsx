@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { FC } from "react";
-import { Button } from "@fluentui/react-components";
+import { Button, Tooltip } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { ImageViewerState } from "../ReaderController.js";
@@ -77,27 +77,28 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
         background: "rgba(10, 8, 6, 0.82)",
       }}
     >
-      <Button
-        ref={closeButtonRef}
-        appearance="subtle"
-        size="large"
-        icon={<DismissRegular />}
-        aria-label={t("highlight.close")}
-        onClick={(event) => {
-          // Without this, the click bubbles to the backdrop's own
-          // onClick above, which is harmless (both close the viewer
-          // anyway) but would also fire it *twice* for one click.
-          event.stopPropagation();
-          onRequestClose();
-        }}
-        style={{
-          position: "absolute",
-          top: 16,
-          right: 16,
-          color: "#f5f0e8",
-          background: "rgba(255, 255, 255, 0.08)",
-        }}
-      />
+      <Tooltip content={t("highlight.close")} relationship="label">
+        <Button
+          ref={closeButtonRef}
+          appearance="subtle"
+          size="large"
+          icon={<DismissRegular />}
+          onClick={(event) => {
+            // Without this, the click bubbles to the backdrop's own
+            // onClick above, which is harmless (both close the viewer
+            // anyway) but would also fire it *twice* for one click.
+            event.stopPropagation();
+            onRequestClose();
+          }}
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            color: "#f5f0e8",
+            background: "rgba(255, 255, 255, 0.08)",
+          }}
+        />
+      </Tooltip>
       <img
         src={image.src}
         alt={image.alt}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, SearchBox, Spinner } from "@fluentui/react-components";
+import { Body1, Button, Caption1, SearchBox, Spinner, Tooltip } from "@fluentui/react-components";
 import { DismissRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -177,22 +177,18 @@ export const SearchPanel: FC<SearchPanelProps> = ({
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
             {t("search.title")}
           </Body1>
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={pinned ? <PinOffRegular /> : <PinRegular />}
-            aria-label={pinned ? t("search.unpinSearchPanel") : t("search.pinSearchPanel")}
-            title={pinned ? t("toc.unpin") : t("toc.pinOpen")}
-            onClick={onTogglePin}
-          />
-          {!pinned && (
+          <Tooltip content={pinned ? t("search.unpinSearchPanel") : t("search.pinSearchPanel")} relationship="label">
             <Button
               appearance="subtle"
               size="small"
-              icon={<DismissRegular />}
-              aria-label={t("search.closeSearchPanel")}
-              onClick={onRequestClose}
+              icon={pinned ? <PinOffRegular /> : <PinRegular />}
+              onClick={onTogglePin}
             />
+          </Tooltip>
+          {!pinned && (
+            <Tooltip content={t("search.closeSearchPanel")} relationship="label">
+              <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={onRequestClose} />
+            </Tooltip>
           )}
         </div>
 

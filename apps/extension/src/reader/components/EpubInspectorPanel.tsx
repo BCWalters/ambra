@@ -897,12 +897,13 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                     />
                   </Tooltip>
                 )}
-                <Button
-                  appearance="subtle"
-                  icon={<DismissRegular />}
-                  aria-label={t("inspector.closeInspector")}
-                  onClick={() => onOpenChange(false)}
-                />
+                <Tooltip content={t("inspector.closeInspector")} relationship="label">
+                  <Button
+                    appearance="subtle"
+                    icon={<DismissRegular />}
+                    onClick={() => onOpenChange(false)}
+                  />
+                </Tooltip>
               </div>
             }
           >

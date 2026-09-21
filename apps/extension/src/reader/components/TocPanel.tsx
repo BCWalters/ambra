@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1 } from "@fluentui/react-components";
+import { Body1, Button, Caption1, Tooltip } from "@fluentui/react-components";
 import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { NavPoint } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
@@ -304,22 +304,18 @@ export const TocPanel: FC<TocPanelProps> = ({
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
             {t("toc.contents")}
           </Body1>
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={pinned ? <PinOffRegular /> : <PinRegular />}
-            aria-label={pinned ? t("toc.unpinContentsPanel") : t("toc.pinContentsPanel")}
-            title={pinned ? t("toc.unpin") : t("toc.pinOpen")}
-            onClick={onTogglePin}
-          />
-          {!pinned && (
+          <Tooltip content={pinned ? t("toc.unpinContentsPanel") : t("toc.pinContentsPanel")} relationship="label">
             <Button
               appearance="subtle"
               size="small"
-              icon={<DismissRegular />}
-              aria-label={t("toc.closeContentsPanel")}
-              onClick={onRequestClose}
+              icon={pinned ? <PinOffRegular /> : <PinRegular />}
+              onClick={onTogglePin}
             />
+          </Tooltip>
+          {!pinned && (
+            <Tooltip content={t("toc.closeContentsPanel")} relationship="label">
+              <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={onRequestClose} />
+            </Tooltip>
           )}
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
