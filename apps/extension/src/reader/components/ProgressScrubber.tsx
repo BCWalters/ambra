@@ -471,10 +471,17 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             textAlign: "center",
           }}
         >
-          <Caption1 as="span" block style={{ fontWeight: 600 }}>
+          {/* Fluent's Caption1 sets its own `text-align: start`, which
+              wins over the popup div's inherited `center` above — so
+              each line needs `textAlign: "center"` set directly on it. */}
+          <Caption1 as="span" block style={{ fontWeight: 600, textAlign: "center" }}>
             {previewLabel}
           </Caption1>
-          <Caption1 as="span" block style={{ color: "var(--colorNeutralForeground2, #444)" }}>
+          <Caption1
+            as="span"
+            block
+            style={{ color: "var(--colorNeutralForeground2, #444)", textAlign: "center" }}
+          >
             {preview.chapterLabel}
           </Caption1>
         </div>
