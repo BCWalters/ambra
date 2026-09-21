@@ -66,6 +66,8 @@ export const it: StringCatalog = {
   "highlight.close": "Chiudi",
   "highlight.colorGroupAriaLabel": "Colore evidenziazione",
   "highlight.hasNote": "Questa evidenziazione ha una nota",
+  "footnote.dialogAriaLabel": "Nota a piè di pagina",
+  "footnote.close": "Chiudi",
   "announcements.bookmarkAdded": "Segnalibro aggiunto",
   "announcements.bookmarkRemoved": "Segnalibro rimosso",
   "announcements.bookmarksRemoved": "Segnalibri rimossi",

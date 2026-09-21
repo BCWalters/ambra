@@ -14,6 +14,7 @@ import { EpubInspectorPanel } from "./components/EpubInspectorPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
 import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
+import { FootnotePopup } from "./components/FootnotePopup.js";
 import { NoteMarkers } from "./components/NoteMarkers.js";
 import { FriendlyError } from "./components/FriendlyError.js";
 import { PageFurniture } from "./components/PageFurniture.js";
@@ -82,6 +83,7 @@ const ReaderAppInner: FC = () => {
     setHighlightStyle,
     dismissActiveHighlight,
     openHighlightPopup,
+    dismissFootnotePopup,
     search,
     goToSearchResult,
     setSearchPanelState,
@@ -598,6 +600,8 @@ const ReaderAppInner: FC = () => {
               onRemove={(id) => void removeHighlight(id)}
               onDismiss={dismissActiveHighlight}
             />
+
+            <FootnotePopup state={snapshot.footnotePopup} onDismiss={dismissFootnotePopup} />
 
             {/* Issue #98: a marker's `left`/`top` are computed for the page
                 that was on screen when they were placed, and don't track the

@@ -53,6 +53,7 @@ export interface UseReaderControllerResult {
   dismissSelectionToolbar: () => void;
   dismissActiveHighlight: () => void;
   openHighlightPopup: (id: string) => void;
+  dismissFootnotePopup: () => void;
   dismissError: () => void;
 }
 
@@ -386,6 +387,10 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
+  const dismissFootnotePopup = useCallback(() => {
+    controller?.dismissFootnotePopup();
+  }, [controller]);
+
   const dismissError = useCallback(() => {
     controller?.dismissError();
   }, [controller]);
@@ -432,6 +437,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     dismissSelectionToolbar,
     dismissActiveHighlight,
     openHighlightPopup,
+    dismissFootnotePopup,
     dismissError,
   };
 }

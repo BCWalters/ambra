@@ -64,6 +64,8 @@ export const ko: StringCatalog = {
   "highlight.close": "닫기",
   "highlight.colorGroupAriaLabel": "하이라이트 색상",
   "highlight.hasNote": "이 하이라이트에는 메모가 있습니다",
+  "footnote.dialogAriaLabel": "각주",
+  "footnote.close": "닫기",
   "settings.brightness": "밝기",
   "settings.experimental": "실험적 기능",
   "settings.filmStrip": "필름 스트립",

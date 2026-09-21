@@ -45,6 +45,7 @@ import type {
   BookDetails,
   EpubInspectionData,
   EpubInspectionFile,
+  FootnotePopupState,
   ImageViewerState,
   PreviewPosition,
   ReaderSnapshot,
@@ -64,6 +65,58 @@ const MIN_ZOOMABLE_IMAGE_SIZE = 100;
 /** Caps how many times a book with no discoverable description gets a
  * fresh `fetchBookDescription` attempt on subsequent opens. */
 const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
+
+/** `epub:type`'s namespace (EPUB3 Structural Semantics vocabulary) —
+ * see `hasEpubType`/`applyEpubTypeAriaRoles`. */
+const OPS_NAMESPACE = "http://www.idpf.org/2007/ops";
+
+/** Checks whether `element`'s `epub:type` attribute (a space-separated
+ * token list, e.g. `epub:type="noteref"`) contains `token`. */
+function hasEpubType(element: Element, token: string): boolean {
+  const value = element.getAttributeNS(OPS_NAMESPACE, "type");
+  return value ? value.trim().split(/\s+/).includes(token) : false;
+}
+
+/** Maps a handful of common `epub:type` values to their DPUB-ARIA role
+ * equivalent (see the DPUB-ARIA module) so assistive technology
+ * announces, e.g., a footnote reference as "footnote reference" rather
+ * than a plain, generic "link" — deliberately just the footnote/endnote
+ * pair this reader's own noteref popup (see `setUpContentInteraction`)
+ * cares about, not the full DPUB-ARIA vocabulary; broader `epub:type`
+ * role mapping is out of scope for this pass. */
+const EPUB_TYPE_ARIA_ROLES: ReadonlyMap<string, string> = new Map([
+  ["noteref", "doc-noteref"],
+  ["footnote", "doc-footnote"],
+  ["endnote", "doc-endnote"],
+]);
+
+/** Sets the matching DPUB-ARIA `role` (see `EPUB_TYPE_ARIA_ROLES`) on
+ * every element in `doc` with a recognized `epub:type`, unless it
+ * already declares its own explicit `role`. Idempotent (safe to call
+ * repeatedly on the same document), and no-ops entirely for content
+ * that declares no `epub:type` at all — the overwhelming majority of
+ * EPUB2-era or otherwise plain content.
+ *
+ * Walks every element directly (via `getElementsByTagName("*")`) rather
+ * than `querySelectorAll("[epub\\:type]")` — confirmed real, `epub:type`
+ * being a namespaced attribute (`xmlns:epub="..."`) means CSS attribute
+ * selectors don't match it at all in a real XHTML document, silently
+ * returning zero results rather than erroring. `hasEpubType`'s
+ * `getAttributeNS` check below is the only reliable, prefix-independent
+ * way to actually read it. */
+function applyEpubTypeAriaRoles(doc: Document): void {
+  for (const element of Array.from(doc.getElementsByTagName("*"))) {
+    if (element.hasAttribute("role") || !element.getAttributeNS(OPS_NAMESPACE, "type")) {
+      continue;
+    }
+    for (const [epubType, role] of EPUB_TYPE_ARIA_ROLES) {
+      if (hasEpubType(element, epubType)) {
+        element.setAttribute("role", role);
+        break;
+      }
+    }
+  }
+}
 
 /**
  * Owns one reading session's state — which book, spine item, and view
@@ -177,6 +230,9 @@ export class ReaderController {
    * set at a time, but they're separate fields since their popup UIs
    * differ (color swatches vs. note/delete). */
   private activeHighlight: ActiveHighlightState | undefined;
+  /** An `epub:type="noteref"` link's target content, shown inline
+   * instead of navigating — see `setUpContentInteraction`. */
+  private footnotePopup: FootnotePopupState | undefined;
   private readonly highlightInteraction: HighlightInteraction;
   private readonly pageTurnAnimator = new PageTurnAnimator({
     containerEl: () => this.containerEl,
@@ -412,6 +468,7 @@ export class ReaderController {
         noteMarkers: this.highlightInteraction.noteMarkers,
         highlights: this.highlights.allSorted(),
         ...this.searchCoordinator.snapshot,
+        footnotePopup: this.footnotePopup,
       };
     }
     return this.cachedSnapshot;
@@ -941,6 +998,8 @@ export class ReaderController {
     };
 
     for (const iframeDocument of documents) {
+      applyEpubTypeAriaRoles(iframeDocument);
+
       const clickHandler = (event: MouseEvent): void => {
         const target = event.target as Element | null;
         const anchor = target?.closest?.("a[href]");
@@ -972,6 +1031,27 @@ export class ReaderController {
         if (targetSpineIndex === -1) {
           // Ignore links to non-spine resources.
           return;
+        }
+
+        // An epub:type="noteref" link (footnote/endnote reference) shows
+        // its target's content inline instead of navigating there — only
+        // for the common same-document case; a noteref into a different
+        // spine item falls through to ordinary navigation below, since
+        // fetching and inlining another document's content is out of
+        // scope for this pass.
+        if (anchor && targetSpineIndex === own.spineIndex && fragment && hasEpubType(anchor, "noteref")) {
+          const content = iframeDocument.getElementById(fragment)?.textContent?.trim();
+          if (content) {
+            const iframeEl = iframeDocument.defaultView?.frameElement;
+            const iframeRect = iframeEl?.getBoundingClientRect();
+            this.footnotePopup = {
+              content,
+              left: (iframeRect?.left ?? 0) + event.clientX,
+              top: (iframeRect?.top ?? 0) + event.clientY,
+            };
+            this.notify();
+            return;
+          }
         }
 
         if (targetSpineIndex === own.spineIndex) {
@@ -1372,6 +1452,11 @@ export class ReaderController {
     this.highlightInteraction.dismissActiveHighlight();
   }
 
+  public dismissFootnotePopup(): void {
+    this.footnotePopup = undefined;
+    this.notify();
+  }
+
   public openHighlightPopup(id: string): void {
     this.highlightInteraction.openHighlightPopup(id);
   }
@@ -1421,6 +1506,7 @@ export class ReaderController {
     // Page turns do not rebuild the content document, so clear any highlight
     // popup that now points at content no longer on screen.
     this.activeHighlight = undefined;
+    this.footnotePopup = undefined;
     let moved: boolean;
     let announcement: string;
     if (this.host instanceof SpreadPaginatedHost) {
@@ -2926,6 +3012,7 @@ export class ReaderController {
       // A committed drag turn also invalidates any highlight popup tied
       // to the outgoing page.
       this.activeHighlight = undefined;
+      this.footnotePopup = undefined;
       oldHost.dispose();
       newEl.style.position = "";
       newEl.style.top = "";
@@ -3550,6 +3637,7 @@ export class ReaderController {
       this.pendingSelectionRange = undefined;
       this.selectionToolbar = undefined;
       this.activeHighlight = undefined;
+      this.footnotePopup = undefined;
 
       // Open the new host hidden alongside the current one so failures
       // leave the existing content on screen until replacement

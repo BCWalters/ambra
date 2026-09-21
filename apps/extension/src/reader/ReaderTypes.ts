@@ -166,6 +166,7 @@ export interface ReaderSnapshot {
   searchQuery: string;
   searchResults: readonly SearchResultItem[];
   isSearching: boolean;
+  footnotePopup: FootnotePopupState | undefined;
 }
 
 export interface SelectionToolbarState {
@@ -191,4 +192,13 @@ export interface NoteMarkerState {
 export interface ImageViewerState {
   readonly src: string;
   readonly alt: string;
+}
+
+/** An `epub:type="noteref"` link's target content (an `epub:type=
+ * "footnote"`/`"endnote"` element, per spec) shown inline instead of
+ * navigating there — see `ReaderController`'s content click handler. */
+export interface FootnotePopupState {
+  readonly content: string;
+  readonly left: number;
+  readonly top: number;
 }

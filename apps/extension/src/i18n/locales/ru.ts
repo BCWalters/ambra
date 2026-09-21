@@ -66,6 +66,8 @@ export const ru: StringCatalog = {
   "highlight.close": "Закрыть",
   "highlight.colorGroupAriaLabel": "Цвет выделения",
   "highlight.hasNote": "У этого выделения есть заметка",
+  "footnote.dialogAriaLabel": "Сноска",
+  "footnote.close": "Закрыть",
   "announcements.bookmarkAdded": "Закладка добавлена",
   "announcements.bookmarkRemoved": "Закладка удалена",
   "announcements.bookmarksRemoved": "Закладки удалены",

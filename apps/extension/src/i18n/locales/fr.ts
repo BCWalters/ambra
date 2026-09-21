@@ -66,6 +66,8 @@ export const fr: StringCatalog = {
   "highlight.close": "Fermer",
   "highlight.colorGroupAriaLabel": "Couleur de surlignage",
   "highlight.hasNote": "Ce surlignage contient une note",
+  "footnote.dialogAriaLabel": "Note de bas de page",
+  "footnote.close": "Fermer",
   "announcements.bookmarkAdded": "Signet ajouté",
   "announcements.bookmarkRemoved": "Signet supprimé",
   "announcements.bookmarksRemoved": "Signets supprimés",

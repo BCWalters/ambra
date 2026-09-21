@@ -66,6 +66,8 @@ export const es: StringCatalog = {
   "highlight.close": "Cerrar",
   "highlight.colorGroupAriaLabel": "Color de resaltado",
   "highlight.hasNote": "Este resaltado tiene una nota",
+  "footnote.dialogAriaLabel": "Nota al pie",
+  "footnote.close": "Cerrar",
   "announcements.bookmarkAdded": "Marcador añadido",
   "announcements.bookmarkRemoved": "Marcador eliminado",
   "announcements.bookmarksRemoved": "Marcadores eliminados",
