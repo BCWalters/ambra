@@ -47,6 +47,7 @@ export interface UseReaderControllerResult {
   setHighlightStyle: (id: string, style: HighlightStyle) => Promise<void>;
   search: (query: string) => void;
   goToSearchResult: (cfi: string) => Promise<void>;
+  setSearchPanelState: (open: boolean, pinned: boolean) => void;
   goToHighlight: (cfi: string) => Promise<void>;
   dismissSelectionToolbar: () => void;
   dismissActiveHighlight: () => void;
@@ -355,6 +356,13 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
+  const setSearchPanelState = useCallback(
+    (open: boolean, pinned: boolean) => {
+      controller?.setSearchPanelState(open, pinned);
+    },
+    [controller],
+  );
+
   const goToHighlight = useCallback(
     async (cfi: string) => {
       await controller?.goToHighlight(cfi);
@@ -418,6 +426,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     setHighlightStyle,
     search,
     goToSearchResult,
+    setSearchPanelState,
     goToHighlight,
     dismissSelectionToolbar,
     dismissActiveHighlight,

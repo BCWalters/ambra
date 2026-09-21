@@ -84,6 +84,7 @@ const ReaderAppInner: FC = () => {
     openHighlightPopup,
     search,
     goToSearchResult,
+    setSearchPanelState,
     dismissError,
   } = useReaderController(t);
   // Exactly one of these two "left panels" (Contents/Bookmarks & Highlights)
@@ -120,6 +121,15 @@ const ReaderAppInner: FC = () => {
   const isSearchOpen = rightPanel === "search";
   const isDetailsOpen = rightPanel === "details";
   const isSearchPinned = isSearchOpen && isSearchPinnedToggle;
+
+  // Issue #100: keeps the controller's own view of the Search panel's
+  // open/pinned state in sync — it drives whether/how long the live
+  // "highlight matches on screen" spotlight survives (see
+  // `ReaderController.setSearchPanelState`'s own doc comment for why the
+  // controller can't just observe this itself, being outside React).
+  useEffect(() => {
+    setSearchPanelState(isSearchOpen, isSearchPinned);
+  }, [isSearchOpen, isSearchPinned, setSearchPanelState]);
 
   /** Toggles one of the two left panels open/closed, per the "wonky"
    * behavior explicitly called out in issue #65: closes whichever other

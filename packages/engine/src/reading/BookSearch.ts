@@ -18,8 +18,12 @@ export interface SearchResult {
 /** The smallest query length actually worth searching a whole book for —
  * below this, a single- or two-character query would routinely produce
  * thousands of meaningless matches (every "a", every "an") while still
- * costing a full linear scan, a bad trade for a book of any real size. */
-const MIN_QUERY_LENGTH = 3;
+ * costing a full linear scan, a bad trade for a book of any real size.
+ * Exported so the shell's own live "highlight matches on screen as you
+ * type" feature (`ReaderController.applySearchHighlightToCurrentHost`)
+ * uses this exact same threshold rather than a second, possibly
+ * drifting copy of the same number. */
+export const MIN_QUERY_LENGTH = 3;
 
 /** How much surrounding text (in characters) to include on each side of
  * a match in `SearchResult.before`/`after` — enough to read the match in

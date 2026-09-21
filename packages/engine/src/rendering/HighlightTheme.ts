@@ -68,6 +68,16 @@ export class HighlightTheme {
     return `ambra-highlight-${style}`;
   }
 
+  /** The `::highlight()` name for the live "you searched for this"
+   * on-screen spotlight (`ReaderController.applySearchHighlightToCurrentHost`,
+   * issue #100) — deliberately not one of the reader-selectable
+   * `HighlightStyle`s above (nothing painted under this name is ever
+   * saved; it's a transient, in-session visual aid recomputed from
+   * whatever the Search panel's query currently is), but registered
+   * through this same CSS Custom Highlight mechanism since it's applied
+   * to a document identically (`CSS.highlights.set`/`.delete`). */
+  public static readonly SEARCH_MATCH_HIGHLIGHT_NAME = "ambra-search-match";
+
   /** The stylesheet defining every style's `::highlight()` appearance —
    * injected once per reflowable content document (see
    * `ContentDocumentAssembler`), the same way `ReadingTheme.CSS` is.
@@ -91,14 +101,21 @@ export class HighlightTheme {
    * i.e. essentially invisible, nowhere near WCAG AA's 4.5:1 minimum.
    * `#1a1a1a` (the same ink "White" theme already uses) comfortably
    * clears 12:1+ against every one of these swatches, so a highlighted
-   * passage stays legible no matter which page theme is active. */
-  public static readonly CSS = (Object.keys(HighlightTheme.STYLES) as HighlightStyle[])
-    .map((style) => {
-      const name = HighlightTheme.highlightName(style);
-      if (style === "underline") {
-        return `::highlight(${name}) { text-decoration: underline; text-decoration-color: ${HighlightTheme.STYLES[style].swatch}; text-decoration-thickness: 2px; text-underline-offset: 3px; }`;
-      }
-      return `::highlight(${name}) { background-color: ${HighlightTheme.STYLES[style].swatch}; color: #1a1a1a; }`;
-    })
-    .join("\n");
+   * passage stays legible no matter which page theme is active.
+   *
+   * The trailing `SEARCH_MATCH_HIGHLIGHT_NAME` rule uses a saturated
+   * amber rather than any of the soft pastels above — deliberately, so
+   * "here's what you searched for" never gets mistaken for one of the
+   * reader's own saved highlights sharing the same page. */
+  public static readonly CSS =
+    (Object.keys(HighlightTheme.STYLES) as HighlightStyle[])
+      .map((style) => {
+        const name = HighlightTheme.highlightName(style);
+        if (style === "underline") {
+          return `::highlight(${name}) { text-decoration: underline; text-decoration-color: ${HighlightTheme.STYLES[style].swatch}; text-decoration-thickness: 2px; text-underline-offset: 3px; }`;
+        }
+        return `::highlight(${name}) { background-color: ${HighlightTheme.STYLES[style].swatch}; color: #1a1a1a; }`;
+      })
+      .join("\n") +
+    `\n::highlight(${HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME}) { background-color: #ffb020; color: #1a1a1a; }`;
 }

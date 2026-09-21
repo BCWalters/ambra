@@ -363,7 +363,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   background — which it always does, since both draw
                   from the same `chromeTheme.backgroundSolid`. */}
               {!isFixedLayout && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
                   {isPaginated && (
                     <Button
                       appearance="secondary"

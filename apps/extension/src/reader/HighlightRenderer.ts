@@ -41,3 +41,23 @@ export function applyHighlightRanges(doc: Document, groups: ReadonlyMap<Highligh
     }
   }
 }
+
+/** The search-highlighting counterpart to `applyHighlightRanges` — one
+ * dedicated `::highlight()` (`HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME`)
+ * rather than a whole `HighlightStyle`-keyed map, since there's only
+ * ever one active search query at a time (see
+ * `ReaderController.applySearchHighlightToCurrentHost`, issue #100). An
+ * empty `ranges` clears the registry entry entirely rather than setting
+ * an empty `Highlight`, exactly like `applyHighlightRanges`'s own
+ * per-style handling above. */
+export function applySearchMatchRanges(doc: Document, ranges: readonly Range[]): void {
+  const win = doc.defaultView as HighlightCapableWindow | null;
+  if (!win?.CSS?.highlights || !win.Highlight) {
+    return;
+  }
+  if (ranges.length > 0) {
+    win.CSS.highlights.set(HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME, new win.Highlight(...ranges));
+  } else {
+    win.CSS.highlights.delete(HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME);
+  }
+}
