@@ -406,10 +406,14 @@ export interface ActiveHighlightState {
   readonly left: number;
   readonly top: number;
   /** `true` only right after `addHighlight(style, true)` creates this
-   * highlight (issue #60) — tells `HighlightActionPopup` to open already
-   * in note-editing mode instead of its normal closed-note-editor
-   * default. Never set for a highlight opened by clicking on it later
-   * (`checkExistingHighlightClick`). */
+   * highlight (issue #60) — tells the shell to open `HighlightActionPopup`
+   * for it immediately, the same way clicking an existing highlight
+   * later does (`checkExistingHighlightClick`), rather than leaving a
+   * plain color-swatch pick with no popup at all. The popup itself no
+   * longer has a distinct "note-editing mode" to enter (issue #97: it
+   * always shows both the color swatches and the note field at once),
+   * so this flag now only decides *whether* the popup opens right after
+   * creation, not what it looks like once it has. */
   readonly openNoteEditor?: boolean;
 }
 

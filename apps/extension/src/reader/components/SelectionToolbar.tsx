@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { FC } from "react";
 import { Tooltip } from "@fluentui/react-components";
 import { NoteRegular } from "@fluentui/react-icons";
@@ -8,6 +9,7 @@ import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { StringCatalog } from "../../i18n/locales/en.js";
+import { useClampedPopupOffset } from "../useClampedPopupOffset.js";
 
 /** `HighlightTheme.STYLES[style].label` is engine-owned English (the
  * engine itself has no notion of UI locale) — these are genuinely
@@ -55,6 +57,17 @@ export interface SelectionToolbarProps {
 export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onAddNote }) => {
   const chromeTheme = useChromeTheme();
   const t = useTranslation();
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  // See `HighlightActionPopup`'s identical use of this hook — this
+  // toolbar's own size never actually changes (always the same six
+  // swatches + note button), so only the anchor point itself needs
+  // watching.
+  const clampOffset = useClampedPopupOffset(
+    toolbarRef,
+    state ? { left: state.left, top: state.top } : undefined,
+    10,
+    [],
+  );
 
   if (!state) {
     return null;
@@ -62,6 +75,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
 
   return (
     <div
+      ref={toolbarRef}
       role="toolbar"
       aria-label={t("highlight.selectionToolbarAriaLabel")}
       // Prevents a mousedown on this toolbar from collapsing the content
@@ -72,7 +86,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
         position: "fixed",
         left: state.left,
         top: state.top,
-        transform: "translate(-50%, calc(-100% - 10px))",
+        transform: `translate(calc(-50% + ${clampOffset.x}px), calc(-100% - 10px + ${clampOffset.y}px))`,
         zIndex: 20,
         display: "flex",
         alignItems: "center",
