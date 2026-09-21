@@ -65,6 +65,7 @@ export const de: StringCatalog = {
   "highlight.deleteHighlight": "Hervorhebung löschen",
   "highlight.close": "Schließen",
   "highlight.colorGroupAriaLabel": "Hervorhebungsfarbe",
+  "highlight.hasNote": "Diese Hervorhebung hat eine Notiz",
   "announcements.bookmarkAdded": "Lesezeichen hinzugefügt",
   "announcements.bookmarkRemoved": "Lesezeichen entfernt",
   "announcements.bookmarksRemoved": "Lesezeichen entfernt",

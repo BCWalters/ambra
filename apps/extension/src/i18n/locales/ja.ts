@@ -63,6 +63,7 @@ export const ja: StringCatalog = {
   "highlight.deleteHighlight": "ハイライトを削除",
   "highlight.close": "閉じる",
   "highlight.colorGroupAriaLabel": "ハイライトの色",
+  "highlight.hasNote": "このハイライトにはメモがあります",
   "announcements.bookmarkAdded": "ブックマークを追加しました",
   "announcements.bookmarkRemoved": "ブックマークを削除しました",
   "announcements.bookmarksRemoved": "ブックマークを削除しました",

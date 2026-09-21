@@ -65,6 +65,7 @@ export const it: StringCatalog = {
   "highlight.deleteHighlight": "Rimuovi evidenziazione",
   "highlight.close": "Chiudi",
   "highlight.colorGroupAriaLabel": "Colore evidenziazione",
+  "highlight.hasNote": "Questa evidenziazione ha una nota",
   "announcements.bookmarkAdded": "Segnalibro aggiunto",
   "announcements.bookmarkRemoved": "Segnalibro rimosso",
   "announcements.bookmarksRemoved": "Segnalibri rimossi",

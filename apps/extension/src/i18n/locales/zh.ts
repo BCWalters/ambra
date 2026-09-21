@@ -63,6 +63,7 @@ export const zh: StringCatalog = {
   "highlight.deleteHighlight": "删除高亮",
   "highlight.close": "关闭",
   "highlight.colorGroupAriaLabel": "高亮颜色",
+  "highlight.hasNote": "此高亮包含笔记",
   "announcements.bookmarkAdded": "已添加书签",
   "announcements.bookmarkRemoved": "已删除书签",
   "announcements.bookmarksRemoved": "已删除多个书签",

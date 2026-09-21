@@ -65,6 +65,7 @@ export const ru: StringCatalog = {
   "highlight.deleteHighlight": "Удалить выделение",
   "highlight.close": "Закрыть",
   "highlight.colorGroupAriaLabel": "Цвет выделения",
+  "highlight.hasNote": "У этого выделения есть заметка",
   "announcements.bookmarkAdded": "Закладка добавлена",
   "announcements.bookmarkRemoved": "Закладка удалена",
   "announcements.bookmarksRemoved": "Закладки удалены",

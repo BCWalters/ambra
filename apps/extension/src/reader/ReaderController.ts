@@ -377,6 +377,18 @@ export interface ReaderSnapshot {
    * directly in the book, per explicit product direction (issue #48).
    * `undefined` whenever nothing's currently "opened" this way. */
   activeHighlight: ActiveHighlightState | undefined;
+  /** Small on-page markers (parent-viewport coordinates, same anchoring
+   * scheme `selectionToolbar`/`activeHighlight` use) for every highlight
+   * *with a note* currently visible in the content pane — issue #99: a
+   * highlight otherwise looks identical whether or not it has a note
+   * attached, so there was no way to tell "this one has more to it"
+   * without tapping every highlight in turn to check. Recomputed
+   * whenever the current host's highlights are (re)painted, the reader
+   * resizes, a note is added/removed, or (continuous-scroll mode only)
+   * the content scrolls — see `updateNoteMarkers`. Empty for
+   * fixed-layout content, matching every other highlight-related field
+   * here. */
+  noteMarkers: readonly NoteMarkerState[];
   /** Every highlight in the book, across all spine items, oldest first
    * — for the Highlights tab (see `TocPanel`). Read straight from the
    * in-memory cache (`highlightsBySpineIndex`) on every snapshot, not a
@@ -415,6 +427,13 @@ export interface ActiveHighlightState {
    * so this flag now only decides *whether* the popup opens right after
    * creation, not what it looks like once it has. */
   readonly openNoteEditor?: boolean;
+}
+
+/** See `ReaderSnapshot.noteMarkers`. */
+export interface NoteMarkerState {
+  readonly id: string;
+  readonly left: number;
+  readonly top: number;
 }
 
 /** See `ReaderSnapshot.searchResults` — a `SearchResult` (see the engine)
@@ -673,6 +692,9 @@ export class ReaderController {
    * different enough (color swatches vs. note/delete) to not want to
    * force-fit into a shared shape. */
   private activeHighlight: ActiveHighlightState | undefined;
+  /** See `ReaderSnapshot.noteMarkers` — recomputed by `updateNoteMarkers`,
+   * never mutated directly. */
+  private noteMarkers: NoteMarkerState[] = [];
   /** Detaches the primary content document's selection-tracking
    * listeners (see `setUpHighlightSelection`) — same re-created-per-
    * spine-item lifecycle as `contentInteractionCleanup`. */
@@ -880,6 +902,7 @@ export class ReaderController {
         imageViewer: this.imageViewer,
         selectionToolbar: this.selectionToolbar,
         activeHighlight: this.activeHighlight,
+        noteMarkers: this.noteMarkers,
         highlights: Array.from(this.highlightsBySpineIndex.values())
           .flat()
           .sort((a, b) => this.compareHighlightsByBookOrder(a, b)),
@@ -2044,6 +2067,7 @@ export class ReaderController {
       this.host.resize(width, height);
     }
     this.refreshBookPagination();
+    this.updateNoteMarkers();
     this.notify();
   }
 
@@ -2513,6 +2537,75 @@ export class ReaderController {
       }
       this.applyHighlightsToDocument(doc, this.spineIndex);
     }
+    this.updateNoteMarkers();
+  }
+
+  /** Recomputes `noteMarkers` — one small marker per highlight *with a
+   * note* in every content document the current host owns (mirrors
+   * `applyHighlightsToCurrentHost`'s own tail-document handling for a
+   * merged spread, for the identical reason: a borrowed tail document
+   * belongs to `this.spineIndex - 1`, not `this.spineIndex`). Anchored
+   * at the top-right corner of the highlight's own *last* client rect
+   * (`Range.getClientRects()`) — the point right after its last visible
+   * character — in parent-viewport coordinates, the same
+   * iframe-rect-plus-content-rect composition `selectionToolbar`/
+   * `activeHighlight` already use, since a `Range` inside a
+   * cross-document iframe has no meaningful coordinates in the parent
+   * document on its own.
+   *
+   * Called from `applyHighlightsToCurrentHost` (covers every spine-item
+   * load, page/spread turn, and style change that already calls it),
+   * `setHighlightNote` directly (a note's marker needs updating even
+   * though a note has no effect on `applyHighlightRanges`'s own CSS
+   * repaint), `resize` (marker positions are viewport-pixel values that
+   * a relayout can shift even though the highlight `Range`s themselves
+   * didn't change), and a scroll listener in continuous-scroll mode
+   * specifically (see `setUpHighlightSelection`) — the one case where
+   * the content moves without any of those other events firing at all. */
+  private updateNoteMarkers(): void {
+    if (this.isFixedLayoutHost(this.host)) {
+      this.noteMarkers = [];
+      return;
+    }
+    const markers: NoteMarkerState[] = [];
+    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
+    const resolveForDoc = (doc: Document, spineIndex: number): void => {
+      const iframeEl = doc.defaultView?.frameElement;
+      const highlights = this.highlightsBySpineIndex.get(spineIndex);
+      if (!iframeEl || !highlights) {
+        return;
+      }
+      const iframeRect = iframeEl.getBoundingClientRect();
+      for (const highlight of highlights) {
+        if (highlight.note === undefined) {
+          continue;
+        }
+        const range = this.resolveHighlightRange(highlight, spineIndex, doc);
+        if (!range) {
+          continue;
+        }
+        const rects = range.getClientRects();
+        const lastRect = rects[rects.length - 1];
+        if (!lastRect) {
+          continue;
+        }
+        markers.push({
+          id: highlight.id,
+          left: iframeRect.left + lastRect.right,
+          top: iframeRect.top + lastRect.top,
+        });
+      }
+    };
+    if (tailDoc) {
+      resolveForDoc(tailDoc, this.spineIndex - 1);
+    }
+    for (const doc of this.allContentDocuments()) {
+      if (doc === tailDoc) {
+        continue;
+      }
+      resolveForDoc(doc, this.spineIndex);
+    }
+    this.noteMarkers = markers;
   }
 
   private resolveHighlightRange(highlight: Highlight, spineIndex: number, doc: Document): Range | undefined {
@@ -2623,11 +2716,36 @@ export class ReaderController {
         this.notify();
       };
 
+      // Continuous-scroll mode only in practice (a paginated host's
+      // iframe never scrolls internally — see `ScrollContentHost`'s own
+      // doc comment) — without this, `noteMarkers` would stay pinned to
+      // wherever they were computed as the reader scrolled straight past
+      // them, visually detaching from the highlights they're meant to
+      // sit beside. `requestAnimationFrame`-coalesced rather than
+      // recomputing on every single scroll event, which can fire far
+      // faster than a frame during a fast scroll/fling.
+      let scrollAnimationFrame: number | undefined;
+      const onScroll = (): void => {
+        if (scrollAnimationFrame !== undefined) {
+          return;
+        }
+        scrollAnimationFrame = requestAnimationFrame(() => {
+          scrollAnimationFrame = undefined;
+          this.updateNoteMarkers();
+          this.notify();
+        });
+      };
+
       doc.addEventListener("pointerup", onPointerUp);
       doc.addEventListener("keyup", onKeyUp);
+      doc.addEventListener("scroll", onScroll, { passive: true });
       cleanups.push(() => {
         doc.removeEventListener("pointerup", onPointerUp);
         doc.removeEventListener("keyup", onKeyUp);
+        doc.removeEventListener("scroll", onScroll);
+        if (scrollAnimationFrame !== undefined) {
+          cancelAnimationFrame(scrollAnimationFrame);
+        }
       });
     }
     this.highlightSelectionCleanup = () => {
@@ -2731,6 +2849,29 @@ export class ReaderController {
     this.notify();
   }
 
+  /** Opens `activeHighlight` for a highlight that already has an
+   * on-page `noteMarkers` badge (issue #99) — tapping the badge is a
+   * convenience shortcut to the exact same popup tapping the
+   * highlighted text itself opens via `checkExistingHighlightClick`,
+   * not a second, competing interaction. Reuses the marker's own
+   * already-computed position as the popup's anchor rather than
+   * re-resolving the highlight's `Range` from scratch — the marker
+   * necessarily sits right at (or beside) the highlight, so it's
+   * already a perfectly good anchor point. A no-op if `id` doesn't
+   * match a highlight with a marker currently on screen (shouldn't
+   * happen — the shell only ever calls this for a badge it's actually
+   * showing — but harmless to no-op rather than throw if it somehow
+   * did, e.g. a stale click racing a page turn). */
+  public openHighlightPopup(id: string): void {
+    const marker = this.noteMarkers.find((candidate) => candidate.id === id);
+    const highlight = this.highlightsBySpineIndex.get(this.spineIndex)?.find((candidate) => candidate.id === id);
+    if (!marker || !highlight) {
+      return;
+    }
+    this.activeHighlight = { highlight, left: marker.left, top: marker.top };
+    this.notify();
+  }
+
   /** Clears the current error/severity — the shell calls this once a
    * transient error's own toast has been visible long enough (see
    * `FriendlyError`), or on an explicit dismiss. Harmless to call for a
@@ -2818,10 +2959,13 @@ export class ReaderController {
   }
 
   /** Attaches, edits, or clears (pass `undefined`) a note on an existing
-   * highlight — the annotations feature (#25). Never touches rendering
-   * (a note has no visual presence of its own on the highlighted text
-   * itself, only in the Highlights list — see `TocPanel`), so unlike
-   * `removeHighlight` this never needs `applyHighlightsToCurrentHost`. */
+   * highlight — the annotations feature (#25). Doesn't need the CSS
+   * repaint `applyHighlightsToCurrentHost` does (a note has no effect
+   * on how the highlighted text itself is painted — see
+   * `applyHighlightRanges`), but does need `updateNoteMarkers`: issue
+   * #99's whole point is a small marker showing *only* on highlights
+   * that have a note, which this call can add, remove, or just leave in
+   * place depending on whether `note` went from/to `undefined`. */
   public async setHighlightNote(id: string, note: string | undefined): Promise<void> {
     for (const highlights of this.highlightsBySpineIndex.values()) {
       const index = highlights.findIndex((highlight) => highlight.id === id);
@@ -2832,6 +2976,7 @@ export class ReaderController {
         if (this.activeHighlight?.highlight.id === id) {
           this.activeHighlight = { ...this.activeHighlight, highlight: updated };
         }
+        this.updateNoteMarkers();
         this.notify();
         return;
       }

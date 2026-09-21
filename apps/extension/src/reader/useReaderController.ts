@@ -50,6 +50,7 @@ export interface UseReaderControllerResult {
   goToHighlight: (cfi: string) => Promise<void>;
   dismissSelectionToolbar: () => void;
   dismissActiveHighlight: () => void;
+  openHighlightPopup: (id: string) => void;
   dismissError: () => void;
 }
 
@@ -369,6 +370,13 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     controller?.dismissActiveHighlight();
   }, [controller]);
 
+  const openHighlightPopup = useCallback(
+    (id: string) => {
+      controller?.openHighlightPopup(id);
+    },
+    [controller],
+  );
+
   const dismissError = useCallback(() => {
     controller?.dismissError();
   }, [controller]);
@@ -413,6 +421,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     goToHighlight,
     dismissSelectionToolbar,
     dismissActiveHighlight,
+    openHighlightPopup,
     dismissError,
   };
 }

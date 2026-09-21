@@ -134,6 +134,7 @@ export interface StringCatalog {
   "highlight.deleteHighlight": string;
   "highlight.close": string;
   "highlight.colorGroupAriaLabel": string;
+  "highlight.hasNote": string;
   "announcements.bookmarkAdded": string;
   "announcements.bookmarkRemoved": string;
   "announcements.bookmarksRemoved": string;
@@ -307,6 +308,7 @@ export const en: StringCatalog = {
   "highlight.deleteHighlight": "Delete highlight",
   "highlight.close": "Close",
   "highlight.colorGroupAriaLabel": "Highlight color",
+  "highlight.hasNote": "This highlight has a note",
   "announcements.bookmarkAdded": "Bookmark added",
   "announcements.bookmarkRemoved": "Bookmark removed",
   "announcements.bookmarksRemoved": "Bookmarks removed",
