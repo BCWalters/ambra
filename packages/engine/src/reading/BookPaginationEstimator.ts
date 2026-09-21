@@ -9,6 +9,12 @@ import type { BookPosition } from "./BookPagination.js";
 
 export type { BookPosition } from "./BookPagination.js";
 
+/** Hands control back to the browser's event loop for one macrotask —
+ * see the call site in `run` for why this matters between spine items. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /**
  * Computes book-wide page numbers by background-paginating every
  * reflowable spine item at whatever single-column width the reader is
@@ -125,6 +131,21 @@ export class BookPaginationEstimator {
       if (!spineItem) {
         continue;
       }
+      // Yields one real macrotask to the event loop *before* each spine
+      // item's own measurement, not just relying on `measureSpineItem`'s
+      // internal `await`s — those only yield at genuine async I/O
+      // boundaries (loading the content document), not around the
+      // synchronous pagination work itself, so a run of several large
+      // chapters back to back (a real, confirmed problem on a MathML-
+      // dense textbook, issue #102) could still starve pending user
+      // input (a page turn, a click) for one item's whole measurement
+      // time before this loop's own `await` ever got a chance to hand
+      // control back. A zero-delay `setTimeout` is enough to let the
+      // browser process anything already queued (input, rendering)
+      // ahead of the next item — this is a background estimate a reader
+      // never directly waits on, so pacing it more considerately costs
+      // nothing but wall-clock time to finish scanning the whole book.
+      await yieldToEventLoop();
       const count = await this.measureSpineItem(
         spineItem,
         spineIndex,

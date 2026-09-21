@@ -32,6 +32,10 @@ const BOOKS: Array<{ file: string; label: string }> = [
   { file: "accessible-epub-3.epub", label: "accessibility-focused authoring (IDPF sample)" },
   { file: "israel-sailing.epub", label: "RTL/BIDI Hebrew content (IDPF sample)" },
   { file: "internal-links.epub", label: "internal hyperlink navigation (IDPF sample)" },
+  {
+    file: "linear-algebra.epub",
+    label: "A First Course in Linear Algebra (Beezer) — MathML-dense textbook, issue #102",
+  },
 ];
 
 for (const book of BOOKS) {

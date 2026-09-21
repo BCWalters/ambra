@@ -49,6 +49,17 @@ const BOOKS = [
     url: "https://github.com/IDPF/epub3-samples/releases/download/20230704/internallinks.epub",
     note: "IDPF EPUB3 samples — dedicated internal-hyperlink-navigation test document.",
   },
+  // "linear-algebra.epub" (Robert Beezer's "A First Course in Linear
+  // Algebra", GNU FDL) is deliberately *not* listed here — it's the
+  // MathML-dense textbook that exposed issue #102's pagination
+  // performance cliff, and no stable, directly-downloadable EPUB URL
+  // for the exact 2.30 build could be confirmed from this environment
+  // (the book's own site, linear.ups.edu, mainly distributes PDF/HTML;
+  // archive.org only has newer 3.50-series uploads). If you have a copy
+  // (this exact filename, from the reported issue), just drop it in
+  // `real-books/` by hand — `real-books.spec.ts`'s smoke test and
+  // `mathml-perf.spec.ts`'s issue #102 regression test both already
+  // reference it and skip gracefully when it's absent.
 ];
 
 for (const book of BOOKS) {

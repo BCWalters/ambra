@@ -1,4 +1,4 @@
-import { globalTextOffsetToPosition, totalTextLength } from "./DomTextWalker.js";
+import { collectTextNodesOf, positionFromTextNodes, sumTextLength, totalTextLength } from "./DomTextWalker.js";
 
 /** A single indivisible unit of content for pagination purposes: either
  * one visual line of text within a "leaf" block element, or one whole
@@ -118,7 +118,19 @@ function measureTextLeafChunks(element: Element, ownerDocument: Document): Chunk
     return [];
   }
 
-  const totalLength = totalTextLength(element);
+  // Collected once per leaf and reused for every line below, instead of
+  // each of `totalTextLength`/`globalTextOffsetToPosition` separately
+  // re-walking this leaf's whole DOM subtree on every call — a real,
+  // confirmed performance cliff for a leaf with many descendant text
+  // nodes (e.g. MathML content, which tends to spread a single equation
+  // across dozens of small `<mi>`/`<mn>`/`<mo>` text nodes): with the
+  // per-call re-walk, a leaf's total measurement cost scaled with
+  // `lines * log(totalLength) * totalLength` instead of `totalLength +
+  // lines * log(totalLength) * numTextNodes` — the difference between a
+  // page turn landing instantly and one taking tens of seconds on a
+  // MathML-dense textbook chapter (issue #102).
+  const textNodes = collectTextNodesOf(element);
+  const totalLength = sumTextLength(textNodes);
   const chunks: Chunk[] = [];
 
   // The first line always starts at the beginning of the leaf itself.
@@ -130,8 +142,8 @@ function measureTextLeafChunks(element: Element, ownerDocument: Document): Chunk
 
   for (let lineIndex = 1; lineIndex < lineRects.length; lineIndex++) {
     const targetTop = lineRects[lineIndex]!.top;
-    const offset = bisectLineStartOffset(element, ownerDocument, totalLength, targetTop);
-    const position = globalTextOffsetToPosition(element, offset);
+    const offset = bisectLineStartOffset(element, ownerDocument, textNodes, totalLength, targetTop);
+    const position = positionFromTextNodes(textNodes, offset);
     if (!position) {
       continue;
     }
@@ -149,10 +161,13 @@ function measureTextLeafChunks(element: Element, ownerDocument: Document): Chunk
  * rendered position has already reached `targetTop` — i.e. the character
  * offset where the line starting at `targetTop` begins. Relies purely on
  * `Range.getClientRects()`, a real layout measurement, evaluated at each
- * candidate offset. */
+ * candidate offset. `textNodes` is `element`'s own descendant text nodes,
+ * collected once by the caller (see `measureTextLeafChunks`) rather than
+ * re-walked on every bisection step. */
 function bisectLineStartOffset(
   element: Element,
   ownerDocument: Document,
+  textNodes: readonly Text[],
   totalLength: number,
   targetTop: number,
 ): number {
@@ -161,7 +176,7 @@ function bisectLineStartOffset(
 
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(element, ownerDocument, mid, targetTop)) {
+    if (hasReachedLine(element, ownerDocument, textNodes, mid, targetTop)) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -174,13 +189,14 @@ function bisectLineStartOffset(
 function hasReachedLine(
   element: Element,
   ownerDocument: Document,
+  textNodes: readonly Text[],
   globalOffset: number,
   targetTop: number,
 ): boolean {
   if (globalOffset === 0) {
     return false;
   }
-  const position = globalTextOffsetToPosition(element, globalOffset);
+  const position = positionFromTextNodes(textNodes, globalOffset);
   if (!position) {
     return false;
   }
