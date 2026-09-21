@@ -10,6 +10,10 @@ import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 
 export interface LibraryBookViewModel extends BookMetadata {
   readonly coverUrl: string | undefined;
+  /** Whole-book completion, 0–1 — see `ReadingProgress.fractionComplete`.
+   * `undefined` for a book that's never been opened, or whose saved
+   * progress predates this field / was saved in scroll mode. */
+  readonly progressFraction: number | undefined;
 }
 
 /** A rough, purely-informational read on this origin's on-disk usage —
@@ -25,6 +29,9 @@ export interface UseLibraryResult {
   books: readonly LibraryBookViewModel[];
   isLoading: boolean;
   error: string | undefined;
+  /** Dismisses the current import-failure message (see
+   * `LibraryImportError`) without otherwise affecting the library. */
+  dismissError: () => void;
   importFiles: (files: readonly File[]) => Promise<void>;
   removeBook: (id: string) => Promise<void>;
   openBook: (id: string) => void;
@@ -74,6 +81,7 @@ export function useLibrary(): UseLibraryResult {
 
   const refresh = useCallback(async (database: LibraryDatabase): Promise<void> => {
     const metadataList = await database.listBooks();
+    const progressByBookId = await database.getAllProgress();
 
     const withCovers = await Promise.all(
       metadataList.map(async (metadata): Promise<LibraryBookViewModel> => {
@@ -85,7 +93,7 @@ export function useLibrary(): UseLibraryResult {
             coverUrlsRef.current.set(metadata.id, coverUrl);
           }
         }
-        return { ...metadata, coverUrl };
+        return { ...metadata, coverUrl, progressFraction: progressByBookId.get(metadata.id)?.fractionComplete };
       }),
     );
 
@@ -174,6 +182,10 @@ export function useLibrary(): UseLibraryResult {
     void openReaderTab(id);
   }, []);
 
+  const dismissError = useCallback((): void => {
+    setError(undefined);
+  }, []);
+
   const setSort = useCallback(
     (next: LibrarySortOption): void => {
       setSortState(next);
@@ -197,6 +209,7 @@ export function useLibrary(): UseLibraryResult {
     books,
     isLoading,
     error,
+    dismissError,
     importFiles,
     removeBook,
     openBook,

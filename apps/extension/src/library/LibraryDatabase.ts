@@ -1,5 +1,5 @@
 import { EpubCfi } from "@ambra/engine";
-import type { PageTheme, FontFamilyChoice, HighlightStyle } from "@ambra/engine";
+import type { PageTheme, FontFamilyChoice, HighlightStyle, BookIdentifier, AccessibilityMetadata } from "@ambra/engine";
 import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
@@ -55,6 +55,26 @@ export interface BookMetadata {
    * retried forever on every single open. `undefined` (treated as `0`)
    * for books that have never had a fetch attempted. */
   readonly descriptionFetchAttempts: number | undefined;
+  /** The EPUB's own `dc:description`, captured at import time so the
+   * Library's Book Details flyout (issue #105) can show it without
+   * re-parsing the book — distinct from `fetchedDescription` (a
+   * fallback for books that have none of their own). `undefined` for
+   * books imported before this field existed, or that simply have no
+   * `dc:description`. */
+  readonly description: string | undefined;
+  readonly publisher: string | undefined;
+  readonly rights: string | undefined;
+  /** Every `dc:identifier` the OPF declares (the single `identifier`
+   * field above is just the primary `unique-identifier`) — same list
+   * `BookDetailsPanel` shows in the reader, minus generic placeholder
+   * values it also filters (see `isGenericDefaultIdentifier`, applied
+   * by the Library's own details flyout). `undefined` for books imported
+   * before this field existed. */
+  readonly identifiers: readonly BookIdentifier[] | undefined;
+  /** EPUB Accessibility 1.1 metadata (see `AccessibilityMetadata`) —
+   * `undefined` for books imported before this field existed, or that
+   * declare none. */
+  readonly accessibility: AccessibilityMetadata | undefined;
 }
 
 /** Where a reader last left off in a given book — a CFI, since it's the
@@ -65,6 +85,12 @@ export interface ReadingProgress {
   readonly bookId: string;
   readonly cfi: string;
   readonly updatedAt: number;
+  /** Whole-book completion, 0–1, computed from `bookPageIndex`/
+   * `bookPageCount` at save time (see `ReaderController.saveProgress`).
+   * `undefined` for progress saved before this field existed, or while
+   * `bookPagination` hasn't finished measuring the book yet — callers
+   * should just omit a percentage rather than show a stale/wrong one. */
+  readonly fractionComplete: number | undefined;
 }
 
 /** A reader-created bookmark: a saved position (via CFI, same
@@ -294,14 +320,24 @@ export class LibraryDatabase {
   }
 
   /** Records `cfi` as `bookId`'s current reading position, overwriting
-   * any previous one. */
-  public async saveProgress(bookId: string, cfi: string): Promise<void> {
-    const record: ReadingProgress = { bookId, cfi, updatedAt: Date.now() };
+   * any previous one. `fractionComplete` is opportunistic — pass
+   * `undefined` when the caller doesn't have a reliable whole-book
+   * fraction yet (see its doc comment on `ReadingProgress`). */
+  public async saveProgress(bookId: string, cfi: string, fractionComplete: number | undefined): Promise<void> {
+    const record: ReadingProgress = { bookId, cfi, updatedAt: Date.now(), fractionComplete };
     await this.put(PROGRESS_STORE, record);
   }
 
   public getProgress(bookId: string): Promise<ReadingProgress | undefined> {
     return this.get<ReadingProgress>(PROGRESS_STORE, bookId);
+  }
+
+  /** All saved reading-progress records, keyed by book id — used by the
+   * Library page to show a completion percentage per book without a
+   * separate round trip for each one. */
+  public async getAllProgress(): Promise<ReadonlyMap<string, ReadingProgress>> {
+    const all = await this.getAll<ReadingProgress>(PROGRESS_STORE);
+    return new Map(all.map((record) => [record.bookId, record]));
   }
 
   /** The reader-wide default view mode (paginated/scroll) new books

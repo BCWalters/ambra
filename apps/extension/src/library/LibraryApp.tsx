@@ -18,12 +18,15 @@ import {
   ArrowSortRegular,
   ArrowUploadRegular,
   DeleteRegular,
+  InfoRegular,
   StorageRegular,
   WindowNewRegular,
 } from "@fluentui/react-icons";
 import { useLibrary } from "./useLibrary.js";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
+import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
+import { LibraryImportError } from "./LibraryImportError.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 
 const SORT_GROUP_NAME = "librarySort";
@@ -53,12 +56,13 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
-const BookCard: FC<{ book: LibraryBookViewModel; accent: string; onOpen: () => void; onDelete: () => void }> = ({
-  book,
-  accent,
-  onOpen,
-  onDelete,
-}) => {
+const BookCard: FC<{
+  book: LibraryBookViewModel;
+  accent: string;
+  onOpen: () => void;
+  onDelete: () => void;
+  onShowDetails: () => void;
+}> = ({ book, accent, onOpen, onDelete, onShowDetails }) => {
   // Hovering/focusing a cover picks up the reader's own accent color
   // (issue #86 follow-up — the same idea as the TOC's current-chapter
   // border and the scrubber fill, extended here) instead of a plain
@@ -86,6 +90,14 @@ const BookCard: FC<{ book: LibraryBookViewModel; accent: string; onOpen: () => v
   const [isFocused, setIsFocused] = useState(false);
   const isActive = isHovered || isFocused;
 
+  // Rounds to whole percent and only ever shows up once a book has
+  // *some* recorded progress — an untouched book (or one whose progress
+  // predates `fractionComplete`, or was last saved in scroll mode) has
+  // nothing meaningful to show, so the bar/label are omitted entirely
+  // rather than rendering a misleading "0%".
+  const progressPercent =
+    book.progressFraction !== undefined ? Math.round(book.progressFraction * 100) : undefined;
+
   return (
     <div
       style={{
@@ -103,7 +115,7 @@ const BookCard: FC<{ book: LibraryBookViewModel; accent: string; onOpen: () => v
           onClick={onOpen}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          aria-label={`Open ${book.title}`}
+          aria-label={progressPercent !== undefined ? `Open ${book.title}, ${progressPercent}% read` : `Open ${book.title}`}
           style={{
             width: 140,
             height: 200,
@@ -125,6 +137,66 @@ const BookCard: FC<{ book: LibraryBookViewModel; accent: string; onOpen: () => v
         >
           {!book.coverUrl && <Body1 style={{ padding: 8 }}>{book.title}</Body1>}
         </button>
+        {/* A thin reading-progress bar along the cover's bottom edge,
+            Apple-Books-style — deliberately not a text overlay on the
+            cover art itself (would fight with the artwork/title
+            fallback text above). Purely decorative (`aria-hidden`): the
+            percentage is already in the cover button's own
+            `aria-label` above for anyone who can't see the bar. */}
+        {progressPercent !== undefined && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 2,
+              right: 2,
+              bottom: 2,
+              height: 3,
+              borderRadius: 2,
+              background: "rgba(0, 0, 0, 0.25)",
+              overflow: "hidden",
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                width: `${progressPercent}%`,
+                height: "100%",
+                background: accent,
+              }}
+            />
+          </div>
+        )}
+        {/* A themed icon-only "i" button (issue #105) — same hover-reveal
+            idiom as the trash can, mirrored to the opposite (top-left)
+            corner so the two never compete for the same spot. Opens the
+            read-only Book Details flyout (`BookDetailsFlyout`). */}
+        <Tooltip content={`${book.title} details`} relationship="label">
+          <Button
+            appearance="secondary"
+            size="small"
+            icon={<InfoRegular />}
+            onClick={onShowDetails}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            aria-label={`${book.title} details`}
+            style={{
+              position: "absolute",
+              top: 6,
+              left: 6,
+              minWidth: 0,
+              width: 28,
+              height: 28,
+              padding: 0,
+              borderRadius: "50%",
+              border: `1px solid ${CHROME_BORDER}`,
+              boxShadow: CHROME_SHADOW,
+              opacity: isActive ? 1 : 0,
+              pointerEvents: isActive ? "auto" : "none",
+              transition: "opacity 120ms ease",
+            }}
+          />
+        </Tooltip>
         {/* A themed icon-only trash can (issue: library styling should
             align with the reader's own chrome instead of a plain generic
             text button) — only ever revealed on hover/focus of this card
@@ -204,6 +276,7 @@ export const LibraryApp: FC = () => {
     books,
     isLoading,
     error,
+    dismissError,
     importFiles,
     removeBook,
     openBook,
@@ -216,6 +289,8 @@ export const LibraryApp: FC = () => {
   } = useLibrary();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const palette = CHROME_THEMES[chromeTheme];
+  const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
+  const detailsBook = books.find((book) => book.id === detailsBookId);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = event.target.files;
@@ -299,11 +374,7 @@ export const LibraryApp: FC = () => {
       </div>
 
       <div style={{ padding: 16, flex: 1 }}>
-        {error && (
-          <Body1 as="p" style={{ color: "var(--colorPaletteRedForeground1, crimson)" }}>
-            Error: {error}
-          </Body1>
-        )}
+        {error && <LibraryImportError message={error} onDismiss={dismissError} />}
 
         {isLoading ? (
           <Spinner label="Loading your library…" style={{ marginTop: 16 }} />
@@ -320,11 +391,19 @@ export const LibraryApp: FC = () => {
                 accent={palette.accent}
                 onOpen={() => openBook(book.id)}
                 onDelete={() => void removeBook(book.id)}
+                onShowDetails={() => setDetailsBookId(book.id)}
               />
             ))}
           </div>
         )}
       </div>
+
+      <BookDetailsFlyout
+        book={detailsBook}
+        onRequestClose={() => setDetailsBookId(undefined)}
+        accent={palette.accent}
+        backgroundSolid={palette.backgroundSolid}
+      />
 
       {/* Purely informational (see `LibraryDatabase.estimateStorageUsage`'s
           doc comment on why this is never an enforced limit) — lets a

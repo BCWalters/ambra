@@ -388,6 +388,50 @@ export class ReaderController {
     return () => this.listeners.delete(listener);
   }
 
+  /** Book-wide page position (current page / total pages across the
+   * whole book), when available — only meaningful in paginated/spread/
+   * fixed-layout mode once `bookPagination` has measured the book (see
+   * `snapshot`'s `bookPageIndex`/`bookPageCount`, which this backs, and
+   * `currentBookFraction`, which turns it into a 0–1 completion
+   * fraction for persisted reading progress). */
+  private bookWidePagePosition(): { bookPageIndex: number | undefined; bookPageCount: number | undefined } | undefined {
+    let pageIndex = 0;
+    if (this.host instanceof PaginatedContentHost) {
+      pageIndex = this.host.currentPageIndex;
+    } else if (this.host instanceof SpreadPaginatedHost) {
+      pageIndex = this.host.pageIndex;
+    }
+    if (
+      !this.bookPagination ||
+      !(
+        this.host instanceof PaginatedContentHost ||
+        this.host instanceof SpreadPaginatedHost ||
+        this.host instanceof FixedSpreadHost
+      )
+    ) {
+      return undefined;
+    }
+    const position = this.bookPagination.positionFor(this.spineIndex, pageIndex);
+    return { bookPageIndex: position.currentPage, bookPageCount: position.totalPages };
+  }
+
+  /** The whole-book completion fraction (0–1) to persist alongside a
+   * saved CFI (see `ReadingProgress.fractionComplete`) — `undefined` in
+   * scroll mode or before `bookPagination` has finished measuring, so a
+   * stale/wrong percentage is never written. */
+  private currentBookFraction(): number | undefined {
+    const position = this.bookWidePagePosition();
+    if (
+      !position ||
+      position.bookPageIndex === undefined ||
+      position.bookPageCount === undefined ||
+      position.bookPageCount <= 0
+    ) {
+      return undefined;
+    }
+    return Math.max(0, Math.min(1, position.bookPageIndex / position.bookPageCount));
+  }
+
   public snapshot(): ReaderSnapshot {
     if (!this.cachedSnapshot) {
       let pageIndex = 0;
@@ -403,18 +447,9 @@ export class ReaderController {
       // Book-wide numbers only make sense in paginated/spread/
       // fixed-layout mode — scroll mode has no discrete "page" to place
       // within a book-wide count.
-      let bookPageIndex: number | undefined;
-      let bookPageCount: number | undefined;
-      if (
-        this.bookPagination &&
-        (this.host instanceof PaginatedContentHost ||
-          this.host instanceof SpreadPaginatedHost ||
-          this.host instanceof FixedSpreadHost)
-      ) {
-        const position = this.bookPagination.positionFor(this.spineIndex, pageIndex);
-        bookPageIndex = position.currentPage;
-        bookPageCount = position.totalPages;
-      }
+      const bookWidePosition = this.bookWidePagePosition();
+      const bookPageIndex = bookWidePosition?.bookPageIndex;
+      const bookPageCount = bookWidePosition?.bookPageCount;
 
       this.cachedSnapshot = {
         title: this.pkg.metadata.title,
@@ -601,7 +636,7 @@ export class ReaderController {
         position.node,
         position.offset,
       );
-      await this.library.saveProgress(this.bookId, locator.cfi);
+      await this.library.saveProgress(this.bookId, locator.cfi, this.currentBookFraction());
     } catch {
       // Best-effort: resume-reading is a convenience, not something
       // that should surface an error mid-navigation.

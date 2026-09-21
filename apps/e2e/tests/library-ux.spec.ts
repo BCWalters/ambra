@@ -80,3 +80,80 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
     }
   });
 });
+
+/** Covers issue #105 (a read-only "Book details" flyout sharing the
+ * reader's own informational layout, minus its three reader-only action
+ * buttons) and issue #104 (a per-book reading-position percentage). */
+test.describe("Library UX: book details flyout", () => {
+  test("opens from the card's info button, shows metadata, and closes via Escape", async () => {
+    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    try {
+      await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
+      await libraryPage.getByRole("button", { name: /details$/ }).click();
+
+      const flyout = libraryPage.getByRole("complementary", { name: "Book details" });
+      await expect(flyout).toBeVisible();
+      await expect(flyout.getByText("Alice's Adventures in Wonderland")).toBeVisible();
+      await expect(flyout.getByText("Lewis Carroll")).toBeVisible();
+      // No reading progress yet for a never-opened book — the flyout
+      // should simply omit the "Progress" section rather than show 0%.
+      await expect(flyout.getByText("Progress")).toHaveCount(0);
+
+      await libraryPage.keyboard.press("Escape");
+      await expect(flyout).toBeHidden();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("shows a reading-position percentage once a book has been opened and paged through", async () => {
+    const { context, libraryPage, readerPage } = await launchReader(ALICE, {
+      viewport: { width: 1000, height: 700 },
+    });
+    try {
+      await readerPage.keyboard.press("ArrowRight");
+      await readerPage.waitForTimeout(300);
+      await readerPage.keyboard.press("ArrowRight");
+      await readerPage.waitForTimeout(300);
+      // Flush the reader's progress save (mirrors what a visibility
+      // change/tab close does) before returning to the library.
+      await readerPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await libraryPage.bringToFront();
+      await libraryPage.reload();
+      await libraryPage.waitForTimeout(800);
+
+      await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
+      await libraryPage.getByRole("button", { name: /details$/ }).click();
+
+      const flyout = libraryPage.getByRole("complementary", { name: "Book details" });
+      await expect(flyout.getByText("Progress")).toBeVisible();
+      await expect(flyout.getByText(/% read$/)).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+/** Covers issue #106: a themed, "snickerdoodles"-toned error surface for
+ * a failed import, replacing a bare red error-message line. */
+test.describe("Library UX: friendly import error", () => {
+  test("shows a themed error card (not raw text) for a corrupt file, and it can be dismissed", async () => {
+    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    try {
+      await libraryPage.locator('input[type="file"]').setInputFiles({
+        name: "bogus.epub",
+        mimeType: "application/epub+zip",
+        buffer: Buffer.from("not a real epub"),
+      });
+      await libraryPage.waitForTimeout(500);
+
+      await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toBeVisible();
+      await expect(libraryPage.getByRole("alert")).toBeVisible();
+
+      await libraryPage.getByRole("button", { name: "Dismiss" }).click();
+      await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+});

@@ -33,6 +33,11 @@ export async function importBook(library: LibraryDatabase, file: File): Promise<
       fetchedDescriptionSourceName: undefined,
       fetchedDescriptionSourceUrl: undefined,
       descriptionFetchAttempts: undefined,
+      description: pkg.metadata.description,
+      publisher: pkg.metadata.publisher,
+      rights: pkg.metadata.rights,
+      identifiers: pkg.metadata.identifiers,
+      accessibility: pkg.metadata.accessibility,
     },
     coverBlob,
   );
