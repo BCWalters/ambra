@@ -28,13 +28,12 @@ import type {
   PageTheme,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
-import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
+import type { Bookmark } from "../library/LibraryDatabase.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
 import { BookmarkManager } from "./BookmarkManager.js";
+import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
-import { applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
-import { findTextRangesInDocument } from "./findTextRangesInDocument.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
@@ -46,7 +45,6 @@ import type {
   EpubInspectionData,
   EpubInspectionFile,
   ImageViewerState,
-  NoteMarkerState,
   PreviewPosition,
   ReaderSnapshot,
   SelectionToolbarState,
@@ -310,13 +308,11 @@ export class ReaderController {
    * different enough (color swatches vs. note/delete) to not want to
    * force-fit into a shared shape. */
   private activeHighlight: ActiveHighlightState | undefined;
-  /** See `ReaderSnapshot.noteMarkers` — recomputed by `updateNoteMarkers`,
-   * never mutated directly. */
-  private noteMarkers: NoteMarkerState[] = [];
-  /** Detaches the primary content document's selection-tracking
-   * listeners (see `setUpHighlightSelection`) — same re-created-per-
-   * spine-item lifecycle as `contentInteractionCleanup`. */
-  private highlightSelectionCleanup: (() => void) | undefined;
+  /** Paints highlights/search-match spotlight into the content
+   * document(s), and everything that hit-tests against them — see
+   * `HighlightInteraction`'s own doc comment. Constructed in the
+   * constructor below, alongside `highlights`. */
+  private readonly highlightInteraction: HighlightInteraction;
   /** Book-wide full-text search plus the live "highlight matches on the
    * current page" spotlight (issue #100) — see `SearchCoordinator`'s doc
    * comment. Created once in the constructor (it only needs
@@ -378,7 +374,7 @@ export class ReaderController {
     this.searchCoordinator = new SearchCoordinator(contentLoader, locatorResolver, pkg.spine, {
       goToCfi: (cfi) => this.goToCfi(cfi),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
-      repaintHighlight: () => this.applySearchHighlightToCurrentHost(),
+      repaintHighlight: () => this.highlightInteraction.applySearchHighlightToCurrentHost(),
       notify: () => this.notify(),
     });
     this.bookmarks = new BookmarkManager(library, bookId, locatorResolver, {
@@ -400,10 +396,28 @@ export class ReaderController {
       pendingSelectionRange: () => this.pendingSelectionRange,
       selectionToolbarAnchor: () => this.selectionToolbar,
       dismissSelectionToolbar: () => this.dismissSelectionToolbar(),
-      applyHighlightsToCurrentHost: () => this.applyHighlightsToCurrentHost(),
-      updateNoteMarkers: () => this.updateNoteMarkers(),
+      applyHighlightsToCurrentHost: () => this.highlightInteraction.applyHighlightsToCurrentHost(),
+      updateNoteMarkers: () => this.highlightInteraction.updateNoteMarkers(),
       announce: (translationKey) => this.announce(this.translate(translationKey)),
       getActiveHighlight: () => this.activeHighlight,
+      setActiveHighlight: (state) => {
+        this.activeHighlight = state;
+      },
+      notify: () => this.notify(),
+    });
+    this.highlightInteraction = new HighlightInteraction(locatorResolver, {
+      spineIndex: () => this.spineIndex,
+      isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
+      allContentDocuments: () => this.allContentDocuments(),
+      mergedTailDocument: () => (this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined),
+      forSpineIndex: (spineIndex) => this.highlights.forSpineIndex(spineIndex),
+      currentSearchHighlightQuery: () => this.searchCoordinator.currentHighlightQuery,
+      setPendingSelectionRange: (range) => {
+        this.pendingSelectionRange = range;
+      },
+      setSelectionToolbar: (state) => {
+        this.selectionToolbar = state;
+      },
       setActiveHighlight: (state) => {
         this.activeHighlight = state;
       },
@@ -550,7 +564,7 @@ export class ReaderController {
         imageViewer: this.imageViewer,
         selectionToolbar: this.selectionToolbar,
         activeHighlight: this.activeHighlight,
-        noteMarkers: this.noteMarkers,
+        noteMarkers: this.highlightInteraction.noteMarkers,
         highlights: this.highlights.allSorted(),
         ...this.searchCoordinator.snapshot,
       };
@@ -1271,7 +1285,7 @@ export class ReaderController {
   public handleWindowRefocus(): void {
     this.reattachKeyboardNav();
     this.setUpDragPageTurn();
-    this.setUpHighlightSelection();
+    this.highlightInteraction.setUpHighlightSelection();
 
     const iframeDocument = this.primaryContentDocument();
     const topDocument = this.containerEl?.ownerDocument;
@@ -1560,7 +1574,7 @@ export class ReaderController {
       this.host.resize(width, height);
     }
     this.refreshBookPagination();
-    this.updateNoteMarkers();
+    this.highlightInteraction.updateNoteMarkers();
     this.notify();
   }
 
@@ -1652,7 +1666,7 @@ export class ReaderController {
     // pre-change position after a font/line-spacing/letter-spacing/
     // content-width change specifically (unlike a resize, which already
     // got this right).
-    this.updateNoteMarkers();
+    this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -1675,7 +1689,7 @@ export class ReaderController {
     // pre-change position after a font/line-spacing/letter-spacing/
     // content-width change specifically (unlike a resize, which already
     // got this right).
-    this.updateNoteMarkers();
+    this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -1703,7 +1717,7 @@ export class ReaderController {
     // pre-change position after a font/line-spacing/letter-spacing/
     // content-width change specifically (unlike a resize, which already
     // got this right).
-    this.updateNoteMarkers();
+    this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -1730,7 +1744,7 @@ export class ReaderController {
     // pre-change position after a font/line-spacing/letter-spacing/
     // content-width change specifically (unlike a resize, which already
     // got this right).
-    this.updateNoteMarkers();
+    this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -1759,7 +1773,7 @@ export class ReaderController {
     // pre-change position after a font/line-spacing/letter-spacing/
     // content-width change specifically (unlike a resize, which already
     // got this right).
-    this.updateNoteMarkers();
+    this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -1986,118 +2000,6 @@ export class ReaderController {
     }
   }
 
-  /** Resolves every highlight belonging to `spineIndex` against `doc`
-   * (a live, already-loaded content document for that same spine item)
-   * into real `Range`s, grouped by style, and applies them via
-   * `applyHighlightRanges` (the CSS Custom Highlight API — see its doc
-   * comment for why this never touches `doc`'s own DOM). A highlight
-   * whose CFI fails to resolve (corrupted data, or content that's
-   * changed since it was created) is silently skipped rather than
-   * failing the whole batch — one bad highlight shouldn't hide every
-   * other one on the page. No-op for fixed-layout content, which has no
-   * reflowable text to highlight in the first place. */
-  private applyHighlightsToDocument(doc: Document, spineIndex: number): void {
-    const highlights = this.highlights.forSpineIndex(spineIndex);
-    const groups = new Map<HighlightStyle, Range[]>();
-    if (highlights) {
-      for (const highlight of highlights) {
-        const range = this.resolveHighlightRange(highlight, spineIndex, doc);
-        if (!range) {
-          continue;
-        }
-        const existing = groups.get(highlight.style);
-        if (existing) {
-          existing.push(range);
-        } else {
-          groups.set(highlight.style, [range]);
-        }
-      }
-    }
-    applyHighlightRanges(doc, groups);
-  }
-
-  /** Applies highlights to every content document the current host owns
-   * (both spread-mode columns, same scope as `allContentDocuments`) —
-   * called on every spine item load, unconditionally (unlike the font/
-   * theme settings `applyDisplaySettingsToHost` also applies, which skip
-   * the work when already at their defaults — a spine item having zero
-   * highlights isn't a meaningful "default" to detect ahead of time, so
-   * this always at least attempts the (cheap, no-op-if-empty) lookup).
-   *
-   * A merged spread's borrowed tail document (see `SpreadPaginatedHost.
-   * mergedTailDocument`) is always the *previous* spine item, one lower
-   * than `this.spineIndex` — resolved and applied against that index
-   * specifically, not `this.spineIndex`. Getting this wrong was a real,
-   * confirmed bug: `applyHighlightRanges` *replaces* a document's entire
-   * highlight registry on every call (see its own doc comment), so
-   * naively applying `this.spineIndex`'s highlights to a document that
-   * actually belongs to a different spine item doesn't just fail to add
-   * anything — every highlight already correctly showing on that
-   * borrowed tail page visibly vanishes the instant the reader turns
-   * forward into the next chapter, immediately after having read it. */
-  private applyHighlightsToCurrentHost(): void {
-    if (this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
-    if (tailDoc) {
-      this.applyHighlightsToDocument(tailDoc, this.spineIndex - 1);
-    }
-    for (const doc of this.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
-      this.applyHighlightsToDocument(doc, this.spineIndex);
-    }
-    // Issue #100: piggybacks on every one of this method's own call
-    // sites (spine-item load, host swap, a highlight added/removed/
-    // restyled) so the live search spotlight refreshes for free
-    // whenever the visible document(s) themselves change — see
-    // `applySearchHighlightToCurrentHost`'s own doc comment for the
-    // other case this alone doesn't cover (the query changing while
-    // staying on the very same page).
-    this.applySearchHighlightToCurrentHost();
-    this.updateNoteMarkers();
-  }
-
-  /** Re-scans every content document the current host owns (identical
-   * scope to `applyHighlightsToCurrentHost`, including its merged-
-   * spread tail-document handling) for occurrences of
-   * `SearchCoordinator.currentHighlightQuery` and paints them via the
-   * dedicated `HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME` `::highlight()`
-   * (issue #100) — entirely separate from `applyHighlightsToDocument`'s
-   * persisted, reader-authored `HighlightStyle` highlights just above,
-   * since this one is transient (never saved) and keyed off the live
-   * search query rather than a spine index. Called both from
-   * `applyHighlightsToCurrentHost` above (refreshes for free on every
-   * document swap) and via `SearchCoordinatorContext.repaintHighlight`
-   * whenever `currentHighlightQuery` itself changes without any document
-   * swap at all (e.g. typing a fresh query while staying on the same
-   * page). No-op for fixed-layout content — consistent with
-   * `applyHighlightsToCurrentHost`'s own identical early return, since
-   * FXL content already has no in-book highlighting of any kind (see
-   * `addHighlight`'s guard). */
-  private applySearchHighlightToCurrentHost(): void {
-    if (this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
-    if (tailDoc) {
-      this.applySearchHighlightToDocument(tailDoc);
-    }
-    for (const doc of this.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
-      this.applySearchHighlightToDocument(doc);
-    }
-  }
-
-  private applySearchHighlightToDocument(doc: Document): void {
-    const query = this.searchCoordinator.currentHighlightQuery;
-    applySearchMatchRanges(doc, query ? findTextRangesInDocument(doc, query) : []);
-  }
-
   /** Issue #100: clears the live search spotlight on an ordinary "leave
    * this page behind" navigation — a page turn, a chapter jump, a
    * bookmark/highlight jump, a TOC jump, or a scrubber drag — see
@@ -2106,386 +2008,19 @@ export class ReaderController {
     this.searchCoordinator.clearHighlightUnlessPinned();
   }
 
-  /** Recomputes `noteMarkers` — one small marker per highlight *with a
-   * note* in every content document the current host owns (mirrors
-   * `applyHighlightsToCurrentHost`'s own tail-document handling for a
-   * merged spread, for the identical reason: a borrowed tail document
-   * belongs to `this.spineIndex - 1`, not `this.spineIndex`). Anchored
-   * at the top-right corner of the highlight's own *last* client rect
-   * (`Range.getClientRects()`) — the point right after its last visible
-   * character — in parent-viewport coordinates, the same
-   * iframe-rect-plus-content-rect composition `selectionToolbar`/
-   * `activeHighlight` already use, since a `Range` inside a
-   * cross-document iframe has no meaningful coordinates in the parent
-   * document on its own.
-   *
-   * Called from `applyHighlightsToCurrentHost` (covers every spine-item
-   * load, page/spread turn, and style change that already calls it),
-   * `setHighlightNote` directly (a note's marker needs updating even
-   * though a note has no effect on `applyHighlightRanges`'s own CSS
-   * repaint), `resize` (marker positions are viewport-pixel values that
-   * a relayout can shift even though the highlight `Range`s themselves
-   * didn't change), and a scroll listener in continuous-scroll mode
-   * specifically (see `setUpHighlightSelection`) — the one case where
-   * the content moves without any of those other events firing at all. */
-  private updateNoteMarkers(): void {
-    if (this.isFixedLayoutHost(this.host)) {
-      this.noteMarkers = [];
-      return;
-    }
-    const markers: NoteMarkerState[] = [];
-    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
-    const resolveForDoc = (doc: Document, spineIndex: number): void => {
-      const iframeEl = doc.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
-      const highlights = this.highlights.forSpineIndex(spineIndex);
-      if (!iframeEl || !highlights) {
-        return;
-      }
-      const iframeRect = iframeEl.getBoundingClientRect();
-      const bounds = ReaderController.visiblePageBounds(iframeEl, iframeRect.height);
-      for (const highlight of highlights) {
-        if (highlight.note === undefined) {
-          continue;
-        }
-        const range = this.resolveHighlightRange(highlight, spineIndex, doc);
-        if (!range) {
-          continue;
-        }
-        // `getClientRects()` reflects every visual line of the highlight,
-        // including ones the reader currently has paginated/scrolled
-        // *away* — in paginated mode `doc.body` is one continuous flow
-        // that's merely translated and clip-path-cropped down to the
-        // current page's band (see `PaginatedContentHost.showCurrentPage`),
-        // so a highlight spanning onto an adjacent page still returns real
-        // (but off-page) rects for those lines. Blindly using the very
-        // last rect (issue #99) could place the marker anywhere the
-        // highlight's final line happens to fall, including well outside
-        // the current page entirely. Instead, keep only the last rect
-        // that actually falls within the current page's visible band —
-        // and skip the highlight altogether if none of its rects do,
-        // rather than showing a stray marker for a highlight that isn't
-        // visible on this page at all (it reappears correctly once the
-        // reader navigates to wherever it actually is).
-        let lastVisibleRect: DOMRect | undefined;
-        for (const rect of Array.from(range.getClientRects())) {
-          if (rect.bottom > bounds.top && rect.top < bounds.bottom) {
-            lastVisibleRect = rect;
-          }
-        }
-        if (!lastVisibleRect) {
-          continue;
-        }
-        markers.push({
-          id: highlight.id,
-          left: iframeRect.left + lastVisibleRect.right,
-          top: iframeRect.top + Math.min(Math.max(lastVisibleRect.top, bounds.top), bounds.bottom),
-        });
-      }
-    };
-    if (tailDoc) {
-      resolveForDoc(tailDoc, this.spineIndex - 1);
-    }
-    for (const doc of this.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
-      resolveForDoc(doc, this.spineIndex);
-    }
-    this.noteMarkers = markers;
-  }
-
-  /** The current page's visible vertical band, in the iframe's own local
-   * coordinate space (the same space `getClientRects()` reports in) —
-   * used by `updateNoteMarkers` to tell a highlight's on-page rects apart
-   * from off-page ones (see its own doc comment for why that distinction
-   * matters, issue #99). Reads `clip-path` directly off the iframe's
-   * inline style since that's exactly what `PaginatedContentHost.
-   * showCurrentPage`/`SandboxedContentHost` set it to, rather than
-   * duplicating the inset math independently and risking the two
-   * drifting apart. Falls back to the iframe's full box when there's no
-   * `clip-path` at all — continuous-scroll mode never sets one (a
-   * scrolling iframe already clips to its own box natively), and a
-   * page-turn animation briefly clears it too (`suppressClipPathForAnimation`) —
-   * both cases where "the whole box is visible" is the correct bound.
-   *
-   * `clip-path: inset(...)` follows the same 1-4-value CSS shorthand as
-   * `margin`/`padding` (e.g. `inset(107px 0px)` means top === bottom),
-   * so this can't assume a fixed number of values are present. */
-  private static visiblePageBounds(iframeEl: HTMLIFrameElement, iframeHeight: number): { top: number; bottom: number } {
-    const clipPath = iframeEl.style.clipPath;
-    const numbers = Array.from(clipPath.matchAll(/(-?[\d.]+)px/g)).map((m) => Number(m[1]));
-    if (numbers.length === 0) {
-      return { top: 0, bottom: iframeHeight };
-    }
-    // 1-value: all sides equal. 2-value: [top/bottom, right/left].
-    // 3-value: [top, right/left, bottom]. 4-value: [top, right, bottom, left].
-    const top = numbers[0]!;
-    const bottom = numbers.length === 1 ? numbers[0]! : numbers.length === 2 ? numbers[0]! : numbers[2]!;
-    return { top, bottom: iframeHeight - bottom };
-  }
-
-  private resolveHighlightRange(highlight: Highlight, spineIndex: number, doc: Document): Range | undefined {
-    try {
-      const start = this.locatorResolver.resolveInDocument(new Locator(highlight.startCfi), spineIndex, doc);
-      const end = this.locatorResolver.resolveInDocument(new Locator(highlight.endCfi), spineIndex, doc);
-      const range = doc.createRange();
-      range.setStart(start.node, start.characterOffset ?? 0);
-      range.setEnd(end.node, end.characterOffset ?? 0);
-      return range;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /** Attaches selection tracking to every content document the current
-   * host has: whenever the reader finishes making (or clears) a text
-   * selection in *either* column of a two-page spread — not just the
-   * primary (left) one — updates `selectionToolbar` so the shell can
-   * show/hide a floating highlight-color picker positioned just above
-   * wherever that selection actually is. `AccessibilityController`'s
-   * keyboard listener now follows this same "every document" scope (see
-   * `reattachKeyboardNav`); only the *managed-focus* side of
-   * accessibility (`setUpAccessibility`'s `focusContent` call) stays
-   * scoped to the primary column, since that part is specifically for
-   * screen readers, which only ever need the one column's complete text
-   * (see `SpreadPaginatedHost`'s own doc comment). Listens for
-   * `pointerup` (mouse/touch selection) and `keyup` (keyboard selection
-   * via Shift+arrows) — the two ways a selection can actually finish
-   * changing. No-op for fixed-layout content.
-   *
-   * Verified working well for double/triple-click word/sentence
-   * selection in every mode, including single-column paginated mode.
-   * Free-form click-*drag* selection in single-column paginated mode
-   * specifically was **not** exercised end-to-end — that mode's own
-   * `beginDragPageTurn` attaches its own pointermove/preventDefault
-   * handling to the same document to drive the page-turn-drag gesture,
-   * and a synthetic drag-based selection attempt during manual testing
-   * hung the test browser outright (the same category of real, confirmed
-   * "drag + this iframe" hang documented on issue #15's fix, not
-   * something to casually re-poke at). Word-level selection via
-   * double-click is unaffected (it's a click-count gesture, never enters
-   * `beginDragPageTurn`'s pointermove handling at all) and covers the
-   * primary use case; a real click-drag-to-select disambiguation against
-   * the page-turn gesture, if ever wanted, deserves its own careful,
-   * dedicated investigation rather than folding into this pass. */
-  private setUpHighlightSelection(): void {
-    this.highlightSelectionCleanup?.();
-    this.highlightSelectionCleanup = undefined;
-    if (this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    const documents = this.allContentDocuments();
-    if (documents.length === 0) {
-      return;
-    }
-
-    const cleanups: Array<() => void> = [];
-    for (const doc of documents) {
-      const iframeEl = doc.defaultView?.frameElement;
-      if (!iframeEl) {
-        continue;
-      }
-
-      const updateFromSelection = (): boolean => {
-        const selection = doc.getSelection();
-        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-          this.pendingSelectionRange = undefined;
-          this.selectionToolbar = undefined;
-          return false;
-        }
-        const range = selection.getRangeAt(0);
-        const rangeRect = range.getBoundingClientRect();
-        if (rangeRect.width === 0 && rangeRect.height === 0) {
-          // A selection can momentarily report a zero-size rect (e.g. right
-          // as it's being cleared) — treat exactly like "no selection"
-          // rather than showing a toolbar with nowhere sensible to anchor.
-          this.pendingSelectionRange = undefined;
-          this.selectionToolbar = undefined;
-          return false;
-        }
-        const iframeRect = iframeEl.getBoundingClientRect();
-        this.pendingSelectionRange = range.cloneRange();
-        this.selectionToolbar = {
-          left: iframeRect.left + rangeRect.left + rangeRect.width / 2,
-          top: iframeRect.top + rangeRect.top,
-        };
-        return true;
-      };
-
-      const onPointerUp = (event: PointerEvent): void => {
-        const madeOrKeptSelection = updateFromSelection();
-        // No fresh/active selection to show a color picker for — check
-        // whether the click instead landed on an *existing* highlight
-        // (issue #48: everything the Highlights panel can do should also
-        // work directly in the book). A real drag-to-select gesture
-        // never reaches here (it's caught by `madeOrKeptSelection` above);
-        // this only ever fires for a plain tap/click.
-        if (!madeOrKeptSelection) {
-          this.checkExistingHighlightClick(doc, iframeEl, event.clientX, event.clientY);
-        } else {
-          this.activeHighlight = undefined;
-        }
-        this.notify();
-      };
-      const onKeyUp = (): void => {
-        updateFromSelection();
-        this.notify();
-      };
-
-      // Continuous-scroll mode only in practice (a paginated host's
-      // iframe never scrolls internally — see `ScrollContentHost`'s own
-      // doc comment) — without this, `noteMarkers` would stay pinned to
-      // wherever they were computed as the reader scrolled straight past
-      // them, visually detaching from the highlights they're meant to
-      // sit beside. `requestAnimationFrame`-coalesced rather than
-      // recomputing on every single scroll event, which can fire far
-      // faster than a frame during a fast scroll/fling.
-      let scrollAnimationFrame: number | undefined;
-      const onScroll = (): void => {
-        if (scrollAnimationFrame !== undefined) {
-          return;
-        }
-        scrollAnimationFrame = requestAnimationFrame(() => {
-          scrollAnimationFrame = undefined;
-          this.updateNoteMarkers();
-          this.notify();
-        });
-      };
-
-      doc.addEventListener("pointerup", onPointerUp);
-      doc.addEventListener("keyup", onKeyUp);
-      doc.addEventListener("scroll", onScroll, { passive: true });
-      cleanups.push(() => {
-        doc.removeEventListener("pointerup", onPointerUp);
-        doc.removeEventListener("keyup", onKeyUp);
-        doc.removeEventListener("scroll", onScroll);
-        if (scrollAnimationFrame !== undefined) {
-          cancelAnimationFrame(scrollAnimationFrame);
-        }
-      });
-    }
-    this.highlightSelectionCleanup = () => {
-      for (const cleanup of cleanups) {
-        cleanup();
-      }
-    };
-  }
-
-  /** Finds whichever of the current spine item's highlights (if any)
-   * covers the document position at `(clientX, clientY)` — the shared
-   * hit-testing core behind both `checkExistingHighlightClick` (opens
-   * the highlight's action popup) and `handleContentClick` (issue #62:
-   * must *not* also treat that same click as a page-turn tap, which it
-   * previously did whenever a highlight happened to sit in one of the
-   * left/right third-of-the-page turn zones — clicking a highlight
-   * there would open its popup *and* turn the page out from under it in
-   * the same gesture, leaving a popup referencing a highlight no longer
-   * on screen). Uses `caretRangeFromPoint` to find the actual text
-   * position under the pointer (the CSS Custom Highlight API used to
-   * *paint* highlights — see `applyHighlightRanges` — has no
-   * hit-testing of its own; it's a paint-only overlay, not real DOM
-   * elements a click could target). */
-  private findHighlightAtPoint(doc: Document, clientX: number, clientY: number): Highlight | undefined {
-    const highlights = this.highlights.forSpineIndex(this.spineIndex);
-    const caretRangeFromPoint = (
-      doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
-    ).caretRangeFromPoint;
-    if (!highlights || highlights.length === 0 || !caretRangeFromPoint) {
-      return undefined;
-    }
-    const caretRange = caretRangeFromPoint.call(doc, clientX, clientY);
-    if (!caretRange) {
-      return undefined;
-    }
-    for (const highlight of highlights) {
-      const range = this.resolveHighlightRange(highlight, this.spineIndex, doc);
-      if (!range) {
-        continue;
-      }
-      try {
-        if (range.comparePoint(caretRange.startContainer, caretRange.startOffset) !== 0) {
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      return highlight;
-    }
-    return undefined;
-  }
-
-  /** Checks whether `(clientX, clientY)` — a plain click/tap that didn't
-   * make or keep a text selection (see `setUpHighlightSelection`) —
-   * landed on top of an existing highlight in `doc`, and if so, opens
-   * `activeHighlight` for it (a popup offering the note/delete actions
-   * also available in the Highlights panel, per issue #48). Clears
-   * `activeHighlight` (rather than leaving a stale one showing) if the
-   * click didn't land on any highlight, or if this browser lacks
-   * `caretRangeFromPoint` entirely (a non-standard but
-   * near-universally-supported API — treated as a graceful "feature not
-   * available" rather than a hard requirement). */
-  private checkExistingHighlightClick(doc: Document, iframeEl: Element, clientX: number, clientY: number): void {
-    const highlight = this.findHighlightAtPoint(doc, clientX, clientY);
-    if (!highlight) {
-      this.activeHighlight = undefined;
-      return;
-    }
-    const range = this.resolveHighlightRange(highlight, this.spineIndex, doc);
-    const iframeRect = iframeEl.getBoundingClientRect();
-    this.activeHighlight = {
-      highlight,
-      left: iframeRect.left + clientX,
-      top: iframeRect.top + (range?.getBoundingClientRect().top ?? clientY),
-    };
-  }
-
-  /** Hides the selection toolbar and clears the current in-content text
-   * selection — called after committing a highlight, and available to
-   * the shell for an explicit dismiss (e.g. clicking elsewhere). Clears
-   * the native selection on *every* content document, not just the
-   * primary one — the pending selection this is dismissing could belong
-   * to either column of a two-page spread (see `setUpHighlightSelection`),
-   * and clearing a document with no active selection is a harmless
-   * no-op, so there's no need to track which one it actually was. */
+  /** See `HighlightInteraction.dismissSelectionToolbar`. */
   public dismissSelectionToolbar(): void {
-    for (const doc of this.allContentDocuments()) {
-      doc.getSelection()?.removeAllRanges();
-    }
-    this.pendingSelectionRange = undefined;
-    this.selectionToolbar = undefined;
-    this.notify();
+    this.highlightInteraction.dismissSelectionToolbar();
   }
 
-  /** Closes the "existing highlight" popup opened by clicking on a
-   * highlight while reading (see `checkExistingHighlightClick`) — an
-   * explicit dismiss (clicking elsewhere, Escape), or after acting on it
-   * (deleting it, saving/canceling a note edit). */
+  /** See `HighlightInteraction.dismissActiveHighlight`. */
   public dismissActiveHighlight(): void {
-    this.activeHighlight = undefined;
-    this.notify();
+    this.highlightInteraction.dismissActiveHighlight();
   }
 
-  /** Opens `activeHighlight` for a highlight that already has an
-   * on-page `noteMarkers` badge (issue #99) — tapping the badge is a
-   * convenience shortcut to the exact same popup tapping the
-   * highlighted text itself opens via `checkExistingHighlightClick`,
-   * not a second, competing interaction. Reuses the marker's own
-   * already-computed position as the popup's anchor rather than
-   * re-resolving the highlight's `Range` from scratch — the marker
-   * necessarily sits right at (or beside) the highlight, so it's
-   * already a perfectly good anchor point. A no-op if `id` doesn't
-   * match a highlight with a marker currently on screen (shouldn't
-   * happen — the shell only ever calls this for a badge it's actually
-   * showing — but harmless to no-op rather than throw if it somehow
-   * did, e.g. a stale click racing a page turn). */
+  /** See `HighlightInteraction.openHighlightPopup`. */
   public openHighlightPopup(id: string): void {
-    const marker = this.noteMarkers.find((candidate) => candidate.id === id);
-    const highlight = this.highlights.forSpineIndex(this.spineIndex)?.find((candidate) => candidate.id === id);
-    if (!marker || !highlight) {
-      return;
-    }
-    this.activeHighlight = { highlight, left: marker.left, top: marker.top };
-    this.notify();
+    this.highlightInteraction.openHighlightPopup(id);
   }
 
   /** Clears the current error/severity — the shell calls this once a
@@ -2603,8 +2138,8 @@ export class ReaderController {
         this.reattachKeyboardNav();
         this.setUpContentInteraction();
         this.setUpDragPageTurn();
-        this.setUpHighlightSelection();
-        this.applyHighlightsToCurrentHost();
+        this.highlightInteraction.setUpHighlightSelection();
+        this.highlightInteraction.applyHighlightsToCurrentHost();
         this.restoreSpreadFocusAfterHostSwap(animatedSpread, focusedColumn);
         const second = animatedSpread.secondPageIndex;
         this.announce(
@@ -2660,8 +2195,8 @@ export class ReaderController {
         this.reattachKeyboardNav();
         this.setUpContentInteraction();
         this.setUpDragPageTurn();
-        this.setUpHighlightSelection();
-        this.applyHighlightsToCurrentHost();
+        this.highlightInteraction.setUpHighlightSelection();
+        this.highlightInteraction.applyHighlightsToCurrentHost();
         this.restoreFocusAfterHostSwap(hadKeyboardFocus);
         this.announce(
           this.translate("scrubber.pageOfTotal", {
@@ -5416,7 +4951,7 @@ export class ReaderController {
     // turning the page out from under it at the same time left a popup
     // referencing a highlight no longer on screen (its "close" was
     // still wired to the page that's no longer there).
-    if (this.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
+    if (this.highlightInteraction.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
       return;
     }
 
@@ -5570,8 +5105,8 @@ export class ReaderController {
       this.reattachKeyboardNav();
       this.setUpContentInteraction();
       this.setUpDragPageTurn();
-      this.setUpHighlightSelection();
-      this.applyHighlightsToCurrentHost();
+      this.highlightInteraction.setUpHighlightSelection();
+      this.highlightInteraction.applyHighlightsToCurrentHost();
       this.restoreFocusAfterHostSwap(hadKeyboardFocus);
       this.announce(
         this.translate("scrubber.pageOfTotal", { current: newHost.currentPageIndex + 1, total: newHost.pageCount }),
@@ -6396,8 +5931,7 @@ export class ReaderController {
       this.accessibility.detach();
       this.contentInteractionCleanup?.();
       this.contentInteractionCleanup = undefined;
-      this.highlightSelectionCleanup?.();
-      this.highlightSelectionCleanup = undefined;
+      this.highlightInteraction.teardownSelection();
       this.pendingSelectionRange = undefined;
       this.selectionToolbar = undefined;
       this.activeHighlight = undefined;
@@ -6665,8 +6199,8 @@ export class ReaderController {
       this.appliedHeight = this.height;
       this.setUpContentInteraction();
       this.setUpDragPageTurn();
-      this.setUpHighlightSelection();
-      this.applyHighlightsToCurrentHost();
+      this.highlightInteraction.setUpHighlightSelection();
+      this.highlightInteraction.applyHighlightsToCurrentHost();
       this.refreshBookPagination();
 
       if (options.bridgeCfi) {
@@ -6718,7 +6252,7 @@ export class ReaderController {
       // didn't disappear even after seeking away from it entirely.
       // Recomputing once more here, now that the host is finally on its
       // real destination page, fixes both.
-      this.updateNoteMarkers();
+      this.highlightInteraction.updateNoteMarkers();
       this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
       this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex} token=${token}`);
@@ -6804,7 +6338,7 @@ export class ReaderController {
     this.globalArrowKeyCleanup?.();
     this.contentInteractionCleanup?.();
     this.dragCleanup?.();
-    this.highlightSelectionCleanup?.();
+    this.highlightInteraction.teardownSelection();
     this.searchCoordinator.dispose();
     this.host?.dispose();
     this.hostWrapperEl?.remove();
