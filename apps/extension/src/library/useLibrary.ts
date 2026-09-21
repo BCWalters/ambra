@@ -3,6 +3,8 @@ import { importBook } from "./BookImporter.js";
 import type { BookMetadata } from "./LibraryDatabase.js";
 import { LibraryDatabase } from "./LibraryDatabase.js";
 import { openReaderTab } from "../navigation.js";
+import { DEFAULT_CHROME_THEME } from "../reader/chromeTheme.js";
+import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 
 export interface LibraryBookViewModel extends BookMetadata {
   readonly coverUrl: string | undefined;
@@ -15,17 +17,28 @@ export interface UseLibraryResult {
   importFiles: (files: readonly File[]) => Promise<void>;
   removeBook: (id: string) => Promise<void>;
   openBook: (id: string) => void;
+  /** The same "Reader Theme" chosen in the reader's own Settings menu
+   * (`ReaderController.setChromeTheme`/`LibraryDatabase.
+   * getDefaultChromeTheme`) — read once, here, so the Library page can
+   * carry the same chrome color across as its own page background
+   * rather than reading as a completely separate, undecorated app once
+   * a reader has picked a theme. Not editable from here; the Settings
+   * menu inside the reader remains the one place it's chosen. */
+  chromeTheme: ChromeThemeChoice;
 }
 
 /** Owns the library's `LibraryDatabase` connection and book list for the
  * React library page: opens the database once, lists books (newest
- * first), and creates/revokes `blob:` object URLs for cover images as the
- * list changes so `<img>` tags can display them directly. */
+ * first), creates/revokes `blob:` object URLs for cover images as the
+ * list changes so `<img>` tags can display them directly, and reads the
+ * reader's own saved chrome theme preference so the page can carry the
+ * same color across (see `chromeTheme` on `UseLibraryResult`). */
 export function useLibrary(): UseLibraryResult {
   const [db, setDb] = useState<LibraryDatabase | null>(null);
   const [books, setBooks] = useState<LibraryBookViewModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [chromeTheme, setChromeTheme] = useState<ChromeThemeChoice>(DEFAULT_CHROME_THEME);
   const coverUrlsRef = useRef(new Map<string, string>());
 
   const refresh = useCallback(async (database: LibraryDatabase): Promise<void> => {
@@ -61,6 +74,10 @@ export function useLibrary(): UseLibraryResult {
           return;
         }
         setDb(database);
+        const savedTheme = await database.getDefaultChromeTheme();
+        if (!cancelled && savedTheme) {
+          setChromeTheme(savedTheme);
+        }
         await refresh(database);
       } catch (err) {
         if (!cancelled) {
@@ -120,5 +137,5 @@ export function useLibrary(): UseLibraryResult {
     void openReaderTab(id);
   }, []);
 
-  return { books, isLoading, error, importFiles, removeBook, openBook };
+  return { books, isLoading, error, importFiles, removeBook, openBook, chromeTheme };
 }
