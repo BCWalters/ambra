@@ -40,7 +40,7 @@ Ambra uses notifications only to show the optional “this looks like an EPUB �
 ## Privacy/data-use notes for the dashboard
 
 - **Main local data handled**: imported EPUB files, extracted metadata/cover images, reading progress, bookmarks, highlights/notes, reader preferences.
-- **Where it is stored**: locally on-device in the extension’s browser storage area, primarily IndexedDB.
+- **Where it is stored**: locally on-device in an IndexedDB database named `ambra-library`.
 - **Third-party transmission**: when a book lacks its own EPUB description, Ambra may send the book’s title, author, and ISBN to `openlibrary.org` and, if needed, `en.wikipedia.org` to fetch a fallback description.
 - **Not sent off-device**: EPUB file contents, reading progress, bookmarks, highlights, notes, account data, browsing history, analytics events.
 - **Ads / analytics / tracking**: none found in the current codebase.
@@ -50,8 +50,12 @@ Ambra uses notifications only to show the optional “this looks like an EPUB �
 
 ## Privacy policy URL
 
-Host `store-assets/privacy-policy.html` somewhere publicly reachable and paste that final URL into the Chrome Web Store dashboard.
+The privacy policy is hosted on Ben's personal site (Azure Static Web Apps),
+deployed from the `ben-personal-site` repo's `legal/ambra/privacy-policy.html`.
+Paste this URL into the Chrome Web Store dashboard's privacy policy field:
 
-Suggested placeholder until hosting is chosen:
+`https://victorious-forest-06eb42803.7.azurestaticapps.net/legal/ambra/privacy-policy.html`
 
-`https://YOUR-DOMAIN.example/ambra/privacy-policy.html`
+To update the hosted copy after future edits to `store-assets/privacy-policy.html`,
+copy the file into `ben-personal-site/legal/ambra/privacy-policy.html` and push —
+the site's GitHub Actions workflow redeploys automatically on every push to `main`.
