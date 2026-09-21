@@ -4,6 +4,7 @@ import type { ViewMode } from "../reader/ViewMode.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
 import type { LocalePreference } from "../i18n/Locale.js";
+import type { LibrarySortOption } from "./LibrarySortOption.js";
 
 /** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
  * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
@@ -156,6 +157,7 @@ const FONT_FAMILY_PREFERENCE_KEY = "defaultFontFamily";
 const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
 const LOCALE_PREFERENCE_KEY = "localePreference";
+const LIBRARY_SORT_PREFERENCE_KEY = "defaultLibrarySort";
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -167,6 +169,33 @@ const LOCALE_PREFERENCE_KEY = "localePreference";
  */
 export class LibraryDatabase {
   private constructor(private readonly db: IDBDatabase) {}
+
+  /** A rough read on how much disk this origin is using/has available
+   * (`navigator.storage.estimate()`), for a simple "X of Y used" display
+   * in the Library page — not a hard enforcement mechanism (the
+   * manifest's own `unlimitedStorage` permission means Chrome doesn't
+   * apply its usual ~10%-of-disk quota to this origin at all, so
+   * `quotaBytes` here typically reflects free disk space rather than
+   * any real ceiling this app should warn a reader is "close to").
+   * `undefined` in any browsing context where the Storage API itself
+   * isn't available (very old Chromium, or a context that doesn't
+   * expose `navigator.storage` at all) rather than throwing — this is
+   * purely informational, never a precondition for the library to
+   * function. */
+  public static async estimateStorageUsage(): Promise<{ usageBytes: number; quotaBytes: number | undefined } | undefined> {
+    if (typeof navigator === "undefined" || !navigator.storage?.estimate) {
+      return undefined;
+    }
+    try {
+      const estimate = await navigator.storage.estimate();
+      if (estimate.usage === undefined) {
+        return undefined;
+      }
+      return { usageBytes: estimate.usage, quotaBytes: estimate.quota };
+    } catch {
+      return undefined;
+    }
+  }
 
   public static open(): Promise<LibraryDatabase> {
     return new Promise((resolve, reject) => {
@@ -432,6 +461,22 @@ export class LibraryDatabase {
 
   public async setLocalePreference(preference: LocalePreference): Promise<void> {
     const record: PreferenceRecord = { key: LOCALE_PREFERENCE_KEY, value: preference };
+    await this.put(PREFERENCES_STORE, record);
+  }
+
+  /** How the Library page's own book grid is ordered (see
+   * `LibrarySortOption`) — a library-page-only preference (the reader
+   * itself has no notion of book ordering), but stored in this same
+   * shared database/store for consistency with every other preference
+   * here. `undefined` if never set, in which case callers should fall
+   * back to `DEFAULT_LIBRARY_SORT`. */
+  public async getDefaultLibrarySort(): Promise<LibrarySortOption | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, LIBRARY_SORT_PREFERENCE_KEY);
+    return record?.value as LibrarySortOption | undefined;
+  }
+
+  public async setDefaultLibrarySort(sort: LibrarySortOption): Promise<void> {
+    const record: PreferenceRecord = { key: LIBRARY_SORT_PREFERENCE_KEY, value: sort };
     await this.put(PREFERENCES_STORE, record);
   }
 
