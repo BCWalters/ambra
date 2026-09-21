@@ -95,7 +95,7 @@ interface ChromeThemePalette {
   readonly accent: string;
 }
 
-export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "silver";
+export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "ambra";
 
 // Every gradient below runs light-to-slightly-deeper along the same
 // 135deg diagonal (a consistent implied "light source" direction across
