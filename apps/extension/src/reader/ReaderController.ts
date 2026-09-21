@@ -288,7 +288,7 @@ export class ReaderController {
     private readonly library: LibraryDatabase,
   ) {
     this.searchCoordinator = new SearchCoordinator(contentLoader, locatorResolver, pkg.spine, {
-      goToCfi: (cfi) => this.goToCfi(cfi),
+      goToCfi: (cfi) => this.goToCfi(cfi, "that search result"),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
       repaintHighlight: () => this.highlightInteraction.applySearchHighlightToCurrentHost(),
       notify: () => this.notify(),
@@ -725,14 +725,14 @@ export class ReaderController {
   /** Navigates to a saved bookmark's CFI — see `goToCfi`. */
   public async goToBookmark(cfi: string): Promise<void> {
     this.clearSearchHighlightUnlessPinned();
-    await this.goToCfi(cfi);
+    await this.goToCfi(cfi, "that bookmark");
   }
 
   /** Navigates to a highlight's starting position — see `goToBookmark`'s
    * doc comment. */
   public async goToHighlight(cfi: string): Promise<void> {
     this.clearSearchHighlightUnlessPinned();
-    await this.goToCfi(cfi);
+    await this.goToCfi(cfi, "that highlight");
   }
 
   /** Navigates to a search result's position — see `SearchCoordinator.goToResult`. */
@@ -753,18 +753,27 @@ export class ReaderController {
 
   /** Parses `cfi`, finds the spine item it targets, and opens it with
    * `cfi` as a bridging position — the shared "jump to a previously-
-   * saved position" mechanism behind resuming, bookmarks, highlights,
-   * and search results. Invalid or stale CFIs are ignored. */
-  private async goToCfi(cfi: string): Promise<void> {
+   * saved position" mechanism behind resuming, bookmarks, and
+   * highlights. `subject` (e.g. "that bookmark") names what a reader
+   * explicitly clicked, for the transient error toast if the CFI turns
+   * out to be unresolvable — a stale/corrupted saved position should
+   * say so, not silently do nothing when a reader taps it expecting to
+   * jump straight there. */
+  private async goToCfi(cfi: string, subject: string): Promise<void> {
     try {
       const parsed = EpubCfi.parse(cfi);
       const spineIndex = this.pkg.findSpineIndexByPackageCfiSteps(parsed.packageSteps);
       if (spineIndex === undefined) {
+        this.reportTransientError(
+          new Error(`Its saved position (${cfi}) doesn't match any chapter in this book.`),
+          "open",
+          subject,
+        );
         return;
       }
       await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
-    } catch {
-      // Best-effort.
+    } catch (err) {
+      this.reportTransientError(err, "open", subject);
     }
   }
 
