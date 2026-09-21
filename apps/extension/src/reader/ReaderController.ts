@@ -55,269 +55,129 @@ import { DEFAULT_LOCALE } from "../i18n/Locale.js";
 import { getTranslate } from "../i18n/LocaleContext.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
-/** The smallest a rendered image is allowed to be (in *both* CSS px
- * dimensions) for a click/keypress on it to open the image viewer — see
- * `ReaderController.setUpContentInteraction`. Deliberately checked
- * against the image's actual *rendered* size, not its intrinsic/natural
- * resolution: a decorative icon or a chapter-divider glyph is small on
- * the page regardless of the source file's own resolution, while a
- * genuine illustration reads as large on the page even if its source
- * file happens to be modestly sized — rendered size is what actually
- * distinguishes "worth zooming" content from decoration in practice. */
+/** The smallest a rendered image is allowed to be (in both CSS px
+ * dimensions) for a click/keypress on it to open the image viewer —
+ * checked against rendered size, not intrinsic resolution, so a small
+ * decorative icon can't accidentally "zoom" into a meaningless blur. */
 const MIN_ZOOMABLE_IMAGE_SIZE = 100;
 
-/** Caps how many times a book with no discoverable description (an
- * obscure or self-published work neither Open Library nor Wikipedia has
- * ever heard of) gets a fresh fetch attempt on subsequent opens — after
- * this many failed attempts across however many sessions, `open()` stops
- * retrying, rather than making a network request on every single open
- * forever for a book that will plainly never have one. */
+/** Caps how many times a book with no discoverable description gets a
+ * fresh `fetchBookDescription` attempt on subsequent opens. */
 const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
 
 /**
  * Owns one reading session's state — which book, spine item, and view
- * mode are active — and orchestrates the engine on the React reader UI's
- * behalf: opening/switching spine items, turning pages, switching between
- * paginated and scroll mode (bridging position across the switch via a
- * CFI, since the two modes render into separate content hosts/documents),
- * relaying window resizes into the active host, persisting/restoring
- * reading position (see `resume-reading`) via the same CFI-bridging
- * mechanism, and accessibility: keyboard navigation and managed focus
- * (via `AccessibilityController`, re-attached to whichever content host's
- * iframe document is current) plus live-region announcements (via
- * `announce`, surfaced through `snapshot()` for the shell's `LiveRegion`
- * to render — this class has no DOM of its own outside the content
- * hosts' iframes). React never touches `PaginatedContentHost`/
- * `ScrollContentHost`/`LocatorResolver` etc. directly — it reads
- * `snapshot()` and calls methods here, then is notified (`subscribe`) to
- * re-render.
+ * mode are active — and orchestrates the engine on the React reader
+ * UI's behalf: opening/switching spine items, turning pages, switching
+ * between paginated and scroll mode, relaying window resizes,
+ * persisting/restoring reading position, and accessibility (keyboard
+ * navigation, managed focus, live-region announcements). React never
+ * touches the engine objects directly — it reads `snapshot()` and calls
+ * methods here, then is notified (`subscribe`) to re-render.
  */
 export class ReaderController {
   private host:
     PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | FixedSpreadHost | undefined;
-  /** The wrapper element `stageHiddenHostElement` created around
-   * `this.host`'s own element — kept around purely so it can be
-   * `.remove()`-d once `this.host` is replaced (see `openSpineItem`).
-   * Never anything else touches its children after the initial staging:
-   * critically, `this.host.element` itself is *never* moved to a
-   * different parent once loaded — see `stageHiddenHostElement`'s doc
-   * comment for the real, confirmed hazard that guards against. */
+  /** The wrapper `stageHiddenHostElement` created around `this.host`'s
+   * element — removed once `this.host` is replaced. `this.host.element`
+   * itself must never be reparented once loaded (most browsers reload
+   * an iframe that's disconnected and reattached). */
   private hostWrapperEl: HTMLDivElement | undefined;
-  /** Defaults to "paginated", but `open` overwrites this from the saved
-   * `view-mode-preference` (if any) before the controller is ever used. */
   private viewMode: ViewMode = "paginated";
-  /** Defaults to `1` (the theme's own default), but `open` overwrites
-   * this from the saved font-scale preference (if any) — see
-   * `ReadingTheme`, `setFontScale`. */
   private fontScale = 1;
-  /** Defaults to `ReadingTheme.DEFAULT_LINE_SPACING`/`DEFAULT_LETTER_SPACING`,
-   * but `open` overwrites these from saved preferences (if any) — see
-   * `setLineSpacing`/`setLetterSpacing`. */
   private lineSpacing = ReadingTheme.DEFAULT_LINE_SPACING;
   private letterSpacing = ReadingTheme.DEFAULT_LETTER_SPACING;
   private contentWidthEm = ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
-  /** Defaults to `ReadingTheme.DEFAULT_FONT_FAMILY`, but `open` overwrites
-   * this from the saved preference (if any) — see `setFontFamily`. */
   private fontFamily: FontFamilyChoice = ReadingTheme.DEFAULT_FONT_FAMILY;
-  /** Defaults to `ReadingTheme.DEFAULT_PAGE_THEME`, but `open` overwrites
-   * this from the saved preference (if any) — see `setPageTheme`. */
   private pageTheme: PageTheme = ReadingTheme.DEFAULT_PAGE_THEME;
-  /** Defaults to `ReadingTheme.DEFAULT_BRIGHTNESS`, but `open` overwrites
-   * this from the saved preference (if any) — see `setBrightness`. */
   private brightness = ReadingTheme.DEFAULT_BRIGHTNESS;
-  /** Defaults to `DEFAULT_CHROME_THEME`, but `open` overwrites this from
-   * the saved preference (if any) — see `setChromeTheme`. Pure UI state,
-   * never applied to a content document the way font/page settings are
-   * (see `applyDisplaySettingsToHost`) — the shell reads it straight off
-   * the snapshot via `ChromeThemeProvider`. */
+  /** Pure UI state — never applied to a content document the way font/
+   * page settings are; the shell reads it straight off the snapshot. */
   private chromeTheme: ChromeThemeChoice = DEFAULT_CHROME_THEME;
-  /** Defaults to `DEFAULT_PAGE_TURN_ANIMATION_STYLE`, but `open` overwrites
-   * this from the saved preference (if any) — see
-   * `setPageTurnAnimationStyle`. Pure UI/interaction state, consulted by
-   * `stagePageTurn`/`setPageTurnTransform` for every click- or drag-driven
-   * turn. */
   private pageTurnAnimationStyle: PageTurnAnimationStyle = DEFAULT_PAGE_TURN_ANIMATION_STYLE;
   private spineIndex = 0;
   /** The most recently requested reader-pane size. */
   private width = 0;
   private height = 0;
-  /** The size the *current* content host was actually last laid out at —
-   * distinct from `width`/`height` above, which record the latest
-   * request even while it's still deferred (see `pendingResize`). Lets
-   * `resize` recognize a no-op (the deferred resize turning out to match
-   * what `openSpineItem` already laid out the fresh host at) and skip a
-   * pointless second re-pagination that would otherwise risk introducing
-   * its own drift into the just-restored position. */
+  /** The size the *current* host was actually last laid out at — lets
+   * `resize` recognize a no-op (a deferred resize matching what
+   * `openSpineItem` already laid the fresh host out at). */
   private appliedWidth = 0;
   private appliedHeight = 0;
-  /** Whether `FixedLayoutSpreadPlanner.isSpreadModeEligible` was `true`
-   * at the moment the *currently open* `FixedSpreadHost` was last built
-   * — see `shouldSwitchSpreadMode`'s own doc comment for why this is
-   * tracked explicitly rather than re-derived from the host's current
-   * `spread.kind`. `undefined` whenever the current host isn't a
-   * `FixedSpreadHost` at all. */
+  /** Whether the currently-open `FixedSpreadHost` was last built with
+   * spread mode eligible — `undefined` when the current host isn't a
+   * `FixedSpreadHost`. See `shouldSwitchSpreadMode`. */
   private fixedLayoutSpreadEligible: boolean | undefined;
-  /** Drives the `Spinner` overlay `ReaderApp` shows — deliberately
-   * *not* set the instant a spine-item load starts (see
-   * `openSpineItem`'s own `loadingTimeout`, issue #88): most loads,
-   * including every chapter-boundary crossing while turning pages,
-   * resolve near-instantly, and flashing a spinner for a handful of
-   * milliseconds reads as more distracting than showing nothing at
-   * all. `isLoadInFlight` below is the *immediate*, un-delayed
-   * "something is loading" signal other internal logic (`resize`'s
-   * own deferral) still needs right away — the two used to be the
-   * same field, which would have made `resize` briefly blind to an
-   * in-progress load during the new delay window. */
+  /** Drives the `Spinner` overlay — deliberately delayed from when a
+   * spine-item load actually starts (issue #88), since most loads
+   * resolve near-instantly and a flash of spinner reads as more
+   * distracting than nothing. `isLoadInFlight` is the undelayed signal
+   * other logic (e.g. `resize`) needs immediately. */
   private isLoading = false;
-  /** `true` for the *entire* duration of an in-progress `openSpineItem`
-   * call, set/cleared synchronously with no delay — unlike
-   * `isLoading` above (the delayed, purely visual spinner flag), any
-   * logic that needs to know *right now* whether it's unsafe to act
-   * (currently just `resize`, deferring itself via `pendingResize`
-   * rather than racing a host that's still being created) must check
-   * this one instead. */
+  /** `true` for the entire duration of an in-progress `openSpineItem`
+   * call, set/cleared synchronously — unlike the delayed `isLoading`,
+   * anything needing to know *right now* whether it's unsafe to act
+   * (currently `resize`) must check this instead. */
   private isLoadInFlight = false;
-  /** Guards against overlapping `turnPage` calls — a real bug caught via
-   * Chromium testing: rapid repeated clicks/keypresses could start a
-   * second animated page turn (see `animatePageTurn`) while a first was
-   * still mid-flight, each building its own new host from whatever
-   * `this.host`/`this.width`/`this.height` happened to be at that moment,
-   * racing to swap `this.host` and corrupting pagination state (page
-   * counts changing nonsensically was the symptom). `turnPage` simply
-   * ignores a call that arrives while one is already in progress, rather
-   * than queuing it — consistent with how physical book pages can't be
-   * turned faster than one at a time anyway. */
+  /** Guards against overlapping `turnPage` calls — rapid repeated
+   * clicks could otherwise start a second animated turn while the first
+   * was still in flight, racing to swap `this.host` and corrupting
+   * pagination state. Ignores a call that arrives mid-turn rather than
+   * queuing it. */
   private isTurningPage = false;
   /** Set by `prepareMergedIncomingSpread` right before returning a
-   * successfully-built merged host — the spine index `turnPageInternal`
-   * must adopt as `this.spineIndex` (and refresh every other piece of
-   * chapter-scoped bookkeeping against — title, TOC, highlights,
-   * progress) once it commits to that host, since unlike an ordinary
-   * in-chapter turn, this one *did* cross a chapter boundary even
-   * though it went through the same "just another spread turn"
-   * animation path as one. Read-and-cleared by `turnPageInternal`
-   * immediately after `animateSpreadTurn` returns, so a *plain*
-   * in-chapter turn right after never sees a stale value. */
+   * merged host, so `turnPageInternal` knows to adopt this as the new
+   * `this.spineIndex` (this turn crossed a chapter boundary even though
+   * it took the same "just another spread turn" animation path). */
   private pendingSpreadMergeSpineIndex: number | undefined;
-  /** Incremented every time a new page-turn gesture (click or drag)
-   * begins, and captured by that gesture's own async operations. Before
-   * any turn actually commits (mutates `this.host`), it checks its
-   * captured token against the current one — a mismatch means a *newer*
-   * turn has since started and finished (possible if an old drag's
-   * incoming-page load is unusually slow and a fresh interaction starts
-   * once `isTurningPage` clears), so the stale turn discards its own
-   * work instead of clobbering newer state. A second, independent
-   * safety net beyond `isTurningPage` for this same class of race. */
+  /** Incremented on every new page-turn gesture; a stale gesture whose
+   * captured token no longer matches discards its own work instead of
+   * clobbering newer state (a second safety net beyond `isTurningPage`
+   * for the same race). */
   private turnToken = 0;
-  /** Incremented at the start of every `openSpineItem` call (chapter
-   * navigation, TOC jumps, and seeking via the progress scrubber all
-   * funnel through it) and captured by that call's own async work.
-   * Before committing anything a stale result would otherwise clobber
-   * (`this.host`, `this.error`, `this.isLoading`), every return path
-   * checks its captured token against the current one — a mismatch
-   * means a *newer* `openSpineItem` call has since started while this
-   * one's content was still loading.
-   *
-   * This mattered for a real, reported bug: two overlapping
-   * `openSpineItem` calls (e.g. two seeks in quick succession, before
-   * the first's content finished loading) used to share one call to
-   * `containerEl.replaceChildren(...)`, so the second call's own new
-   * iframe *detached* whichever iframe the still-in-flight older call
-   * was loading into as a side effect. A detached iframe's load
-   * essentially never completes (see `SandboxedContentHost`'s own doc
-   * comment on this), so the older call would sit for the full
-   * `RenderingSurfaceError` timeout and then throw — even though the
-   * reader had already moved on to (and successfully shown) wherever the
-   * newer call navigated to. Without this guard, that stale failure
-   * surfaced as a scary, confusing error message despite nothing
-   * actually being wrong.
-   *
-   * The staged-hidden-host swap `openSpineItem` now uses (each call gets
-   * its own private staging element, see `stageHiddenHostElement`) means
-   * overlapping calls no longer detach each other's iframes at all — but
-   * this token guard is still needed so that if *both* overlapping calls
-   * succeed, only the newer one actually gets displayed. */
+  /** Incremented at the start of every `openSpineItem` call; every
+   * return path checks its captured token against the current one so a
+   * stale, slow-loading call can't clobber a newer one's result once it
+   * finally resolves. */
   private spineOpenToken = 0;
   /** A resize that arrived while an `openSpineItem` was already in
-   * flight (e.g. `ResizeObserver`'s spec-mandated initial callback racing
-   * with `mount`'s async load) — applying it immediately would relayout
-   * a host that's mid-open, against stale or not-yet-loaded content.
-   * Recorded here and applied once the in-flight open settles instead. */
+   * flight — applying it immediately would relayout a host that's
+   * mid-open, against stale content. Recorded and applied once the
+   * in-flight open settles instead. */
   private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
-  /** See `ReaderSnapshot.errorSeverity`. */
   private errorSeverity: "blocking" | "transient" | undefined;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
-  /** See `DiagnosticsLog`'s own doc comment — a short in-memory trail of
-   * recent actions, to help describe "what just happened" when
-   * something goes wrong in a way that's hard to reproduce on demand. */
   private readonly diagnostics = new DiagnosticsLog();
   private announcement: string | undefined;
   private announcementId = 0;
-  /** Translates screen-reader announcement text (see `announce`) into
-   * the reader's current UI locale — defaults to English (the same
-   * default `LocaleProvider` starts with) until `ReaderApp` calls
-   * `setTranslate` with the real, locale-aware translator once it
-   * mounts inside `LocaleProvider`. A plain field rather than threading
-   * `t` through every method that ends up calling `announce` (most of
-   * which have nothing else to do with locale at all). */
+  /** Translates announcement text into the current UI locale — a plain
+   * field (rather than threading `t` through every method) since
+   * `ReaderApp` sets the real translator once it mounts inside
+   * `LocaleProvider`. */
   private translate: Translate = getTranslate(DEFAULT_LOCALE);
-  /** Increments on every pointerdown inside the content (any content
-   * host's iframe document) — the shell's `Toolbar` watches this via
-   * `snapshot()` to hide itself immediately the instant the reader
-   * clicks into the book, rather than waiting for the usual auto-hide
-   * timeout (see `useAutoHideChrome`). Deliberately *every* pointerdown,
-   * not just ones that turn out to be a page-turn tap — a click that
-   * lands on a link, or one that starts a text-selection drag, should
-   * still dismiss the toolbar just as immediately. */
+  /** Increments on every pointerdown inside the content — `Toolbar`
+   * watches this to hide itself immediately, rather than waiting for
+   * the usual auto-hide timeout. */
   private contentPointerActivityId = 0;
-  /** See `ReaderSnapshot.imageViewer`. */
   private imageViewer: ImageViewerState | undefined;
-  /** See `openImageViewer`'s doc comment — the element to restore focus
-   * to when the viewer closes. */
+  /** Focus target to restore when the image viewer closes. */
   private imageViewerReturnFocusTarget: Element | undefined;
-  /** Owns this book's highlights (cache + CRUD) — extracted into its own
-   * class, `HighlightManager` (see its doc comment) — kept in sync
-   * in-memory on every add/remove, rather than re-querying IndexedDB on
-   * every spine item load (`applyHighlightsToDocument` runs on *every*
-   * open, unconditionally, unlike the font/theme settings this class
-   * also applies, which skip the work entirely at their defaults). */
   private readonly highlights: HighlightManager;
-  /** Owns this book's bookmarks (cache + CRUD) — extracted into its own
-   * class (see the architecture review's "decompose the god object"
-   * finding); see `BookmarkManager`'s own doc comment. Constructed in
-   * the constructor below, loaded once in `open()`. */
   private readonly bookmarks: BookmarkManager;
-  /** See `ReaderSnapshot.selectionToolbar`. */
   private selectionToolbar: SelectionToolbarState | undefined;
-  /** The live `Range` backing `selectionToolbar`, captured at the same
-   * time — `addHighlight` uses this directly rather than re-querying
-   * `getSelection()`, since by the time a reader has clicked a color
-   * swatch in the (parent-document) toolbar, focus may have moved away
-   * from the content iframe, and re-querying at that point is a needless
-   * risk when the original `Range` object is still perfectly valid. */
+  /** The live `Range` backing `selectionToolbar` — `addHighlight` uses
+   * this directly rather than re-querying `getSelection()`, since focus
+   * may have moved away from the content iframe by the time a reader
+   * clicks a toolbar swatch. */
   private pendingSelectionRange: Range | undefined;
-  /** See `ReaderSnapshot.activeHighlight` — the currently "opened" *existing*
-   * highlight, tapped/clicked while reading (not a fresh selection — see
-   * `checkExistingHighlightClick`), with a note editor and delete action.
-   * Independent of `selectionToolbar`: only one of the two is ever set at
-   * once in practice (a fresh selection and clicking an existing highlight
-   * are mutually exclusive user actions), but they're deliberately separate
-   * fields rather than one union, since the shell's popup UI for each is
-   * different enough (color swatches vs. note/delete) to not want to
-   * force-fit into a shared shape. */
+  /** The existing highlight tapped/clicked while reading (not a fresh
+   * selection). Independent of `selectionToolbar` — only one is ever
+   * set at a time, but they're separate fields since their popup UIs
+   * differ (color swatches vs. note/delete). */
   private activeHighlight: ActiveHighlightState | undefined;
-  /** Paints highlights/search-match spotlight into the content
-   * document(s), and everything that hit-tests against them — see
-   * `HighlightInteraction`'s own doc comment. Constructed in the
-   * constructor below, alongside `highlights`. */
   private readonly highlightInteraction: HighlightInteraction;
-  /** The pure mechanics behind an animated page turn — see
-   * `PageTurnAnimator`'s own doc comment. Needs no per-book construction
-   * args at all (only ever reads a handful of display settings via its
-   * context), so this is simply instantiated inline rather than in the
-   * constructor body alongside the other extracted managers. */
   private readonly pageTurnAnimator = new PageTurnAnimator({
     containerEl: () => this.containerEl,
     height: () => this.height,
@@ -325,52 +185,34 @@ export class ReaderController {
     pageTurnAnimationStyle: () => this.pageTurnAnimationStyle,
   });
   /** Book-wide full-text search plus the live "highlight matches on the
-   * current page" spotlight (issue #100) — see `SearchCoordinator`'s doc
-   * comment. Created once in the constructor (it only needs
-   * `contentLoader`/`locatorResolver`/`pkg.spine`, all available
-   * immediately — unlike `bookPagination`, it has no dependency on a
-   * live DOM/hidden measurement container at all). */
+   * current page" spotlight (issue #100) — see `SearchCoordinator`. */
   private readonly searchCoordinator: SearchCoordinator;
 
   /** Detaches the current spine item's in-content interaction listeners
-   * (link clicks, and the image-viewer's click/keyboard triggers) — see
-   * `setUpContentInteraction`. Re-created on every `openSpineItem` call
-   * since each one gets a fresh iframe/document. */
+   * (link clicks, image-viewer triggers) — re-created on every
+   * `openSpineItem` call since each gets a fresh iframe/document. */
   private contentInteractionCleanup: (() => void) | undefined;
-  /** Detaches the current drag-page-turn `pointerdown` listener — see
-   * `setUpDragPageTurn`. Re-created every time the primary content
-   * document changes, same lifecycle as `contentInteractionCleanup`. */
+  /** Detaches the current drag-page-turn `pointerdown` listener — same
+   * lifecycle as `contentInteractionCleanup`. */
   private dragCleanup: (() => void) | undefined;
-  /** See `ReaderSnapshot.isAnimatingPageTurn`'s doc comment. */
   private isAnimatingPageTurn = false;
-  /** Background-paginates the whole book to derive book-wide page
-   * numbers (see `BookPaginationEstimator`) — `undefined` until `mount`
-   * creates it (it needs `hiddenMeasureContainer` to exist first). */
+  /** Background-paginates the whole book for book-wide page numbers —
+   * `undefined` until `mount` creates it. */
   private bookPagination: BookPaginationEstimator | undefined;
   /** An offscreen, zero-size-but-attached container `bookPagination`
-   * mounts its measurement iframes into — real browsers don't lay out a
-   * detached element, so this can't simply be left unattached, but it
-   * also must never let its children become visible or affect this
-   * page's own scroll extents. Created once in `mount` and torn down in
-   * `dispose`. */
+   * mounts its measurement iframes into (a detached element doesn't lay
+   * out in real browsers). Created in `mount`, torn down in `dispose`. */
   private hiddenMeasureContainer: HTMLDivElement | undefined;
 
   private readonly listeners = new Set<() => void>();
   private cachedSnapshot: ReaderSnapshot | undefined;
-  /** Lazily created by `getBookDetails`, kept for the controller's whole
-   * lifetime (revoked only in `dispose`) — see `BookDetails.coverUrl`. */
+  /** Lazily created by `getBookDetails`, revoked in `dispose`. */
   private cachedCoverUrl: string | undefined;
-  /** Lazily created per-path by `getInspectionFilePreviewUrl` (issue #46
-   * follow-up: image/audio/video previews in the Inspector's Files tab),
-   * kept for the controller's whole lifetime and all revoked together in
-   * `dispose` — same reasoning as `cachedCoverUrl`, just keyed by path
-   * since the Inspector can preview many different files per session. */
+  /** Lazily created per-path by `getInspectionFilePreviewUrl` (issue
+   * #46), revoked in `dispose`. */
   private readonly inspectionPreviewUrlCache = new Map<string, string>();
-  /** The OCF rootfile path (e.g. `OEBPS/content.opf`) — set once in
-   * `open`. Only used by `getEpubInspectionData` (issue #46); nothing
-   * about actually reading the book needs it, since every other engine
-   * object already resolves paths relative to the archive root
-   * internally. */
+  /** The OCF rootfile path, set once in `open` — only used by
+   * `getEpubInspectionData` (issue #46). */
   private rootFilePath = "";
 
   private constructor(
@@ -436,11 +278,8 @@ export class ReaderController {
     });
   }
 
-  /** Opens a book from its raw bytes — from a `File` (e.g. `await
-   * file.arrayBuffer()`) or, in the normal case, the book `Blob` read
-   * back out of `LibraryDatabase` for whichever `bookId` the reader page
-   * was opened with. `bookId`/`library` are used to persist and restore
-   * reading position — see `mount`/`saveProgress`. */
+  /** Opens a book from its raw bytes. `bookId`/`library` persist and
+   * restore reading position — see `mount`/`saveProgress`. */
   public static async open(
     buffer: ArrayBuffer,
     bookId: string,
@@ -505,14 +344,9 @@ export class ReaderController {
         pageCount = this.host.pageCount;
       }
 
-      // Book-wide numbers only make sense in paginated/spread mode — the
-      // same reason `pageIndex`/`pageCount` above stay `0` in scroll
-      // mode, which has no discrete "page" concept of its own to place
-      // within a book-wide count either. Fixed-layout content *does*
-      // still get one (every `FixedSpreadHost` spine item counts as
-      // exactly one page — see `BookPaginationEstimator`'s own doc
-      // comment), computed at `pageIndex` 0 since there's no per-item
-      // sub-pagination to place it within.
+      // Book-wide numbers only make sense in paginated/spread/
+      // fixed-layout mode — scroll mode has no discrete "page" to place
+      // within a book-wide count.
       let bookPageIndex: number | undefined;
       let bookPageCount: number | undefined;
       if (
@@ -590,17 +424,15 @@ export class ReaderController {
     }
   }
 
-  /** Bumps `contentPointerActivityId` and notifies — see that field's
-   * doc comment. */
+  /** Bumps `contentPointerActivityId` and notifies. */
   private bumpContentActivity(): void {
     this.contentPointerActivityId++;
     this.notify();
   }
 
   /** Mounts the current view mode's content host into `containerEl` and
-   * opens either a previously-saved reading position for this book (see
-   * `saveProgress`) or spine item 0 if there is none. Call once, after
-   * the container div is available. */
+   * opens a previously-saved reading position, or spine item 0. Call
+   * once, after the container div is available. */
   public async mount(containerEl: HTMLDivElement, width: number, height: number): Promise<void> {
     this.containerEl = containerEl;
     this.width = width;
@@ -608,19 +440,11 @@ export class ReaderController {
     this.setUpBookPagination(containerEl.ownerDocument);
     this.setUpGlobalArrowKeyFallback(containerEl.ownerDocument);
 
-    // Guard against a resize (e.g. `ResizeObserver`'s spec-mandated
-    // initial callback) racing with the async progress lookup below —
-    // `openSpineItem` sets/clears this same flag, but there's a window
-    // between calling `mount` and actually reaching `openSpineItem`
-    // (while `getProgress` is in flight) where it otherwise wouldn't be
-    // set yet, letting a resize slip through against a not-yet-created
-    // host. This exact race was caught via real-Chromium testing.
-    //
-    // Shown immediately here (unlike `openSpineItem`'s own delayed
-    // spinner, issue #88) — this is the very first load, with no
-    // existing content on screen yet to make a brief delay
-    // unnoticeable, so there's no "distracting flash" concern the way
-    // there is for a fast in-session chapter turn.
+    // Guards against a resize racing with the async progress lookup
+    // below, before `openSpineItem` sets this same flag itself. Shown
+    // immediately (no delay, unlike a later in-session chapter turn) —
+    // this is the very first load, with no existing content on screen
+    // yet to make a brief delay unnoticeable.
     this.isLoading = true;
     this.isLoadInFlight = true;
     this.notify();
@@ -632,14 +456,10 @@ export class ReaderController {
   }
 
   /** Creates the offscreen container `BookPaginationEstimator` mounts its
-   * measurement iframes into, and the estimator itself. `position: fixed`
-   * plus zero size and `overflow: hidden` keeps it (and every iframe
-   * temporarily mounted inside it, each of which sizes itself explicitly
-   * regardless of this wrapper's own size) completely invisible and
-   * without affecting this page's own scroll extents — `display: none`
-   * would be simpler but real browsers don't lay out `display: none`
-   * content at all, which is exactly the real layout measurement this
-   * exists to get. */
+   * measurement iframes into. `display: none` would be simpler but real
+   * browsers don't lay out `display: none` content — `position: fixed`
+   * plus zero size and `overflow: hidden` keeps it invisible while
+   * still laying out. */
   private setUpBookPagination(ownerDocument: Document): void {
     const container = ownerDocument.createElement("div");
     container.style.position = "fixed";
@@ -662,14 +482,10 @@ export class ReaderController {
 
   /** (Re-)starts `bookPagination` at the current width/height/font
    * settings, prioritized around the current spine item, notifying
-   * subscribers (so the shell's book-wide page number updates) as each
-   * spine item's count becomes known. Safe to call liberally — chapter
-   * navigation calls this just to reprioritize (cheap: see
-   * `BookPaginationEstimator.run`'s doc comment), while a real width/
-   * height/font change triggers the fuller re-measurement. Measures at
-   * the *effective single-column* width — in spread mode that's each
-   * column's own (narrower) width, not the whole reader pane's — so a
-   * book-wide page number always agrees with what's actually on screen. */
+   * subscribers as each spine item's count becomes known. Measures at
+   * the effective single-column width — in spread mode that's each
+   * column's own width, not the whole pane — so the book-wide page
+   * number agrees with what's on screen. */
   private refreshBookPagination(): void {
     if (!this.bookPagination || this.isFixedLayoutHost(this.host)) {
       return;
@@ -693,12 +509,9 @@ export class ReaderController {
     );
   }
 
-  /** Looks up a saved CFI for this book and, if one resolves to a valid
-   * spine item, opens directly there instead of the beginning. Returns
-   * `false` (having done nothing) if there's no saved progress or it
-   * can't be resolved — e.g. corrupted data, or a CFI from a differently-
-   * structured version of the same book — so the caller falls back to
-   * starting from the beginning rather than getting stuck. */
+  /** Looks up a saved CFI and, if it resolves to a valid spine item,
+   * opens directly there. Returns `false` if there's no saved progress
+   * or it can't be resolved, so the caller falls back to the start. */
   private async tryResume(): Promise<boolean> {
     try {
       const progress = await this.library.getProgress(this.bookId);
@@ -717,12 +530,9 @@ export class ReaderController {
     }
   }
 
-  /** Resolves the currently-displayed position to a CFI and persists it
-   * as this book's reading progress. Called after every navigation action
-   * settles (page turn, chapter change, TOC jump, view-mode switch); also
-   * exposed as `flushProgress` for the reader page to call on
-   * visibility/unload, which is the only reliable checkpoint for
-   * continuous-scroll mode's position drifting between explicit actions. */
+  /** Resolves the current position to a CFI and persists it as reading
+   * progress. Called after every navigation settles; also exposed as
+   * `flushProgress` for the reader page to call on visibility/unload. */
   private async saveProgress(): Promise<void> {
     const position = this.host?.currentPosition();
     if (!position) {
@@ -736,20 +546,15 @@ export class ReaderController {
       );
       await this.library.saveProgress(this.bookId, locator.cfi);
     } catch {
-      // Best-effort: resume-reading is a convenience, not something that
-      // should ever surface an error to the reader mid-navigation.
+      // Best-effort: resume-reading is a convenience, not something
+      // that should surface an error mid-navigation.
     }
   }
 
-  /** See `saveProgress`. Public so the reader page can flush the current
-   * position on `visibilitychange`/`pagehide`. */
   public flushProgress(): Promise<void> {
     return this.saveProgress();
   }
 
-  /** Creates a new bookmark at the currently-displayed position — see
-   * `BookmarkManager.add`. `toggleBookmark` is the toolbar's own
-   * add-or-remove behavior. */
   public async addBookmark(): Promise<Bookmark | undefined> {
     return this.bookmarks.add();
   }
@@ -762,13 +567,9 @@ export class ReaderController {
     return this.bookmarks.remove(id);
   }
 
-  /** The `{ page, document }` pair(s) actually on screen right now — both
-   * columns of a two-page spread (or just the primary one, if the
-   * companion is hidden — see `SpreadPaginatedHost.currentPagesAndDocuments`),
-   * or the single page of ordinary paginated mode. Empty for scroll mode
-   * (no discrete "page" to speak of) and fixed-layout content (no
-   * reflowable text `Page`/CFI machinery applies to at all) — bookmarking
-   * is simply inert in both (see `BookmarkManager`). */
+  /** The `{ page, document }` pair(s) on screen right now — both
+   * columns of a spread, the single page in paginated mode, or empty
+   * for scroll mode/fixed-layout content (bookmarking is inert there). */
   private currentPagesAndDocuments(): Array<{ page: Page; document: Document }> {
     if (this.host instanceof PaginatedContentHost) {
       const entry = this.host.currentPageAndDocument();
@@ -780,17 +581,11 @@ export class ReaderController {
     return [];
   }
 
-  /** The toolbar's single bookmark button — see `BookmarkManager.toggle`. */
   public async toggleBookmark(): Promise<void> {
     return this.bookmarks.toggle();
   }
 
-  /** Navigates to a saved bookmark's CFI — see `goToCfi`, which does the
-   * actual work (shared with `goToHighlight`, since both are "jump to a
-   * previously-saved position" and differ only in where the CFI came
-   * from). Jumping to a bookmark is as much "leaving wherever the
-   * search spotlight was" as an ordinary page turn is — see
-   * `clearSearchHighlightUnlessPinned`. */
+  /** Navigates to a saved bookmark's CFI — see `goToCfi`. */
   public async goToBookmark(cfi: string): Promise<void> {
     this.clearSearchHighlightUnlessPinned();
     await this.goToCfi(cfi);
@@ -819,15 +614,10 @@ export class ReaderController {
     this.searchCoordinator.setPanelState(open, pinned);
   }
 
-  /** Parses `cfi`, finds the spine item it targets by its package steps,
-   * and opens it with `cfi` as a bridging position — the same "parse,
-   * find owning spine item, open with a bridging CFI" mechanism
-   * `tryResume` uses for resuming a session, since resuming, jumping to
-   * a bookmark, jumping to a highlight, and jumping to a search result
-   * are all the same underlying operation: "go to a previously-saved
-   * position." Best-effort: a CFI from a book whose structure has since
-   * changed (a re-imported, edited file) silently does nothing rather
-   * than crashing the reader. */
+  /** Parses `cfi`, finds the spine item it targets, and opens it with
+   * `cfi` as a bridging position — the shared "jump to a previously-
+   * saved position" mechanism behind resuming, bookmarks, highlights,
+   * and search results. Invalid or stale CFIs are ignored. */
   private async goToCfi(cfi: string): Promise<void> {
     try {
       const parsed = EpubCfi.parse(cfi);
@@ -837,49 +627,23 @@ export class ReaderController {
       }
       await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
     } catch {
-      // Best-effort — see doc comment.
+      // Best-effort.
     }
   }
 
-  /** Called by `ReaderApp` (via `useReaderController`) whenever the
-   * reader's UI locale changes, so every subsequent `announce()` call —
-   * including ones triggered well after mount, like a page turn — uses
-   * up-to-date, correctly localized text instead of whatever locale was
-   * active when this controller was first constructed. */
   public setTranslate(translate: Translate): void {
     this.translate = translate;
   }
 
-  /** Sets the text the shell's `aria-live` region should announce next,
-   * and bumps `announcementId` so a repeat of the same text still
-   * triggers a fresh announcement (an `aria-live` region only reacts to
-   * a DOM text *change*). */
+  /** Queues live-region text and bumps the id so repeated text is announced again. */
   private announce(text: string): void {
     this.announcement = text;
     this.announcementId++;
   }
 
-  /** A human-readable label for `spineIndex` — the label of the *last*
-   * TOC entry (by actual resolved spine order, not TOC listing order)
-   * whose target is at or before `spineIndex` (see
-   * `nearestPrecedingNavPoint`), so a spine item with no TOC entry of
-   * its own (an epigraph, an unlisted section between two listed
-   * chapters) still gets a meaningful label — the chapter it's actually
-   * part of — rather than a generic, spine-index-derived "Chapter N"
-   * that routinely doesn't match the book's own numbering at all. Used
-   * for the running header (see `PageFurniture`), live-region
-   * chapter-change announcements, and the progress scrubber's drag
-   * preview.
-   *
-   * Falls back to "Start of Book" specifically when the book *has* a
-   * TOC but `spineIndex` is before its first real entry (a cover, title
-   * page, etc. — the same section `TocPanel`'s synthetic "Start of
-   * Book" entry reaches, see `tocHighlightPath`) — this was a real bug:
-   * the progress scrubber previously showed "Chapter 1" for this
-   * section, disagreeing with what the TOC panel itself highlighted
-   * there. Only falls back further to a generic "Chapter N" when the
-   * book has no TOC at all, since calling literally every page "Start
-   * of Book" for such a book would be actively misleading. */
+  /** Human-readable chapter label for `spineIndex`, from the nearest
+   * preceding TOC entry, falling back to "Start of Book" or a generic
+   * "Chapter N". */
   private chapterLabel(spineIndex: number): string {
     const nearest = this.nearestPrecedingNavPoint(spineIndex);
     if (nearest) {
@@ -889,9 +653,7 @@ export class ReaderController {
     return hasAnyToc ? "Start of Book" : `Chapter ${spineIndex + 1}`;
   }
 
-  /** Flattens every *linked* entry out of a TOC tree, in document order
-   * — a helper for `nearestPrecedingNavPoint`, which needs to consider
-   * every entry as a candidate regardless of nesting depth. */
+  /** Flattens linked TOC entries in document order. */
   private static flattenLinkedNavPoints(items: readonly NavPoint[]): NavPoint[] {
     const result: NavPoint[] = [];
     for (const item of items) {
@@ -903,15 +665,8 @@ export class ReaderController {
     return result;
   }
 
-  /** The TOC entry (by actual resolved spine order, not TOC listing
-   * order) whose target is the *last* one at or before `spineIndex` —
-   * shared by `chapterLabel` and `tocHighlightPath`, both of which need
-   * to treat a spine item with no TOC entry of its own as "part of
-   * whichever listed chapter precedes it," not unlabeled. Returns
-   * `undefined` if there's no such entry — either the book's TOC is
-   * empty, or `spineIndex` is before its first real entry — callers
-   * distinguish those two cases themselves, since they mean different
-   * things (a generic "Chapter N" vs. "Start of Book"). */
+  /** Last linked TOC entry whose resolved spine position is at or before
+   * `spineIndex`. */
   private nearestPrecedingNavPoint(spineIndex: number): NavPoint | undefined {
     let best: NavPoint | undefined;
     let bestSpineIndex = -1;
@@ -932,31 +687,15 @@ export class ReaderController {
     return best;
   }
 
-  /** The TOC entry the shell should highlight as "current" — not
-   * necessarily the entry whose path exactly matches the open spine
-   * item (see `currentSpinePath`), since real books routinely have
-   * spine items with no TOC entry of their own at all (an epigraph, a
-   * dedication, an unlisted section between two listed chapters).
-   * Falls back to the book's very first spine item — i.e. the
-   * synthetic "Start of Book" entry `TocPanel` shows when the TOC's own
-   * first entry skips ahead of it — if the reader is somewhere before
-   * the first real TOC entry's target (a cover, title page, etc. that
-   * isn't listed at all). Without this fallback-to-nearest-preceding-
-   * entry logic, a reader on such an unlisted spine item would see
-   * *nothing* at all highlighted in the TOC, a real bug reported
-   * directly. */
+  /** TOC path to highlight for the current position, falling back to the
+   * first spine item before the first real TOC entry. */
   private tocHighlightPath(): string | undefined {
     return (
       this.nearestPrecedingNavPoint(this.spineIndex)?.path ?? this.pkg.spine[0]?.manifestItem.path
     );
   }
 
-  /** Book-wide page number of the first page of every spine item whose
-   * page count `bookPagination` has measured so far, keyed by manifest
-   * path — see `ReaderSnapshot.tocPageNumbers`'s doc comment for how
-   * `TocPanel` uses this. Empty before background pagination has made
-   * any progress at all (e.g. scroll mode/fixed-layout-only books,
-   * where `bookPagination` is never created — see `refreshBookPagination`). */
+  /** First measured page number for each spine item, keyed by manifest path. */
   private computeTocPageNumbers(): ReadonlyMap<string, number> {
     const result = new Map<string, number>();
     if (!this.bookPagination) {
@@ -972,15 +711,6 @@ export class ReaderController {
     return result;
   }
 
-  /** Whether `host` is fixed-layout content — either a single-page
-   * `FixedContentHost` or a (possibly two-page) `FixedSpreadHost` —
-   * i.e. author-designed, pixel-precise content our own typography
-   * settings/highlighting must never be layered onto (see
-   * `FixedContentHost`'s own class doc comment: it deliberately opts
-   * out of `ReadingTheme` entirely). Centralizes what would otherwise
-   * be an `instanceof FixedContentHost || instanceof FixedSpreadHost`
-   * check repeated at every one of the many call sites that need to
-   * treat both exactly alike. */
   private isFixedLayoutHost(
     host:
       | FixedContentHost
@@ -993,15 +723,7 @@ export class ReaderController {
     return host instanceof FixedContentHost || host instanceof FixedSpreadHost;
   }
 
-  /** The content document accessibility (keyboard navigation, focus
-   * management) and CFI/fragment resolution key off — the *only* document
-   * for every host type except `SpreadPaginatedHost`/`FixedSpreadHost`,
-   * where it's specifically the primary (left) column; see
-   * `SpreadPaginatedHost`'s own doc comment for why the right column is
-   * deliberately excluded (`FixedSpreadHost` follows the identical
-   * convention for its own two-page spreads, for the same reason: a
-   * screen reader needs one unambiguous document, not two visually
-   * side-by-side copies of "the current position"). */
+  /** Primary content document; spread hosts use their primary column only. */
   private primaryContentDocument(): Document | undefined {
     if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
       return this.host.primaryContentDocument();
@@ -1009,15 +731,7 @@ export class ReaderController {
     return this.host?.element.contentDocument ?? undefined;
   }
 
-  /** Every content document the reader might receive a click in — one for
-   * every host type except `SpreadPaginatedHost`/`FixedSpreadHost`, which
-   * have two apiece (both columns get working in-content links, even
-   * though only the left one participates in keyboard/focus
-   * accessibility). Defaults to `this.host`, but accepts an explicit one
-   * too — see `applyDisplaySettingsToHost`'s matching parameter, needed by
-   * `openSpineItem`'s chapter-crossing animation (issue #83), which
-   * must apply settings to the *incoming* host before `this.host` is
-   * actually reassigned to it. */
+  /** All content documents for a host, including both columns in spread mode. */
   private allContentDocuments(
     host:
       | FixedContentHost
@@ -1034,10 +748,6 @@ export class ReaderController {
     return doc ? [doc] : [];
   }
 
-  /** Updates the current content host's iframe title(s) to reflect the
-   * current chapter — split out so an animated page turn (see
-   * `animatePageTurn`), which swaps in a brand-new host without going
-   * through the full `setUpAccessibility` flow, can keep it in sync too. */
   private updateContentTitle(): void {
     const title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
     if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
@@ -1047,27 +757,8 @@ export class ReaderController {
     }
   }
 
-  /** (Re-)attaches `ArrowLeft`/`ArrowRight` keyboard navigation to every
-   * content document the current host has, *without* moving focus —
-   * split out from `setUpAccessibility` so a plain in-chapter page turn
-   * (including an animated one — see `animatePageTurn`, which swaps in a
-   * brand-new host/document each turn) can re-arm keyboard navigation
-   * for that new document without stealing focus away from wherever the
-   * reader currently has it, consistent with page turns never forcing
-   * focus (only chapter changes/TOC jumps/fragment navigation do — see
-   * `setUpAccessibility`).
-   *
-   * Every content document (not just the primary one) gets the exact
-   * same handlers — for every host type except `SpreadPaginatedHost`
-   * that's one document anyway, but a spread has two, and a reader who
-   * clicks into the companion (right) column to read it directly still
-   * expects the arrow keys to keep turning pages from there. The
-   * *managed-focus* side of accessibility (`setUpAccessibility`'s
-   * `focusContent` call, screen-reader-oriented) stays scoped to the
-   * primary column only — see `SpreadPaginatedHost`'s own doc comment —
-   * this is purely about keyboard navigation continuing to work for
-   * whichever column a sighted mouse/keyboard user happens to have
-   * clicked into. */
+  /** Reattaches arrow-key navigation to every current content document
+   * without moving focus. */
   private reattachKeyboardNav(): void {
     const documents = this.allContentDocuments();
     if (documents.length === 0) {
@@ -1079,31 +770,18 @@ export class ReaderController {
         {
           onNext: () => this.dispatchArrowNavigation(1),
           onPrevious: () => this.dispatchArrowNavigation(-1),
-          // Always "chapter", regardless of view mode — the Ctrl/Cmd+
-          // Arrow shortcut's whole point is jumping past however many
-          // pages/however much scroll remain in the current chapter, not
-          // just one more increment of whatever `onNext`/`onPrevious`
-          // already do.
+          // Ctrl/Cmd+Arrow always means chapter navigation.
           onNextChapter: () => void this.goToChapter(1),
           onPreviousChapter: () => void this.goToChapter(-1),
         },
-        // Space keeps its native "scroll down one viewport" behavior in
-        // continuous-scroll mode — already a well-understood, finer-
-        // grained way to move forward through the book than a
-        // hypothetical "next chapter" binding would be (see
-        // `AccessibilityController.attach`'s doc comment).
+        // Preserve Space's native viewport scroll in continuous-scroll mode.
         { interceptSpace: !(this.host instanceof ScrollContentHost) },
       );
     }
   }
 
-  /** A plain page/chapter turn (no modifier key) — paginated hosts turn
-   * one page/spread, everything else (continuous scroll, fixed layout)
-   * jumps a whole chapter, since neither has a discrete "page" concept.
-   * Shared by `reattachKeyboardNav` (content-iframe-scoped arrow keys)
-   * and `setUpGlobalArrowKeyFallback` (the parent-document fallback
-   * below) so the two can never disagree about what "next"/"previous"
-   * means. */
+  /** Plain ArrowLeft/ArrowRight navigation: page/spread turn in paginated
+   * mode, chapter jump otherwise. */
   private dispatchArrowNavigation(direction: 1 | -1): void {
     const isPaginated =
       this.host instanceof PaginatedContentHost ||
@@ -1112,49 +790,18 @@ export class ReaderController {
     void (isPaginated ? this.turnPage(direction) : this.goToChapter(direction));
   }
 
-  /** CSS selector for elements where `ArrowLeft`/`ArrowRight` already
-   * carries its own, unrelated meaning — text cursor movement in a
-   * field, moving between options in a menu/listbox/tab strip, or
-   * dragging the progress scrubber's slider thumb. `nav`/`aside` catch
-   * every flyout panel (Table of Contents, Search, Bookmarks &
-   * Highlights, Book Details — see each one's own root landmark
-   * element), and `[role="dialog"]` catches the EPUB Inspector (a
-   * Fluent `Dialog`). `setUpGlobalArrowKeyFallback` skips dispatching a
-   * page turn whenever focus is inside any of these, so "unless focus
-   * is in a panel" from the user's own framing of this fix holds
-   * exactly. */
+  /** Elements that should keep ArrowLeft/ArrowRight for their own interaction. */
   private static readonly ARROW_KEY_EXEMPT_SELECTOR =
     'input, textarea, select, [contenteditable="true"], [role="slider"], ' +
     '[role="menu"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], ' +
     '[role="listbox"], [role="option"], [role="tree"], [role="treeitem"], ' +
     '[role="tablist"], [role="tab"], [role="dialog"], nav, aside';
 
-  /** Detaches `setUpGlobalArrowKeyFallback`'s listener — see that
-   * method's doc comment. */
   private globalArrowKeyCleanup: (() => void) | undefined;
 
-  /**
-   * Fallback `ArrowLeft`/`ArrowRight` page-turn handling on the *parent*
-   * reader document itself (called once from `mount`), not just the
-   * content iframe(s) `reattachKeyboardNav` covers. Without this, arrow
-   * keys only worked while focus happened to be inside the book's own
-   * content — which page turns don't reliably preserve (a plain page
-   * turn deliberately never forces focus, per `reattachKeyboardNav`'s
-   * own doc comment, and an *animated* turn swaps in a brand-new
-   * iframe/document each time, which silently drops focus back to this
-   * parent document's `<body>` if it had been inside the just-removed
-   * one) — from a reader's perspective, the arrows would simply and
-   * unpredictably "stop working" after some number of turns. This
-   * listener means the arrows keep working from *anywhere* in the
-   * reader shell — a just-clicked toolbar button, the page margins
-   * outside the content host, or nowhere in particular — with the one
-   * carve-out the user asked for: not while focus is genuinely inside
-   * one of the flyout panels, a menu, or any other control that already
-   * gives arrow keys a meaning of its own (see
-   * `ARROW_KEY_EXEMPT_SELECTOR`). Ctrl/Cmd+Arrow (chapter jump) is
-   * deliberately left alone here — `ReaderApp` already wires that
-   * directly, and it's harmless for both listeners to independently
-   * agree on the exact same modifier-gated shortcut. */
+  /** Handles ArrowLeft/ArrowRight on the parent document so page turns
+   * still work when focus is outside the content iframe, except inside
+   * controls and panels matched by `ARROW_KEY_EXEMPT_SELECTOR`. */
   private setUpGlobalArrowKeyFallback(ownerDocument: Document): void {
     this.globalArrowKeyCleanup?.();
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -1175,33 +822,13 @@ export class ReaderController {
     this.globalArrowKeyCleanup = () => ownerDocument.removeEventListener("keydown", handleKeyDown);
   }
 
-  /** `true` if `host`'s own iframe element currently has the parent
-   * document's focus — the only way its content document's keyboard
-   * listener (see `reattachKeyboardNav`) could have received the very
-   * keypress that triggered this turn. Used by `turnPageInternal` to
-   * decide whether an animated turn's host swap needs to *restore*
-   * focus afterward (see `restoreFocusAfterHostSwap`) — a real,
-   * confirmed bug without this: the old iframe (which had focus) gets
-   * disposed when the turn commits, and nothing else in the parent
-   * document claims focus in its place, so the *next* keyboard page
-   * turn's keydown goes nowhere at all, silently. */
+  /** Whether the host iframe currently has parent-document focus. */
   private iframeHasFocus(host: PaginatedContentHost): boolean {
     const iframe = host.element;
     return iframe.ownerDocument.activeElement === iframe;
   }
 
-  /** The spread-mode equivalent of `iframeHasFocus`: which of `host`'s
-   * two columns (if either) currently has focus — `"left"` or `"right"`
-   * (see `SpreadPaginatedHost.columnElement` — "left" means whichever
-   * element is actually occupying that slot right now, `mergedTailHost`
-   * included), `undefined` if neither does (a mouse/touch-driven turn,
-   * which never moves focus into the content at all). Both columns are
-   * checked, not just the primary one, since a reader can click
-   * directly into the right column and drive keyboard navigation from
-   * there (see `reattachKeyboardNav`'s "every content document" scope)
-   * — an animated spread turn disposes *both* of the old spread's
-   * iframes, so restoring focus correctly needs to know which one (if
-   * either) actually held it. */
+  /** Which spread column currently has focus, if any. */
   private spreadFocusedColumn(host: SpreadPaginatedHost): "left" | "right" | undefined {
     for (const column of ["left", "right"] as const) {
       const iframe = host.columnElement(column);
@@ -1212,17 +839,8 @@ export class ReaderController {
     return undefined;
   }
 
-  /** Restores keyboard focus into the *new* content host's document
-   * after an animated page turn swaps it in — but only if
-   * `hadKeyboardFocus` (captured via `iframeHasFocus` *before* the swap)
-   * is `true`. Deliberately conditional: an ordinary mouse/touch-driven
-   * turn (a click or a drag, never having moved focus into the content
-   * at all) must keep the existing "page turns never force focus"
-   * behavior (see `AccessibilityController.focusContent`'s callers) —
-   * forcibly focusing the content on every turn regardless would be a
-   * real regression for mouse users, disorienting focus on every single
-   * page turn instead of only when keyboard navigation actually needs
-   * it preserved. */
+  /** Restores focus after an animated host swap only if the old host had
+   * keyboard focus. */
   private restoreFocusAfterHostSwap(hadKeyboardFocus: boolean): void {
     if (!hadKeyboardFocus) {
       return;
@@ -1233,14 +851,7 @@ export class ReaderController {
     }
   }
 
-  /** The spread-mode equivalent of `restoreFocusAfterHostSwap`: restores
-   * focus into whichever column (`focusedColumn`, captured via
-   * `spreadFocusedColumn` *before* the old spread was disposed) actually
-   * had it — into the *same* column of the new spread, not always the
-   * primary one, so a reader driving keyboard navigation from the
-   * companion column doesn't get silently bounced back to the primary
-   * one on every turn. A no-op if `focusedColumn` is `undefined` (an
-   * ordinary mouse/touch-driven turn). */
+  /** Restores focus to the same spread column after an animated swap. */
   private restoreSpreadFocusAfterHostSwap(
     newHost: SpreadPaginatedHost,
     focusedColumn: "left" | "right" | undefined,
@@ -1254,44 +865,8 @@ export class ReaderController {
     }
   }
 
-  /** Re-arms keyboard navigation and the click/drag page-turn gesture on
-   * the current content document, and restores focus into the content if
-   * nothing else in the parent app is deliberately holding it — call
-   * whenever the browser window regains OS-level focus (see the reader
-   * page's own `window.addEventListener("focus", ...)`).
-   *
-   * The concrete, reproducible cause this guards against: a plain page
-   * turn deliberately never moves focus (see `reattachKeyboardNav`'s doc
-   * comment), so if the reader's last interaction before switching away
-   * landed focus somewhere in the parent shell (a toolbar button, or
-   * simply nowhere in particular after a click on non-focusable chrome),
-   * keyboard arrow-key page-turning silently stops working — not because
-   * any listener broke, but because the browser correctly delivers
-   * keydown events to whatever currently has focus, which is no longer
-   * inside the content iframe at all. The previously-reported symptom
-   * ("page turning stops working entirely after alt-tabbing away and
-   * back, until navigating via the TOC") is exactly this: TOC navigation
-   * incidentally "fixes" it only because `setUpAccessibility` explicitly
-   * refocuses the content as part of opening a spine item, not because
-   * of anything specific to rebuilding the host.
-   *
-   * Refocuses content whenever the window regains focus *unless* a
-   * toolbar menu/popup is currently open (Fluent UI menus manage their
-   * own focus trapping — forcibly moving focus away mid-interaction
-   * would be actively disruptive, not helpful). A plain toolbar button
-   * merely *having* focus (the common case: the reader's last action
-   * before switching away was clicking something, or simply clicking
-   * back into the window landed on the toolbar's chrome rather than the
-   * page itself) is deliberately *not* treated as "leave it alone" —
-   * reading is this app's primary activity, so restoring keyboard
-   * page-turning takes priority over a transient, non-input control
-   * happening to still show a focus ring.
-   *
-   * Also re-arms the click/drag page-turn gesture (`setUpDragPageTurn`)
-   * as a cheap additional safety net — it's already safe to call
-   * repeatedly on a still-alive document (it cleans up its own previous
-   * listener first), so there's no real cost to re-running it here even
-   * if it turns out not to be needed for this particular regression. */
+  /** Reattaches content interaction on window focus and restores content
+   * focus unless a menu, listbox, or dialog is open. */
   public handleWindowRefocus(): void {
     this.reattachKeyboardNav();
     this.setUpDragPageTurn();
@@ -1306,12 +881,8 @@ export class ReaderController {
     }
   }
 
-  /** (Re-)attaches keyboard navigation to the current content host's
-   * iframe document and moves focus into it — called every time a new
-   * spine item is opened, since each one gets a fresh iframe/document.
-   * "Next"/"previous" mean "turn a page" in paginated mode (there's no
-   * page concept in scroll/fixed-layout mode, so they mean "go to the
-   * next/previous chapter" there instead). */
+  /** Reattaches accessibility handlers and moves focus into the current
+   * content document. */
   private setUpAccessibility(focusTarget?: Element): void {
     this.updateContentTitle();
     this.reattachKeyboardNav();
@@ -1323,60 +894,19 @@ export class ReaderController {
     this.accessibility.focusContent(iframeDocument, focusTarget);
   }
 
-  /**
-   * Intercepts clicks on in-content `<a href>` links (footnotes, cross-
-   * references, "see chapter N" links — extremely common in real books)
-   * and routes them through the reader's own navigation instead of
-   * letting the browser attempt to navigate the sandboxed iframe itself.
-   * Without this, real-Chromium testing showed Chrome silently blocks the
-   * navigation (the sandbox has no `allow-top-navigation` token, nor
-   * could it safely be given one — that would let untrusted book content
-   * navigate the whole extension tab) but *also* discards the iframe's
-   * current content in the process, leaving a blank page — arguably
-   * worse than doing nothing. An absolute-URI link (`http:`, `mailto:`,
-   * etc.) opens in a new top-level browser tab instead, the standard
-   * behavior real readers use for links that lead outside the book.
-   *
-   * Also wires up the image viewer: every `<img>` at least
-   * `MIN_ZOOMABLE_IMAGE_SIZE` px in both rendered dimensions, and not
-   * already inside a link (a linked image should still navigate like any
-   * other link, not "zoom" instead), is marked focusable
-   * (`tabIndex`/`role="button"`/an `aria-label`) so it's independently
-   * reachable by keyboard, not just mouse — clicking it, or pressing
-   * Enter/Space while it's focused, opens `ReaderController.
-   * openImageViewer`. An image not yet finished loading at scan time
-   * (rare, but the content host's own render/pagination pass doesn't
-   * strictly wait for every image decode) is re-checked once its `load`
-   * event fires, rather than being silently skipped.
-   *
-   * Attached to every document `allContentDocuments()` returns — in
-   * spread mode, that's both columns, so a link (or a zoomable image) on
-   * the companion (right) page works exactly like one on the primary
-   * (left) page, even though only the left page participates in
-   * keyboard/focus accessibility.
-   */
+  /** Intercepts in-content links for reader navigation, opens external
+   * URIs in a new tab, and wires zoomable images for click and keyboard
+   * activation across all active content documents. */
   private setUpContentInteraction(): void {
     const documents = this.allContentDocuments();
     if (documents.length === 0) {
       return;
     }
-    // A merged spread's borrowed tail document (see `SpreadPaginatedHost.
-    // mergedTailDocument`) belongs to the *previous* spine item — links
-    // within it must resolve relative to *that* item's own path/spine
-    // index, not `this.spineIndex`, or an in-book link clicked on that
-    // still-fully-interactive borrowed page would resolve against the
-    // wrong document entirely (silently landing somewhere else in the
-    // book, or failing to resolve at all).
+    // A merged spread's borrowed tail document belongs to the previous
+    // spine item, so links in it must resolve relative to that item.
     const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
-    // A `FixedSpreadHost` "pair" is the fixed-layout equivalent of that
-    // same problem, just without any single "current chapter" to
-    // default to at all: its left and right columns are two genuinely
-    // *different* spine items (unlike every reflowable host, where
-    // every visible document — outside a merge's own borrowed tail —
-    // belongs to the same one, `this.spineIndex`), so a link clicked in
-    // whichever one *isn't* `this.spineIndex` itself (normalized to the
-    // pair's reading-order-*first* item — see `openSpineItem`) needs the
-    // *other* one's own spine index, not this chapter's.
+    // In a fixed spread, each column can be a different spine item, so
+    // resolve links against the clicked document's own spine index.
     const fixedSpread = this.host instanceof FixedSpreadHost ? this.host.spread : undefined;
     const fixedSpreadDocs = this.host instanceof FixedSpreadHost ? this.host.contentDocuments() : [];
     const pathAndSpineIndexFor = (doc: Document): { path: string; spineIndex: number } | undefined => {
@@ -1396,32 +926,13 @@ export class ReaderController {
     const cleanups: Array<() => void> = [];
 
     const isZoomableImage = (element: Element): element is HTMLImageElement => {
-      // Fixed-layout content never opens the zoom viewer at all — a
-      // real, confirmed conflict found via testing: a comic/manga page
-      // (the quintessential fixed-layout use case) is very often
-      // *entirely* one full-page `<img>`, so without this exclusion,
-      // literally every click anywhere on the visible page opened the
-      // zoom lightbox instead of turning the page — the reader's
-      // primary interaction for this content type was effectively
-      // unusable. Fixed-layout content is already shown at whatever
-      // scale fits the reader pane (see `FixedContentHost.applyScale`),
-      // so "zoom" isn't a meaningful separate action the way it is for
-      // an inline image embedded in otherwise-reflowable text.
+      // Fixed-layout content uses click/tap for page turns and does not
+      // support the image zoom viewer.
       if (this.isFixedLayoutHost(this.host)) {
         return false;
       }
-      // Deliberately `localName` rather than `instanceof HTMLImageElement`
-      // (`element` was obtained from the *content iframe's own* document,
-      // a separate JS realm with its own `HTMLImageElement` constructor;
-      // `instanceof` compares against *this* (parent) realm's
-      // constructor, which fails for every cross-realm element regardless
-      // of its actual type) — and rather than `tagName`, which preserves
-      // its as-authored case for an XML/XHTML document (content here is
-      // parsed as `application/xhtml+xml`, so a real book's `<img>`
-      // reads back as `"img"`, not the `"IMG"` a plain HTML document
-      // would normalize it to). `localName` is spec-guaranteed lowercase
-      // in both cases — both were real bugs caught via testing in real
-      // Chromium.
+      // Use `localName` for cross-realm XHTML content; `instanceof
+      // HTMLImageElement` and `tagName` are unreliable here.
       if (element.localName !== "img" || element.closest("a[href]")) {
         return false;
       }
@@ -1444,8 +955,7 @@ export class ReaderController {
         event.preventDefault();
 
         if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
-          // An absolute URI (http:, https:, mailto:, ...) — not a path
-          // within this book at all.
+          // External URI, not an in-book path.
           window.open(href, "_blank", "noopener,noreferrer");
           return;
         }
@@ -1460,9 +970,7 @@ export class ReaderController {
           (ref) => ref.manifestItem.path === targetPath,
         );
         if (targetSpineIndex === -1) {
-          // Points at something that isn't a spine item (e.g. a resource
-          // the manifest declares but the spine doesn't include) — nothing
-          // sensible to navigate to; already prevented default above.
+          // Ignore links to non-spine resources.
           return;
         }
 
@@ -1481,11 +989,7 @@ export class ReaderController {
       iframeDocument.addEventListener("click", clickHandler);
       cleanups.push(() => iframeDocument.removeEventListener("click", clickHandler));
 
-      // Keyboard equivalent of the click handler above, for a focused
-      // zoomable image (see `markZoomableImage` below, which is what
-      // makes an image focusable in the first place) — Enter and Space
-      // are both conventional "activate" keys for a `role="button"`
-      // element, matching how a real `<button>` responds to either.
+      // Keyboard activation for a focused zoomable image.
       const keydownHandler = (event: KeyboardEvent): void => {
         const active = iframeDocument.activeElement;
         if ((event.key !== "Enter" && event.key !== " ") || !active || !isZoomableImage(active)) {
@@ -1497,10 +1001,8 @@ export class ReaderController {
       iframeDocument.addEventListener("keydown", keydownHandler);
       cleanups.push(() => iframeDocument.removeEventListener("keydown", keydownHandler));
 
-      // Marks an already-loaded, currently-eligible image as focusable/
-      // announced — re-invoked from the `load` listener below for an
-      // image that wasn't finished loading (so its rendered size wasn't
-      // known yet) at the time of the initial scan.
+      // Re-run after load if the image size was not known during the
+      // initial scan.
       const markIfZoomable = (img: HTMLImageElement): void => {
         if (!isZoomableImage(img)) {
           return;
@@ -1524,13 +1026,8 @@ export class ReaderController {
         cleanups.push(() => img.removeEventListener("load", onLoad));
       }
 
-      // Hides the toolbar immediately on any click into the content —
-      // see `contentPointerActivityId`'s doc comment. Attached here
-      // (rather than only alongside the paginated/spread click-to-
-      // navigate listeners) so this also covers scroll mode and fixed-
-      // layout content, which have no page-turn gesture of their own but
-      // should still dismiss the toolbar the instant the reader clicks
-      // into the page.
+      // Any pointer activity in content hides the toolbar, even in
+      // scroll and fixed-layout modes.
       const pointerDownHandler = (): void => {
         this.bumpContentActivity();
       };
@@ -1545,17 +1042,8 @@ export class ReaderController {
     };
   }
 
-  /** Relays a resize (e.g. the reader pane changing size, or the user
-   * changing font size in a future settings panel) into the active
-   * content host, which preserves reading position across the relayout —
-   * see `PaginatedContentHost.relayout`/`ScrollContentHost.resize`. A
-   * no-op if the size hasn't actually changed (e.g. a deferred resize —
-   * see `pendingResize` — turns out to match what was already used),
-   * avoiding pointless re-pagination that could otherwise introduce its
-   * own drift in the restored position. Crossing the two-page-spread
-   * width threshold (see `shouldSwitchSpreadMode`) is handled as a full
-   * host swap rather than a plain relayout, since a spread is
-   * architecturally two iframes, not one. */
+  /** Resizes the current host while preserving position; a spread-mode
+   * threshold crossing reopens instead of relayouting. */
   public resize(width: number, height: number): void {
     this.diagnostics.record(`resize width=${width} height=${height} isLoadInFlight=${this.isLoadInFlight}`);
     this.width = width;
@@ -1588,18 +1076,7 @@ export class ReaderController {
     this.notify();
   }
 
-  /** `true` if the reader pane just crossed the two-page-spread width
-   * threshold (`SpreadPaginatedHost.isEligible` for reflowable content,
-   * `FixedLayoutSpreadPlanner.isSpreadModeEligible` for fixed-layout —
-   * tracked against `fixedLayoutSpreadEligible`, what the *currently
-   * open* `FixedSpreadHost` was actually built with, rather than
-   * re-deriving "should this be paired or single" from the new width
-   * directly: a `FixedSpread` can be `"single"` for reasons that have
-   * nothing to do with viewport width at all — a `page-spread-center`
-   * item, or a lone unpaired page at either end of a run — and must
-   * not be treated as "spread mode became ineligible" just because it
-   * happens to not currently be paired). Scroll mode never uses a
-   * spread — see `SpreadPaginatedHost`'s doc comment. */
+  /** Whether the new width changes spread eligibility for the open host. */
   private shouldSwitchSpreadMode(width: number): boolean {
     if (this.host instanceof FixedSpreadHost) {
       const eligible = FixedLayoutSpreadPlanner.isSpreadModeEligible(
@@ -1615,10 +1092,8 @@ export class ReaderController {
     return SpreadPaginatedHost.isEligible(width) !== this.host instanceof SpreadPaginatedHost;
   }
 
-  /** Bridges the current reading position via CFI and reopens the
-   * current spine item at the (already-updated) `width`/`height` — used
-   * when a resize crosses the spread-mode width threshold, the same
-   * CFI-bridging `setViewMode` uses for the paginated/scroll switch. */
+  /** Reopens the current spine item at the current size, bridging
+   * position through a CFI. */
   private async reopenForCurrentSize(): Promise<void> {
     const position = this.host?.currentPosition();
     const bridgeCfi = position
@@ -1632,10 +1107,8 @@ export class ReaderController {
       return;
     }
 
-    // Bridge position across the switch: the two modes render into
-    // separate content hosts (separate iframes/documents), so a raw DOM
-    // position from the old one is meaningless in the new one — resolve
-    // it through a CFI instead, exactly the scenario CFI exists for.
+    // Bridge position through a CFI because the new mode uses a
+    // different host and document.
     const position = this.host?.currentPosition();
     const bridgeCfi = position
       ? this.locatorResolver.generate(this.spineIndex, position.node, position.offset).cfi
@@ -1650,14 +1123,8 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Sets the reader-controlled font-size multiplier (clamped to
-   * `ReadingTheme`'s supported range), persists it as the new default for
-   * future chapters/sessions, and re-measures the current content host at
-   * the new size — the same relayout path a window resize uses, so
-   * reading position is preserved across the font-size change exactly the
-   * way it is across a resize (see `PaginatedContentHost.relayout`/
-   * `ScrollContentHost.resize`). A no-op for a fixed-layout spine item,
-   * which has no reader-adjustable typography. */
+  /** Sets and persists font scale, then reapplies display settings and
+   * pagination. No-op for fixed-layout content. */
   public async setFontScale(scale: number): Promise<void> {
     const clamped = Math.min(
       ReadingTheme.MAX_FONT_SCALE,
@@ -1670,21 +1137,14 @@ export class ReaderController {
     await this.library.setDefaultFontScale(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
-    // A relayout shifts every note marker's pixel position exactly the
-    // way a window resize does (see `resize`'s identical call) — this
-    // was a real, confirmed bug: markers stayed pinned to their
-    // pre-change position after a font/line-spacing/letter-spacing/
-    // content-width change specifically (unlike a resize, which already
-    // got this right).
+    // Relayout moves note markers too.
     this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
 
-  /** Sets the reader-controlled font family, persists it, and re-measures
-   * the current content host — a different typeface has different
-   * metrics, so this reflows content the same way a font-scale change
-   * does. A no-op for a fixed-layout spine item. */
+  /** Sets and persists font family, then reapplies display settings and
+   * pagination. No-op for fixed-layout content. */
   public async setFontFamily(family: FontFamilyChoice): Promise<void> {
     if (family === this.fontFamily || this.isFixedLayoutHost(this.host)) {
       return;
@@ -1693,22 +1153,14 @@ export class ReaderController {
     await this.library.setDefaultFontFamily(family);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
-    // A relayout shifts every note marker's pixel position exactly the
-    // way a window resize does (see `resize`'s identical call) — this
-    // was a real, confirmed bug: markers stayed pinned to their
-    // pre-change position after a font/line-spacing/letter-spacing/
-    // content-width change specifically (unlike a resize, which already
-    // got this right).
+    // Relayout moves note markers too.
     this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
 
-  /** Sets the reader-controlled line-spacing multiplier (clamped to
-   * `ReadingTheme`'s supported range) — same "persist, re-measure,
-   * refresh book-wide pagination" shape as `setFontScale`, since a
-   * taller/shorter line-height reflows content exactly the same way a
-   * font-size change does. A no-op for a fixed-layout spine item. */
+  /** Sets and persists line spacing, then reapplies display settings and
+   * pagination. No-op for fixed-layout content. */
   public async setLineSpacing(spacing: number): Promise<void> {
     const clamped = Math.min(
       ReadingTheme.MAX_LINE_SPACING,
@@ -1721,21 +1173,14 @@ export class ReaderController {
     await this.library.setDefaultLineSpacing(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
-    // A relayout shifts every note marker's pixel position exactly the
-    // way a window resize does (see `resize`'s identical call) — this
-    // was a real, confirmed bug: markers stayed pinned to their
-    // pre-change position after a font/line-spacing/letter-spacing/
-    // content-width change specifically (unlike a resize, which already
-    // got this right).
+    // Relayout moves note markers too.
     this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
 
-  /** Sets the reader-controlled extra letter-spacing (clamped to
-   * `ReadingTheme`'s supported range) — same shape as `setLineSpacing`;
-   * wider tracking reflows content (it changes where lines break) just
-   * like line-height does. A no-op for a fixed-layout spine item. */
+  /** Sets and persists letter spacing, then reapplies display settings
+   * and pagination. No-op for fixed-layout content. */
   public async setLetterSpacing(spacing: number): Promise<void> {
     const clamped = Math.min(
       ReadingTheme.MAX_LETTER_SPACING,
@@ -1748,23 +1193,14 @@ export class ReaderController {
     await this.library.setDefaultLetterSpacing(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
-    // A relayout shifts every note marker's pixel position exactly the
-    // way a window resize does (see `resize`'s identical call) — this
-    // was a real, confirmed bug: markers stayed pinned to their
-    // pre-change position after a font/line-spacing/letter-spacing/
-    // content-width change specifically (unlike a resize, which already
-    // got this right).
+    // Relayout moves note markers too.
     this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
 
-  /** Sets the reader-controlled reading column width in `em` (clamped to
-   * `ReadingTheme`'s supported range) — what a reader thinks of as
-   * "margins" (see `ReadingTheme.CONTENT_WIDTH_PROPERTY`). Same shape as
-   * `setLineSpacing`; a narrower/wider column reflows content just like
-   * line-height/letter-spacing do. A no-op for a fixed-layout spine
-   * item, whose page design is fixed/pixel-precise. */
+  /** Sets and persists content width, then reapplies display settings and
+   * pagination. No-op for fixed-layout content. */
   public async setContentWidth(widthEm: number): Promise<void> {
     const clamped = Math.min(
       ReadingTheme.MAX_CONTENT_WIDTH_EM,
@@ -1777,20 +1213,13 @@ export class ReaderController {
     await this.library.setDefaultContentWidth(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
-    // A relayout shifts every note marker's pixel position exactly the
-    // way a window resize does (see `resize`'s identical call) — this
-    // was a real, confirmed bug: markers stayed pinned to their
-    // pre-change position after a font/line-spacing/letter-spacing/
-    // content-width change specifically (unlike a resize, which already
-    // got this right).
+    // Relayout moves note markers too.
     this.highlightInteraction.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
 
-  /** Sets the reader-controlled page color theme and persists it. Unlike
-   * font scale/family, this never needs a relayout — colors don't affect
-   * line-wrapping. A no-op for a fixed-layout spine item. */
+  /** Sets and persists page theme without relayout. No-op for fixed-layout content. */
   public async setPageTheme(theme: PageTheme): Promise<void> {
     if (theme === this.pageTheme || this.isFixedLayoutHost(this.host)) {
       return;
@@ -1801,19 +1230,8 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Sets the reader-controlled page brightness multiplier and persists
-   * it (issue #92/#93). Pure UI state, like `setChromeTheme` — unlike
-   * every other display setting here, this never touches a content
-   * document at all: the reader shell applies it as a single `filter`
-   * on the whole reading pane (see `ReadingTheme`'s own doc comment on
-   * `MIN_BRIGHTNESS` for why there, not per-document), which dims the
-   * book's own content *and* the surrounding page background/margins in
-   * one pass, and — being a plain reactive style, not something baked
-   * into a paginated host at open time — works identically for
-   * fixed-layout content too, unlike every other reader-controlled
-   * typography/color setting. So this is just a state update, persist,
-   * and notify; `ReaderApp` reads `brightness` straight off the
-   * snapshot on every render. */
+  /** Sets and persists reader brightness. It is applied at the reader-shell
+   * level, so it also works for fixed-layout content. */
   public async setBrightness(brightness: number): Promise<void> {
     const clamped = ReadingTheme.clampBrightness(brightness);
     if (clamped === this.brightness) {
@@ -1824,11 +1242,7 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Sets the reader's own chrome color and persists it. Pure UI state —
-   * unlike `setPageTheme`/`setFontFamily`, this never touches a content
-   * document at all (no fixed-layout exception needed either, since it
-   * has nothing to do with the book's own content), so it's just a
-   * state update and a notify. */
+  /** Sets and persists the reader chrome theme. */
   public async setChromeTheme(theme: ChromeThemeChoice): Promise<void> {
     if (theme === this.chromeTheme) {
       return;
@@ -1838,10 +1252,7 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Sets which animation click/drag page turns use (see
-   * `PageTurnAnimationStyle`) — same "pure UI state, just persist and
-   * notify" shape as `setChromeTheme`, since it never touches a content
-   * document either. */
+  /** Sets and persists the page-turn animation style. */
   public async setPageTurnAnimationStyle(style: PageTurnAnimationStyle): Promise<void> {
     if (style === this.pageTurnAnimationStyle) {
       return;
@@ -1851,33 +1262,16 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Opens the image viewer overlay on a specific image — called by the
-   * click/keyboard handlers `setUpContentInteraction` attaches to
-   * qualifying `<img>` elements. Pure UI state, not persisted (there's
-   * nothing meaningful to resume — closing and reopening the same image
-   * is a fresh, cheap action, unlike a reading position).
-   *
-   * `sourceElement` (the image itself) is remembered so `closeImageViewer`
-   * can restore focus back onto it — without this, a real, reported bug:
-   * the viewer's own close button lives in the *parent* document, so
-   * once it (or the backdrop) is what has focus at close time, that
-   * focus stays in the parent unless something explicitly moves it back
-   * — and `AccessibilityController`'s Left/Right keyboard navigation is
-   * attached to the *content* document specifically (keyboard events
-   * don't bubble out of an iframe), so a reader who'd been turning pages
-   * with the keyboard would suddenly find arrow keys silently doing
-   * nothing at all after closing the viewer. */
+  /** Opens the image viewer and remembers the source element so focus can
+   * be restored on close. */
   public openImageViewer(src: string, alt: string, sourceElement: Element): void {
     this.imageViewer = { src, alt };
     this.imageViewerReturnFocusTarget = sourceElement;
     this.notify();
   }
 
-  /** Closes the image viewer overlay, if open, and restores focus back
-   * onto whichever image opened it (see `openImageViewer`'s doc comment)
-   * — falling back to the content document's own managed-focus default
-   * (its `body`) if that element is no longer around (e.g. the chapter
-   * changed while the viewer happened to be open). */
+  /** Closes the image viewer and restores focus to the source image when
+   * possible. */
   public closeImageViewer(): void {
     if (!this.imageViewer) {
       return;
@@ -1894,22 +1288,8 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Restores focus to the current content document's own managed-focus
-   * default (see `AccessibilityController.focusContent`) — call whenever
-   * a parent-document overlay (the TOC panel, Book Details panel) closes
-   * *without* itself navigating anywhere (a TOC entry click, unlike a
-   * bare close, already moves focus into the target content as part of
-   * its own navigation — see `goToNavPoint`/`setUpAccessibility`).
-   *
-   * This was a real, reported bug: closing either panel with the mouse
-   * left focus stranded on the panel's own (parent-document) close
-   * button, and since `AccessibilityController`'s Left/Right keyboard
-   * navigation is attached to the *content* document specifically
-   * (keyboard events don't bubble out of an iframe), arrow keys silently
-   * did nothing afterward. See `AccessibilityController.focusContent`'s
-   * own doc comment for the actual underlying fix (focusing the iframe
-   * *element itself*, not just something inside it) — this method is
-   * just the call site for the "closed without navigating" case. */
+  /** Restores managed focus to the current content document after a
+   * parent-document overlay closes without navigating. */
   public restoreContentFocus(): void {
     const iframeDocument = this.primaryContentDocument();
     if (iframeDocument) {
@@ -1917,25 +1297,8 @@ export class ReaderController {
     }
   }
 
-  /** Writes the current font scale/family/line-spacing/letter-spacing and
-   * page theme onto every current content document as CSS custom
-   * properties (see `ReadingTheme.applyFontScale`/`applyFontFamily`/
-   * `applyLineSpacing`/`applyLetterSpacing`/`applyPageTheme`) and, if
-   * `relayout` is set, re-measures at the current size — every spine
-   * item load applies all of these the same way (see `openSpineItem`),
-   * so a book opened mid-session at non-default settings looks correct
-   * immediately, not just after the first explicit change. No-op for
-   * fixed-layout content, which never gets the reading theme at all. In
-   * spread mode, both columns are independent documents and need the
-   * properties set individually before the shared relayout re-measures
-   * them together.
-   *
-   * Defaults to `this.host`, but accepts an explicit one too — needed
-   * by `openSpineItem`'s chapter-crossing turn animation (issue #83),
-   * which must apply settings to the *incoming* host, correctly
-   * positioned, before the turn actually plays and well before
-   * `this.host` is reassigned to it (see `allContentDocuments`'s
-   * matching parameter). */
+  /** Applies typography and page-theme settings to a host and optionally
+   * relayouts it. */
   private applyDisplaySettingsToHost(
     options: { relayout: boolean },
     host:
@@ -1971,22 +1334,8 @@ export class ReaderController {
     }
   }
 
-  /** Applies the persisted font scale/family/line-spacing/letter-spacing/
-   * content-width/page theme to a freshly-opened host (see
-   * `openSpineItem`) — every spine item load needs this, not just
-   * explicit in-session changes, so a book opened mid-session at
-   * non-default settings looks correct immediately. Skips the (fairly
-   * expensive) relayout pass entirely when every setting is already at
-   * its theme-default value, since the freshly-opened host was already
-   * paginated at those defaults by its own `open()` call. Brightness is
-   * *not* one of these — see `setBrightness`'s doc comment for why it's
-   * applied once, at the reader-shell level, rather than per-host.
-   *
-   * Defaults to `this.host` (the normal case — see
-   * `applyDisplaySettingsToHost`'s matching parameter), but accepts an
-   * explicit one for `openSpineItem`'s chapter-crossing animation
-   * (issue #83), which needs this applied to the *incoming* host before
-   * `this.host` actually becomes it. */
+  /** Applies non-default persisted display settings to a freshly opened
+   * host. */
   private applyPersistedDisplaySettingsToFreshHost(
     host:
       | FixedContentHost
@@ -2010,72 +1359,49 @@ export class ReaderController {
     }
   }
 
-  /** Issue #100: clears the live search spotlight on an ordinary "leave
-   * this page behind" navigation — a page turn, a chapter jump, a
-   * bookmark/highlight jump, a TOC jump, or a scrubber drag — see
-   * `SearchCoordinator.clearHighlightUnlessPinned`. */
+  /** Clears the search highlight on ordinary navigation unless it is pinned. */
   private clearSearchHighlightUnlessPinned(): void {
     this.searchCoordinator.clearHighlightUnlessPinned();
   }
 
-  /** See `HighlightInteraction.dismissSelectionToolbar`. */
   public dismissSelectionToolbar(): void {
     this.highlightInteraction.dismissSelectionToolbar();
   }
 
-  /** See `HighlightInteraction.dismissActiveHighlight`. */
   public dismissActiveHighlight(): void {
     this.highlightInteraction.dismissActiveHighlight();
   }
 
-  /** See `HighlightInteraction.openHighlightPopup`. */
   public openHighlightPopup(id: string): void {
     this.highlightInteraction.openHighlightPopup(id);
   }
 
-  /** Clears the current error/severity — the shell calls this once a
-   * transient error's own toast has been visible long enough (see
-   * `FriendlyError`), or on an explicit dismiss. Harmless to call for a
-   * blocking error too (there's no separate "retry" state to preserve),
-   * though the shell doesn't currently auto-dismiss those. */
+  /** Clears the current error state. */
   public dismissError(): void {
     this.error = undefined;
     this.errorSeverity = undefined;
     this.notify();
   }
 
-  /** Creates a highlight from the current selection — see
-   * `HighlightManager.add`. */
   public async addHighlight(style: HighlightStyle, openNoteEditor = false): Promise<void> {
     return this.highlights.add(style, openNoteEditor);
   }
 
-  /** Removes a highlight — see `HighlightManager.remove`. */
   public async removeHighlight(id: string): Promise<void> {
     return this.highlights.remove(id);
   }
 
-  /** Attaches, edits, or clears a note on an existing highlight — see
-   * `HighlightManager.setNote`. */
   public async setHighlightNote(id: string, note: string | undefined): Promise<void> {
     return this.highlights.setNote(id, note);
   }
 
-  /** Changes an existing highlight's color/style — see
-   * `HighlightManager.setStyle`. */
   public async setHighlightStyle(id: string, style: HighlightStyle): Promise<void> {
     return this.highlights.setStyle(id, style);
   }
 
-  /** Turns one page (or one spread, in spread mode) in paginated mode. In
-   * scroll mode, this is a no-op — scrolling is continuous and has no
-   * discrete "page" concept; use native scrolling within the content host
-   * instead. Crossing the first/last page of the current spine item
-   * advances to the adjacent chapter automatically. A single-column
-   * paginated turn plays a book-like flip animation (see
-   * `animatePageTurn`); spread turns and chapter-boundary turns are
-   * instant for now. Ignored entirely if a turn is already in progress —
-   * see `isTurningPage`. */
+  /** Turns one page or spread in paginated mode, crossing chapter
+   * boundaries when needed. No-op in scroll mode and while a turn is
+   * already in progress. */
   public async turnPage(direction: 1 | -1): Promise<void> {
     if (this.isTurningPage) {
       return;
@@ -2092,31 +1418,18 @@ export class ReaderController {
   }
 
   private async turnPageInternal(direction: 1 | -1, token: number): Promise<void> {
-    // A page turn (unlike a chapter change — see `openSpineItem`, which
-    // already does this) doesn't rebuild the content document, so
-    // nothing else naturally invalidates a still-open highlight action
-    // popup — left alone, it would keep referencing a highlight that,
-    // after this turn, is no longer on screen at all (issue #62's
-    // second half: this is the fallback for any page turn that manages
-    // to happen anyway, not just the specific click-race the same issue
-    // also reports and `handleContentClick` now prevents directly).
+    // Page turns do not rebuild the content document, so clear any highlight
+    // popup that now points at content no longer on screen.
     this.activeHighlight = undefined;
     let moved: boolean;
     let announcement: string;
     if (this.host instanceof SpreadPaginatedHost) {
-      // Captured *before* the old spread is disposed below (inside
-      // `animateSpreadTurn`) — mirrors the single-page path's own
-      // `iframeHasFocus`/`restoreFocusAfterHostSwap` reasoning, just
-      // across whichever of the two columns actually had focus (see
-      // `spreadFocusedColumn`'s doc comment: a reader can drive keyboard
-      // navigation from either column, not just the primary one).
+      // Capture focus before disposing the old spread so it can be restored
+      // after the host swap.
       const focusedColumn = this.spreadFocusedColumn(this.host);
       const animatedSpread = await this.animateSpreadTurn(this.host, direction);
-      // Captured and cleared immediately — see its own doc comment.
-      // Only ever set right when `animateSpreadTurn` above actually
-      // returns a host (via `prepareMergedIncomingSpread`), so reading
-      // it in the `animatedSpread` branch below is always accurate; the
-      // plain in-chapter fallback further down never needs it at all.
+      // Set only when `animateSpreadTurn` prepared a merged incoming spread;
+      // the plain in-chapter path never uses it.
       const mergedIntoSpineIndex = this.pendingSpreadMergeSpineIndex;
       this.pendingSpreadMergeSpineIndex = undefined;
       if (animatedSpread) {
@@ -2131,16 +1444,8 @@ export class ReaderController {
         this.host = animatedSpread;
         this.clearStaleHostWrapper();
         if (mergedIntoSpineIndex !== undefined) {
-          // This turn crossed a chapter boundary via a merge (issue
-          // #90/#92) even though it went through the exact same
-          // "just another spread turn" path as an in-chapter one —
-          // needs the same chapter-scoped bookkeeping an ordinary
-          // `openSpineItem` chapter change applies, just not *all* of
-          // it (no accessibility re-focus, no loading spinner, no
-          // display-settings reapplication — this never actually
-          // left paginated spread mode, and `prepareMergedIncomingSpread`
-          // already applied the current display settings to the new
-          // host itself).
+          // A merged spread crossed into the next chapter, so apply the
+          // chapter-scoped state updates without re-running a full open.
           this.spineIndex = mergedIntoSpineIndex;
           this.refreshBookPagination();
         }
@@ -2179,19 +1484,14 @@ export class ReaderController {
             })
           : this.translate("scrubber.pageOfTotal", { current: this.host.pageIndex + 1, total: this.host.pageCount });
     } else if (this.host instanceof PaginatedContentHost) {
-      // Captured *before* the old host is disposed below (inside
-      // `animatePageTurn`) — see the restoration right after the host
-      // swap for why this matters (a real, confirmed bug: keyboard
-      // page-turning going silently dead after exactly one animated
-      // turn).
+      // Capture focus before disposing the old host so keyboard
+      // navigation can be restored after the swap.
       const hadKeyboardFocus = this.iframeHasFocus(this.host);
       const animatedHost = await this.animatePageTurn(this.host, direction);
       if (animatedHost) {
         if (token !== this.turnToken) {
-          // A newer turn (click or drag) has since started and finished
-          // while this one's incoming page was loading/animating —
-          // discard this stale result instead of clobbering the newer
-          // state (see `turnToken`).
+          // Discard stale results if a newer turn finished while this host
+          // was still loading or animating.
           animatedHost.dispose();
           return;
         }
@@ -2224,15 +1524,9 @@ export class ReaderController {
         total: this.host.pageCount,
       });
     } else if (this.host instanceof FixedSpreadHost) {
-      // Fixed-layout content has no sub-item pagination at all (every
-      // "page" is a whole spine item — see `FixedSpreadHost`'s own doc
-      // comment), so there's no equivalent of `nextPage`/`nextSpread`'s
-      // own in-chapter step to attempt first; `turnFixedSpread` always
-      // either fully completes the turn itself (a further `FixedSpread`
-      // exists in this direction) or falls through to the ordinary
-      // chapter-crossing path on its own — either way, nothing further
-      // for this method's own shared `moved`/`announcement` handling
-      // below to do.
+      // Fixed-layout content has no in-chapter pagination step here:
+      // `turnFixedSpread` either swaps to another spread or falls through to
+      // chapter navigation.
       await this.turnFixedSpread(this.host, direction, token);
       return;
     } else {
@@ -2253,21 +1547,10 @@ export class ReaderController {
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1, animateDirection: direction });
   }
 
-  /** The fixed-layout counterpart to the reflowable turn paths above —
-   * builds the next/previous `FixedSpread` (via `FixedLayoutSpreadPlanner`)
-   * and swaps it in if one exists and is still pre-paginated content;
-   * otherwise falls through to the ordinary `openSpineItem` chapter-
-   * crossing path itself, starting from *this* spread's own outer edge
-   * (`Math.max`/`Math.min` of its `spineIndices`, not simply
-   * `this.spineIndex + direction`, which could land back *inside* an
-   * still-open two-item pair instead of past it — a real risk this
-   * class's own `spineIndex` normalization, see `openSpineItem`, means
-   * `this.spineIndex` is only ever the *first* half of a pair, never
-   * the second). No page-turn animation (unlike every reflowable path
-   * above) — deliberately out of scope for this pass, the same way
-   * `FixedContentHost`'s own class doc comment already scopes synthetic
-   * spreads themselves out of an earlier pass; a plain instant swap is
-   * still correct, just not yet as polished. */
+  /** Turns within fixed-layout content by loading the next or previous
+   * `FixedSpread`. If no adjacent spread exists, it falls through to
+   * `openSpineItem` using this spread's outer spine edge so a paired
+   * spread is skipped as a unit. */
   private async turnFixedSpread(host: FixedSpreadHost, direction: 1 | -1, token: number): Promise<void> {
     const currentSpread = host.spread;
     const indices = host.spineIndices;
@@ -2305,16 +1588,8 @@ export class ReaderController {
 
     if (nextSpread && stillPrePaginated && this.containerEl) {
       const newHost = new FixedSpreadHost(this.width, this.height);
-      // Must be attached to the live document *before* `open()` is
-      // called — a real, confirmed hang otherwise (the same hazard
-      // `prepareMergedIncomingSpreadFromUpcomingLastPage`'s own doc
-      // comment already documents for the identical reason): a
-      // detached iframe's `src` assignment never actually navigates, so
-      // `SandboxedContentHost.render`'s own `load`-event wait inside
-      // `open()` never resolves. `stageHiddenHostElement` (the same
-      // helper every `openSpineItem` host uses) keeps it invisible and
-      // out of the current layout while it loads, exactly like every
-      // other "load next, then reveal" host swap in this file.
+      // Attach before `open()`; detached iframes may never navigate, and the
+      // staged wrapper keeps the new host hidden while it loads.
       const newStagingEl = this.stageHiddenHostElement(newHost.element);
       try {
         await newHost.open(this.contentLoader, this.resolver, nextSpread, this.pkg.metadata.renditionViewport);
@@ -2324,24 +1599,14 @@ export class ReaderController {
         throw err;
       }
       if (token !== this.turnToken) {
-        // A newer turn (or a chapter change) has since started and
-        // finished while this one's incoming spread was still loading —
-        // see `turnToken`'s own doc comment on why discarding this
-        // stale result (rather than clobbering whatever's now current)
-        // is the correct response.
+        // Discard stale results if a newer turn or chapter change finished
+        // while this spread was still loading.
         newHost.dispose();
         newStagingEl.remove();
         return;
       }
-      // Play the page-turn animation (`animateFixedSpreadTurn`) *before*
-      // disposing `host`/removing its wrapper — unlike the reflowable
-      // chapter-crossing case (which has to juggle a `previousHost` that
-      // might still be needed for `landOnLastPage`/display-settings
-      // afterward), a fixed-layout turn's outgoing host is never touched
-      // again once this function returns, but it must still be fully
-      // intact and on screen throughout the animation itself (disposing
-      // it first would tear down the very content the turn is supposed
-      // to be visibly carrying away).
+      // Animate before disposing the old host so the outgoing spread stays
+      // intact for the whole turn.
       const previousWrapperEl = this.hostWrapperEl;
       await this.animateFixedSpreadTurn(previousWrapperEl, newStagingEl, direction);
       this.contentInteractionCleanup?.();
@@ -2382,42 +1647,10 @@ export class ReaderController {
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
   }
 
-  /** Animates a fixed-layout (FXL) spread turn (`turnFixedSpread`), the
-   * same "rotate"/"slide"/"scroll" choice (`this.pageTurnAnimationStyle`)
-   * every reflowable turn already offers. Every FXL turn swaps in a
-   * brand-new `FixedSpreadHost` — there's no in-host pagination step the
-   * way reflowable's same-chapter turn has, since a fixed-layout "page"
-   * is always exactly one whole spine item (see `FixedSpreadHost`'s own
-   * doc comment) — so this is structurally identical to
-   * `animateChapterCrossingReveal` (a whole-host swap), not
-   * `animatePageTurn`/`animateSpreadTurn`'s in-chapter case. It's
-   * considerably simpler than either of those, though: fixed-layout
-   * content is never reflowed and has no per-page-number "turn
-   * furniture" overlay of its own (`refreshBookPagination` already opts
-   * fixed-layout hosts out of the book-wide pagination system furniture
-   * depends on), and — critically — `FixedContentHost`/`FixedSpreadHost`
-   * never apply `clip-path` and can never render at less than the
-   * pane's full declared height/width the way a reflowable chapter's
-   * own short last page can (`FixedContentHost.applyScale` always
-   * letterboxes to fill exactly `width`×`height`, scale factor aside).
-   * That means none of `buildTurnBackdrop`/`buildTurnGrowthMask`/
-   * `suppressClipPathForAnimation` (all workarounds for problems that
-   * simply don't exist here) apply at all — every style just moves the
-   * whole spread's own wrapper `<div>` (`stagingEl`/`previousWrapperEl`,
-   * both from `stageHiddenHostElement`, already `position: absolute;
-   * inset: 0`) as one rigid sheet, single page or two-column pair
-   * alike, exactly like `animateChapterCrossingReveal`'s own single-page
-   * case. "rotate" specifically follows that method's "no back-face,
-   * stop at ~100°" treatment (not `animateSpreadTurn`'s single-column-
-   * only turn) for the same reason it gives: there's no one "physical
-   * leaf" whose back face crossing into a whole new host implies here
-   * either — every FXL turn already *is* a "new host" turn.
-   *
-   * Returns `true` once played (the caller's own unconditional reveal
-   * code right after is then a harmless no-op re-set); `false` if
-   * skipped ("none"/reduced-motion/no previous wrapper to animate from
-   * — the very first spread a book opens on has none, and is revealed
-   * instantly regardless, same as every other host swap in this file). */
+  /** Animates a fixed-layout spread turn using the current page-turn style.
+   * Unlike the reflowable paths, this only moves whole staged spread
+   * wrappers and does not need pagination-specific clip-path workarounds.
+   * Returns `false` when animation is skipped. */
   private async animateFixedSpreadTurn(
     previousWrapperEl: HTMLDivElement | undefined,
     stagingEl: HTMLDivElement,
@@ -2432,22 +1665,13 @@ export class ReaderController {
     const entering = direction === -1;
     const animatingEl = entering ? newEl : oldEl;
 
-    // Reveal the staging element so it can actually participate in the
-    // animation — see `animateChapterCrossingReveal`'s identical step.
+    // Reveal the staging element so it can participate in the animation.
     stagingEl.style.opacity = "";
     stagingEl.style.pointerEvents = "";
 
-    // A real, confirmed artifact caught via direct screenshot inspection
-    // while building this: a fixed-layout wrapper has no opaque
-    // background of its own (its actual page content is letterboxed
-    // inside it — see `FixedContentHost.applyScale` — with the wrapper's
-    // own margins left fully transparent), so for "rotate"/"slide"
-    // (where the animating side is stacked directly *on top of* the
-    // other, unlike "scroll"'s side-by-side groups that never overlap)
-    // the other side's colors bled straight through the animating
-    // side's own letterboxed margins mid-turn. Painting the animating
-    // wrapper opaque for the animation's duration only (restored right
-    // after) fixes it without touching either host's actual content.
+    // Non-scroll turns stack the wrappers, so give the animating one an
+    // opaque background to keep letterboxed margins from showing the other
+    // spread through them.
     if (!isScroll) {
       animatingEl.style.background = FixedContentHost.LETTERBOX_BACKGROUND;
     }
@@ -2463,76 +1687,29 @@ export class ReaderController {
 
     animatingEl.style.background = "";
     this.isAnimatingPageTurn = false;
-    // Only `stagingEl` survives this turn (`previousWrapperEl` is
-    // disposed by the caller right after) — reset whatever transform/
-    // z-index/box-shadow/transition the animation above may have
-    // applied to it (only actually touched when `entering`, i.e.
-    // `animatingEl === newEl === stagingEl`; a harmless no-op
-    // otherwise) back to `stageHiddenHostElement`'s own plain resting
-    // state — see `animateChapterCrossingReveal`'s identical cleanup.
+    // Reset animation-only styles on the surviving staging wrapper.
     stagingEl.style.transform = "";
     stagingEl.style.zIndex = "";
     stagingEl.style.boxShadow = "";
     stagingEl.style.transition = "";
     if (animatingEl === oldEl) {
-      // Defensive only — `oldEl` is about to be disposed by the caller
-      // regardless, but leaves nothing dangling if that ever changes.
+      // Defensive: clear `oldEl`'s z-index too in case its lifecycle changes.
       oldEl.style.zIndex = "";
     }
     return true;
   }
 
-  /** The page number the running footer should show for `pageIndex` of
-   * `spineIndex`'s `pageCount` total pages — book-wide via
-   * `bookPagination` once its background measurement has reached that
-   * far, falling back to the plain per-chapter page number otherwise.
-   * Mirrors `PageFurniture`'s own `primaryPageNumber` computation exactly
-   * (see that component), since `buildTurnFurnitureOverlay`'s imperative
-   * footer text needs to read identically to the static one it hands off
-   * to/from at the start/end of a turn. */
+  /** Returns the footer page number for this chapter page, using book-wide
+   * pagination when available and the local page number otherwise. */
   private furniturePageNumber(spineIndex: number, pageIndex: number, pageCount: number): number | undefined {
     const bookPageIndex = this.bookPagination?.positionFor(spineIndex, pageIndex).currentPage;
     return bookPageIndex ?? (pageCount > 0 ? pageIndex + 1 : undefined);
   }
 
-  /** Plays a book-like page-turn flip and returns the fully-paginated
-   * *new* host to swap in as `this.host` — or `undefined` if `direction`
-   * would cross a chapter boundary (the caller falls back to its normal
-   * chapter-advance handling; this pass doesn't animate that case).
-   *
-   * Real book feel requires the outgoing and incoming pages to be visible
-   * *simultaneously* mid-turn, which a single iframe fundamentally can't
-   * do (it only ever shows one page at a time) — so this builds the
-   * incoming page in a brand-new, independent `PaginatedContentHost` (see
-   * `prepareIncomingPage`).
-   *
-   * For "rotate"/"slide": a **forward** turn (`direction === 1`) animates
-   * the *outgoing* page turning away — stacked *above* the incoming page
-   * already waiting underneath it, `backface-visibility: hidden` makes it
-   * disappear past 90°, revealing the incoming page beneath with no
-   * animation of its own. A **backward** turn does the *opposite*, per
-   * explicit product direction (issue #41): rather than the current page
-   * turning away to reveal the previous one sitting underneath (which
-   * reads as backwards for how a real book works — you're not
-   * un-covering something, you're placing a previously-turned page back
-   * down on top), the *incoming* (previous) page is instead built already
-   * "turned away" (see `playPageTurnAnimation`'s `entering` mode),
-   * stacked *above* the static, unanimated outgoing page, and animates
-   * *in*, settling to rest and covering the current page as it arrives —
-   * exactly like flipping a page back over onto the one you're leaving.
-   *
-   * "scroll" (issue #63) is fundamentally different — see
-   * `playScrollTurn`'s doc comment — and its own branch below skips the
-   * "only one side ever moves" machinery above entirely, since *both*
-   * the outgoing and incoming pages need to move together.
-   *
-   * Skips the animation (an instant page swap) when
-   * `prefers-reduced-motion` is set, consistent with the rest of the
-   * reader respecting it. See `beginDragPageTurn` for the interactive,
-   * pointer-driven version of this same underlying mechanism, and
-   * `animateSpreadTurn` for the two-page-spread equivalent of this
-   * method.
-   */
+  /** Builds the incoming page in a new host and plays a page-turn animation
+   * within the current chapter. Returns `undefined` when the turn would
+   * cross a chapter boundary. Backward turns animate the incoming page in,
+   * while "scroll" moves both pages together. */
   private async animatePageTurn(
     oldHost: PaginatedContentHost,
     direction: 1 | -1,
@@ -2549,45 +1726,11 @@ export class ReaderController {
     const isScroll = this.pageTurnAnimationStyle === "scroll";
     const animatingHost = entering ? newHost : oldHost;
     const otherHost = entering ? oldHost : newHost;
-    // Every overlapping-iframe style ("rotate"/"slide" — "scroll" moves
-    // both sides together and they never overlap on screen at all, see
-    // `playScrollTurn`) needs `clip-path` dropped from *both* hosts for
-    // the animation's duration, not just whichever one is actually
-    // moving — see `PaginatedContentHost.suppressClipPathForAnimation`'s
-    // doc comment (issue #81) for the confirmed Chromium rendering bug
-    // this works around: *any* two overlapping iframes where either one
-    // has a `clip-path` set fail to composite opaquely against each
-    // other, blending both pages' text together — confirmed via an
-    // isolated repro using a plain `translateX`, no rotation/perspective
-    // involved at all, so this isn't specific to "rotate"'s 3D transform
-    // the way it first looked (issue #81 only ever exercised "rotate").
-    //
-    // Only "rotate" also grows the animating host's height to
-    // `this.height` (see `growToFullHeight`'s doc comment: its own,
-    // separate box-shadow-position fix) — "slide" must *not* do the
-    // same, a real, confirmed bug of its own: growing a short page's
-    // iframe *without* a clip-path to bound it exposes however much
-    // more of that page's own document flow happens to fit in the
-    // extra height, which reads as stray paragraph fragments bleeding
-    // in below the intended page (issue reported directly: "content
-    // above and below the visible page that should be clipped"). Left
-    // at its natural height, the iframe's own box already bounds what
-    // paints regardless of `clip-path` being absent — nothing new is
-    // exposed beyond the (already tiny, inset-only) band `clip-path`
-    // was ever hiding in the first place.
-    //
-    // "rotate" has this *exact same* bleed risk for its own grown
-    // height, though (a real, reported bug of its own — see
-    // `buildTurnGrowthMask`'s doc comment). `growToFullHeight` itself
-    // calls `suppressClipPathForAnimation` first (shrinking away the
-    // bottom inset band) *before* growing — so measuring height before
-    // calling it at all would capture the *pre-shrink* value (with that
-    // inset band still included), leaving a real, confirmed gap exactly
-    // that band's height tall for bleed to sneak through unmasked.
-    // Calling `suppressClipPathForAnimation` explicitly first (a no-op
-    // repeat of what `growToFullHeight` does internally, safe to call
-    // twice) and measuring *after* that gets the true natural height
-    // `buildTurnGrowthMask` needs.
+    // Overlapping "rotate" and "slide" turns suppress `clip-path` on both
+    // hosts; overlapping clipped iframes do not composite correctly in
+    // Chromium. Only "rotate" also grows the animating host to full
+    // height, and the natural height must be measured after clip
+    // suppression so the growth mask matches the real painted page.
     if (this.pageTurnAnimationStyle === "rotate") {
       animatingHost.suppressClipPathForAnimation();
     }
@@ -2600,17 +1743,9 @@ export class ReaderController {
       otherHost.suppressClipPathForAnimation();
     }
 
-    // Fixed a real bug (issue #84) for "slide" specifically: leaving the
-    // animating host at its own natural height (deliberately no
-    // `growToFullHeight`, per the comment above) means a short page's
-    // iframe doesn't paint below its own short box — and with
-    // `clip-path` also gone for the duration, the *other* host sitting
-    // fully rendered underneath showed straight through that gap,
-    // reading as "the wrong page" rather than the current one for
-    // however much of the pane the short page didn't fill. See
-    // `buildTurnBackdrop`'s own doc comment. Not needed for "rotate"
-    // (whose animating side is already grown to full height, so it has
-    // no such gap) or "scroll" (whose two sides never overlap at all).
+    // "slide" leaves short pages at natural height, so add a backdrop behind
+    // the animating host to keep the fully rendered page underneath from
+    // showing through the gap.
     let turnBackdrop: HTMLDivElement | undefined;
     if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "slide") {
       turnBackdrop = this.pageTurnAnimator.buildTurnBackdrop(animatingHost.element);
@@ -2628,15 +1763,8 @@ export class ReaderController {
       }
     }
 
-    // Build the outgoing/incoming "turn furniture" overlays (see
-    // `buildTurnFurnitureOverlay`) so the running header/footer turns
-    // with the page instead of sitting static on top of it throughout —
-    // title/chapter never change mid-turn (an animated turn never
-    // crosses a chapter boundary — see `prepareIncomingPage`), only the
-    // page number does. `PageFurniture`'s own static rendering is
-    // suspended for the duration via `isAnimatingPageTurn` so the two
-    // never show on top of each other. Skipped entirely when there's no
-    // animation to play them alongside anyway.
+    // Build temporary header/footer overlays so the running furniture turns
+    // with the page. Skip them when no animation will play.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
     if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
@@ -2662,11 +1790,7 @@ export class ReaderController {
         },
       ]);
       if (isScroll) {
-        // Both overlays move (with their own page) rather than one
-        // sitting static underneath the other — z-index doesn't matter
-        // here since the two never overlap on screen (see
-        // `playScrollTurn`), but they still need to be *in* the
-        // document to animate at all.
+        // Scroll moves both pages and their overlays together.
         if (outgoingOverlay) {
           outgoingOverlay.style.zIndex = "2";
           this.containerEl.appendChild(outgoingOverlay);
@@ -2676,10 +1800,7 @@ export class ReaderController {
           this.containerEl.appendChild(incomingOverlay);
         }
       } else {
-        // Whichever overlay pairs with the animating page sits on top
-        // (z-index 2); the static one underneath gets 1 — same
-        // convention either direction, just swapped for which side is
-        // actually moving.
+        // Put the overlay for the moving page on top of the static one.
         const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
         const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
         if (staticOverlay) {
@@ -2714,17 +1835,11 @@ export class ReaderController {
     turnBackdrop?.remove();
     turnGrowthMask?.remove();
     this.isAnimatingPageTurn = false;
-    // `newHost` always survives as the new `this.host` (unlike
-    // `oldHost`, unconditionally disposed right below) — restore
-    // whatever `growToFullHeight`/`suppressClipPathForAnimation` may
-    // have touched on it, regardless of turn direction (it's a no-op,
-    // via `showCurrentPage`, if neither ever actually applied to it).
+    // Reset any temporary height or clip-path changes on the surviving host.
     newHost.restoreNaturalHeight();
 
-    // `oldHost.dispose()` removes its iframe from `containerEl`, leaving
-    // `newEl` as the sole remaining child — reset its temporary
-    // positioning so it behaves like any other freshly-mounted host for
-    // every subsequent operation (relayout, resize, etc.).
+    // After disposing the old host, restore `newEl` to normal host
+    // positioning.
     oldHost.dispose();
     newEl.style.position = "";
     newEl.style.top = "";
@@ -2734,23 +1849,9 @@ export class ReaderController {
     return newHost;
   }
 
-  /** The two-page-spread equivalent of `animatePageTurn` — see that
-   * method's doc comment for the shared mechanics (incoming content
-   * built in a brand-new host underneath the outgoing one, animation
-   * skipped for `prefers-reduced-motion`). What actually *moves* differs
-   * by `this.pageTurnAnimationStyle`, per explicit product direction:
-   * "slide"/"scroll" both treat the whole spread as one rigid sheet
-   * (both pages translate together, exactly like `animatePageTurn`'s
-   * single page, just wider); "rotate" instead flips only the *one*
-   * column nearest the spine — the right column turning forward, the
-   * left column turning back — like an actual book page turning over,
-   * while its companion column stays completely still. `elementToTurn`
-   * is what decides which element actually gets the transform in each
-   * case; see its own doc comment. "scroll" (issue #63) additionally
-   * moves *both* the outgoing and incoming spread simultaneously — see
-   * `playScrollTurn`'s doc comment — so it branches away from the
-   * shared "only one side ever moves" `playPageTurnAnimation` machinery
-   * below, same as `animatePageTurn` does for this style. */
+  /** Spread version of `animatePageTurn`. "slide" and "scroll" move the
+   * whole spread, while "rotate" turns only the column nearest the
+   * spine; "scroll" moves outgoing and incoming spreads together. */
   private async animateSpreadTurn(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -2765,41 +1866,14 @@ export class ReaderController {
     const newEl = newHost.element;
     const entering = direction === -1;
     const isScroll = this.pageTurnAnimationStyle === "scroll";
-    // See `animatePageTurn`'s doc comment on why backward flips which
-    // side actually animates.
+    // Backward turns animate the incoming spread rather than the outgoing one.
     const turnHost = entering ? newHost : oldHost;
     const otherHost = entering ? oldHost : newHost;
 
-    // "rotate" turns only the single column nearest the spine — see
-    // `elementToTurn`'s doc comment — and additionally grows that one
-    // column's height to `this.height` (see
-    // `PaginatedContentHost.growToFullHeight`'s doc comment: its own,
-    // separate box-shadow-position fix; `SpreadPaginatedHost`'s own
-    // wrapper is already fixed to the full pane height regardless of
-    // either column's content, so only the turning column itself needs
-    // this, not its already-full-height companion). "slide" moves the
-    // *whole* spread as one rigid sheet instead (see this method's own
-    // doc comment) and must *not* grow any column's height to match —
-    // a real, confirmed bug of its own: growing a short column's iframe
-    // *without* a clip-path to bound it exposes however much more of
-    // that column's own document flow happens to fit in the extra
-    // height, reading as stray paragraph fragments bleeding in below
-    // the intended page. Left at its natural height, each column's own
-    // box already bounds what paints regardless of `clip-path` being
-    // absent.
-    //
-    // Every column on *both* sides — not just whichever one is
-    // "turning" — needs its own `clip-path` dropped for the whole
-    // animation's duration, for *both* styles: see
-    // `PaginatedContentHost.suppressClipPathForAnimation`'s doc comment
-    // (issue #81) for the confirmed Chromium rendering bug this works
-    // around — *any* two overlapping iframes where either has a
-    // `clip-path` set fail to composite opaquely, blending both pages'
-    // text together, confirmed with a plain `translateX` and no
-    // rotation/perspective involved at all (i.e. this affects "slide"
-    // just as much as "rotate", not something specific to a 3D
-    // transform). Restored on whichever host actually survives the turn
-    // (always `newHost` — see the bottom of this method).
+    // "rotate" turns only the spine-side column and grows it to full
+    // height. "slide" moves the whole spread without growing columns, but
+    // both styles suppress `clip-path` on all overlapping columns because
+    // clipped iframes do not composite correctly in Chromium.
     if (this.pageTurnAnimationStyle === "rotate") {
       turnHost.suppressColumnClipPathForAnimation("right");
     }
@@ -2817,15 +1891,8 @@ export class ReaderController {
     }
     const turnEl = this.pageTurnAnimator.elementToTurn(turnHost);
 
-    // See `buildTurnBackdrop`'s doc comment / `animatePageTurn`'s
-    // identical use of it (issue #84) — the spread wrapper itself is
-    // always `this.height` tall (see `SpreadPaginatedHost`'s
-    // constructor), but a "slide" turn's individual *columns* are left
-    // at their own natural (often short) height with no `clip-path` to
-    // bound them, so a short column's gap let the *other* spread,
-    // sitting fully rendered directly underneath, show through it. One
-    // backdrop the full width of the whole spread (not one per column)
-    // is enough, since it sits behind the entire turning wrapper.
+    // "slide" can leave a short turning column with a visible gap, so add
+    // one full-width backdrop behind the turning spread.
     let turnBackdrop: HTMLDivElement | undefined;
     if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "slide") {
       turnBackdrop = this.pageTurnAnimator.buildTurnBackdrop(turnHost.element);
@@ -2834,10 +1901,8 @@ export class ReaderController {
         turnHost.element.parentElement?.insertBefore(turnBackdrop, turnHost.element);
       }
     }
-    // See `buildTurnGrowthMask`'s doc comment / `animatePageTurn`'s
-    // identical use of it — "rotate" grows just the turning (right)
-    // column to full height, which needs its own bleed masked exactly
-    // like the single-page case does.
+    // "rotate" grows the turning column to full height, so mask that extra
+    // height the same way as the single-page case.
     let turnGrowthMask: HTMLDivElement | undefined;
     if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "rotate") {
       turnGrowthMask = this.pageTurnAnimator.buildTurnGrowthMask(turnEl, turnColumnNaturalHeight);
@@ -2847,67 +1912,26 @@ export class ReaderController {
       }
     }
 
-    // Issue #81: "complete" the spread's rotate turn — previously it
-    // only ever swung the turning column to ~100° (just past edge-on)
-    // before the turn's *other* side (the incoming spread, already
-    // fully built and sitting statically underneath the whole time —
-    // see `prepareIncomingSpread`) simply showed through once
-    // `backface-visibility: hidden` made the turning column vanish.
-    // That's a real page lifting up toward vertical and disappearing,
-    // but it never actually finishes coming back *down* into the left
-    // slot the way an actual page turn does — so build a "back face"
-    // for it to land on, and let the same rotation run all the way to
-    // 180° instead of stopping just past 90 (see `fullTurnDegrees`
-    // passed to `playPageTurnAnimation` below).
+    // For rotate turns, add a back face and run to 180° so the page lands
+    // visibly instead of disappearing just past edge-on.
     const rotateBackFace =
       this.pageTurnAnimationStyle === "rotate" && !this.pageTurnAnimator.shouldSkipPageTurnAnimation()
         ? this.pageTurnAnimator.buildRotateBackFace(turnEl)
         : undefined;
 
-    // Same "turn furniture" treatment as `animatePageTurn` — see
-    // `buildTurnFurnitureOverlay`'s doc comment. Title/chapter never
-    // change mid-turn (same reasoning as the single-page case); only
-    // the page number(s) do. "slide"/"scroll" both need *both* columns'
-    // furniture (the whole spread moves as one sheet); "rotate" needs
-    // only the right column (see `elementToTurn`), on whichever host is
-    // actually animating. Skipped entirely when there's no animation to
-    // play them alongside.
+    // Build the same temporary furniture overlays as `animatePageTurn`.
+    // "slide"/"scroll" need both columns; "rotate" only needs the turning
+    // right column.
     let outgoingOverlay: HTMLDivElement | undefined;
     let incomingOverlay: HTMLDivElement | undefined;
-    // "rotate" only ever builds `outgoingOverlay`/`incomingOverlay` for
-    // the *right* column (see below — the one that actually turns, or
-    // is revealed by the turn). The *left* column of both `oldHost` and
-    // `newHost` also gets its `clip-path` suppressed further down (the
-    // same Chromium overlapping-iframe fix, issue #81 — both left
-    // columns occupy the exact same rect throughout, so both need it
-    // regardless of which is actually visible), but — unlike the right
-    // column — neither ever received a matching furniture-overlay mask,
-    // leaving whichever one is actually on top (`oldHost.left` for a
-    // forward/exiting turn, `newHost.left` for a backward/entering one
-    // — see `stagePageTurn`'s `hostEl.style.zIndex = "2"`, applied to
-    // the *whole* turning host, both its columns) with its own top/
-    // bottom inset bands exposed and nothing covering them for the
-    // turn's whole duration: a real, reported bug ("clipping issues on
-    // the pages being covered/uncovered, not the flipping page"). Built
-    // unconditionally for both sides, exactly mirroring the redundant-
-    // safety pattern already used for the right column, since it's
-    // cheap and removes any doubt about which side ends up visible.
+    // Rotate turns also need left-column overlays, because that column stays
+    // stacked above or below the other spread for the whole animation.
     let outgoingLeftOverlay: HTMLDivElement | undefined;
     let incomingLeftOverlay: HTMLDivElement | undefined;
     if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
       const title = this.pkg.metadata.title;
-      // A merge (issue #90/#92) crosses a chapter boundary via this same
-      // "just another spread turn" path — `pendingSpreadMergeSpineIndex`
-      // (set by `prepareMergedIncomingSpread`, read here *before*
-      // `turnPageInternal` adopts it into `this.spineIndex` once this
-      // whole method returns) is the *incoming* host's own real spine
-      // index in that case, which is one higher than `this.spineIndex`
-      // (still the *outgoing* chapter's, unchanged until then) — every
-      // "incoming" label/number below must use it instead, or they'd
-      // describe the wrong chapter entirely for the whole turn (a real,
-      // confirmed bug: this chapter's own title/page number showing
-      // "Chapter One" — the chapter being *left* — throughout a merge
-      // turn into "Chapter Two").
+      // Merge turns animate into the next chapter through this same path, so
+      // incoming labels and numbers must use the pending merged spine index.
       const incomingSpineIndex = this.pendingSpreadMergeSpineIndex ?? this.spineIndex;
       const isMergeTurn = this.pendingSpreadMergeSpineIndex !== undefined;
       const outgoingChapterLabel = this.chapterLabel(this.spineIndex);
@@ -2916,11 +1940,8 @@ export class ReaderController {
       const outgoingSecondary =
         oldHost.secondPageIndex !== undefined && outgoingPrimary !== undefined ? outgoingPrimary + 1 : undefined;
       const incomingRightNumber = this.furniturePageNumber(incomingSpineIndex, newHost.pageIndex, newHost.pageCount);
-      // While merging, the incoming host's *left* column shows the
-      // previous chapter's borrowed last page (see `SpreadPaginatedHost.
-      // isShowingMergedTail`), not this chapter's own content — there's
-      // no correct number for it to show during the turn either, same
-      // as `PageFurniture`'s identical treatment once the turn settles.
+      // During a merge, the incoming left column is the borrowed tail page,
+      // so it has no page number of its own here.
       const incomingPrimary = isMergeTurn ? undefined : incomingRightNumber;
       const incomingSecondary = isMergeTurn
         ? incomingRightNumber
@@ -2954,10 +1975,8 @@ export class ReaderController {
           bands(incomingChapterLabel, incomingPrimary, incomingSecondary),
         );
       } else {
-        // Always the right column now (see `elementToTurn`), which
-        // always shows the chapter label + its own "secondary" page
-        // number, matching `PageFurniture`'s own left-title/right-
-        // chapter convention.
+        // Rotate overlays attach to the right column, which carries the
+        // chapter label and secondary page number.
         const oldColumnEl = this.pageTurnAnimator.spreadColumnElement(oldHost, 1);
         const newColumnEl = this.pageTurnAnimator.spreadColumnElement(newHost, 1);
         outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldColumnEl, [
@@ -2977,11 +1996,8 @@ export class ReaderController {
           },
         ]);
 
-        // The left column's own overlay — see `outgoingLeftOverlay`'s
-        // declaration above for why this is needed at all. Same
-        // left-title/page-number convention the non-"rotate" branch's
-        // own `bands()` helper uses for this column, since the content
-        // shown there doesn't depend on turn style.
+        // The left column needs its own overlay too; its title/page-number
+        // layout is independent of turn style.
         const oldLeftColumnEl = this.pageTurnAnimator.spreadColumnElement(oldHost, 0);
         const newLeftColumnEl = this.pageTurnAnimator.spreadColumnElement(newHost, 0);
         const leftHeader = { mode: "single" as const, text: title };
@@ -3003,9 +2019,7 @@ export class ReaderController {
         ]);
       }
       if (isScroll) {
-        // Both overlays move (with their own spread) rather than one
-        // sitting static underneath the other — see `animatePageTurn`'s
-        // identical reasoning.
+        // Scroll moves both spread overlays with their spreads.
         if (outgoingOverlay) {
           outgoingOverlay.style.zIndex = "2";
           this.containerEl.appendChild(outgoingOverlay);
@@ -3015,9 +2029,7 @@ export class ReaderController {
           this.containerEl.appendChild(incomingOverlay);
         }
       } else {
-        // Whichever overlay pairs with the animating page sits on top
-        // (z-index 2); the static one underneath gets 1 — same convention
-        // either direction, just swapped for which side is actually moving.
+        // Put the overlay for the moving spread on top of the static one.
         const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
         const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
         if (staticOverlay) {
@@ -3028,14 +2040,8 @@ export class ReaderController {
           animatedOverlay.style.zIndex = "2";
           this.containerEl.appendChild(animatedOverlay);
         }
-        // The left-column overlays (see `outgoingLeftOverlay`'s
-        // declaration) never themselves move, but need the exact same
-        // z-index split — whichever host is actually `turnHost` (see
-        // `stagePageTurn`'s `hostEl.style.zIndex = "2"`, applied to that
-        // whole host, both columns) is the one whose left column is
-        // visually on top throughout, so its overlay needs to match at
-        // "2"; the other one only needs to sit at "1" in case anything
-        // about the exact stacking ever changes.
+        // Match left-column overlay z-order to whichever host stays visually
+        // on top during the turn.
         const turnLeftOverlay = entering ? incomingLeftOverlay : outgoingLeftOverlay;
         const otherLeftOverlay = entering ? outgoingLeftOverlay : incomingLeftOverlay;
         if (otherLeftOverlay) {
@@ -3080,12 +2086,8 @@ export class ReaderController {
     turnBackdrop?.remove();
     turnGrowthMask?.remove();
     this.isAnimatingPageTurn = false;
-    // `newHost` always survives as the new `this.host` (unlike
-    // `oldHost`, unconditionally disposed right below) — restore both
-    // of its columns regardless of turn direction, undoing whatever
-    // `growColumnToFullHeight`/`suppressColumnClipPathForAnimation` may
-    // have touched on either (a no-op, via `showCurrentPage`, for
-    // whichever one — or both — never actually needed it).
+    // Reset any temporary height or clip-path changes on both columns of the
+    // surviving host.
     if (this.pageTurnAnimationStyle === "rotate" || this.pageTurnAnimationStyle === "slide") {
       newHost.restoreColumnNaturalHeight("left");
       newHost.restoreColumnNaturalHeight("right");
@@ -3100,24 +2102,11 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Builds and returns the incoming page for a turn away from
-   * `oldHost`'s current page, positioned to sit exactly beneath
-   * `oldHost.element` (which stays a normal, flex-centered in-flow child,
-   * left completely undisturbed) without needing any wrapper elements —
-   * `containerEl` is already `position: absolute` (see `ReaderApp`), so
-   * it's a valid containing block for this on its own. Returns
-   * `undefined` if `direction` would cross a chapter boundary.
-   *
-   * `newHost.element` is attached to the live document *before*
-   * `open()` is called on it — an iframe generally won't start loading
-   * its `src` at all while detached from the document, a real bug this
-   * comment exists specifically to prevent regressing (caught via
-   * Chromium verification: the load hung until it hit
-   * `RenderingSurfaceError`'s timeout). Likewise, `oldHost.element` is
-   * never reparented here or anywhere else in the page-turn machinery:
-   * most browsers reload an iframe that's ever disconnected and
-   * reattached to the document, even synchronously.
-   */
+  /** Builds the incoming page for an in-chapter turn and positions it
+   * directly under `oldHost.element`. Returns `undefined` when the turn
+   * would cross a chapter boundary. Attach the new iframe before `open()`,
+   * and do not reparent the old one, or loading and reload behavior can
+   * break. */
   private async prepareIncomingPage(
     oldHost: PaginatedContentHost,
     direction: 1 | -1,
@@ -3135,30 +2124,13 @@ export class ReaderController {
     const newEl = newHost.element;
     newEl.style.position = "absolute";
     newEl.style.top = "0";
-    // `PaginatedContentHost` is always constructed with `this.width` —
-    // the container's own full width — so `left: 0` alone already lines
-    // it up exactly; no centering transform is needed (and, unlike the
-    // `left: 50%; transform: translateX(-50%)` this used to be, `left:
-    // 0` alone leaves `transform` free for `setPageTurnTransform` to set
-    // outright during a backward/"entering" turn, where *this* element
-    // becomes the one being animated rather than the one revealed
-    // statically underneath — see `animatePageTurn`'s doc comment).
+    // `PaginatedContentHost` already spans the container width, so `left: 0`
+    // aligns it and leaves `transform` free for entering-turn animation.
     newEl.style.left = "0";
     newEl.style.zIndex = "1";
-    // Hidden until fully positioned at `targetIndex` below — a real,
-    // reported bug otherwise (issue #84): `newEl` needs to be attached
-    // to the live document *before* `open()` even starts (see this
-    // method's own doc comment on why), but `open()` itself briefly
-    // renders the chapter's very first page while it loads/paginates
-    // (see `PaginatedContentHost.open()`), before `goToPageIndex` below
-    // corrects it — and since `newEl` is `position: absolute` (already
-    // elevated above `oldHost`'s own normal, non-positioned flow,
-    // regardless of z-index), that transient first-page render was
-    // visible on top of the current page for however long `open()`
-    // takes. `opacity: 0` (not `visibility: hidden` — see
-    // `prepareIncomingSpread`'s identical fix for why) keeps it fully
-    // out of the painted output without affecting layout/pagination
-    // measurement, until right before this method returns.
+    // Keep the new host attached but invisible while `open()` briefly
+    // renders page 0 before `goToPageIndex()` moves it to the real target.
+    // Use `opacity`, not `visibility`, so pagination measurement still works.
     newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
@@ -3187,14 +2159,9 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Whether a forward spread turn can merge into `nextSpineIndex` at
-   * all (issue #90/#92/#94) — reflowable, spread-eligible content that
-   * actually exists as the next spine item. Shared by both
-   * `prepareMergedIncomingSpread` and
-   * `prepareMergedIncomingSpreadFromUpcomingLastPage` so each can check
-   * *before* doing anything else (detaching `oldHost`'s left column, or
-   * loading a whole standalone tail copy) that would otherwise need to
-   * be undone for nothing. */
+  /** Returns whether a forward spread turn can merge into `nextSpineIndex`.
+   * Shared by both merge-preparation paths so they can bail out before
+   * doing work that would need to be undone. */
   private canMergeSpreadIntoNext(nextSpineIndex: number): boolean {
     if (!this.containerEl) {
       return false;
@@ -3207,18 +2174,11 @@ export class ReaderController {
     return resolvedLayout !== "pre-paginated" && SpreadPaginatedHost.isEligible(this.width);
   }
 
-  /** The shared second half of both merge paths below, once each has
-   * its own `previousTail` in hand (still fully live, positioned on
-   * whichever real page it needs to show) — builds the actual merged
-   * `SpreadPaginatedHost`, applies every current display setting to its
-   * freshly-opened documents, and sets `pendingSpreadMergeSpineIndex` so
-   * `turnPageInternal` knows to adopt `nextSpineIndex` once it commits
-   * to the returned host. Throws (without disposing `previousTail`
-   * itself — that's each caller's own responsibility, since only they
-   * know whether it came from `oldHost` or a standalone load) if the
-   * merged host's own load fails; callers must call `newHost.dispose()`/
-   * `newEl.remove()` themselves in that case too, since this method's
-   * own partial work (attaching `newEl`) needs undoing either way. */
+  /** Shared second half of the two merge paths: builds the merged spread
+   * from a prepared `previousTail`, applies current display settings, and
+   * records the pending merged spine index. Callers remain responsible for
+   * cleaning up failures because only they know where `previousTail` came
+   * from. */
   private async buildMergedSpreadHost(
     nextSpineIndex: number,
     previousTail: PaginatedContentHost,
@@ -3233,8 +2193,7 @@ export class ReaderController {
     newEl.style.top = "0";
     newEl.style.left = "0";
     newEl.style.zIndex = "1";
-    // See `prepareIncomingSpread`'s identical `opacity`-not-`visibility`
-    // reasoning (issue #84) for why.
+    // Keep the staging host attached but invisible while it loads.
     newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
@@ -3267,21 +2226,9 @@ export class ReaderController {
       newHost.relayout(this.width, this.height);
     }
     newEl.style.opacity = "";
-    // `previousTail.element` may have been given its own,
-    // separate `opacity: 0`/`pointer-events: none` while it was still a
-    // standalone element loading inside `containerEl` (see
-    // `prepareMergedIncomingSpreadFromUpcomingLastPage`) — a real,
-    // confirmed bug: that inline style survives the move into this
-    // host's own `leftWrapperEl` (nothing else ever clears it), so
-    // *even once* `sync()` marks it the visible column, it stayed
-    // permanently invisible (and unclickable) — the borrowed tail page
-    // that should show the previous chapter's own last line rendered as
-    // a blank page instead, indistinguishable from the very blank page
-    // this whole merge feature exists to eliminate. Resetting both here
-    // (unconditionally — a harmless no-op for `prepareMergedIncomingSpread`'s
-    // own `previousTail`, detached already-visible/-interactive from
-    // `oldHost` and never touched this way) is the one place both
-    // callers' successful result passes through.
+    // `previousTail` may have been loaded as a hidden standalone element
+    // before being moved into the merged host, so clear those inline styles
+    // here so the borrowed page can display and accept interaction.
     previousTail.element.style.opacity = "";
     previousTail.element.style.pointerEvents = "";
     newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(nextSpineIndex)}`);
@@ -3289,36 +2236,12 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Builds the *merged* incoming spread for a forward turn off
-   * `oldHost`'s own last (unpaired) page (issue #90/#92) — the next
-   * chapter's real page 0 in the right column, paired with `oldHost`'s
-   * own last page (borrowed via `detachLeftForReuse`, still fully live)
-   * in the left, so the next chapter visibly starts on the right with
-   * no blank page anywhere, instead of a whole separate spread opening
-   * with a blank facing page next to it. Returns `undefined` (without
-   * touching `oldHost` at all) if there's no next chapter, or it isn't
-   * reflowable spread-eligible content a merge can continue into — the
-   * caller then falls back to the ordinary chapter-open path, with its
-   * usual blank facing page, exactly as before this existed.
-   *
-   * Only reached when `oldHost` is *already* sitting on its own unpaired
-   * last page (`secondPageIndex === undefined`) — e.g. arrived at
-   * directly via a TOC/bookmark jump, or backward navigation from the
-   * next chapter, rather than a normal forward walk through this
-   * chapter's own pages (see `prepareMergedIncomingSpreadFromUpcomingLastPage`
-   * for that far more common case, issue #94).
-   *
-   * `currentSpineIndex` defaults to `this.spineIndex` — the right value
-   * for every *turn*-driven caller (`prepareIncomingSpread`), since
-   * `this.spineIndex` still describes `oldHost` there (only updated once
-   * `openSpineItem` commits to whatever this call returns). `openSpineItem`
-   * itself, though, calls this directly on a host it just opened at some
-   * *other* `spineIndex` than whatever `this.spineIndex` currently is
-   * (the previous chapter, not yet updated this call) — passing that
-   * exact value explicitly is what makes this reusable for landing
-   * directly on a lone unpaired page (e.g. this book's own first spine
-   * item, often a standalone cover image) with no prior turn involved at
-   * all, not just a forward turn's own incoming spread. */
+  /** Builds the merged incoming spread for a forward turn off an `oldHost`
+   * already sitting on its unpaired last page. The next chapter opens on
+   * the right while `oldHost`'s last page is reused on the left, avoiding
+   * a transient blank facing page. `currentSpineIndex` defaults to
+   * `this.spineIndex` for turn-driven callers but can be passed explicitly
+   * when `openSpineItem` invokes this on a newly opened host. */
   private async prepareMergedIncomingSpread(
     oldHost: SpreadPaginatedHost,
     currentSpineIndex: number = this.spineIndex,
@@ -3327,12 +2250,8 @@ export class ReaderController {
     if (!this.canMergeSpreadIntoNext(nextSpineIndex)) {
       return undefined;
     }
-    // Only actually mutates `oldHost` (marking its own left column as
-    // handed off, not yet touching the DOM at all — see
-    // `openMergedWithPreviousTail`'s doc comment for why the actual move
-    // happens there, atomically) once every precondition above has
-    // already passed — see `reattachDetachedLeft` below for how this is
-    // undone if the async load that follows fails anyway.
+    // Detach the reusable left page only after all preconditions pass;
+    // reattach it if the async load fails.
     const previousTail = oldHost.detachLeftForReuse();
     try {
       return await this.buildMergedSpreadHost(nextSpineIndex, previousTail);
@@ -3342,27 +2261,12 @@ export class ReaderController {
     }
   }
 
-  /** The far more common way a merge actually gets built (issue #94):
-   * `oldHost` is *not yet* on its own unpaired last page at all — it's
-   * still showing its last genuinely *paired* spread, one ordinary
-   * forward turn away from what would otherwise land on that unpaired
-   * page alone with a blank facing column for exactly one turn, before
-   * a *second* forward turn merges it into the next chapter. That
-   * intermediate blank-facing-page turn is exactly what this avoids:
-   * called instead of the ordinary in-chapter path whenever the
-   * upcoming target has no companion, it builds the merged spread
-   * directly off *this* forward turn, using a brand new, standalone
-   * `PaginatedContentHost` for this same chapter (loaded fresh, then
-   * moved straight to its own last page) as the tail — never reusing
-   * `oldHost.left` itself, which stays completely untouched, still
-   * showing its own current (paired, on-screen) spread as the valid
-   * outgoing side of the turn animation right up until it's disposed.
-   * Reusing `oldHost.left` here the way `prepareMergedIncomingSpread`
-   * does would instead force it to jump straight to the unpaired last
-   * page *before* the turn animation even starts (to have the right
-   * content ready to detach) — visibly flashing that blank-facing state
-   * on screen for an instant, the exact thing both merge paths exist to
-   * prevent. */
+  /** Builds the more common merge case: `oldHost` is still on its last
+   * paired spread, one turn before an unpaired tail page. It loads a fresh
+   * standalone tail host for this chapter and merges that directly into the
+   * next chapter so the reader never sees the intermediate blank-facing
+   * spread. `oldHost` stays untouched so it remains the valid outgoing side
+   * of the turn animation. */
   private async prepareMergedIncomingSpreadFromUpcomingLastPage(): Promise<SpreadPaginatedHost | undefined> {
     const nextSpineIndex = this.spineIndex + 1;
     if (!this.canMergeSpreadIntoNext(nextSpineIndex) || !this.containerEl) {
@@ -3370,27 +2274,12 @@ export class ReaderController {
     }
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const previousTail = new PaginatedContentHost(columnWidth, this.height);
-    // `SandboxedContentHost` (which `PaginatedContentHost.open` loads
-    // into) deliberately never attaches its own iframe — see its own
-    // doc comment: "where/when it becomes visible is a layout concern
-    // owned by the reader shell." A detached iframe never actually
-    // navigates (its `src` assignment never fires `load`), which was a
-    // real, confirmed hang here: `open()` awaited that `load` event
-    // forever (well, until `SandboxedContentHost`'s own 10s timeout),
-    // silently freezing every further page turn behind `isTurningPage`.
-    // `openMergedWithPreviousTail` (below) re-parents this same element
-    // into the merged host's own layout via one atomic `appendChild`
-    // once it succeeds — exactly as safe a move as `detachLeftForReuse`'s
-    // reuse of an *already*-loaded element (see its own doc comment),
-    // since nothing has been shown on screen yet for a mid-move reload
-    // to lose.
+    // Attach before `open()`; detached iframes do not navigate. Once the
+    // merged host is ready, `openMergedWithPreviousTail` reparents this
+    // loaded element into it.
     previousTail.element.style.position = "absolute";
-    // Hidden/inert while it's still just a standalone, still-loading
-    // element sitting directly in `containerEl` — otherwise, positioned
-    // `absolute` at the container's own origin, it would flash on top
-    // of whatever's currently on screen before ever being moved into
-    // place. Cleared once `buildMergedSpreadHost` succeeds (see its own
-    // doc comment on why *there*, not here).
+    // Keep the standalone tail hidden and inert until
+    // `buildMergedSpreadHost` moves it into place.
     previousTail.element.style.opacity = "0";
     previousTail.element.style.pointerEvents = "none";
     this.containerEl.appendChild(previousTail.element);
@@ -3411,35 +2300,11 @@ export class ReaderController {
     }
   }
 
-  /** The two-page-spread equivalent of `prepareIncomingPage` — builds a
-   * whole new `SpreadPaginatedHost` for the *target spread* (both
-   * columns), positioned to sit exactly beneath `oldHost.element`,
-   * exactly the same way. `targetIndex` is the new primary (left)
-   * column's page index — mirrors `SpreadPaginatedHost.nextSpread`/
-   * `previousSpread`'s own two-pages-at-a-time clamping, since those are
-   * what this replaces for an animated turn. Returns `undefined` only
-   * when `oldHost` is already at that edge of the chapter (there's
-   * nothing to turn *to*) — unlike the single-page version, a spread one
-   * page short of the end still has a valid (if lopsided) next spread to
-   * turn to, so this is checked directly rather than by an out-of-range
-   * page index. The forward check is against `pageCount - 2`, not
-   * `pageCount - 1` — see `nextSpread`'s identical fix (issue #91) for
-   * why: once the right column already shows the chapter's actual last
-   * page, there's nothing left to turn to, even though the left column's
-   * own index never reaches `pageCount - 1` itself for an even page
-   * count. Checking against `pageCount - 1` here was the animated
-   * turn's own copy of that same bug — one page turn past the last full
-   * spread redisplayed that identical spread (the last page now alone
-   * in the left column) instead of correctly falling through to the
-   * next chapter.
-   *
-   * A forward turn off `oldHost`'s own last (unpaired) page is handled
-   * *before* that bounds check even runs, by `prepareMergedIncomingSpread`
-   * instead (issue #90/#92) — see its own doc comment. Its result, once
-   * built, is exactly as valid an "incoming spread" as an in-chapter one
-   * from every other caller's point of view (`animateSpreadTurn` plays
-   * the identical turn animation either way), so it's folded in here
-   * rather than requiring its own separate animate/reveal machinery. */
+  /** Builds the incoming spread for an in-chapter spread turn and
+   * positions it directly under `oldHost.element`. Returns `undefined`
+   * only when `oldHost` is already at the edge of the chapter; a lopsided
+   * final spread is still a valid target. Forward turns off an unpaired
+   * last page are handled earlier by `prepareMergedIncomingSpread`. */
   private async prepareIncomingSpread(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -3453,46 +2318,20 @@ export class ReaderController {
       if (merged) {
         return merged;
       }
-      // No next chapter, or it isn't reflowable/spread-eligible content
-      // a merge can continue into — fall through to the ordinary bounds
-      // check below, which (correctly, since `oldHost` is genuinely on
-      // its last page either way) reports "no more spread here," so the
-      // caller's existing chapter-open fallback (issue #83's animation
-      // included) handles the crossing exactly as it always has, with
-      // the usual blank facing page rather than a merge.
+      // No mergeable next chapter; fall through so the usual chapter-open
+      // fallback handles the boundary with the normal blank facing page.
     } else if (
       direction === 1 &&
       oldHost.secondPageIndex !== undefined &&
       oldHost.pageIndex < oldHost.pageCount - 2
     ) {
-      // Issue #94: `oldHost` still has a companion page right now (it's
-      // not yet the case above), but *this* forward turn's own ordinary
-      // target would be the chapter's unpaired last page — the branch
-      // above only ever sees that once it's already on screen, which is
-      // exactly the extra "see the blank facing page, then navigate
-      // again" turn the issue was filed about. Catch it one turn
-      // earlier instead, straight from the last genuinely paired
-      // spread, so that blank-facing state is never displayed at all.
+      // Catch an upcoming unpaired last page one turn early so the reader
+      // never sees the blank-facing intermediate spread.
       //
-      // The `oldHost.pageIndex < oldHost.pageCount - 2` guard matters
-      // just as much as the check inside it — it's the exact same
-      // condition the bounds check below uses to decide whether
-      // *any* further in-chapter turn is even possible. Without it,
-      // this branch misfired on the far more common case, an *even*
-      // total page count: right at the chapter's own true last spread
-      // (`pageIndex === pageCount - 2`, both columns already showing
-      // real content, nothing unpaired), `Math.min(pageIndex + 2,
-      // pageCount - 1)` below still clamps down to a "target" of
-      // `pageCount - 1` — the same page already on screen in the right
-      // column, not a genuine further step — which that target then
-      // (correctly, for a real further step, but wrongly here) read as
-      // "unpaired." The result was a real, confirmed regression: *every*
-      // even-length chapter's ordinary crossing got wrongly rewritten
-      // into a merge — duplicating its own already-seen last page into
-      // a new left column and force-starting the next chapter on the
-      // right, exactly backwards from the "chapters may start on either
-      // side, only an *actually* unpaired page ever merges" this whole
-      // feature is supposed to guarantee.
+      // The `oldHost.pageIndex < oldHost.pageCount - 2` guard is required:
+      // without a real further in-chapter turn, even-length chapters would
+      // misclassify their true last spread as "upcoming unpaired" and
+      // wrongly force a merge.
       const upcomingTarget = Math.min(oldHost.pageIndex + 2, oldHost.pageCount - 1);
       const upcomingTargetHasCompanion = upcomingTarget + 1 < oldHost.pageCount;
       if (!upcomingTargetHasCompanion) {
@@ -3500,11 +2339,8 @@ export class ReaderController {
         if (merged) {
           return merged;
         }
-        // No next chapter, or it isn't eligible — fall through to the
-        // ordinary in-chapter path below, which lands on `oldHost`'s own
-        // unpaired last page exactly as it always did before this
-        // existed (the only difference from the branch above: getting
-        // there took one turn instead of already being there).
+        // No eligible next chapter; fall through to the normal in-chapter
+        // path so `oldHost` still lands on its own unpaired last page.
       }
     }
     if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 2 : oldHost.pageIndex <= 0) {
@@ -3520,32 +2356,13 @@ export class ReaderController {
     const newEl = newHost.element;
     newEl.style.position = "absolute";
     newEl.style.top = "0";
-    // See `prepareIncomingPage`'s matching comment — `SpreadPaginatedHost`
-    // is likewise always constructed with `this.width`, so `left: 0`
-    // alone lines it up exactly, leaving `transform` free for a
-    // backward/"entering" turn to set outright.
+    // `SpreadPaginatedHost` is created at `this.width`, so `left: 0`
+    // aligns it and leaves `transform` free for the entering turn.
     newEl.style.left = "0";
     newEl.style.zIndex = "1";
-    // See `prepareIncomingPage`'s identical fix (issue #84) — doubly
-    // important here, since `SpreadPaginatedHost.open()` fully loads and
-    // paginates *two* independent columns in sequence (see its own doc
-    // comment on why they're separate hosts, not a shared one), roughly
-    // doubling the exposure window during which this freshly-attached,
-    // `position: absolute` element would otherwise paint its own
-    // still-loading (chapter-start) content on top of `oldHost`.
-    //
-    // `opacity: 0` specifically, not `visibility: hidden`: the right
-    // column independently sets its *own* explicit `visibility` (see
-    // `syncRight`, called by both `open()` and `goToPageIndex()` below)
-    // whenever a companion page exists — a real, confirmed gap this
-    // fix's first version had, found via direct DOM inspection: a
-    // descendant's own explicit `visibility` declaration overrides an
-    // ancestor's inherited one, so the right column could still flash
-    // its still-loading content visibly even while this wrapper itself
-    // was `visibility: hidden`. `opacity` has no such override — every
-    // ancestor's opacity always multiplies into a descendant's final
-    // rendered alpha, so a `0` here reliably hides both columns
-    // regardless of anything `syncRight` sets on either individually.
+    // Hide the incoming spread while it loads; use `opacity: 0`, not
+    // `visibility: hidden`, because `syncRight` can set explicit
+    // visibility on the right column and override inherited visibility.
     newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
@@ -3576,23 +2393,13 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Fraction of the reader pane's width a drag must cross before
-   * releasing completes the turn rather than reverting it — a book page
-   * lifted less than halfway falls back closed; lifted further, it
-   * carries on over. */
+  /** Fraction of the pane width a drag must cross to commit the turn. */
   private static readonly DRAG_COMMIT_THRESHOLD = 0.4;
 
-  /** (Re-)attaches the pointer-driven page-turn gesture(s) to the current
-   * content host. Single-column paginated mode gets the full draggable,
-   * animated flip (see `beginDragPageTurn`); spread mode gets click-to-
-   * navigate only, on each column independently (see
-   * `setUpSpreadClickToNavigate`) — a drag/flip animation across two
-   * independent side-by-side iframes is a substantially harder visual
-   * problem, deliberately out of scope for this pass, same as
-   * chapter-crossing drags. Attached directly to each iframe's own
-   * document for the same reason `AccessibilityController` attaches its
-   * keyboard listener there: pointer events started inside an iframe
-   * don't bubble out to the parent window. */
+  /** Re-attaches page-turn pointer handling to the current host. Single-
+   * column paginated mode gets drag-to-turn; spread and fixed-layout
+   * modes stay click-to-navigate only in this pass. Listeners attach to
+   * each iframe document because iframe pointer events do not bubble out. */
   private setUpDragPageTurn(): void {
     this.dragCleanup?.();
     this.dragCleanup = undefined;
@@ -3603,9 +2410,7 @@ export class ReaderController {
     }
 
     if (this.host instanceof FixedSpreadHost) {
-      // No drag-to-turn animation for fixed-layout content (see
-      // `turnFixedSpread`'s own doc comment on why that's deliberately
-      // out of scope for this pass) — click-to-navigate only.
+      // Fixed-layout content uses click-to-navigate only.
       this.dragCleanup = this.setUpFixedSpreadClickToNavigate(this.host);
       return;
     }
@@ -3632,54 +2437,17 @@ export class ReaderController {
     };
   }
 
-  /** Single-column counterpart to `setUpSpreadClickToNavigate`'s own
-   * container-level fallback listener, for the exact same underlying
-   * reason (issue #82): `PaginatedContentHost` sizes its iframe to only
-   * *this specific page's* own content height (see
-   * `PaginatedContentHost.showCurrentPage`), often noticeably shorter
-   * than a full page — most commonly a chapter's very last page. A
-   * click landing in the resulting gap below that shrink-wrapped iframe
-   * never reaches it at all: from the browser's perspective, that point
-   * in the reader pane simply isn't covered by any element with a
-   * page-turn listener on it, so it was silently swallowed with no
-   * visible effect. Reported as needing "an extra click" to advance at
-   * a chapter's end — in practice, depending on how short that last
-   * page's real content was, it ranged from "click a little higher" to
-   * whole pages near a chapter's end going almost completely inert.
-   *
-   * Attached to `this.containerEl` — the reader pane's own content-host
-   * div (see `ReaderApp.tsx`'s `contentHostRef`), which always spans
-   * the full fixed page area regardless of which host is currently
-   * mounted inside it or how tall that host's own iframe happens to be
-   * — rather than to any specific host element. Reuses the same left/
-   * middle/right-third zones as `handleContentClick`, measured against
-   * `this.width` (the whole reader pane), since a fallback click here
-   * is by definition not on any specific host's own content. */
+  /** Container-level click fallback for single-page paginated mode.
+   * `PaginatedContentHost` can be shorter than the pane, so clicks in the
+   * uncovered lower gap must still use whole-pane third-based navigation. */
   private setUpBelowPageClickFallback(): () => void {
     const containerEl = this.containerEl;
     if (!containerEl) {
       return () => {};
     }
-    // Each gesture gets its own self-contained, one-shot `pointerup`
-    // listener (attached from inside `pointerdown`, removing itself once
-    // it fires) rather than a `pointerup` listener shared across every
-    // gesture with the start position stashed in an outer closure
-    // variable — a real, confirmed bug caught via testing: `setUpDragPageTurn`
-    // (which builds this fallback) is explicitly documented, on
-    // `handleWindowRefocus`, as safe to call repeatedly at any time,
-    // including — as real automated interaction testing demonstrated —
-    // in the middle of an already-started gesture (a spurious `window`
-    // focus event arriving between one `pointerdown` and its matching
-    // `pointerup`). With a shared outer closure, that rebuild throws away
-    // the listener pair mid-gesture and attaches a fresh one with its
-    // start position back at its unset default, silently misreading
-    // where the gesture actually began. A gesture-scoped listener like
-    // this one is naturally immune: only the *outer* `pointerdown`
-    // listener is ever torn down by a rebuild (via the cleanup this
-    // method returns) — a `pointerup` listener already attached for a
-    // gesture already in progress keeps its own captured start position
-    // and fires normally regardless of how many times the outer listener
-    // gets rebuilt around it.
+    // Keep `pointerup` gesture-scoped instead of sharing mutable start
+    // state: this listener can be rebuilt mid-gesture, and the in-flight
+    // release must still use the original coordinates.
     const onContainerPointerDown = (event: PointerEvent): void => {
       if (event.pointerType === "mouse" && event.button !== 0) {
         return;
@@ -3711,56 +2479,18 @@ export class ReaderController {
     return () => containerEl.removeEventListener("pointerdown", onContainerPointerDown);
   }
 
-  /** Click-to-navigate for spread mode: no drag/flip animation (see
-   * `setUpDragPageTurn`'s doc comment), just tap detection independently
-   * on each column — reuses `handleContentClick`'s tap-vs-drag/selection/
-   * link guards, but with *that column's own width* as the left/right-
-   * third reference (via `SpreadPaginatedHost.effectiveColumnWidth`) so
-   * "tapping near this page's edge" means the same thing regardless of
-   * which of the two side-by-side columns it lands in. Attached to both
-   * columns (not just the primary/left one accessibility uses), matching
-   * `setUpContentInteraction`'s existing scope: mouse interaction works on
-   * both pages of a spread, even though only the left one participates
-   * in keyboard/focus accessibility.
-   *
-   * Also attaches a *third* listener directly to `host.element` (the
-   * parent-side container both iframes sit inside, not a cross-document
-   * boundary) for the blank-companion-page case: `SpreadPaginatedHost`
-   * hides the right column with `visibility: hidden` when there's no
-   * next page to show it (see `syncRight`), and a `visibility: hidden`
-   * element is never hit-tested at all — a click there passes straight
-   * through to whatever's behind it in the *same* document, which is
-   * this container, not the (invisible) iframe. Without this, tapping
-   * that blank facing page silently did nothing, a real bug caught via
-   * real-Chromium interaction: there was simply no listener anywhere
-   * that a click landing there could ever reach. Any tap this container-
-   * level listener catches — the blank page, or the narrow gutter
-   * divider between columns — reasonably means "continue forward", so
-   * it always turns the page ahead rather than bucketing into thirds
-   * (there's no content there to reference thirds against).
-   *
-   * Returns a single cleanup function for all three listeners, for
-   * `setUpDragPageTurn`'s `dragCleanup` to call as one unit. Every
-   * listener pair here is a self-contained, one-shot `pointerup`
-   * (attached from inside `pointerdown`, removing itself once it
-   * fires) rather than a `pointerup` sharing start-position state with
-   * `pointerdown` via an outer closure variable — see
-   * `setUpBelowPageClickFallback`'s doc comment for why: this whole
-   * method can be, and per `handleWindowRefocus` routinely is, rebuilt
-   * in the middle of an already-started gesture, which would otherwise
-   * silently separate a `pointerup` from the `pointerdown` that started
-   * it. */
+  /** Click-to-navigate for spread mode, using each column's own width for
+   * its third-based tap zones. A container listener handles taps on the
+   * blank companion page or gutter because a `visibility: hidden` iframe
+   * is not hit-tested. Each gesture keeps its own one-shot `pointerup`
+   * because these listeners may be rebuilt mid-gesture. */
   private setUpSpreadClickToNavigate(host: SpreadPaginatedHost): () => void {
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const cleanups: Array<() => void> = [];
 
     host.contentDocuments().forEach((doc, columnIndex) => {
-      // `contentDocuments()` returns the left column first, right
-      // second (see its own doc comment) — the right column's own left
-      // margin sits at the spine, the *middle* of the whole spread, not
-      // its far edge, so a tap there should still mean "forward" like
-      // the rest of that page, not "back" (see `handleContentClick`'s
-      // `leftThirdAction`/`rightThirdAction` parameters).
+      // The right column's left edge is the gutter, so that zone still
+      // means "forward" rather than "back."
       const isRightColumn = columnIndex === 1;
       const leftThirdAction: 1 | -1 = isRightColumn ? 1 : -1;
       const onPointerDown = (event: PointerEvent): void => {
@@ -3811,43 +2541,17 @@ export class ReaderController {
     };
   }
 
-  /** `setUpSpreadClickToNavigate`'s fixed-layout counterpart — click-to-
-   * navigate for a `FixedSpreadHost` (both `"single"` and `"pair"`
-   * `FixedSpread`s), same left/right-third tap-zone convention as every
-   * other host type. Deliberately its own separate method rather than a
-   * generalization of `setUpSpreadClickToNavigate`: a fixed-layout
-   * page's iframe is *scaled* via CSS `transform` to fit the available
-   * space (see `FixedContentHost.applyScale`) — a transform changes
-   * only how an element *paints*, never the coordinate space pointer
-   * events inside it report in, so a click landing anywhere on a scaled
-   * page still reports `clientX`/`clientY` against that page's own
-   * *intrinsic*, unscaled width, not whatever width it currently
-   * happens to render at on screen. Reflowable columns have no such gap
-   * (their iframe's own CSS width already *is* the effective column
-   * width, never transformed) — `setUpSpreadClickToNavigate` can safely
-   * use one precomputed constant for the entire gesture; this method
-   * instead reads each document's own live `defaultView.innerWidth` at
-   * the moment of the click, which self-corrects for whatever width
-   * that specific page's content document is actually reporting,
-   * scaled or not.
-   *
-   * Also attaches a container-level fallback (on `host.element` itself,
-   * mirroring `setUpSpreadClickToNavigate`'s own) — but unlike that
-   * one, which always means "continue forward" (its only blank-margin
-   * case, an odd-length reflowable chapter's unpaired last page, is
-   * always the *trailing* side), a fixed-layout page is very often
-   * letterboxed on *both* sides at once (a portrait page centered in a
-   * landscape-ish reader pane — real, confirmed with `page-blanche
-   * .epub` itself), so this fallback buckets by thirds of the *whole*
-   * available width, same as a real per-page tap would, rather than
-   * assuming one fixed direction. */
+  /** Fixed-layout click-to-navigate. Pointer coordinates stay in each
+   * document's intrinsic space even when the iframe is scaled, so this
+   * path reads that document's live `innerWidth` instead of reusing a
+   * spread-wide width. The container fallback buckets by whole-pane
+   * thirds because fixed pages can be letterboxed on either side. */
   private setUpFixedSpreadClickToNavigate(host: FixedSpreadHost): () => void {
     const cleanups: Array<() => void> = [];
     const rtl = this.pkg.pageProgressionDirection === "rtl";
 
     host.contentDocuments().forEach((doc, columnIndex) => {
-      // Only meaningful for a `"pair"` spread (two columns) — a
-      // `"single"` spread's lone document is always column 0.
+      // Only meaningful for a `"pair"` spread.
       const columnRole: "single" | "left" | "right" =
         host.spread?.kind === "pair" ? (columnIndex === 1 ? "right" : "left") : "single";
       const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(columnRole, rtl);
@@ -3869,13 +2573,8 @@ export class ReaderController {
     });
 
     const containerEl = host.element;
-    // The container-level fallback (for a click that lands in the
-    // letterboxed margin outside any actual page) has no single column
-    // of its own to speak of — treated as `"single"`, the same
-    // left/right convention a lone unpaired page already uses, which
-    // is exactly the outermost-edge convention this fallback should
-    // apply regardless of how many columns are actually mounted right
-    // now (a margin click is, by definition, outside all of them).
+    // Margin clicks belong to no specific page, so treat them as
+    // `"single"` and use the outer-edge convention.
     const { left: containerLeftAction, right: containerRightAction } = this.fixedSpreadThirdActions("single", rtl);
     const onContainerPointerDown = (event: PointerEvent): void => {
       this.bumpContentActivity();
@@ -3886,13 +2585,8 @@ export class ReaderController {
       const startY = event.clientY;
       const onContainerPointerUp = (upEvent: PointerEvent): void => {
         containerEl.removeEventListener("pointerup", onContainerPointerUp);
-        // A plain container-relative `handleContentClick` call, same as
-        // every per-column one above — `containerEl`'s own client rect
-        // (not a content document) is the right frame of reference here
-        // since this listener only ever fires for a click that missed
-        // every actual page (there's no scaling/transform gap to
-        // correct for on the *container* itself, only on the pages
-        // inside it).
+        // This click missed every page, so container coordinates are the
+        // right frame of reference here.
         this.handleContentClick(
           upEvent,
           startX,
@@ -3915,22 +2609,9 @@ export class ReaderController {
     };
   }
 
-  /** The `leftThirdAction`/`rightThirdAction` `handleContentClick` needs
-   * for one specific column of a `FixedSpreadHost` click zone — see
-   * `handleContentClick`'s own doc comment for why these can't just be
-   * inferred from a single "which column" flag the way reflowable
-   * spreads' simpler (never-RTL) convention can. Reasoned out fully
-   * (all six `columnRole`×`rtl` combinations) in this session's own
-   * design notes; summarized here:
-   *
-   * - Non-RTL: only the *left* column's (or a `"single"` page's) own
-   *   left-third — the true, unambiguous left edge of the whole
-   *   spread — ever means "back." Every other zone (both of the right
-   *   column's thirds, and the left column's own right-third, which
-   *   only ever sits at the *gutter*, not a true edge) means "forward."
-   * - RTL: exactly mirrored — only the *right* column's (or a
-   *   `"single"` page's) own right-third, the true right edge, means
-   *   "back"; everything else means "forward." */
+  /** Returns the fixed-spread third actions for one column. Only the
+   * spread's true outer edge means "back"; the gutter-side third always
+   * means "forward", mirrored in RTL. */
   private fixedSpreadThirdActions(
     columnRole: "single" | "left" | "right",
     rtl: boolean,
@@ -3941,17 +2622,10 @@ export class ReaderController {
     return columnRole === "left" ? { left: 1, right: 1 } : { left: 1, right: -1 };
   }
 
-  /** Tracks one pointer gesture from `pointerdown` through release,
-   * turning the page interactively: the outgoing page rotates in direct
-   * proportion to how far the pointer has moved (see
-   * `setPageTurnTransform`) rather than on a fixed timer, so the reader
-   * can see exactly how far "through" the turn they are and change their
-   * mind mid-gesture. Direction (forward/back) locks in on the first
-   * movement past a small dead zone (so an ordinary tap/click is never
-   * misread as a drag), at which point the incoming page begins loading
-   * (see `prepareIncomingPage`) — if the pointer is released before that
-   * finishes, `settleDragPageTurn` is invoked as soon as it does, using
-   * whatever fraction was last recorded. */
+  /** Tracks one drag-to-turn gesture from `pointerdown` through release.
+   * Direction locks once movement clears the dead zone, then the incoming
+   * page loads; if release happens first, settlement waits for that load
+   * and uses the last recorded fraction. */
   private beginDragPageTurn(startEvent: PointerEvent, doc: Document): void {
     if (this.isTurningPage || !(this.host instanceof PaginatedContentHost)) {
       return;
@@ -3960,10 +2634,8 @@ export class ReaderController {
     const startX = startEvent.clientX;
     const startY = startEvent.clientY;
     const containerWidth = Math.max(1, this.width);
-    // "scroll" (issue #63) needs the incoming page to visibly move in
-    // lockstep with the outgoing one throughout the drag, not just sit
-    // revealed-but-static underneath it the way every other style
-    // treats it (see `scrollDragEnterAmount`).
+    // "scroll" moves the incoming page with the drag instead of only
+    // revealing it underneath.
     const isScroll = this.pageTurnAnimationStyle === "scroll";
 
     let direction: 1 | -1 | undefined;
@@ -3972,14 +2644,9 @@ export class ReaderController {
     let released = false;
     let latestFraction = 0;
     let capturedToken: number | undefined;
-    // See `animatePageTurn`'s identical use of both — "slide" needs a
-    // backdrop behind `oldHost.element` masking the gap a short page's
-    // dropped clip-path would otherwise let `prepared` show through;
-    // "rotate" needs a mask over the region `growToFullHeight` newly
-    // exposes on `oldHost.element` itself. Built once, as soon as
-    // `direction` locks in and `prepared` resolves (see below) — same
-    // lifetime as the drag gesture itself, cleaned up by
-    // `settleDragPageTurn` once the drag finishes either way.
+    // Built once when the incoming page is ready: "slide" needs a
+    // backdrop for short-page bleed, and "rotate" needs a mask for the
+    // newly exposed grown-height region.
     let turnBackdrop: HTMLDivElement | undefined;
     let turnGrowthMask: HTMLDivElement | undefined;
 
@@ -4018,33 +2685,16 @@ export class ReaderController {
             return;
           }
           if (prepared) {
-            // Every overlapping-iframe style needs `clip-path` dropped
-            // from *both* sides for the drag's duration — see
-            // `animatePageTurn`'s identical reasoning (issue #81's
-            // Chromium compositing bug isn't specific to "rotate" or to
-            // a committed/animated turn; it applies just as much to
-            // this interactive drag preview). Only "rotate" also grows
-            // `oldHost`'s height to `this.height` (its own, separate
-            // box-shadow-position fix — see `growToFullHeight`'s doc
-            // comment); "slide" must not, since growing a short page's
-            // iframe *without* a clip-path to bound it would expose
-            // however much more of its own document flow fits in the
-            // extra height. `settleDragPageTurn` restores whichever of
-            // these was actually touched if the drag ends up reverting
-            // rather than committing (a commit discards `oldHost`
-            // outright and moves on with `prepared` untouched — its own
-            // natural `showCurrentPage` state was never disturbed in
-            // the first place, since only `oldHost` — never `prepared`
-            // — ever had its height grown here).
+            // Drop `clip-path` on both hosts during overlapping drag
+            // previews; the Chromium compositing bug this avoids is not
+            // specific to committed turns.
             //
-            // "slide"/"rotate" also need the exact same bleed-masking
-            // this same-style committed turn needs (issue #84's gap
-            // bleed for "slide"; the newly-exposed-grown-height bleed
-            // for "rotate" — see `buildTurnBackdrop`/
-            // `buildTurnGrowthMask`'s own doc comments) — a real,
-            // previously-missing gap in this interactive preview path
-            // specifically, only ever fixed for the click-triggered
-            // committed turn until now.
+            // Only "rotate" grows `oldHost` to full height; "slide" must
+            // not, or a short page would reveal extra document flow once
+            // its clip-path is gone.
+            //
+            // "slide" and "rotate" also need their usual bleed-masking in
+            // the interactive preview path.
             if (this.pageTurnAnimationStyle === "rotate") {
               oldHost.suppressClipPathForAnimation();
               const naturalHeight = oldHost.element.getBoundingClientRect().height;
@@ -4075,7 +2725,7 @@ export class ReaderController {
               prepared.element.style.transform = `translateX(${this.pageTurnAnimator.scrollDragEnterAmount(lockedDirection, latestFraction)}%)`;
             }
           } else {
-            // A chapter boundary — nothing to drag into in this pass.
+            // Chapter boundary: this pass has nothing to drag into.
             this.isTurningPage = false;
           }
         });
@@ -4100,10 +2750,8 @@ export class ReaderController {
     const onPointerUp = (upEvent: PointerEvent): void => {
       cleanupListeners();
       if (direction === undefined || capturedToken === undefined) {
-        // Never moved past the dead zone — an ordinary tap/click, not a
-        // drag. Treat it as click-to-navigate (see `handleContentClick`)
-        // rather than as nothing, but only for a genuine release, not a
-        // cancelled gesture (e.g. the pointer leaving the window).
+        // Still a tap, not a drag; only a real release should trigger
+        // click-to-navigate.
         if (upEvent.type === "pointerup") {
           this.handleContentClick(upEvent, startX, startY, containerWidth, doc);
         }
@@ -4111,8 +2759,7 @@ export class ReaderController {
       }
       released = true;
       if (preparing) {
-        // `onPointerMove`'s promise continuation settles this once the
-        // incoming page finishes loading.
+        // Settled by the prepare promise once the incoming page is ready.
         return;
       }
       void this.settleDragPageTurn(oldHost, newHost, direction, latestFraction, capturedToken, turnBackdrop, turnGrowthMask);
@@ -4123,41 +2770,14 @@ export class ReaderController {
     doc.addEventListener("pointercancel", onPointerUp);
   }
 
-  /** Maximum total pointer movement (in either axis, px) between
-   * `pointerdown` and `pointerup` for a gesture to still count as a tap
-   * rather than an aborted drag/selection — deliberately generous enough
-   * to absorb ordinary hand tremor, but small enough that a real text
-   * selection drag (which usually moves well past this before the
-   * pointer is released) never gets misread as a page-turn tap. */
+  /** Maximum movement for a gesture to still count as a tap. */
   private static readonly CLICK_MOVEMENT_TOLERANCE = 10;
 
-  /** Click-to-navigate: turns the page when a tap/click lands in the
-   * left or right third of the reading pane, and does nothing in the
-   * middle third (reserved for a future "show/hide chrome" tap target,
-   * and simply safe to leave inert for now). Only reachable when
-   * `beginDragPageTurn`'s pointer gesture never crossed its drag
-   * dead-zone, so this never fires alongside an actual page-turn drag.
-   * Two additional guards keep it from misfiring: an active text
-   * selection (the user was dragging to select, not tapping) and a click
-   * that landed on an `<a href>` (already handled, and already
-   * navigated, by `setUpContentInteraction`'s own click listener — turning
-   * the page *as well* would be a confusing double-navigation).
-   *
-   * `leftThirdAction`/`rightThirdAction` are which direction (`1`
-   * forward, `-1` back) each *specific* third actually means for
-   * *this* caller's own column/edge — deliberately left fully explicit
-   * rather than inferred from a single "which column" flag, because
-   * which literal edge of the whole spread means "back" isn't always
-   * the spread's own left edge: it depends on both which column this
-   * particular tap landed in (the gutter-adjacent third of *either*
-   * column is never a true spread-edge, and always means "forward,"
-   * exactly like every other non-edge zone) *and* on
-   * `page-progression-direction` for fixed-layout content specifically
-   * (an RTL manga/comic page turns backward on its own *right* side,
-   * not its left — see `setUpFixedSpreadClickToNavigate`'s own call
-   * sites for the exact per-column/per-direction derivation). Default
-   * (`-1`/`1`) matches every caller that never needs anything but the
-   * plain, single-page/LTR-left-column convention. */
+  /** Turns the page when a tap lands in the left or right third, with
+   * guards for drags, active selections, and link clicks. The explicit
+   * third actions matter because gutter-adjacent thirds still mean
+   * "forward", and fixed-layout RTL spreads mirror which outer edge means
+   * "back". */
   private handleContentClick(
     upEvent: PointerEvent,
     startX: number,
@@ -4176,21 +2796,9 @@ export class ReaderController {
       return;
     }
 
-    // `doc` is passed in directly by the caller (which already knows
-    // exactly which content document this gesture belongs to) rather
-    // than derived here via `upEvent.target instanceof Node` — a real,
-    // confirmed bug found via testing: `Node` inside `ReaderController`
-    // resolves to the *parent* window's own `Node` constructor, but
-    // `upEvent.target` for a pointer event dispatched inside a
-    // cross-document iframe is an instance of *that iframe's own*,
-    // separate-realm `Node` class. `instanceof` checks identity against
-    // a specific constructor, so this always evaluated to `false` for
-    // every content-iframe event, silently disabling the selection
-    // guard below (issue #74): a Shift+click (or any tap) that landed
-    // in the left/right third of a two-page spread's column turned the
-    // page even with an active, non-collapsed text selection, since the
-    // guard's `selection` was always `undefined` and so never actually
-    // blocked anything.
+    // The caller passes `doc` directly because iframe events come from a
+    // different `Node` realm, so `upEvent.target instanceof Node` would
+    // fail and break the selection guard.
     const selection = doc.getSelection();
     if (selection && !selection.isCollapsed) {
       return;
@@ -4200,14 +2808,8 @@ export class ReaderController {
       return;
     }
 
-    // A tap that landed on an existing highlight (issue #62): don't
-    // *also* treat it as a page-turn tap just because it happens to sit
-    // in one of the left/right third-of-the-page turn zones —
-    // `setUpHighlightSelection`'s own `pointerup` listener is about to
-    // open that highlight's action popup for this exact same click, and
-    // turning the page out from under it at the same time left a popup
-    // referencing a highlight no longer on screen (its "close" was
-    // still wired to the page that's no longer there).
+    // A tap on an existing highlight should open its popup, not also turn
+    // the page out from under that interaction.
     if (this.highlightInteraction.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
       return;
     }
@@ -4221,17 +2823,10 @@ export class ReaderController {
     // Middle third: no-op for now.
   }
 
-  /** Resolves a drag gesture once released (and, if it was still loading,
-   * once the incoming page finishes preparing): animates the rest of the
-   * way to completion if the drag crossed `DRAG_COMMIT_THRESHOLD`, or back
-   * to closed otherwise, then either swaps in the new host (committed —
-   * the same finalization `animatePageTurn`'s caller does: re-attach
-   * link/keyboard/drag handling, announce, persist progress) or disposes
-   * it unused (cancelled). `newHost` is `undefined` if the drag crossed a
-   * chapter boundary, in which case there's nothing to animate or commit —
-   * this pass doesn't support dragging across a chapter. `token` is
-   * this gesture's `turnToken`, checked before committing — see
-   * `turnToken`'s doc comment. */
+  /** Settles a released drag gesture once the incoming page is ready.
+   * Commits past `DRAG_COMMIT_THRESHOLD`, otherwise animates back closed.
+   * `newHost` is absent at chapter boundaries, and `token` prevents a
+   * stale completion from clobbering a newer turn. */
   private async settleDragPageTurn(
     oldHost: PaginatedContentHost,
     newHost: PaginatedContentHost | undefined,
@@ -4248,17 +2843,14 @@ export class ReaderController {
       return;
     }
 
-    // Captured up front, before anything below disposes `oldHost` — see
-    // `iframeHasFocus`/`restoreFocusAfterHostSwap`'s doc comments.
+    // Capture before anything below disposes `oldHost`.
     const hadKeyboardFocus = this.iframeHasFocus(oldHost);
     const oldEl = oldHost.element;
     const newEl = newHost.element;
     const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
     const reduceMotion = this.pageTurnAnimator.shouldSkipPageTurnAnimation();
-    // "scroll" (issue #63) moved `newEl` in lockstep with `oldEl`
-    // throughout the drag (see `beginDragPageTurn`'s `scrollDragEnterAmount`
-    // calls) — every other style leaves it completely static, revealed
-    // rather than moved, so only "scroll" needs to also animate it here.
+    // Only "scroll" moves `newEl` during the drag, so only it needs a
+    // matching release animation here.
     const isScroll = this.pageTurnAnimationStyle === "scroll";
     const extraEls = [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])];
 
@@ -4281,9 +2873,7 @@ export class ReaderController {
           }
         };
         oldEl.addEventListener("transitionend", onTransitionEnd);
-        // "scroll" draws no box-shadow (see `playScrollTurn`'s doc
-        // comment) — only the other styles need that second transitioned
-        // property.
+        // Only the non-scroll styles animate box-shadow.
         for (const el of [oldEl, ...extraEls]) {
           el.style.transition = isScroll
             ? `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`
@@ -4316,9 +2906,7 @@ export class ReaderController {
     }
 
     if (token !== this.turnToken) {
-      // A newer turn started and finished while this one's completion
-      // animation was still running — discard this stale result instead
-      // of clobbering the newer state (see `turnToken`).
+      // Discard stale completion if a newer turn won the race.
       newHost.dispose();
       if (!commit) {
         oldEl.style.position = "";
@@ -4335,9 +2923,8 @@ export class ReaderController {
     }
 
     if (commit) {
-      // Same reasoning as `turnPageInternal`'s identical line — a
-      // committed drag page turn also swaps in new content without
-      // otherwise invalidating a still-open highlight action popup.
+      // A committed drag turn also invalidates any highlight popup tied
+      // to the outgoing page.
       this.activeHighlight = undefined;
       oldHost.dispose();
       newEl.style.position = "";
@@ -4345,11 +2932,8 @@ export class ReaderController {
       newEl.style.left = "";
       newEl.style.transform = "";
       newEl.style.zIndex = "";
-      // `newHost` survives as the new `this.host` — restore whatever
-      // `suppressClipPathForAnimation` (see `beginDragPageTurn`) may
-      // have touched on it while it sat revealed underneath for the
-      // drag's duration (a no-op, via `showCurrentPage`, if it never
-      // actually applied).
+      // Restore anything `suppressClipPathForAnimation` changed while
+      // `newHost` sat underneath the drag preview.
       newHost.restoreNaturalHeight();
 
       this.contentInteractionCleanup?.();
@@ -4384,12 +2968,9 @@ export class ReaderController {
     this.isTurningPage = false;
   }
 
-  /** Assembles the Book Details panel's data — combines metadata already
-   * parsed from the OPF (no I/O needed) with the original file name and
-   * cover image, which live in `LibraryDatabase` and need an async read.
-   * The cover's object URL is created at most once per controller (see
-   * `cachedCoverUrl`) since repeatedly creating one on every panel open
-   * would leak URLs that are never revoked until `dispose()` anyway. */
+  /** Assembles the Book Details panel data from parsed OPF metadata plus
+   * the stored file name and cover. The cover object URL is cached per
+   * controller so repeated opens do not leak unreclaimed URLs. */
   public async getBookDetails(): Promise<BookDetails> {
     const libraryRecord = await this.library.getBookMetadata(this.bookId);
 
@@ -4400,10 +2981,8 @@ export class ReaderController {
       }
     }
 
-    // The EPUB's own author-supplied description always wins; the
-    // fetched fallback is only ever shown in its absence, and only ever
-    // rendered with attribution back to whichever free source it came
-    // from (see `BookDetails.descriptionSourceName`).
+    // The EPUB's own description wins; fetched fallback text is only used
+    // when absent and stays attributed to its source.
     const hasOwnDescription = Boolean(this.pkg.metadata.description);
     return {
       title: this.pkg.metadata.title,
@@ -4420,15 +2999,9 @@ export class ReaderController {
     };
   }
 
-  /** Triggered once from `open()` (fire-and-forget, never awaited) for
-   * every book that has no author-supplied `dc:description` — tries to
-   * fetch a free fallback description (see
-   * `BookDescriptionEnrichment.fetchBookDescription`) and persists
-   * whatever the result is (found, or "nothing, attempt N") back to
-   * `LibraryDatabase`. Skips entirely, with no network request at all,
-   * once a description has already been found or the retry budget
-   * (`MAX_DESCRIPTION_FETCH_ATTEMPTS`) is used up — so a book that will
-   * plainly never have one doesn't cause a request on every future open. */
+  /** Best-effort fallback description fetch for books with no embedded
+   * `dc:description`. It skips once a description exists or the retry
+   * budget is exhausted. */
   private async maybeEnrichDescription(): Promise<void> {
     if (this.pkg.metadata.description) {
       return;
@@ -4446,12 +3019,9 @@ export class ReaderController {
     await this.library.recordDescriptionFetchResult(this.bookId, result);
   }
 
-  /** Assembles the EPUB Inspector panel's data (issue #46) — the raw
-   * archive's file list plus a parsed view of the book's own metadata/
-   * manifest/spine. Everything here is already in memory (parsed once
-   * at `open`), so unlike `getBookDetails` this needs no I/O at all —
-   * only reading a *specific* file's raw source (see
-   * `readInspectionFileText`) touches the archive again. */
+  /** Assembles the EPUB Inspector panel data from the in-memory archive
+   * listing and parsed package metadata. Reading an individual file's raw
+   * source is the only inspector path that hits the archive again. */
   public getEpubInspectionData(): EpubInspectionData {
     const manifestMediaTypeByPath = new Map(this.pkg.manifest.map((item) => [item.path, item.mediaType]));
 
@@ -4495,16 +3065,9 @@ export class ReaderController {
     };
   }
 
-  /** Orders the Inspector's file list so the "standard" EPUB structure
-   * files (the mimetype marker, the OCF container's own META-INF/*
-   * files, the OPF package document, the NCX, and the Nav Document) come
-   * first — the handful of files that establish how the rest of the book
-   * is organized — followed by the spine's chapters in reading order,
-   * then every other manifest resource (images/fonts/css/etc.), and
-   * finally anything left over that isn't a manifest resource at all.
-   * Without this, the list is just whatever order the ZIP's central
-   * directory happened to store entries in, which tells an author
-   * nothing about the book's actual structure. */
+  /** Orders Inspector files by EPUB structure: core container files first,
+   * then spine items in reading order, then other manifest resources, and
+   * finally non-manifest leftovers. */
   private orderInspectionFiles(
     files: readonly { path: string; size: number; isDirectory: boolean; mediaType: string | undefined }[],
   ): EpubInspectionFile[] {
@@ -4544,8 +3107,8 @@ export class ReaderController {
           return groupA - groupB;
         }
         if (groupA === 5) {
-          // Within the spine group, reading order rather than original
-          // archive order — the whole point of singling this group out.
+          // Within the spine group, preserve reading order instead of
+          // archive order.
           return (spineOrder.get(a.file.path) ?? 0) - (spineOrder.get(b.file.path) ?? 0);
         }
         return a.originalIndex - b.originalIndex;
@@ -4553,25 +3116,15 @@ export class ReaderController {
       .map(({ file }) => file);
   }
 
-  /** Reads one archive file's raw text as-is, for the EPUB Inspector's
-   * file browser (issue #46) — an EPUB author viewing their own book's
-   * actual OPF/NCX/Nav/CSS/etc. source, not a rendering path (no XHTML
-   * parsing, no CSP/resource-URL rewriting the way `ContentLoader.
-   * loadContentDocument` does for the reading surface). Rejects if
-   * `path` doesn't exist in the archive — the shell should only ever
-   * call this with a path taken from `getEpubInspectionData().files`. */
+  /** Reads one archive file's raw text for the Inspector file browser,
+   * without any rendering-time parsing or rewriting. */
   public readInspectionFileText(path: string): Promise<string> {
     return this.contentLoader.readArchiveFileText(path);
   }
 
-  /** Builds (and caches, per path) an object URL for an archive member
-   * the Inspector's Files tab wants to preview as an image/audio/video
-   * element rather than text — the binary counterpart to
-   * `readInspectionFileText`, since those media types should never be
-   * decoded and displayed as text (see `classifyInspectionFile`). The
-   * caller supplies `mediaType` (already resolved via
-   * `classifyInspectionFile`/`guessMediaType`) so the `Blob` carries the
-   * right type for the `<img>`/`<audio>`/`<video>` element to use it. */
+  /** Builds and caches an object URL for an Inspector media preview.
+   * The caller supplies the resolved `mediaType` so the preview element
+   * gets a correctly typed `Blob`. */
   public async getInspectionFilePreviewUrl(path: string, mediaType: string): Promise<string> {
     const cached = this.inspectionPreviewUrlCache.get(path);
     if (cached !== undefined) {
@@ -4583,10 +3136,7 @@ export class ReaderController {
     return url;
   }
 
-  /** Basic reader state, gathered fresh each time — included alongside
-   * the recent-events trail in `getDiagnosticsText`/the auto-`console.error`
-   * dump on a real navigation error, so a report doesn't also need to
-   * separately ask "what book, what view mode, what size window." */
+  /** Basic reader state to include alongside the diagnostics trail. */
   private diagnosticsContext(): Record<string, string> {
     return {
       book: this.pkg.metadata.title,
@@ -4598,17 +3148,12 @@ export class ReaderController {
     };
   }
 
-  /** Formats the current diagnostics trail (see `DiagnosticsLog`) plus
-   * basic reader state as plain text — the "Copy diagnostics" action
-   * shown alongside a navigation error calls this to put a full report
-   * on the clipboard in one step, in place of a screenshot plus guesswork. */
+  /** Formats the diagnostics trail and reader state as plain text. */
   public getDiagnosticsText(): string {
     return this.diagnostics.format(this.diagnosticsContext());
   }
 
-  /** Loads the adjacent chapter directly (both view modes) — the
-   * "previous/next chapter" toolbar actions, as distinct from `turnPage`
-   * which only steps by one page within paginated mode. */
+  /** Loads the adjacent chapter directly, unlike page-by-page `turnPage`. */
   public async goToChapter(direction: 1 | -1): Promise<void> {
     const nextSpineIndex = this.spineIndex + direction;
     if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
@@ -4618,24 +3163,10 @@ export class ReaderController {
     await this.openSpineItem(nextSpineIndex);
   }
 
-  /** A live, side-effect-free preview of where a progress-scrubber drag
-   * at `fraction` (0 to 1 across the whole book) would land, for the
-   * scrubber to show in its drag popup without actually navigating
-   * there on every pointer move — only `seekToFraction` (called once,
-   * on release) actually commits it. Prefers an exact, book-wide page
-   * number when `bookPagination` has fully measured the book; falls
-   * back to a coarser chapter-level preview otherwise (see
-   * `seekToFraction`'s doc comment for why).
-   *
-   * Returns raw position data (`position`) rather than an already-
-   * formatted string — this class has no access to the current UI
-   * locale (it isn't a React component and can't call
-   * `useTranslation()`), so `ProgressScrubber` itself does the actual
-   * `t("scrubber.pageOfTotal", ...)`/`t("scrubber.chapterOfTotal", ...)`
-   * formatting once this data reaches it. `chapterLabel` is different:
-   * it's the book's *own* chapter name (from its TOC), not a piece of
-   * this app's UI text, so there's nothing to translate there — it's
-   * passed through as-is regardless of UI locale. */
+  /** Side-effect-free preview of where a scrubber drag would land.
+   * Prefer exact page data when `bookPagination` is ready, otherwise fall
+   * back to a chapter-level preview. Returns raw position data because
+   * the UI formats localized strings, while `chapterLabel` is book text. */
   public previewSeek(fraction: number): { position: PreviewPosition; chapterLabel: string } {
     const clamped = Math.max(0, Math.min(1, fraction));
     const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
@@ -4656,18 +3187,10 @@ export class ReaderController {
     };
   }
 
-  /** Jumps to `fraction` (0 to 1) of the way through the whole book —
-   * the progress scrubber's "drop" action, once a drag settles.
-   * Prefers exact, book-wide page-level seeking when `bookPagination`
-   * has fully measured every spine item (via `resolveGlobalPage`,
-   * landing on the precise page); falls back to coarser spine-level
-   * seeking (landing *partway through* whichever chapter the fraction
-   * points at, via `resolveSpineFraction` — not always its very first
-   * page, which was a real bug: a chapter spanning many pages made the
-   * scrubber feel like it always undershot wherever the reader actually
-   * released it) when the book isn't fully measured yet — a very large
-   * book's background pagination can take a while, and the scrubber
-   * should still be usable in the meantime, just less precisely. */
+  /** Jumps to a whole-book fraction after the scrubber drag settles.
+   * Prefer exact page-level seeking when `bookPagination` is ready;
+   * otherwise fall back to coarse spine-level seeking that still lands
+   * partway through the chosen chapter instead of always at its start. */
   public async seekToFraction(fraction: number): Promise<void> {
     const clamped = Math.max(0, Math.min(1, fraction));
     this.diagnostics.record(`seekToFraction fraction=${fraction} clamped=${clamped}`);
@@ -4687,17 +3210,9 @@ export class ReaderController {
     await this.openSpineItem(targetSpineIndex, { landOnFractionInItem: localFraction });
   }
 
-  /** Picks a spine item and a 0-to-1 fraction within it for a coarse,
-   * spine-level seek — shared by `previewSeek`'s label and
-   * `seekToFraction`'s actual navigation when `bookPagination` hasn't
-   * fully measured the book yet. Treats the whole book as
-   * `spine.length` equal-width slots (a simplifying assumption — real
-   * chapters vary widely in length — but the best available one without
-   * full measurement, and far better than treating every chapter as a
-   * single point): `fraction` selects both which slot it falls in and
-   * how far through that slot, so a drag partway through a long
-   * chapter's share of the book lands partway through that chapter, not
-   * always at its very first page. */
+  /** Picks a spine item and an in-item fraction for coarse seeking when
+   * `bookPagination` is incomplete. It treats the book as equal-width
+   * spine slots so a target can still land partway through a chapter. */
   private resolveSpineFraction(clamped: number): { spineIndex: number; localFraction: number } {
     const spineLength = this.pkg.spine.length;
     if (spineLength <= 0) {
@@ -4723,51 +3238,11 @@ export class ReaderController {
     await this.openSpineItem(spineIndex, { fragment: navPoint.fragment });
   }
 
-  /** Animates the reveal of `stagingEl` (an already-loaded
-   * `openSpineItem` host, correctly positioned at its opening
-   * page/spread, but still hidden per `stageHiddenHostElement`) in
-   * place of whatever `previousWrapperEl` (or `previousHost.element`,
-   * if the previous turn was itself an animated one that left no
-   * wrapper — see `clearStaleHostWrapper`) currently shows — playing
-   * the *same* rotate/slide/scroll page-turn animation an in-chapter
-   * page turn already uses, so crossing a chapter boundary via
-   * `turnPage` reads as "just another page turn" instead of the abrupt
-   * instant snap it used to be (issue #83).
-   *
-   * "rotate" is treated the same way `animatePageTurn`'s single-page
-   * case treats it (growing the animating side to full height, no
-   * `buildRotateBackFace`/full-180° completion) even in spread mode —
-   * deliberately simpler than `animateSpreadTurn`'s own "rotate" turn,
-   * which flips only the single column nearest the spine (see
-   * `elementToTurn`): a distinction that stops making much sense across
-   * a whole chapter boundary, where the *entire* incoming spread is a
-   * new unit, not "the back of the same physical leaf" the way a
-   * same-chapter spread turn's column swap is. Reads as a slightly
-   * plainer flip than an in-chapter spread turn, but consistent and
-   * correct rather than needing its own bespoke back-face geometry for
-   * a style that's no longer even the default.
-   *
-   * Requires `previousHost`/`newHost` to be the same concrete type as
-   * each other (both `PaginatedContentHost` or both
-   * `SpreadPaginatedHost`) — always true in practice, since the
-   * reader's width and view mode (which together decide which of the
-   * two a spine item resolves to) never change mid-turn — and returns
-   * `false` without doing anything if that invariant somehow doesn't
-   * hold, rather than throwing.
-   *
-   * Follows `animatePageTurn`'s own "entering" convention exactly (see
-   * its doc comment): a backward turn (`direction === -1`) plays as the
-   * *incoming* (previous chapter's) content turning in on top, not the
-   * current content turning away to reveal it underneath — crossing a
-   * chapter boundary should feel identical to turning within one.
-   *
-   * Returns `true` once the animation has actually played (the caller
-   * should then treat `stagingEl` as already fully revealed); `false`
-   * if skipped for any reason above, `prefers-reduced-motion`, or the
-   * reader's own "none" choice (`shouldSkipPageTurnAnimation`) — the
-   * caller's own existing instant-reveal code runs unconditionally
-   * right after regardless, which is a harmless no-op once this has
-   * already revealed everything itself. */
+  /** Reveals a newly loaded paginated host with the same page-turn
+   * animation used within a chapter, so chapter crossings read as a
+   * normal turn. Returns `false` if animation is skipped or the old and
+   * new hosts are not the same paginated host type. Backward turns
+   * animate the incoming content on top, matching in-chapter behavior. */
   private async animateChapterCrossingReveal(
     previousHost: PaginatedContentHost | SpreadPaginatedHost,
     previousWrapperEl: HTMLDivElement | undefined,
@@ -4798,34 +3273,10 @@ export class ReaderController {
     let turnGrowthMaskLeft: HTMLDivElement | undefined;
     let turnGrowthMaskRight: HTMLDivElement | undefined;
     if (this.pageTurnAnimationStyle === "rotate") {
-      // See `animatePageTurn`'s identical single-page reasoning: the
-      // animating side grows to `this.height` (its own, separate box-
-      // shadow-position fix), while the other side just needs
-      // `clip-path` dropped so it doesn't fail to composite opaquely
-      // against the animating side's own 3D transform (issue #81).
-      //
-      // Measuring natural height *after* `suppressClipPathForAnimation`
-      // (which `growToFullHeight`/`growColumnToFullHeight` call
-      // internally anyway, first thing, before growing) rather than
-      // before it — see `buildTurnGrowthMask`'s doc comment and
-      // `animatePageTurn`'s identical fix: measuring before it would
-      // capture the *pre-shrink* height (with the bottom inset band
-      // still included), leaving a real gap exactly that band's height
-      // tall for bleed to sneak through unmasked.
-      //
-      // Both masks are inserted as *siblings of `animatingEl`* (not of
-      // the column/iframe element `buildTurnGrowthMask` measured to
-      // position them) — unlike the single-page/same-chapter case,
-      // where the iframe getting the rotation transform *is*
-      // `animatingEl` itself, here `animatingEl` is the *wrapper*
-      // (`stageHiddenHostElement`'s div, or a previous turn's leftover
-      // one) with the actual iframe(s) nested one level inside it.
-      // Inserting a mask as a *child* of that wrapper (a sibling of the
-      // iframe) would have it inherit the wrapper's own rotation
-      // transform from `playPageTurnAnimation` *and* get its own
-      // (`extraTurnEls`) applied on top — doubling the rotation. As a
-      // sibling of the wrapper instead, it only ever gets the one
-      // rotation `extraTurnEls` applies directly.
+      // Match `animatePageTurn`'s single-page rotate handling.
+      // Measure after dropping clip-path so the growth mask matches the
+      // shrunken content height, and insert masks beside `animatingEl`
+      // rather than inside it so they do not inherit the wrapper's turn.
       if (bothSpread) {
         const spreadAnimatingHost = animatingHost as SpreadPaginatedHost;
         const leftEl = this.pageTurnAnimator.spreadColumnElement(spreadAnimatingHost, 0);
@@ -4861,10 +3312,8 @@ export class ReaderController {
         }
       }
     } else if (this.pageTurnAnimationStyle === "slide") {
-      // See `animatePageTurn`'s identical reasoning (issues #81/#84):
-      // every overlapping-iframe style needs `clip-path` dropped from
-      // *both* sides for the whole duration, regardless of which one
-      // is actually animating.
+      // Drop clip-path from both sides for overlapping-iframe
+      // animations.
       if (bothSpread) {
         (previousHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("left");
         (previousHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("right");
@@ -4876,12 +3325,8 @@ export class ReaderController {
       }
     }
 
-    // Reveal the staging element so it can actually participate in the
-    // animation — its content is already fully loaded and positioned on
-    // the correct opening page/spread (see `openSpineItem`'s caller).
-    // Also clears the loading spinner (`openSpineItem`'s `isLoading`)
-    // before it would otherwise hang, centered, over the whole ~380ms
-    // transition — a real, would-be-reported bug of its own otherwise.
+    // Reveal staged content and clear the loading spinner before the
+    // transition runs.
     stagingEl.style.opacity = "";
     stagingEl.style.pointerEvents = "";
     this.isLoading = false;
@@ -4951,9 +3396,7 @@ export class ReaderController {
     }
 
     if (isScroll) {
-      // Both overlays move (with their own page) rather than one
-      // sitting static underneath the other — see `animatePageTurn`'s
-      // identical reasoning.
+      // In scroll mode both overlays move with their pages.
       if (outgoingOverlay) {
         outgoingOverlay.style.zIndex = "2";
         this.containerEl.appendChild(outgoingOverlay);
@@ -5005,13 +3448,8 @@ export class ReaderController {
     this.isAnimatingPageTurn = false;
 
     if (this.pageTurnAnimationStyle === "slide" || this.pageTurnAnimationStyle === "rotate") {
-      // `newHost` always survives this turn (the caller disposes
-      // `previousHost` right after) — restore whatever
-      // `growColumnToFullHeight`/`suppressColumnClipPathForAnimation`/
-      // `suppressClipPathForAnimation` may have touched on it,
-      // mirroring `animatePageTurn`'s identical cleanup (a no-op, via
-      // `showCurrentPage`, for whichever style never actually needed
-      // it).
+      // Restore the surviving host's natural sizing and clip state after
+      // slide/rotate turns.
       if (bothSpread) {
         (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("left");
         (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("right");
@@ -5020,113 +3458,46 @@ export class ReaderController {
       }
     }
 
-    // Only `stagingEl` survives this turn (`oldEl`/`previousWrapperEl`
-    // is disposed by the caller right after) — reset whatever transform/
-    // z-index/box-shadow the animation above may have applied to it
-    // (only actually touched when `entering`, i.e. `animatingEl ===
-    // newEl === stagingEl`; a harmless no-op otherwise) back to
-    // `stageHiddenHostElement`'s own plain resting state.
+    // Reset the surviving staging wrapper to its resting state.
     stagingEl.style.transform = "";
     stagingEl.style.zIndex = "";
     stagingEl.style.boxShadow = "";
     stagingEl.style.transition = "";
     if (otherEl === oldEl) {
-      // Defensive only — `oldEl` is about to be disposed by the caller
-      // regardless, but leaves nothing dangling if that ever changes.
+      // Defensive only; `oldEl` is about to be disposed by the caller.
       otherEl.style.zIndex = "";
     }
 
     return true;
   }
 
-  /** Creates a hidden, out-of-flow staging wrapper inside `containerEl`
-   * and attaches `el` to it — used by `openSpineItem` to load a new
-   * spine item's host *without* disturbing whatever is currently
-   * displayed. `opacity: 0` plus `position: absolute` keeps it
-   * invisible and out of the normal-flow flex layout the currently-
-   * visible host relies on for centering, so the old content is
-   * completely undisturbed until/unless the new load actually succeeds.
-   *
-   * Critically, whatever's inside this wrapper is *never* moved to a
-   * different parent afterwards — only ever revealed in place by
-   * clearing the wrapper's own `opacity`/`pointer-events`, or removed
-   * outright (wrapper and all) via `.remove()`. This was a real,
-   * confirmed regression the first version of this mechanism had: moving
-   * an already-loaded `<iframe>` to a new DOM parent (even within the
-   * same still-attached document) reloads its content in most browsers
-   * — silently discarding every JS mutation applied to that content
-   * after it first loaded, including `PaginatedContentHost.open`'s own
-   * `iframeDocument.documentElement.style.overflow = "hidden"`. The
-   * *outer* iframe element's own styling (`clip-path`/`transform`, which
-   * `PaginatedContentHost` also sets, and which live on the iframe
-   * element itself, not inside its content document) survived the
-   * reload, so pagination still looked correct — but the reloaded
-   * content's overflow was back to its un-hidden default, exposing the
-   * content's own native scrollbar as a visible artifact. See the
-   * same hazard already documented on `prepareIncomingPage`, which this
-   * mechanism now follows the same discipline as.
-   *
-   * Confirmed (via testing this exact hazard a second time, for
-   * `openSpineItem`'s own retroactive book-open merge — see its own doc
-   * comment) that this holds *regardless of ordering*: connecting an
-   * empty wrapper to the live document first and moving already-loaded
-   * content into it *second* reloads every iframe inside that content
-   * just the same as the reverse order — there is no safe way to move
-   * an already-loaded host through this method at all. Every call site
-   * here only ever passes a *freshly constructed, not-yet-opened* host's
-   * element, for exactly this reason. */
+  /** Mounts `el` in a hidden absolute wrapper so a new host can load
+   * without disturbing the current one. Once loaded, reveal or remove
+   * the wrapper in place; do not reparent the loaded content, because
+   * moving iframes can reload them and discard in-document state. */
   private stageHiddenHostElement(el: HTMLElement): HTMLDivElement {
     const containerEl = this.containerEl!;
     const stagingEl = containerEl.ownerDocument.createElement("div");
     stagingEl.style.position = "absolute";
     stagingEl.style.inset = "0";
-    // `opacity: 0`, not `visibility: hidden` — see `prepareIncomingPage`/
-    // `prepareIncomingSpread`'s identical fix (issue #84) for the
-    // confirmed reason: a `SpreadPaginatedHost`'s right column sets its
-    // *own* explicit `visibility` (`syncRight`, called by `open()`
-    // itself as soon as the opening page has a companion) — which
-    // overrides an ancestor's inherited `hidden` state, so the right
-    // column could flash its own (still being paginated, momentarily
-    // unclipped/oversized) content on top of whatever this wrapper was
-    // supposed to be hiding it behind. `opacity` has no such override:
-    // every ancestor's opacity always multiplies into a descendant's
-    // final rendered alpha, regardless of what the descendant sets its
-    // own opacity to.
+    // Use opacity, not visibility: spread columns can set their own
+    // visibility and flash through an ancestor's hidden state.
     stagingEl.style.opacity = "0";
     stagingEl.style.pointerEvents = "none";
     stagingEl.style.display = "flex";
     stagingEl.style.justifyContent = "center";
     stagingEl.style.alignItems = "flex-start";
-    // The current host's element (once revealed) sits one level deeper
-    // in the DOM than it used to (a child of this wrapper, not of
-    // `containerEl` directly) — `transform-style: preserve-3d` here lets
-    // `containerEl.style.perspective` (set for the "rotate" page-turn
-    // animation — see `animatePageTurn`) still apply through this
-    // wrapper to reach it, exactly as if it were still a direct child.
-    // Without this, `perspective` only establishes a 3D space for an
-    // element's own *direct* children, and the rotate animation would
-    // silently fall flat (a plain 2D transform, no hinge depth).
+    // Preserve `containerEl`'s 3D perspective through this wrapper for
+    // rotate turns.
     stagingEl.style.transformStyle = "preserve-3d";
     stagingEl.appendChild(el);
     containerEl.appendChild(stagingEl);
     return stagingEl;
   }
 
-  /** An animated page/spread turn (`animatePageTurn`/`animateSpreadTurn`)
-   * swaps in a brand-new host attached *directly* to `containerEl` (see
-   * `prepareIncomingPage`/`prepareIncomingSpread`) rather than inside
-   * whatever wrapper `openSpineItem`'s staged-hidden-host swap (see
-   * `stageHiddenHostElement`) mounted the *previous* host in — so once a
-   * turn commits, `this.hostWrapperEl` is stale: it still refers to that
-   * now-empty wrapper (the old host it contained was just disposed by
-   * the turn), not anything actually holding the new host. Harmless to
-   * leave sitting in the DOM indefinitely — it's invisible, and (being
-   * earlier in DOM order with no explicit stacking of its own) paints
-   * behind the real content, so it never intercepts a click meant for
-   * anything real — but confusing and wrong to leave `this.hostWrapperEl`
-   * pointing at it. Call this right after swapping in an animated turn's
-   * new host so the field accurately reflects "not currently wrapped"
-   * until the next `openSpineItem` call wraps a fresh host again. */
+  /** Removes an empty wrapper left behind after an animated turn, since
+   * the new host is mounted directly in `containerEl` and
+   * `this.hostWrapperEl` would otherwise point at stale DOM. */
   private clearStaleHostWrapper(): void {
     this.hostWrapperEl?.remove();
     this.hostWrapperEl = undefined;
@@ -5140,14 +3511,8 @@ export class ReaderController {
       landOnLastPage?: boolean;
       landOnPageIndex?: number;
       landOnFractionInItem?: number;
-      /** Set by `turnPageInternal`'s chapter-boundary fallback (issue
-       * #83) — plays the same slide/scroll page-turn animation an
-       * in-chapter turn already uses for this chapter *crossing*
-       * instead of the instant snap every other `openSpineItem` caller
-       * gets (TOC jumps, resume-reading, deep links, etc., which have
-       * no "direction" to animate along in the first place). See
-       * `animateChapterCrossingReveal`'s own doc comment for exactly
-       * which styles/host types this actually covers. */
+      /** Used by chapter-boundary page turns to animate this load as a
+       * directional turn instead of an instant jump. */
       animateDirection?: 1 | -1;
     } = {},
   ): Promise<void> {
@@ -5158,21 +3523,12 @@ export class ReaderController {
     this.error = undefined;
     this.errorSeverity = undefined;
     this.isLoadInFlight = true;
-    // See this method's doc comment on `spineOpenToken` for why every
-    // return path below (including the catch block) must check this
-    // before touching any shared state.
+    // Every return path below must check this token before mutating
+    // shared state.
     const token = ++this.spineOpenToken;
-    // Issue #88: only actually *show* the loading spinner if this load
-    // takes long enough to be worth interrupting the reader over — most
-    // spine-item loads (including every chapter-boundary crossing while
-    // turning pages) resolve near-instantly, and flashing a spinner for
-    // a handful of milliseconds read as more distracting than no
-    // feedback at all. `finished` (not just `token === this.spineOpenToken`,
-    // which stays true for this exact call until a *newer* one starts)
-    // guards against the timer firing after this same call has already
-    // completed — e.g. a fast load finishing before the 200ms elapses —
-    // which would otherwise flip the spinner back on with nothing left
-    // to ever turn it back off again.
+    // Only show the loading spinner for slower loads. `finished`
+    // prevents the timer from turning it back on after this call has
+    // already completed.
     let finished = false;
     const loadingTimeout = setTimeout(() => {
       if (!finished && token === this.spineOpenToken) {
@@ -5193,26 +3549,17 @@ export class ReaderController {
       this.selectionToolbar = undefined;
       this.activeHighlight = undefined;
 
-      // The new host is opened hidden, alongside whatever is already on
-      // screen, rather than disposing the old one up front — see
-      // `stageHiddenHostElement`'s doc comment. `previousHost` is only
-      // disposed once the new content has *actually* loaded
-      // successfully, so a load failure (a real hazard: malformed
-      // chapters, missing resources — this isn't hypothetical, see
-      // issue #27) leaves the reader exactly where it was instead of a
-      // blank pane, and makes the "transient" severity classification in
-      // the catch block below actually true rather than a stale
-      // reference to an already-disposed host.
+      // Open the new host hidden alongside the current one so failures
+      // leave the existing content on screen until replacement
+      // succeeds.
       const previousHost = this.host;
       const previousWrapperEl = this.hostWrapperEl;
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
         this.pkg.metadata.renditionLayout,
       );
       let stagingEl: HTMLDivElement | undefined;
-      // Assigned as soon as the host object is *constructed* (not once
-      // `open()` succeeds) so the catch block below can always dispose
-      // whatever was created, even a load that never finished — without
-      // this, a failed load leaked that attempt's blob URL(s) forever.
+      // Set immediately on construction so failed loads can still
+      // dispose the host and release its blob URLs.
       let createdHost:
         | FixedContentHost
         | SpreadPaginatedHost
@@ -5223,17 +3570,9 @@ export class ReaderController {
       let applyDisplaySettings = false;
       try {
         if (resolvedLayout === "pre-paginated") {
-          // Fixed-layout content always goes through `FixedSpreadHost`,
-          // even when it ends up showing only a single page — see that
-          // class's own doc comment: it's just as correct (and much
-          // simpler than juggling two different host types) for a
-          // `"single"` `FixedSpread` as for a `"pair"`. `spineIndex`
-          // itself might not be the spread's own reading-order-first
-          // item (e.g. landing directly on the *second* half of an
-          // already-paired spread via a TOC/deep link) — normalized
-          // below, once the actual spread is known, the same way a
-          // merged reflowable spread adopts whichever spine index it
-          // actually ended up covering.
+          // Fixed-layout content always uses `FixedSpreadHost`;
+          // normalize `spineIndex` to the opened spread's first item
+          // afterwards.
           const spreadEligible = FixedLayoutSpreadPlanner.isSpreadModeEligible(
             this.pkg.metadata.renditionSpread,
             this.width,
@@ -5260,37 +3599,10 @@ export class ReaderController {
           await host.open(this.contentLoader, this.resolver, spineIndex);
           applyDisplaySettings = true;
 
-          // A real, confirmed bug: a spine item whose own real page
-          // count is odd (a lone cover image is the most common case —
-          // exactly one page, no companion) otherwise opens with a
-          // permanently blank facing column — precisely the state the
-          // #90/#92/#94 merge feature already exists to eliminate for a
-          // *forward turn* crossing into such a page, but never for
-          // landing on it directly this way (a fresh mount, a "Start of
-          // Book" TOC jump, etc.), since this whole staged-hidden-host
-          // path never went through `prepareIncomingSpread` at all.
-          // Retroactively merges forward into the next chapter right
-          // here, before this host is ever revealed, the same as if the
-          // reader had turned there — *except* when the caller asked to
-          // land on a *specific* saved position within this exact spine
-          // item (`bridgeCfi`/`fragment`/`landOnPageIndex`/
-          // `landOnFractionInItem`), where merging forward would
-          // silently relocate the reader past the exact position being
-          // restored. Also skipped whenever `landOnLastPage` is present
-          // *at all* (`true` or `false` — every caller that passes it
-          // explicitly, not just `undefined`): `true` means backward
-          // chapter-crossing, where merging forward would immediately
-          // land right back in the very chapter just left; `false` means
-          // `turnPageInternal`'s own forward chapter-crossing fallback,
-          // which already went through its own turn-based merge attempt
-          // (`prepareIncomingSpread`) and fell all the way through to a
-          // plain `openSpineItem` only because that returned undefined —
-          // a narrower, rarer edge case (this freshly-opened chapter
-          // itself *also* being one page long) deliberately left for
-          // later rather than risking a second, independent merge
-          // attempt interacting with that path's own `animateDirection`/
-          // `pendingSpreadMergeSpineIndex` handling in ways not yet
-          // fully reasoned through.
+          // If a spread-capable open lands on a single visible page, try
+          // merging forward before reveal so lone pages do not show a
+          // blank facing column. Skip this when restoring an explicit
+          // target position or explicit last-page behavior.
           if (
             host.secondPageIndex === undefined &&
             options.bridgeCfi === undefined &&
@@ -5303,34 +3615,10 @@ export class ReaderController {
             if (merged) {
               host.dispose();
               stagingEl.remove();
-              // `buildMergedSpreadHost` already attached `merged.element`
-              // directly to `containerEl` itself (not through any staging
-              // wrapper) and positioned it as an absolute overlay, ready
-              // to sit on top of an outgoing spread mid-animation (see
-              // its own doc comment) — exactly what every *turn*-driven
-              // merge caller needs, but not this one. Reset those
-              // transient overlay styles back to plain, in-flow
-              // positioning, the same as any other host displays once
-              // revealed through `stageHiddenHostElement` — but
-              // *without* actually moving it through a
-              // `stageHiddenHostElement`-style wrapper at all, unlike
-              // every other branch here: a real, confirmed bug found via
-              // testing (see `stageHiddenHostElement`'s own doc comment)
-              // — moving an *already-loaded* host's element through any
-              // wrapper, in either order, reloads every iframe nested
-              // inside it, discarding the click/keyboard listeners
-              // `setUpDragPageTurn`/`setUpContentInteraction` are about
-              // to attach a few lines below. `stagingEl` is deliberately
-              // left `undefined` from here on — mirroring
-              // `clearStaleHostWrapper`'s identical situation for the
-              // *turn*-driven merge/animation path, which also always
-              // leaves its own incoming host as a direct `containerEl`
-              // child with no wrapper of its own: `merged.element` never
-              // moves again after this, so there's nothing left for a
-              // wrapper to ever need to reveal or remove separately from
-              // `merged` itself (disposing `this.host`, the next time
-              // this runs, already removes `merged.element` from the DOM
-              // as a normal part of disposing it).
+              // `buildMergedSpreadHost` returns a direct overlay child of
+              // `containerEl`. Reset it to normal in-flow display here,
+              // but do not wrap or reparent the already-loaded host:
+              // moving it can reload nested iframes.
               merged.element.style.position = "";
               merged.element.style.top = "";
               merged.element.style.left = "";
@@ -5352,13 +3640,8 @@ export class ReaderController {
           applyDisplaySettings = true;
         }
       } catch (err) {
-        // `.remove()`-ing `stagingEl` (rather than moving anything out of
-        // it first) is a plain DOM removal, not a reparent — no risk of
-        // the reload hazard `stageHiddenHostElement` documents. Disposing
-        // `createdHost` too (not just discarding the wrapper) matters
-        // even though its iframe is about to be removed either way: a
-        // `PaginatedContentHost`/etc. also owns a blob URL for its
-        // content, only released via its own `dispose()`.
+        // Removing `stagingEl` is safe because nothing is reparented;
+        // dispose the host too so failed loads release their blob URLs.
         createdHost?.dispose();
         stagingEl?.remove();
         throw err;
@@ -5374,32 +3657,10 @@ export class ReaderController {
         return;
       }
 
-      // Play the chapter-crossing turn animation (issue #83) before the
-      // reveal below, if eligible — see `animateChapterCrossingReveal`'s
-      // own doc comment for exactly when this applies. Positions the
-      // new host on its target page *first* (`landOnLastPage` normally
-      // gets applied further down, well after the reveal — too late for
-      // an animation to show the right content throughout), since
-      // everything else about "which page to land on" for this specific
-      // caller (`turnPageInternal`'s chapter-boundary fallback) is
-      // already fully decided by `landOnLastPage` alone (a forward
-      // crossing already lands on page 0 by default, no options.* need
-      // apply at all). Persisted font/theme settings likewise need to
-      // land *before* the animation plays, not after — otherwise the
-      // turn would visibly play at default settings and only snap to
-      // the reader's actual choices once the (normally `this.host`-
-      // dependent, called again further below) reveal step ran —
-      // hence explicitly passing `newHost` to both here rather than
-      // waiting for `this.host` to actually become it. `stagingEl !==
-      // undefined` is defensive rather than load-bearing: the only
-      // caller that ever sets `animateDirection` always sets
-      // `landOnLastPage` alongside it, which is one of the exact
-      // conditions `openSpineItem`'s own retroactive merge (the one
-      // case that leaves `stagingEl` `undefined`) already excludes
-      // itself for — so the two are never actually both true at once —
-      // but guarding it explicitly here means that invariant only has
-      // to hold, not be re-derived by whoever next touches either side
-      // of it.
+      // For chapter-boundary turns, land on the target page and apply
+      // display settings before reveal so the animation shows the right
+      // content. Guard on `stagingEl` because retroactive merged opens
+      // have no wrapper to reveal.
       let animatedReveal = false;
       if (
         options.animateDirection !== undefined &&
@@ -5424,29 +3685,16 @@ export class ReaderController {
         );
       }
 
-      // Success: reveal the new host in place of whatever was showing
-      // before, *without ever moving either host's element to a
-      // different parent* (see `stageHiddenHostElement`'s doc comment on
-      // why that specifically must never happen to an already-loaded
-      // iframe). `previousHost.dispose()` removes its own iframe(s) from
-      // `previousWrapperEl`, which — now empty — is simply removed
-      // outright; the new host's wrapper, in turn, is just revealed in
-      // place by clearing the hiding styles `stageHiddenHostElement` set
-      // (a no-op if `animatedReveal` already did, right above) — never
-      // touching its child's parentage at all. `stagingEl` is `undefined`
-      // for `openSpineItem`'s own retroactive book-open merge (see
-      // above) — its host is already fully revealed in place with
-      // nothing left to un-hide, exactly like `clearStaleHostWrapper`'s
-      // identical situation for the turn-driven merge/animation path.
+      // Swap hosts by disposing/removing wrappers in place and revealing
+      // the staging wrapper; never reparent an already-loaded host.
       previousHost?.dispose();
       previousWrapperEl?.remove();
       stagingEl?.style.setProperty("opacity", "");
       stagingEl?.style.setProperty("pointer-events", "");
       this.host = newHost;
       this.hostWrapperEl = stagingEl;
-      // Skipped if the animation above already applied these — no need
-      // to pay for a second (potentially real, relayout-triggering)
-      // pass of the exact same settings against the exact same host.
+      // Skip a second settings pass if the animation path already
+      // applied it.
       if (applyDisplaySettings && !animatedReveal) {
         this.applyPersistedDisplaySettingsToFreshHost();
       }
@@ -5481,12 +3729,9 @@ export class ReaderController {
           options.landOnFractionInItem !== undefined &&
           (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
         ) {
-          // The coarse, spine-level progress-scrubber fallback (see
-          // `resolveSpineFraction`) only knows a 0-to-1 fraction through
-          // this chapter, not an exact page index, until *after* the
-          // chapter is open and its real page count is known — unlike
-          // `landOnPageIndex`, which already has an exact index computed
-          // from a fully-measured book.
+          // The spine-level progress scrubber only knows a fraction
+          // through this chapter until the host is open and its real
+          // page count is known.
           const targetIndex = Math.round(
             options.landOnFractionInItem * Math.max(0, this.host.pageCount - 1),
           );
@@ -5494,21 +3739,9 @@ export class ReaderController {
         }
         this.setUpAccessibility();
       }
-      // `applyHighlightsToCurrentHost` above (called before this block)
-      // already painted every highlight and re-scanned search matches —
-      // both position-independent, since they're plain CSS ranges the
-      // browser repaints correctly regardless of which page is showing.
-      // `updateNoteMarkers` is different: it snapshots *pixel* positions
-      // off the host's *current* page at the moment it runs. Every
-      // landing branch above can move the host off its freshly-opened
-      // default page (page 0) onto a completely different one (a
-      // scrubber seek, a bookmark/highlight jump, a TOC/fragment link,
-      // resume-reading) — a real, confirmed bug: a note's marker stayed
-      // pinned wherever it happened to land for that stale first page,
-      // never updating for wherever the reader actually landed, and
-      // didn't disappear even after seeking away from it entirely.
-      // Recomputing once more here, now that the host is finally on its
-      // real destination page, fixes both.
+      // Highlights and search ranges are page-independent, but note
+      // markers snapshot pixel positions on the current page, so
+      // recompute them after the final landing page is set.
       this.highlightInteraction.updateNoteMarkers();
       this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
@@ -5517,14 +3750,8 @@ export class ReaderController {
       const message = err instanceof Error ? err.message : String(err);
       if (token === this.spineOpenToken) {
         this.error = message;
-        // `this.host` is only ever reassigned *after* a new host has
-        // genuinely finished loading (see the staged-hidden-host swap
-        // above) — a failed load never disposes or replaces whatever was
-        // already showing. So if `this.host` is still set here, that
-        // content is still visible on screen right now, and the reader
-        // isn't stuck with a blank pane. `undefined` only when this was
-        // the very first load (e.g. a corrupt/unreadable book) and there
-        // was never anything to fall back to.
+        // A failed replacement leaves the previous host visible; only
+        // the very first load can leave the reader with nothing shown.
         this.errorSeverity = this.host ? "transient" : "blocking";
         this.diagnostics.record(
           `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message} severity=${this.errorSeverity}`,
@@ -5535,12 +3762,8 @@ export class ReaderController {
           `openSpineItem stale-error (suppressed) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken} message=${message}`,
         );
       }
-      // A stale call's failure (see `spineOpenToken`) is expected and
-      // silent — its iframe was deliberately detached by whichever newer
-      // call superseded it, so of course loading it never completed;
-      // that's not a real failure worth alarming the reader over,
-      // especially since the newer navigation it lost to has already
-      // shown *something* in its place.
+      // Ignore stale-load failures; a newer `openSpineItem` call has
+      // already replaced this one.
     } finally {
       finished = true;
       clearTimeout(loadingTimeout);
