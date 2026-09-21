@@ -103,6 +103,21 @@ export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "silver";
 // lighter one — to clear at least 10:1 contrast (WCAG AAA is 7:1) against
 // the reader's existing dark text/icon colors.
 export const CHROME_THEMES: Readonly<Record<ChromeThemeChoice, ChromeThemePalette>> = {
+  // Listed first (issue-driven reorder) — Ambra is this app's own
+  // signature theme (see its accent color's own doc comment just
+  // below), so it leads the picker rather than sitting last after the
+  // four more generic color options.
+  ambra: {
+    label: "Ambra",
+    background: "linear-gradient(135deg, rgba(255, 232, 189, 0.90), rgba(240, 196, 140, 0.86))",
+    backgroundSolid: "linear-gradient(135deg, rgb(255, 232, 189), rgb(240, 196, 140))",
+    // Sampled straight from the extension icon's own gem gradient (see
+    // `icon-source/icon.svg`) — the exact mid-tone the icon itself
+    // uses, not a fresh guess at "amber" — so this is the one place in
+    // the whole chrome that actually reads as the same amber gem the
+    // icon shows, addressing the issue's core complaint directly.
+    accent: "#f5a531",
+  },
   silver: {
     label: "Silver",
     background: "linear-gradient(135deg, rgba(244, 245, 248, 0.90), rgba(222, 225, 231, 0.86))",
@@ -126,16 +141,5 @@ export const CHROME_THEMES: Readonly<Record<ChromeThemeChoice, ChromeThemePalett
     background: "linear-gradient(135deg, rgba(227, 212, 233, 0.90), rgba(211, 189, 223, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(227, 212, 233), rgb(211, 189, 223))",
     accent: "#7c3fa0",
-  },
-  ambra: {
-    label: "Ambra",
-    background: "linear-gradient(135deg, rgba(255, 232, 189, 0.90), rgba(240, 196, 140, 0.86))",
-    backgroundSolid: "linear-gradient(135deg, rgb(255, 232, 189), rgb(240, 196, 140))",
-    // Sampled straight from the extension icon's own gem gradient (see
-    // `icon-source/icon.svg`) — the exact mid-tone the icon itself
-    // uses, not a fresh guess at "amber" — so this is the one place in
-    // the whole chrome that actually reads as the same amber gem the
-    // icon shows, addressing the issue's core complaint directly.
-    accent: "#f5a531",
   },
 };
