@@ -1,7 +1,7 @@
 import type { FC } from "react";
 import { Tooltip } from "@fluentui/react-components";
 import { NoteFilled } from "@fluentui/react-icons";
-import type { NoteMarkerState } from "../ReaderController.js";
+import type { NoteMarkerState } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";

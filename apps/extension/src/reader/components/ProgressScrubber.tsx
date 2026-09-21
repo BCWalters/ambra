@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FC, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { Caption1 } from "@fluentui/react-components";
-import type { PreviewPosition, ReaderSnapshot } from "../ReaderController.js";
+import type { PreviewPosition, ReaderSnapshot } from "../ReaderTypes.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";

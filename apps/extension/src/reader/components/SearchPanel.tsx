@@ -6,7 +6,7 @@ import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT 
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
-import type { SearchResultItem } from "../ReaderController.js";
+import type { SearchResultItem } from "../SearchCoordinator.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 
 /** Debounces the search box's `onChange` before actually calling

@@ -4,7 +4,7 @@ import type { HighlightStyle } from "@ambra/engine";
 import type { Highlight } from "../library/LibraryDatabase.js";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
-import type { ActiveHighlightState } from "./ReaderController.js";
+import type { ActiveHighlightState } from "./ReaderTypes.js";
 
 /** Everything `HighlightManager` needs to read from/call back into
  * `ReaderController` — deliberately narrow, same reasoning as

@@ -2,7 +2,7 @@ import type { FC } from "react";
 import { Caption1 } from "@fluentui/react-components";
 import { BookmarkFilled } from "@fluentui/react-icons";
 import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
-import type { ReaderSnapshot } from "../ReaderController.js";
+import type { ReaderSnapshot } from "../ReaderTypes.js";
 import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { BOOKMARK_COLOR } from "../chromeTheme.js";

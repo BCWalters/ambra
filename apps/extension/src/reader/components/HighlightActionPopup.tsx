@@ -4,7 +4,7 @@ import { Button, Textarea, Tooltip } from "@fluentui/react-components";
 import { DeleteRegular, DismissRegular } from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
-import type { ActiveHighlightState } from "../ReaderController.js";
+import type { ActiveHighlightState } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";

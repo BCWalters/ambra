@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, FC } from "react";
 import { Body1, Body1Strong, Button, Caption1, Spinner, Tooltip } from "@fluentui/react-components";
 import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, TextPercentRegular } from "@fluentui/react-icons";
-import type { BookDetails } from "../ReaderController.js";
+import type { BookDetails } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";

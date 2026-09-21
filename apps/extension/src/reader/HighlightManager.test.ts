@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LocatorResolver } from "@ambra/engine";
 import type { Highlight, LibraryDatabase } from "../library/LibraryDatabase.js";
-import type { ActiveHighlightState } from "./ReaderController.js";
+import type { ActiveHighlightState } from "./ReaderTypes.js";
 import { HighlightManager, type HighlightManagerContext } from "./HighlightManager.js";
 
 function makeHighlight(overrides: Partial<Highlight> = {}): Highlight {

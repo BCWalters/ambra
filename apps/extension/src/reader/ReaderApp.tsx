@@ -22,7 +22,7 @@ import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import { LocaleProvider, useTranslation } from "../i18n/LocaleContext.js";
-import type { BookDetails, EpubInspectionData } from "./ReaderController.js";
+import type { BookDetails, EpubInspectionData } from "./ReaderTypes.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 
 /**

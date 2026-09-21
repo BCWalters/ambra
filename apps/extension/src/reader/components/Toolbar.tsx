@@ -32,7 +32,8 @@ import {
 } from "@fluentui/react-icons";
 import { ReadingTheme } from "@ambra/engine";
 import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
-import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
+import type { ReaderSnapshot } from "../ReaderTypes.js";
+import type { ViewMode } from "../ViewMode.js";
 import {
   CHROME_BACKDROP_FILTER,
   CHROME_BORDER,

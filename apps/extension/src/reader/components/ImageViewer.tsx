@@ -3,7 +3,7 @@ import type { FC } from "react";
 import { Button, Tooltip } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import { useTranslation } from "../../i18n/LocaleContext.js";
-import type { ImageViewerState } from "../ReaderController.js";
+import type { ImageViewerState } from "../ReaderTypes.js";
 
 export interface ImageViewerProps {
   /** `undefined` when the viewer should be closed. Unlike `TocPanel`/

@@ -40,7 +40,7 @@ import cssLanguage from "highlight.js/lib/languages/css";
 import javascriptLanguage from "highlight.js/lib/languages/javascript";
 import jsonLanguage from "highlight.js/lib/languages/json";
 import xmlFormat from "xml-formatter";
-import type { EpubInspectionData } from "../ReaderController.js";
+import type { EpubInspectionData } from "../ReaderTypes.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
