@@ -57,6 +57,7 @@ function makeContext(overrides: Partial<BookmarkManagerContext> = {}): BookmarkM
     spineIndex: () => 2,
     chapterLabel: () => "Chapter 3",
     announce: vi.fn(),
+    reportError: vi.fn(),
     notify: vi.fn(),
     ...overrides,
   };
@@ -94,6 +95,22 @@ describe("BookmarkManager", () => {
     const bookmark = await manager.add();
 
     expect(bookmark?.label).toBe("Chapter 3");
+  });
+
+  it("reports a failed save via reportError instead of silently doing nothing (issue: dedicated error-handling review)", async () => {
+    const library = {
+      listBookmarksForBook: vi.fn().mockResolvedValue([]),
+      addBookmark: vi.fn().mockRejectedValue(new DOMException("quota", "QuotaExceededError")),
+    } as unknown as LibraryDatabase;
+    const ctx = makeContext();
+    const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), ctx);
+    await manager.load();
+
+    const bookmark = await manager.add();
+
+    expect(bookmark).toBeUndefined();
+    expect(ctx.reportError).toHaveBeenCalledTimes(1);
+    expect(ctx.announce).not.toHaveBeenCalledWith("announcements.bookmarkAdded");
   });
 
   it("returns undefined without touching the library when there's no current position", async () => {

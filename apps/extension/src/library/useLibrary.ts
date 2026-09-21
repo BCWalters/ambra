@@ -7,6 +7,7 @@ import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, openLibraryTab, openReaderTab } from "../navigation.js";
 import { DEFAULT_CHROME_THEME } from "../reader/chromeTheme.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
+import { describeStorageError } from "../StorageErrors.js";
 
 export interface LibraryBookViewModel extends BookMetadata {
   readonly coverUrl: string | undefined;
@@ -265,21 +266,9 @@ function sortBooks(books: readonly LibraryBookViewModel[], sort: LibrarySortOpti
   return sorted;
 }
 
-/** A friendlier message for an import failure, specifically detecting
- * the one case worth calling out differently: the browser refusing to
- * write any more data because the device is actually low on disk space
- * (`DOMException` named `QuotaExceededError` — this is the one real,
- * if rare, storage-limit scenario `LibraryDatabase.estimateStorageUsage`'s
- * own doc comment describes: the manifest's `unlimitedStorage`
- * permission exempts this origin from Chrome's usual *quota*
- * enforcement, but obviously can't manufacture disk space that isn't
- * there). Every other failure (a corrupt/non-EPUB file, a parse error,
- * etc.) keeps its own original message unchanged — this only adds
- * context for the one case a reader could otherwise misread as "this
- * app is broken" when it's actually "your disk is full". */
+/** A friendlier message for an import failure — see
+ * `describeStorageError`'s doc comment for the one case this
+ * specifically improves on the raw error. */
 function describeImportError(err: unknown, fileName: string): string {
-  if (err instanceof DOMException && err.name === "QuotaExceededError") {
-    return `Couldn't import "${fileName}" — your device appears to be out of storage space. Free up some disk space and try again.`;
-  }
-  return err instanceof Error ? err.message : String(err);
+  return describeStorageError(err, "import", `"${fileName}"`);
 }

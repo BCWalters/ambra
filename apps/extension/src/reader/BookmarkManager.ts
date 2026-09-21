@@ -16,6 +16,14 @@ export interface BookmarkManagerContext {
   spineIndex(): number;
   chapterLabel(spineIndex: number): string;
   announce(translationKey: keyof StringCatalog): void;
+  /** Surfaces a failed save (e.g. a full storage quota) as a
+   * non-blocking transient toast — see
+   * `ReaderController.reportTransientError`. A bookmark the reader
+   * explicitly asked for that silently never appears, with no
+   * indication why, is exactly the kind of gap a dedicated error-
+   * handling pass needs to close (previously this just swallowed the
+   * error entirely). */
+  reportError(err: unknown): void;
   notify(): void;
 }
 
@@ -48,7 +56,8 @@ export class BookmarkManager {
       this.ctx.announce("announcements.bookmarkAdded");
       this.ctx.notify();
       return bookmark;
-    } catch {
+    } catch (err) {
+      this.ctx.reportError(err);
       return undefined;
     }
   }

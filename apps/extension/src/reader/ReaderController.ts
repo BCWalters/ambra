@@ -30,6 +30,7 @@ import type {
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
+import { describeStorageError } from "../StorageErrors.js";
 import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
@@ -297,6 +298,7 @@ export class ReaderController {
       spineIndex: () => this.spineIndex,
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
       announce: (translationKey) => this.announce(this.translate(translationKey)),
+      reportError: (err) => this.reportTransientError(err, "save", "that bookmark"),
       notify: () => this.notify(),
     });
     this.highlights = new HighlightManager(library, bookId, locatorResolver, {
@@ -312,6 +314,7 @@ export class ReaderController {
       setActiveHighlight: (state) => {
         this.activeHighlight = state;
       },
+      reportError: (err) => this.reportTransientError(err, "save", "that highlight"),
       notify: () => this.notify(),
     });
     this.highlightInteraction = new HighlightInteraction(locatorResolver, {
@@ -1500,6 +1503,21 @@ export class ReaderController {
   public dismissError(): void {
     this.error = undefined;
     this.errorSeverity = undefined;
+    this.notify();
+  }
+
+  /** Surfaces a non-blocking "transient" error toast (see
+   * `FriendlyError`) for a failed user-initiated action that isn't
+   * severe enough to interrupt reading (the previous page stays fully
+   * visible/usable underneath) but *is* severe enough that silently
+   * doing nothing would be confusing — a bookmark or highlight the
+   * reader explicitly asked for that simply never appeared, with no
+   * explanation. `describeStorageError` gives the one common failure
+   * mode here (a full IndexedDB quota) a plain-language explanation;
+   * every other failure keeps its own underlying message, unmodified. */
+  private reportTransientError(err: unknown, action: string, subject: string): void {
+    this.error = describeStorageError(err, action, subject);
+    this.errorSeverity = "transient";
     this.notify();
   }
 

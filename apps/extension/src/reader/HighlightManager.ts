@@ -24,6 +24,11 @@ export interface HighlightManagerContext {
   announce(translationKey: keyof StringCatalog): void;
   getActiveHighlight(): ActiveHighlightState | undefined;
   setActiveHighlight(state: ActiveHighlightState | undefined): void;
+  /** Surfaces a failed save (e.g. a full storage quota) as a
+   * non-blocking transient toast — see
+   * `ReaderController.reportTransientError` and `BookmarkManagerContext`'s
+   * identical member. */
+  reportError(err: unknown): void;
   notify(): void;
 }
 
@@ -112,8 +117,8 @@ export class HighlightManager {
       if (openNoteEditor && anchor) {
         this.ctx.setActiveHighlight({ highlight, left: anchor.left, top: anchor.top, openNoteEditor: true });
       }
-    } catch {
-      // Best-effort — a failed save shouldn't surface an error mid-flow.
+    } catch (err) {
+      this.ctx.reportError(err);
     } finally {
       this.ctx.dismissSelectionToolbar();
     }
@@ -146,7 +151,12 @@ export class HighlightManager {
       const index = highlights.findIndex((highlight) => highlight.id === id);
       if (index !== -1) {
         const updated: Highlight = { ...highlights[index]!, note };
-        await this.library.updateHighlight(updated);
+        try {
+          await this.library.updateHighlight(updated);
+        } catch (err) {
+          this.ctx.reportError(err);
+          return;
+        }
         highlights[index] = updated;
         const active = this.ctx.getActiveHighlight();
         if (active?.highlight.id === id) {
@@ -165,7 +175,12 @@ export class HighlightManager {
       const index = highlights.findIndex((highlight) => highlight.id === id);
       if (index !== -1) {
         const updated: Highlight = { ...highlights[index]!, style };
-        await this.library.updateHighlight(updated);
+        try {
+          await this.library.updateHighlight(updated);
+        } catch (err) {
+          this.ctx.reportError(err);
+          return;
+        }
         highlights[index] = updated;
         const active = this.ctx.getActiveHighlight();
         if (active?.highlight.id === id) {

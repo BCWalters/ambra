@@ -72,6 +72,7 @@ function makeContext(overrides: Partial<HighlightManagerContext> = {}): Highligh
     setActiveHighlight: (state) => {
       active = state;
     },
+    reportError: vi.fn(),
     notify: vi.fn(),
     ...overrides,
   };
@@ -132,6 +133,23 @@ describe("HighlightManager", () => {
     await manager.add("yellow", true);
 
     expect(ctx.getActiveHighlight()).toMatchObject({ left: 10, top: 20, openNoteEditor: true });
+  });
+
+  it("add() reports a failed save via reportError instead of silently doing nothing", async () => {
+    const library = {
+      addHighlight: vi.fn().mockRejectedValue(new DOMException("quota", "QuotaExceededError")),
+    } as unknown as LibraryDatabase;
+    const ctx = makeContext();
+    const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
+
+    await manager.add("yellow");
+
+    expect(manager.forSpineIndex(0)).toBeUndefined();
+    expect(ctx.reportError).toHaveBeenCalledTimes(1);
+    expect(ctx.announce).not.toHaveBeenCalledWith("announcements.highlightAdded");
+    // Even a failed save still dismisses the selection toolbar — the
+    // selection itself is stale either way.
+    expect(ctx.dismissSelectionToolbar).toHaveBeenCalled();
   });
 
   it("add() is a no-op without a pending selection", async () => {
