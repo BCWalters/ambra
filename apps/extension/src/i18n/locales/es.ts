@@ -99,6 +99,7 @@ export const es: StringCatalog = {
   "inspector.rights": "Derechos",
   "inspector.language": "Idioma",
   "inspector.renditionLayout": "Diseño de presentación",
+  "inspector.renditionOrientation": "Orientación de presentación",
   "inspector.rootFile": "Archivo raíz",
   "inspector.identifier": "Identificador",
   "inspector.subjects": "Temas",

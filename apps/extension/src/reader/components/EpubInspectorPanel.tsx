@@ -663,6 +663,10 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
             <td>{data.renditionLayout}</td>
           </tr>
           <tr>
+            <td style={metadataRowStyle}>{t("inspector.renditionOrientation")}</td>
+            <td>{data.renditionOrientation}</td>
+          </tr>
+          <tr>
             <td style={metadataRowStyle}>{t("inspector.rootFile")}</td>
             <td>{data.rootFilePath}</td>
           </tr>

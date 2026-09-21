@@ -34,6 +34,17 @@ export type RenditionLayout = "reflowable" | "pre-paginated";
  * decides eligibility purely from available width). */
 export type RenditionSpread = "none" | "landscape" | "both" | "auto";
 
+/** The `rendition:orientation` hint (`<meta property="rendition:orientation">`,
+ * package-wide, or a `rendition:orientation-portrait`/`-landscape` spine
+ * itemref property override — see `SpineItemRef.resolveRenditionOrientation`):
+ * which device orientation fixed-layout content is authored for. A browser
+ * extension has no way to lock device/window orientation the way a native
+ * reading app might, so this engine only surfaces the declared value (e.g.
+ * for the EPUB Inspector) rather than acting on it — there's no reader-UI
+ * behavior currently gated on it. Absent/unrecognized defaults to `"auto"`
+ * (the spec's own default: no preference). */
+export type RenditionOrientation = "portrait" | "landscape" | "auto";
+
 /** The spine's `page-progression-direction` attribute: which visual
  * direction "forward" advances in, and (per spec) the side a spine item
  * with no explicit `page-spread-*` property defaults to within a
@@ -141,6 +152,20 @@ export class SpineItemRef {
       return "center";
     }
     return undefined;
+  }
+
+  /** This spine item's effective `rendition:orientation`, applying its own
+   * `rendition:orientation-portrait`/`-landscape` override property if
+   * present, else falling back to the publication-wide default — same
+   * override shape as `resolveRenditionLayout`. */
+  public resolveRenditionOrientation(packageDefault: RenditionOrientation): RenditionOrientation {
+    if (this.hasProperty("rendition:orientation-portrait")) {
+      return "portrait";
+    }
+    if (this.hasProperty("rendition:orientation-landscape")) {
+      return "landscape";
+    }
+    return packageDefault;
   }
 }
 
@@ -280,6 +305,10 @@ export class PackageMetadata {
      * Individual spine items have no per-item override for this property
      * (unlike `rendition:layout`) — spec defines it package-wide only. */
     public readonly renditionSpread: RenditionSpread,
+    /** The publication-wide `rendition:orientation` hint — see
+     * `RenditionOrientation`. Individual spine items may override this —
+     * see `SpineItemRef.resolveRenditionOrientation`. */
+    public readonly renditionOrientation: RenditionOrientation,
     /** EPUB Accessibility 1.1 metadata — see `AccessibilityMetadata`. */
     public readonly accessibility: AccessibilityMetadata,
   ) {}
@@ -429,6 +458,7 @@ export class PackageDocument {
     const renditionLayout = PackageDocument.parseRenditionLayoutMeta(metadataEl);
     const renditionViewport = PackageDocument.parseRenditionViewportMeta(metadataEl);
     const renditionSpread = PackageDocument.parseRenditionSpreadMeta(metadataEl);
+    const renditionOrientation = PackageDocument.parseRenditionOrientationMeta(metadataEl);
     const description = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "description");
     const publisher = getFirstElementTextNS(metadataEl, DC_NAMESPACE, "publisher");
     const identifiers = PackageDocument.parseIdentifiers(metadataEl);
@@ -457,6 +487,7 @@ export class PackageDocument {
       metaEntries,
       creators,
       renditionSpread,
+      renditionOrientation,
       accessibility,
     );
   }
@@ -575,6 +606,17 @@ export class PackageDocument {
       return "both";
     }
     return "auto";
+  }
+
+  /** Parses the package-level `rendition:orientation` property — see
+   * `RenditionOrientation`. Absent or unrecognized defaults to `"auto"`. */
+  private static parseRenditionOrientationMeta(metadataEl: Element): RenditionOrientation {
+    const metaElements = getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta");
+    const orientationMeta = metaElements.find(
+      (meta) => meta.getAttribute("property") === "rendition:orientation",
+    );
+    const content = orientationMeta?.textContent?.trim();
+    return content === "portrait" || content === "landscape" ? content : "auto";
   }
 
   /** Parses the package-level `rendition:viewport` property, e.g.

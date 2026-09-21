@@ -3046,6 +3046,7 @@ export class ReaderController {
       publisher: this.pkg.metadata.publisher,
       description: this.pkg.metadata.description,
       renditionLayout: this.pkg.metadata.renditionLayout,
+      renditionOrientation: this.pkg.metadata.renditionOrientation,
       rights: this.pkg.metadata.rights,
       date: this.pkg.metadata.date,
       subjects: this.pkg.metadata.subjects,

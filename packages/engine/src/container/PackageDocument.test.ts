@@ -391,3 +391,55 @@ describe("PackageDocument accessibility metadata (EPUB Accessibility 1.1)", () =
     );
   });
 });
+
+describe("PackageDocument rendition:orientation", () => {
+  const buildXml = (metadataInner: string, itemrefProperties = ""): string => `<?xml version="1.0"?>
+    <package xmlns="http://www.idpf.org/2007/opf" xmlns:opf="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+        <dc:title>Test</dc:title>
+        <dc:language>en</dc:language>
+        ${metadataInner}
+      </metadata>
+      <manifest>
+        <item id="page1" href="page1.xhtml" media-type="application/xhtml+xml"/>
+      </manifest>
+      <spine>
+        <itemref idref="page1" ${itemrefProperties} />
+      </spine>
+    </package>`;
+
+  it("defaults to auto when no rendition:orientation meta is present", () => {
+    const pkg = PackageDocument.parse(buildXml(""), "OEBPS/content.opf");
+    expect(pkg.metadata.renditionOrientation).toBe("auto");
+  });
+
+  it("reads a declared package-level rendition:orientation", () => {
+    const xml = buildXml(`<meta property="rendition:orientation">landscape</meta>`);
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+    expect(pkg.metadata.renditionOrientation).toBe("landscape");
+  });
+
+  it("falls back to auto for an unrecognized rendition:orientation value", () => {
+    const xml = buildXml(`<meta property="rendition:orientation">sideways</meta>`);
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+    expect(pkg.metadata.renditionOrientation).toBe("auto");
+  });
+
+  it("resolves a per-spine-item orientation override, else the package default", () => {
+    const xml = buildXml(
+      `<meta property="rendition:orientation">portrait</meta>`,
+      `properties="rendition:orientation-landscape"`,
+    );
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+    const item = pkg.spine[0]!;
+    expect(item.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("landscape");
+  });
+
+  it("with no override, resolves to the package default", () => {
+    const xml = buildXml(`<meta property="rendition:orientation">portrait</meta>`);
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+    const item = pkg.spine[0]!;
+    expect(item.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("portrait");
+  });
+});

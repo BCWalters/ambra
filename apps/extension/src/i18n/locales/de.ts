@@ -140,6 +140,7 @@ export const de: StringCatalog = {
   "inspector.publisher": "Verlag",
   "inspector.refines": "Präzisiert",
   "inspector.renditionLayout": "Rendition-Layout",
+  "inspector.renditionOrientation": "Rendition-Ausrichtung",
   "inspector.rights": "Rechte",
   "inspector.rootFile": "Stammdatei",
   "inspector.selectFileToPreview":

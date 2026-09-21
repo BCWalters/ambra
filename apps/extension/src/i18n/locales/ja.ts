@@ -134,6 +134,7 @@ export const ja: StringCatalog = {
   "inspector.publisher": "出版社",
   "inspector.refines": "Refines",
   "inspector.renditionLayout": "レンディションレイアウト",
+  "inspector.renditionOrientation": "レンディションの向き",
   "inspector.rights": "権利",
   "inspector.rootFile": "ルートファイル",
   "inspector.selectFileToPreview": "内容を表示するファイルを選択してください。",

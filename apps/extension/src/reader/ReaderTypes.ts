@@ -82,6 +82,7 @@ export interface EpubInspectionData {
   readonly publisher: string | undefined;
   readonly description: string | undefined;
   readonly renditionLayout: string;
+  readonly renditionOrientation: string;
   readonly rights: string | undefined;
   readonly date: string | undefined;
   readonly subjects: readonly string[];

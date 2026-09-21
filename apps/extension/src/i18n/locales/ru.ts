@@ -140,6 +140,7 @@ export const ru: StringCatalog = {
   "inspector.publisher": "Издатель",
   "inspector.refines": "Уточняет",
   "inspector.renditionLayout": "Макет отображения",
+  "inspector.renditionOrientation": "Ориентация отображения",
   "inspector.rights": "Права",
   "inspector.rootFile": "Корневой файл",
   "inspector.selectFileToPreview":

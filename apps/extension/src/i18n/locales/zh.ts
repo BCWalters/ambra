@@ -134,6 +134,7 @@ export const zh: StringCatalog = {
   "inspector.publisher": "出版社",
   "inspector.refines": "细化",
   "inspector.renditionLayout": "呈现布局",
+  "inspector.renditionOrientation": "呈现方向",
   "inspector.rights": "版权信息",
   "inspector.rootFile": "根文件",
   "inspector.selectFileToPreview": "选择一个文件以查看其内容。",

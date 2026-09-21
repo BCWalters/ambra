@@ -12,6 +12,7 @@ export {
 export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry, AccessibilityMetadata } from "./container/PackageDocument.js";
 export type {
   RenditionSpread,
+  RenditionOrientation,
   PageProgressionDirection,
   PageSpreadSide,
 } from "./container/PackageDocument.js";

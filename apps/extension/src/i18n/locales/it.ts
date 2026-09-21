@@ -136,6 +136,7 @@ export const it: StringCatalog = {
   "inspector.publisher": "Editore",
   "inspector.refines": "Rifinisce",
   "inspector.renditionLayout": "Layout di resa",
+  "inspector.renditionOrientation": "Orientamento di resa",
   "inspector.rights": "Diritti",
   "inspector.rootFile": "File radice",
   "inspector.selectFileToPreview": "Seleziona un file per visualizzarne il contenuto.",

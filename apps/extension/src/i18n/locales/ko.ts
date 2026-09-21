@@ -133,6 +133,7 @@ export const ko: StringCatalog = {
   "inspector.rights": "권리",
   "inspector.language": "언어",
   "inspector.renditionLayout": "렌디션 레이아웃",
+  "inspector.renditionOrientation": "렌디션 방향",
   "inspector.rootFile": "루트 파일",
   "inspector.identifier": "식별자",
   "inspector.subjects": "주제",

@@ -167,6 +167,7 @@ export interface StringCatalog {
   "inspector.rights": string;
   "inspector.language": string;
   "inspector.renditionLayout": string;
+  "inspector.renditionOrientation": string;
   "inspector.rootFile": string;
   "inspector.identifier": string;
   "inspector.subjects": string;
@@ -343,6 +344,7 @@ export const en: StringCatalog = {
   "inspector.rights": "Rights",
   "inspector.language": "Language",
   "inspector.renditionLayout": "Rendition layout",
+  "inspector.renditionOrientation": "Rendition orientation",
   "inspector.rootFile": "Root file",
   "inspector.identifier": "Identifier",
   "inspector.subjects": "Subjects",
