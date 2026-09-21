@@ -244,7 +244,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
                   single-line-truncated width. */}
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
                 …{result.before.slice(-18)}
-                <strong>{result.match}</strong>
+                <strong style={{ color: chromeTheme.accent }}>{result.match}</strong>
                 {result.after}…
               </span>
             </button>

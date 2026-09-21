@@ -36,9 +36,14 @@ interface NavTreeProps {
   /** Book-wide page number of each entry's target spine item, keyed by
    * path — see `ReaderSnapshot.tocPageNumbers`. */
   pageNumbers: ReadonlyMap<string, number>;
+  /** The active chrome theme's own accent color (issue #86's follow-up
+   * — see this prop's use below) — always rendered as a left border,
+   * transparent when an entry isn't the current chapter, so selecting
+   * an entry never shifts its own text by however wide the border is. */
+  accent: string;
 }
 
-const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNumbers }) => {
+const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNumbers, accent }) => {
   if (items.length === 0) {
     return null;
   }
@@ -63,6 +68,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   width: "100%",
                   background: isCurrent ? CHROME_SELECTED_BACKGROUND : "none",
                   border: "none",
+                  borderLeft: `3px solid ${isCurrent ? accent : "transparent"}`,
                   borderRadius: 6,
                   color: isCurrent ? "var(--colorNeutralForeground1, #1a1a1a)" : "var(--colorNeutralForeground2, #333)",
                   fontWeight: isCurrent ? 600 : 400,
@@ -114,6 +120,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
               onSelect={onSelect}
               depth={depth + 1}
               pageNumbers={pageNumbers}
+              accent={accent}
             />
           </li>
         );
@@ -329,6 +336,7 @@ export const TocPanel: FC<TocPanelProps> = ({
                 width: "100%",
                 background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
                 border: "none",
+                borderLeft: `3px solid ${currentPath === firstSpinePath ? chromeTheme.accent : "transparent"}`,
                 borderRadius: 6,
                 color:
                   currentPath === firstSpinePath
@@ -364,7 +372,14 @@ export const TocPanel: FC<TocPanelProps> = ({
               )}
             </button>
           )}
-          <NavTree items={items} currentPath={currentPath} onSelect={onSelect} depth={0} pageNumbers={pageNumbers} />
+          <NavTree
+            items={items}
+            currentPath={currentPath}
+            onSelect={onSelect}
+            depth={0}
+            pageNumbers={pageNumbers}
+            accent={chromeTheme.accent}
+          />
         </div>
       </nav>
     </>

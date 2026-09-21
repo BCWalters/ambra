@@ -369,7 +369,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                     <Button
                       appearance="secondary"
                       size="small"
-                      icon={<DocumentPageNumberRegular />}
+                      icon={<DocumentPageNumberRegular style={{ color: chromeTheme.accent }} />}
                       onClick={() => setGoToDialogMode("page")}
                       style={goToButtonStyle(chromeTheme.backgroundSolid)}
                     >
@@ -379,7 +379,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   <Button
                     appearance="secondary"
                     size="small"
-                    icon={<TextPercentRegular />}
+                    icon={<TextPercentRegular style={{ color: chromeTheme.accent }} />}
                     onClick={() => setGoToDialogMode("percentage")}
                     style={goToButtonStyle(chromeTheme.backgroundSolid)}
                   >
