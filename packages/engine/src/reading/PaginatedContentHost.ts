@@ -38,6 +38,15 @@ export class PaginatedContentHost {
   private height: number;
   private pages: Page[] = [];
   private pageIndex = 0;
+  // Grown past `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM`'s own
+  // fixed floor by `refreshInsets` whenever the current font scale/
+  // line-spacing demands more room — see `ReadingTheme.insetsForLineHeight`'s
+  // own doc comment for why the fixed constants alone aren't always
+  // enough. Plain fields (not derived getters) since they're read very
+  // frequently (every `showCurrentPage`) and only ever need updating
+  // right after a (re)pagination pass, not on every access.
+  private insetTop = ReadingTheme.PAGE_INSET_TOP;
+  private insetBottom = ReadingTheme.PAGE_INSET_BOTTOM;
 
   public constructor(width: number, height: number, ownerDocument?: Document) {
     this.height = height;
@@ -58,12 +67,35 @@ export class PaginatedContentHost {
     return this.pageIndex;
   }
 
+  /** Re-measures `doc`'s current line-height and grows `insetTop`/
+   * `insetBottom` to match, if the reader's current font scale/line-
+   * spacing demands more room than the fixed constants alone provide —
+   * see `ReadingTheme.insetsForLineHeight`'s doc comment. Called right
+   * before every (re)pagination pass (`open`/`relayout`/`goToPosition`/
+   * `reanchorPagination`), so `pageContentHeight`/`showCurrentPage`/etc.
+   * always use insets sized for *this* pass's own font settings, not
+   * whatever the reader had the *previous* time this host paginated. A
+   * no-op (keeps the previous value) if `doc`'s line-height can't be
+   * measured yet (e.g. this theme's CSS hasn't been injected into it at
+   * all) rather than resetting to the bare constants, which would be a
+   * regression for a caller that already grew them for a still-current
+   * large font scale. */
+  private refreshInsets(doc: Document): void {
+    const lineHeightPx = ReadingTheme.currentLineHeightPx(doc);
+    if (lineHeightPx === undefined) {
+      return;
+    }
+    const insets = ReadingTheme.insetsForLineHeight(lineHeightPx);
+    this.insetTop = insets.top;
+    this.insetBottom = insets.bottom;
+  }
+
   /** The vertical budget available for text once the top/bottom page
    * insets are reserved — never less than a small floor, so a very short
    * available height (e.g. mid-resize) can't produce a degenerate
    * zero/negative pagination budget. */
   private get pageContentHeight(): number {
-    return Math.max(50, this.height - ReadingTheme.PAGE_INSET_TOP - ReadingTheme.PAGE_INSET_BOTTOM);
+    return Math.max(50, this.height - this.insetTop - this.insetBottom);
   }
 
   /** Loads spine item `spineIndex`, paginates it at this host's current
@@ -83,10 +115,60 @@ export class PaginatedContentHost {
     iframeDocument.documentElement.style.overflow = "hidden";
     iframeDocument.body.style.overflow = "hidden";
 
+    // A real, confirmed bug (reported: duplicated lines of dialogue
+    // straddling a spread's left/right columns in a book using an
+    // embedded italic font face): the iframe's `load` event fires once
+    // the document/images/stylesheets are loaded, but *not* once
+    // `@font-face` resources are — those are fetched/parsed lazily,
+    // triggered by the initial layout pass, and can still be in flight
+    // right when `PaginationEngine.paginate` below measures line boxes.
+    // In `SpreadPaginatedHost`, the left and right columns are two
+    // wholly independent `PaginatedContentHost`s/iframes/font caches
+    // loading the *same* content in parallel; if one column's custom
+    // font finishes loading (swapping in, and reflowing every line
+    // after it) before its own measurement runs but the other column's
+    // doesn't, the two columns' `pages` arrays genuinely stop agreeing
+    // with each other — and since the right column blindly displays
+    // `pageIndex + 1` from its *own* (differently-cut) array, its first
+    // page can start a line or two earlier than the left column's page
+    // actually ended, duplicating that text in both columns at once.
+    // Waiting for `fonts.ready` here ensures pagination always measures
+    // final layout, with every embedded font already resolved — for
+    // *every* `PaginatedContentHost`, so left/right columns (as well as
+    // ordinary single-column mode, which this same race could otherwise
+    // silently mis-paginate too) always agree.
+    await PaginatedContentHost.waitForFontsReady(iframeDocument);
+
+    this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight);
     this.pageIndex = 0;
     this.showCurrentPage();
+  }
+
+  /** The most any single `open()` call will wait on `document.fonts.ready`
+   * before giving up and pagination proceeding anyway — a defensive
+   * ceiling only, not expected to normally matter (blob-URL font
+   * resources have no real network latency, just parse time), guarding
+   * against a malformed/unsupported embedded font file that could
+   * otherwise leave `fonts.ready` unsettled indefinitely and stall the
+   * whole spine item load. */
+  private static readonly FONTS_READY_TIMEOUT_MS = 2_000;
+
+  /** Resolves once `doc`'s `FontFaceSet` has settled every load triggered
+   * by rendering it so far (see `open()`'s own doc comment for why this
+   * matters), or after `FONTS_READY_TIMEOUT_MS`, whichever comes first.
+   * `document.fonts` isn't guaranteed to exist in every environment this
+   * code might run in (e.g. a test DOM polyfill), so this is a no-op
+   * there rather than throwing. */
+  private static async waitForFontsReady(doc: Document): Promise<void> {
+    if (!doc.fonts) {
+      return;
+    }
+    await Promise.race([
+      doc.fonts.ready.catch(() => undefined),
+      new Promise<void>((resolve) => setTimeout(resolve, PaginatedContentHost.FONTS_READY_TIMEOUT_MS)),
+    ]);
   }
 
   /** The DOM position at the start of the currently-displayed page — the
@@ -118,9 +200,26 @@ export class PaginatedContentHost {
    * top of its page rather than wherever it happens to fall under normal
    * top-down pagination (see `PaginationEngine.paginate`'s `anchor`
    * parameter) — the reader's first visible word never silently shifts
-   * mid-page across a resize/font-size change. */
-  public relayout(width: number, height: number): void {
-    const preserve = this.currentPosition();
+   * mid-page across a resize/font-size change.
+   *
+   * `anchorOverride`, if given, is used as that anchor *instead of* this
+   * host's own `currentPosition()` — for `SpreadPaginatedHost`'s right
+   * column only (see its own `relayout`'s doc comment): a real, confirmed
+   * bug (reported: duplicated lines of dialogue straddling a spread's
+   * left/right columns) traced back to exactly this — the right column
+   * anchoring its *own* current position (a whole page ahead of the
+   * left column's) forced a *different* break into its independently-
+   * computed `pages` array than whatever the left column's anchor forced
+   * into its own, so the two columns' page-break arrays silently
+   * stopped agreeing with each other from that point on, even though
+   * both paginate the exact same underlying content. Anchoring the right
+   * column to the *left* column's position instead keeps both arrays
+   * forced through the identical break, which — given otherwise
+   * identical content/dimensions — keeps them byte-for-byte identical
+   * again, exactly as they are immediately after `open()` (which passes
+   * no anchor to either column at all). */
+  public relayout(width: number, height: number, anchorOverride?: DomBreakPoint): void {
+    const preserve = anchorOverride ?? this.currentPosition();
     this.height = height;
 
     const iframeDocument = this.sandboxedHost.element.contentDocument;
@@ -134,6 +233,7 @@ export class PaginatedContentHost {
     // untranslated layout position to measure correctly.
     iframeDocument.body.style.transform = "";
 
+    this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, preserve);
     if (preserve) {
@@ -244,6 +344,7 @@ export class PaginatedContentHost {
     // sit under the toolbar, because the page it re-paginated from was
     // still visually shifted down from `open()`'s own initial page.
     iframeDocument.body.style.transform = "";
+    this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, { node, offset });
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
@@ -251,6 +352,32 @@ export class PaginatedContentHost {
       this.pageIndex = found.index;
       this.showCurrentPage();
     }
+  }
+
+  /** Re-paginates this host's *currently loaded* content in place —
+   * same width/height, same displayed page — but forces a page break
+   * exactly at `anchor`, without navigating the display there
+   * afterward. Used by `SpreadPaginatedHost`'s right column only, to
+   * keep its `pages` array structurally in agreement with the left
+   * column's own freshly-anchored one (see `SpreadPaginatedHost.
+   * relayout`/`goToPosition`'s own doc comments for why this matters —
+   * two independently-anchored `pages` arrays for what's meant to be
+   * the same underlying page sequence, shown one page apart, is exactly
+   * the real, confirmed bug that produced duplicated/missing lines at
+   * a spread's seam). The caller is responsible for restoring whichever
+   * page this column should actually display afterward (typically via
+   * `goToPageIndex`, since re-anchoring can shift where a given page
+   * index's content now starts) — this method only ever touches
+   * `this.pages`, never `this.pageIndex`/the display transform. */
+  public reanchorPagination(anchor: DomBreakPoint): void {
+    const iframeDocument = this.sandboxedHost.element.contentDocument;
+    if (!iframeDocument) {
+      return;
+    }
+    iframeDocument.body.style.transform = "";
+    this.refreshInsets(iframeDocument);
+    ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, anchor);
   }
 
   private showCurrentPage(): void {
@@ -261,18 +388,18 @@ export class PaginatedContentHost {
     const body = this.sandboxedHost.element.contentDocument?.body;
     if (body) {
       // Shift the content down by the top inset (on top of the page's own
-      // display transform) so the first line lands `PAGE_INSET_TOP` px
-      // below the iframe's top edge instead of flush against it.
-      body.style.transform = `translateY(${page.displayTranslateY + ReadingTheme.PAGE_INSET_TOP}px)`;
+      // display transform) so the first line lands `insetTop` px below
+      // the iframe's top edge instead of flush against it.
+      body.style.transform = `translateY(${page.displayTranslateY + this.insetTop}px)`;
     }
     // The iframe's own height reserves both insets around the page's
     // actual content height, so the bottom inset is real blank space
     // rather than clipped-away overflow.
-    this.sandboxedHost.element.style.height = `${page.height + ReadingTheme.PAGE_INSET_TOP + ReadingTheme.PAGE_INSET_BOTTOM}px`;
+    this.sandboxedHost.element.style.height = `${page.height + this.insetTop + this.insetBottom}px`;
     // The inset bands are only reliably blank *by convention* (nothing
     // actually stops adjacent content from painting there) — the
     // previous page's last line is usually only one line-height above
-    // this page's first line, routinely far less than `PAGE_INSET_TOP`,
+    // this page's first line, routinely far less than `insetTop`,
     // so without an explicit clip it visibly bled into the header/footer
     // bands whenever a page began mid-paragraph (tightly-packed
     // continuation lines) rather than at a new block with its own
@@ -281,7 +408,7 @@ export class PaginatedContentHost {
     // its painted output to exactly the page-content band regardless of
     // what the transform happens to place above/below it, independent of
     // how much natural gap the surrounding content has.
-    this.sandboxedHost.element.style.clipPath = `inset(${ReadingTheme.PAGE_INSET_TOP}px 0 ${ReadingTheme.PAGE_INSET_BOTTOM}px 0)`;
+    this.sandboxedHost.element.style.clipPath = `inset(${this.insetTop}px 0 ${this.insetBottom}px 0)`;
   }
 
   /** Temporarily grows this host's iframe to `fullHeight` (the reader
@@ -308,7 +435,7 @@ export class PaginatedContentHost {
     if (!page) {
       return;
     }
-    const naturalHeight = page.height + ReadingTheme.PAGE_INSET_TOP + ReadingTheme.PAGE_INSET_BOTTOM;
+    const naturalHeight = page.height + this.insetTop + this.insetBottom;
     if (fullHeight <= naturalHeight) {
       return;
     }
@@ -357,7 +484,7 @@ export class PaginatedContentHost {
     this.sandboxedHost.element.style.clipPath = "";
     const page = this.pages[this.pageIndex];
     if (page) {
-      this.sandboxedHost.element.style.height = `${ReadingTheme.PAGE_INSET_TOP + page.height}px`;
+      this.sandboxedHost.element.style.height = `${this.insetTop + page.height}px`;
     }
   }
 

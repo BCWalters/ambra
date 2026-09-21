@@ -1,6 +1,7 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import type { DomBreakPoint, Page } from "../layout/Page.js";
+import { mapDomPositionToDocument } from "../layout/DomPositionMapping.js";
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
 
 /** The narrowest a single spread column is allowed to get before spread
@@ -427,15 +428,47 @@ export class SpreadPaginatedHost {
   /** Re-paginates both columns at a new width/height, splitting the width
    * evenly between them (minus the gutter). The left column preserves its
    * reading position exactly like a single-column host; the right column
-   * is simply re-synced afterward. */
+   * is forced through that *same* anchor (not one derived from its own,
+   * necessarily different, current position) — see
+   * `PaginatedContentHost.relayout`'s doc comment for the real,
+   * confirmed bug this fixes: anchoring each column to its *own* current
+   * position (a whole page apart) let their independently-computed
+   * `pages` arrays silently diverge from each other from that point on,
+   * which `sync`'s plain `pageIndex + 1` indexing then displayed as
+   * duplicated/missing lines at the seam between them. Captured *before*
+   * `left.relayout` runs, since that call itself updates `left`'s own
+   * current position (to wherever it lands in its own freshly-measured
+   * pages) — the anchor passed to `right` must be the position as it was
+   * *before* either column re-paginates, the shared point both are meant
+   * to agree on. Mapped via `mapLeftAnchorToRight` first — `left`'s own
+   * anchor is a DOM node from *its* document, meaningless passed
+   * directly into `right`'s entirely separate one. */
   public relayout(width: number, height: number): void {
     const columnWidth = SpreadPaginatedHost.columnWidth(width);
     this.containerEl.style.height = `${height}px`;
     this.leftWrapperEl.style.width = `${columnWidth}px`;
+    const anchor = this.left.currentPosition();
+    const rightAnchor = anchor ? this.mapLeftAnchorToRight(anchor) : undefined;
     this.left.relayout(columnWidth, height);
-    this.right.relayout(columnWidth, height);
+    this.right.relayout(columnWidth, height, rightAnchor);
     this.mergedTailHost?.relayout(columnWidth, height);
     this.sync();
+  }
+
+  /** Maps a DOM position from the left column's own document to the
+   * structurally-equivalent position in the right column's — see
+   * `mapDomPositionToDocument`'s doc comment. Returns `undefined` if
+   * either column has no content document yet, or the mapping itself
+   * fails (in which case callers simply fall back to an unanchored
+   * re-pagination — still correct, just without the "lands exactly at
+   * the top of its page" guarantee). */
+  private mapLeftAnchorToRight(anchor: DomBreakPoint): DomBreakPoint | undefined {
+    const leftBody = this.left.element.contentDocument?.body;
+    const rightBody = this.right.element.contentDocument?.body;
+    if (!leftBody || !rightBody) {
+      return undefined;
+    }
+    return mapDomPositionToDocument(anchor, leftBody, rightBody);
   }
 
   /** Jumps the left column to `(node, offset)` — used for TOC/fragment
@@ -446,9 +479,23 @@ export class SpreadPaginatedHost {
    * shifted pairing exactly like `goToPageIndex` does, rather than
    * resetting it — an arbitrary jump within this same chapter doesn't
    * change *which* real pages are meant to pair together, only where
-   * the reader currently is among them). */
+   * the reader currently is among them).
+   *
+   * Also reanchors the right column's own `pages` array to the same
+   * (mapped) position — see `relayout`'s identical reasoning: left's own
+   * anchored re-pagination here can shift its whole `pages` array in
+   * ways an untouched, stale right array (built under different
+   * conditions) no longer agrees with, which `sync`'s plain
+   * `pageIndex + 1` indexing would otherwise display as duplicated/
+   * missing lines at the seam — exactly the bug this class's `relayout`
+   * fixes for a resize/font-size change, just triggered here by an
+   * in-content jump instead. */
   public goToPosition(node: Node, offset: number): void {
     this.left.goToPosition(node, offset);
+    const rightAnchor = this.mapLeftAnchorToRight({ node, offset });
+    if (rightAnchor) {
+      this.right.reanchorPagination(rightAnchor);
+    }
     if (this.merged) {
       this.virtualIndex = SpreadPaginatedHost.shiftedVirtualIndexFor(this.left.currentPageIndex);
     }

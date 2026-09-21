@@ -249,9 +249,77 @@ export class ReadingTheme {
    * bottom inset needs enough room that the running footer (page number/
    * percent) reads as clearly *below* the last line of text, not
    * crowding it. Kept here, next to the rest of the theme, so the "how
-   * much air is around the text" decision lives in one place. */
+   * much air is around the text" decision lives in one place.
+   *
+   * These are *floors*, not the final values a given page necessarily
+   * uses — see `insetsForLineHeight`, which grows them for a large font
+   * scale/line-spacing. */
   public static readonly PAGE_INSET_TOP = 88;
   public static readonly PAGE_INSET_BOTTOM = 76;
+
+  /** How many line-heights' worth of vertical slack `insetsForLineHeight`
+   * guarantees the inset bands cover, at minimum — see its own doc
+   * comment for why this matters at all. Two full lines comfortably
+   * covers the normal case (a page ending early because the next
+   * *line* wouldn't fit leaves less than one line's height of unused
+   * space — `PaginationEngine`'s greedy packing never leaves more), with
+   * a full extra line of margin for the measurement/rounding tolerance
+   * `LineMeasurement` itself allows for. */
+  private static readonly INSET_LINE_HEIGHT_MULTIPLE = 2;
+
+  /** The top/bottom page insets to actually use for a page whose text
+   * renders at `lineHeightPx` (the *current* content document's own
+   * computed `line-height`, in px, reading off whatever font scale/
+   * family/line-spacing the reader has live right now) — `PAGE_INSET_TOP`/
+   * `PAGE_INSET_BOTTOM` themselves, unless `lineHeightPx` is large enough
+   * that `INSET_LINE_HEIGHT_MULTIPLE` lines of it no longer fits inside
+   * them, in which case both grow to fit.
+   *
+   * A real, confirmed bug this fixes: those two constants were
+   * previously used completely unscaled, regardless of the reader's own
+   * font-scale/line-spacing settings. `PaginatedContentHost.showCurrentPage`'s
+   * own doc comment already spells out why any inset band is only
+   * reliably blank "by convention" (nothing stops the *next* page's own
+   * content from continuing right where this page's ends, often less
+   * than a line-height away) — a fixed 88px/76px band comfortably covers
+   * that at the theme's default type size, but the reader can scale
+   * fonts up to `MAX_FONT_SCALE` (2×) and line-spacing up to
+   * `MAX_LINE_SPACING` (1.6×) — at which point a *single* line can
+   * already approach or exceed the old fixed inset on its own, let alone
+   * the up-to-one-line of unused space `PaginationEngine`'s own packing
+   * can otherwise leave unclipped. Confirmed via direct measurement: at
+   * a large font scale, the adjacent page's first line or two visibly
+   * bled through the bottom/top inset band of a `SpreadPaginatedHost`
+   * column, reading as a duplicated line of dialogue at the spread's
+   * seam — the exact same *symptom* as (but an entirely separate root
+   * cause from) the left/right pagination-array divergence
+   * `PaginatedContentHost.relayout`/`SpreadPaginatedHost.relayout` fix
+   * elsewhere addresses. */
+  public static insetsForLineHeight(lineHeightPx: number): { top: number; bottom: number } {
+    const dynamicFloor = Math.ceil(lineHeightPx * ReadingTheme.INSET_LINE_HEIGHT_MULTIPLE);
+    return {
+      top: Math.max(ReadingTheme.PAGE_INSET_TOP, dynamicFloor),
+      bottom: Math.max(ReadingTheme.PAGE_INSET_BOTTOM, dynamicFloor),
+    };
+  }
+
+  /** Reads `doc`'s *current*, fully-resolved body `line-height` (in px) —
+   * the live input `insetsForLineHeight` needs, already reflecting
+   * whatever font-scale/family/line-spacing is applied right now,
+   * without this module needing to duplicate that CSS `calc()` formula
+   * (see `CSS`'s own `line-height` rule) in JS. Returns `undefined` if
+   * `doc` has no `body` yet (nothing sensible to measure) or the
+   * computed value can't be parsed as a plain px number (e.g. the
+   * document never actually got this theme's CSS injected at all) —
+   * callers should fall back to the plain `PAGE_INSET_TOP`/
+   * `PAGE_INSET_BOTTOM` constants in that case. */
+  public static currentLineHeightPx(doc: Document): number | undefined {
+    if (!doc.body) {
+      return undefined;
+    }
+    const parsed = parseFloat(doc.defaultView?.getComputedStyle(doc.body).lineHeight ?? "");
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
 
   /** Sets the current font-scale multiplier on a content document,
    * clamped to `[MIN_FONT_SCALE, MAX_FONT_SCALE]`. Purely a style change —
