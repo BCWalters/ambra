@@ -2,6 +2,7 @@ import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
 import { ReadingTheme } from "../rendering/ReadingTheme.js";
+import { makeOverflowingPreElementsFocusable } from "../rendering/PreOverflowFocusability.js";
 import type { DomBreakPoint } from "../layout/Page.js";
 import { Page } from "../layout/Page.js";
 import { PaginationEngine } from "../layout/PaginationEngine.js";
@@ -138,6 +139,7 @@ export class PaginatedContentHost {
     // ordinary single-column mode, which this same race could otherwise
     // silently mis-paginate too) always agree.
     await PaginatedContentHost.waitForFontsReady(iframeDocument);
+    makeOverflowingPreElementsFocusable(iframeDocument);
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
@@ -232,6 +234,7 @@ export class PaginatedContentHost {
     // measureChunks/getClientRects must see the content in its natural,
     // untranslated layout position to measure correctly.
     iframeDocument.body.style.transform = "";
+    makeOverflowingPreElementsFocusable(iframeDocument);
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);

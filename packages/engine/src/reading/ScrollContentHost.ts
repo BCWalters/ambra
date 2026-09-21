@@ -1,6 +1,7 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
+import { makeOverflowingPreElementsFocusable } from "../rendering/PreOverflowFocusability.js";
 import type { DomBreakPoint } from "../layout/Page.js";
 import { ScrollViewEngine } from "../layout/ScrollViewEngine.js";
 import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
@@ -40,6 +41,7 @@ export class ScrollContentHost {
     }
 
     this.engine = ScrollViewEngine.prepare(iframeDocument.body);
+    makeOverflowingPreElementsFocusable(iframeDocument);
   }
 
   /** The DOM position currently at the top of the viewport — see
@@ -71,6 +73,7 @@ export class ScrollContentHost {
 
     this.sandboxedHost.element.style.width = `${width}px`;
     this.sandboxedHost.element.style.height = `${height}px`;
+    makeOverflowingPreElementsFocusable(iframeDocument);
 
     const scrollingElement = iframeDocument.scrollingElement ?? iframeDocument.documentElement;
     scrollingElement.scrollTop = 0;
