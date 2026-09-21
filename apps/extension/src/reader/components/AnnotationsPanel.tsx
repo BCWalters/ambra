@@ -27,7 +27,8 @@ interface BookmarkListProps {
 
 /** The "Bookmarks" tab's contents — a flat, creation-order list (oldest
  * first, matching `LibraryDatabase.listBookmarksForBook`), each showing
- * its label (chapter + page — see `ReaderController.bookmarkLabel`) and
+ * its label (chapter + page — see `BookmarkManager`'s private `label`
+ * method in `ReaderController.ts`) and
  * an inline remove button. No "current position" highlight the way the
  * TOC tree has one: unlike TOC entries, a bookmark is exactly one saved
  * position, not a section the reader might currently be inside. */
