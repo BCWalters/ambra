@@ -42,6 +42,7 @@ import jsonLanguage from "highlight.js/lib/languages/json";
 import xmlFormat from "xml-formatter";
 import type { EpubInspectionData } from "../ReaderController.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { InspectorFileCategory, SpecialFileKind } from "./inspectorFileKind.js";
 import { classifyInspectionFile, guessMediaType, identifySpecialFiles } from "./inspectorFileKind.js";
@@ -851,6 +852,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   onGetPreviewUrl,
 }) => {
   const t = useTranslation();
+  const chromeTheme = useChromeTheme();
   const [activeTab, setActiveTab] = useState<InspectorTab>("files");
   const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<readonly InspectorHistoryEntry[]>([]);
@@ -883,8 +885,8 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       <DialogSurface
         style={
           isFullScreen
-            ? { maxWidth: "100vw", width: "100vw", height: "100vh", borderRadius: 0 }
-            : { maxWidth: 900, width: "90vw", height: "80vh" }
+            ? { maxWidth: "100vw", width: "100vw", height: "100vh", borderRadius: 0, background: chromeTheme.backgroundSolid }
+            : { maxWidth: 900, width: "90vw", height: "80vh", background: chromeTheme.backgroundSolid }
         }
       >
         <DialogBody style={{ height: "100%" }}>

@@ -860,20 +860,43 @@ export const Toolbar: FC<ToolbarProps> = ({
                   it's always shown one spread at a time. */}
               <MenuGroup>
                 <MenuGroupHeader>{t("settings.pageTurn")}</MenuGroupHeader>
-                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
+                {/* Meaningless in continuous-scroll mode (issue #100) —
+                    there's no discrete page turn to animate at all, just
+                    a native scrollbar — so every option here is disabled
+                    (not hidden: the group and the reader's last-chosen
+                    style both stay visible/selected, ready to take
+                    effect again the moment they switch back to
+                    Paginated) whenever `viewMode` is "scroll". Never
+                    true for fixed-layout content, which has no
+                    continuous-scroll view to begin with (see "Reading
+                    mode" above). */}
+                <MenuItemRadio
+                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
+                  value="slide"
+                  disabled={snapshot.viewMode === "scroll"}
+                >
                   {t("settings.slide")}
                 </MenuItemRadio>
-                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
+                <MenuItemRadio
+                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
+                  value="scroll"
+                  disabled={snapshot.viewMode === "scroll"}
+                >
                   {t("settings.filmStrip")}
                 </MenuItemRadio>
                 <MenuItemRadio
                   name={PAGE_TURN_ANIMATION_GROUP_NAME}
                   value="rotate"
                   secondaryContent={t("settings.experimental")}
+                  disabled={snapshot.viewMode === "scroll"}
                 >
                   {t("settings.pageFlip")}
                 </MenuItemRadio>
-                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
+                <MenuItemRadio
+                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
+                  value="none"
+                  disabled={snapshot.viewMode === "scroll"}
+                >
                   {t("settings.off")}
                 </MenuItemRadio>
               </MenuGroup>

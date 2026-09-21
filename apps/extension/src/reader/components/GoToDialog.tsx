@@ -12,6 +12,7 @@ import {
   Input,
 } from "@fluentui/react-components";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 export interface GoToDialogProps {
   /** Which flavor of "go to" this dialog is currently showing — a
@@ -49,6 +50,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   onGo,
 }) => {
   const t = useTranslation();
+  const chromeTheme = useChromeTheme();
   const [value, setValue] = useState("");
 
   // A fresh, empty input every time the dialog opens — never pre-filled
@@ -76,7 +78,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}>
-      <DialogSurface>
+      <DialogSurface style={{ background: chromeTheme.backgroundSolid }}>
         <DialogBody>
           <DialogTitle>{isPage ? t("goTo.pageTitle") : t("goTo.percentageTitle")}</DialogTitle>
           <DialogContent>
