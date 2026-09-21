@@ -2231,6 +2231,13 @@ export class ReaderController {
     await this.library.setDefaultFontScale(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
+    // A relayout shifts every note marker's pixel position exactly the
+    // way a window resize does (see `resize`'s identical call) — this
+    // was a real, confirmed bug: markers stayed pinned to their
+    // pre-change position after a font/line-spacing/letter-spacing/
+    // content-width change specifically (unlike a resize, which already
+    // got this right).
+    this.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -2247,6 +2254,13 @@ export class ReaderController {
     await this.library.setDefaultFontFamily(family);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
+    // A relayout shifts every note marker's pixel position exactly the
+    // way a window resize does (see `resize`'s identical call) — this
+    // was a real, confirmed bug: markers stayed pinned to their
+    // pre-change position after a font/line-spacing/letter-spacing/
+    // content-width change specifically (unlike a resize, which already
+    // got this right).
+    this.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -2268,6 +2282,13 @@ export class ReaderController {
     await this.library.setDefaultLineSpacing(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
+    // A relayout shifts every note marker's pixel position exactly the
+    // way a window resize does (see `resize`'s identical call) — this
+    // was a real, confirmed bug: markers stayed pinned to their
+    // pre-change position after a font/line-spacing/letter-spacing/
+    // content-width change specifically (unlike a resize, which already
+    // got this right).
+    this.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -2288,6 +2309,13 @@ export class ReaderController {
     await this.library.setDefaultLetterSpacing(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
+    // A relayout shifts every note marker's pixel position exactly the
+    // way a window resize does (see `resize`'s identical call) — this
+    // was a real, confirmed bug: markers stayed pinned to their
+    // pre-change position after a font/line-spacing/letter-spacing/
+    // content-width change specifically (unlike a resize, which already
+    // got this right).
+    this.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -2310,6 +2338,13 @@ export class ReaderController {
     await this.library.setDefaultContentWidth(clamped);
     this.applyDisplaySettingsToHost({ relayout: true });
     this.refreshBookPagination();
+    // A relayout shifts every note marker's pixel position exactly the
+    // way a window resize does (see `resize`'s identical call) — this
+    // was a real, confirmed bug: markers stayed pinned to their
+    // pre-change position after a font/line-spacing/letter-spacing/
+    // content-width change specifically (unlike a resize, which already
+    // got this right).
+    this.updateNoteMarkers();
     this.notify();
     await this.saveProgress();
   }
@@ -2711,12 +2746,13 @@ export class ReaderController {
     const markers: NoteMarkerState[] = [];
     const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
     const resolveForDoc = (doc: Document, spineIndex: number): void => {
-      const iframeEl = doc.defaultView?.frameElement;
+      const iframeEl = doc.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
       const highlights = this.highlightsBySpineIndex.get(spineIndex);
       if (!iframeEl || !highlights) {
         return;
       }
       const iframeRect = iframeEl.getBoundingClientRect();
+      const bounds = ReaderController.visiblePageBounds(iframeEl, iframeRect.height);
       for (const highlight of highlights) {
         if (highlight.note === undefined) {
           continue;
@@ -2725,15 +2761,34 @@ export class ReaderController {
         if (!range) {
           continue;
         }
-        const rects = range.getClientRects();
-        const lastRect = rects[rects.length - 1];
-        if (!lastRect) {
+        // `getClientRects()` reflects every visual line of the highlight,
+        // including ones the reader currently has paginated/scrolled
+        // *away* — in paginated mode `doc.body` is one continuous flow
+        // that's merely translated and clip-path-cropped down to the
+        // current page's band (see `PaginatedContentHost.showCurrentPage`),
+        // so a highlight spanning onto an adjacent page still returns real
+        // (but off-page) rects for those lines. Blindly using the very
+        // last rect (issue #99) could place the marker anywhere the
+        // highlight's final line happens to fall, including well outside
+        // the current page entirely. Instead, keep only the last rect
+        // that actually falls within the current page's visible band —
+        // and skip the highlight altogether if none of its rects do,
+        // rather than showing a stray marker for a highlight that isn't
+        // visible on this page at all (it reappears correctly once the
+        // reader navigates to wherever it actually is).
+        let lastVisibleRect: DOMRect | undefined;
+        for (const rect of Array.from(range.getClientRects())) {
+          if (rect.bottom > bounds.top && rect.top < bounds.bottom) {
+            lastVisibleRect = rect;
+          }
+        }
+        if (!lastVisibleRect) {
           continue;
         }
         markers.push({
           id: highlight.id,
-          left: iframeRect.left + lastRect.right,
-          top: iframeRect.top + lastRect.top,
+          left: iframeRect.left + lastVisibleRect.right,
+          top: iframeRect.top + Math.min(Math.max(lastVisibleRect.top, bounds.top), bounds.bottom),
         });
       }
     };
@@ -2747,6 +2802,36 @@ export class ReaderController {
       resolveForDoc(doc, this.spineIndex);
     }
     this.noteMarkers = markers;
+  }
+
+  /** The current page's visible vertical band, in the iframe's own local
+   * coordinate space (the same space `getClientRects()` reports in) —
+   * used by `updateNoteMarkers` to tell a highlight's on-page rects apart
+   * from off-page ones (see its own doc comment for why that distinction
+   * matters, issue #99). Reads `clip-path` directly off the iframe's
+   * inline style since that's exactly what `PaginatedContentHost.
+   * showCurrentPage`/`SandboxedContentHost` set it to, rather than
+   * duplicating the inset math independently and risking the two
+   * drifting apart. Falls back to the iframe's full box when there's no
+   * `clip-path` at all — continuous-scroll mode never sets one (a
+   * scrolling iframe already clips to its own box natively), and a
+   * page-turn animation briefly clears it too (`suppressClipPathForAnimation`) —
+   * both cases where "the whole box is visible" is the correct bound.
+   *
+   * `clip-path: inset(...)` follows the same 1-4-value CSS shorthand as
+   * `margin`/`padding` (e.g. `inset(107px 0px)` means top === bottom),
+   * so this can't assume a fixed number of values are present. */
+  private static visiblePageBounds(iframeEl: HTMLIFrameElement, iframeHeight: number): { top: number; bottom: number } {
+    const clipPath = iframeEl.style.clipPath;
+    const numbers = Array.from(clipPath.matchAll(/(-?[\d.]+)px/g)).map((m) => Number(m[1]));
+    if (numbers.length === 0) {
+      return { top: 0, bottom: iframeHeight };
+    }
+    // 1-value: all sides equal. 2-value: [top/bottom, right/left].
+    // 3-value: [top, right/left, bottom]. 4-value: [top, right, bottom, left].
+    const top = numbers[0]!;
+    const bottom = numbers.length === 1 ? numbers[0]! : numbers.length === 2 ? numbers[0]! : numbers[2]!;
+    return { top, bottom: iframeHeight - bottom };
   }
 
   private resolveHighlightRange(highlight: Highlight, spineIndex: number, doc: Document): Range | undefined {
@@ -7334,6 +7419,22 @@ export class ReaderController {
         }
         this.setUpAccessibility();
       }
+      // `applyHighlightsToCurrentHost` above (called before this block)
+      // already painted every highlight and re-scanned search matches —
+      // both position-independent, since they're plain CSS ranges the
+      // browser repaints correctly regardless of which page is showing.
+      // `updateNoteMarkers` is different: it snapshots *pixel* positions
+      // off the host's *current* page at the moment it runs. Every
+      // landing branch above can move the host off its freshly-opened
+      // default page (page 0) onto a completely different one (a
+      // scrubber seek, a bookmark/highlight jump, a TOC/fragment link,
+      // resume-reading) — a real, confirmed bug: a note's marker stayed
+      // pinned wherever it happened to land for that stale first page,
+      // never updating for wherever the reader actually landed, and
+      // didn't disappear even after seeking away from it entirely.
+      // Recomputing once more here, now that the host is finally on its
+      // real destination page, fixes both.
+      this.updateNoteMarkers();
       this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
       this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex} token=${token}`);

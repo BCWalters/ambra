@@ -15,7 +15,7 @@ const EPUB = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
  * the purely cosmetic result — see this session's own visual
  * verification (screenshots) for that half. */
 test.describe("Library page picks up the reader's chrome theme (issue #86 follow-up)", () => {
-  test("switching the reader theme to Ambra and reloading the library page carries the same color across", async () => {
+  test("switching the reader theme away from the Ambra default and reloading the library page carries the same color across", async () => {
     const { context, libraryPage, readerPage } = await launchReader(EPUB, { viewport: { width: 1400, height: 900 } });
     try {
       const titleColor = () =>
@@ -27,21 +27,22 @@ test.describe("Library page picks up the reader's chrome theme (issue #86 follow
         });
 
       // Before ever touching the theme picker, the library reads the
-      // silver default — not literally untouched/unthemed.
-      const silverColor = await titleColor();
-      expect(silverColor).toBe("rgb(91, 100, 114)"); // CHROME_THEMES.silver.accent (#5b6472)
+      // Ambra default (see `DEFAULT_CHROME_THEME`) — not literally
+      // untouched/unthemed.
+      const defaultColor = await titleColor();
+      expect(defaultColor).toBe("rgb(245, 165, 49)"); // CHROME_THEMES.ambra.accent (#f5a531)
 
       await readerPage.getByRole("button", { name: "Settings" }).click();
-      await readerPage.getByText("Ambra", { exact: true }).click();
+      await readerPage.getByText("Silver", { exact: true }).click();
       await readerPage.keyboard.press("Escape");
       await readerPage.waitForTimeout(300);
 
       await libraryPage.reload();
       await libraryPage.waitForTimeout(500);
 
-      const ambraColor = await titleColor();
-      expect(ambraColor).toBe("rgb(245, 165, 49)"); // CHROME_THEMES.ambra.accent (#f5a531)
-      expect(ambraColor).not.toBe(silverColor);
+      const silverColor = await titleColor();
+      expect(silverColor).toBe("rgb(91, 100, 114)"); // CHROME_THEMES.silver.accent (#5b6472)
+      expect(silverColor).not.toBe(defaultColor);
     } finally {
       await context.close();
     }
