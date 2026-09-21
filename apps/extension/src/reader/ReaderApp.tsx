@@ -589,7 +589,13 @@ const ReaderAppInner: FC = () => {
               onDismiss={dismissActiveHighlight}
             />
 
-            <NoteMarkers markers={snapshot.noteMarkers} onSelect={openHighlightPopup} />
+            {/* Issue #98: a marker's `left`/`top` are computed for the page
+                that was on screen when they were placed, and don't track the
+                page-turn animation as it slides/flips/rotates the content
+                out from under them — simplest fix is to just not render any
+                until the incoming page has settled and fresh positions are
+                computed for it (see `updateNoteMarkers`'s callers). */}
+            <NoteMarkers markers={snapshot.isAnimatingPageTurn ? [] : snapshot.noteMarkers} onSelect={openHighlightPopup} />
 
             <ProgressScrubber
               snapshot={snapshot}
