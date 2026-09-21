@@ -152,6 +152,12 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
     setIsEditingNote(false);
   };
 
+  // See `HighlightActionPopup`'s identical guard: an empty note is a
+  // real, intentional "clear it" action in edit mode (there's an
+  // existing note to clear), but plain nothing-to-save in add mode.
+  const isAddMode = !highlight.note;
+  const isSaveDisabled = isAddMode && draftNote.trim() === "";
+
   return (
     <li style={{ padding: "2px 0" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
@@ -255,7 +261,7 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
             <Button size="small" onClick={() => setIsEditingNote(false)}>
               {t("annotations.cancelNote")}
             </Button>
-            <Button size="small" appearance="primary" onClick={saveNote}>
+            <Button size="small" appearance="primary" disabled={isSaveDisabled} onClick={saveNote}>
               {t("annotations.saveNote")}
             </Button>
           </div>

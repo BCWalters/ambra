@@ -134,6 +134,16 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
     onDismiss();
   };
 
+  // "Add" mode (no note existed when this highlight was created/opened)
+  // vs. "edit" mode (one already exists) genuinely need different Save
+  // behavior: saving an empty note in *edit* mode is how a reader clears
+  // an existing one (see `saveNote`'s own `trimmed === "" ? undefined`),
+  // a real, intentional action — but in *add* mode, an empty note isn't
+  // "clearing" anything that existed; it's just nothing to save at all,
+  // so Save stays disabled until there's actual text.
+  const isAddMode = !highlight.note;
+  const isSaveDisabled = isAddMode && draftNote.trim() === "";
+
   return (
     <div
       ref={popupRef}
@@ -236,7 +246,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
           <Button size="small" onClick={cancelNoteEdit}>
             {t("annotations.cancelNote")}
           </Button>
-          <Button size="small" appearance="primary" onClick={saveNote}>
+          <Button size="small" appearance="primary" disabled={isSaveDisabled} onClick={saveNote}>
             {t("annotations.saveNote")}
           </Button>
         </div>
