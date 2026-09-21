@@ -126,10 +126,12 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
   const saveNote = (): void => {
     const trimmed = draftNote.trim();
     onSetNote(highlight.id, trimmed === "" ? undefined : trimmed);
+    onDismiss();
   };
 
   const cancelNoteEdit = (): void => {
     setDraftNote(highlight.note ?? "");
+    onDismiss();
   };
 
   return (

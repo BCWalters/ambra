@@ -795,7 +795,11 @@ const ManifestTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: strin
           {data.manifest.map((item) => (
             <tr key={item.id}>
               <td style={{ padding: "2px 12px 2px 0" }}>{item.id}</td>
-              <td style={{ padding: "2px 12px 2px 0" }}>{item.path}</td>
+              <td style={{ padding: "2px 12px 2px 0" }}>
+                <FileLink path={item.path} onNavigateToFile={onNavigateToFile}>
+                  {item.path}
+                </FileLink>
+              </td>
               <td style={{ padding: "2px 12px 2px 0" }}>{item.mediaType}</td>
               <td>{item.properties.join(", ")}</td>
             </tr>

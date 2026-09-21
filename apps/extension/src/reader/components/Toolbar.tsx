@@ -860,18 +860,18 @@ export const Toolbar: FC<ToolbarProps> = ({
                   it's always shown one spread at a time. */}
               <MenuGroup>
                 <MenuGroupHeader>{t("settings.pageTurn")}</MenuGroupHeader>
+                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
+                  {t("settings.slide")}
+                </MenuItemRadio>
+                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
+                  {t("settings.filmStrip")}
+                </MenuItemRadio>
                 <MenuItemRadio
                   name={PAGE_TURN_ANIMATION_GROUP_NAME}
                   value="rotate"
                   secondaryContent={t("settings.experimental")}
                 >
                   {t("settings.pageFlip")}
-                </MenuItemRadio>
-                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
-                  {t("settings.slide")}
-                </MenuItemRadio>
-                <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
-                  {t("settings.filmStrip")}
                 </MenuItemRadio>
                 <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
                   {t("settings.off")}
