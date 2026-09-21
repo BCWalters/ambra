@@ -10,6 +10,7 @@ import {
   Locator,
   LocatorResolver,
   NavigationDocument,
+  NavigationList,
   NCX_MEDIA_TYPE,
   PaginatedContentHost,
   ReadingTheme,
@@ -201,6 +202,11 @@ export class ReaderController {
   private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
   private errorSeverity: "blocking" | "transient" | undefined;
+  /** Set by `open` when `NavigationDocument.load` failed (see its doc
+   * comment) — surfaced by `mount` once the initial chapter has
+   * actually finished loading, since `openSpineItem` itself
+   * unconditionally clears `error`/`errorSeverity` at its start. */
+  private pendingNavigationLoadError: string | undefined;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
   private readonly diagnostics = new DiagnosticsLog();
@@ -348,7 +354,24 @@ export class ReaderController {
     const contentLoader = await ContentLoader.create(container);
     const resolver = new ResourceUrlResolver(contentLoader);
     const pkg = contentLoader.packageDocument;
-    const navigation = await NavigationDocument.load(container);
+    // A missing/malformed Nav Document (or NCX fallback) is a real,
+    // fairly common authoring mistake — but it only breaks the Table of
+    // Contents, not the book's actual readable content. Previously this
+    // threw straight out of `open`, so one broken navigation file made
+    // the *entire* book fail to open at all, even though every chapter
+    // itself might be perfectly fine. Falls back to an empty TOC (still
+    // fully readable via next/previous-chapter navigation) and reports
+    // the real underlying reason as a transient, dismissable notice —
+    // useful to a reader wondering where the TOC went, and especially
+    // to an EPUB author debugging their own book against this reader.
+    let navigation: NavigationDocument;
+    let navigationLoadError: string | undefined;
+    try {
+      navigation = await NavigationDocument.load(container);
+    } catch (err) {
+      navigation = new NavigationDocument(new NavigationList("toc", []), undefined, undefined);
+      navigationLoadError = err instanceof Error ? err.message : String(err);
+    }
     const locatorResolver = new LocatorResolver(pkg, contentLoader);
 
     const controller = new ReaderController(
@@ -360,6 +383,17 @@ export class ReaderController {
       bookId,
       library,
     );
+    if (navigationLoadError) {
+      controller.diagnostics.record(`NavigationDocument.load failed: ${navigationLoadError}`);
+      // Not set directly on `error`/`errorSeverity` here: `mount` always
+      // opens the initial spine item right after this returns, and
+      // `openSpineItem` unconditionally clears both at its own start (a
+      // fresh chapter load should never show a stale previous error) —
+      // so anything set here would be wiped before a reader ever saw
+      // it. `mount` surfaces this itself, once the initial chapter has
+      // actually finished loading.
+      controller.pendingNavigationLoadError = navigationLoadError;
+    }
     controller.rootFilePath = container.rootFilePath;
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
@@ -547,6 +581,14 @@ export class ReaderController {
     const resumed = await this.tryResume();
     if (!resumed) {
       await this.openSpineItem(0);
+    }
+
+    if (this.pendingNavigationLoadError) {
+      const message = this.pendingNavigationLoadError;
+      this.pendingNavigationLoadError = undefined;
+      this.error = `This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`;
+      this.errorSeverity = "transient";
+      this.notify();
     }
   }
 
