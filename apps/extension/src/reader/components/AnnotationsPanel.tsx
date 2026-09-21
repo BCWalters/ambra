@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Tab, TabList, Textarea } from "@fluentui/react-components";
-import { BookmarkRegular, DismissRegular, HighlightRegular, NoteRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
+import { BookmarkFilled, BookmarkRegular, DismissRegular, HighlightRegular, NoteRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
-import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
+import { BOOKMARK_COLOR, CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
@@ -60,7 +60,7 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) 
               e.currentTarget.style.background = "none";
             }}
           >
-            <BookmarkRegular fontSize={16} style={{ flexShrink: 0, opacity: 0.7 }} />
+            <BookmarkFilled fontSize={16} style={{ flexShrink: 0, color: BOOKMARK_COLOR }} />
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {bookmark.label}
             </span>

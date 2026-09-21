@@ -5,6 +5,7 @@ import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderController.js";
 import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { BOOKMARK_COLOR } from "../chromeTheme.js";
 
 export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
@@ -286,7 +287,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
                     width: BOOKMARK_RIBBON_SIZE,
                     height: BOOKMARK_RIBBON_SIZE,
                     zIndex: 5,
-                    color: "#dc3d3d",
+                    color: BOOKMARK_COLOR,
                     filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))",
                     pointerEvents: "none",
                   }}

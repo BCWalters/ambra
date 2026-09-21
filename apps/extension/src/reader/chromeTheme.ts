@@ -33,6 +33,21 @@ export const CHROME_HOVER_BACKGROUND = "rgba(15, 23, 42, 0.05)";
 export const CHROME_SELECTED_BACKGROUND = "rgba(15, 23, 42, 0.08)";
 export const CHROME_BACKDROP_FILTER = "blur(12px) saturate(1.1)";
 
+/** The one color that means "this page/entry is bookmarked," used
+ * consistently everywhere that state shows up: the toolbar's bookmark
+ * toggle (`Toolbar`, a plain unthemed Fluent `ToggleButton` — this is
+ * simply Fluent's own default brand blue, `colorCompoundBrandForeground1`,
+ * copied as a literal so the other two spots can match it exactly
+ * without needing Fluent's theme tokens), the in-page corner ribbon
+ * (`PageFurniture`), and the Bookmarks panel's own list icon
+ * (`AnnotationsPanel`). Deliberately fixed rather than tied to
+ * `ChromeThemePalette.accent` (issue #86 follow-up) — unlike the TOC/
+ * search/details accents, which are purely decorative, a bookmark
+ * marker is a *functional* indicator, and needs to read as "bookmark"
+ * unambiguously regardless of whichever reader theme (and its own
+ * differently-colored accent) happens to be active. */
+export const BOOKMARK_COLOR = "#0f6cbd";
+
 /** The progress scrubber's own total rendered height (see
  * `ProgressScrubber`) — the flyout panels (TOC/Search/Bookmarks &
  * Highlights) need this to stop *above* it rather than running the
