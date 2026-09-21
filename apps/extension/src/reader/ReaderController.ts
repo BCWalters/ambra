@@ -899,6 +899,7 @@ export class ReaderController {
     this.width = width;
     this.height = height;
     this.setUpBookPagination(containerEl.ownerDocument);
+    this.setUpGlobalArrowKeyFallback(containerEl.ownerDocument);
 
     // Guard against a resize (e.g. `ResizeObserver`'s spec-mandated
     // initial callback) racing with the async progress lookup below —
@@ -1506,16 +1507,12 @@ export class ReaderController {
     if (documents.length === 0) {
       return;
     }
-    const isPaginated =
-      this.host instanceof PaginatedContentHost ||
-      this.host instanceof SpreadPaginatedHost ||
-      this.host instanceof FixedSpreadHost;
     for (const iframeDocument of documents) {
       this.accessibility.attach(
         iframeDocument,
         {
-          onNext: () => void (isPaginated ? this.turnPage(1) : this.goToChapter(1)),
-          onPrevious: () => void (isPaginated ? this.turnPage(-1) : this.goToChapter(-1)),
+          onNext: () => this.dispatchArrowNavigation(1),
+          onPrevious: () => this.dispatchArrowNavigation(-1),
           // Always "chapter", regardless of view mode — the Ctrl/Cmd+
           // Arrow shortcut's whole point is jumping past however many
           // pages/however much scroll remain in the current chapter, not
@@ -1532,6 +1529,84 @@ export class ReaderController {
         { interceptSpace: !(this.host instanceof ScrollContentHost) },
       );
     }
+  }
+
+  /** A plain page/chapter turn (no modifier key) — paginated hosts turn
+   * one page/spread, everything else (continuous scroll, fixed layout)
+   * jumps a whole chapter, since neither has a discrete "page" concept.
+   * Shared by `reattachKeyboardNav` (content-iframe-scoped arrow keys)
+   * and `setUpGlobalArrowKeyFallback` (the parent-document fallback
+   * below) so the two can never disagree about what "next"/"previous"
+   * means. */
+  private dispatchArrowNavigation(direction: 1 | -1): void {
+    const isPaginated =
+      this.host instanceof PaginatedContentHost ||
+      this.host instanceof SpreadPaginatedHost ||
+      this.host instanceof FixedSpreadHost;
+    void (isPaginated ? this.turnPage(direction) : this.goToChapter(direction));
+  }
+
+  /** CSS selector for elements where `ArrowLeft`/`ArrowRight` already
+   * carries its own, unrelated meaning — text cursor movement in a
+   * field, moving between options in a menu/listbox/tab strip, or
+   * dragging the progress scrubber's slider thumb. `nav`/`aside` catch
+   * every flyout panel (Table of Contents, Search, Bookmarks &
+   * Highlights, Book Details — see each one's own root landmark
+   * element), and `[role="dialog"]` catches the EPUB Inspector (a
+   * Fluent `Dialog`). `setUpGlobalArrowKeyFallback` skips dispatching a
+   * page turn whenever focus is inside any of these, so "unless focus
+   * is in a panel" from the user's own framing of this fix holds
+   * exactly. */
+  private static readonly ARROW_KEY_EXEMPT_SELECTOR =
+    'input, textarea, select, [contenteditable="true"], [role="slider"], ' +
+    '[role="menu"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], ' +
+    '[role="listbox"], [role="option"], [role="tree"], [role="treeitem"], ' +
+    '[role="tablist"], [role="tab"], [role="dialog"], nav, aside';
+
+  /** Detaches `setUpGlobalArrowKeyFallback`'s listener — see that
+   * method's doc comment. */
+  private globalArrowKeyCleanup: (() => void) | undefined;
+
+  /**
+   * Fallback `ArrowLeft`/`ArrowRight` page-turn handling on the *parent*
+   * reader document itself (called once from `mount`), not just the
+   * content iframe(s) `reattachKeyboardNav` covers. Without this, arrow
+   * keys only worked while focus happened to be inside the book's own
+   * content — which page turns don't reliably preserve (a plain page
+   * turn deliberately never forces focus, per `reattachKeyboardNav`'s
+   * own doc comment, and an *animated* turn swaps in a brand-new
+   * iframe/document each time, which silently drops focus back to this
+   * parent document's `<body>` if it had been inside the just-removed
+   * one) — from a reader's perspective, the arrows would simply and
+   * unpredictably "stop working" after some number of turns. This
+   * listener means the arrows keep working from *anywhere* in the
+   * reader shell — a just-clicked toolbar button, the page margins
+   * outside the content host, or nowhere in particular — with the one
+   * carve-out the user asked for: not while focus is genuinely inside
+   * one of the flyout panels, a menu, or any other control that already
+   * gives arrow keys a meaning of its own (see
+   * `ARROW_KEY_EXEMPT_SELECTOR`). Ctrl/Cmd+Arrow (chapter jump) is
+   * deliberately left alone here — `ReaderApp` already wires that
+   * directly, and it's harmless for both listeners to independently
+   * agree on the exact same modifier-gated shortcut. */
+  private setUpGlobalArrowKeyFallback(ownerDocument: Document): void {
+    this.globalArrowKeyCleanup?.();
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+      const active = ownerDocument.activeElement;
+      if (active instanceof Element && active.closest(ReaderController.ARROW_KEY_EXEMPT_SELECTOR)) {
+        return;
+      }
+      event.preventDefault();
+      this.dispatchArrowNavigation(event.key === "ArrowRight" ? 1 : -1);
+    };
+    ownerDocument.addEventListener("keydown", handleKeyDown);
+    this.globalArrowKeyCleanup = () => ownerDocument.removeEventListener("keydown", handleKeyDown);
   }
 
   /** `true` if `host`'s own iframe element currently has the parent
@@ -6998,6 +7073,7 @@ export class ReaderController {
 
   public dispose(): void {
     this.accessibility.detach();
+    this.globalArrowKeyCleanup?.();
     this.contentInteractionCleanup?.();
     this.dragCleanup?.();
     this.highlightSelectionCleanup?.();
