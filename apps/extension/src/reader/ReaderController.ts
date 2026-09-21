@@ -33,6 +33,7 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
 import { BookmarkManager } from "./BookmarkManager.js";
+import { HighlightManager } from "./HighlightManager.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
 import type { SearchResultItem } from "./SearchCoordinator.js";
 import { applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
@@ -392,8 +393,8 @@ export interface ReaderSnapshot {
    * here. */
   noteMarkers: readonly NoteMarkerState[];
   /** Every highlight in the book, across all spine items, oldest first
-   * — for the Highlights tab (see `TocPanel`). Read straight from the
-   * in-memory cache (`highlightsBySpineIndex`) on every snapshot, not a
+   * — for the Highlights tab (see `TocPanel`). Read straight from
+   * `HighlightManager`'s in-memory cache on every snapshot, not a
    * separate async fetch the way `BookDetails`/bookmarks need — a
    * highlight is created/removed by this same controller, so the cache
    * is always already up to date by the time a new snapshot is built. */
@@ -653,14 +654,13 @@ export class ReaderController {
   /** See `openImageViewer`'s doc comment — the element to restore focus
    * to when the viewer closes. */
   private imageViewerReturnFocusTarget: Element | undefined;
-  /** Every highlight in this book, grouped by the spine index its
-   * `startCfi` targets — loaded once in `open()` (see
-   * `LibraryDatabase.listHighlightsForBook`) and kept in sync in-memory
-   * on every add/remove, rather than re-querying IndexedDB on every
-   * spine item load (`applyHighlightsToDocument` runs on *every* open,
-   * unconditionally, unlike the font/theme settings this class also
-   * applies, which skip the work entirely at their defaults). */
-  private highlightsBySpineIndex = new Map<number, Highlight[]>();
+  /** Owns this book's highlights (cache + CRUD) — extracted into its own
+   * class, `HighlightManager` (see its doc comment) — kept in sync
+   * in-memory on every add/remove, rather than re-querying IndexedDB on
+   * every spine item load (`applyHighlightsToDocument` runs on *every*
+   * open, unconditionally, unlike the font/theme settings this class
+   * also applies, which skip the work entirely at their defaults). */
+  private readonly highlights: HighlightManager;
   /** Owns this book's bookmarks (cache + CRUD) — extracted into its own
    * class (see the architecture review's "decompose the god object"
    * finding); see `BookmarkManager`'s own doc comment. Constructed in
@@ -769,6 +769,21 @@ export class ReaderController {
       announce: (translationKey) => this.announce(this.translate(translationKey)),
       notify: () => this.notify(),
     });
+    this.highlights = new HighlightManager(library, bookId, locatorResolver, {
+      spineIndex: () => this.spineIndex,
+      isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
+      pendingSelectionRange: () => this.pendingSelectionRange,
+      selectionToolbarAnchor: () => this.selectionToolbar,
+      dismissSelectionToolbar: () => this.dismissSelectionToolbar(),
+      applyHighlightsToCurrentHost: () => this.applyHighlightsToCurrentHost(),
+      updateNoteMarkers: () => this.updateNoteMarkers(),
+      announce: (translationKey) => this.announce(this.translate(translationKey)),
+      getActiveHighlight: () => this.activeHighlight,
+      setActiveHighlight: (state) => {
+        this.activeHighlight = state;
+      },
+      notify: () => this.notify(),
+    });
   }
 
   /** Opens a book from its raw bytes — from a `File` (e.g. `await
@@ -813,7 +828,7 @@ export class ReaderController {
     controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
     controller.pageTurnAnimationStyle =
       (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
-    controller.reloadHighlightsCache(await library.listHighlightsForBook(bookId));
+    controller.highlights.load(await library.listHighlightsForBook(bookId));
     await controller.bookmarks.load();
     // Fire-and-forget: never awaited, and any failure inside is already
     // caught by `fetchBookDescription` itself — a slow or failing
@@ -911,9 +926,7 @@ export class ReaderController {
         selectionToolbar: this.selectionToolbar,
         activeHighlight: this.activeHighlight,
         noteMarkers: this.noteMarkers,
-        highlights: Array.from(this.highlightsBySpineIndex.values())
-          .flat()
-          .sort((a, b) => this.compareHighlightsByBookOrder(a, b)),
+        highlights: this.highlights.allSorted(),
         ...this.searchCoordinator.snapshot,
       };
     }
@@ -1089,22 +1102,6 @@ export class ReaderController {
    * add-or-remove behavior. */
   public async addBookmark(): Promise<Bookmark | undefined> {
     return this.bookmarks.add();
-  }
-
-  /** Orders two highlights by book reading order (`startCfi` — see
-   * `EpubCfi.compare`), falling back to creation order if either CFI
-   * somehow fails to parse — same defensive reasoning as
-   * `LibraryDatabase`'s own identical fallback for the initial DB fetch;
-   * this is the *in-memory* cache's own sort, needed since a highlight
-   * added mid-session is simply pushed onto `highlightsBySpineIndex`
-   * without re-sorting (see `addHighlight`), so the cache's order can
-   * drift out of book order between a fresh DB load and this. */
-  private compareHighlightsByBookOrder(a: Highlight, b: Highlight): number {
-    try {
-      return EpubCfi.compare(a.startCfi, b.startCfi);
-    } catch {
-      return a.createdAt - b.createdAt;
-    }
   }
 
   public listBookmarks(): Promise<Bookmark[]> {
@@ -2364,22 +2361,6 @@ export class ReaderController {
     }
   }
 
-  /** Rebuilds `highlightsBySpineIndex` from a flat list (see `open`'s
-   * initial load, and every add/remove afterwards) — grouping once here
-   * keeps `applyHighlightsToCurrentHost` a simple map lookup rather than
-   * a linear filter on every single spine item load. */
-  private reloadHighlightsCache(all: readonly Highlight[]): void {
-    this.highlightsBySpineIndex = new Map();
-    for (const highlight of all) {
-      const existing = this.highlightsBySpineIndex.get(highlight.spineIndex);
-      if (existing) {
-        existing.push(highlight);
-      } else {
-        this.highlightsBySpineIndex.set(highlight.spineIndex, [highlight]);
-      }
-    }
-  }
-
   /** Resolves every highlight belonging to `spineIndex` against `doc`
    * (a live, already-loaded content document for that same spine item)
    * into real `Range`s, grouped by style, and applies them via
@@ -2391,7 +2372,7 @@ export class ReaderController {
    * other one on the page. No-op for fixed-layout content, which has no
    * reflowable text to highlight in the first place. */
   private applyHighlightsToDocument(doc: Document, spineIndex: number): void {
-    const highlights = this.highlightsBySpineIndex.get(spineIndex);
+    const highlights = this.highlights.forSpineIndex(spineIndex);
     const groups = new Map<HighlightStyle, Range[]>();
     if (highlights) {
       for (const highlight of highlights) {
@@ -2531,7 +2512,7 @@ export class ReaderController {
     const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
     const resolveForDoc = (doc: Document, spineIndex: number): void => {
       const iframeEl = doc.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
-      const highlights = this.highlightsBySpineIndex.get(spineIndex);
+      const highlights = this.highlights.forSpineIndex(spineIndex);
       if (!iframeEl || !highlights) {
         return;
       }
@@ -2780,7 +2761,7 @@ export class ReaderController {
    * hit-testing of its own; it's a paint-only overlay, not real DOM
    * elements a click could target). */
   private findHighlightAtPoint(doc: Document, clientX: number, clientY: number): Highlight | undefined {
-    const highlights = this.highlightsBySpineIndex.get(this.spineIndex);
+    const highlights = this.highlights.forSpineIndex(this.spineIndex);
     const caretRangeFromPoint = (
       doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
     ).caretRangeFromPoint;
@@ -2874,7 +2855,7 @@ export class ReaderController {
    * did, e.g. a stale click racing a page turn). */
   public openHighlightPopup(id: string): void {
     const marker = this.noteMarkers.find((candidate) => candidate.id === id);
-    const highlight = this.highlightsBySpineIndex.get(this.spineIndex)?.find((candidate) => candidate.id === id);
+    const highlight = this.highlights.forSpineIndex(this.spineIndex)?.find((candidate) => candidate.id === id);
     if (!marker || !highlight) {
       return;
     }
@@ -2893,133 +2874,27 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Creates a highlight from the selection `setUpHighlightSelection`
-   * last captured (see `pendingSelectionRange`), persists it, applies it
-   * immediately (so it renders without waiting for a reload), and
-   * dismisses the selection toolbar. A no-op if there's no pending
-   * selection (the toolbar isn't showing, or it's since been dismissed)
-   * — defensive, since the shell should never be able to call this
-   * without one, but never worth crashing over if it somehow did.
-   *
-   * `openNoteEditor` (issue #60: "add a note directly from the
-   * selection menu — no need to highlight, then click, then add a
-   * note") skips straight to `activeHighlight`'s note-editing mode for
-   * the highlight just created, at the same position the selection
-   * toolbar itself was anchored to — the reader never has to go find
-   * and re-click the highlight they just made. */
+  /** Creates a highlight from the current selection — see
+   * `HighlightManager.add`. */
   public async addHighlight(style: HighlightStyle, openNoteEditor = false): Promise<void> {
-    const range = this.pendingSelectionRange;
-    if (!range || this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    // Captured before `dismissSelectionToolbar` (in `finally`, below)
-    // clears `this.selectionToolbar` — the note editor opens at the
-    // exact same anchor point the selection toolbar itself used.
-    const anchor = this.selectionToolbar;
-    try {
-      const startLocator = this.locatorResolver.generate(this.spineIndex, range.startContainer, range.startOffset);
-      const endLocator = this.locatorResolver.generate(this.spineIndex, range.endContainer, range.endOffset);
-      const highlight = await this.library.addHighlight({
-        bookId: this.bookId,
-        spineIndex: this.spineIndex,
-        startCfi: startLocator.cfi,
-        endCfi: endLocator.cfi,
-        style,
-        text: range.toString(),
-        note: undefined,
-      });
-      const existing = this.highlightsBySpineIndex.get(this.spineIndex);
-      if (existing) {
-        existing.push(highlight);
-      } else {
-        this.highlightsBySpineIndex.set(this.spineIndex, [highlight]);
-      }
-      this.applyHighlightsToCurrentHost();
-      this.announce(this.translate("announcements.highlightAdded"));
-      if (openNoteEditor && anchor) {
-        this.activeHighlight = { highlight, left: anchor.left, top: anchor.top, openNoteEditor: true };
-      }
-    } catch {
-      // Best-effort — see `saveProgress`'s identical reasoning; a failed
-      // highlight save shouldn't surface an error to the reader mid-flow.
-    } finally {
-      this.dismissSelectionToolbar();
-    }
+    return this.highlights.add(style, openNoteEditor);
   }
 
-  /** Removes a highlight (from the Highlights list — see `TocPanel`) and
-   * re-applies whatever's left to the current host if it belonged to the
-   * spine item currently open. */
+  /** Removes a highlight — see `HighlightManager.remove`. */
   public async removeHighlight(id: string): Promise<void> {
-    await this.library.removeHighlight(id);
-    for (const [spineIndex, highlights] of this.highlightsBySpineIndex) {
-      const index = highlights.findIndex((highlight) => highlight.id === id);
-      if (index !== -1) {
-        highlights.splice(index, 1);
-        if (spineIndex === this.spineIndex) {
-          this.applyHighlightsToCurrentHost();
-        }
-        break;
-      }
-    }
-    if (this.activeHighlight?.highlight.id === id) {
-      this.activeHighlight = undefined;
-    }
-    this.notify();
+    return this.highlights.remove(id);
   }
 
-  /** Attaches, edits, or clears (pass `undefined`) a note on an existing
-   * highlight — the annotations feature (#25). Doesn't need the CSS
-   * repaint `applyHighlightsToCurrentHost` does (a note has no effect
-   * on how the highlighted text itself is painted — see
-   * `applyHighlightRanges`), but does need `updateNoteMarkers`: issue
-   * #99's whole point is a small marker showing *only* on highlights
-   * that have a note, which this call can add, remove, or just leave in
-   * place depending on whether `note` went from/to `undefined`. */
+  /** Attaches, edits, or clears a note on an existing highlight — see
+   * `HighlightManager.setNote`. */
   public async setHighlightNote(id: string, note: string | undefined): Promise<void> {
-    for (const highlights of this.highlightsBySpineIndex.values()) {
-      const index = highlights.findIndex((highlight) => highlight.id === id);
-      if (index !== -1) {
-        const updated: Highlight = { ...highlights[index]!, note };
-        await this.library.updateHighlight(updated);
-        highlights[index] = updated;
-        if (this.activeHighlight?.highlight.id === id) {
-          this.activeHighlight = { ...this.activeHighlight, highlight: updated };
-        }
-        this.updateNoteMarkers();
-        this.notify();
-        return;
-      }
-    }
+    return this.highlights.setNote(id, note);
   }
 
-  /** Changes an existing highlight's color/style directly from the
-   * inline action popup (issue #79) — previously the only way to
-   * change a highlight's color was to delete it and re-select the text
-   * to make a new one. Mirrors `setHighlightNote`'s find-update-persist
-   * shape, but — unlike a note, which has no visual presence on the
-   * highlighted text itself — a style change *does* need
-   * `applyHighlightsToCurrentHost` to actually repaint it, and only
-   * when the highlight belongs to the spine item currently open (the
-   * Highlights list can act on a highlight from any spine item, most of
-   * which have no live host to repaint right now). */
+  /** Changes an existing highlight's color/style — see
+   * `HighlightManager.setStyle`. */
   public async setHighlightStyle(id: string, style: HighlightStyle): Promise<void> {
-    for (const [spineIndex, highlights] of this.highlightsBySpineIndex) {
-      const index = highlights.findIndex((highlight) => highlight.id === id);
-      if (index !== -1) {
-        const updated: Highlight = { ...highlights[index]!, style };
-        await this.library.updateHighlight(updated);
-        highlights[index] = updated;
-        if (this.activeHighlight?.highlight.id === id) {
-          this.activeHighlight = { ...this.activeHighlight, highlight: updated };
-        }
-        if (spineIndex === this.spineIndex) {
-          this.applyHighlightsToCurrentHost();
-        }
-        this.notify();
-        return;
-      }
-    }
+    return this.highlights.setStyle(id, style);
   }
 
   /** Turns one page (or one spread, in spread mode) in paginated mode. In
