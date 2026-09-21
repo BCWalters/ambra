@@ -22,6 +22,7 @@ import {
   BookmarkFilled,
   BookmarkRegular,
   DocumentOnePageColumnsRegular,
+  LocalLanguageRegular,
   ReadingListRegular,
   SearchRegular,
   SettingsRegular,
@@ -45,6 +46,7 @@ import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
 import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { LOCALE_NATIVE_NAMES, SUPPORTED_LOCALES } from "../../i18n/Locale.js";
 import type { LocalePreference } from "../../i18n/Locale.js";
+import type { StringCatalog } from "../../i18n/locales/en.js";
 import { DefaultableSlider } from "./DefaultableSlider.js";
 
 export interface ToolbarProps {
@@ -88,6 +90,27 @@ const PAGE_THEME_GROUP_NAME = "pageTheme";
 const CHROME_THEME_GROUP_NAME = "chromeTheme";
 const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
 const LOCALE_GROUP_NAME = "locale";
+
+/** Descriptive color/style words (unlike actual typeface names — see the
+ * "Text" font list's own comment — these genuinely translate) mapped to
+ * their `StringCatalog` key, so each theme/style enum's engine-owned
+ * `.label` (English-only, since the engine itself has no notion of UI
+ * locale) can be swapped for a translated one purely at the display
+ * layer here. */
+const PAGE_THEME_LABEL_KEYS: Readonly<Record<PageTheme, keyof StringCatalog>> = {
+  white: "pageTheme.white",
+  sepia: "pageTheme.sepia",
+  dark: "pageTheme.dark",
+};
+const CHROME_THEME_LABEL_KEYS: Readonly<Partial<Record<ChromeThemeChoice, keyof StringCatalog>>> = {
+  silver: "chromeTheme.silver",
+  green: "chromeTheme.green",
+  blue: "chromeTheme.blue",
+  purple: "chromeTheme.purple",
+  // "ambra" is deliberately absent — the reader's own signature theme
+  // name (like the app's own "Ambra" name itself) rather than a
+  // descriptive color word, so it stays untranslated in every locale.
+};
 
 /** A small color swatch shown in place of a plain icon beside each
  * "Reader theme" option — an actual preview of that theme's own chrome
@@ -509,12 +532,12 @@ export const Toolbar: FC<ToolbarProps> = ({
                   }}
                 >
                   <MenuTrigger disableButtonEnhancement>
-                    <MenuItem icon={<TextFontRegular />}>Text</MenuItem>
+                    <MenuItem icon={<TextFontRegular />}>{t("text.textMenuLabel")}</MenuItem>
                   </MenuTrigger>
                   <MenuPopover>
                     <MenuList>
                       <MenuGroup>
-                        <MenuGroupHeader>Size</MenuGroupHeader>
+                        <MenuGroupHeader>{t("text.size")}</MenuGroupHeader>
                         <div style={{ padding: "6px 12px 10px" }}>
                           <DefaultableSlider
                             min={ReadingTheme.MIN_FONT_SCALE}
@@ -523,13 +546,13 @@ export const Toolbar: FC<ToolbarProps> = ({
                             value={snapshot.fontScale}
                             defaultValue={ReadingTheme.DEFAULT_FONT_SCALE}
                             onChange={onSetFontScale}
-                            aria-label="Font size"
+                            aria-label={t("text.fontSizeAriaLabel")}
                           />
                         </div>
                       </MenuGroup>
                       <MenuDivider />
                       <MenuGroup>
-                        <MenuGroupHeader>Line spacing</MenuGroupHeader>
+                        <MenuGroupHeader>{t("text.lineSpacing")}</MenuGroupHeader>
                         <div style={{ padding: "6px 12px 10px" }}>
                           <DefaultableSlider
                             min={ReadingTheme.MIN_LINE_SPACING}
@@ -538,13 +561,13 @@ export const Toolbar: FC<ToolbarProps> = ({
                             value={snapshot.lineSpacing}
                             defaultValue={ReadingTheme.DEFAULT_LINE_SPACING}
                             onChange={onSetLineSpacing}
-                            aria-label="Line spacing"
+                            aria-label={t("text.lineSpacing")}
                           />
                         </div>
                       </MenuGroup>
                       <MenuDivider />
                       <MenuGroup>
-                        <MenuGroupHeader>Character spacing</MenuGroupHeader>
+                        <MenuGroupHeader>{t("text.characterSpacing")}</MenuGroupHeader>
                         <div style={{ padding: "6px 12px 10px" }}>
                           <DefaultableSlider
                             min={ReadingTheme.MIN_LETTER_SPACING}
@@ -553,13 +576,13 @@ export const Toolbar: FC<ToolbarProps> = ({
                             value={snapshot.letterSpacing}
                             defaultValue={ReadingTheme.DEFAULT_LETTER_SPACING}
                             onChange={onSetLetterSpacing}
-                            aria-label="Character spacing"
+                            aria-label={t("text.characterSpacing")}
                           />
                         </div>
                       </MenuGroup>
                       <MenuDivider />
                       <MenuGroup>
-                        <MenuGroupHeader>Font</MenuGroupHeader>
+                        <MenuGroupHeader>{t("text.font")}</MenuGroupHeader>
                         {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
                           // Preview each option in its own typeface (falling back
                           // to the toolbar's own font for "Book default", which
@@ -568,6 +591,17 @@ export const Toolbar: FC<ToolbarProps> = ({
                           // can see the difference between options before picking
                           // one, rather than reading identical-looking labels.
                           const stack = ReadingTheme.FONT_FAMILIES[key].stack;
+                          // Actual typeface names (Georgia, Palatino, Times,
+                          // Sitka) are proper nouns — left untranslated, the
+                          // same way a font picker in any language leaves
+                          // "Helvetica" as "Helvetica". Only the two
+                          // genuinely descriptive options get translated.
+                          const label =
+                            key === "sans"
+                              ? t("fontFamily.sansSerif")
+                              : key === "book-default"
+                                ? t("fontFamily.bookDefault")
+                                : ReadingTheme.FONT_FAMILIES[key].label;
                           return (
                             <MenuItemRadio
                               key={key}
@@ -575,7 +609,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                               value={key}
                               style={stack ? { fontFamily: stack } : undefined}
                             >
-                              {ReadingTheme.FONT_FAMILIES[key].label}
+                              {label}
                             </MenuItemRadio>
                           );
                         })}
@@ -596,7 +630,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                   }}
                 >
                   <MenuTrigger disableButtonEnhancement>
-                    <MenuItem icon={<DocumentOnePageColumnsRegular />}>Page</MenuItem>
+                    <MenuItem icon={<DocumentOnePageColumnsRegular />}>{t("text.pageMenuLabel")}</MenuItem>
                   </MenuTrigger>
                   <MenuPopover>
                     <MenuList>
@@ -612,7 +646,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                             measure just as much as a single page's, and
                             "column" is the more precise, print-typography
                             term for what's actually being adjusted. */}
-                        <MenuGroupHeader>Column width</MenuGroupHeader>
+                        <MenuGroupHeader>{t("text.columnWidth")}</MenuGroupHeader>
                         <div style={{ padding: "6px 12px 10px" }}>
                           <DefaultableSlider
                             min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
@@ -621,16 +655,16 @@ export const Toolbar: FC<ToolbarProps> = ({
                             value={snapshot.contentWidthEm}
                             defaultValue={ReadingTheme.DEFAULT_CONTENT_WIDTH_EM}
                             onChange={onSetContentWidth}
-                            aria-label="Column width"
+                            aria-label={t("text.columnWidth")}
                           />
                         </div>
                       </MenuGroup>
                       <MenuDivider />
                       <MenuGroup>
-                        <MenuGroupHeader>Page style</MenuGroupHeader>
+                        <MenuGroupHeader>{t("text.pageStyle")}</MenuGroupHeader>
                         {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
                           <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
-                            {ReadingTheme.PAGE_THEMES[key].label}
+                            {t(PAGE_THEME_LABEL_KEYS[key])}
                           </MenuItemRadio>
                         ))}
                       </MenuGroup>
@@ -648,7 +682,6 @@ export const Toolbar: FC<ToolbarProps> = ({
             [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
             [CHROME_THEME_GROUP_NAME]: [snapshot.chromeTheme],
             [PAGE_TURN_ANIMATION_GROUP_NAME]: [snapshot.pageTurnAnimationStyle],
-            [LOCALE_GROUP_NAME]: [localePreference],
           }}
           onCheckedValueChange={(_event, data) => {
             if (data.name === VIEW_MODE_GROUP_NAME) {
@@ -657,8 +690,6 @@ export const Toolbar: FC<ToolbarProps> = ({
               onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
             } else if (data.name === PAGE_TURN_ANIMATION_GROUP_NAME) {
               onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
-            } else if (data.name === LOCALE_GROUP_NAME) {
-              setLocalePreference(data.checkedItems[0] as LocalePreference);
             }
           }}
         >
@@ -679,23 +710,70 @@ export const Toolbar: FC<ToolbarProps> = ({
           </MenuTrigger>
           <MenuPopover>
             <MenuList>
+              {/* A nested submenu, like "Text"/"Page" above, rather than
+                  a flat list of radio items directly in this menu — with
+                  9 supported locales (and growing), a flat "System
+                  default" + 9-language list ate most of this menu's own
+                  height every time it opened, for a setting most readers
+                  touch once and never again. Collapsing it behind one
+                  entry (showing the current choice as its own
+                  `secondaryContent`, the same way "Page flip" shows
+                  "Experimental") keeps this menu's height stable
+                  regardless of how many locales ship in the future. */}
+              <Menu
+                persistOnItemClick
+                checkedValues={{
+                  [LOCALE_GROUP_NAME]: [localePreference],
+                }}
+                onCheckedValueChange={(_event, data) => {
+                  if (data.name === LOCALE_GROUP_NAME) {
+                    setLocalePreference(data.checkedItems[0] as LocalePreference);
+                  }
+                }}
+              >
+                <MenuTrigger disableButtonEnhancement>
+                  <MenuItem
+                    icon={<LocalLanguageRegular />}
+                    secondaryContent={
+                      localePreference === "system"
+                        ? t("settings.languageSystemDefault")
+                        : LOCALE_NATIVE_NAMES[localePreference]
+                    }
+                  >
+                    {t("settings.language")}
+                  </MenuItem>
+                </MenuTrigger>
+                <MenuPopover>
+                  <MenuList>
+                    <MenuItemRadio name={LOCALE_GROUP_NAME} value="system">
+                      {t("settings.languageSystemDefault")}
+                    </MenuItemRadio>
+                    {SUPPORTED_LOCALES.map((localeOption) => (
+                      <MenuItemRadio key={localeOption} name={LOCALE_GROUP_NAME} value={localeOption}>
+                        {LOCALE_NATIVE_NAMES[localeOption]}
+                      </MenuItemRadio>
+                    ))}
+                  </MenuList>
+                </MenuPopover>
+              </Menu>
+              <MenuDivider />
               {!snapshot.isFixedLayout && (
                 <>
                   <MenuGroup>
-                    <MenuGroupHeader>Reading mode</MenuGroupHeader>
+                    <MenuGroupHeader>{t("settings.readingMode")}</MenuGroupHeader>
                     <MenuItemRadio
                       name={VIEW_MODE_GROUP_NAME}
                       value="paginated"
                       icon={<BookOpenRegular />}
                     >
-                      Paginated
+                      {t("settings.paginated")}
                     </MenuItemRadio>
                     <MenuItemRadio
                       name={VIEW_MODE_GROUP_NAME}
                       value="scroll"
                       icon={<TextColumnOneRegular />}
                     >
-                      Scroll
+                      {t("settings.scroll")}
                     </MenuItemRadio>
                   </MenuGroup>
                   <MenuDivider />
@@ -715,23 +793,42 @@ export const Toolbar: FC<ToolbarProps> = ({
                   content has no equivalent of a continuous-scroll view;
                   it's always shown one spread at a time. */}
               <MenuGroup>
-                <MenuGroupHeader>Page turn</MenuGroupHeader>
+                <MenuGroupHeader>{t("settings.pageTurn")}</MenuGroupHeader>
                 <MenuItemRadio
                   name={PAGE_TURN_ANIMATION_GROUP_NAME}
                   value="rotate"
-                  secondaryContent="Experimental"
+                  secondaryContent={t("settings.experimental")}
                 >
-                  Page flip
+                  {t("settings.pageFlip")}
                 </MenuItemRadio>
                 <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="slide">
-                  Slide
+                  {t("settings.slide")}
                 </MenuItemRadio>
                 <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="scroll">
-                  Film strip
+                  {t("settings.filmStrip")}
                 </MenuItemRadio>
                 <MenuItemRadio name={PAGE_TURN_ANIMATION_GROUP_NAME} value="none">
-                  Off
+                  {t("settings.off")}
                 </MenuItemRadio>
+              </MenuGroup>
+              <MenuDivider />
+              <MenuGroup>
+                <MenuGroupHeader>{t("settings.readerTheme")}</MenuGroupHeader>
+                {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
+                  <MenuItemRadio
+                    key={key}
+                    name={CHROME_THEME_GROUP_NAME}
+                    value={key}
+                    icon={
+                      <ThemeSwatch
+                        background={CHROME_THEMES[key].backgroundSolid}
+                        accent={CHROME_THEMES[key].accent}
+                      />
+                    }
+                  >
+                    {CHROME_THEME_LABEL_KEYS[key] ? t(CHROME_THEME_LABEL_KEYS[key]!) : CHROME_THEMES[key].label}
+                  </MenuItemRadio>
+                ))}
               </MenuGroup>
               <MenuDivider />
               <MenuGroup>
@@ -749,9 +846,12 @@ export const Toolbar: FC<ToolbarProps> = ({
                     setting applied by the shell itself (see
                     `ReaderController.setBrightness`'s doc comment), not
                     a per-host typography/layout one, so — like "Reader
-                    theme" just below — it belongs here, and works for
-                    fixed-layout books too, not just reflowable ones. */}
-                <MenuGroupHeader>Brightness</MenuGroupHeader>
+                    theme" just above — it belongs here, and works for
+                    fixed-layout books too, not just reflowable ones.
+                    Last in this menu (rather than just after "Page
+                    turn", where it used to sit) — it's the setting
+                    readers reach for least often of the group. */}
+                <MenuGroupHeader>{t("settings.brightness")}</MenuGroupHeader>
                 <div style={{ padding: "6px 12px 10px" }}>
                   <DefaultableSlider
                     min={ReadingTheme.MIN_BRIGHTNESS}
@@ -760,40 +860,9 @@ export const Toolbar: FC<ToolbarProps> = ({
                     value={snapshot.brightness}
                     defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
                     onChange={onSetBrightness}
-                    aria-label="Brightness"
+                    aria-label={t("settings.brightness")}
                   />
                 </div>
-              </MenuGroup>
-              <MenuDivider />
-              <MenuGroup>
-                <MenuGroupHeader>Reader theme</MenuGroupHeader>
-                {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
-                  <MenuItemRadio
-                    key={key}
-                    name={CHROME_THEME_GROUP_NAME}
-                    value={key}
-                    icon={
-                      <ThemeSwatch
-                        background={CHROME_THEMES[key].backgroundSolid}
-                        accent={CHROME_THEMES[key].accent}
-                      />
-                    }
-                  >
-                    {CHROME_THEMES[key].label}
-                  </MenuItemRadio>
-                ))}
-              </MenuGroup>
-              <MenuDivider />
-              <MenuGroup>
-                <MenuGroupHeader>{t("settings.language")}</MenuGroupHeader>
-                <MenuItemRadio name={LOCALE_GROUP_NAME} value="system">
-                  {t("settings.languageSystemDefault")}
-                </MenuItemRadio>
-                {SUPPORTED_LOCALES.map((localeOption) => (
-                  <MenuItemRadio key={localeOption} name={LOCALE_GROUP_NAME} value={localeOption}>
-                    {LOCALE_NATIVE_NAMES[localeOption]}
-                  </MenuItemRadio>
-                ))}
               </MenuGroup>
             </MenuList>
           </MenuPopover>

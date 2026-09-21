@@ -8,6 +8,7 @@ import { ReaderController } from "./ReaderController.js";
 import type { BookDetails, EpubInspectionData, PreviewPosition, ReaderSnapshot, ViewMode } from "./ReaderController.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
+import type { Translate } from "../i18n/LocaleContext.js";
 
 export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
@@ -61,9 +62,19 @@ export interface UseReaderControllerResult {
  * is hidden/closed (the reliable checkpoint for continuous-scroll mode,
  * whose position otherwise only gets persisted on discrete navigation
  * actions — see `ReaderController.saveProgress`). */
-export function useReaderController(): UseReaderControllerResult {
+export function useReaderController(translate: Translate): UseReaderControllerResult {
   const [controller, setController] = useState<ReaderController | null>(null);
   const contentHostRef = useRef<HTMLDivElement | null>(null);
+
+  // Keeps the controller's screen-reader announcements (see
+  // `ReaderController.announce`) in whatever locale the reader has
+  // currently chosen — re-runs on every render where `translate` itself
+  // changed (i.e. right after a locale switch), not just once at mount,
+  // since `translate` is otherwise never read again after the very first
+  // announcement.
+  useEffect(() => {
+    controller?.setTranslate(translate);
+  }, [controller, translate]);
 
   const snapshot = useSyncExternalStore(
     useCallback(

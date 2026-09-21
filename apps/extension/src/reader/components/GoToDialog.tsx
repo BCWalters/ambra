@@ -11,6 +11,7 @@ import {
   Field,
   Input,
 } from "@fluentui/react-components";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 
 export interface GoToDialogProps {
   /** Which flavor of "go to" this dialog is currently showing — a
@@ -47,6 +48,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   bookPageCount,
   onGo,
 }) => {
+  const t = useTranslation();
   const [value, setValue] = useState("");
 
   // A fresh, empty input every time the dialog opens — never pre-filled
@@ -76,18 +78,22 @@ export const GoToDialog: FC<GoToDialogProps> = ({
     <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>{isPage ? "Go to Page" : "Go to Percentage"}</DialogTitle>
+          <DialogTitle>{isPage ? t("goTo.pageTitle") : t("goTo.percentageTitle")}</DialogTitle>
           <DialogContent>
             {isPage && bookPageCount === undefined ? (
-              <Field validationMessage="Still measuring this book's page count — try again in a moment.">
+              <Field validationMessage={t("goTo.pageCountMeasuring")}>
                 <Input disabled value="" />
               </Field>
             ) : (
               <Field
-                label={isPage ? `Page number (1–${bookPageCount})` : "Percentage (1–100)"}
+                label={
+                  isPage
+                    ? t("goTo.pageInputLabel", { max: bookPageCount! })
+                    : t("goTo.percentageInputLabel")
+                }
                 validationMessage={
                   value.trim() !== "" && !isValid
-                    ? `Enter a number between 1 and ${max}.`
+                    ? t("goTo.rangeValidation", { max: max! })
                     : undefined
                 }
               >
@@ -109,10 +115,10 @@ export const GoToDialog: FC<GoToDialogProps> = ({
           </DialogContent>
           <DialogActions>
             <Button appearance="secondary" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("annotations.cancelNote")}
             </Button>
             <Button appearance="primary" disabled={!isValid} onClick={submit}>
-              Go
+              {t("goTo.goButton")}
             </Button>
           </DialogActions>
         </DialogBody>

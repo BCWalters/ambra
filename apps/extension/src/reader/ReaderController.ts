@@ -42,6 +42,9 @@ import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { ViewMode } from "./ViewMode.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
 import { HEADER_TEXT_TOP_OFFSET } from "./furnitureLayout.js";
+import { DEFAULT_LOCALE } from "../i18n/Locale.js";
+import { getTranslate } from "../i18n/LocaleContext.js";
+import type { Translate } from "../i18n/LocaleContext.js";
 
 /** The smallest a rendered image is allowed to be (in *both* CSS px
  * dimensions) for a click/keypress on it to open the image viewer — see
@@ -609,6 +612,14 @@ export class ReaderController {
   private readonly diagnostics = new DiagnosticsLog();
   private announcement: string | undefined;
   private announcementId = 0;
+  /** Translates screen-reader announcement text (see `announce`) into
+   * the reader's current UI locale — defaults to English (the same
+   * default `LocaleProvider` starts with) until `ReaderApp` calls
+   * `setTranslate` with the real, locale-aware translator once it
+   * mounts inside `LocaleProvider`. A plain field rather than threading
+   * `t` through every method that ends up calling `announce` (most of
+   * which have nothing else to do with locale at all). */
+  private translate: Translate = getTranslate(DEFAULT_LOCALE);
   /** Increments on every pointerdown inside the content (any content
    * host's iframe document) — the shell's `Toolbar` watches this via
    * `snapshot()` to hide itself immediately the instant the reader
@@ -1058,7 +1069,7 @@ export class ReaderController {
       const locator = this.locatorResolver.generate(this.spineIndex, position.node, position.offset);
       const bookmark = await this.library.addBookmark(this.bookId, locator.cfi, this.bookmarkLabel());
       this.bookmarksCache.push(bookmark);
-      this.announce("Bookmark added");
+      this.announce(this.translate("announcements.bookmarkAdded"));
       this.notify();
       return bookmark;
     } catch {
@@ -1206,7 +1217,9 @@ export class ReaderController {
     }
     const removedIds = new Set(existing.map((bookmark) => bookmark.id));
     this.bookmarksCache = this.bookmarksCache.filter((bookmark) => !removedIds.has(bookmark.id));
-    this.announce(existing.length > 1 ? "Bookmarks removed" : "Bookmark removed");
+    this.announce(
+      existing.length > 1 ? this.translate("announcements.bookmarksRemoved") : this.translate("announcements.bookmarkRemoved"),
+    );
     this.notify();
     await Promise.all(existing.map((bookmark) => this.library.removeBookmark(bookmark.id)));
   }
@@ -1282,6 +1295,15 @@ export class ReaderController {
     } catch {
       // Best-effort — see doc comment.
     }
+  }
+
+  /** Called by `ReaderApp` (via `useReaderController`) whenever the
+   * reader's UI locale changes, so every subsequent `announce()` call —
+   * including ones triggered well after mount, like a page turn — uses
+   * up-to-date, correctly localized text instead of whatever locale was
+   * active when this controller was first constructed. */
+  public setTranslate(translate: Translate): void {
+    this.translate = translate;
   }
 
   /** Sets the text the shell's `aria-live` region should announce next,
@@ -2077,7 +2099,9 @@ export class ReaderController {
     this.viewMode = mode;
     await this.library.setDefaultViewMode(mode);
     await this.openSpineItem(this.spineIndex, { bridgeCfi });
-    this.announce(mode === "paginated" ? "Paginated view" : "Scroll view");
+    this.announce(
+      mode === "paginated" ? this.translate("announcements.paginatedView") : this.translate("announcements.scrollView"),
+    );
     this.notify();
   }
 
@@ -2756,7 +2780,7 @@ export class ReaderController {
         this.highlightsBySpineIndex.set(this.spineIndex, [highlight]);
       }
       this.applyHighlightsToCurrentHost();
-      this.announce("Highlight added");
+      this.announce(this.translate("announcements.highlightAdded"));
       if (openNoteEditor && anchor) {
         this.activeHighlight = { highlight, left: anchor.left, top: anchor.top, openNoteEditor: true };
       }
@@ -2925,8 +2949,15 @@ export class ReaderController {
         const second = animatedSpread.secondPageIndex;
         this.announce(
           second !== undefined
-            ? `Pages ${animatedSpread.pageIndex + 1}–${second + 1} of ${animatedSpread.pageCount}`
-            : `Page ${animatedSpread.pageIndex + 1} of ${animatedSpread.pageCount}`,
+            ? this.translate("announcements.spreadOfTotal", {
+                first: animatedSpread.pageIndex + 1,
+                second: second + 1,
+                total: animatedSpread.pageCount,
+              })
+            : this.translate("scrubber.pageOfTotal", {
+                current: animatedSpread.pageIndex + 1,
+                total: animatedSpread.pageCount,
+              }),
         );
         this.notify();
         await this.saveProgress();
@@ -2936,8 +2967,12 @@ export class ReaderController {
       const second = this.host.secondPageIndex;
       announcement =
         second !== undefined
-          ? `Pages ${this.host.pageIndex + 1}–${second + 1} of ${this.host.pageCount}`
-          : `Page ${this.host.pageIndex + 1} of ${this.host.pageCount}`;
+          ? this.translate("announcements.spreadOfTotal", {
+              first: this.host.pageIndex + 1,
+              second: second + 1,
+              total: this.host.pageCount,
+            })
+          : this.translate("scrubber.pageOfTotal", { current: this.host.pageIndex + 1, total: this.host.pageCount });
     } else if (this.host instanceof PaginatedContentHost) {
       // Captured *before* the old host is disposed below (inside
       // `animatePageTurn`) — see the restoration right after the host
@@ -2968,13 +3003,21 @@ export class ReaderController {
         this.setUpHighlightSelection();
         this.applyHighlightsToCurrentHost();
         this.restoreFocusAfterHostSwap(hadKeyboardFocus);
-        this.announce(`Page ${animatedHost.currentPageIndex + 1} of ${animatedHost.pageCount}`);
+        this.announce(
+          this.translate("scrubber.pageOfTotal", {
+            current: animatedHost.currentPageIndex + 1,
+            total: animatedHost.pageCount,
+          }),
+        );
         this.notify();
         await this.saveProgress();
         return;
       }
       moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
-      announcement = `Page ${this.host.currentPageIndex + 1} of ${this.host.pageCount}`;
+      announcement = this.translate("scrubber.pageOfTotal", {
+        current: this.host.currentPageIndex + 1,
+        total: this.host.pageCount,
+      });
     } else if (this.host instanceof FixedSpreadHost) {
       // Fixed-layout content has no sub-item pagination at all (every
       // "page" is a whole spine item — see `FixedSpreadHost`'s own doc
@@ -3114,8 +3157,12 @@ export class ReaderController {
       const newIndices = newHost.spineIndices;
       this.announce(
         newIndices.length > 1
-          ? `Pages ${newIndices[0]! + 1}–${newIndices[1]! + 1} of ${this.pkg.spine.length}`
-          : `Page ${newIndices[0]! + 1} of ${this.pkg.spine.length}`,
+          ? this.translate("announcements.spreadOfTotal", {
+              first: newIndices[0]! + 1,
+              second: newIndices[1]! + 1,
+              total: this.pkg.spine.length,
+            })
+          : this.translate("scrubber.pageOfTotal", { current: newIndices[0]! + 1, total: this.pkg.spine.length }),
       );
       this.notify();
       await this.saveProgress();
@@ -5866,7 +5913,9 @@ export class ReaderController {
       this.setUpHighlightSelection();
       this.applyHighlightsToCurrentHost();
       this.restoreFocusAfterHostSwap(hadKeyboardFocus);
-      this.announce(`Page ${newHost.currentPageIndex + 1} of ${newHost.pageCount}`);
+      this.announce(
+        this.translate("scrubber.pageOfTotal", { current: newHost.currentPageIndex + 1, total: newHost.pageCount }),
+      );
       this.notify();
       await this.saveProgress();
     } else {

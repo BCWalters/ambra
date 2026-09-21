@@ -6,6 +6,24 @@ import type { HighlightStyle } from "@ambra/engine";
 import type { SelectionToolbarState } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
+import type { StringCatalog } from "../../i18n/locales/en.js";
+
+/** `HighlightTheme.STYLES[style].label` is engine-owned English (the
+ * engine itself has no notion of UI locale) — these are genuinely
+ * descriptive color/style words, unlike e.g. a font's own proper name,
+ * so unlike those they get a translated label here at the display
+ * layer, shared by this toolbar and `HighlightActionPopup`'s own color
+ * picker (the same six swatches, offered in two different moments —
+ * see this file's own doc comment). */
+export const HIGHLIGHT_STYLE_LABEL_KEYS: Readonly<Record<HighlightStyle, keyof StringCatalog>> = {
+  yellow: "highlightStyle.yellow",
+  green: "highlightStyle.green",
+  blue: "highlightStyle.blue",
+  pink: "highlightStyle.pink",
+  purple: "highlightStyle.purple",
+  underline: "highlightStyle.underline",
+};
 
 export interface SelectionToolbarProps {
   /** `undefined` when there's no active text selection — see
@@ -36,6 +54,7 @@ export interface SelectionToolbarProps {
  */
 export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onAddNote }) => {
   const chromeTheme = useChromeTheme();
+  const t = useTranslation();
 
   if (!state) {
     return null;
@@ -44,7 +63,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
   return (
     <div
       role="toolbar"
-      aria-label="Highlight this selection"
+      aria-label={t("highlight.selectionToolbarAriaLabel")}
       // Prevents a mousedown on this toolbar from collapsing the content
       // iframe's own text selection before `onPick` ever runs — clicking
       // *anywhere* outside a selection normally clears it immediately.
@@ -67,11 +86,12 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
     >
       {HighlightTheme.STYLE_ORDER.map((style) => {
         const option = HighlightTheme.STYLES[style];
+        const label = t(HIGHLIGHT_STYLE_LABEL_KEYS[style]);
         return (
-          <Tooltip key={style} content={option.label} relationship="label">
+          <Tooltip key={style} content={label} relationship="label">
             <button
               type="button"
-              aria-label={option.label}
+              aria-label={label}
               onClick={() => onPick(style)}
               style={{
                 width: 22,
@@ -92,10 +112,10 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
 
       <div aria-hidden="true" style={{ width: 1, alignSelf: "stretch", background: CHROME_BORDER }} />
 
-      <Tooltip content="Add note" relationship="label">
+      <Tooltip content={t("highlight.addNote")} relationship="label">
         <button
           type="button"
-          aria-label="Add note"
+          aria-label={t("highlight.addNote")}
           onClick={onAddNote}
           style={{
             display: "flex",

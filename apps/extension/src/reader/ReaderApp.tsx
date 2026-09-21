@@ -20,7 +20,7 @@ import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
-import { LocaleProvider } from "../i18n/LocaleContext.js";
+import { LocaleProvider, useTranslation } from "../i18n/LocaleContext.js";
 import type { BookDetails, EpubInspectionData } from "./ReaderController.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 
@@ -44,6 +44,7 @@ export const ReaderApp: FC = () => (
 );
 
 const ReaderAppInner: FC = () => {
+  const t = useTranslation();
   const {
     snapshot,
     contentHostRef,
@@ -82,7 +83,7 @@ const ReaderAppInner: FC = () => {
     search,
     goToSearchResult,
     dismissError,
-  } = useReaderController();
+  } = useReaderController(t);
   // Exactly one of these two "left panels" (Contents/Bookmarks & Highlights)
   // can be shown at a time — see `activePanel`'s doc comment (issue #65).
   // Search and Book Details are their own separate, mutually-exclusive
@@ -360,7 +361,7 @@ const ReaderAppInner: FC = () => {
     return (
       <div style={{ padding: 24 }}>
         <Title2>Ambra Reader</Title2>
-        <Spinner label="Loading…" />
+        <Spinner label={t("reader.loading")} />
       </div>
     );
   }
@@ -425,7 +426,7 @@ const ReaderAppInner: FC = () => {
           <div
             style={{ flex: 1, position: "relative", minHeight: 0 }}
             role="main"
-            aria-label="Book content"
+            aria-label={t("reader.bookContentAriaLabel")}
           >
             {/* This div is owned entirely by imperative code (ReaderController
                 mounts the active content host's iframe into it) — it must never

@@ -1,20 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { FC, ReactNode } from "react";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { DEFAULT_LOCALE, resolveLocale } from "./Locale.js";
 import type { Locale, LocalePreference } from "./Locale.js";
-import { en } from "./locales/en.js";
-import { es } from "./locales/es.js";
-import { fr } from "./locales/fr.js";
-import { de } from "./locales/de.js";
-import { ja } from "./locales/ja.js";
-import { ko } from "./locales/ko.js";
-import { zh } from "./locales/zh.js";
-import { it } from "./locales/it.js";
-import { ru } from "./locales/ru.js";
-import type { StringCatalog } from "./locales/en.js";
+import { getTranslate } from "./translate.js";
+import type { Translate } from "./translate.js";
 
-const CATALOGS: Readonly<Record<Locale, StringCatalog>> = { en, es, fr, de, ja, ko, zh, it, ru };
+export type { Translate } from "./translate.js";
+export { getTranslate } from "./translate.js";
 
 interface LocaleContextValue {
   /** The locale actually in effect right now — already resolved from
@@ -117,19 +110,7 @@ export function useLocale(): LocaleContextValue {
  * substitutions, no complex plural/gender rules beyond the manual
  * "One"/"Other" key pairs already used for the couple of counts that
  * need one — see e.g. `scrubber.pagesLeftInChapterOne`/`...Other`). */
-export function useTranslation(): (key: keyof StringCatalog, params?: Record<string, string | number>) => string {
+export function useTranslation(): Translate {
   const { locale } = useLocale();
-  const catalog = CATALOGS[locale];
-  return useCallback(
-    (key: keyof StringCatalog, params?: Record<string, string | number>) => {
-      const template = catalog[key] ?? en[key];
-      if (!params) {
-        return template;
-      }
-      return template.replace(/\{(\w+)\}/g, (match, name: string) =>
-        name in params ? String(params[name]) : match,
-      );
-    },
-    [catalog],
-  );
+  return useMemo(() => getTranslate(locale), [locale]);
 }

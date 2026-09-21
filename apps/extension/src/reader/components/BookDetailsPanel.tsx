@@ -7,6 +7,7 @@ import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 import { GoToDialog } from "./GoToDialog.js";
 
 export interface BookDetailsPanelProps {
@@ -115,6 +116,7 @@ const DetailRow: FC<{ label: string; value: string | undefined; compact?: boolea
  * not a full parse — good enough for the overwhelmingly common phrasing
  * without trying to understand every possible `dc:rights` value. */
 const RightsRow: FC<{ value: string | undefined }> = ({ value }) => {
+  const t = useTranslation();
   if (!value) {
     return null;
   }
@@ -123,7 +125,7 @@ const RightsRow: FC<{ value: string | undefined }> = ({ value }) => {
     <div style={{ marginBottom: 4, marginTop: 6 }}>
       {!startsWithCopyright && (
         <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
-          Copyright
+          {t("bookDetails.copyright")}
         </Caption1>
       )}
       <Body1 as="p" block style={{ margin: 0 }}>
@@ -168,6 +170,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   bookPageCount,
   onSeekToFraction,
 }) => {
+  const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -216,7 +219,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
       <aside
         ref={asideRef}
         tabIndex={-1}
-        aria-label="Book details"
+        aria-label={t("toolbar.bookDetails")}
         style={{
           position: "absolute",
           outline: "none",
@@ -252,20 +255,20 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
           }}
         >
           <Body1Strong as="span" style={{ flex: 1 }}>
-            Book details
+            {t("toolbar.bookDetails")}
           </Body1Strong>
           <Button
             appearance="subtle"
             size="small"
             icon={<DismissRegular />}
-            aria-label="Close book details panel"
+            aria-label={t("bookDetails.closePanel")}
             onClick={onRequestClose}
           />
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
           {!details ? (
-            <Spinner label="Loading…" />
+            <Spinner label={t("reader.loading")} />
           ) : (
             <>
               <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 16 }}>
@@ -309,7 +312,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       itself, so they read more naturally as part of this
                       identity block than mixed in with the longer-form
                       description/identifiers further down. */}
-                  <DetailRow label="Publisher" value={details.publisher} compact />
+                  <DetailRow label={t("bookDetails.publisher")} value={details.publisher} compact />
                   <RightsRow value={details.rights} />
                 </div>
               </div>
@@ -329,7 +332,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       and a useful "read more" link either way. */}
                   {details.descriptionSourceName && (
                     <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.6 }}>
-                      via{" "}
+                      {t("bookDetails.descriptionSourcePrefix")}{" "}
                       <a href={details.descriptionSourceUrl} target="_blank" rel="noreferrer">
                         {details.descriptionSourceName}
                       </a>
@@ -338,9 +341,9 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 </>
               )}
 
-              <DetailRow label="ISBN" value={isbn?.value} />
+              <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
               {otherIdentifiers.map((id, index) => (
-                <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
+                <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
               ))}
 
               {/* "Go to Page…"/"Go to Percentage…" — relocated from the
@@ -373,7 +376,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       onClick={() => setGoToDialogMode("page")}
                       style={goToButtonStyle(chromeTheme.backgroundSolid)}
                     >
-                      Go to Page…
+                      {t("bookDetails.goToPage")}
                     </Button>
                   )}
                   <Button
@@ -383,7 +386,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                     onClick={() => setGoToDialogMode("percentage")}
                     style={goToButtonStyle(chromeTheme.backgroundSolid)}
                   >
-                    Go to Percentage…
+                    {t("bookDetails.goToPercentage")}
                   </Button>
                 </div>
               )}
@@ -415,7 +418,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
                   }}
                 >
-                  EPUB Inspector
+                  {t("bookDetails.epubInspector")}
                 </Button>
               </div>
             </>

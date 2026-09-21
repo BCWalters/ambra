@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { FC } from "react";
 import { Button } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { ImageViewerState } from "../ReaderController.js";
 
 export interface ImageViewerProps {
@@ -34,6 +35,7 @@ export interface ImageViewerProps {
  */
 export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const t = useTranslation();
 
   useEffect(() => {
     if (!image) {
@@ -63,7 +65,7 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={image.alt || "Image viewer"}
+      aria-label={image.alt || t("imageViewer.dialogAriaLabel")}
       onClick={onRequestClose}
       style={{
         position: "absolute",
@@ -80,7 +82,7 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
         appearance="subtle"
         size="large"
         icon={<DismissRegular />}
-        aria-label="Close image viewer"
+        aria-label={t("highlight.close")}
         onClick={(event) => {
           // Without this, the click bubbles to the backdrop's own
           // onClick above, which is harmless (both close the viewer

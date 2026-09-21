@@ -7,6 +7,8 @@ import type { HighlightStyle } from "@ambra/engine";
 import type { ActiveHighlightState } from "../ReaderController.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
+import { HIGHLIGHT_STYLE_LABEL_KEYS } from "./SelectionToolbar.js";
 
 export interface HighlightActionPopupProps {
   /** `undefined` when nothing's currently "opened" this way — see
@@ -59,6 +61,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
   onDismiss,
 }) => {
   const chromeTheme = useChromeTheme();
+  const t = useTranslation();
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isPickingColor, setIsPickingColor] = useState(false);
   const [draftNote, setDraftNote] = useState("");
@@ -117,7 +120,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
   return (
     <div
       role="dialog"
-      aria-label="Highlight options"
+      aria-label={t("highlight.optionsDialogAriaLabel")}
       style={{
         position: "fixed",
         left: state.left,
@@ -137,10 +140,10 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Tooltip content="Change color" relationship="label">
+        <Tooltip content={t("highlight.changeColor")} relationship="label">
           <button
             type="button"
-            aria-label="Change color"
+            aria-label={t("highlight.changeColor")}
             aria-pressed={isPickingColor}
             onClick={() => setIsPickingColor((open) => !open)}
             style={{
@@ -170,44 +173,51 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
         >
           {highlight.text}
         </span>
-        <Tooltip content={highlight.note ? "Edit note" : "Add note"} relationship="label">
+        <Tooltip content={highlight.note ? t("highlight.editNote") : t("highlight.addNote")} relationship="label">
           <Button
             appearance="subtle"
             size="small"
             icon={<NoteRegular />}
-            aria-label={highlight.note ? "Edit note" : "Add note"}
+            aria-label={highlight.note ? t("highlight.editNote") : t("highlight.addNote")}
             onClick={() => setIsEditingNote((open) => !open)}
           />
         </Tooltip>
-        <Tooltip content="Delete highlight" relationship="label">
+        <Tooltip content={t("highlight.deleteHighlight")} relationship="label">
           <Button
             appearance="subtle"
             size="small"
             icon={<DeleteRegular />}
-            aria-label="Delete highlight"
+            aria-label={t("highlight.deleteHighlight")}
             onClick={() => {
               onRemove(highlight.id);
               onDismiss();
             }}
           />
         </Tooltip>
-        <Tooltip content="Close" relationship="label">
-          <Button appearance="subtle" size="small" icon={<DismissRegular />} aria-label="Close" onClick={onDismiss} />
+        <Tooltip content={t("highlight.close")} relationship="label">
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<DismissRegular />}
+            aria-label={t("highlight.close")}
+            onClick={onDismiss}
+          />
         </Tooltip>
       </div>
 
       {isPickingColor && (
-        <div role="radiogroup" aria-label="Highlight color" style={{ display: "flex", gap: 6 }}>
+        <div role="radiogroup" aria-label={t("highlight.colorGroupAriaLabel")} style={{ display: "flex", gap: 6 }}>
           {HighlightTheme.STYLE_ORDER.map((style) => {
             const swatchOption = HighlightTheme.STYLES[style];
+            const label = t(HIGHLIGHT_STYLE_LABEL_KEYS[style]);
             const selected = style === highlight.style;
             return (
-              <Tooltip key={style} content={swatchOption.label} relationship="label">
+              <Tooltip key={style} content={label} relationship="label">
                 <button
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  aria-label={swatchOption.label}
+                  aria-label={label}
                   onClick={() => {
                     onSetStyle(highlight.id, style);
                     setIsPickingColor(false);
@@ -242,16 +252,16 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
             ref={noteTextareaRef}
             value={draftNote}
             onChange={(_event, data) => setDraftNote(data.value)}
-            placeholder="Add a note…"
+            placeholder={t("annotations.notePlaceholder")}
             resize="vertical"
             style={{ width: "100%" }}
           />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
             <Button size="small" onClick={() => setIsEditingNote(false)}>
-              Cancel
+              {t("annotations.cancelNote")}
             </Button>
             <Button size="small" appearance="primary" onClick={saveNote}>
-              Save
+              {t("annotations.saveNote")}
             </Button>
           </div>
         </div>

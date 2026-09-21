@@ -1,6 +1,7 @@
 import type { FC } from "react";
 import { Button, Slider, Tooltip } from "@fluentui/react-components";
 import { ArrowResetRegular } from "@fluentui/react-icons";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 
 export interface DefaultableSliderProps {
   min: number;
@@ -57,6 +58,7 @@ export const DefaultableSlider: FC<DefaultableSliderProps> = ({
 }) => {
   const fraction = max === min ? 0 : (defaultValue - min) / (max - min);
   const isAtDefault = Math.abs(value - defaultValue) < DEFAULT_EPSILON;
+  const t = useTranslation();
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -86,14 +88,14 @@ export const DefaultableSlider: FC<DefaultableSliderProps> = ({
           }}
         />
       </div>
-      <Tooltip content="Reset to default" relationship="label">
+      <Tooltip content={t("settings.resetToDefault")} relationship="label">
         <Button
           appearance="subtle"
           size="small"
           icon={<ArrowResetRegular />}
           disabled={isAtDefault}
           onClick={() => onChange(defaultValue)}
-          aria-label={`Reset ${ariaLabel} to default`}
+          aria-label={t("settings.resetSliderToDefault", { label: ariaLabel })}
         />
       </Tooltip>
     </div>
