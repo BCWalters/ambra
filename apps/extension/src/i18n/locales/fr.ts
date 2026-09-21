@@ -40,4 +40,21 @@ export const fr: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Il reste {count} pages dans ce chapitre",
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh zut, quelque chose s'est mal passé.",
+  "annotations.panelAriaLabel": "Signets et surlignages",
+  "annotations.pinPanel": "Épingler le panneau des signets et surlignages",
+  "annotations.unpinPanel": "Détacher le panneau des signets et surlignages",
+  "annotations.closePanel": "Fermer le panneau des signets et surlignages",
+  "annotations.bookmarksTab": "Signets",
+  "annotations.highlightsTab": "Surlignages",
+  "annotations.noBookmarksYet":
+    "Aucun signet pour l'instant — utilisez le bouton signet de la barre d'outils pour enregistrer votre position.",
+  "annotations.noHighlightsYet":
+    "Aucun surlignage pour l'instant — sélectionnez du texte pendant la lecture pour le surligner.",
+  "annotations.removeBookmark": "Supprimer le signet : {label}",
+  "annotations.editNote": "Modifier la note : {text}",
+  "annotations.addNote": "Ajouter une note : {text}",
+  "annotations.removeHighlight": "Supprimer le surlignage : {text}",
+  "annotations.notePlaceholder": "Ajouter une note…",
+  "annotations.cancelNote": "Annuler",
+  "annotations.saveNote": "Enregistrer",
 };

@@ -4,14 +4,14 @@
  * key set, so a missing translation is a compile error, not a silent
  * runtime fallback discovered only by clicking around in that language.
  *
- * Covers the toolbar, the Table of Contents/Search panel, the progress
- * scrubber, and the page's own running footer ("Page N") — the
- * reader's most prominent, always-visible surfaces (issues #50, #53).
- * The remaining shell surfaces (Book Details, dialogs, the Bookmarks/
- * Highlights panel, the library page) still read as plain English
- * literals for now; extending them to use this same
- * `useTranslation()`/`t(key)` pattern is straightforward follow-up work
- * once this foundation is in place, not a redesign.
+ * Covers the toolbar, the Table of Contents/Search/Bookmarks & Highlights
+ * panels, the progress scrubber, and the page's own running footer
+ * ("Page N") — the reader's most prominent, always-visible surfaces
+ * (issues #50, #53). The remaining shell surfaces (Book Details,
+ * dialogs, the library page) still read as plain English literals for
+ * now; extending them to use this same `useTranslation()`/`t(key)`
+ * pattern is straightforward follow-up work once this foundation is in
+ * place, not a redesign.
  *
  * Machine-translated (by the AI assistant that built this feature, not
  * a native speaker) as a starting point for every non-English locale —
@@ -61,6 +61,21 @@ export interface StringCatalog {
    * goofiness in each language, not a literal translation of
    * "snickerdoodles" (which means nothing in most of them). */
   "error.somethingWentWrongHeadline": string;
+  "annotations.panelAriaLabel": string;
+  "annotations.pinPanel": string;
+  "annotations.unpinPanel": string;
+  "annotations.closePanel": string;
+  "annotations.bookmarksTab": string;
+  "annotations.highlightsTab": string;
+  "annotations.noBookmarksYet": string;
+  "annotations.noHighlightsYet": string;
+  "annotations.removeBookmark": string;
+  "annotations.editNote": string;
+  "annotations.addNote": string;
+  "annotations.removeHighlight": string;
+  "annotations.notePlaceholder": string;
+  "annotations.cancelNote": string;
+  "annotations.saveNote": string;
 }
 
 export const en: StringCatalog = {
@@ -101,4 +116,19 @@ export const en: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "{count} pages left in this chapter",
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh snickerdoodles, something went wrong.",
+  "annotations.panelAriaLabel": "Bookmarks and highlights",
+  "annotations.pinPanel": "Pin bookmarks and highlights panel",
+  "annotations.unpinPanel": "Unpin bookmarks and highlights panel",
+  "annotations.closePanel": "Close bookmarks and highlights panel",
+  "annotations.bookmarksTab": "Bookmarks",
+  "annotations.highlightsTab": "Highlights",
+  "annotations.noBookmarksYet": "No bookmarks yet — use the bookmark button in the toolbar to save your place.",
+  "annotations.noHighlightsYet": "No highlights yet — select some text while reading to highlight it.",
+  "annotations.removeBookmark": "Remove bookmark: {label}",
+  "annotations.editNote": "Edit note: {text}",
+  "annotations.addNote": "Add note: {text}",
+  "annotations.removeHighlight": "Remove highlight: {text}",
+  "annotations.notePlaceholder": "Add a note…",
+  "annotations.cancelNote": "Cancel",
+  "annotations.saveNote": "Save",
 };

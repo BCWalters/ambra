@@ -40,4 +40,21 @@ export const de: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Noch {count} Seiten in diesem Kapitel",
   "pageFurniture.pageNumber": "Seite {number}",
   "error.somethingWentWrongHeadline": "Oh Quatsch, da ist etwas schiefgelaufen.",
+  "annotations.panelAriaLabel": "Lesezeichen und Hervorhebungen",
+  "annotations.pinPanel": "Panel für Lesezeichen und Hervorhebungen anheften",
+  "annotations.unpinPanel": "Panel für Lesezeichen und Hervorhebungen lösen",
+  "annotations.closePanel": "Panel für Lesezeichen und Hervorhebungen schließen",
+  "annotations.bookmarksTab": "Lesezeichen",
+  "annotations.highlightsTab": "Hervorhebungen",
+  "annotations.noBookmarksYet":
+    "Noch keine Lesezeichen — verwende die Lesezeichen-Schaltfläche in der Symbolleiste, um deine Stelle zu speichern.",
+  "annotations.noHighlightsYet":
+    "Noch keine Hervorhebungen — markiere beim Lesen etwas Text, um ihn hervorzuheben.",
+  "annotations.removeBookmark": "Lesezeichen entfernen: {label}",
+  "annotations.editNote": "Notiz bearbeiten: {text}",
+  "annotations.addNote": "Notiz hinzufügen: {text}",
+  "annotations.removeHighlight": "Hervorhebung entfernen: {text}",
+  "annotations.notePlaceholder": "Notiz hinzufügen…",
+  "annotations.cancelNote": "Abbrechen",
+  "annotations.saveNote": "Speichern",
 };

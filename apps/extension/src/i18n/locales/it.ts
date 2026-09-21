@@ -40,4 +40,21 @@ export const it: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Mancano {count} pagine in questo capitolo",
   "pageFurniture.pageNumber": "Pagina {number}",
   "error.somethingWentWrongHeadline": "Oh caspita, qualcosa è andato storto.",
+  "annotations.panelAriaLabel": "Segnalibri ed evidenziazioni",
+  "annotations.pinPanel": "Blocca pannello di segnalibri ed evidenziazioni",
+  "annotations.unpinPanel": "Sblocca pannello di segnalibri ed evidenziazioni",
+  "annotations.closePanel": "Chiudi pannello di segnalibri ed evidenziazioni",
+  "annotations.bookmarksTab": "Segnalibri",
+  "annotations.highlightsTab": "Evidenziazioni",
+  "annotations.noBookmarksYet":
+    "Ancora nessun segnalibro — usa il pulsante segnalibro nella barra degli strumenti per salvare il tuo punto.",
+  "annotations.noHighlightsYet":
+    "Ancora nessuna evidenziazione — seleziona del testo durante la lettura per evidenziarlo.",
+  "annotations.removeBookmark": "Rimuovi segnalibro: {label}",
+  "annotations.editNote": "Modifica nota: {text}",
+  "annotations.addNote": "Aggiungi nota: {text}",
+  "annotations.removeHighlight": "Rimuovi evidenziazione: {text}",
+  "annotations.notePlaceholder": "Aggiungi una nota…",
+  "annotations.cancelNote": "Annulla",
+  "annotations.saveNote": "Salva",
 };

@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Tab, TabList, Textarea } from "@fluentui/react-components";
-import { BookmarkFilled, BookmarkRegular, DismissRegular, HighlightRegular, NoteRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
+import { Body1, Button, Caption1, Tab, TabList, Textarea, Tooltip } from "@fluentui/react-components";
+import {
+  BookmarkFilled,
+  BookmarkRegular,
+  DeleteRegular,
+  DismissRegular,
+  HighlightRegular,
+  NoteRegular,
+  PinOffRegular,
+  PinRegular,
+} from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
 import { BOOKMARK_COLOR, CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 
 interface BookmarkListProps {
@@ -22,10 +32,11 @@ interface BookmarkListProps {
  * TOC tree has one: unlike TOC entries, a bookmark is exactly one saved
  * position, not a section the reader might currently be inside. */
 const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) => {
+  const t = useTranslation();
   if (bookmarks.length === 0) {
     return (
       <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
-        No bookmarks yet — use the bookmark button in the toolbar to save your place.
+        {t("annotations.noBookmarksYet")}
       </Caption1>
     );
   }
@@ -65,13 +76,14 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) 
               {bookmark.label}
             </span>
           </button>
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={<DismissRegular />}
-            aria-label={`Remove bookmark: ${bookmark.label}`}
-            onClick={() => onRemove(bookmark.id)}
-          />
+          <Tooltip content={t("annotations.removeBookmark", { label: bookmark.label })} relationship="label">
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<DeleteRegular />}
+              onClick={() => onRemove(bookmark.id)}
+            />
+          </Tooltip>
         </li>
       ))}
     </ul>
@@ -93,10 +105,11 @@ interface HighlightListProps {
  * from the DOM just to render a list), and its note (if any — see
  * `HighlightListItem`). */
 const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove, onSetNote }) => {
+  const t = useTranslation();
   if (highlights.length === 0) {
     return (
       <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
-        No highlights yet — select some text while reading to highlight it.
+        {t("annotations.noHighlightsYet")}
       </Caption1>
     );
   }
@@ -128,6 +141,7 @@ interface HighlightListItemProps {
  * state independently (a `useState` inside a `.map()` callback isn't
  * possible; a real sub-component is the correct fix, not a workaround). */
 const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, onRemove, onSetNote }) => {
+  const t = useTranslation();
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState(highlight.note ?? "");
   const option = HighlightTheme.STYLES[highlight.style];
@@ -201,39 +215,48 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
             )}
           </span>
         </button>
-        <Button
-          appearance="subtle"
-          size="small"
-          icon={<NoteRegular />}
-          aria-label={highlight.note ? `Edit note: ${highlight.text}` : `Add note: ${highlight.text}`}
-          onClick={() => {
-            setDraftNote(highlight.note ?? "");
-            setIsEditingNote((open) => !open);
-          }}
-        />
-        <Button
-          appearance="subtle"
-          size="small"
-          icon={<DismissRegular />}
-          aria-label={`Remove highlight: ${highlight.text}`}
-          onClick={() => onRemove(highlight.id)}
-        />
+        <Tooltip
+          content={
+            highlight.note
+              ? t("annotations.editNote", { text: highlight.text })
+              : t("annotations.addNote", { text: highlight.text })
+          }
+          relationship="label"
+        >
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<NoteRegular />}
+            onClick={() => {
+              setDraftNote(highlight.note ?? "");
+              setIsEditingNote((open) => !open);
+            }}
+          />
+        </Tooltip>
+        <Tooltip content={t("annotations.removeHighlight", { text: highlight.text })} relationship="label">
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<DeleteRegular />}
+            onClick={() => onRemove(highlight.id)}
+          />
+        </Tooltip>
       </div>
       {isEditingNote && (
         <div style={{ padding: "0 10px 8px 34px" }}>
           <Textarea
             value={draftNote}
             onChange={(_event, data) => setDraftNote(data.value)}
-            placeholder="Add a note…"
+            placeholder={t("annotations.notePlaceholder")}
             resize="vertical"
             style={{ width: "100%" }}
           />
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
             <Button size="small" onClick={() => setIsEditingNote(false)}>
-              Cancel
+              {t("annotations.cancelNote")}
             </Button>
             <Button size="small" appearance="primary" onClick={saveNote}>
-              Save
+              {t("annotations.saveNote")}
             </Button>
           </div>
         </div>
@@ -294,6 +317,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
 
+  const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -337,7 +361,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
       <nav
         ref={navRef}
         tabIndex={-1}
-        aria-label="Bookmarks and highlights"
+        aria-label={t("annotations.panelAriaLabel")}
         style={{
           position: pinned ? "relative" : "absolute",
           outline: "none",
@@ -373,24 +397,20 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "bookmarks" ? "Bookmarks" : "Highlights"}
+            {activeTab === "bookmarks" ? t("annotations.bookmarksTab") : t("annotations.highlightsTab")}
           </Body1>
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={pinned ? <PinOffRegular /> : <PinRegular />}
-            aria-label={pinned ? "Unpin bookmarks panel" : "Pin bookmarks panel"}
-            title={pinned ? "Unpin" : "Pin open"}
-            onClick={onTogglePin}
-          />
-          {!pinned && (
+          <Tooltip content={pinned ? t("annotations.unpinPanel") : t("annotations.pinPanel")} relationship="label">
             <Button
               appearance="subtle"
               size="small"
-              icon={<DismissRegular />}
-              aria-label="Close bookmarks panel"
-              onClick={onRequestClose}
+              icon={pinned ? <PinOffRegular /> : <PinRegular />}
+              onClick={onTogglePin}
             />
+          </Tooltip>
+          {!pinned && (
+            <Tooltip content={t("annotations.closePanel")} relationship="label">
+              <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={onRequestClose} />
+            </Tooltip>
           )}
         </div>
         <TabList
@@ -400,10 +420,12 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
         >
           <Tab value="bookmarks" icon={<BookmarkRegular />}>
-            Bookmarks{bookmarks.length > 0 ? ` (${bookmarks.length})` : ""}
+            {t("annotations.bookmarksTab")}
+            {bookmarks.length > 0 ? ` (${bookmarks.length})` : ""}
           </Tab>
           <Tab value="highlights" icon={<HighlightRegular />}>
-            Highlights{highlights.length > 0 ? ` (${highlights.length})` : ""}
+            {t("annotations.highlightsTab")}
+            {highlights.length > 0 ? ` (${highlights.length})` : ""}
           </Tab>
         </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>

@@ -40,4 +40,21 @@ export const ru: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Осталось {count} страниц в этой главе",
   "pageFurniture.pageNumber": "Страница {number}",
   "error.somethingWentWrongHeadline": "Ёлки-палки, что-то пошло не так.",
+  "annotations.panelAriaLabel": "Закладки и выделения",
+  "annotations.pinPanel": "Закрепить панель закладок и выделений",
+  "annotations.unpinPanel": "Открепить панель закладок и выделений",
+  "annotations.closePanel": "Закрыть панель закладок и выделений",
+  "annotations.bookmarksTab": "Закладки",
+  "annotations.highlightsTab": "Выделения",
+  "annotations.noBookmarksYet":
+    "Пока нет закладок — используйте кнопку закладки на панели инструментов, чтобы сохранить своё место.",
+  "annotations.noHighlightsYet":
+    "Пока нет выделений — выделите текст во время чтения, чтобы отметить его.",
+  "annotations.removeBookmark": "Удалить закладку: {label}",
+  "annotations.editNote": "Редактировать заметку: {text}",
+  "annotations.addNote": "Добавить заметку: {text}",
+  "annotations.removeHighlight": "Удалить выделение: {text}",
+  "annotations.notePlaceholder": "Добавить заметку…",
+  "annotations.cancelNote": "Отмена",
+  "annotations.saveNote": "Сохранить",
 };

@@ -40,4 +40,21 @@ export const es: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Quedan {count} páginas en este capítulo",
   "pageFurniture.pageNumber": "Página {number}",
   "error.somethingWentWrongHeadline": "Oh caramba, algo salió mal.",
+  "annotations.panelAriaLabel": "Marcadores y resaltados",
+  "annotations.pinPanel": "Fijar panel de marcadores y resaltados",
+  "annotations.unpinPanel": "Dejar de fijar panel de marcadores y resaltados",
+  "annotations.closePanel": "Cerrar panel de marcadores y resaltados",
+  "annotations.bookmarksTab": "Marcadores",
+  "annotations.highlightsTab": "Resaltados",
+  "annotations.noBookmarksYet":
+    "Aún no hay marcadores — usa el botón de marcador en la barra de herramientas para guardar tu lugar.",
+  "annotations.noHighlightsYet":
+    "Aún no hay resaltados — selecciona algo de texto mientras lees para resaltarlo.",
+  "annotations.removeBookmark": "Eliminar marcador: {label}",
+  "annotations.editNote": "Editar nota: {text}",
+  "annotations.addNote": "Añadir nota: {text}",
+  "annotations.removeHighlight": "Eliminar resaltado: {text}",
+  "annotations.notePlaceholder": "Añadir una nota…",
+  "annotations.cancelNote": "Cancelar",
+  "annotations.saveNote": "Guardar",
 };
