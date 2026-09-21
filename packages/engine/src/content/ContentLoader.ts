@@ -9,6 +9,14 @@ import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
 
+/** Media types this engine can actually render a spine/content document
+ * as — every other type only ever makes it here via a `fallback` chain
+ * (see `ContentLoader.loadContentDocument`); real-world EPUB3 content
+ * documents are near-universally `application/xhtml+xml` (`image/svg+xml`
+ * is the spec's other sanctioned content document type, for an
+ * SVG-only page). */
+const SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"]);
+
 /** Thrown when a spine/content document can't be loaded or parsed, or a
  * requested manifest resource doesn't exist. */
 export class ContentLoaderError extends Error {
@@ -120,16 +128,39 @@ export class ContentLoader {
 
   /** Loads and parses any manifest item as a `ContentDocument` (not just
    * spine items — e.g. the Nav Document, or a content document reached via
-   * an internal link rather than linear spine order). */
+   * an internal link rather than linear spine order). If `manifestItem`'s
+   * own media type isn't one this engine can render as a content document,
+   * transparently walks its `fallback` chain for the first one that is —
+   * callers never need to know or care whether the item they asked for
+   * was actually used, or one of its fallbacks was (same "caller shouldn't
+   * need to know" precedent as `loadResourceBytes`'s font deobfuscation). */
   public async loadContentDocument(manifestItem: ManifestItem): Promise<ContentDocument> {
-    const rawText = await this.container.requireEntry(manifestItem.path).readText();
+    const resolved = this.resolveSupportedContentDocumentItem(manifestItem);
+    const rawText = await this.container.requireEntry(resolved.path).readText();
     const document = new DOMParser().parseFromString(rawText, "application/xhtml+xml");
 
     if (document.getElementsByTagName("parsererror").length > 0) {
-      throw new ContentLoaderError(`Malformed XHTML in content document at ${manifestItem.path}.`);
+      throw new ContentLoaderError(`Malformed XHTML in content document at ${resolved.path}.`);
     }
 
-    return new ContentDocument(manifestItem, document, rawText);
+    return new ContentDocument(resolved, document, rawText);
+  }
+
+  /** `manifestItem` itself if its media type is directly renderable,
+   * otherwise the first entry in its `fallback` chain that is. Throws if
+   * neither `manifestItem` nor anything in its fallback chain resolves to
+   * a renderable type — a genuinely unsupported spine item, not something
+   * silently degrading into a cryptic XHTML-parse failure. */
+  private resolveSupportedContentDocumentItem(manifestItem: ManifestItem): ManifestItem {
+    const chain = this.pkg.resolveManifestItemChain(manifestItem);
+    const supported = chain.find((item) => SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES.has(item.mediaType));
+    if (!supported) {
+      throw new ContentLoaderError(
+        `No renderable content document for manifest item "${manifestItem.id}" ` +
+          `(media type "${manifestItem.mediaType}"), and no fallback in its chain resolves to one.`,
+      );
+    }
+    return supported;
   }
 
   /** Reads the raw (already-decompressed) bytes of any resource in the

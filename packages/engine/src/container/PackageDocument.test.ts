@@ -443,3 +443,72 @@ describe("PackageDocument rendition:orientation", () => {
     expect(item.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("portrait");
   });
 });
+
+describe("PackageDocument manifest fallback chains", () => {
+  it("parses the fallback attribute on a manifest item", async () => {
+    const container = await EpubContainer.open(await loadFixture("manifest-fallback.epub"));
+    const pkg = await container.getPackageDocument();
+
+    expect(pkg.getManifestItem("ch1-pdf")?.fallback).toBe("ch1-html");
+    expect(pkg.getManifestItem("ch1-html")?.fallback).toBeUndefined();
+  });
+
+  it("resolves the fallback chain starting with the item itself", async () => {
+    const container = await EpubContainer.open(await loadFixture("manifest-fallback.epub"));
+    const pkg = await container.getPackageDocument();
+
+    const chain = pkg.resolveManifestItemChain(pkg.getManifestItem("ch1-pdf")!);
+
+    expect(chain.map((item) => item.id)).toEqual(["ch1-pdf", "ch1-html"]);
+  });
+
+  it("returns just the item itself when it has no fallback", async () => {
+    const container = await EpubContainer.open(await loadFixture("manifest-fallback.epub"));
+    const pkg = await container.getPackageDocument();
+
+    const chain = pkg.resolveManifestItemChain(pkg.getManifestItem("ch1-html")!);
+
+    expect(chain.map((item) => item.id)).toEqual(["ch1-html"]);
+  });
+
+  it("stops at a fallback id that doesn't resolve to a real manifest item", () => {
+    const xml = `<?xml version="1.0"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+          <dc:title>Test</dc:title>
+          <dc:language>en</dc:language>
+        </metadata>
+        <manifest>
+          <item id="a" href="a.xhtml" media-type="application/pdf" fallback="does-not-exist"/>
+        </manifest>
+        <spine></spine>
+      </package>`;
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    const chain = pkg.resolveManifestItemChain(pkg.getManifestItem("a")!);
+
+    expect(chain.map((item) => item.id)).toEqual(["a"]);
+  });
+
+  it("stops at a cyclic fallback chain rather than looping forever", () => {
+    const xml = `<?xml version="1.0"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+          <dc:title>Test</dc:title>
+          <dc:language>en</dc:language>
+        </metadata>
+        <manifest>
+          <item id="a" href="a.xhtml" media-type="application/pdf" fallback="b"/>
+          <item id="b" href="b.xhtml" media-type="application/pdf" fallback="a"/>
+        </manifest>
+        <spine></spine>
+      </package>`;
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    const chain = pkg.resolveManifestItemChain(pkg.getManifestItem("a")!);
+
+    expect(chain.map((item) => item.id)).toEqual(["a", "b"]);
+  });
+});

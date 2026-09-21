@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
+import { ManifestItem } from "../container/PackageDocument.js";
 import { ContentLoader, ContentLoaderError } from "./ContentLoader.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
@@ -97,5 +98,27 @@ describe("ContentLoader font de-obfuscation integration", () => {
 
     expect(idpfBytes).toEqual(expectedPlaintext);
     expect(adobeBytes).toEqual(expectedPlaintext);
+  });
+});
+
+describe("ContentLoader manifest fallback chain integration", () => {
+  it("transparently falls back to a supported content document when the spine item's own media type isn't renderable", async () => {
+    const container = await EpubContainer.open(await loadFixture("manifest-fallback.epub"));
+    const loader = await ContentLoader.create(container);
+
+    const doc = await loader.loadSpineDocument(0);
+
+    // The spine's own item is the unsupported "ch1-pdf"; the content
+    // document actually returned is its fallback, "ch1-html".
+    expect(doc.manifestItem.id).toBe("ch1-html");
+    expect(doc.rawText).toContain("XHTML fallback");
+  });
+
+  it("throws ContentLoaderError when neither the item nor anything in its fallback chain is renderable", async () => {
+    const container = await EpubContainer.open(await loadFixture("manifest-fallback.epub"));
+    const loader = await ContentLoader.create(container);
+    const deadEnd = new ManifestItem("dead-end", "OEBPS/ch1.pdf", "application/pdf", new Set());
+
+    await expect(loader.loadContentDocument(deadEnd)).rejects.toThrow(ContentLoaderError);
   });
 });

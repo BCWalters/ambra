@@ -75,6 +75,11 @@ export class ManifestItem {
     public readonly path: string,
     public readonly mediaType: string,
     public readonly properties: ReadonlySet<string>,
+    /** The manifest id this item's `fallback` attribute names — per
+     * spec, the reading system falls back to it when it can't render
+     * this item's own `mediaType` natively. See
+     * `PackageDocument.resolveManifestItemChain`. */
+    public readonly fallback: string | undefined = undefined,
   ) {}
 
   public hasProperty(property: string): boolean {
@@ -352,6 +357,29 @@ export class PackageDocument {
 
   public getManifestItem(id: string): ManifestItem | undefined {
     return this.manifestById.get(id);
+  }
+
+  /** Walks `item`'s `fallback` chain (per spec, for content whose
+   * `mediaType` a reading system can't render natively), returning
+   * `item` itself followed by each fallback in preference order. Stops
+   * at a fallback id that doesn't resolve to a real manifest item, or
+   * one already seen (a malformed cyclic chain — tolerated rather than
+   * thrown on, consistent with this engine's general approach to
+   * non-conformant input elsewhere). */
+  public resolveManifestItemChain(item: ManifestItem): ManifestItem[] {
+    const chain: ManifestItem[] = [item];
+    const seenIds = new Set([item.id]);
+    let current = item;
+    while (current.fallback !== undefined) {
+      const next = this.manifestById.get(current.fallback);
+      if (!next || seenIds.has(next.id)) {
+        break;
+      }
+      chain.push(next);
+      seenIds.add(next.id);
+      current = next;
+    }
+    return chain;
   }
 
   /** Finds the manifest item whose (already archive-relative) `path`
@@ -664,13 +692,14 @@ export class PackageDocument {
       const href = requireAttribute(itemEl, "href", opfPath, "manifest item");
       const mediaType = requireAttribute(itemEl, "media-type", opfPath, "manifest item");
       const properties = parsePropertyList(itemEl.getAttribute("properties"));
+      const fallback = itemEl.getAttribute("fallback") ?? undefined;
 
       // Manifest hrefs are relative to the OPF file's own directory, not
       // the archive root — resolveEpubPath resolves relative to opfPath's
       // directory (dropping opfPath's own final path segment).
       const path = resolveEpubPath(opfPath, href);
 
-      return new ManifestItem(id, path, mediaType, properties);
+      return new ManifestItem(id, path, mediaType, properties, fallback);
     });
   }
 
