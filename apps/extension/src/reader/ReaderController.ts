@@ -1,7 +1,6 @@
 import {
   AccessibilityController,
   BookPaginationEstimator,
-  BookSearch,
   ContentLoader,
   EpubCfi,
   EpubContainer,
@@ -10,7 +9,6 @@ import {
   FixedSpreadHost,
   Locator,
   LocatorResolver,
-  MIN_QUERY_LENGTH,
   NavigationDocument,
   NCX_MEDIA_TYPE,
   PaginatedContentHost,
@@ -30,12 +28,13 @@ import type {
   PackageDocument,
   Page,
   PageTheme,
-  SearchResult,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
 import { BookmarkManager } from "./BookmarkManager.js";
+import { SearchCoordinator } from "./SearchCoordinator.js";
+import type { SearchResultItem } from "./SearchCoordinator.js";
 import { applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
 import { findTextRangesInDocument } from "./findTextRangesInDocument.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
@@ -439,13 +438,7 @@ export interface NoteMarkerState {
   readonly top: number;
 }
 
-/** See `ReaderSnapshot.searchResults` — a `SearchResult` (see the engine)
- * plus the chapter label its spine item resolves to, computed once when
- * the result is found (see `ReaderController.search`) rather than by
- * the shell re-deriving it from `spineIndex` on every render. */
-export interface SearchResultItem extends SearchResult {
-  readonly chapterLabel: string;
-}
+export type { SearchResultItem } from "./SearchCoordinator.js";
 
 /** See `ReaderSnapshot.imageViewer`. `src` is whatever the content
  * document's own `<img>` element resolved to (already a `blob:` URL for
@@ -699,32 +692,13 @@ export class ReaderController {
    * listeners (see `setUpHighlightSelection`) — same re-created-per-
    * spine-item lifecycle as `contentInteractionCleanup`. */
   private highlightSelectionCleanup: (() => void) | undefined;
-  /** Book-wide full-text search — see `BookSearch`'s doc comment (no
-   * pre-built index; searches spine item by spine item, progressively,
-   * per explicit product direction). Created once in the constructor
-   * (it only needs `contentLoader`/`locatorResolver`/`pkg.spine`, all
-   * available immediately — unlike `bookPagination`, it has no
-   * dependency on a live DOM/hidden measurement container at all). */
-  private readonly bookSearch: BookSearch;
-  private searchQuery = "";
-  private searchResults: SearchResultItem[] = [];
-  private isSearching = false;
-  /** The term currently painted via `applySearchHighlightToCurrentHost`
-   * (issue #100) — `undefined` whenever nothing should be highlighted.
-   * Deliberately its own field, not derived from `searchQuery` on every
-   * read: it has a longer/different lifetime than the query text itself
-   * (see `clearSearchHighlightUnlessPinned` and `searchPanelPinned`
-   * below) — e.g. it outlives the Search panel auto-closing right after
-   * `goToSearchResult`, and it's cleared by an ordinary page turn even
-   * while the query text itself is left untouched in the search box. */
-  private searchHighlightQuery: string | undefined;
-  /** Mirrors the shell's `SearchPanel`'s own pinned/docked state (kept
-   * in sync via `setSearchPanelState`, called from `ReaderApp`) — the
-   * only thing that decides whether `searchHighlightQuery` survives an
-   * ordinary page turn (issue #100: "...unless the search panel is
-   * pinned, in which case keep highlighting until the panel is
-   * closed"). */
-  private searchPanelPinned = false;
+  /** Book-wide full-text search plus the live "highlight matches on the
+   * current page" spotlight (issue #100) — see `SearchCoordinator`'s doc
+   * comment. Created once in the constructor (it only needs
+   * `contentLoader`/`locatorResolver`/`pkg.spine`, all available
+   * immediately — unlike `bookPagination`, it has no dependency on a
+   * live DOM/hidden measurement container at all). */
+  private readonly searchCoordinator: SearchCoordinator;
 
   /** Detaches the current spine item's in-content interaction listeners
    * (link clicks, and the image-viewer's click/keyboard triggers) — see
@@ -776,7 +750,12 @@ export class ReaderController {
     private readonly bookId: string,
     private readonly library: LibraryDatabase,
   ) {
-    this.bookSearch = new BookSearch(contentLoader, locatorResolver, pkg.spine);
+    this.searchCoordinator = new SearchCoordinator(contentLoader, locatorResolver, pkg.spine, {
+      goToCfi: (cfi) => this.goToCfi(cfi),
+      chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
+      repaintHighlight: () => this.applySearchHighlightToCurrentHost(),
+      notify: () => this.notify(),
+    });
     this.bookmarks = new BookmarkManager(library, bookId, locatorResolver, {
       currentPosition: () => this.host?.currentPosition(),
       currentPagesAndDocuments: () => this.currentPagesAndDocuments(),
@@ -935,9 +914,7 @@ export class ReaderController {
         highlights: Array.from(this.highlightsBySpineIndex.values())
           .flat()
           .sort((a, b) => this.compareHighlightsByBookOrder(a, b)),
-        searchQuery: this.searchQuery,
-        searchResults: this.searchResults,
-        isSearching: this.isSearching,
+        ...this.searchCoordinator.snapshot,
       };
     }
     return this.cachedSnapshot;
@@ -1180,97 +1157,20 @@ export class ReaderController {
     await this.goToCfi(cfi);
   }
 
-  /** Navigates to a search result's position — see `goToBookmark`'s doc
-   * comment; a search result's CFI is just another "previously
-   * generated position" like a bookmark or highlight's. Unlike those,
-   * though, this one re-arms `searchHighlightQuery` right after
-   * navigating (issue #100) — the whole point of picking a result is to
-   * see the term highlighted on the page it landed on, even though the
-   * Search panel typically auto-closes the instant a result's picked
-   * (see `ReaderApp`'s `handleSelectSearchResult`) well before any
-   * `setSearchPanelState(false, ...)` call could otherwise be mistaken
-   * for "the reader's done searching, stop highlighting". */
+  /** Navigates to a search result's position — see `SearchCoordinator.goToResult`. */
   public async goToSearchResult(cfi: string): Promise<void> {
-    await this.goToCfi(cfi);
-    const trimmed = this.searchQuery.trim();
-    this.searchHighlightQuery = trimmed.length >= MIN_QUERY_LENGTH ? trimmed : undefined;
-    this.applySearchHighlightToCurrentHost();
-    this.notify();
+    await this.searchCoordinator.goToResult(cfi);
   }
 
-  /** (Re-)starts a book-wide search for `query`, replacing any previous
-   * (possibly still in-flight) search's results — see `BookSearch` for
-   * the actual progressive, non-indexed search mechanism and its
-   * cancellation semantics. Results accumulate into `searchResults` as
-   * they stream in, each one triggering a `notify()` so the shell's
-   * results list grows live rather than waiting for the whole book to
-   * finish. An empty/too-short `query` clears any existing results
-   * immediately rather than running a pointless (or, for a 1-2 character
-   * query, book-wide-and-meaningless) search.
-   *
-   * Also drives issue #100's "highlight instances of the term in the
-   * visible spread" live, independent of `bookSearch`'s own book-wide,
-   * progressively-streamed results: this reader's actually-visible
-   * content document(s) are already right here, so there's no reason to
-   * wait for the (possibly still-scanning) rest of the book before
-   * showing what's already on screen. */
+  /** (Re-)starts a book-wide search — see `SearchCoordinator.search`. */
   public search(query: string): void {
-    this.searchQuery = query;
-    this.searchResults = [];
-    this.isSearching = query.trim().length > 0;
-    const trimmed = query.trim();
-    this.searchHighlightQuery = trimmed.length >= MIN_QUERY_LENGTH ? trimmed : undefined;
-    this.applySearchHighlightToCurrentHost();
-    this.notify();
-    void this.bookSearch.search(
-      query,
-      (result) => {
-        this.searchResults = [
-          ...this.searchResults,
-          { ...result, chapterLabel: this.chapterLabel(result.spineIndex) },
-        ];
-        this.notify();
-      },
-      () => {
-        this.isSearching = false;
-        this.notify();
-      },
-    );
+    this.searchCoordinator.search(query);
   }
 
   /** Called by `ReaderApp` whenever the Search panel's own `open`/
-   * `pinned` state changes — the controller has no independent way to
-   * observe either, since both live as plain React state in `ReaderApp`
-   * (see `SearchPanel`'s own doc comment on why only Search, of the
-   * flyout panels, supports pinning). Needed for two things:
-   *
-   * 1. Recomputing `searchHighlightQuery` on *opening* — reopening the
-   *    panel without retyping anything never re-triggers `search()`
-   *    itself (its debounce effect only fires when the input's own text
-   *    actually changes), so without this, re-showing a previously
-   *    closed panel with the same lingering query would leave whatever
-   *    page the reader's now on unhighlighted until they typed a single
-   *    character.
-   * 2. Issue #100's pinned "...until the panel is closed" rule: only a
-   *    panel that *was* pinned clears the spotlight the moment it
-   *    closes; an ordinary (never-pinned) close deliberately leaves it
-   *    alone, to persist until the next real page turn instead (see
-   *    `clearSearchHighlightUnlessPinned`) — by the time `open` goes
-   *    false, `pinned` has always already been forced false too (it's
-   *    derived from `open && pinnedToggle` in `ReaderApp`), so only the
-   *    *previous* pinned state, captured here before it's overwritten,
-   *    can actually distinguish the two. */
+   * `pinned` state changes — see `SearchCoordinator.setPanelState`. */
   public setSearchPanelState(open: boolean, pinned: boolean): void {
-    const wasPinned = this.searchPanelPinned;
-    this.searchPanelPinned = pinned;
-    if (open) {
-      const trimmed = this.searchQuery.trim();
-      this.searchHighlightQuery = trimmed.length >= MIN_QUERY_LENGTH ? trimmed : undefined;
-    } else if (wasPinned) {
-      this.searchHighlightQuery = undefined;
-    }
-    this.applySearchHighlightToCurrentHost();
-    this.notify();
+    this.searchCoordinator.setPanelState(open, pinned);
   }
 
   /** Parses `cfi`, finds the spine item it targets by its package steps,
@@ -2557,20 +2457,20 @@ export class ReaderController {
   /** Re-scans every content document the current host owns (identical
    * scope to `applyHighlightsToCurrentHost`, including its merged-
    * spread tail-document handling) for occurrences of
-   * `searchHighlightQuery` and paints them via the dedicated
-   * `HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME` `::highlight()` (issue
-   * #100) — entirely separate from `applyHighlightsToDocument`'s
+   * `SearchCoordinator.currentHighlightQuery` and paints them via the
+   * dedicated `HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME` `::highlight()`
+   * (issue #100) — entirely separate from `applyHighlightsToDocument`'s
    * persisted, reader-authored `HighlightStyle` highlights just above,
    * since this one is transient (never saved) and keyed off the live
    * search query rather than a spine index. Called both from
    * `applyHighlightsToCurrentHost` above (refreshes for free on every
-   * document swap) and directly by `search`/`goToSearchResult`/
-   * `setSearchPanelState` whenever `searchHighlightQuery` itself
-   * changes without any document swap at all (e.g. typing a fresh query
-   * while staying on the same page). No-op for fixed-layout content —
-   * consistent with `applyHighlightsToCurrentHost`'s own identical
-   * early return, since FXL content already has no in-book highlighting
-   * of any kind (see `addHighlight`'s guard). */
+   * document swap) and via `SearchCoordinatorContext.repaintHighlight`
+   * whenever `currentHighlightQuery` itself changes without any document
+   * swap at all (e.g. typing a fresh query while staying on the same
+   * page). No-op for fixed-layout content — consistent with
+   * `applyHighlightsToCurrentHost`'s own identical early return, since
+   * FXL content already has no in-book highlighting of any kind (see
+   * `addHighlight`'s guard). */
   private applySearchHighlightToCurrentHost(): void {
     if (this.isFixedLayoutHost(this.host)) {
       return;
@@ -2588,25 +2488,16 @@ export class ReaderController {
   }
 
   private applySearchHighlightToDocument(doc: Document): void {
-    const query = this.searchHighlightQuery;
+    const query = this.searchCoordinator.currentHighlightQuery;
     applySearchMatchRanges(doc, query ? findTextRangesInDocument(doc, query) : []);
   }
 
-  /** Issue #100: clears the live search spotlight (`searchHighlightQuery`)
-   * on an ordinary "leave this page behind" navigation — a page turn, a
-   * chapter jump, a bookmark/highlight jump, a TOC jump, or a scrubber
-   * drag — unless the Search panel is currently pinned, in which case
-   * it deliberately survives (the whole point of pinning: keep browsing
-   * naturally with the spotlight following whatever's now on screen,
-   * only actually going away once the panel itself is closed — see
-   * `setSearchPanelState`). A no-op (skips the otherwise-harmless extra
-   * repaint) when nothing's currently highlighted to begin with. */
+  /** Issue #100: clears the live search spotlight on an ordinary "leave
+   * this page behind" navigation — a page turn, a chapter jump, a
+   * bookmark/highlight jump, a TOC jump, or a scrubber drag — see
+   * `SearchCoordinator.clearHighlightUnlessPinned`. */
   private clearSearchHighlightUnlessPinned(): void {
-    if (this.searchPanelPinned || this.searchHighlightQuery === undefined) {
-      return;
-    }
-    this.searchHighlightQuery = undefined;
-    this.applySearchHighlightToCurrentHost();
+    this.searchCoordinator.clearHighlightUnlessPinned();
   }
 
   /** Recomputes `noteMarkers` — one small marker per highlight *with a
@@ -7414,7 +7305,7 @@ export class ReaderController {
     this.contentInteractionCleanup?.();
     this.dragCleanup?.();
     this.highlightSelectionCleanup?.();
-    this.bookSearch.cancel();
+    this.searchCoordinator.dispose();
     this.host?.dispose();
     this.hostWrapperEl?.remove();
     this.bookPagination?.dispose();
