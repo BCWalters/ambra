@@ -77,6 +77,8 @@ export const ru: StringCatalog = {
   "bookDetails.copyright": "Авторские права",
   "bookDetails.descriptionSourcePrefix": "Источник:",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "Доступность",
+  "bookDetails.accessibilityFeatures": "Функции доступности",
   "bookDetails.goToPage": "Перейти на страницу…",
   "bookDetails.goToPercentage": "Перейти к проценту…",
   "bookDetails.identifier": "Идентификатор",

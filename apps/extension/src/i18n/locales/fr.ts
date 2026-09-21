@@ -77,6 +77,8 @@ export const fr: StringCatalog = {
   "bookDetails.copyright": "Droits d'auteur",
   "bookDetails.descriptionSourcePrefix": "via",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "Accessibilité",
+  "bookDetails.accessibilityFeatures": "Fonctionnalités d'accessibilité",
   "bookDetails.goToPage": "Aller à la page…",
   "bookDetails.goToPercentage": "Aller au pourcentage…",
   "bookDetails.identifier": "Identifiant",

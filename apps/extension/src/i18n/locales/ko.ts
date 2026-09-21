@@ -166,6 +166,8 @@ export const ko: StringCatalog = {
   "bookDetails.goToPage": "페이지로 이동…",
   "bookDetails.goToPercentage": "백분율로 이동…",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "접근성",
+  "bookDetails.accessibilityFeatures": "접근성 기능",
   "goTo.pageTitle": "페이지로 이동",
   "goTo.percentageTitle": "백분율로 이동",
   "goTo.pageCountMeasuring": "이 책의 페이지 수를 아직 계산하는 중입니다 — 잠시 후 다시 시도하세요.",

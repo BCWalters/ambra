@@ -183,6 +183,24 @@ export interface BookIdentifier {
   readonly scheme: string | undefined;
 }
 
+/** EPUB Accessibility 1.1 metadata, parsed from the schema.org `a11y`
+ * vocabulary's `<meta property="schema:...">` elements. All optional —
+ * most real-world books declare none of this at all. */
+export interface AccessibilityMetadata {
+  /** `schema:accessMode` (e.g. "textual", "visual") — every sensory
+   * modality needed to consume the content, one meta element each. */
+  readonly accessModes: readonly string[];
+  /** `schema:accessibilityFeature` (e.g. "structuralNavigation",
+   * "alternativeText", "MathML") — content features present. */
+  readonly accessibilityFeatures: readonly string[];
+  /** `schema:accessibilityHazard` (e.g. "flashing", "noFlashingHazard")
+   * — hazards the content does or doesn't pose. */
+  readonly accessibilityHazards: readonly string[];
+  /** `schema:accessibilitySummary` — free-text human-readable summary
+   * of the book's accessibility, when the publisher provides one. */
+  readonly accessibilitySummary: string | undefined;
+}
+
 /** Core Dublin Core / package metadata read from the OPF `<metadata>`
  * element, plus the `rendition:*` metadata used to pick reflowable vs
  * fixed-layout rendering. */
@@ -262,6 +280,8 @@ export class PackageMetadata {
      * Individual spine items have no per-item override for this property
      * (unlike `rendition:layout`) — spec defines it package-wide only. */
     public readonly renditionSpread: RenditionSpread,
+    /** EPUB Accessibility 1.1 metadata — see `AccessibilityMetadata`. */
+    public readonly accessibility: AccessibilityMetadata,
   ) {}
 }
 
@@ -418,6 +438,7 @@ export class PackageDocument {
     const contributors = getElementsTextNS(metadataEl, DC_NAMESPACE, "contributor");
     const metaEntries = PackageDocument.parseMetaEntries(metadataEl);
     const creators = getElementsTextNS(metadataEl, DC_NAMESPACE, "creator");
+    const accessibility = PackageDocument.parseAccessibilityMetadata(metadataEl);
 
     return new PackageMetadata(
       identifier,
@@ -436,6 +457,7 @@ export class PackageDocument {
       metaEntries,
       creators,
       renditionSpread,
+      accessibility,
     );
   }
 
@@ -568,6 +590,28 @@ export class PackageDocument {
       (meta) => meta.getAttribute("property") === "rendition:viewport",
     );
     return parseViewportDimensions(viewportMeta?.textContent);
+  }
+
+  /** Parses EPUB Accessibility 1.1's `schema:accessMode`/
+   * `accessibilityFeature`/`accessibilityHazard`/`accessibilitySummary`
+   * `<meta property="...">` elements — unlike `rendition:layout`/
+   * `rendition:spread`, the first three are legitimately repeatable
+   * (a book can declare several access modes/features/hazards), so
+   * every matching element is collected rather than just the first. */
+  private static parseAccessibilityMetadata(metadataEl: Element): AccessibilityMetadata {
+    const metaElements = getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta");
+    const valuesFor = (property: string): string[] =>
+      metaElements
+        .filter((meta) => meta.getAttribute("property") === property)
+        .map((meta) => meta.textContent?.trim())
+        .filter((value): value is string => !!value);
+
+    return {
+      accessModes: valuesFor("schema:accessMode"),
+      accessibilityFeatures: valuesFor("schema:accessibilityFeature"),
+      accessibilityHazards: valuesFor("schema:accessibilityHazard"),
+      accessibilitySummary: valuesFor("schema:accessibilitySummary")[0],
+    };
   }
 
   private static parseManifest(manifestEl: Element, opfPath: string): ManifestItem[] {

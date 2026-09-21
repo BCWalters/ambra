@@ -2996,6 +2996,7 @@ export class ReaderController {
       fileName: libraryRecord?.fileName,
       rights: this.pkg.metadata.rights,
       coverUrl: this.cachedCoverUrl,
+      accessibility: this.pkg.metadata.accessibility,
     };
   }
 

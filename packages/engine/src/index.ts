@@ -9,7 +9,7 @@ export {
   NCX_MEDIA_TYPE,
   parseViewportDimensions,
 } from "./container/PackageDocument.js";
-export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry } from "./container/PackageDocument.js";
+export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry, AccessibilityMetadata } from "./container/PackageDocument.js";
 export type {
   RenditionSpread,
   PageProgressionDirection,

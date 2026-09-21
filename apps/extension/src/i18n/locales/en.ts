@@ -200,6 +200,8 @@ export interface StringCatalog {
   "bookDetails.goToPage": string;
   "bookDetails.goToPercentage": string;
   "bookDetails.epubInspector": string;
+  "bookDetails.accessibilitySummary": string;
+  "bookDetails.accessibilityFeatures": string;
   "goTo.pageTitle": string;
   "goTo.percentageTitle": string;
   "goTo.pageCountMeasuring": string;
@@ -374,6 +376,8 @@ export const en: StringCatalog = {
   "bookDetails.goToPage": "Go to Page…",
   "bookDetails.goToPercentage": "Go to Percentage…",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "Accessibility",
+  "bookDetails.accessibilityFeatures": "Accessibility features",
   "goTo.pageTitle": "Go to Page",
   "goTo.percentageTitle": "Go to Percentage",
   "goTo.pageCountMeasuring": "Still measuring this book's page count — try again in a moment.",

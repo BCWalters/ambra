@@ -134,6 +134,8 @@ export const es: StringCatalog = {
   "bookDetails.goToPage": "Ir a la página…",
   "bookDetails.goToPercentage": "Ir al porcentaje…",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "Accesibilidad",
+  "bookDetails.accessibilityFeatures": "Funciones de accesibilidad",
   "goTo.pageTitle": "Ir a la página",
   "goTo.percentageTitle": "Ir al porcentaje",
   "goTo.pageCountMeasuring":

@@ -75,6 +75,8 @@ export const ja: StringCatalog = {
   "bookDetails.copyright": "著作権",
   "bookDetails.descriptionSourcePrefix": "提供元",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "アクセシビリティ",
+  "bookDetails.accessibilityFeatures": "アクセシビリティ機能",
   "bookDetails.goToPage": "ページへ移動…",
   "bookDetails.goToPercentage": "割合へ移動…",
   "bookDetails.identifier": "識別子",

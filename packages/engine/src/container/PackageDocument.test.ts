@@ -335,3 +335,59 @@ describe("PackageDocument additional metadata (description/publisher/identifiers
     ]);
   });
 });
+
+describe("PackageDocument accessibility metadata (EPUB Accessibility 1.1)", () => {
+  const buildXml = (metadataInner: string): string => `<?xml version="1.0"?>
+    <package xmlns="http://www.idpf.org/2007/opf" xmlns:opf="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+        <dc:title>Test</dc:title>
+        <dc:language>en</dc:language>
+        ${metadataInner}
+      </metadata>
+      <manifest></manifest>
+      <spine></spine>
+    </package>`;
+
+  it("defaults to empty/undefined when no accessibility metadata is declared", () => {
+    const pkg = PackageDocument.parse(buildXml(""), "OEBPS/content.opf");
+
+    expect(pkg.metadata.accessibility).toEqual({
+      accessModes: [],
+      accessibilityFeatures: [],
+      accessibilityHazards: [],
+      accessibilitySummary: undefined,
+    });
+  });
+
+  it("collects every repeated accessMode/accessibilityFeature/accessibilityHazard meta", () => {
+    const xml = buildXml(`
+      <meta property="schema:accessMode">textual</meta>
+      <meta property="schema:accessMode">visual</meta>
+      <meta property="schema:accessibilityFeature">structuralNavigation</meta>
+      <meta property="schema:accessibilityFeature">alternativeText</meta>
+      <meta property="schema:accessibilityHazard">noFlashingHazard</meta>
+    `);
+
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.accessibility.accessModes).toEqual(["textual", "visual"]);
+    expect(pkg.metadata.accessibility.accessibilityFeatures).toEqual([
+      "structuralNavigation",
+      "alternativeText",
+    ]);
+    expect(pkg.metadata.accessibility.accessibilityHazards).toEqual(["noFlashingHazard"]);
+  });
+
+  it("parses a single accessibilitySummary", () => {
+    const xml = buildXml(`
+      <meta property="schema:accessibilitySummary">This publication conforms to WCAG 2.1 Level AA.</meta>
+    `);
+
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.accessibility.accessibilitySummary).toBe(
+      "This publication conforms to WCAG 2.1 Level AA.",
+    );
+  });
+});

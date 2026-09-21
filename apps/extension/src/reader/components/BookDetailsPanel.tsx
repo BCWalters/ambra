@@ -342,6 +342,19 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
               ))}
 
+              <DetailRow
+                label={t("bookDetails.accessibilitySummary")}
+                value={details.accessibility.accessibilitySummary}
+              />
+              <DetailRow
+                label={t("bookDetails.accessibilityFeatures")}
+                value={
+                  details.accessibility.accessibilityFeatures.length > 0
+                    ? details.accessibility.accessibilityFeatures.join(", ")
+                    : undefined
+                }
+              />
+
               {/* "Go to Page…"/"Go to Percentage…" — relocated from the
                   toolbar's old Navigate menu (see this component's doc
                   comment). Hidden entirely for fixed-layout content,

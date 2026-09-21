@@ -75,6 +75,8 @@ export const zh: StringCatalog = {
   "bookDetails.copyright": "版权",
   "bookDetails.descriptionSourcePrefix": "来自",
   "bookDetails.epubInspector": "EPUB Inspector",
+  "bookDetails.accessibilitySummary": "无障碍",
+  "bookDetails.accessibilityFeatures": "无障碍功能",
   "bookDetails.goToPage": "转到页面…",
   "bookDetails.goToPercentage": "转到百分比…",
   "bookDetails.identifier": "标识符",

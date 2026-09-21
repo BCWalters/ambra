@@ -1,4 +1,5 @@
 import type {
+  AccessibilityMetadata,
   BookIdentifier,
   FontFamilyChoice,
   NavPoint,
@@ -35,6 +36,7 @@ export interface BookDetails {
   readonly rights: string | undefined;
   /** Object URL for the cover image, revoked on `dispose()`. */
   readonly coverUrl: string | undefined;
+  readonly accessibility: AccessibilityMetadata;
 }
 
 /** One file inside the EPUB archive, for the file-structure tab of the
