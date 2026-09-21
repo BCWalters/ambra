@@ -3747,6 +3747,17 @@ export class ReaderController {
       this.highlightInteraction.updateNoteMarkers();
       this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
+      // properties="remote-resources" (EPUB3) is the book's own
+      // declaration that this item may need network access this reader's
+      // CSP unconditionally blocks — logged so a reader-reported "this
+      // looks broken" bug is immediately distinguishable from a genuinely
+      // corrupted book, rather than a silent, unexplained gap.
+      if (this.pkg.spine[spineIndex]?.manifestItem.hasProperty("remote-resources")) {
+        this.diagnostics.record(
+          `openSpineItem spineIndex=${spineIndex} declares remote-resources; ` +
+            `network access is not available, so any remote reference will not display`,
+        );
+      }
       this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex} token=${token}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
