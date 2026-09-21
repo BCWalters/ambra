@@ -5,6 +5,9 @@
  */
 
 export { openReaderTab } from "../navigation.js";
+import { registerEpubDownloadDetection } from "./epubDownloadDetection.js";
+
+registerEpubDownloadDetection();
 
 chrome.runtime.onInstalled.addListener(() => {
   // Nothing to initialize on install — `LibraryDatabase` creates its
