@@ -3728,11 +3728,24 @@ export class ReaderController {
           // merging forward before reveal so lone pages do not show a
           // blank facing column. Skip this when restoring an explicit
           // target position or explicit last-page behavior.
+          //
+          // `!options.landOnLastPage` (not `options.landOnLastPage ===
+          // undefined`) is deliberate: every forward-turn caller passes
+          // `landOnLastPage: direction === -1`, i.e. an explicit `false`,
+          // not an omitted property. A strict `undefined` check treated
+          // that `false` as "an explicit last-page request" too, so an
+          // ordinary forward turn into a lone/unpaired chapter (issue
+          // #103) never took this branch at all — the reader saw one
+          // real turn land on a spread with a visibly blank facing
+          // column, only merging forward reactively on the *next* turn.
+          // Every other `landOnLastPage` check in this method already
+          // treats it as a plain boolean (see below); this one needs to
+          // match.
           if (
             host.secondPageIndex === undefined &&
             options.bridgeCfi === undefined &&
             options.fragment === undefined &&
-            options.landOnLastPage === undefined &&
+            !options.landOnLastPage &&
             options.landOnPageIndex === undefined &&
             options.landOnFractionInItem === undefined
           ) {

@@ -578,4 +578,45 @@ test.describe("paginated reflowable navigation correctness", () => {
       await context.close();
     }
   });
+
+  test("two-page spread: an ordinary forward turn landing on a lone unpaired chapter merges the next chapter in immediately, never showing a blank facing column (issue #103)", async () => {
+    // A real book (not a synthetic fixture) whose short front-matter
+    // sections (each its own spine item — "Using Code Examples",
+    // "Safari® Books Online", "How to Contact Us", ...) are exactly the
+    // kind of short, single-page-when-paginated chapters this bug needs:
+    // reached via an *ordinary* forward turn (`openSpineItem`'s own
+    // `landOnLastPage: direction === -1` — an explicit `false`, not an
+    // omitted property), not the direct chapter-start/chapter-end merge
+    // paths already covered by the synthetic fixtures above.
+    const ACCESSIBLE_EPUB_3 = path.resolve(here, "..", "real-books", "accessible-epub-3.epub");
+    const { context, readerPage } = await launchReader(ACCESSIBLE_EPUB_3, {
+      viewport: { width: 1546, height: 878 },
+    });
+    try {
+      // The right-column slot sits at roughly half the viewport width
+      // (see `SpreadPaginatedHost`'s own layout) — an iframe positioned
+      // there that's `visibility: hidden` (rather than simply absent)
+      // is the bug's exact signature: content silently failed to merge
+      // in, rather than there genuinely being no more book left.
+      const rightSlotHidden = () =>
+        readerPage.evaluate(() => {
+          const iframes = Array.from(document.querySelectorAll("iframe"));
+          return iframes.some((f) => {
+            const rect = f.getBoundingClientRect();
+            return rect.x > 700 && getComputedStyle(f).visibility === "hidden";
+          });
+        });
+
+      // Twelve pages in is nowhere near this 153-page book's real end,
+      // so a hidden right-slot column at any of these stops can only be
+      // this bug, never a legitimate last-page-of-the-book case.
+      for (let press = 0; press < 12; press++) {
+        await readerPage.keyboard.press("ArrowRight");
+        await readerPage.waitForTimeout(700);
+        expect(await rightSlotHidden(), `press ${press}: right column present but hidden`).toBe(false);
+      }
+    } finally {
+      await context.close();
+    }
+  });
 });
