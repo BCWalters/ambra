@@ -32,12 +32,3 @@ export function useChromeTheme(): ChromeThemePalette {
   const choice = useContext(ChromeThemeContext);
   return CHROME_THEMES[choice];
 }
-
-/** The raw `ChromeThemeChoice` id (e.g. `"ambra"`), for the rare case a
- * component needs to branch on *which* theme is active rather than just
- * reading its palette — currently only the Ambra-specific scrubber
- * shimmer (`ProgressScrubber`), which is deliberately not something
- * every theme gets (see that component's own doc comment). */
-export function useChromeThemeChoice(): ChromeThemeChoice {
-  return useContext(ChromeThemeContext);
-}

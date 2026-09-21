@@ -3,7 +3,7 @@ import type { FC, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPoin
 import { Caption1 } from "@fluentui/react-components";
 import type { PreviewPosition, ReaderSnapshot } from "../ReaderController.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
-import { useChromeTheme, useChromeThemeChoice } from "../ChromeThemeContext.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 
@@ -11,16 +11,6 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
  * window's left/right edges — purely cosmetic breathing room, not a
  * layout necessity. */
 const POPUP_EDGE_MARGIN = 8;
-
-/** A pale, warm highlight tone used only by the Ambra theme's scrubber
- * shimmer below — deliberately not derived from `ChromeThemePalette`,
- * since every other theme has no shimmer at all to need one. */
-const AMBRA_SHIMMER_HIGHLIGHT = "#fff3d6";
-
-/** Global `@keyframes` name for the shimmer sweep — module-scoped so the
- * inline `<style>` that declares it and the `animation` shorthand that
- * references it can never drift out of sync. */
-const AMBRA_SHIMMER_KEYFRAMES = "ambra-scrubber-shimmer";
 
 export interface ProgressScrubberProps {
   snapshot: ReaderSnapshot;
@@ -103,17 +93,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   onSeek,
 }) => {
   const chromeTheme = useChromeTheme();
-  const chromeThemeChoice = useChromeThemeChoice();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
-  // Ambra-only, and only while the user allows motion (issue #86
-  // follow-up: "does a subtle shimmer look tasteful or gimmicky?" —
-  // trying it live before deciding). A slow sweep of a lighter highlight
-  // across the filled track's own accent color, evoking light catching
-  // a cut gem — the same idea the theme's own icon/label already lean
-  // on. Every other theme keeps the plain flat accent fill unchanged.
-  const ambraShimmerEnabled = chromeThemeChoice === "ambra" && !reduceMotion;
-  const ambraShimmerGradient = `linear-gradient(90deg, ${chromeTheme.accent} 0%, ${chromeTheme.accent} 35%, ${AMBRA_SHIMMER_HIGHLIGHT} 50%, ${chromeTheme.accent} 65%, ${chromeTheme.accent} 100%)`;
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
@@ -530,27 +511,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           }}
         />
         <div
-          style={
-            ambraShimmerEnabled
-              ? {
-                  position: "absolute",
-                  left: 0,
-                  width: `${displayFraction * 100}%`,
-                  height: 4,
-                  borderRadius: 2,
-                  background: ambraShimmerGradient,
-                  backgroundSize: "250% 100%",
-                  animation: `${AMBRA_SHIMMER_KEYFRAMES} 3.2s ease-in-out infinite`,
-                }
-              : {
-                  position: "absolute",
-                  left: 0,
-                  width: `${displayFraction * 100}%`,
-                  height: 4,
-                  borderRadius: 2,
-                  background: chromeTheme.accent,
-                }
-          }
+          style={{
+            position: "absolute",
+            left: 0,
+            width: `${displayFraction * 100}%`,
+            height: 4,
+            borderRadius: 2,
+            background: chromeTheme.accent,
+          }}
         />
         <div
           style={{
@@ -565,9 +533,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           }}
         />
       </div>
-      {ambraShimmerEnabled && (
-        <style>{`@keyframes ${AMBRA_SHIMMER_KEYFRAMES} { 0% { background-position: 200% 0; } 100% { background-position: -50% 0; } }`}</style>
-      )}
     </div>
   );
 };
