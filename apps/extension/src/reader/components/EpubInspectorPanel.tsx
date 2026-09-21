@@ -468,11 +468,19 @@ const FilesTab: FC<{
                   <FileTypeIcon category={classification.category} special={special} />
                 </span>
               </Tooltip>
-              <span
-                style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              >
-                {file.path}
-              </span>
+              {/* Issue #97: a long archive-internal path (routinely the
+                  case — see the generated `OEBPS/876123...` names visible
+                  in a real book's Files tab) gets clipped by the ellipsis
+                  below with no way to read the rest short of widening the
+                  whole panel; a tooltip surfaces the full path on hover
+                  without needing that. */}
+              <Tooltip content={file.path} relationship="label" withArrow>
+                <span
+                  style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                >
+                  {file.path}
+                </span>
+              </Tooltip>
               <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6 }}>
                 {formatSize(file.size)}
               </Caption1>
@@ -484,12 +492,33 @@ const FilesTab: FC<{
         <div
           style={{
             display: "flex",
-            justifyContent: "flex-end",
-            gap: 4,
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
             padding: "4px 8px",
             borderBottom: `1px solid ${CHROME_BORDER}`,
           }}
         >
+          {/* Issue #97: the sidebar entry for the selected file may
+              already be scrolled out of view or itself clipped by the
+              same ellipsis truncation this repeats — always showing the
+              name of whatever's actually on screen right above it means
+              a reader never has to go looking for confirmation of what
+              they're looking at. */}
+          <Tooltip content={selectedFile?.path ?? ""} relationship="label" withArrow>
+            <Body1
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontWeight: 600,
+              }}
+            >
+              {selectedFile?.path ?? ""}
+            </Body1>
+          </Tooltip>
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
           {selectedClassification?.isText && (
             <Tooltip content={wrap ? t("inspector.turnOffLineWrapping") : t("inspector.turnOnLineWrapping")} relationship="label">
               <Button
@@ -514,8 +543,24 @@ const FilesTab: FC<{
               onClick={onToggleFullScreen}
             />
           </Tooltip>
+          </div>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12 }}>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "auto",
+            padding: 12,
+            // Issue reported after theming the rest of the dialog to the
+            // reader's chosen chrome theme: raw markup/CSS/script source
+            // is far easier to read with real black-on-white contrast
+            // (and matches the light `HighlightTheme` syntax palette
+            // above) than tinted to match a pastel theme background —
+            // this is the one spot in the dialog deliberately kept
+            // theme-independent.
+            background: "#fff",
+          }}
+        >
           {!selectedFile ? (
             <Caption1 style={{ opacity: 0.6 }}>{t("inspector.selectFileToPreview")}</Caption1>
           ) : (
