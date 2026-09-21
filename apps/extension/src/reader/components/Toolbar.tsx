@@ -36,6 +36,7 @@ import type { ReaderSnapshot, ViewMode } from "../ReaderController.js";
 import {
   CHROME_BACKDROP_FILTER,
   CHROME_BORDER,
+  CHROME_HOVER_BACKGROUND,
   CHROME_SHADOW,
   CHROME_THEMES,
 } from "../chromeTheme.js";
@@ -152,6 +153,34 @@ const ThemeSwatch: FC<{ background: string; accent: string }> = ({ background, a
         boxSizing: "border-box",
       }}
     />
+  </span>
+);
+
+/** The "Page style" counterpart to `ThemeSwatch` just above — a tiny
+ * preview of the actual page (its background color, plus a couple of
+ * short bars standing in for lines of text in the theme's own
+ * foreground color) instead of a plain bullet, so "White"/"Sepia"/
+ * "Dark" read as an actual look rather than requiring a reader to apply
+ * each one just to see what it does. */
+const PageStyleSwatch: FC<{ background: string; foreground: string }> = ({ background, foreground }) => (
+  <span
+    aria-hidden="true"
+    style={{
+      display: "inline-flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      gap: 3,
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      background,
+      border: "1px solid rgba(0, 0, 0, 0.15)",
+      boxSizing: "border-box",
+      padding: "0 4px",
+    }}
+  >
+    <span style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "100%" }} />
+    <span style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "65%" }} />
   </span>
 );
 
@@ -420,19 +449,46 @@ export const Toolbar: FC<ToolbarProps> = ({
               transition: reduceMotion ? "none" : "left 220ms ease, right 220ms ease, transform 220ms ease",
             }}
           >
-            <Body1
-              as="span"
-              style={{
-                flexShrink: 0,
-                fontWeight: 600,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: "100%",
-              }}
-            >
-              {snapshot.title}
-            </Body1>
+            <Tooltip content={t("toolbar.bookDetails")} relationship="description">
+              <button
+                type="button"
+                onClick={onToggleDetails}
+                style={{
+                  flexShrink: 0,
+                  minWidth: 0,
+                  maxWidth: "100%",
+                  display: "block",
+                  background: "none",
+                  border: "none",
+                  padding: "2px 4px",
+                  margin: "-2px -4px",
+                  borderRadius: 4,
+                  color: "inherit",
+                  font: "inherit",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.background = "none";
+                }}
+              >
+                <Body1
+                  as="span"
+                  style={{
+                    display: "block",
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: "100%",
+                  }}
+                >
+                  {snapshot.title}
+                </Body1>
+              </button>
+            </Tooltip>
 
             {/* The current chapter — shown only when there's room for it
                 (see the doc comment above): this wrapper takes whatever
@@ -663,7 +719,17 @@ export const Toolbar: FC<ToolbarProps> = ({
                       <MenuGroup>
                         <MenuGroupHeader>{t("text.pageStyle")}</MenuGroupHeader>
                         {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
-                          <MenuItemRadio key={key} name={PAGE_THEME_GROUP_NAME} value={key}>
+                          <MenuItemRadio
+                            key={key}
+                            name={PAGE_THEME_GROUP_NAME}
+                            value={key}
+                            icon={
+                              <PageStyleSwatch
+                                background={ReadingTheme.PAGE_THEMES[key].background}
+                                foreground={ReadingTheme.PAGE_THEMES[key].foreground}
+                              />
+                            }
+                          >
                             {t(PAGE_THEME_LABEL_KEYS[key])}
                           </MenuItemRadio>
                         ))}
