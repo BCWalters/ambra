@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ambra Privacy Policy</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fffaf3;
+        --card: #ffffff;
+        --text: #2b1d12;
+        --muted: #6f5a49;
+        --accent: #d9861d;
+        --border: #eed9c4;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1f1610;
+          --card: #2a1d14;
+          --text: #f6ede4;
+          --muted: #d6c0ae;
+          --accent: #f5a531;
+          --border: #4c3525;
+        }
+      }
+
+      body {
+        margin: 0;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      main {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 40px 20px 64px;
+      }
+
+      article {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 32px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+      }
+
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+
+      h1 {
+        margin-top: 0;
+        margin-bottom: 8px;
+      }
+
+      h2 {
+        margin-top: 28px;
+        color: var(--accent);
+      }
+
+      p,
+      li {
+        margin: 0 0 12px;
+      }
+
+      ul {
+        padding-left: 22px;
+      }
+
+      .meta {
+        color: var(--muted);
+        margin-bottom: 24px;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.95em;
+      }
+
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        <h1>Ambra Privacy Policy</h1>
+        <p class="meta">Effective date: 2026-09-21</p>
+
+        <p>
+          Ambra is a local-first EPUB3 reader for Chrome. It is designed to let you import, store, and read EPUB books
+          in your browser without creating an account and without sending your reading activity to Ambra-operated
+          servers.
+        </p>
+
+        <h2>What Ambra stores locally on your device</h2>
+        <p>Ambra stores the following data locally in an on-device IndexedDB database named <code>ambra-library</code>:</p>
+        <ul>
+          <li>imported EPUB files you add to your library;</li>
+          <li>book metadata extracted from those files, such as title, author, identifier, and cover image;</li>
+          <li>reader state such as resume position, bookmarks, highlights, notes, and library sort order;</li>
+          <li>reader preferences such as theme, font, layout, animation, and locale settings; and</li>
+          <li>when available, a fetched fallback book description plus its source attribution link.</li>
+        </ul>
+        <p>
+          This data is stored on your device so the extension can work offline and reopen your library and reading
+          progress later. Ambra does not upload this local library data to Ambra servers because Ambra currently does not
+          operate any sync or cloud account service.
+        </p>
+
+        <h2>When data leaves your device</h2>
+        <p>
+          Ambra makes one limited third-party network request in the current codebase. If a book does not include its
+          own EPUB description (<code>dc:description</code>), Ambra may request a short fallback description from:
+        </p>
+        <ul>
+          <li><code>openlibrary.org</code> (Open Library), and if needed</li>
+          <li><code>en.wikipedia.org</code> (Wikipedia).</li>
+        </ul>
+        <p>For that request, Ambra sends only the minimum book-identifying fields needed to look up a description:</p>
+        <ul>
+          <li>title,</li>
+          <li>author/creator, and</li>
+          <li>ISBN, if the book provides one.</li>
+        </ul>
+        <p>
+          Ambra does <strong>not</strong> send the EPUB file itself, the book’s text contents, reading progress,
+          bookmarks, highlights, notes, or any browsing history as part of this lookup. The description lookup is used
+          only to show a missing book summary inside Ambra. The result, if one is found, is stored locally with the
+          book’s metadata.
+        </p>
+        <p>
+          Like any direct web request, Open Library or Wikipedia will also receive standard network metadata such as your
+          IP address and user-agent information from your browser connection. Ambra does not use these requests for
+          advertising, profiling, or cross-site tracking.
+        </p>
+
+        <h2>What Ambra does not do</h2>
+        <ul>
+          <li>no analytics SDKs or usage-tracking services;</li>
+          <li>no advertising or ad targeting;</li>
+          <li>no sale of personal data;</li>
+          <li>no remote account system;</li>
+          <li>no cloud sync or backup service; and</li>
+          <li>no collection of your web browsing activity outside the extension’s own book-reading features.</li>
+        </ul>
+
+        <h2>Chrome permissions used by the extension</h2>
+        <ul>
+          <li><strong>unlimitedStorage</strong>: allows large local book libraries to be stored on-device without normal browser quota pressure.</li>
+          <li><strong>downloads</strong>: lets Ambra notice when an EPUB download finishes so it can offer a shortcut back into your library import flow.</li>
+          <li><strong>notifications</strong>: lets Ambra show that optional “add this EPUB to Ambra?” prompt.</li>
+        </ul>
+
+        <h2>Your choices</h2>
+        <ul>
+          <li>You can remove books from the library inside Ambra.</li>
+          <li>You can disable or ignore the optional EPUB download notification flow.</li>
+          <li>You can choose not to use books that trigger fallback description lookups.</li>
+          <li>You can uninstall the extension at any time through Chrome.</li>
+        </ul>
+
+        <h2>Changes to this policy</h2>
+        <p>
+          If Ambra’s data practices change materially, this policy should be updated before the new behavior is
+          released.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          Project home and issue tracker:
+          <a href="https://github.com/BCWalters/ambra/issues">https://github.com/BCWalters/ambra/issues</a>
+        </p>
+      </article>
+    </main>
+  </body>
+</html>

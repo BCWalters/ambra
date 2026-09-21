@@ -40,10 +40,14 @@ export default tseslint.config(
     // Dev-time-only Node fixture-generation scripts (never shipped in the
     // extension bundle) run directly under `node`, not a browser/DOM
     // environment — they need Node globals rather than the browser ones
-    // TS source files get implicitly via each package's tsconfig.
+    // TS source files get implicitly via each package's tsconfig. A few
+    // of these also drive a real Playwright browser and pass it small
+    // in-page callbacks (`page.evaluate`/`waitForFunction`) that
+    // reference DOM globals like `document` from *inside* the browser
+    // context, not Node's — so browser globals are included too.
     files: ["**/scripts/**/*.mjs", "**/scripts/**/*.js"],
     languageOptions: {
-      globals: globals.node,
+      globals: { ...globals.node, ...globals.browser },
     },
   },
 );
