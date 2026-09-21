@@ -139,6 +139,11 @@ export interface EpubInspectionSpineItem {
   readonly path: string;
   readonly linear: boolean;
   readonly mediaType: string;
+  /** This `<itemref>`'s own `properties` attribute (issue #96) — e.g.
+   * `page-spread-left`/`page-spread-right`/`page-spread-center` for
+   * fixed-layout spread placement, verbatim as declared in the OPF
+   * (with or without their `rendition:` prefix; see `SpineItemRef`). */
+  readonly properties: readonly string[];
 }
 
 /** Everything the EPUB inspection panel shows: the raw archive's file
@@ -5909,6 +5914,7 @@ export class ReaderController {
         path: spineItemRef.manifestItem.path,
         linear: spineItemRef.linear,
         mediaType: spineItemRef.manifestItem.mediaType,
+        properties: Array.from(spineItemRef.properties),
       })),
     };
   }

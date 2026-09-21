@@ -171,3 +171,49 @@ test.describe("EPUB Inspector (issue #95)", () => {
     }
   });
 });
+
+test.describe("EPUB Inspector spine properties (issue #96)", () => {
+  // A fixed-layout fixture whose every spine `<itemref>` carries an
+  // explicit `page-spread-left`/`page-spread-right` property — exactly
+  // the kind of per-itemref metadata the Spine tab previously discarded
+  // (it already parses `SpineItemRef.properties` internally to drive
+  // spread placement; it just never surfaced the values themselves).
+  const FXL_SPREAD_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr.epub");
+
+  test("the Spine tab's Properties column shows each itemref's own page-spread-* property", async () => {
+    const { context, readerPage } = await launchReader(FXL_SPREAD_EPUB, { viewport: { width: 1400, height: 900 } });
+    try {
+      await openInspector(readerPage);
+      await readerPage.getByRole("tab", { name: /Spine/ }).click();
+
+      const rows = await readerPage.locator("tbody tr").all();
+      const properties = await Promise.all(rows.map((row) => row.locator("td").last().textContent()));
+      expect(properties).toEqual([
+        "page-spread-right",
+        "page-spread-left",
+        "page-spread-right",
+        "page-spread-left",
+        "page-spread-right",
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("a spine itemref with no properties renders an empty Properties cell rather than a placeholder", async () => {
+    // This reflowable book's spine declares no page-spread/rendition
+    // properties on any itemref — the column should just be blank, the
+    // same convention the Manifest tab's own Properties column already
+    // uses for manifest items with no properties.
+    const { context, readerPage } = await launchReader(EPUB, { viewport: { width: 1400, height: 900 } });
+    try {
+      await openInspector(readerPage);
+      await readerPage.getByRole("tab", { name: /Spine/ }).click();
+
+      const firstRowProperties = await readerPage.locator("tbody tr").first().locator("td").last().textContent();
+      expect(firstRowProperties).toBe("");
+    } finally {
+      await context.close();
+    }
+  });
+});

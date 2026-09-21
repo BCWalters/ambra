@@ -709,7 +709,8 @@ const SpineTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: string) 
           <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>#</th>
           <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>Path</th>
           <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>Linear</th>
-          <th style={{ fontWeight: 400 }}>Media type</th>
+          <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>Media type</th>
+          <th style={{ fontWeight: 400 }}>Properties</th>
         </tr>
       </thead>
       <tbody>
@@ -722,7 +723,8 @@ const SpineTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: string) 
               </FileLink>
             </td>
             <td style={{ padding: "2px 12px 2px 0" }}>{item.linear ? "yes" : "no"}</td>
-            <td>{item.mediaType}</td>
+            <td style={{ padding: "2px 12px 2px 0" }}>{item.mediaType}</td>
+            <td>{item.properties.join(", ")}</td>
           </tr>
         ))}
       </tbody>
