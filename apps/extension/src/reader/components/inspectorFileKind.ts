@@ -144,6 +144,14 @@ function categoryForMediaType(mediaType: string): InspectorFileCategory {
     case "application/json":
       return "json";
     default:
+      // A "+json" structured-syntax suffix (RFC 6839) — e.g.
+      // `application/ld+json`, the media type EPUB Annotations 1.0
+      // collections actually declare (issue #117) — is just as safely
+      // renderable as plain `application/json` and deserves the same
+      // treatment rather than falling through to "binary" below.
+      if (mediaType.endsWith("+json")) {
+        return "json";
+      }
       // Any other media type starting with "text/" (e.g. `text/plain`)
       // is still safely displayable as plain text; anything else this
       // table has never heard of is safer treated as binary than risked
