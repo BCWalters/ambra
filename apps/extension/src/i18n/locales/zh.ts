@@ -15,6 +15,7 @@ export const zh: StringCatalog = {
   "toolbar.removeBookmark": "删除书签",
   "toolbar.search": "搜索",
   "toolbar.hideSearch": "隐藏搜索",
+  "toolbar.backToLibrary": "返回书库",
   "settings.language": "语言",
   "settings.languageSystemDefault": "系统默认",
   "toc.contents": "目录",

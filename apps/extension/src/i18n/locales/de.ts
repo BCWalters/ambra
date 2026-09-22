@@ -15,6 +15,7 @@ export const de: StringCatalog = {
   "toolbar.removeBookmark": "Lesezeichen entfernen",
   "toolbar.search": "Suche",
   "toolbar.hideSearch": "Suche ausblenden",
+  "toolbar.backToLibrary": "Zurück zur Bibliothek",
   "settings.language": "Sprache",
   "settings.languageSystemDefault": "Systemstandard",
   "toc.contents": "Inhalt",

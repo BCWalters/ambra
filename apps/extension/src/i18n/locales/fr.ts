@@ -15,6 +15,7 @@ export const fr: StringCatalog = {
   "toolbar.removeBookmark": "Supprimer le signet",
   "toolbar.search": "Rechercher",
   "toolbar.hideSearch": "Masquer la recherche",
+  "toolbar.backToLibrary": "Retour à la bibliothèque",
   "settings.language": "Langue",
   "settings.languageSystemDefault": "Paramètre système par défaut",
   "toc.contents": "Contenu",

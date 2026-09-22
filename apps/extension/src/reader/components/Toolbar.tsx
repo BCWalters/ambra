@@ -17,6 +17,7 @@ import {
   Tooltip,
 } from "@fluentui/react-components";
 import {
+  ArrowLeftRegular,
   BookInformationRegular,
   BookOpenRegular,
   BookmarkFilled,
@@ -53,6 +54,11 @@ import { DefaultableSlider } from "./DefaultableSlider.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
+  /** Navigates away from the reader back to the library page (issue
+   * #112) — plain navigation of the reader's own tab, not opening a
+   * second tab alongside it (see `libraryFullTabUrl` in
+   * `navigation.ts`). */
+  onBackToLibrary: () => void;
   isTocOpen: boolean;
   onToggleToc: () => void;
   isSearchOpen: boolean;
@@ -215,6 +221,7 @@ const PageStyleSwatch: FC<{ background: string; foreground: string }> = ({ backg
  * component's — it just reflects/changes current state. */
 export const Toolbar: FC<ToolbarProps> = ({
   snapshot,
+  onBackToLibrary,
   isTocOpen,
   onToggleToc,
   isSearchOpen,
@@ -331,6 +338,10 @@ export const Toolbar: FC<ToolbarProps> = ({
             : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
         }}
       >
+        <Tooltip content={t("toolbar.backToLibrary")} relationship="label">
+          <Button appearance="subtle" size="small" icon={<ArrowLeftRegular />} onClick={onBackToLibrary} />
+        </Tooltip>
+
         <Tooltip content={isTocOpen ? t("toolbar.hideContents") : t("toolbar.showContents")} relationship="label">
           <ToggleButton
             appearance="subtle"

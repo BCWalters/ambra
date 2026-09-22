@@ -21,6 +21,16 @@ export async function openReaderTab(bookId: string): Promise<void> {
 export const LIBRARY_FULL_TAB_PARAM = "view";
 export const LIBRARY_FULL_TAB_VALUE = "tab";
 
+/** The library page's own URL, in its full-tab form (see
+ * `LIBRARY_FULL_TAB_PARAM`) — shared by `openLibraryTab` (opens it in a
+ * new tab) and the reader's "Back to Library" button (issue #112, which
+ * instead navigates the reader's *own* tab there directly via
+ * `window.location`, rather than leaving the reader tab open behind a
+ * second new one). */
+export function libraryFullTabUrl(): string {
+  return chrome.runtime.getURL(`${LIBRARY_PAGE_URL}?${LIBRARY_FULL_TAB_PARAM}=${LIBRARY_FULL_TAB_VALUE}`);
+}
+
 /**
  * Opens the exact same library page the toolbar popup shows, but as a
  * full, ordinary browser tab (issue: the popup's small fixed size is
@@ -35,6 +45,5 @@ export const LIBRARY_FULL_TAB_VALUE = "tab";
  * permissions or round-trip.
  */
 export async function openLibraryTab(): Promise<void> {
-  const url = chrome.runtime.getURL(`${LIBRARY_PAGE_URL}?${LIBRARY_FULL_TAB_PARAM}=${LIBRARY_FULL_TAB_VALUE}`);
-  await chrome.tabs.create({ url });
+  await chrome.tabs.create({ url: libraryFullTabUrl() });
 }

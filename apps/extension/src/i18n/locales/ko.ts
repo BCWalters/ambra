@@ -15,6 +15,7 @@ export const ko: StringCatalog = {
   "toolbar.removeBookmark": "책갈피 제거",
   "toolbar.search": "검색",
   "toolbar.hideSearch": "검색 숨기기",
+  "toolbar.backToLibrary": "라이브러리로 돌아가기",
   "settings.language": "언어",
   "settings.languageSystemDefault": "시스템 기본값",
   "toc.contents": "목차",

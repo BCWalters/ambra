@@ -4,6 +4,7 @@ import { Spinner, Title2 } from "@fluentui/react-components";
 import { FixedContentHost, ReadingTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
+import { libraryFullTabUrl } from "../navigation.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
@@ -560,6 +561,9 @@ const ReaderAppInner: FC = () => {
                 open at once. */}
             <Toolbar
               snapshot={snapshot}
+              onBackToLibrary={() => {
+                window.location.href = libraryFullTabUrl();
+              }}
               isTocOpen={isTocOpen}
               onToggleToc={() => {
                 if (isTocOpen) {
