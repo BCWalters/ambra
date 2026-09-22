@@ -5,11 +5,9 @@ import {
   ArrowExportRegular,
   ArrowImportRegular,
   BookmarkFilled,
-  BookmarkRegular,
   DeleteRegular,
   DismissRegular,
   DocumentRegular,
-  HighlightRegular,
   NoteRegular,
   PinOffRegular,
   PinRegular,
@@ -552,32 +550,40 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             </Tooltip>
           )}
         </div>
-        {/* Translated tab labels can run longer than English, and each
-         * tab's own "(N)" count adds more still — scrolling horizontally
-         * rather than wrapping or truncating keeps every label fully
-         * readable and avoids the tab strip visually bleeding past the
-         * pane's edge (issue #116). */}
-        <div style={{ overflowX: "auto", borderBottom: `1px solid ${CHROME_BORDER}` }}>
-          <TabList
-            size="small"
-            selectedValue={activeTab}
-            onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
-            style={{ padding: "4px 8px 0", width: "max-content" }}
-          >
-            <Tab value="bookmarks" icon={<BookmarkRegular />}>
+        {/* No icons (they read as empty/decorative rather than
+         * meaningful) and no horizontal scrollbar — each tab clips its
+         * own label with an ellipsis instead, so a longer translated
+         * label plus its "(N)" count can lose a few trailing characters
+         * but never bleeds a scrollbar or overflowing text past the
+         * pane's edge (issue #118). The ellipsis styling lives on a
+         * plain nested `<span>` rather than Tab's own `content` slot
+         * prop — passing that prop forces Tab's internal
+         * width-reservation mirror span to always render (even while
+         * selected) instead of only when unselected, which doubled up
+         * matching accessible text for the active tab. */}
+        <TabList
+          size="small"
+          selectedValue={activeTab}
+          onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
+          style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
+        >
+          <Tab value="bookmarks" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {t("annotations.bookmarksTab")}
               {bookmarks.length + embeddedBookmarks.length > 0
                 ? ` (${bookmarks.length + embeddedBookmarks.length})`
                 : ""}
-            </Tab>
-            <Tab value="highlights" icon={<HighlightRegular />}>
+            </span>
+          </Tab>
+          <Tab value="highlights" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {t("annotations.highlightsTab")}
               {highlights.length + embeddedHighlights.length > 0
                 ? ` (${highlights.length + embeddedHighlights.length})`
                 : ""}
-            </Tab>
-          </TabList>
-        </div>
+            </span>
+          </Tab>
+        </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {activeTab === "bookmarks" ? (
             <BookmarkList
