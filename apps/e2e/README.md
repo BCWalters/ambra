@@ -75,6 +75,23 @@ is its source) used by `tests/navigation-correctness.spec.ts`'s exact
 content-accounting checks, since its paragraph numbering makes "was
 anything skipped or duplicated" a simple, precise check.
 
+## Synthetic scale checks
+
+Generate the optional scale fixtures locally (about 113 MB for the illustrated
+EPUB, plus extracted sources) before running the focused sweep:
+
+```sh
+node apps/e2e/scripts/generate-scale-fixtures.mjs
+pnpm --filter @ambra/e2e run build:extension
+pnpm --filter @ambra/e2e exec playwright test scale-validation.spec.ts \
+  --output real-books/scale-validation/results --trace off
+```
+
+The binaries stay in the ignored `real-books/scale-validation/` directory.
+The tests exercise 96 decoded images, a 120-chapter/199k-word book, and seven
+XHTML content categories. Recorded timings and generous hang-detection bounds
+are not hardware-independent performance guarantees or exhaustive content tests.
+
 ## Real-book smoke suite
 
 Synthetic fixtures are precise but narrow — real EPUB3 files routinely
