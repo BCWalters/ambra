@@ -15,9 +15,9 @@ export interface BookTroubleIllustrationProps {
  * modest/quick to read, not a cutesy centerpiece — this is still an
  * error state, not a mascot moment.
  *
- * The palette echoes the extension's own Ambra (amber) icon/theme so an
- * error page still feels like part of the same product, not a generic
- * "something broke" placeholder.
+ * A green cover was chosen simply to keep this "oh no" moment visually
+ * distinct from the amber Ambra icon/brand elsewhere in the UI, so it
+ * doesn't read as a branding color gone wrong.
  */
 export const BookTroubleIllustration: FC<BookTroubleIllustrationProps> = ({ size = 120 }) => (
   <svg
@@ -35,11 +35,46 @@ export const BookTroubleIllustration: FC<BookTroubleIllustrationProps> = ({ size
     {/* Arms, thrown up in an "oh well" shrug */}
     <line x1="34" y1="66" x2="18" y2="50" stroke="#b5772e" strokeWidth="4" strokeLinecap="round" />
     <line x1="86" y1="66" x2="102" y2="50" stroke="#b5772e" strokeWidth="4" strokeLinecap="round" />
-    {/* Body — a rounded book/gem shape matching the extension icon's own silhouette */}
-    <rect x="30" y="34" width="60" height="66" rx="16" fill="url(#ambra-trouble-gradient)" />
-    <rect x="30" y="34" width="60" height="66" rx="16" stroke="#8a5a24" strokeWidth="2" />
-    {/* A single "spine" line, echoing an open book */}
-    <line x1="60" y1="40" x2="60" y2="94" stroke="#8a5a24" strokeWidth="1.5" opacity="0.4" />
+    {/* Body — an open book viewed face-on, kept as a simple rounded
+        rectangle (same gentle corner radius top and bottom, flat top
+        and bottom edges) per issue #121: an asymmetric wavy top read
+        as fussy/unclear, so both the cover and the inner page area
+        below use one consistent, plain silhouette. */}
+    <path
+      d="M 38 40 Q 30 40 30 48 L 30 92 Q 30 100 38 100 L 82 100 Q 90 100 90 92 L 90 48 Q 90 40 82 40 Z"
+      fill="url(#ambra-trouble-gradient)"
+    />
+    <path
+      d="M 38 40 Q 30 40 30 48 L 30 92 Q 30 100 38 100 L 82 100 Q 90 100 90 92 L 90 48 Q 90 40 82 40 Z"
+      stroke="#3f6b24"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    {/* Inner page area — a plain rectangle (no rounded corners) inset
+        just a few px inside the cover, so the amber cover reads as a
+        slim, even border rather than a thick frame. */}
+    <path d="M 34 44 L 86 44 L 86 96 L 34 96 Z" fill="#fdf6e8" />
+    {/* Spine, down the middle of the pages */}
+    <line x1="60" y1="46" x2="60" y2="94" stroke="#3f6b24" strokeWidth="1.5" opacity="0.5" />
+    {/* Lines of "text" on each page, pushed in close to the spine
+        (where a book's own text sits nearest the gutter) and reaching
+        from just below the top edge down to the bottom — deliberately
+        drawn *before* the face below so its eyes/mouth sit on top of
+        them, the way a face resting on a page of text would. */}
+    <line x1="42" y1="50" x2="57" y2="50" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="42" y1="56" x2="58" y2="56" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="42" y1="62" x2="56" y2="62" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="42" y1="74" x2="57" y2="74" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="42" y1="80" x2="55" y2="80" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="42" y1="86" x2="57" y2="86" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="42" y1="91" x2="56" y2="91" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="63" y1="50" x2="78" y2="50" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="62" y1="56" x2="78" y2="56" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="64" y1="62" x2="78" y2="62" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="63" y1="74" x2="78" y2="74" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="65" y1="80" x2="78" y2="80" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="63" y1="86" x2="78" y2="86" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
+    <line x1="64" y1="91" x2="78" y2="91" stroke="#3f6b24" strokeWidth="1.5" opacity="0.35" strokeLinecap="round" />
     {/* Face */}
     <circle cx="48" cy="58" r="4.5" fill="#4a2f10" />
     <circle cx="72" cy="58" r="4.5" fill="#4a2f10" />
@@ -52,8 +87,8 @@ export const BookTroubleIllustration: FC<BookTroubleIllustrationProps> = ({ size
     />
     <defs>
       <linearGradient id="ambra-trouble-gradient" x1="30" y1="34" x2="90" y2="100" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stopColor="#f4c669" />
-        <stop offset="100%" stopColor="#d68a3a" />
+        <stop offset="0%" stopColor="#9ccb6b" />
+        <stop offset="100%" stopColor="#5a8a3a" />
       </linearGradient>
     </defs>
   </svg>
