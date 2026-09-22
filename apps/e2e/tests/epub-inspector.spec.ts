@@ -54,6 +54,54 @@ test.describe("EPUB Inspector (issue #95)", () => {
     }
   });
 
+  for (const reducedMotion of ["reduce", "no-preference"] as const) {
+    test(`Inspector keeps its accessibility scope through delayed flyout focus (${reducedMotion})`, async ({
+      browserName: _browserName,
+    }, testInfo) => {
+      const { context, readerPage } = await launchReader(EPUB, {
+        viewport: { width: 1400, height: 900 },
+      });
+      try {
+        await readerPage.emulateMedia({ reducedMotion });
+        await openInspector(readerPage);
+        const dialog = readerPage.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+        const close = dialog.getByRole("button", { name: "Close EPUB Inspector", exact: true });
+        await expect(dialog).toHaveAttribute("aria-modal", "true");
+        await expect(close).toBeFocused();
+
+        await dialog.getByRole("tab", { name: /Spine/ }).click();
+        await dialog.locator("tbody tr").first().getByRole("button").click();
+        await dialog.getByRole("button", { name: "Back", exact: true }).click();
+        const manifest = dialog.getByRole("tab", { name: /Manifest/ });
+        await manifest.click();
+        // The old Book Details focus retry fired at 350ms and hid this
+        // still-painted dialog from the accessibility tree.
+        await readerPage.waitForTimeout(450);
+        await expect(manifest).toBeFocused();
+        await expect(dialog.getByRole("button", { name: "OEBPS/content.opf", exact: true })).toBeVisible();
+        await expect(readerPage.getByRole("main", { name: "Book content" })).toHaveCount(0);
+
+        await dialog.getByRole("button").last().focus();
+        await readerPage.keyboard.press("Tab");
+        await expect(close).toBeFocused();
+        await readerPage.screenshot({
+          path: testInfo.outputPath(`inspector-accessible-${reducedMotion}.png`),
+        });
+        await readerPage.keyboard.press("Escape");
+        await expect(dialog).toBeHidden();
+        const trigger = readerPage.getByRole("button", { name: "EPUB Inspector", exact: true });
+        await expect(trigger).toBeFocused();
+        await trigger.press("Enter");
+        await expect(close).toBeFocused();
+        await close.click();
+        await expect(dialog).toBeHidden();
+        await expect(trigger).toBeFocused();
+      } finally {
+        await context.close();
+      }
+    });
+  }
+
   test("container.xml, the OPF, the Nav Document, and the cover each get their own distinct file icon", async () => {
     const { context, readerPage } = await launchReader(EPUB, { viewport: { width: 1400, height: 900 } });
     try {

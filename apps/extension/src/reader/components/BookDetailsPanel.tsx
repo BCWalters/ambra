@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, FC } from "react";
-import { Body1, Body1Strong, Button, Caption1, Spinner, Tooltip } from "@fluentui/react-components";
+import { Body1, Body1Strong, Button, Caption1, Spinner, Tooltip, useRestoreFocusTarget } from "@fluentui/react-components";
 import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, TextPercentRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
@@ -173,6 +173,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
+  const restoreInspectorFocus = useRestoreFocusTarget();
   const reduceMotion = usePrefersReducedMotion();
   const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
@@ -418,6 +419,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 <Button
                   appearance="secondary"
                   icon={<CodeCircleRegular />}
+                  {...restoreInspectorFocus}
                   onClick={onOpenInspector}
                   style={{
                     background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",

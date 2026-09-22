@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { Body1, Body1Strong, Button, Caption1 } from "@fluentui/react-components";
+import { Body1, Body1Strong, Button, Caption1, useRestoreFocusTarget } from "@fluentui/react-components";
 import { CodeCircleRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
@@ -71,6 +71,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   onOpenInspector,
 }) => {
   const open = book !== undefined;
+  const restoreInspectorFocus = useRestoreFocusTarget();
 
   const knownIdentifiers = (book?.identifiers ?? []).filter(
     (id) => !isGenericDefaultIdentifier(id.value),
@@ -192,6 +193,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               <Button
                 appearance="secondary"
                 icon={<CodeCircleRegular />}
+                {...restoreInspectorFocus}
                 onClick={onOpenInspector}
                 style={{
                   background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",

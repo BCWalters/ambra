@@ -932,6 +932,10 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   return (
     <Dialog open={open} onOpenChange={(_event, dialogData) => onOpenChange(dialogData.open)}>
       <DialogSurface
+        onKeyDown={(event) => {
+          // Escape dismisses this modal, not the underlying reader flyout.
+          if (event.key === "Escape") event.stopPropagation();
+        }}
         style={
           isFullScreen
             ? { maxWidth: "100vw", width: "100vw", height: "100vh", borderRadius: 0, background: chromeTheme.backgroundSolid }

@@ -23,9 +23,9 @@ const FALLBACK_FOCUS_DELAY_MS = 350;
  * exact moment — Chrome defers actually accepting focus until the
  * element's `visibility`/`opacity` transition has *finished*, not just
  * started. An immediate attempt, a `transitionend` listener, and a fixed
- * fallback timeout are all attempted together so this works whether or
- * not (and regardless of exactly how long) a transition is actually
- * running.
+ * fallback timeout cover either case. Pending retries must stop once
+ * focus succeeds or moves elsewhere: a late retry can otherwise steal
+ * focus from a newly-opened modal and deactivate its accessibility scope.
  */
 export function useFocusOnOpen(ref: RefObject<HTMLElement | null>, open: boolean): void {
   useEffect(() => {
@@ -36,15 +36,28 @@ export function useFocusOnOpen(ref: RefObject<HTMLElement | null>, open: boolean
     if (!element) {
       return;
     }
-    const tryFocus = (): void => {
-      element.focus({ preventScroll: true });
-    };
-    tryFocus();
-    element.addEventListener("transitionend", tryFocus, { once: true });
-    const fallback = window.setTimeout(tryFocus, FALLBACK_FOCUS_DELAY_MS);
-    return () => {
+    const ownerDocument = element.ownerDocument;
+    element.focus({ preventScroll: true });
+    if (element.contains(ownerDocument.activeElement)) {
+      return;
+    }
+    const cancelRetries = (): void => {
       element.removeEventListener("transitionend", tryFocus);
+      ownerDocument.removeEventListener("focusin", cancelRetries);
       window.clearTimeout(fallback);
     };
+    const tryFocus = (): void => {
+      element.focus({ preventScroll: true });
+      if (element.contains(ownerDocument.activeElement)) {
+        cancelRetries();
+      }
+    };
+    element.addEventListener("transitionend", tryFocus);
+    ownerDocument.addEventListener("focusin", cancelRetries);
+    const fallback = window.setTimeout(() => {
+      tryFocus();
+      cancelRetries();
+    }, FALLBACK_FOCUS_DELAY_MS);
+    return cancelRetries;
   }, [open, ref]);
 }
