@@ -7,6 +7,7 @@ import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, openLibraryTab, openReaderTab } from "../navigation.js";
 import { DEFAULT_CHROME_THEME } from "../reader/chromeTheme.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
+import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { describeStorageError } from "../StorageErrors.js";
 
 export interface LibraryBookViewModel extends BookMetadata {
@@ -57,6 +58,11 @@ export interface UseLibraryResult {
   /** See `StorageUsageEstimate` — `undefined` until the first estimate
    * resolves (or permanently, if the browser doesn't support it). */
   storageUsage: StorageUsageEstimate | undefined;
+  /** Opens a standalone `EpubInspectionSession` (issue #111) directly
+   * from a library book's stored bytes — no live `ReaderController`/
+   * reading session needed. Rejects if the book's file is missing or
+   * fails to parse; the caller decides how to surface that. */
+  openInspectionSession: (id: string) => Promise<EpubInspectionSession>;
 }
 
 /** Owns the library's `LibraryDatabase` connection and book list for the
@@ -199,6 +205,20 @@ export function useLibrary(): UseLibraryResult {
     void openLibraryTab();
   }, []);
 
+  const openInspectionSession = useCallback(
+    async (id: string): Promise<EpubInspectionSession> => {
+      if (!db) {
+        throw new Error("The library isn't ready yet.");
+      }
+      const blob = await db.getBookFile(id);
+      if (!blob) {
+        throw new Error("This book's file couldn't be found.");
+      }
+      return EpubInspectionSession.openStandalone(await blob.arrayBuffer());
+    },
+    [db],
+  );
+
   const isFullTab = useMemo(
     () => new URLSearchParams(window.location.search).get(LIBRARY_FULL_TAB_PARAM) === LIBRARY_FULL_TAB_VALUE,
     [],
@@ -220,6 +240,7 @@ export function useLibrary(): UseLibraryResult {
     isFullTab,
     openInFullTab,
     storageUsage,
+    openInspectionSession,
   };
 }
 

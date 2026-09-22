@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { FC } from "react";
 import { Body1, Body1Strong, Button, Caption1, Tooltip } from "@fluentui/react-components";
-import { DismissRegular } from "@fluentui/react-icons";
+import { CodeCircleRegular, DismissRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../reader/chromeTheme.js";
 
@@ -46,23 +46,30 @@ export interface BookDetailsFlyoutProps {
   onRequestClose: () => void;
   accent: string;
   backgroundSolid: string;
+  /** Opens the EPUB Inspector (issue #111) directly from this book's
+   * stored bytes, no live reading session required. `undefined` hides
+   * the button entirely — only offered when the Library is open in its
+   * own full browser tab (`isFullTab`), matching how the reader itself
+   * tucks this author-facing tool away from ordinary use. */
+  onOpenInspector: (() => void) | undefined;
 }
 
 /**
  * A read-only "Book details" flyout for the Library page (issue #105) —
  * shares its informational layout (cover, title, author, publisher,
  * description, identifiers, accessibility metadata) with the reader's
- * `BookDetailsPanel`, but omits that panel's three action buttons ("Go
- * to Page…", "Go to Percentage…", "EPUB Inspector"), which only make
- * sense once a book is actually open. All of the data shown here comes
- * straight from `LibraryBookViewModel` (captured at import time — see
- * `BookImporter`), so opening this never needs to re-parse the EPUB.
+ * `BookDetailsPanel`, but omits that panel's "Go to Page…"/"Go to
+ * Percentage…" actions, which only make sense once a book is actually
+ * open. The EPUB Inspector button (issue #111) is included, gated behind
+ * `onOpenInspector` being defined — the Library only opens a standalone
+ * inspection session when running in its own full browser tab.
  */
 export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   book,
   onRequestClose,
   accent,
   backgroundSolid,
+  onOpenInspector,
 }) => {
   const open = book !== undefined;
   const asideRef = useRef<HTMLElement | null>(null);
@@ -246,6 +253,25 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
             />
             <DetailRow label="File name" value={book.fileName} />
             <DetailRow label="Added" value={new Date(book.addedAt).toLocaleDateString()} />
+
+            {onOpenInspector && (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+                <Button
+                  appearance="secondary"
+                  icon={<CodeCircleRegular />}
+                  onClick={onOpenInspector}
+                  style={{
+                    background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",
+                    borderColor: "rgba(126, 232, 250, 0.35)",
+                    color: "#7ee8fa",
+                    fontFamily:
+                      "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+                  }}
+                >
+                  EPUB Inspector
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </aside>

@@ -44,7 +44,7 @@ test.describe("EPUB Inspector (issue #95)", () => {
       // Back returns to the Spine tab specifically (not just "the Files
       // tab, unselected") — this is what makes the OPF/spine links safe
       // to follow at all without ever losing your place.
-      await readerPage.getByRole("button", { name: "Back" }).click();
+      await readerPage.getByRole("button", { name: "Back", exact: true }).click();
       await expect(readerPage.getByRole("tab", { name: /Spine/ })).toHaveAttribute("aria-selected", "true");
 
       await readerPage.getByRole("tab", { name: /Manifest/ }).click();
@@ -126,7 +126,7 @@ test.describe("EPUB Inspector (issue #95)", () => {
       await readerPage.locator('.ambra-navlink[data-nav-path="OEBPS/pgepub.css"]').click();
       await expect.poll(() => selectedFilePath(readerPage)).toBe("OEBPS/pgepub.css");
 
-      await readerPage.getByRole("button", { name: "Back" }).click();
+      await readerPage.getByRole("button", { name: "Back", exact: true }).click();
       await expect.poll(() => selectedFilePath(readerPage)).toBe(frontMatterPath);
     } finally {
       await context.close();

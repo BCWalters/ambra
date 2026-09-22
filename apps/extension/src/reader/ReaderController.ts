@@ -12,7 +12,6 @@ import {
   LocatorResolver,
   NavigationDocument,
   NavigationList,
-  NCX_MEDIA_TYPE,
   PaginatedContentHost,
   parseAnnotationCollection,
   ReadingTheme,
@@ -51,6 +50,7 @@ import { PageTurnAnimator } from "./PageTurnAnimator.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageTurnOrchestrator.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
+import { EpubInspectionSession } from "./EpubInspectionSession.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
@@ -60,7 +60,6 @@ import type {
   ActiveHighlightState,
   BookDetails,
   EpubInspectionData,
-  EpubInspectionFile,
   FootnotePopupState,
   ImageViewerState,
   PreviewPosition,
@@ -312,10 +311,7 @@ export class ReaderController {
   private cachedCoverUrl: string | undefined;
   /** Lazily created per-path by `getInspectionFilePreviewUrl` (issue
    * #46), revoked in `dispose`. */
-  private readonly inspectionPreviewUrlCache = new Map<string, string>();
-  /** The OCF rootfile path, set once in `open` — only used by
-   * `getEpubInspectionData` (issue #46). */
-  private rootFilePath = "";
+  private readonly inspectionSession: EpubInspectionSession;
 
   private constructor(
     private readonly contentLoader: ContentLoader,
@@ -325,7 +321,9 @@ export class ReaderController {
     public readonly navigation: NavigationDocument,
     private readonly bookId: string,
     private readonly library: LibraryDatabase,
+    rootFilePath: string,
   ) {
+    this.inspectionSession = new EpubInspectionSession(contentLoader, pkg, rootFilePath);
     this.searchCoordinator = new SearchCoordinator(contentLoader, locatorResolver, pkg.spine, {
       goToCfi: (cfi) => this.goToCfi(cfi, "that search result"),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
@@ -421,6 +419,7 @@ export class ReaderController {
       navigation,
       bookId,
       library,
+      container.rootFilePath,
     );
     if (navigationLoadError) {
       controller.diagnostics.record(`NavigationDocument.load failed: ${navigationLoadError}`);
@@ -433,7 +432,6 @@ export class ReaderController {
       // actually finished loading.
       controller.pendingNavigationLoadError = navigationLoadError;
     }
-    controller.rootFilePath = container.rootFilePath;
     controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
     controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
     controller.lineSpacing =
@@ -3096,122 +3094,22 @@ export class ReaderController {
     await this.library.recordDescriptionFetchResult(this.bookId, result);
   }
 
-  /** Assembles the EPUB Inspector panel data from the in-memory archive
-   * listing and parsed package metadata. Reading an individual file's raw
-   * source is the only inspector path that hits the archive again. */
+  /** Assembles the EPUB Inspector panel data — see `EpubInspectionSession`. */
   public getEpubInspectionData(): EpubInspectionData {
-    const manifestMediaTypeByPath = new Map(this.pkg.manifest.map((item) => [item.path, item.mediaType]));
-
-    return {
-      files: this.orderInspectionFiles(
-        this.contentLoader.archiveEntries
-          .filter((entry) => !entry.isDirectory)
-          .map((entry) => ({
-            path: entry.fileName,
-            size: entry.uncompressedSize,
-            isDirectory: entry.isDirectory,
-            mediaType: manifestMediaTypeByPath.get(entry.fileName),
-          })),
-      ),
-      rootFilePath: this.rootFilePath,
-      title: this.pkg.metadata.title,
-      identifiers: this.pkg.metadata.identifiers,
-      language: this.pkg.metadata.language,
-      creator: this.pkg.metadata.creator,
-      creators: this.pkg.metadata.creators,
-      publisher: this.pkg.metadata.publisher,
-      description: this.pkg.metadata.description,
-      renditionLayout: this.pkg.metadata.renditionLayout,
-      renditionOrientation: this.pkg.metadata.renditionOrientation,
-      rights: this.pkg.metadata.rights,
-      date: this.pkg.metadata.date,
-      subjects: this.pkg.metadata.subjects,
-      contributors: this.pkg.metadata.contributors,
-      metaEntries: this.pkg.metadata.metaEntries,
-      manifest: this.pkg.manifest.map((item) => ({
-        id: item.id,
-        path: item.path,
-        mediaType: item.mediaType,
-        properties: Array.from(item.properties),
-      })),
-      spine: this.pkg.spine.map((spineItemRef) => ({
-        path: spineItemRef.manifestItem.path,
-        linear: spineItemRef.linear,
-        mediaType: spineItemRef.manifestItem.mediaType,
-        properties: Array.from(spineItemRef.properties),
-      })),
-    };
-  }
-
-  /** Orders Inspector files by EPUB structure: core container files first,
-   * then spine items in reading order, then other manifest resources, and
-   * finally non-manifest leftovers. */
-  private orderInspectionFiles(
-    files: readonly { path: string; size: number; isDirectory: boolean; mediaType: string | undefined }[],
-  ): EpubInspectionFile[] {
-    const rootFilePath = this.rootFilePath;
-    const navPath = this.pkg.manifest.find((item) => item.isNavDocument)?.path;
-    const ncxPath = this.pkg.manifest.find((item) => item.mediaType === NCX_MEDIA_TYPE)?.path;
-    const spineOrder = new Map(this.pkg.spine.map((ref, index) => [ref.manifestItem.path, index]));
-
-    function groupOf(path: string): number {
-      if (path === "mimetype") {
-        return 0;
-      }
-      if (path.startsWith("META-INF/")) {
-        return 1;
-      }
-      if (path === rootFilePath) {
-        return 2;
-      }
-      if (path === ncxPath) {
-        return 3;
-      }
-      if (path === navPath) {
-        return 4;
-      }
-      if (spineOrder.has(path)) {
-        return 5;
-      }
-      return 6;
-    }
-
-    return files
-      .map((file, originalIndex) => ({ file, originalIndex }))
-      .sort((a, b) => {
-        const groupA = groupOf(a.file.path);
-        const groupB = groupOf(b.file.path);
-        if (groupA !== groupB) {
-          return groupA - groupB;
-        }
-        if (groupA === 5) {
-          // Within the spine group, preserve reading order instead of
-          // archive order.
-          return (spineOrder.get(a.file.path) ?? 0) - (spineOrder.get(b.file.path) ?? 0);
-        }
-        return a.originalIndex - b.originalIndex;
-      })
-      .map(({ file }) => file);
+    return this.inspectionSession.getEpubInspectionData();
   }
 
   /** Reads one archive file's raw text for the Inspector file browser,
    * without any rendering-time parsing or rewriting. */
   public readInspectionFileText(path: string): Promise<string> {
-    return this.contentLoader.readArchiveFileText(path);
+    return this.inspectionSession.readInspectionFileText(path);
   }
 
   /** Builds and caches an object URL for an Inspector media preview.
    * The caller supplies the resolved `mediaType` so the preview element
    * gets a correctly typed `Blob`. */
-  public async getInspectionFilePreviewUrl(path: string, mediaType: string): Promise<string> {
-    const cached = this.inspectionPreviewUrlCache.get(path);
-    if (cached !== undefined) {
-      return cached;
-    }
-    const bytes = await this.contentLoader.readArchiveFileBytes(path);
-    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mediaType }));
-    this.inspectionPreviewUrlCache.set(path, url);
-    return url;
+  public getInspectionFilePreviewUrl(path: string, mediaType: string): Promise<string> {
+    return this.inspectionSession.getInspectionFilePreviewUrl(path, mediaType);
   }
 
   /** Basic reader state to include alongside the diagnostics trail. */
@@ -3933,9 +3831,7 @@ export class ReaderController {
     if (this.cachedCoverUrl !== undefined) {
       URL.revokeObjectURL(this.cachedCoverUrl);
     }
-    for (const url of this.inspectionPreviewUrlCache.values()) {
-      URL.revokeObjectURL(url);
-    }
+    this.inspectionSession.dispose();
     this.library.close();
   }
 }
