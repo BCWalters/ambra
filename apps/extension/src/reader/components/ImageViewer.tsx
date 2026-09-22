@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Button, Tooltip } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
@@ -25,16 +25,15 @@ export interface ImageViewerProps {
  * otherwise allows, without that same cap ever applying to small
  * decorative icons/separators, which never qualify to open this at all.
  *
- * `object-fit: contain` inside a `max-width/max-height: 90vw/90vh` box is
- * the whole "zoom" model for now: a bigger, unconstrained view of the
- * same image, not a true pan/pinch-zoom-beyond-100% viewer — real
- * illustrations in reflowable EPUBs are typically raster images with no
- * more actual detail to reveal past "as large as comfortably fits the
- * screen," so a pan/zoom-beyond-fit interaction wasn't judged worth the
- * added complexity for this pass.
+ * Images scale to fit 90vw/90vh, including enlargement beyond their
+ * intrinsic size. The image element itself keeps the image's aspect
+ * ratio, so the surrounding backdrop remains clickable even for very
+ * wide or tall images. Viewport units also keep the fit responsive to
+ * window resizing without a resize listener.
  */
 export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [loadedImage, setLoadedImage] = useState<{ src: string; aspectRatio: number }>();
   const t = useTranslation();
 
   useEffect(() => {
@@ -100,8 +99,15 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
         />
       </Tooltip>
       <img
+        key={image.src}
         src={image.src}
         alt={image.alt}
+        onLoad={(event) => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalWidth > 0 && naturalHeight > 0) {
+            setLoadedImage({ src: image.src, aspectRatio: naturalWidth / naturalHeight });
+          }
+        }}
         onClick={(event) => {
           // A click *on the image itself* shouldn't close the viewer —
           // only the surrounding backdrop should, matching how a real
@@ -109,6 +115,8 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
           event.stopPropagation();
         }}
         style={{
+          width: loadedImage?.src === image.src ? `${90 * loadedImage.aspectRatio}vh` : undefined,
+          height: "auto",
           maxWidth: "90vw",
           maxHeight: "90vh",
           objectFit: "contain",
