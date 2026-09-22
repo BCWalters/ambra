@@ -446,11 +446,17 @@ export class ReadingTheme {
    * - Justified text with hyphenation, generous line-height, and real
    *   paragraph spacing.
    *
-   * All of this is easily overridden by a book's own CSS (later in
+   * Most of this is easily overridden by a book's own CSS (later in
    * source order), so a book that supplies deliberate typography of its
-   * own is respected — this is what fills the very common gap of
-   * reflowable content that supplies little or no typographic styling of
-   * its own and would otherwise fall back to the browser's bare defaults.
+   * own is respected. The content measure (`max-width`/`margin`/
+   * `padding` on `body`) is the one exception, forced with `!important`:
+   * it's the page's own horizontal envelope, not book typography, and
+   * countless real EPUBs ship a generic reset (Eric Meyer's classic
+   * `html, body, div, span, ... { margin: 0; padding: 0 }`, or similar,
+   * often inherited boilerplate rather than a deliberate choice) that
+   * would otherwise zero it out and flush all page content to one edge
+   * (confirmed against a real book, an O'Reilly EPUB3 title whose own
+   * stylesheet does exactly this — issue #110).
    */
   public static readonly CSS = `
 :root {
@@ -475,9 +481,9 @@ html, body {
 
 body {
   box-sizing: border-box;
-  max-width: calc(var(${ReadingTheme.CONTENT_WIDTH_PROPERTY}, 34) * 1em);
-  margin: 0 auto;
-  padding: 0 1.5em;
+  max-width: calc(var(${ReadingTheme.CONTENT_WIDTH_PROPERTY}, 34) * 1em) !important;
+  margin: 0 auto !important;
+  padding: 0 1.5em !important;
   font-family: var(${ReadingTheme.FONT_FAMILY_PROPERTY});
   font-size: 1.125rem;
   line-height: calc(1.65 * var(${ReadingTheme.LINE_SPACING_PROPERTY}, 1));
