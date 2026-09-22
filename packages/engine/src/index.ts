@@ -77,6 +77,11 @@ export type {
   TextPositionSelector,
 } from "./annotations/EpubAnnotation.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";
+export { parseSmilClockValue, SmilClockValueError } from "./media-overlay/SmilClockValue.js";
+export { SmilDocument, SmilPar, SmilSeq, SmilParseError } from "./media-overlay/SmilDocument.js";
+export type { SmilNode, SmilTextRef, SmilAudioClip } from "./media-overlay/SmilDocument.js";
+export { MediaOverlayPlayer, MediaOverlayError } from "./media-overlay/MediaOverlayPlayer.js";
+export type { MediaOverlayAudioHost, MediaOverlayClip } from "./media-overlay/MediaOverlayPlayer.js";
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";

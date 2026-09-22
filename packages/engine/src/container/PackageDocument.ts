@@ -2,6 +2,7 @@ import { resolveEpubPath } from "./EpubPath.js";
 import { getDescendantElementsByNS, getFirstDescendantElementByNS, getNamespacedAttribute } from "./Xml.js";
 import { elementCfiSteps } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
+import { parseSmilClockValue } from "../media-overlay/SmilClockValue.js";
 
 const OPF_NAMESPACE = "http://www.idpf.org/2007/opf";
 const DC_NAMESPACE = "http://purl.org/dc/elements/1.1/";
@@ -80,6 +81,11 @@ export class ManifestItem {
      * this item's own `mediaType` natively. See
      * `PackageDocument.resolveManifestItemChain`. */
     public readonly fallback: string | undefined = undefined,
+    /** The manifest id this item's `media-overlay` attribute names — the
+     * SMIL Media Overlay Document providing synchronized narration for
+     * this content document, if any. Absent for the overwhelming
+     * majority of manifest items. */
+    public readonly mediaOverlayId: string | undefined = undefined,
   ) {}
 
   public hasProperty(property: string): boolean {
@@ -317,6 +323,49 @@ export class PackageMetadata {
     /** EPUB Accessibility 1.1 metadata — see `AccessibilityMetadata`. */
     public readonly accessibility: AccessibilityMetadata,
   ) {}
+
+  /** `<meta property="media:duration">` with no `refines` — the book's
+   * total Media Overlay narration duration, if declared. Derived from
+   * `metaEntries` (not its own constructor field) since it's just one
+   * more interpretation of data already captured generically; malformed
+   * values are tolerated (`undefined`) rather than thrown, the same
+   * graceful-degradation stance the rest of this class takes toward
+   * optional metadata. */
+  public get mediaOverlayDurationSeconds(): number | undefined {
+    return this.mediaOverlayDurationForRefinement(undefined);
+  }
+
+  /** `<meta property="media:duration" refines="#id">` for a specific
+   * SMIL manifest item's own id — that overlay's individual duration,
+   * distinct from the book-wide total (`mediaOverlayDurationSeconds`). */
+  public mediaOverlayDurationForManifestId(manifestId: string): number | undefined {
+    return this.mediaOverlayDurationForRefinement(manifestId);
+  }
+
+  private mediaOverlayDurationForRefinement(refines: string | undefined): number | undefined {
+    const entry = this.metaEntries.find((e) => e.key === "media:duration" && e.refines === refines);
+    if (!entry) {
+      return undefined;
+    }
+    try {
+      return parseSmilClockValue(entry.value);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** `<meta property="media:narrator">` — the person or agent reading
+   * the Media Overlay narration, if declared. */
+  public get mediaOverlayNarrator(): string | undefined {
+    return this.metaEntries.find((e) => e.key === "media:narrator")?.value;
+  }
+
+  /** `<meta property="media:active-class">` — the CSS class name a
+   * Reading System should apply to the currently-narrated text fragment
+   * during playback, if the book declares one. */
+  public get mediaOverlayActiveClass(): string | undefined {
+    return this.metaEntries.find((e) => e.key === "media:active-class")?.value;
+  }
 }
 
 /**
@@ -416,6 +465,13 @@ export class PackageDocument {
    * majority. */
   public findAnnotationsDocument(): ManifestItem | undefined {
     return this.manifest.find((item) => item.hasProperty("annotations"));
+  }
+
+  /** Resolves a content document's `media-overlay` attribute (see
+   * `ManifestItem.mediaOverlayId`) to the actual SMIL manifest item, if
+   * both the attribute and a matching manifest entry are present. */
+  public findMediaOverlay(item: ManifestItem): ManifestItem | undefined {
+    return item.mediaOverlayId ? this.manifestById.get(item.mediaOverlayId) : undefined;
   }
 
   /** Finds the spine index whose `packageCfiSteps` numerically matches
@@ -702,13 +758,14 @@ export class PackageDocument {
       const mediaType = requireAttribute(itemEl, "media-type", opfPath, "manifest item");
       const properties = parsePropertyList(itemEl.getAttribute("properties"));
       const fallback = itemEl.getAttribute("fallback") ?? undefined;
+      const mediaOverlayId = itemEl.getAttribute("media-overlay") ?? undefined;
 
       // Manifest hrefs are relative to the OPF file's own directory, not
       // the archive root — resolveEpubPath resolves relative to opfPath's
       // directory (dropping opfPath's own final path segment).
       const path = resolveEpubPath(opfPath, href);
 
-      return new ManifestItem(id, path, mediaType, properties, fallback);
+      return new ManifestItem(id, path, mediaType, properties, fallback, mediaOverlayId);
     });
   }
 

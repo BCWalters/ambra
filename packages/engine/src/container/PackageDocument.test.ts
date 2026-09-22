@@ -551,3 +551,74 @@ describe("PackageDocument.findAnnotationsDocument", () => {
     expect(pkg.findAnnotationsDocument()).toBeUndefined();
   });
 });
+
+describe("Media Overlays (issue #101)", () => {
+  const xml = `<?xml version="1.0"?>
+    <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+        <dc:title>Test</dc:title>
+        <dc:language>en</dc:language>
+        <meta property="media:duration">0:20:37.12</meta>
+        <meta property="media:duration" refines="#chapter1_overlay">0:02:04.00</meta>
+        <meta property="media:narrator">Jane Narrator</meta>
+        <meta property="media:active-class">-epub-media-overlay-active</meta>
+      </metadata>
+      <manifest>
+        <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml" media-overlay="chapter1_overlay"/>
+        <item id="chapter1_overlay" href="chapter1_overlay.smil" media-type="application/smil+xml"/>
+        <item id="chapter2" href="chapter2.xhtml" media-type="application/xhtml+xml"/>
+      </manifest>
+      <spine><itemref idref="chapter1"/><itemref idref="chapter2"/></spine>
+    </package>`;
+  const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+  it("resolves a content document's media-overlay attribute to its SMIL manifest item", () => {
+    const chapter1 = pkg.getManifestItem("chapter1")!;
+    expect(pkg.findMediaOverlay(chapter1)?.id).toBe("chapter1_overlay");
+  });
+
+  it("returns undefined for a content document with no media-overlay attribute", () => {
+    const chapter2 = pkg.getManifestItem("chapter2")!;
+    expect(pkg.findMediaOverlay(chapter2)).toBeUndefined();
+  });
+
+  it("parses the book-wide total media:duration", () => {
+    expect(pkg.metadata.mediaOverlayDurationSeconds).toBeCloseTo(20 * 60 + 37.12, 2);
+  });
+
+  it("parses a refined media:duration for a specific SMIL manifest item", () => {
+    expect(pkg.metadata.mediaOverlayDurationForManifestId("chapter1_overlay")).toBeCloseTo(2 * 60 + 4, 2);
+  });
+
+  it("returns undefined for a manifest id with no matching refined duration", () => {
+    expect(pkg.metadata.mediaOverlayDurationForManifestId("nonexistent")).toBeUndefined();
+  });
+
+  it("parses media:narrator", () => {
+    expect(pkg.metadata.mediaOverlayNarrator).toBe("Jane Narrator");
+  });
+
+  it("parses media:active-class", () => {
+    expect(pkg.metadata.mediaOverlayActiveClass).toBe("-epub-media-overlay-active");
+  });
+
+  it("returns undefined for every media overlay metadata field when a book has none", () => {
+    const plainXml = `<?xml version="1.0"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+          <dc:title>Test</dc:title>
+          <dc:language>en</dc:language>
+        </metadata>
+        <manifest>
+          <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+        </manifest>
+        <spine><itemref idref="chapter1"/></spine>
+      </package>`;
+    const plainPkg = PackageDocument.parse(plainXml, "OEBPS/content.opf");
+    expect(plainPkg.metadata.mediaOverlayDurationSeconds).toBeUndefined();
+    expect(plainPkg.metadata.mediaOverlayNarrator).toBeUndefined();
+    expect(plainPkg.metadata.mediaOverlayActiveClass).toBeUndefined();
+  });
+});
