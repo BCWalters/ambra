@@ -1,7 +1,8 @@
 import type { FC } from "react";
 import { Body1, Button, Title2 } from "@fluentui/react-components";
-import { ArrowUploadRegular } from "@fluentui/react-icons";
+import { DocumentAddRegular } from "@fluentui/react-icons";
 import { LibraryEmptyIllustration } from "./LibraryEmptyIllustration.js";
+import { LibraryDiscovery } from "./LibraryDiscovery.js";
 
 export interface LibraryEmptyStateProps {
   accent: string;
@@ -23,18 +24,23 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, onImport
       flexDirection: "column",
       alignItems: "center",
       textAlign: "center",
-      maxWidth: 360,
-      margin: "48px auto 0",
+      maxWidth: 600,
+      margin: "20px auto 0",
       gap: 4,
     }}
   >
     <LibraryEmptyIllustration size={140} />
-    <Title2 style={{ color: accent, marginTop: 8 }}>Your library is empty</Title2>
+    <Title2 as="h1" style={{ color: accent, margin: "8px 0 0" }}>
+      Your library is empty
+    </Title2>
     <Body1 as="p" style={{ margin: "4px 0 20px", color: "var(--colorNeutralForeground3, #666)" }}>
       Import your first EPUB to start reading.
     </Body1>
-    <Button appearance="primary" icon={<ArrowUploadRegular />} onClick={onImport}>
+    <Button appearance="primary" icon={<DocumentAddRegular />} onClick={onImport}>
       Import your first book
     </Button>
+    <div style={{ width: "100%", marginTop: 28 }}>
+      <LibraryDiscovery />
+    </div>
   </div>
 );

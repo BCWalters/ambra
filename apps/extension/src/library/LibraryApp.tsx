@@ -17,7 +17,7 @@ import {
 } from "@fluentui/react-components";
 import {
   ArrowSortRegular,
-  ArrowUploadRegular,
+  DocumentAddRegular,
   DeleteRegular,
   InfoRegular,
   StorageRegular,
@@ -29,6 +29,7 @@ import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
 import { LibraryEmptyState } from "./LibraryEmptyState.js";
+import { LibraryDiscovery } from "./LibraryDiscovery.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
@@ -411,7 +412,7 @@ export const LibraryApp: FC = () => {
         <Button
           appearance="primary"
           size="small"
-          icon={<ArrowUploadRegular />}
+          icon={<DocumentAddRegular />}
           onClick={() => fileInputRef.current?.click()}
         >
           Import EPUB
@@ -434,18 +435,23 @@ export const LibraryApp: FC = () => {
         ) : books.length === 0 ? (
           <LibraryEmptyState accent={palette.accent} onImport={() => fileInputRef.current?.click()} />
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-            {books.map((book) => (
-              <BookCard
-                key={book.id}
-                book={book}
-                accent={palette.accent}
-                onOpen={() => openBook(book.id)}
-                onDelete={() => void removeBook(book.id)}
-                onShowDetails={() => setDetailsBookId(book.id)}
-              />
-            ))}
-          </div>
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <LibraryDiscovery expandable />
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+              {books.map((book) => (
+                <BookCard
+                  key={book.id}
+                  book={book}
+                  accent={palette.accent}
+                  onOpen={() => openBook(book.id)}
+                  onDelete={() => void removeBook(book.id)}
+                  onShowDetails={() => setDetailsBookId(book.id)}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
