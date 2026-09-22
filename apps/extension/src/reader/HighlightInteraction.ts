@@ -1,7 +1,8 @@
 import { Locator } from "@ambra/engine";
-import type { HighlightStyle, LocatorResolver } from "@ambra/engine";
+import type { LocatorResolver } from "@ambra/engine";
 import type { Highlight } from "../library/LibraryDatabase.js";
-import { applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
+import { applyActiveHighlightRange, applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
+import type { HighlightRangeEntry } from "./HighlightOverlap.js";
 import { findTextRangesInDocument } from "./findTextRangesInDocument.js";
 import type { ActiveHighlightState, NoteMarkerState, SelectionToolbarState } from "./ReaderTypes.js";
 
@@ -18,6 +19,12 @@ export interface HighlightInteractionContext {
   mergedTailDocument(): Document | undefined;
   forSpineIndex(spineIndex: number): readonly Highlight[] | undefined;
   currentSearchHighlightQuery(): string | undefined;
+  /** Whichever highlight's popup is currently open, if any — read (not
+   * owned) here purely to paint its own distinct "selected" emphasis
+   * (issue #113's follow-up); `ReaderController` remains the single
+   * place that actually sets it, on every path that opens or closes a
+   * highlight's popup. */
+  getActiveHighlight(): ActiveHighlightState | undefined;
   setPendingSelectionRange(range: Range | undefined): void;
   setSelectionToolbar(state: SelectionToolbarState | undefined): void;
   setActiveHighlight(state: ActiveHighlightState | undefined): void;
@@ -44,28 +51,23 @@ export class HighlightInteraction {
     return this.markers;
   }
 
-  /** Resolves `spineIndex`'s highlights into `Range`s, grouped by
-   * style, and paints them via `applyHighlightRanges`. A highlight
-   * whose CFI fails to resolve is skipped rather than failing the
-   * batch. No-op for fixed-layout content. */
+  /** Resolves `spineIndex`'s highlights into `{ style, range }` entries
+   * and paints them via `applyHighlightRanges`, which handles grouping
+   * (and blending any overlaps — issue #113) itself. A highlight whose
+   * CFI fails to resolve is skipped rather than failing the batch.
+   * No-op for fixed-layout content. */
   private applyHighlightsToDocument(doc: Document, spineIndex: number): void {
     const highlights = this.ctx.forSpineIndex(spineIndex);
-    const groups = new Map<HighlightStyle, Range[]>();
+    const entries: HighlightRangeEntry[] = [];
     if (highlights) {
       for (const highlight of highlights) {
         const range = this.resolveHighlightRange(highlight, spineIndex, doc);
-        if (!range) {
-          continue;
-        }
-        const existing = groups.get(highlight.style);
-        if (existing) {
-          existing.push(range);
-        } else {
-          groups.set(highlight.style, [range]);
+        if (range) {
+          entries.push({ style: highlight.style, range });
         }
       }
     }
-    applyHighlightRanges(doc, groups);
+    applyHighlightRanges(doc, entries);
   }
 
   /** Applies highlights to every content document the current host
@@ -89,7 +91,44 @@ export class HighlightInteraction {
       this.applyHighlightsToDocument(doc, this.ctx.spineIndex());
     }
     this.applySearchHighlightToCurrentHost();
+    this.applyActiveHighlightOverlay();
     this.updateNoteMarkers();
+  }
+
+  /** Re-paints (or clears) the "this highlight's popup is open" emphasis
+   * (issue #113's follow-up) across every content document the current
+   * host owns, the same tail/primary-document split
+   * `applyHighlightsToDocument` uses — a highlight only ever belongs to
+   * *one* spine item, so every document *except* the one matching its
+   * own `spineIndex` gets the emphasis cleared rather than left
+   * showing a stale one from before. Called both by
+   * `applyHighlightsToCurrentHost` (so a full repaint — page turn,
+   * font-size change, etc. — never leaves this out of sync) and
+   * directly by `ReaderController` every time `activeHighlight` itself
+   * changes (opening/closing a popup doesn't otherwise trigger a full
+   * highlight repaint, and shouldn't need to just for this). */
+  public applyActiveHighlightOverlay(): void {
+    if (this.ctx.isFixedLayoutHost()) {
+      return;
+    }
+    const active = this.ctx.getActiveHighlight();
+    const applyToDoc = (doc: Document, spineIndex: number): void => {
+      const range =
+        active && active.highlight.spineIndex === spineIndex
+          ? this.resolveHighlightRange(active.highlight, spineIndex, doc)
+          : undefined;
+      applyActiveHighlightRange(doc, range, active?.highlight.style);
+    };
+    const tailDoc = this.ctx.mergedTailDocument();
+    if (tailDoc) {
+      applyToDoc(tailDoc, this.ctx.spineIndex() - 1);
+    }
+    for (const doc of this.ctx.allContentDocuments()) {
+      if (doc === tailDoc) {
+        continue;
+      }
+      applyToDoc(doc, this.ctx.spineIndex());
+    }
   }
 
   /** Re-scans every content document the current host owns for

@@ -356,6 +356,7 @@ export class ReaderController {
       getActiveHighlight: () => this.activeHighlight,
       setActiveHighlight: (state) => {
         this.activeHighlight = state;
+        this.highlightInteraction.applyActiveHighlightOverlay();
       },
       reportError: (err) => this.reportTransientError(err, "save", "that highlight"),
       notify: () => this.notify(),
@@ -367,6 +368,7 @@ export class ReaderController {
       mergedTailDocument: () => (this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined),
       forSpineIndex: (spineIndex) => this.highlights.forSpineIndex(spineIndex),
       currentSearchHighlightQuery: () => this.searchCoordinator.currentHighlightQuery,
+      getActiveHighlight: () => this.activeHighlight,
       setPendingSelectionRange: (range) => {
         this.pendingSelectionRange = range;
       },
@@ -375,6 +377,7 @@ export class ReaderController {
       },
       setActiveHighlight: (state) => {
         this.activeHighlight = state;
+        this.highlightInteraction.applyActiveHighlightOverlay();
       },
       notify: () => this.notify(),
     });
@@ -1826,8 +1829,13 @@ export class ReaderController {
 
   private async turnPageInternal(direction: 1 | -1, token: number): Promise<void> {
     // Page turns do not rebuild the content document, so clear any highlight
-    // popup that now points at content no longer on screen.
+    // popup that now points at content no longer on screen — and repaint
+    // its "selected" emphasis away immediately (issue #113's follow-up),
+    // since the fast in-chapter turn path below never otherwise repaints
+    // highlights at all (the document itself doesn't change), which would
+    // otherwise leave a stale glow on the outgoing page's old position.
     this.activeHighlight = undefined;
+    this.highlightInteraction.applyActiveHighlightOverlay();
     this.footnotePopup = undefined;
     let moved: boolean;
     let announcement: string;

@@ -13,6 +13,7 @@ import { HighlightInteraction, type HighlightInteractionContext } from "./Highli
 vi.mock("./HighlightRenderer.js", () => ({
   applyHighlightRanges: vi.fn(),
   applySearchMatchRanges: vi.fn(),
+  applyActiveHighlightRange: vi.fn(),
 }));
 vi.mock("./findTextRangesInDocument.js", () => ({
   findTextRangesInDocument: vi.fn().mockReturnValue([]),
@@ -98,6 +99,7 @@ function makeContext(overrides: Partial<HighlightInteractionContext> = {}): High
     mergedTailDocument: () => undefined,
     forSpineIndex: () => undefined,
     currentSearchHighlightQuery: () => undefined,
+    getActiveHighlight: () => state.activeHighlight,
     setPendingSelectionRange: (range) => {
       state.pendingSelectionRange = range;
     },
@@ -146,8 +148,8 @@ describe("HighlightInteraction", () => {
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applyHighlightsToCurrentHost();
       expect(applyHighlightRanges).toHaveBeenCalledTimes(2);
-      const [, groups] = vi.mocked(applyHighlightRanges).mock.calls[0]!;
-      expect(groups.get("yellow")).toHaveLength(1);
+      const [, entries] = vi.mocked(applyHighlightRanges).mock.calls[0]!;
+      expect(entries.filter((e) => e.style === "yellow")).toHaveLength(1);
     });
 
     it("paints a merged spread's tail document against spineIndex - 1, and skips it in the main loop", () => {
@@ -164,9 +166,9 @@ describe("HighlightInteraction", () => {
       // Once for the tail document (spineIndex 2) and once for the
       // primary document (spineIndex 3) — never twice for the tail doc.
       expect(applyHighlightRanges).toHaveBeenCalledTimes(2);
-      const [firstDoc, firstGroups] = vi.mocked(applyHighlightRanges).mock.calls[0]!;
+      const [firstDoc, firstEntries] = vi.mocked(applyHighlightRanges).mock.calls[0]!;
       expect(firstDoc).toBe(tailDoc);
-      expect(firstGroups.get("yellow")).toHaveLength(1);
+      expect(firstEntries.filter((e) => e.style === "yellow")).toHaveLength(1);
     });
 
     it("also refreshes the search-match spotlight and note markers", () => {
