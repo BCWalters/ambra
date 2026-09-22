@@ -8,6 +8,7 @@ const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epu
 const TWO_CHAPTER_EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
 const MERGED_TAIL_VISIBILITY_EPUB = path.resolve(here, "..", "fixtures", "merged-tail-visibility.epub");
 const BOOK_START_MERGE_EPUB = path.resolve(here, "..", "fixtures", "book-start-merge.epub");
+const CHAINED_SINGLE_PAGE_CHAPTERS_EPUB = path.resolve(here, "..", "fixtures", "chained-single-page-chapters.epub");
 const TOTAL_PARAGRAPHS = 30;
 
 function paragraphNumbers(text: string): number[] {
@@ -614,6 +615,123 @@ test.describe("paginated reflowable navigation correctness", () => {
         await readerPage.keyboard.press("ArrowRight");
         await readerPage.waitForTimeout(700);
         expect(await rightSlotHidden(), `press ${press}: right column present but hidden`).toBe(false);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("two-page spread: navigating backward across more than one chained single-page chapter lands on the book's true start, not a stale re-paginated spread (issue #120)", async () => {
+    // `CHAINED_SINGLE_PAGE_CHAPTERS_EPUB` chains three consecutive
+    // one-page spine items (cover, title page, contents) before its
+    // first real (multi-page) chapter — the exact shape that exposed
+    // issue #120 in a real Project Gutenberg book: the merge machinery
+    // (issues #90/#92/#94/#103) only ever handled a *single* merge
+    // boundary at a time. Landing backward on the second (or later)
+    // one-page chapter in the chain reopened it as a fresh, independent
+    // host and took `SpreadPaginatedHost.goToLastPage()`'s unmerged
+    // "show the real last page paired with the one before it" trick —
+    // which degenerates to nothing for a genuinely one-page chapter —
+    // instead of recognizing it should merge with whatever precedes
+    // *it* too. A second, independent bug made this worse: a later,
+    // unconditional second `goToLastPage()` call in `openSpineItem`
+    // silently undid an already-correctly-built merge immediately after
+    // constructing it, landing on a lone, blank-facing page regardless.
+    //
+    // Note: pagination never fragments the DOM (see
+    // `SpreadPaginatedHost`'s own doc comment), so a chapter's *whole*
+    // text is always present in its iframe's `innerText` regardless of
+    // which page is currently clipped into view — comparing raw
+    // `innerText` between two turns cannot distinguish "the same page"
+    // from "a different page of the same chapter." This checks which
+    // *spine item's* own distinctive markers are visible instead (and,
+    // for "is a facing column missing when it shouldn't be," a hidden
+    // iframe positioned in the right-column slot — the same signature
+    // the issue #103 test above checks for).
+    const { context, readerPage } = await launchReader(CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    const rightSlotHiddenIframe = () =>
+      readerPage.evaluate(() => {
+        const iframes = Array.from(document.querySelectorAll("iframe"));
+        return iframes.some((f) => {
+          const rect = f.getBoundingClientRect();
+          return rect.x > 700 && getComputedStyle(f).visibility === "hidden";
+        });
+      });
+    const visibleMarkers = () =>
+      readerPage.evaluate(() => {
+        const texts = Array.from(document.querySelectorAll("iframe"))
+          .filter((f) => getComputedStyle(f).visibility !== "hidden")
+          .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
+        return {
+          columnCount: texts.length,
+          everyColumnHasText: texts.every((t) => t.trim().length > 0),
+          hasCover: texts.some((t) => t.includes("Cover Para 1")),
+          hasTitle: texts.some((t) => t.includes("Title Para 1")),
+          hasContents: texts.some((t) => t.includes("Contents Para 1")),
+          hasChapter1: texts.some((t) => t.includes("Chapter One")),
+        };
+      });
+
+    try {
+      await readerPage.waitForTimeout(500);
+
+      // The book's very first spread merges forward immediately (see
+      // the `BOOK_START_MERGE_EPUB` test above) — cover and title page
+      // shown side by side, with no hidden facing column.
+      const initialMarkers = await visibleMarkers();
+      expect(initialMarkers.everyColumnHasText, "the book's very first spread had a blank visible column").toBe(
+        true,
+      );
+      expect(initialMarkers.hasCover && initialMarkers.hasTitle, "the book didn't open on cover+title merged").toBe(
+        true,
+      );
+      expect(await rightSlotHiddenIframe(), "the book's very first spread had a hidden facing column").toBe(false);
+
+      // Advance well into the real (27-page) first chapter.
+      for (let press = 0; press < 8; press++) {
+        await readerPage.keyboard.press("ArrowRight");
+        await readerPage.waitForTimeout(500);
+      }
+
+      // Now navigate all the way back past every chained single-page
+      // chapter. At no point should a facing column be hidden when it
+      // shouldn't be (issue #120's "some blank pages"), and the front-
+      // matter chain's own chapters (title page, contents) must each
+      // actually appear at some point along the way — silently skipping
+      // over one entirely, or getting stuck re-showing chapter 1
+      // forever, would both be issue #120's "duplicated content" in a
+      // different guise.
+      let sawTitle = false;
+      let sawContents = false;
+      let reachedStart = false;
+      const MAX_BACK_PRESSES = 15;
+      for (let press = 0; press < MAX_BACK_PRESSES && !reachedStart; press++) {
+        await readerPage.keyboard.press("ArrowLeft");
+        await readerPage.waitForTimeout(700);
+        expect(await rightSlotHiddenIframe(), `back-press ${press}: a facing column was hidden`).toBe(false);
+        const markers = await visibleMarkers();
+        expect(markers.everyColumnHasText, `back-press ${press}: a visible column was blank`).toBe(true);
+        sawTitle ||= markers.hasTitle;
+        sawContents ||= markers.hasContents;
+        reachedStart = markers.hasCover && markers.hasTitle && !markers.hasContents && !markers.hasChapter1;
+      }
+
+      expect(reachedStart, "backward navigation never returned to the book's cover+title start").toBe(true);
+      expect(sawTitle, "the title page chapter was never actually shown while navigating backward").toBe(true);
+      expect(sawContents, "the contents chapter was never actually shown while navigating backward").toBe(true);
+
+      // Once at the true start, further backward presses must leave it
+      // there unchanged, not drift to some other, incorrect state.
+      for (let press = 0; press < 3; press++) {
+        await readerPage.keyboard.press("ArrowLeft");
+        await readerPage.waitForTimeout(500);
+        const markers = await visibleMarkers();
+        expect(
+          markers.hasCover && markers.hasTitle && !markers.hasContents && !markers.hasChapter1,
+          `press past the start (#${press}) changed the display`,
+        ).toBe(true);
       }
     } finally {
       await context.close();

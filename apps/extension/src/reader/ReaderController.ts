@@ -2373,6 +2373,50 @@ export class ReaderController {
     }
   }
 
+  /** Builds a merged spread for `spineIndex` — a whole one-page spine
+   * item, landed on *backward* from the chapter after it (see
+   * `openSpineItem`, issue #120) — by borrowing whichever spine item
+   * precedes it as a decorative left-column tail, so the reader sees
+   * that lone page with a real companion instead of alone with a blank
+   * facing column.
+   *
+   * Unlike `prepareMergedIncomingSpread`/`prepareMergedIncomingSpreadFromUpcomingLastPage`
+   * (which merge *forward*, shifting the primary reading position into
+   * the *next* chapter), this keeps `spineIndex` itself as the primary
+   * column — the whole point of a backward landing is to land *on* it,
+   * not silently bounce past it into whichever chapter the reader was
+   * just navigating away from. Returns `undefined` if there's no
+   * previous spine item to borrow from, or it can't take part in a
+   * spread (fixed-layout, or the pane's too narrow) — callers fall back
+   * to showing the lone page by itself in that case. */
+  private async prepareMergedSpreadFromPrecedingTail(spineIndex: number): Promise<SpreadPaginatedHost | undefined> {
+    const previousSpineIndex = spineIndex - 1;
+    if (previousSpineIndex < 0 || !this.canMergeSpreadIntoNext(previousSpineIndex) || !this.containerEl) {
+      return undefined;
+    }
+    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+    const previousTail = new PaginatedContentHost(columnWidth, this.height);
+    previousTail.element.style.position = "absolute";
+    previousTail.element.style.opacity = "0";
+    previousTail.element.style.pointerEvents = "none";
+    this.containerEl.appendChild(previousTail.element);
+    try {
+      await previousTail.open(this.contentLoader, this.resolver, previousSpineIndex);
+    } catch (err) {
+      previousTail.element.remove();
+      previousTail.dispose();
+      throw err;
+    }
+    previousTail.goToLastPage();
+    try {
+      return await this.buildMergedSpreadHost(spineIndex, previousTail);
+    } catch (err) {
+      previousTail.element.remove();
+      previousTail.dispose();
+      throw err;
+    }
+  }
+
   /** Builds the incoming spread for an in-chapter spread turn and
    * positions it directly under `oldHost.element`. Returns `undefined`
    * only when `oldHost` is already at the edge of the chapter; a lopsided
@@ -3546,6 +3590,14 @@ export class ReaderController {
         | ScrollContentHost
         | undefined;
       let applyDisplaySettings = false;
+      // Set once a merge (either direction — see below) has already
+      // landed the new host on the correct position by construction, so
+      // the later "apply `landOnLastPage`/etc." step (issue #120) knows
+      // not to redundantly re-land it: `SpreadPaginatedHost.goToLastPage`
+      // on an already-merged host jumps to *this* chapter's own true
+      // last page, discarding the merge and undoing exactly the landing
+      // spot the merge just constructed on purpose.
+      let landedViaMerge = false;
       try {
         if (resolvedLayout === "pre-paginated") {
           // Fixed-layout content always uses `FixedSpreadHost`;
@@ -3617,6 +3669,50 @@ export class ReaderController {
               createdHost = merged;
               stagingEl = undefined;
               spineIndex += 1;
+              landedViaMerge = true;
+            }
+          } else if (options.landOnLastPage && host.pageCount === 1) {
+            // Landing *backward* on a whole one-page spine item (issue
+            // #120): the `goToLastPage()` "show the true last page
+            // paired with the one before it" trick used below, once
+            // this block is done, has no earlier page of its own here
+            // to pair with — it would show this lone page alone with a
+            // blank facing column, the very thing merging exists to
+            // avoid, just approached from the opposite direction.
+            // Borrow whatever spine item precedes *this* one as a
+            // decorative tail instead, keeping `spineIndex` itself as
+            // the primary column (unlike the forward-merge case above,
+            // which deliberately shifts the primary column forward).
+            const merged = await this.prepareMergedSpreadFromPrecedingTail(spineIndex);
+            if (merged) {
+              host.dispose();
+              stagingEl.remove();
+              merged.element.style.position = "";
+              merged.element.style.top = "";
+              merged.element.style.left = "";
+              merged.element.style.zIndex = "";
+              createdHost = merged;
+              stagingEl = undefined;
+              landedViaMerge = true;
+            } else {
+              // No previous spine item to borrow from — this is the
+              // book's very first spine item. Merging *forward* instead
+              // reproduces exactly the same canonical spread a fresh
+              // forward-open of the book already shows, rather than
+              // leaving this lone page to show alone.
+              const mergedForward = await this.prepareMergedIncomingSpread(host, spineIndex);
+              if (mergedForward) {
+                host.dispose();
+                stagingEl.remove();
+                mergedForward.element.style.position = "";
+                mergedForward.element.style.top = "";
+                mergedForward.element.style.left = "";
+                mergedForward.element.style.zIndex = "";
+                createdHost = mergedForward;
+                stagingEl = undefined;
+                spineIndex += 1;
+                landedViaMerge = true;
+              }
             }
           }
         } else {
@@ -3708,6 +3804,7 @@ export class ReaderController {
       } else {
         if (
           options.landOnLastPage &&
+          !landedViaMerge &&
           (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
         ) {
           this.host.goToLastPage();

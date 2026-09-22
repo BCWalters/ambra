@@ -33,6 +33,10 @@ const BOOKS: Array<{ file: string; label: string }> = [
   { file: "israel-sailing.epub", label: "RTL/BIDI Hebrew content (IDPF sample)" },
   { file: "internal-links.epub", label: "internal hyperlink navigation (IDPF sample)" },
   {
+    file: "frankenstein.epub",
+    label: "chained single-page front matter (cover/title/contents), issue #120 (Project Gutenberg)",
+  },
+  {
     file: "linear-algebra.epub",
     label: "A First Course in Linear Algebra (Beezer) — MathML-dense textbook, issue #102",
   },

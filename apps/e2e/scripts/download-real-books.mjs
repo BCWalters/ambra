@@ -49,6 +49,18 @@ const BOOKS = [
     url: "https://github.com/IDPF/epub3-samples/releases/download/20230704/internallinks.epub",
     note: "IDPF EPUB3 samples — dedicated internal-hyperlink-navigation test document.",
   },
+  {
+    name: "frankenstein.epub",
+    url: "https://www.gutenberg.org/ebooks/84.epub3.images",
+    note:
+      "Project Gutenberg #84 — a chain of several very short front-matter " +
+      "spine items (a single-page cover, a two-page title/boilerplate " +
+      "page, a one-page contents list) right before the real chapters, " +
+      "which exposed issue #120: navigating backward across more than " +
+      "one merged single-page chapter in a row landed on a stale, " +
+      "incorrectly re-paginated spread instead of the book's own true " +
+      "start.",
+  },
   // "linear-algebra.epub" (Robert Beezer's "A First Course in Linear
   // Algebra", GNU FDL) is deliberately *not* listed here — it's the
   // MathML-dense textbook that exposed issue #102's pagination
