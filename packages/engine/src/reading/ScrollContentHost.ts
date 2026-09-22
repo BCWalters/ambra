@@ -5,6 +5,7 @@ import { makeOverflowingPreElementsFocusable } from "../rendering/PreOverflowFoc
 import type { DomBreakPoint } from "../layout/Page.js";
 import { ScrollViewEngine } from "../layout/ScrollViewEngine.js";
 import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
+import type { DisclosureState } from "./DisclosureState.js";
 
 /**
  * Production content host for one spine item in continuous-scroll mode:
@@ -17,6 +18,7 @@ import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
 export class ScrollContentHost {
   private readonly sandboxedHost: SandboxedContentHost;
   private engine: ScrollViewEngine | undefined;
+  private disclosureCleanup: (() => void) | undefined;
 
   public constructor(width: number, height: number, ownerDocument?: Document) {
     this.sandboxedHost = new SandboxedContentHost(ownerDocument);
@@ -31,7 +33,14 @@ export class ScrollContentHost {
   /** Loads spine item `spineIndex` and prepares position tracking for it,
    * scrolled to the top. Use `restorePosition` afterwards to resume at a
    * specific position instead. */
-  public async open(contentLoader: ContentLoader, resolver: ResourceUrlResolver, spineIndex: number): Promise<void> {
+  public async open(
+    contentLoader: ContentLoader,
+    resolver: ResourceUrlResolver,
+    spineIndex: number,
+    disclosures?: DisclosureState,
+  ): Promise<void> {
+    this.disclosureCleanup?.();
+    this.disclosureCleanup = undefined;
     const assembledXhtml = await loadAssembledSpineItem(contentLoader, resolver, spineIndex);
     await this.sandboxedHost.render(assembledXhtml);
 
@@ -39,6 +48,7 @@ export class ScrollContentHost {
     if (!iframeDocument) {
       throw new Error("Sandboxed iframe has no contentDocument after loading (unexpected).");
     }
+    this.disclosureCleanup = disclosures?.attach(spineIndex, iframeDocument);
 
     this.engine = ScrollViewEngine.prepare(iframeDocument.body);
     makeOverflowingPreElementsFocusable(iframeDocument);
@@ -97,10 +107,15 @@ export class ScrollContentHost {
     if (!scrollingElement) {
       return true;
     }
-    return scrollingElement.scrollTop + scrollingElement.clientHeight >= scrollingElement.scrollHeight - 1;
+    return (
+      scrollingElement.scrollTop + scrollingElement.clientHeight >=
+      scrollingElement.scrollHeight - 1
+    );
   }
 
   public dispose(): void {
+    this.disclosureCleanup?.();
+    this.disclosureCleanup = undefined;
     this.sandboxedHost.dispose();
   }
 }

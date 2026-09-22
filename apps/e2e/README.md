@@ -59,12 +59,15 @@ Running this suite never disturbs that.
 For concurrent validation, set `AMBRA_E2E_EXTENSION_PATH` to a dedicated
 absolute build directory for both the build and test commands. This keeps
 one run's rebuild from replacing files used by another run's browser.
+Give each run its own Playwright output directory too, so profiles and reports
+cannot overwrite another run's artifacts.
 Use only a disposable build directory: the build empties it first.
 
 ```sh
 export AMBRA_E2E_EXTENSION_PATH="$(mktemp -d /tmp/ambra-e2e-build.XXXXXX)"
 pnpm --filter @ambra/e2e run build:extension
-pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts
+pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
+  --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
 ## Fixtures
@@ -74,6 +77,20 @@ numbered paragraphs, `packages/engine/test/fixtures/long-content-epub-src`
 is its source) used by `tests/navigation-correctness.spec.ts`'s exact
 content-accounting checks, since its paragraph numbering makes "was
 anything skipped or duplicated" a simple, precise check.
+
+The #129 spread regression additionally compares every painted character in
+`chained-single-page-chapters.epub` against the original XHTML, traverses the
+entire book in both directions, and repeats turns after seeking to the start.
+Optional Alice and Frankenstein checks cover fitted cover images and nondefault
+fonts (`real-books/frankenstein.epub`: Gutenberg ebook 84).
+`tests/reflowable-rtl.spec.ts` derives local RTL fixtures and verifies keyboard,
+chapter shortcuts, logical Space, taps, swipes, scrubber direction, page numbers,
+and cross-chapter note placement in both single-page and spread layouts.
+
+`resize-lifecycle.spec.ts` and `settings-lifecycle.spec.ts` also bundle the
+controller directly into a real Chromium page. Controlled chapter-load gates
+exercise overlapping turns, resizes, typography, mode changes, and load failures
+without relying on UI debounce timing or adding production test hooks.
 
 ## Synthetic scale checks
 
@@ -91,6 +108,17 @@ The binaries stay in the ignored `real-books/scale-validation/` directory.
 The tests exercise 96 decoded images, a 120-chapter/199k-word book, and seven
 XHTML content categories. Recorded timings and generous hang-detection bounds
 are not hardware-independent performance guarantees or exhaustive content tests.
+
+The small native-disclosure fixtures are committed, so their regression tests
+run without a generation prerequisite:
+
+```sh
+pnpm --filter @ambra/e2e exec playwright test disclosure-pagination.spec.ts disclosure-interaction.spec.ts
+```
+
+These check exact rendered-line accounting in both directions, expanded/collapsed
+state, keyboard focus, and mode changes. To regenerate those small fixtures,
+run `node apps/e2e/scripts/generate-disclosure-fixture.mjs`.
 
 ## Real-book smoke suite
 

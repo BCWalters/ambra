@@ -4,8 +4,13 @@ import type { RenditionLayout, SpineItemRef } from "../container/PackageDocument
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
 import { ReadingTheme } from "../rendering/ReadingTheme.js";
 import type { FontFamilyChoice } from "../rendering/ReadingTheme.js";
-import { aggregateBookPosition, computePriorityOrder, resolveGlobalPage } from "./BookPagination.js";
+import {
+  aggregateBookPosition,
+  computePriorityOrder,
+  resolveGlobalPage,
+} from "./BookPagination.js";
 import type { BookPosition } from "./BookPagination.js";
+import type { DisclosureState } from "./DisclosureState.js";
 
 export type { BookPosition } from "./BookPagination.js";
 
@@ -61,6 +66,7 @@ export class BookPaginationEstimator {
     private readonly spine: readonly SpineItemRef[],
     private readonly packageDefaultLayout: RenditionLayout,
     private readonly hiddenContainer: HTMLElement,
+    private readonly disclosures?: DisclosureState,
   ) {
     this.pageCounts = new Array(spine.length).fill(undefined);
   }
@@ -185,10 +191,14 @@ export class BookPaginationEstimator {
       return 1;
     }
 
-    const host = new PaginatedContentHost(width, height, this.hiddenContainer.ownerDocument ?? undefined);
+    const host = new PaginatedContentHost(
+      width,
+      height,
+      this.hiddenContainer.ownerDocument ?? undefined,
+    );
     this.hiddenContainer.appendChild(host.element);
     try {
-      await host.open(this.contentLoader, this.resolver, spineIndex);
+      await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
       const needsNonDefaultSettings =
         fontScale !== 1 ||
         fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
@@ -227,8 +237,16 @@ export class BookPaginationEstimator {
    * an actual navigable position. `undefined` if the book isn't fully
    * measured yet (a caller should fall back to coarser, spine-level
    * seeking in that case). */
-  public resolveGlobalPage(globalPageOneBased: number): { spineIndex: number; pageIndexInItem: number } | undefined {
+  public resolveGlobalPage(
+    globalPageOneBased: number,
+  ): { spineIndex: number; pageIndexInItem: number } | undefined {
     return resolveGlobalPage(this.pageCounts, globalPageOneBased);
+  }
+
+  /** A native disclosure changes one chapter's measured layout, not its neighbors. */
+  public invalidateSpineItem(spineIndex: number): void {
+    this.generation++;
+    this.pageCounts[spineIndex] = undefined;
   }
 
   /** Invalidates any in-flight `run` (its remaining work will finish but

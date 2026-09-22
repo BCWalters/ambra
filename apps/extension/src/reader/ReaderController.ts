@@ -3,6 +3,7 @@ import {
   AnnotationParseError,
   BookPaginationEstimator,
   ContentLoader,
+  DisclosureState,
   EpubCfi,
   EpubContainer,
   FixedContentHost,
@@ -21,6 +22,7 @@ import {
   serializeAnnotationCollection,
   splitHrefFragment,
   SpreadPaginatedHost,
+  ReflowableSpreadPlanner,
 } from "@ambra/engine";
 import type {
   EpubAnnotation,
@@ -31,6 +33,7 @@ import type {
   PackageDocument,
   Page,
   PageTheme,
+  ReflowableSpread,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
@@ -81,6 +84,24 @@ const MIN_ZOOMABLE_IMAGE_SIZE = 100;
 /** Caps how many times a book with no discoverable description gets a
  * fresh `fetchBookDescription` attempt on subsequent opens. */
 const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
+
+interface ReaderLayout {
+  width: number;
+  height: number;
+  viewMode: ViewMode;
+  fontScale: number;
+  fontFamily: FontFamilyChoice;
+  lineSpacing: number;
+  letterSpacing: number;
+  contentWidthEm: number;
+}
+
+interface PendingLayout {
+  configuration: ReaderLayout;
+  reflow: boolean;
+  disclosureFocus?: { spineIndex: number; ordinal: number };
+  waiters: Array<{ resolve: () => void; reject: (error: unknown) => void }>;
+}
 
 /** `epub:type`'s namespace (EPUB3 Structural Semantics vocabulary) —
  * see `hasEpubType`/`applyEpubTypeAriaRoles`. */
@@ -165,7 +186,8 @@ export class ReaderController {
   private chromeTheme: ChromeThemeChoice = DEFAULT_CHROME_THEME;
   private pageTurnAnimationStyle: PageTurnAnimationStyle = DEFAULT_PAGE_TURN_ANIMATION_STYLE;
   private spineIndex = 0;
-  /** The most recently requested reader-pane size. */
+  /** Active-operation geometry and typography remain stable across awaits;
+   * newer requests are held in pendingLayout until that operation settles. */
   private width = 0;
   private height = 0;
   /** The size the *current* host was actually last laid out at — lets
@@ -194,11 +216,6 @@ export class ReaderController {
    * pagination state. Ignores a call that arrives mid-turn rather than
    * queuing it. */
   private isTurningPage = false;
-  /** Set by `prepareMergedIncomingSpread` right before returning a
-   * merged host, so `turnPageInternal` knows to adopt this as the new
-   * `this.spineIndex` (this turn crossed a chapter boundary even though
-   * it took the same "just another spread turn" animation path). */
-  private pendingSpreadMergeSpineIndex: number | undefined;
   /** Incremented on every new page-turn gesture; a stale gesture whose
    * captured token no longer matches discards its own work instead of
    * clobbering newer state (a second safety net beyond `isTurningPage`
@@ -209,11 +226,11 @@ export class ReaderController {
    * stale, slow-loading call can't clobber a newer one's result once it
    * finally resolves. */
   private spineOpenToken = 0;
-  /** A resize that arrived while an `openSpineItem` was already in
-   * flight — applying it immediately would relayout a host that's
-   * mid-open, against stale content. Recorded and applied once the
-   * in-flight open settles instead. */
-  private pendingResize: { width: number; height: number } | undefined;
+  private pendingLayout: PendingLayout | undefined;
+  private isApplyingLayout = false;
+  private readonly disclosures = new DisclosureState((spineIndex, source) => {
+    this.handleDisclosureChange(spineIndex, source);
+  });
   private error: string | undefined;
   private errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
   /** A smaller, de-emphasized technical detail shown alongside `error`
@@ -266,6 +283,7 @@ export class ReaderController {
   private footnotePopup: FootnotePopupState | undefined;
   private readonly highlightInteraction: HighlightInteraction;
   private readonly pageTurnAnimator = new PageTurnAnimator({
+    rtl: () => this.pkg.pageProgressionDirection === "rtl",
     containerEl: () => this.containerEl,
     height: () => this.height,
     pageTheme: () => this.pageTheme,
@@ -273,6 +291,7 @@ export class ReaderController {
   });
   private readonly pageTurnOrchestrator = new PageTurnOrchestrator(
     {
+      rtl: () => this.pkg.pageProgressionDirection === "rtl",
       containerEl: () => this.containerEl,
       height: () => this.height,
       width: () => this.width,
@@ -346,6 +365,10 @@ export class ReaderController {
     });
     this.highlights = new HighlightManager(library, bookId, locatorResolver, {
       spineIndex: () => this.spineIndex,
+      spineIndexForDocument: doc => this.spineIndexForDocument(doc),
+      isSpineVisible: index => this.host instanceof SpreadPaginatedHost
+        ? [this.host.positions.first, this.host.positions.second].some(position => position?.spineIndex === index)
+        : index === this.spineIndex,
       isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
       pendingSelectionRange: () => this.pendingSelectionRange,
       selectionToolbarAnchor: () => this.selectionToolbar,
@@ -542,6 +565,7 @@ export class ReaderController {
       const bookWidePosition = this.bookWidePagePosition();
       const bookPageIndex = bookWidePosition?.bookPageIndex;
       const bookPageCount = bookWidePosition?.bookPageCount;
+      const requestedLayout = this.pendingLayout?.configuration ?? this.currentLayout();
 
       this.cachedSnapshot = {
         title: this.pkg.metadata.title,
@@ -553,7 +577,9 @@ export class ReaderController {
         highlightedTocPath: this.tocHighlightPath(),
         tocPageNumbers: this.computeTocPageNumbers(),
         currentChapterLabel: this.chapterLabel(this.spineIndex),
-        viewMode: this.viewMode,
+        viewMode: this.host instanceof ScrollContentHost ? "scroll"
+          : this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ? "paginated"
+            : this.viewMode,
         isFixedLayout: this.isFixedLayoutHost(this.host),
         pageIndex,
         pageCount,
@@ -566,19 +592,24 @@ export class ReaderController {
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         isPrimaryPageMergedTail:
           this.host instanceof SpreadPaginatedHost ? this.host.isShowingMergedTail : false,
+        pageProgressionDirection: this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr",
+        spreadPageNumbers: this.host instanceof SpreadPaginatedHost
+          ? [this.host.positions.first, this.host.positions.second].map(position => position
+            ? this.furniturePageNumber(position.spineIndex, position.pageIndex, 1) : undefined)
+          : undefined,
         paneWidth: this.width,
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarks.onCurrentPage().length > 0,
         bookmarkedPages: this.bookmarks.flagsForCurrentPages(),
-        fontScale: this.isFixedLayoutHost(this.host) ? 1 : this.fontScale,
-        lineSpacing: this.isFixedLayoutHost(this.host) ? ReadingTheme.DEFAULT_LINE_SPACING : this.lineSpacing,
+        fontScale: this.isFixedLayoutHost(this.host) ? 1 : requestedLayout.fontScale,
+        lineSpacing: this.isFixedLayoutHost(this.host) ? ReadingTheme.DEFAULT_LINE_SPACING : requestedLayout.lineSpacing,
         letterSpacing: this.isFixedLayoutHost(this.host)
           ? ReadingTheme.DEFAULT_LETTER_SPACING
-          : this.letterSpacing,
+          : requestedLayout.letterSpacing,
         contentWidthEm: this.isFixedLayoutHost(this.host)
           ? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
-          : this.contentWidthEm,
-        fontFamily: this.fontFamily,
+          : requestedLayout.contentWidthEm,
+        fontFamily: requestedLayout.fontFamily,
         pageTheme: this.pageTheme,
         brightness: this.brightness,
         chromeTheme: this.chromeTheme,
@@ -671,6 +702,7 @@ export class ReaderController {
       this.pkg.spine,
       this.pkg.metadata.renditionLayout,
       container,
+      this.disclosures,
     );
   }
 
@@ -764,7 +796,7 @@ export class ReaderController {
   /** The `{ page, document }` pair(s) on screen right now — both
    * columns of a spread, the single page in paginated mode, or empty
    * for scroll mode/fixed-layout content (bookmarking is inert there). */
-  private currentPagesAndDocuments(): Array<{ page: Page; document: Document }> {
+  private currentPagesAndDocuments(): Array<{ page: Page; document: Document; spineIndex?: number }> {
     if (this.host instanceof PaginatedContentHost) {
       const entry = this.host.currentPageAndDocument();
       return entry ? [entry] : [];
@@ -1091,7 +1123,10 @@ export class ReaderController {
           onPreviousChapter: () => void this.goToChapter(-1),
         },
         // Preserve Space's native viewport scroll in continuous-scroll mode.
-        { interceptSpace: !(this.host instanceof ScrollContentHost) },
+        {
+          interceptSpace: !(this.host instanceof ScrollContentHost),
+          pageProgressionDirection: this.pkg.pageProgressionDirection,
+        },
       );
     }
   }
@@ -1104,6 +1139,10 @@ export class ReaderController {
       this.host instanceof SpreadPaginatedHost ||
       this.host instanceof FixedSpreadHost;
     void (isPaginated ? this.turnPage(direction) : this.goToChapter(direction));
+  }
+
+  private physicalDirection(direction: 1 | -1): 1 | -1 {
+    return this.pkg.pageProgressionDirection === "rtl" ? (direction === 1 ? -1 : 1) : direction;
   }
 
   /** Elements that should keep ArrowLeft/ArrowRight for their own interaction. */
@@ -1121,18 +1160,26 @@ export class ReaderController {
   private setUpGlobalArrowKeyFallback(ownerDocument: Document): void {
     this.globalArrowKeyCleanup?.();
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.ctrlKey || event.metaKey || event.altKey) {
+      if (event.altKey) {
         return;
       }
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== " ") {
         return;
       }
       const active = ownerDocument.activeElement;
       if (active instanceof Element && active.closest(ReaderController.ARROW_KEY_EXEMPT_SELECTOR)) {
         return;
       }
+      if (event.key === " ") {
+        if (active instanceof Element && active.closest("button, a[href]") || this.host instanceof ScrollContentHost) return;
+        event.preventDefault();
+        this.dispatchArrowNavigation(event.shiftKey ? -1 : 1);
+        return;
+      }
       event.preventDefault();
-      this.dispatchArrowNavigation(event.key === "ArrowRight" ? 1 : -1);
+      const direction = this.physicalDirection(event.key === "ArrowRight" ? 1 : -1);
+      if (event.ctrlKey || event.metaKey) void this.goToChapter(direction);
+      else this.dispatchArrowNavigation(direction);
     };
     ownerDocument.addEventListener("keydown", handleKeyDown);
     this.globalArrowKeyCleanup = () => ownerDocument.removeEventListener("keydown", handleKeyDown);
@@ -1175,7 +1222,10 @@ export class ReaderController {
     if (focusedColumn === undefined) {
       return;
     }
-    const doc = newHost.columnElement(focusedColumn).contentDocument;
+    const frame = newHost.columnElement(focusedColumn);
+    const doc = frame.style.visibility === "hidden"
+      ? newHost.primaryContentDocument()
+      : frame.contentDocument;
     if (doc) {
       this.accessibility.focusContent(doc);
     }
@@ -1218,7 +1268,7 @@ export class ReaderController {
     if (documents.length === 0) {
       return;
     }
-    // A merged spread's borrowed tail document belongs to the previous
+    // A cross-chapter spread's first document belongs to the previous
     // spine item, so links in it must resolve relative to that item.
     const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
     // In a fixed spread, each column can be a different spine item, so
@@ -1313,7 +1363,7 @@ export class ReaderController {
           }
         }
 
-        if (targetSpineIndex === own.spineIndex) {
+        if (targetSpineIndex === own.spineIndex && !(this.host instanceof SpreadPaginatedHost)) {
           if (fragment) {
             const focusTarget = this.goToFragment(fragment);
             if (focusDocument) {
@@ -1339,6 +1389,15 @@ export class ReaderController {
       };
       iframeDocument.addEventListener("keydown", keydownHandler);
       cleanups.push(() => iframeDocument.removeEventListener("keydown", keydownHandler));
+
+      // A disclosure keeps native Space activation instead of turning the page.
+      for (const summary of iframeDocument.querySelectorAll("summary")) {
+        const preserveActivation = (event: KeyboardEvent): void => {
+          if (event.key === " ") event.stopPropagation();
+        };
+        summary.addEventListener("keydown", preserveActivation);
+        cleanups.push(() => summary.removeEventListener("keydown", preserveActivation));
+      }
 
       // Re-run after load if the image size was not known during the
       // initial scan.
@@ -1385,34 +1444,166 @@ export class ReaderController {
    * threshold crossing reopens instead of relayouting. */
   public resize(width: number, height: number): void {
     this.diagnostics.record(`resize width=${width} height=${height} isLoadInFlight=${this.isLoadInFlight}`);
-    this.width = width;
-    this.height = height;
+    this.enqueueLayout({ width, height });
+    this.applyPendingLayout();
+  }
 
-    if (this.isLoadInFlight) {
-      this.pendingResize = { width, height };
-      return;
-    }
+  private currentLayout(): ReaderLayout {
+    return {
+      width: this.width, height: this.height, viewMode: this.viewMode,
+      fontScale: this.fontScale, fontFamily: this.fontFamily,
+      lineSpacing: this.lineSpacing, letterSpacing: this.letterSpacing,
+      contentWidthEm: this.contentWidthEm,
+    };
+  }
 
-    if (width === this.appliedWidth && height === this.appliedHeight) {
-      return;
-    }
+  private enqueueLayout(changes: Partial<ReaderLayout>): PendingLayout {
+    const pending = this.pendingLayout ?? {
+      configuration: this.currentLayout(), reflow: false, waiters: [],
+    };
+    pending.configuration = { ...pending.configuration, ...changes };
+    this.pendingLayout = pending;
+    return pending;
+  }
 
-    if (this.shouldSwitchSpreadMode(width)) {
-      void this.reopenForCurrentSize();
-      return;
-    }
-
-    this.appliedWidth = width;
-    this.appliedHeight = height;
-
-    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
-      this.host.relayout(width, height);
-    } else if (this.host instanceof ScrollContentHost || this.isFixedLayoutHost(this.host)) {
-      this.host.resize(width, height);
-    }
-    this.refreshBookPagination();
-    this.highlightInteraction.updateNoteMarkers();
+  private requestLayout(changes: Partial<ReaderLayout>): Promise<void> {
+    const pending = this.enqueueLayout(changes);
+    const settled = new Promise<void>((resolve, reject) => pending.waiters.push({ resolve, reject }));
     this.notify();
+    this.applyPendingLayout();
+    return settled;
+  }
+
+  private applyPendingLayout(): void {
+    if (this.isLoadInFlight || this.isTurningPage || this.isApplyingLayout || !this.pendingLayout) return;
+    void this.drainLayout();
+  }
+
+  private takePendingLayout(): PendingLayout | undefined {
+    const pending = this.pendingLayout;
+    this.pendingLayout = undefined;
+    return pending;
+  }
+
+  /** The only writer of live layout settings after mounting. Requests merge
+   * while a load/turn owns the host; each drained configuration is immutable
+   * until its host, persisted preferences, and reading position have settled. */
+  private async drainLayout(): Promise<void> {
+    this.isApplyingLayout = true;
+    try {
+      while (!this.isLoadInFlight && !this.isTurningPage) {
+        const pending = this.takePendingLayout();
+        if (!pending) break;
+        try {
+          await this.applyLayout(pending);
+          if (this.pendingLayout) {
+            this.pendingLayout.disclosureFocus ??= pending.disclosureFocus;
+            this.pendingLayout.waiters.unshift(...pending.waiters);
+          } else {
+            this.restoreDisclosureFocus(pending.disclosureFocus);
+            for (const waiter of pending.waiters) waiter.resolve();
+          }
+        } catch (error) {
+          for (const waiter of pending.waiters) waiter.reject(error);
+          this.reportTransientError(error, "open", "the updated reading layout");
+        }
+      }
+    } finally {
+      this.isApplyingLayout = false;
+    }
+  }
+
+  private async applyLayout(pending: PendingLayout): Promise<void> {
+    const previous = this.currentLayout();
+    const next = pending.configuration;
+    const resized = next.width !== this.appliedWidth || next.height !== this.appliedHeight;
+    const modeChanged = previous.viewMode !== next.viewMode;
+    const needsReflow = pending.reflow && !(this.host instanceof ScrollContentHost);
+    const typographyChanged = previous.fontScale !== next.fontScale || previous.fontFamily !== next.fontFamily ||
+      previous.lineSpacing !== next.lineSpacing || previous.letterSpacing !== next.letterSpacing ||
+      previous.contentWidthEm !== next.contentWidthEm;
+    if (!resized && !modeChanged && !typographyChanged && !needsReflow) return;
+
+    Object.assign(this, next);
+    if (modeChanged || needsReflow || this.shouldSwitchSpreadMode(next.width) ||
+      this.host instanceof SpreadPaginatedHost) {
+      const previousHost = this.host;
+      await this.reopenForCurrentSize(pending.disclosureFocus);
+      if (this.containerEl && this.host === previousHost) {
+        Object.assign(this, previous);
+        throw new Error(this.error ?? "The updated reading layout could not be loaded.");
+      }
+    } else {
+      if (typographyChanged) {
+        this.applyDisplaySettingsToHost({ relayout: true });
+      } else if (this.host instanceof PaginatedContentHost) {
+        this.host.relayout(next.width, next.height);
+      } else if (this.host instanceof ScrollContentHost || this.isFixedLayoutHost(this.host)) {
+        this.host.resize(next.width, next.height);
+      }
+      this.appliedWidth = next.width;
+      this.appliedHeight = next.height;
+      this.refreshBookPagination();
+      this.highlightInteraction.updateNoteMarkers();
+    }
+    await Promise.all([
+      ...(modeChanged ? [this.library.setDefaultViewMode(next.viewMode)] : []),
+      ...(previous.fontScale !== next.fontScale ? [this.library.setDefaultFontScale(next.fontScale)] : []),
+      ...(previous.fontFamily !== next.fontFamily ? [this.library.setDefaultFontFamily(next.fontFamily)] : []),
+      ...(previous.lineSpacing !== next.lineSpacing ? [this.library.setDefaultLineSpacing(next.lineSpacing)] : []),
+      ...(previous.letterSpacing !== next.letterSpacing ? [this.library.setDefaultLetterSpacing(next.letterSpacing)] : []),
+      ...(previous.contentWidthEm !== next.contentWidthEm ? [this.library.setDefaultContentWidth(next.contentWidthEm)] : []),
+    ]);
+    if (modeChanged) {
+      this.announce(next.viewMode === "paginated"
+        ? this.translate("announcements.paginatedView") : this.translate("announcements.scrollView"));
+    }
+    this.notify();
+    if (typographyChanged) await this.saveProgress();
+  }
+
+  private restoreDisclosureFocus(focus: PendingLayout["disclosureFocus"]): void {
+    if (focus) {
+      for (const doc of this.allContentDocuments()) {
+        if (this.spineIndexForDocument(doc) !== focus.spineIndex) continue;
+        const summary = doc.querySelectorAll("details")[focus.ordinal]?.querySelector("summary");
+        const bounds = summary?.getBoundingClientRect();
+        if (summary && bounds && bounds.bottom > 0 && bounds.top < (doc.defaultView?.innerHeight ?? 0) &&
+          bounds.right > 0 && bounds.left < (doc.defaultView?.innerWidth ?? 0)) {
+          this.accessibility.focusContent(doc, summary);
+          break;
+        }
+      }
+    }
+  }
+
+  private spineIndexForDocument(doc: Document): number {
+    return this.host instanceof SpreadPaginatedHost && doc === this.host.mergedTailDocument()
+      ? this.host.positions.first.spineIndex : this.spineIndex;
+  }
+
+  private handleDisclosureChange(spineIndex: number, source: Document): void {
+    if (!this.allContentDocuments().includes(source)) return;
+    const frame = source.defaultView?.frameElement as HTMLIFrameElement | null;
+    if (!frame?.isConnected || frame.style.visibility === "hidden") return;
+    this.spreadCounts.delete(spineIndex);
+    this.bookPagination?.invalidateSpineItem(spineIndex);
+    if (this.host instanceof ScrollContentHost) {
+      this.refreshBookPagination();
+      this.notify();
+      return;
+    }
+    const summary = source.activeElement?.closest("summary");
+    const details = summary?.closest("details");
+    const pending = this.enqueueLayout({});
+    if (details) {
+      pending.disclosureFocus = {
+        spineIndex,
+        ordinal: Array.from(source.querySelectorAll("details")).indexOf(details),
+      };
+    }
+    pending.reflow = true;
+    this.applyPendingLayout();
   }
 
   /** Whether the new width changes spread eligibility for the open host. */
@@ -1433,33 +1624,29 @@ export class ReaderController {
 
   /** Reopens the current spine item at the current size, bridging
    * position through a CFI. */
-  private async reopenForCurrentSize(): Promise<void> {
-    const position = this.host?.currentPosition();
+  private async reopenForCurrentSize(disclosureFocus?: { spineIndex: number; ordinal: number }): Promise<void> {
+    let spineIndex = this.spineIndex;
+    let position = this.host?.currentPosition();
+    if (disclosureFocus && disclosureFocus.spineIndex !== spineIndex) {
+      // Expanding the first chapter of a cross-chapter pair can move its
+      // companion many pages away. Keep the interacted page, not the companion.
+      const doc = this.allContentDocuments().find(document =>
+        this.spineIndexForDocument(document) === disclosureFocus.spineIndex);
+      const summary = doc?.querySelectorAll("details")[disclosureFocus.ordinal]?.querySelector("summary");
+      if (summary) {
+        spineIndex = disclosureFocus.spineIndex;
+        position = { node: summary, offset: 0 };
+      }
+    }
     const bridgeCfi = position
-      ? this.locatorResolver.generate(this.spineIndex, position.node, position.offset).cfi
+      ? this.locatorResolver.generate(spineIndex, position.node, position.offset).cfi
       : undefined;
-    await this.openSpineItem(this.spineIndex, { bridgeCfi });
+    await this.openSpineItem(spineIndex, { bridgeCfi });
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
-    if (mode === this.viewMode || !this.containerEl) {
-      return;
-    }
-
-    // Bridge position through a CFI because the new mode uses a
-    // different host and document.
-    const position = this.host?.currentPosition();
-    const bridgeCfi = position
-      ? this.locatorResolver.generate(this.spineIndex, position.node, position.offset).cfi
-      : undefined;
-
-    this.viewMode = mode;
-    await this.library.setDefaultViewMode(mode);
-    await this.openSpineItem(this.spineIndex, { bridgeCfi });
-    this.announce(
-      mode === "paginated" ? this.translate("announcements.paginatedView") : this.translate("announcements.scrollView"),
-    );
-    this.notify();
+    if (!this.containerEl) return;
+    await this.requestLayout({ viewMode: mode });
   }
 
   /** Sets and persists font scale, then reapplies display settings and
@@ -1469,33 +1656,15 @@ export class ReaderController {
       ReadingTheme.MAX_FONT_SCALE,
       Math.max(ReadingTheme.MIN_FONT_SCALE, scale),
     );
-    if (clamped === this.fontScale || this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    this.fontScale = clamped;
-    await this.library.setDefaultFontScale(clamped);
-    this.applyDisplaySettingsToHost({ relayout: true });
-    this.refreshBookPagination();
-    // Relayout moves note markers too.
-    this.highlightInteraction.updateNoteMarkers();
-    this.notify();
-    await this.saveProgress();
+    if (this.isFixedLayoutHost(this.host)) return;
+    await this.requestLayout({ fontScale: clamped });
   }
 
   /** Sets and persists font family, then reapplies display settings and
    * pagination. No-op for fixed-layout content. */
   public async setFontFamily(family: FontFamilyChoice): Promise<void> {
-    if (family === this.fontFamily || this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    this.fontFamily = family;
-    await this.library.setDefaultFontFamily(family);
-    this.applyDisplaySettingsToHost({ relayout: true });
-    this.refreshBookPagination();
-    // Relayout moves note markers too.
-    this.highlightInteraction.updateNoteMarkers();
-    this.notify();
-    await this.saveProgress();
+    if (this.isFixedLayoutHost(this.host)) return;
+    await this.requestLayout({ fontFamily: family });
   }
 
   /** Sets and persists line spacing, then reapplies display settings and
@@ -1505,17 +1674,8 @@ export class ReaderController {
       ReadingTheme.MAX_LINE_SPACING,
       Math.max(ReadingTheme.MIN_LINE_SPACING, spacing),
     );
-    if (clamped === this.lineSpacing || this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    this.lineSpacing = clamped;
-    await this.library.setDefaultLineSpacing(clamped);
-    this.applyDisplaySettingsToHost({ relayout: true });
-    this.refreshBookPagination();
-    // Relayout moves note markers too.
-    this.highlightInteraction.updateNoteMarkers();
-    this.notify();
-    await this.saveProgress();
+    if (this.isFixedLayoutHost(this.host)) return;
+    await this.requestLayout({ lineSpacing: clamped });
   }
 
   /** Sets and persists letter spacing, then reapplies display settings
@@ -1525,17 +1685,8 @@ export class ReaderController {
       ReadingTheme.MAX_LETTER_SPACING,
       Math.max(ReadingTheme.MIN_LETTER_SPACING, spacing),
     );
-    if (clamped === this.letterSpacing || this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    this.letterSpacing = clamped;
-    await this.library.setDefaultLetterSpacing(clamped);
-    this.applyDisplaySettingsToHost({ relayout: true });
-    this.refreshBookPagination();
-    // Relayout moves note markers too.
-    this.highlightInteraction.updateNoteMarkers();
-    this.notify();
-    await this.saveProgress();
+    if (this.isFixedLayoutHost(this.host)) return;
+    await this.requestLayout({ letterSpacing: clamped });
   }
 
   /** Sets and persists content width, then reapplies display settings and
@@ -1545,17 +1696,8 @@ export class ReaderController {
       ReadingTheme.MAX_CONTENT_WIDTH_EM,
       Math.max(ReadingTheme.MIN_CONTENT_WIDTH_EM, widthEm),
     );
-    if (clamped === this.contentWidthEm || this.isFixedLayoutHost(this.host)) {
-      return;
-    }
-    this.contentWidthEm = clamped;
-    await this.library.setDefaultContentWidth(clamped);
-    this.applyDisplaySettingsToHost({ relayout: true });
-    this.refreshBookPagination();
-    // Relayout moves note markers too.
-    this.highlightInteraction.updateNoteMarkers();
-    this.notify();
-    await this.saveProgress();
+    if (this.isFixedLayoutHost(this.host)) return;
+    await this.requestLayout({ contentWidthEm: clamped });
   }
 
   /** Sets and persists page theme without relayout. No-op for fixed-layout content. */
@@ -1813,7 +1955,7 @@ export class ReaderController {
    * boundaries when needed. No-op in scroll mode and while a turn is
    * already in progress. */
   public async turnPage(direction: 1 | -1): Promise<void> {
-    if (this.isTurningPage) {
+    if (this.isTurningPage || this.isLoadInFlight || this.isApplyingLayout) {
       return;
     }
     this.clearSearchHighlightUnlessPinned();
@@ -1824,6 +1966,7 @@ export class ReaderController {
       await this.turnPageInternal(direction, token);
     } finally {
       this.isTurningPage = false;
+      this.applyPendingLayout();
     }
   }
 
@@ -1844,10 +1987,6 @@ export class ReaderController {
       // after the host swap.
       const focusedColumn = this.spreadFocusedColumn(this.host);
       const animatedSpread = await this.animateSpreadTurn(this.host, direction);
-      // Set only when `animateSpreadTurn` prepared a merged incoming spread;
-      // the plain in-chapter path never uses it.
-      const mergedIntoSpineIndex = this.pendingSpreadMergeSpineIndex;
-      this.pendingSpreadMergeSpineIndex = undefined;
       if (animatedSpread) {
         if (token !== this.turnToken) {
           animatedSpread.dispose();
@@ -1859,10 +1998,8 @@ export class ReaderController {
         this.dragCleanup = undefined;
         this.host = animatedSpread;
         this.clearStaleHostWrapper();
-        if (mergedIntoSpineIndex !== undefined) {
-          // A merged spread crossed into the next chapter, so apply the
-          // chapter-scoped state updates without re-running a full open.
-          this.spineIndex = mergedIntoSpineIndex;
+        if (animatedSpread.primarySpineIndex !== this.spineIndex) {
+          this.spineIndex = animatedSpread.primarySpineIndex;
           this.refreshBookPagination();
         }
         this.updateContentTitle();
@@ -1872,7 +2009,7 @@ export class ReaderController {
         this.highlightInteraction.setUpHighlightSelection();
         this.highlightInteraction.applyHighlightsToCurrentHost();
         this.restoreSpreadFocusAfterHostSwap(animatedSpread, focusedColumn);
-        const second = animatedSpread.secondPageIndex;
+        const second = animatedSpread.isShowingMergedTail ? undefined : animatedSpread.secondPageIndex;
         this.announce(
           second !== undefined
             ? this.translate("announcements.spreadOfTotal", {
@@ -1889,8 +2026,8 @@ export class ReaderController {
         await this.saveProgress();
         return;
       }
-      moved = direction === 1 ? this.host.nextSpread() : this.host.previousSpread();
-      const second = this.host.secondPageIndex;
+      moved = false;
+      const second = this.host.isShowingMergedTail ? undefined : this.host.secondPageIndex;
       announcement =
         second !== undefined
           ? this.translate("announcements.spreadOfTotal", {
@@ -2122,12 +2259,8 @@ export class ReaderController {
 
   /** Spread version of `animatePageTurn`. "slide" and "scroll" move the
    * whole spread, while "rotate" turns only the column nearest the
-   * spine; "scroll" moves outgoing and incoming spreads together. */
-  /** Spread version of `animatePageTurn`: builds the incoming spread and
-   * plays a page-turn animation within the current chapter (or into a
-   * merged next chapter — see `prepareIncomingSpread`). Returns
-   * `undefined` when the turn would cross an unmergeable chapter
-   * boundary. */
+   * spine; "scroll" moves outgoing and incoming spreads together.
+   * Returns `undefined` when no reflowable spread is available. */
   private async animateSpreadTurn(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -2148,29 +2281,19 @@ export class ReaderController {
     return newHost;
   }
 
-  /** The display data `PageTurnOrchestrator` needs to build a spread
-   * turn's temporary furniture overlays. Merge turns animate into the
-   * next chapter through this same path, so incoming labels/numbers use
-   * the pending merged spine index — and the incoming left column is
-   * the borrowed tail page during a merge, so it has no page number of
-   * its own there (its number becomes the right column's *secondary*
-   * page instead). */
+  /** Furniture follows each explicit page position, even across chapters. */
   private spreadTurnFurniture(
     oldHost: SpreadPaginatedHost,
     newHost: SpreadPaginatedHost,
   ): SpreadPageTurnFurnitureInfo {
-    const incomingSpineIndex = this.pendingSpreadMergeSpineIndex ?? this.spineIndex;
-    const isMergeTurn = this.pendingSpreadMergeSpineIndex !== undefined;
-    const outgoingPrimary = this.furniturePageNumber(this.spineIndex, oldHost.pageIndex, oldHost.pageCount);
+    const incomingSpineIndex = newHost.primarySpineIndex;
+    const outgoingPrimary = this.furniturePageNumber(oldHost.positions.first.spineIndex, oldHost.positions.first.pageIndex, oldHost.pageCount);
     const outgoingSecondary =
-      oldHost.secondPageIndex !== undefined && outgoingPrimary !== undefined ? outgoingPrimary + 1 : undefined;
-    const incomingRightNumber = this.furniturePageNumber(incomingSpineIndex, newHost.pageIndex, newHost.pageCount);
-    const incomingPrimary = isMergeTurn ? undefined : incomingRightNumber;
-    const incomingSecondary = isMergeTurn
-      ? incomingRightNumber
-      : newHost.secondPageIndex !== undefined && incomingRightNumber !== undefined
-        ? incomingRightNumber + 1
-        : undefined;
+      oldHost.positions.second ? this.furniturePageNumber(oldHost.positions.second.spineIndex, oldHost.positions.second.pageIndex, oldHost.pageCount) : undefined;
+    const incomingPrimary = this.furniturePageNumber(newHost.positions.first.spineIndex, newHost.positions.first.pageIndex, newHost.pageCount);
+    const incomingSecondary = newHost.positions.second
+      ? this.furniturePageNumber(newHost.positions.second.spineIndex, newHost.positions.second.pageIndex, newHost.pageCount)
+      : undefined;
     return {
       title: this.pkg.metadata.title,
       outgoingChapterLabel: this.chapterLabel(this.spineIndex),
@@ -2215,7 +2338,7 @@ export class ReaderController {
     newEl.style.opacity = "0";
     containerEl.appendChild(newEl);
 
-    await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
+    await newHost.open(this.contentLoader, this.resolver, this.spineIndex, this.disclosures);
     const newDoc = newHost.element.contentDocument;
     if (newDoc) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
@@ -2240,9 +2363,9 @@ export class ReaderController {
     return newHost;
   }
 
-  /** Returns whether a forward spread turn can merge into `nextSpineIndex`.
-   * Shared by both merge-preparation paths so they can bail out before
-   * doing work that would need to be undone. */
+  private spreadCounts = new Map<number, Promise<number>>();
+  private spreadLayoutKey = "";
+
   private canMergeSpreadIntoNext(nextSpineIndex: number): boolean {
     if (!this.containerEl) {
       return false;
@@ -2255,181 +2378,105 @@ export class ReaderController {
     return resolvedLayout !== "pre-paginated" && SpreadPaginatedHost.isEligible(this.width);
   }
 
-  /** Shared second half of the two merge paths: builds the merged spread
-   * from a prepared `previousTail`, applies current display settings, and
-   * records the pending merged spine index. Callers remain responsible for
-   * cleaning up failures because only they know where `previousTail` came
-   * from. */
-  private async buildMergedSpreadHost(
-    nextSpineIndex: number,
-    previousTail: PaginatedContentHost,
-  ): Promise<SpreadPaginatedHost> {
-    const containerEl = this.containerEl;
-    if (!containerEl) {
-      throw new Error("buildMergedSpreadHost called without a container element (unexpected).");
-    }
-    const newHost = new SpreadPaginatedHost(this.width, this.height);
-    const newEl = newHost.element;
-    newEl.style.position = "absolute";
-    newEl.style.top = "0";
-    newEl.style.left = "0";
-    newEl.style.zIndex = "1";
-    // Keep the staging host attached but invisible while it loads.
-    newEl.style.opacity = "0";
-    containerEl.appendChild(newEl);
-
-    try {
-      await newHost.openMergedWithPreviousTail(this.contentLoader, this.resolver, nextSpineIndex, previousTail);
-    } catch (err) {
-      newHost.dispose();
-      newEl.remove();
-      throw err;
-    }
-
-    const newDocs = newHost.contentDocuments();
-    for (const newDoc of newDocs) {
-      ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-    }
-    if (
-      this.fontScale !== 1 ||
-      this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
+  private configureSpreadDocument(doc: Document): void {
+    if (this.fontScale !== 1 || this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
       this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
       this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
-      this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
-    ) {
-      for (const newDoc of newDocs) {
-        ReadingTheme.applyFontScale(newDoc, this.fontScale);
-        ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
-        ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
-        ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
-        ReadingTheme.applyContentWidth(newDoc, this.contentWidthEm);
+      this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM) {
+      ReadingTheme.applyFontScale(doc, this.fontScale);
+      ReadingTheme.applyFontFamily(doc, this.fontFamily);
+      ReadingTheme.applyLineSpacing(doc, this.lineSpacing);
+      ReadingTheme.applyLetterSpacing(doc, this.letterSpacing);
+      ReadingTheme.applyContentWidth(doc, this.contentWidthEm);
+    }
+    ReadingTheme.applyPageTheme(doc, this.pageTheme);
+  }
+
+  private spreadPlanner(): ReflowableSpreadPlanner {
+    const key = JSON.stringify([this.width, this.height, this.fontScale, this.fontFamily,
+      this.lineSpacing, this.letterSpacing, this.contentWidthEm]);
+    if (key !== this.spreadLayoutKey) {
+      this.spreadLayoutKey = key;
+      this.spreadCounts.clear();
+    }
+    return new ReflowableSpreadPlanner(index => this.spreadPageCount(index), index => this.canMergeSpreadIntoNext(index));
+  }
+
+  private spreadPageCount(spineIndex: number): Promise<number> {
+    let count = this.spreadCounts.get(spineIndex);
+    if (!count) {
+      count = this.measureSpreadChapter(spineIndex);
+      this.spreadCounts.set(spineIndex, count);
+      void count.catch(() => this.spreadCounts.delete(spineIndex));
+    }
+    return count;
+  }
+
+  private async measureSpreadChapter(spineIndex: number): Promise<number> {
+    const width = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+    const probe = new PaginatedContentHost(width, this.height);
+    const staging = this.stageHiddenHostElement(probe.element);
+    try {
+      await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+      this.configureSpreadDocument(probe.element.contentDocument!);
+      probe.relayout(width, this.height, undefined, false);
+      return probe.pageCount;
+    } finally {
+      probe.dispose();
+      staging.remove();
+    }
+  }
+
+  private async buildSpreadHost(spread: ReflowableSpread): Promise<SpreadPaginatedHost> {
+    const host = new SpreadPaginatedHost(this.width, this.height);
+    host.setProgressionDirection(this.pkg.pageProgressionDirection);
+    Object.assign(host.element.style, { position: "absolute", top: "0", left: "0", zIndex: "1", opacity: "0" });
+    this.containerEl!.appendChild(host.element);
+    try {
+      await host.openSpread(this.contentLoader, this.resolver, spread, doc => this.configureSpreadDocument(doc), this.disclosures);
+      host.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(host.primarySpineIndex)}`);
+      return host;
+    } catch (error) {
+      host.dispose();
+      throw error;
+    }
+  }
+
+  private async prepareSpreadForOpen(spineIndex: number, options: {
+    fragment?: string; bridgeCfi?: string; landOnLastPage?: boolean;
+    landOnPageIndex?: number; landOnFractionInItem?: number;
+  }): Promise<SpreadPaginatedHost> {
+    const planner = this.spreadPlanner();
+    const count = await this.spreadPageCount(spineIndex);
+    let pageIndex = options.landOnLastPage ? count - 1
+      : options.landOnPageIndex ?? Math.round((options.landOnFractionInItem ?? 0) * (count - 1));
+    if (options.bridgeCfi || options.fragment) {
+      const width = SpreadPaginatedHost.effectiveColumnWidth(this.width);
+      const probe = new PaginatedContentHost(width, this.height);
+      const staging = this.stageHiddenHostElement(probe.element);
+      try {
+        await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+        const doc = probe.element.contentDocument!;
+        this.configureSpreadDocument(doc);
+        probe.relayout(width, this.height, undefined, false);
+        if (options.bridgeCfi) {
+          const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), spineIndex, doc);
+          probe.goToPosition(resolved.node, resolved.characterOffset ?? 0, false);
+        } else {
+          const target = doc.getElementById(options.fragment!);
+          if (target) probe.goToPosition(target, 0, false);
+        }
+        pageIndex = probe.currentPageIndex;
+      } finally {
+        probe.dispose();
+        staging.remove();
       }
-      newHost.relayout(this.width, this.height);
     }
-    newEl.style.opacity = "";
-    // `previousTail` may have been loaded as a hidden standalone element
-    // before being moved into the merged host, so clear those inline styles
-    // here so the borrowed page can display and accept interaction.
-    previousTail.element.style.opacity = "";
-    previousTail.element.style.pointerEvents = "";
-    newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(nextSpineIndex)}`);
-    this.pendingSpreadMergeSpineIndex = nextSpineIndex;
-    return newHost;
+    return this.buildSpreadHost(await planner.containing({
+      spineIndex, pageIndex: Math.max(0, Math.min(pageIndex, count - 1)),
+    }));
   }
 
-  /** Builds the merged incoming spread for a forward turn off an `oldHost`
-   * already sitting on its unpaired last page. The next chapter opens on
-   * the right while `oldHost`'s last page is reused on the left, avoiding
-   * a transient blank facing page. `currentSpineIndex` defaults to
-   * `this.spineIndex` for turn-driven callers but can be passed explicitly
-   * when `openSpineItem` invokes this on a newly opened host. */
-  private async prepareMergedIncomingSpread(
-    oldHost: SpreadPaginatedHost,
-    currentSpineIndex: number = this.spineIndex,
-  ): Promise<SpreadPaginatedHost | undefined> {
-    const nextSpineIndex = currentSpineIndex + 1;
-    if (!this.canMergeSpreadIntoNext(nextSpineIndex)) {
-      return undefined;
-    }
-    // Detach the reusable left page only after all preconditions pass;
-    // reattach it if the async load fails.
-    const previousTail = oldHost.detachLeftForReuse();
-    try {
-      return await this.buildMergedSpreadHost(nextSpineIndex, previousTail);
-    } catch (err) {
-      oldHost.reattachDetachedLeft();
-      throw err;
-    }
-  }
-
-  /** Builds the more common merge case: `oldHost` is still on its last
-   * paired spread, one turn before an unpaired tail page. It loads a fresh
-   * standalone tail host for this chapter and merges that directly into the
-   * next chapter so the reader never sees the intermediate blank-facing
-   * spread. `oldHost` stays untouched so it remains the valid outgoing side
-   * of the turn animation. */
-  private async prepareMergedIncomingSpreadFromUpcomingLastPage(): Promise<SpreadPaginatedHost | undefined> {
-    const nextSpineIndex = this.spineIndex + 1;
-    if (!this.canMergeSpreadIntoNext(nextSpineIndex) || !this.containerEl) {
-      return undefined;
-    }
-    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
-    const previousTail = new PaginatedContentHost(columnWidth, this.height);
-    // Attach before `open()`; detached iframes do not navigate. Once the
-    // merged host is ready, `openMergedWithPreviousTail` reparents this
-    // loaded element into it.
-    previousTail.element.style.position = "absolute";
-    // Keep the standalone tail hidden and inert until
-    // `buildMergedSpreadHost` moves it into place.
-    previousTail.element.style.opacity = "0";
-    previousTail.element.style.pointerEvents = "none";
-    this.containerEl.appendChild(previousTail.element);
-    try {
-      await previousTail.open(this.contentLoader, this.resolver, this.spineIndex);
-    } catch (err) {
-      previousTail.element.remove();
-      previousTail.dispose();
-      throw err;
-    }
-    previousTail.goToLastPage();
-    try {
-      return await this.buildMergedSpreadHost(nextSpineIndex, previousTail);
-    } catch (err) {
-      previousTail.element.remove();
-      previousTail.dispose();
-      throw err;
-    }
-  }
-
-  /** Builds a merged spread for `spineIndex` — a whole one-page spine
-   * item, landed on *backward* from the chapter after it (see
-   * `openSpineItem`, issue #120) — by borrowing whichever spine item
-   * precedes it as a decorative left-column tail, so the reader sees
-   * that lone page with a real companion instead of alone with a blank
-   * facing column.
-   *
-   * Unlike `prepareMergedIncomingSpread`/`prepareMergedIncomingSpreadFromUpcomingLastPage`
-   * (which merge *forward*, shifting the primary reading position into
-   * the *next* chapter), this keeps `spineIndex` itself as the primary
-   * column — the whole point of a backward landing is to land *on* it,
-   * not silently bounce past it into whichever chapter the reader was
-   * just navigating away from. Returns `undefined` if there's no
-   * previous spine item to borrow from, or it can't take part in a
-   * spread (fixed-layout, or the pane's too narrow) — callers fall back
-   * to showing the lone page by itself in that case. */
-  private async prepareMergedSpreadFromPrecedingTail(spineIndex: number): Promise<SpreadPaginatedHost | undefined> {
-    const previousSpineIndex = spineIndex - 1;
-    if (previousSpineIndex < 0 || !this.canMergeSpreadIntoNext(previousSpineIndex) || !this.containerEl) {
-      return undefined;
-    }
-    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
-    const previousTail = new PaginatedContentHost(columnWidth, this.height);
-    previousTail.element.style.position = "absolute";
-    previousTail.element.style.opacity = "0";
-    previousTail.element.style.pointerEvents = "none";
-    this.containerEl.appendChild(previousTail.element);
-    try {
-      await previousTail.open(this.contentLoader, this.resolver, previousSpineIndex);
-    } catch (err) {
-      previousTail.element.remove();
-      previousTail.dispose();
-      throw err;
-    }
-    previousTail.goToLastPage();
-    try {
-      return await this.buildMergedSpreadHost(spineIndex, previousTail);
-    } catch (err) {
-      previousTail.element.remove();
-      previousTail.dispose();
-      throw err;
-    }
-  }
-
-  /** Builds the incoming spread for an in-chapter spread turn and
-   * positions it directly under `oldHost.element`. Returns `undefined`
-   * only when `oldHost` is already at the edge of the chapter; a lopsided
-   * final spread is still a valid target. Forward turns off an unpaired
-   * last page are handled earlier by `prepareMergedIncomingSpread`. */
   private async prepareIncomingSpread(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -2437,84 +2484,10 @@ export class ReaderController {
     if (!this.containerEl) {
       return undefined;
     }
-    this.pendingSpreadMergeSpineIndex = undefined;
-    if (direction === 1 && oldHost.secondPageIndex === undefined) {
-      const merged = await this.prepareMergedIncomingSpread(oldHost);
-      if (merged) {
-        return merged;
-      }
-      // No mergeable next chapter; fall through so the usual chapter-open
-      // fallback handles the boundary with the normal blank facing page.
-    } else if (
-      direction === 1 &&
-      oldHost.secondPageIndex !== undefined &&
-      oldHost.pageIndex < oldHost.pageCount - 2
-    ) {
-      // Catch an upcoming unpaired last page one turn early so the reader
-      // never sees the blank-facing intermediate spread.
-      //
-      // The `oldHost.pageIndex < oldHost.pageCount - 2` guard is required:
-      // without a real further in-chapter turn, even-length chapters would
-      // misclassify their true last spread as "upcoming unpaired" and
-      // wrongly force a merge.
-      const upcomingTarget = Math.min(oldHost.pageIndex + 2, oldHost.pageCount - 1);
-      const upcomingTargetHasCompanion = upcomingTarget + 1 < oldHost.pageCount;
-      if (!upcomingTargetHasCompanion) {
-        const merged = await this.prepareMergedIncomingSpreadFromUpcomingLastPage();
-        if (merged) {
-          return merged;
-        }
-        // No eligible next chapter; fall through to the normal in-chapter
-        // path so `oldHost` still lands on its own unpaired last page.
-      }
-    }
-    if (direction === 1 ? oldHost.pageIndex >= oldHost.pageCount - 2 : oldHost.pageIndex <= 0) {
-      return undefined;
-    }
-    const targetIndex =
-      direction === 1
-        ? Math.min(oldHost.pageIndex + 2, oldHost.pageCount - 1)
-        : Math.max(oldHost.pageIndex - 2, 0);
-
-    const containerEl = this.containerEl;
-    const newHost = new SpreadPaginatedHost(this.width, this.height);
-    const newEl = newHost.element;
-    newEl.style.position = "absolute";
-    newEl.style.top = "0";
-    // `SpreadPaginatedHost` is created at `this.width`, so `left: 0`
-    // aligns it and leaves `transform` free for the entering turn.
-    newEl.style.left = "0";
-    newEl.style.zIndex = "1";
-    // Hide the incoming spread while it loads; use `opacity: 0`, not
-    // `visibility: hidden`, because `syncRight` can set explicit
-    // visibility on the right column and override inherited visibility.
-    newEl.style.opacity = "0";
-    containerEl.appendChild(newEl);
-
-    await newHost.open(this.contentLoader, this.resolver, this.spineIndex);
-    const newDocs = newHost.contentDocuments();
-    for (const newDoc of newDocs) {
-      ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-    }
-    if (
-      this.fontScale !== 1 ||
-      this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
-      this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
-      this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
-      this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
-    ) {
-      for (const newDoc of newDocs) {
-        ReadingTheme.applyFontScale(newDoc, this.fontScale);
-        ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
-        ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
-        ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
-        ReadingTheme.applyContentWidth(newDoc, this.contentWidthEm);
-      }
-      newHost.relayout(this.width, this.height);
-    }
-    newHost.goToPageIndex(targetIndex);
-    newEl.style.opacity = "";
-    newHost.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`);
+    const spread = await this.spreadPlanner().turn(oldHost.positions, direction);
+    if (!spread) return undefined;
+    const newHost = await this.buildSpreadHost(spread);
+    newHost.element.style.opacity = "";
     return newHost;
   }
 
@@ -2592,9 +2565,9 @@ export class ReaderController {
         }
         const thirdWidth = this.width / 3;
         if (startX < thirdWidth) {
-          void this.turnPage(-1);
+          void this.turnPage(this.physicalDirection(-1));
         } else if (startX > this.width - thirdWidth) {
-          void this.turnPage(1);
+          void this.turnPage(this.physicalDirection(1));
         }
         // Middle third: no-op, exactly like `handleContentClick`.
       };
@@ -2616,8 +2589,10 @@ export class ReaderController {
     host.contentDocuments().forEach((doc, columnIndex) => {
       // The right column's left edge is the gutter, so that zone still
       // means "forward" rather than "back."
-      const isRightColumn = columnIndex === 1;
-      const leftThirdAction: 1 | -1 = isRightColumn ? 1 : -1;
+      const rtl = this.pkg.pageProgressionDirection === "rtl";
+      const physicalRight = (columnIndex === 1) !== rtl;
+      const { left: leftThirdAction, right: rightThirdAction } =
+        this.fixedSpreadThirdActions(physicalRight ? "right" : "left", rtl);
       const onPointerDown = (event: PointerEvent): void => {
         if (event.pointerType === "mouse" && event.button !== 0) {
           return;
@@ -2626,7 +2601,12 @@ export class ReaderController {
         const startY = event.clientY;
         const onPointerUp = (upEvent: PointerEvent): void => {
           doc.removeEventListener("pointerup", onPointerUp);
-          this.handleContentClick(upEvent, startX, startY, columnWidth, doc, leftThirdAction, 1);
+          if (Math.abs(upEvent.clientX - startX) > 60 && Math.abs(upEvent.clientY - startY) < 50 &&
+            doc.getSelection()?.isCollapsed !== false) {
+            void this.turnPage(this.physicalDirection(upEvent.clientX < startX ? 1 : -1));
+            return;
+          }
+          this.handleContentClick(upEvent, startX, startY, columnWidth, doc, leftThirdAction, rightThirdAction);
         };
         doc.addEventListener("pointerup", onPointerUp);
       };
@@ -2752,7 +2732,7 @@ export class ReaderController {
    * page loads; if release happens first, settlement waits for that load
    * and uses the last recorded fraction. */
   private beginDragPageTurn(startEvent: PointerEvent, doc: Document): void {
-    if (this.isTurningPage || !(this.host instanceof PaginatedContentHost)) {
+    if (this.isTurningPage || this.isLoadInFlight || this.isApplyingLayout || !(this.host instanceof PaginatedContentHost)) {
       return;
     }
     const oldHost = this.host;
@@ -2788,7 +2768,7 @@ export class ReaderController {
         if (Math.abs(deltaX) < 12) {
           return;
         }
-        const lockedDirection: 1 | -1 = deltaX < 0 ? 1 : -1;
+        const lockedDirection = this.physicalDirection(deltaX < 0 ? 1 : -1);
         direction = lockedDirection;
         this.isTurningPage = true;
         const token = ++this.turnToken;
@@ -2852,6 +2832,7 @@ export class ReaderController {
           } else {
             // Chapter boundary: this pass has nothing to drag into.
             this.isTurningPage = false;
+            this.applyPendingLayout();
           }
         });
       }
@@ -2909,8 +2890,8 @@ export class ReaderController {
     startY: number,
     containerWidth: number,
     doc: Document,
-    leftThirdAction: 1 | -1 = -1,
-    rightThirdAction: 1 | -1 = 1,
+    leftThirdAction: 1 | -1 = this.physicalDirection(-1),
+    rightThirdAction: 1 | -1 = this.physicalDirection(1),
   ): void {
     const deltaX = Math.abs(upEvent.clientX - startX);
     const deltaY = Math.abs(upEvent.clientY - startY);
@@ -2929,7 +2910,7 @@ export class ReaderController {
       return;
     }
 
-    if ((upEvent.target as Element | null)?.closest?.("a[href]")) {
+    if ((upEvent.target as Element | null)?.closest?.("a[href], summary")) {
       return;
     }
 
@@ -2965,6 +2946,7 @@ export class ReaderController {
       this.isTurningPage = false;
       turnBackdrop?.remove();
       turnGrowthMask?.remove();
+      this.applyPendingLayout();
       return;
     }
 
@@ -3009,14 +2991,14 @@ export class ReaderController {
         }
         requestAnimationFrame(() => {
           if (commit) {
-            this.pageTurnAnimator.setPageTurnTransform(oldEl, direction === 1 ? -100 : 100, 1, extraEls);
+            this.pageTurnAnimator.setPageTurnTransform(oldEl, this.physicalDirection(direction) * -100, 1, extraEls);
             if (isScroll) {
               newEl.style.transform = "translateX(0%)";
             }
           } else {
             this.pageTurnAnimator.setPageTurnTransform(oldEl, 0, 0, extraEls);
             if (isScroll) {
-              newEl.style.transform = `translateX(${direction * 100}%)`;
+              newEl.style.transform = `translateX(${this.physicalDirection(direction) * 100}%)`;
             }
           }
         });
@@ -3044,6 +3026,7 @@ export class ReaderController {
         oldHost.restoreNaturalHeight();
       }
       this.isTurningPage = false;
+      this.applyPendingLayout();
       return;
     }
 
@@ -3092,6 +3075,7 @@ export class ReaderController {
       newHost.dispose();
     }
     this.isTurningPage = false;
+    this.applyPendingLayout();
   }
 
   /** Assembles the Book Details panel data from parsed OPF metadata plus
@@ -3552,6 +3536,7 @@ export class ReaderController {
     this.errorSeverity = undefined;
     this.errorDetail = undefined;
     this.isLoadInFlight = true;
+    const openingSize = { width: this.width, height: this.height };
     // Every return path below must check this token before mutating
     // shared state.
     const token = ++this.spineOpenToken;
@@ -3570,18 +3555,9 @@ export class ReaderController {
     );
 
     try {
-      this.accessibility.detach();
-      this.contentInteractionCleanup?.();
-      this.contentInteractionCleanup = undefined;
-      this.highlightInteraction.teardownSelection();
-      this.pendingSelectionRange = undefined;
-      this.selectionToolbar = undefined;
-      this.activeHighlight = undefined;
-      this.footnotePopup = undefined;
-
       // Open the new host hidden alongside the current one so failures
-      // leave the existing content on screen until replacement
-      // succeeds.
+      // retain both the current content and its interactions until a
+      // replacement is ready to commit.
       const previousHost = this.host;
       const previousWrapperEl = this.hostWrapperEl;
       const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
@@ -3598,14 +3574,6 @@ export class ReaderController {
         | ScrollContentHost
         | undefined;
       let applyDisplaySettings = false;
-      // Set once a merge (either direction — see below) has already
-      // landed the new host on the correct position by construction, so
-      // the later "apply `landOnLastPage`/etc." step (issue #120) knows
-      // not to redundantly re-land it: `SpreadPaginatedHost.goToLastPage`
-      // on an already-merged host jumps to *this* chapter's own true
-      // last page, discarding the merge and undoing exactly the landing
-      // spot the merge just constructed on purpose.
-      let landedViaMerge = false;
       try {
         if (resolvedLayout === "pre-paginated") {
           // Fixed-layout content always uses `FixedSpreadHost`;
@@ -3631,98 +3599,9 @@ export class ReaderController {
           spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
           this.fixedLayoutSpreadEligible = undefined;
-          const host = new SpreadPaginatedHost(this.width, this.height);
+          const host = await this.prepareSpreadForOpen(spineIndex, options);
           createdHost = host;
-          stagingEl = this.stageHiddenHostElement(host.element);
-          await host.open(this.contentLoader, this.resolver, spineIndex);
-          applyDisplaySettings = true;
-
-          // If a spread-capable open lands on a single visible page, try
-          // merging forward before reveal so lone pages do not show a
-          // blank facing column. Skip this when restoring an explicit
-          // target position or explicit last-page behavior.
-          //
-          // `!options.landOnLastPage` (not `options.landOnLastPage ===
-          // undefined`) is deliberate: every forward-turn caller passes
-          // `landOnLastPage: direction === -1`, i.e. an explicit `false`,
-          // not an omitted property. A strict `undefined` check treated
-          // that `false` as "an explicit last-page request" too, so an
-          // ordinary forward turn into a lone/unpaired chapter (issue
-          // #103) never took this branch at all — the reader saw one
-          // real turn land on a spread with a visibly blank facing
-          // column, only merging forward reactively on the *next* turn.
-          // Every other `landOnLastPage` check in this method already
-          // treats it as a plain boolean (see below); this one needs to
-          // match.
-          if (
-            host.secondPageIndex === undefined &&
-            options.bridgeCfi === undefined &&
-            options.fragment === undefined &&
-            !options.landOnLastPage &&
-            options.landOnPageIndex === undefined &&
-            options.landOnFractionInItem === undefined
-          ) {
-            const merged = await this.prepareMergedIncomingSpread(host, spineIndex);
-            if (merged) {
-              host.dispose();
-              stagingEl.remove();
-              // `buildMergedSpreadHost` returns a direct overlay child of
-              // `containerEl`. Reset it to normal in-flow display here,
-              // but do not wrap or reparent the already-loaded host:
-              // moving it can reload nested iframes.
-              merged.element.style.position = "";
-              merged.element.style.top = "";
-              merged.element.style.left = "";
-              merged.element.style.zIndex = "";
-              createdHost = merged;
-              stagingEl = undefined;
-              spineIndex += 1;
-              landedViaMerge = true;
-            }
-          } else if (options.landOnLastPage && host.pageCount === 1) {
-            // Landing *backward* on a whole one-page spine item (issue
-            // #120): the `goToLastPage()` "show the true last page
-            // paired with the one before it" trick used below, once
-            // this block is done, has no earlier page of its own here
-            // to pair with — it would show this lone page alone with a
-            // blank facing column, the very thing merging exists to
-            // avoid, just approached from the opposite direction.
-            // Borrow whatever spine item precedes *this* one as a
-            // decorative tail instead, keeping `spineIndex` itself as
-            // the primary column (unlike the forward-merge case above,
-            // which deliberately shifts the primary column forward).
-            const merged = await this.prepareMergedSpreadFromPrecedingTail(spineIndex);
-            if (merged) {
-              host.dispose();
-              stagingEl.remove();
-              merged.element.style.position = "";
-              merged.element.style.top = "";
-              merged.element.style.left = "";
-              merged.element.style.zIndex = "";
-              createdHost = merged;
-              stagingEl = undefined;
-              landedViaMerge = true;
-            } else {
-              // No previous spine item to borrow from — this is the
-              // book's very first spine item. Merging *forward* instead
-              // reproduces exactly the same canonical spread a fresh
-              // forward-open of the book already shows, rather than
-              // leaving this lone page to show alone.
-              const mergedForward = await this.prepareMergedIncomingSpread(host, spineIndex);
-              if (mergedForward) {
-                host.dispose();
-                stagingEl.remove();
-                mergedForward.element.style.position = "";
-                mergedForward.element.style.top = "";
-                mergedForward.element.style.left = "";
-                mergedForward.element.style.zIndex = "";
-                createdHost = mergedForward;
-                stagingEl = undefined;
-                spineIndex += 1;
-                landedViaMerge = true;
-              }
-            }
-          }
+          spineIndex = host.primarySpineIndex;
         } else {
           this.fixedLayoutSpreadEligible = undefined;
           const host =
@@ -3731,7 +3610,7 @@ export class ReaderController {
               : new ScrollContentHost(this.width, this.height);
           createdHost = host;
           stagingEl = this.stageHiddenHostElement(host.element);
-          await host.open(this.contentLoader, this.resolver, spineIndex);
+          await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
           applyDisplaySettings = true;
         }
       } catch (err) {
@@ -3754,8 +3633,8 @@ export class ReaderController {
 
       // For chapter-boundary turns, land on the target page and apply
       // display settings before reveal so the animation shows the right
-      // content. Guard on `stagingEl` because retroactive merged opens
-      // have no wrapper to reveal.
+      // content. Reflowable spread hosts own their staging directly;
+      // only the other host types have a separate wrapper to reveal.
       let animatedReveal = false;
       if (
         options.animateDirection !== undefined &&
@@ -3780,6 +3659,23 @@ export class ReaderController {
         );
       }
 
+      if (token !== this.spineOpenToken) {
+        newHost.dispose();
+        stagingEl?.remove();
+        return;
+      }
+
+      this.accessibility.detach();
+      this.contentInteractionCleanup?.();
+      this.contentInteractionCleanup = undefined;
+      this.dragCleanup?.();
+      this.dragCleanup = undefined;
+      this.highlightInteraction.teardownSelection();
+      this.pendingSelectionRange = undefined;
+      this.selectionToolbar = undefined;
+      this.activeHighlight = undefined;
+      this.footnotePopup = undefined;
+
       // Swap hosts by disposing/removing wrappers in place and revealing
       // the staging wrapper; never reparent an already-loaded host.
       previousHost?.dispose();
@@ -3788,6 +3684,9 @@ export class ReaderController {
       stagingEl?.style.setProperty("pointer-events", "");
       this.host = newHost;
       this.hostWrapperEl = stagingEl;
+      if (newHost instanceof SpreadPaginatedHost) {
+        Object.assign(newHost.element.style, { position: "", top: "", left: "", zIndex: "", opacity: "" });
+      }
       // Skip a second settings pass if the animation path already
       // applied it.
       if (applyDisplaySettings && !animatedReveal) {
@@ -3795,15 +3694,19 @@ export class ReaderController {
       }
 
       this.spineIndex = spineIndex;
-      this.appliedWidth = this.width;
-      this.appliedHeight = this.height;
+      this.appliedWidth = openingSize.width;
+      this.appliedHeight = openingSize.height;
       this.setUpContentInteraction();
       this.setUpDragPageTurn();
       this.highlightInteraction.setUpHighlightSelection();
       this.highlightInteraction.applyHighlightsToCurrentHost();
       this.refreshBookPagination();
 
-      if (options.bridgeCfi) {
+      if (newHost instanceof SpreadPaginatedHost) {
+        this.setUpAccessibility(options.fragment
+          ? newHost.contentDocuments().map(doc => doc.getElementById(options.fragment!)).find(el => el !== null)
+          : undefined);
+      } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
         this.setUpAccessibility();
       } else if (options.fragment) {
@@ -3812,7 +3715,6 @@ export class ReaderController {
       } else {
         if (
           options.landOnLastPage &&
-          !landedViaMerge &&
           (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost)
         ) {
           this.host.goToLastPage();
@@ -3880,11 +3782,7 @@ export class ReaderController {
         this.isLoadInFlight = false;
         this.notify();
 
-        if (this.pendingResize) {
-          const { width, height } = this.pendingResize;
-          this.pendingResize = undefined;
-          this.resize(width, height);
-        }
+        this.applyPendingLayout();
       }
     }
   }

@@ -344,9 +344,10 @@ export class PageTurnOrchestrator {
     const turnHost = entering ? newHost : oldHost;
     const otherHost = entering ? oldHost : newHost;
 
-    turnHost.suppressColumnClipPathForAnimation("right");
+    const turnColumn = this.ctx.rtl?.() ? "left" : "right";
+    turnHost.suppressColumnClipPathForAnimation(turnColumn);
     const turnColumnNaturalHeight = this.animator.spreadColumnElement(turnHost, 1).getBoundingClientRect().height;
-    turnHost.growColumnToFullHeight("right", this.ctx.height());
+    turnHost.growColumnToFullHeight(turnColumn, this.ctx.height());
     turnHost.suppressColumnClipPathForAnimation("left");
     otherHost.suppressColumnClipPathForAnimation("left");
     otherHost.suppressColumnClipPathForAnimation("right");
@@ -496,13 +497,13 @@ export class PageTurnOrchestrator {
     const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
     const bands = (chapterLabel: string, primary: number | undefined, secondary: number | undefined) => [
       {
-        left: 0,
+        left: this.ctx.rtl?.() ? columnWidth + gutter : 0,
         width: columnWidth,
         header: { mode: "single" as const, text: furniture.title },
         footerText: primary !== undefined ? `Page ${primary}` : undefined,
       },
       {
-        left: columnWidth + gutter,
+        left: this.ctx.rtl?.() ? 0 : columnWidth + gutter,
         width: columnWidth,
         header: { mode: "single" as const, text: chapterLabel },
         footerText: secondary !== undefined ? `Page ${secondary}` : undefined,

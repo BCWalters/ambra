@@ -6,6 +6,7 @@ import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 /** What `PageTurnAnimator` needs from `ReaderController` — plain
  * getters only; this class owns no reader state of its own. */
 export interface PageTurnAnimatorContext {
+  rtl?(): boolean;
   containerEl(): HTMLElement | undefined;
   height(): number;
   pageTheme(): PageTheme;
@@ -198,7 +199,7 @@ export class PageTurnAnimator {
    * indexing into `contentDocuments()`, which can have three entries
    * while merged). */
   public spreadColumnElement(host: SpreadPaginatedHost, columnIndex: 0 | 1): HTMLElement {
-    return host.columnElement(columnIndex === 0 ? "left" : "right");
+    return host.columnElement((columnIndex === 0) !== !!this.ctx.rtl?.() ? "left" : "right");
   }
 
   /** The plain page-themed "back face" a spread's rotate turn needs to
@@ -261,7 +262,7 @@ export class PageTurnAnimator {
     // view rather than freezing edge-on. `fullTurnDegrees` (issue #81)
     // overrides this to 180 for a spread's rotate turn, continuing flat
     // onto its own back face.
-    const fullyTurnedAmount = direction === 1 ? -(fullTurnDegrees ?? 100) : (fullTurnDegrees ?? 100);
+    const fullyTurnedAmount = this.physicalDirection(direction) * -(fullTurnDegrees ?? 100);
 
     if (entering) {
       this.setPageTurnTransform(turnEl, -fullyTurnedAmount, 1, extraTurnEls);
@@ -321,8 +322,8 @@ export class PageTurnAnimator {
     if (this.shouldSkipPageTurnAnimation()) {
       return;
     }
-    const exitAmount = direction * -100;
-    const enterStart = direction * 100;
+    const exitAmount = this.physicalDirection(direction) * -100;
+    const enterStart = this.physicalDirection(direction) * 100;
 
     for (const el of newGroup) {
       el.style.transform = `translateX(${enterStart}%)`;
@@ -404,7 +405,8 @@ export class PageTurnAnimator {
     // A backward turn's entering element is the same page a forward
     // turn would send away in the opposite direction, so its hinge
     // mirrors plain `direction`.
-    const hingeDirection = entering ? (direction === 1 ? -1 : 1) : direction;
+    const physical = this.physicalDirection(direction);
+    const hingeDirection = entering ? -physical : physical;
     const transformOrigin = `${hingeDirection === 1 ? "left" : "right"} center`;
     for (const el of [turnEl, ...extraTurnEls]) {
       el.style.backfaceVisibility = "hidden";
@@ -418,7 +420,7 @@ export class PageTurnAnimator {
    * moves "out of view" the same way for a given direction. */
   public pageTurnPartialAmount(direction: 1 | -1, fraction: number): number {
     const scale = this.ctx.pageTurnAnimationStyle() !== "rotate" ? 100 : 90;
-    return direction * -scale * fraction;
+    return this.physicalDirection(direction) * -scale * fraction;
   }
 
   /** The entering page's transform during a "scroll"-style drag (issue
@@ -427,7 +429,11 @@ export class PageTurnAnimator {
    * for the "scroll" style; every other style leaves the entering page
    * untouched during a drag. */
   public scrollDragEnterAmount(direction: 1 | -1, fraction: number): number {
-    return direction * 100 * (1 - fraction);
+    return this.physicalDirection(direction) * 100 * (1 - fraction);
+  }
+
+  private physicalDirection(direction: 1 | -1): number {
+    return this.ctx.rtl?.() ? -direction : direction;
   }
 
   /** Sets `el`'s in-progress transform directly (no transition) for

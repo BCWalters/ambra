@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PaginatedContentHost } from "@ambra/engine";
+import { PaginatedContentHost, SpreadPaginatedHost } from "@ambra/engine";
 import type { PageTheme } from "@ambra/engine";
 import { PageTurnAnimator, type PageTurnAnimatorContext } from "./PageTurnAnimator.js";
 
@@ -32,6 +32,19 @@ afterEach(() => {
 });
 
 describe("PageTurnAnimator", () => {
+  it("mirrors RTL motion and hinges while preserving logical forward/backward", () => {
+    const animator = new PageTurnAnimator(makeContext({ rtl: () => true, pageTurnAnimationStyle: () => "rotate" }));
+    expect(animator.pageTurnPartialAmount(1, 0.5)).toBe(45);
+    expect(animator.pageTurnPartialAmount(-1, 0.5)).toBe(-45);
+    expect(animator.scrollDragEnterAmount(1, 0)).toBe(-100);
+    const host = new SpreadPaginatedHost(1400, 800);
+    host.setProgressionDirection("rtl");
+    expect(animator.spreadColumnElement(host, 0)).toBe(host.columnElement("right"));
+    expect(animator.spreadColumnElement(host, 1)).toBe(host.columnElement("left"));
+    animator.stagePageTurn(host.element, host.columnElement("left"), 1);
+    expect(host.columnElement("left").style.transformOrigin).toBe("right center");
+    host.dispose();
+  });
   describe("shouldSkipPageTurnAnimation()", () => {
     it("is false when a real style is chosen and the OS has no reduced-motion preference", () => {
       const animator = new PageTurnAnimator(makeContext({ pageTurnAnimationStyle: () => "rotate" }));

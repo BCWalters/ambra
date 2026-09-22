@@ -7,6 +7,27 @@ beforeEach(() => {
 });
 
 describe("AccessibilityController", () => {
+  it("mirrors RTL arrows and chapter arrows, but keeps Space logical", () => {
+    const controller = new AccessibilityController();
+    const onNext = vi.fn();
+    const onPrevious = vi.fn();
+    const onNextChapter = vi.fn();
+    const onPreviousChapter = vi.fn();
+    controller.attach(document, { onNext, onPrevious, onNextChapter, onPreviousChapter }, { pageProgressionDirection: "rtl" });
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+    expect(onNext).toHaveBeenCalledTimes(1);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", ctrlKey: true }));
+    expect(onNextChapter).toHaveBeenCalledTimes(1);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", metaKey: true }));
+    expect(onPreviousChapter).toHaveBeenCalledTimes(1);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: " ", shiftKey: true }));
+    expect(onNext).toHaveBeenCalledTimes(2);
+    expect(onPrevious).toHaveBeenCalledTimes(2);
+    controller.detach();
+  });
   describe("attach", () => {
     it("calls onNext for ArrowRight and onPrevious for ArrowLeft", () => {
       const controller = new AccessibilityController();

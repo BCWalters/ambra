@@ -127,6 +127,10 @@ export interface ReaderSnapshot {
   /** True when the spread's left column shows the previous chapter's
    * borrowed last page rather than this chapter's own content. */
   isPrimaryPageMergedTail: boolean;
+  /** Book progression, independent of the EPUB text's own CSS direction. */
+  pageProgressionDirection?: "ltr" | "rtl";
+  /** Page numbers in reading order, including cross-chapter pairs. */
+  spreadPageNumbers?: readonly (number | undefined)[];
   /** Reader pane width in CSS pixels. */
   paneWidth: number;
   /** True during an animated page-turn transition. */

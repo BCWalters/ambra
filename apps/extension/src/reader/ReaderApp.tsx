@@ -105,6 +105,7 @@ const ReaderAppInner: FC = () => {
   type LeftPanel = "toc" | "annotations";
   const [activePanel, setActivePanel] = useState<LeftPanel | undefined>(undefined);
   const [isActivePanelPinned, setIsActivePanelPinned] = useState(false);
+  const [seekError, setSeekError] = useState<string>();
   const isTocOpen = activePanel === "toc";
   const isAnnotationsOpen = activePanel === "annotations";
   const isTocPinned = isTocOpen && isActivePanelPinned;
@@ -662,15 +663,19 @@ const ReaderAppInner: FC = () => {
               visible={chromeVisible}
               handlers={chromeHandlers}
               onPreview={previewSeek}
-              onSeek={seekToFraction}
+              onSeek={async (fraction) => {
+                setSeekError(undefined);
+                await seekToFraction(fraction);
+              }}
+              onSeekError={(error) => setSeekError(error instanceof Error ? error.message : String(error))}
             />
 
-            {snapshot.error && snapshot.errorSeverity && (
+            {(seekError || (snapshot.error && snapshot.errorSeverity)) && (
               <FriendlyError
-                message={snapshot.error}
-                detail={snapshot.errorDetail}
-                severity={snapshot.errorSeverity}
-                onDismiss={dismissError}
+                message={seekError ?? snapshot.error!}
+                detail={seekError ? undefined : snapshot.errorDetail}
+                severity={seekError ? "transient" : snapshot.errorSeverity!}
+                onDismiss={() => { setSeekError(undefined); dismissError(); }}
                 getDiagnosticsText={getDiagnosticsText}
               />
             )}

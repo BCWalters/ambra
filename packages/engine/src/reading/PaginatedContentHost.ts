@@ -7,6 +7,7 @@ import type { DomBreakPoint } from "../layout/Page.js";
 import { Page } from "../layout/Page.js";
 import { PaginationEngine } from "../layout/PaginationEngine.js";
 import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
+import type { DisclosureState } from "./DisclosureState.js";
 
 /**
  * Production content host for one spine item in paginated reflowable
@@ -39,6 +40,7 @@ export class PaginatedContentHost {
   private height: number;
   private pages: Page[] = [];
   private pageIndex = 0;
+  private disclosureCleanup: (() => void) | undefined;
   // Grown past `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM`'s own
   // fixed floor by `refreshInsets` whenever the current font scale/
   // line-spacing demands more room — see `ReadingTheme.insetsForLineHeight`'s
@@ -73,7 +75,7 @@ export class PaginatedContentHost {
    * spacing demands more room than the fixed constants alone provide —
    * see `ReadingTheme.insetsForLineHeight`'s doc comment. Called right
    * before every (re)pagination pass (`open`/`relayout`/`goToPosition`/
-   * `reanchorPagination`), so `pageContentHeight`/`showCurrentPage`/etc.
+   * pagination), so `pageContentHeight`/`showCurrentPage`/etc.
    * always use insets sized for *this* pass's own font settings, not
    * whatever the reader had the *previous* time this host paginated. A
    * no-op (keeps the previous value) if `doc`'s line-height can't be
@@ -101,7 +103,14 @@ export class PaginatedContentHost {
 
   /** Loads spine item `spineIndex`, paginates it at this host's current
    * width/height, and displays its first page. */
-  public async open(contentLoader: ContentLoader, resolver: ResourceUrlResolver, spineIndex: number): Promise<void> {
+  public async open(
+    contentLoader: ContentLoader,
+    resolver: ResourceUrlResolver,
+    spineIndex: number,
+    disclosures?: DisclosureState,
+  ): Promise<void> {
+    this.disclosureCleanup?.();
+    this.disclosureCleanup = undefined;
     const assembledXhtml = await loadAssembledSpineItem(contentLoader, resolver, spineIndex);
     await this.sandboxedHost.render(assembledXhtml);
 
@@ -109,6 +118,7 @@ export class PaginatedContentHost {
     if (!iframeDocument) {
       throw new Error("Sandboxed iframe has no contentDocument after loading (unexpected).");
     }
+    this.disclosureCleanup = disclosures?.attach(spineIndex, iframeDocument);
 
     // Prevent the iframe's own scrollbar from appearing for content taller
     // than one page — display is purely the transform/height PaginationEngine
@@ -192,35 +202,11 @@ export class PaginatedContentHost {
     return page && document ? { page, document } : undefined;
   }
 
-  /** Re-paginates the *currently loaded* content at a new width/height
-   * (e.g. a window resize or font-size change), preserving reading
-   * position by re-resolving the current page's start position against
-   * the freshly-measured pages — per the CFI design principle that
-   * position, not page number, is the source of truth across relayout.
-   * The preserved position is passed to `PaginationEngine.paginate` as an
-   * anchor, forcing a page break exactly there so it lands at the very
-   * top of its page rather than wherever it happens to fall under normal
-   * top-down pagination (see `PaginationEngine.paginate`'s `anchor`
-   * parameter) — the reader's first visible word never silently shifts
-   * mid-page across a resize/font-size change.
-   *
-   * `anchorOverride`, if given, is used as that anchor *instead of* this
-   * host's own `currentPosition()` — for `SpreadPaginatedHost`'s right
-   * column only (see its own `relayout`'s doc comment): a real, confirmed
-   * bug (reported: duplicated lines of dialogue straddling a spread's
-   * left/right columns) traced back to exactly this — the right column
-   * anchoring its *own* current position (a whole page ahead of the
-   * left column's) forced a *different* break into its independently-
-   * computed `pages` array than whatever the left column's anchor forced
-   * into its own, so the two columns' page-break arrays silently
-   * stopped agreeing with each other from that point on, even though
-   * both paginate the exact same underlying content. Anchoring the right
-   * column to the *left* column's position instead keeps both arrays
-   * forced through the identical break, which — given otherwise
-   * identical content/dimensions — keeps them byte-for-byte identical
-   * again, exactly as they are immediately after `open()` (which passes
-   * no anchor to either column at all). */
-  public relayout(width: number, height: number, anchorOverride?: DomBreakPoint): void {
+  /** Reflows while preserving a DOM reading position. Single-page readers
+   * may force a break at that position. Spread readers use `forceAnchor:
+   * false`: their two independently loaded documents must share canonical
+   * page boundaries, regardless of the route used to reach a page. */
+  public relayout(width: number, height: number, anchorOverride?: DomBreakPoint, forceAnchor = true): void {
     const preserve = anchorOverride ?? this.currentPosition();
     this.height = height;
 
@@ -238,7 +224,7 @@ export class PaginatedContentHost {
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, preserve);
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, forceAnchor ? preserve : undefined);
     if (preserve) {
       const found = PaginationEngine.findPageForPosition(
         this.pages,
@@ -298,32 +284,6 @@ export class PaginatedContentHost {
     this.showCurrentPage();
   }
 
-  /** Re-suppresses this host's own native scrollbar (see `open()`'s
-   * identical assignment, which this exactly mirrors) — callable on its
-   * own, not just something `open()` sets once, because a sandboxed
-   * iframe moved to a new DOM parent isn't guaranteed to preserve
-   * anything set via JS on its *previous* document object if the
-   * browser discards and reloads it as part of the move (see
-   * `SpreadPaginatedHost.openMergedWithPreviousTail`'s own defensive
-   * `goToPageIndex` reapplication for the identical underlying
-   * reasoning, applied there to this page's transform instead — and its
-   * own doc comment confirming a reload *did* empirically happen there).
-   * A real, confirmed bug of that same reload: reapplying the transform
-   * alone left the *reloaded* document's own default (`visible`)
-   * overflow in place, silently reintroducing a native scrollbar on a
-   * borrowed tail page that should never show one — masked until a
-   * separate fix made that tail page visible at all. A no-op if nothing
-   * actually reloaded (this host's own document already has this set
-   * from `open()`). */
-  public reapplyOverflowHidden(): void {
-    const iframeDocument = this.sandboxedHost.element.contentDocument;
-    if (!iframeDocument) {
-      return;
-    }
-    iframeDocument.documentElement.style.overflow = "hidden";
-    iframeDocument.body.style.overflow = "hidden";
-  }
-
   /** Jumps to `(node, offset)` — used for TOC/fragment navigation within
    * an already-open spine item, in-content link targets, and restoring a
    * bridged position after a scroll-to-paginated mode switch. Re-paginates
@@ -331,7 +291,7 @@ export class PaginatedContentHost {
    * always lands at the very top of its page — e.g. clicking a footnote
    * reference shows the footnote as the first line on screen, not buried
    * wherever normal pagination happens to place it. */
-  public goToPosition(node: Node, offset: number): void {
+  public goToPosition(node: Node, offset: number, forceAnchor = true): void {
     const iframeDocument = this.sandboxedHost.element.contentDocument;
     if (!iframeDocument) {
       return;
@@ -349,38 +309,12 @@ export class PaginatedContentHost {
     iframeDocument.body.style.transform = "";
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, { node, offset });
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, forceAnchor ? { node, offset } : undefined);
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
     if (found) {
       this.pageIndex = found.index;
       this.showCurrentPage();
     }
-  }
-
-  /** Re-paginates this host's *currently loaded* content in place —
-   * same width/height, same displayed page — but forces a page break
-   * exactly at `anchor`, without navigating the display there
-   * afterward. Used by `SpreadPaginatedHost`'s right column only, to
-   * keep its `pages` array structurally in agreement with the left
-   * column's own freshly-anchored one (see `SpreadPaginatedHost.
-   * relayout`/`goToPosition`'s own doc comments for why this matters —
-   * two independently-anchored `pages` arrays for what's meant to be
-   * the same underlying page sequence, shown one page apart, is exactly
-   * the real, confirmed bug that produced duplicated/missing lines at
-   * a spread's seam). The caller is responsible for restoring whichever
-   * page this column should actually display afterward (typically via
-   * `goToPageIndex`, since re-anchoring can shift where a given page
-   * index's content now starts) — this method only ever touches
-   * `this.pages`, never `this.pageIndex`/the display transform. */
-  public reanchorPagination(anchor: DomBreakPoint): void {
-    const iframeDocument = this.sandboxedHost.element.contentDocument;
-    if (!iframeDocument) {
-      return;
-    }
-    iframeDocument.body.style.transform = "";
-    this.refreshInsets(iframeDocument);
-    ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, anchor);
   }
 
   private showCurrentPage(): void {
@@ -504,6 +438,8 @@ export class PaginatedContentHost {
   }
 
   public dispose(): void {
+    this.disclosureCleanup?.();
+    this.disclosureCleanup = undefined;
     this.sandboxedHost.dispose();
   }
 }

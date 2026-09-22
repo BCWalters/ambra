@@ -12,6 +12,8 @@ import type { ActiveHighlightState } from "./ReaderTypes.js";
  * live host/document access — this manager only triggers a repaint. */
 export interface HighlightManagerContext {
   spineIndex(): number;
+  spineIndexForDocument?(document: Document): number;
+  isSpineVisible?(spineIndex: number): boolean;
   isFixedLayoutHost(): boolean;
   /** The live `Range` `setUpHighlightSelection` last captured. */
   pendingSelectionRange(): Range | undefined;
@@ -93,7 +95,9 @@ export class HighlightManager {
     }
     // Captured before `dismissSelectionToolbar` clears it, below.
     const anchor = this.ctx.selectionToolbarAnchor();
-    const spineIndex = this.ctx.spineIndex();
+    const document = range.startContainer.ownerDocument;
+    const spineIndex = document && this.ctx.spineIndexForDocument
+      ? this.ctx.spineIndexForDocument(document) : this.ctx.spineIndex();
     try {
       const startLocator = this.locatorResolver.generate(spineIndex, range.startContainer, range.startOffset);
       const endLocator = this.locatorResolver.generate(spineIndex, range.endContainer, range.endOffset);
@@ -132,7 +136,7 @@ export class HighlightManager {
       const index = highlights.findIndex((highlight) => highlight.id === id);
       if (index !== -1) {
         highlights.splice(index, 1);
-        if (spineIndex === this.ctx.spineIndex()) {
+        if (this.ctx.isSpineVisible?.(spineIndex) ?? spineIndex === this.ctx.spineIndex()) {
           this.ctx.applyHighlightsToCurrentHost();
         }
         break;
@@ -186,7 +190,7 @@ export class HighlightManager {
         if (active?.highlight.id === id) {
           this.ctx.setActiveHighlight({ ...active, highlight: updated });
         }
-        if (spineIndex === this.ctx.spineIndex()) {
+        if (this.ctx.isSpineVisible?.(spineIndex) ?? spineIndex === this.ctx.spineIndex()) {
           this.ctx.applyHighlightsToCurrentHost();
         }
         this.ctx.notify();

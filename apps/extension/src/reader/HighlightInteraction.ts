@@ -71,7 +71,7 @@ export class HighlightInteraction {
   }
 
   /** Applies highlights to every content document the current host
-   * owns. A merged spread's borrowed tail document belongs to the
+   * owns. A cross-chapter spread's first document belongs to the
    * *previous* spine item (`spineIndex() - 1`), not the current one —
    * `applyHighlightRanges` replaces a document's whole registry per
    * call, so applying the wrong index there would blank out highlights

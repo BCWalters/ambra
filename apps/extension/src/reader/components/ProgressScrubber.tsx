@@ -25,12 +25,11 @@ export interface ProgressScrubberProps {
   /** A live, side-effect-free preview of where a drag at `fraction`
    * would land — see `ReaderController.previewSeek`. */
   onPreview: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
-  /** Commits a drag's final position — see `ReaderController.
-   * seekToFraction`. Called once, on release. Returns a `Promise` (not
-   * fire-and-forget) so `endDrag` can keep showing the drag's own
-   * released position until the navigation actually lands — see its
-   * doc comment for why that matters. */
+  /** Resolves after navigation publishes its final snapshot, not when
+  * loading starts. Both pointer and keyboard seeks retain their
+  * optimistic destination until this promise settles. */
   onSeek: (fraction: number) => Promise<void>;
+  onSeekError: (error: unknown) => void;
 }
 
 /** The current reading position as a fraction (0 to 1) of the whole
@@ -91,14 +90,22 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   handlers,
   onPreview,
   onSeek,
+  onSeekError,
 }) => {
   const chromeTheme = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
+  const rtl = snapshot.pageProgressionDirection === "rtl";
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const [dragFraction, setDragFraction] = useState<number | undefined>(undefined);
+  const [pendingSeek, setPendingSeek] = useState<{
+    id: number;
+    fraction: number;
+    preview: ReturnType<ProgressScrubberProps["onPreview"]>;
+  }>();
+  const seekIdRef = useRef(0);
   // The popup's horizontal center, in pixels relative to the bar (`barRef`)
   // it's positioned within — clamped so it never runs past the browser
   // window's left/right edges, unlike naively centering it on the thumb
@@ -115,7 +122,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // matters here specifically.
   const activePointerIdRef = useRef<number | undefined>(undefined);
 
-  const preview = dragFraction !== undefined ? onPreview(dragFraction) : undefined;
+  const optimisticFraction = dragFraction ?? pendingSeek?.fraction;
+  const preview = dragFraction !== undefined ? onPreview(dragFraction) : pendingSeek?.preview;
   const previewLabel = preview
     ? preview.position.kind === "page"
       ? t("scrubber.pageOfTotal", { current: preview.position.current, total: preview.position.total })
@@ -126,13 +134,13 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     const bar = barRef.current;
     const track = trackRef.current;
     const popup = popupRef.current;
-    if (!bar || !track || !popup || dragFraction === undefined) {
+    if (!bar || !track || !popup || optimisticFraction === undefined) {
       return;
     }
     const barRect = bar.getBoundingClientRect();
     const trackRect = track.getBoundingClientRect();
     const popupWidth = popup.getBoundingClientRect().width;
-    const desiredCenterInViewport = trackRect.left + dragFraction * trackRect.width;
+    const desiredCenterInViewport = trackRect.left + (rtl ? 1 - optimisticFraction : optimisticFraction) * trackRect.width;
     const halfWidth = popupWidth / 2;
     const minCenter = POPUP_EDGE_MARGIN + halfWidth;
     const maxCenter = window.innerWidth - POPUP_EDGE_MARGIN - halfWidth;
@@ -145,7 +153,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     // popup's rendered width changes as its text does (e.g. "Page 9 of
     // 12" vs "Page 100 of 120"), which can itself push it back into (or
     // out of) needing to be clamped, even without `dragFraction` moving.
-  }, [dragFraction, previewLabel, preview?.chapterLabel]);
+  }, [optimisticFraction, previewLabel, preview?.chapterLabel, rtl]);
 
   const fractionAt = (clientX: number): number => {
     const track = trackRef.current;
@@ -156,11 +164,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     if (rect.width <= 0) {
       return 0;
     }
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const physicalFraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return rtl ? 1 - physicalFraction : physicalFraction;
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (event.pointerType === "mouse" && event.button !== 0) {
+    if (activePointerIdRef.current !== undefined || (event.pointerType === "mouse" && event.button !== 0)) {
       return;
     }
     // Pointer capture is still required here, not just a nicety: without
@@ -177,49 +186,37 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     setDragFraction(fractionAt(event.clientX));
   };
 
-  // Finalizes a drag at `fraction`: keeps showing the released drag
-  // position (not falling back to `currentFraction(snapshot)`, the
-  // *pre-seek* position) until the async navigation this triggers
-  // actually lands and the real snapshot catches up to match it —
-  // clearing `dragFraction` immediately here was a real, reported bug:
-  // the thumb would jump back to the old position for the async gap,
-  // then jump again to the new one once it resolved, a jarring
-  // double-jump instead of one smooth settle.
-  //
-  // `onSeek`'s own promise resolving is *not* a reliable enough signal
-  // on its own to clear `dragFraction` immediately — a second, related
-  // reported bug, worse the longer the seek takes (e.g. crossing into a
-  // chapter that hasn't been loaded/paginated yet, versus a same-
-  // chapter seek that settles almost instantly): `useSyncExternalStore`
-  // propagates `ReaderController`'s final `notify()` for this seek and
-  // this promise's own resolution as two independently-scheduled
-  // continuations, with no guarantee the snapshot update actually lands
-  // *before* this `.finally()` callback runs. Clearing `dragFraction`
-  // even one render too early falls back to `currentFraction(snapshot)`
-  // while it's still momentarily stale, reading as the exact "jump back
-  // to the old position" this was already meant to prevent. Waiting two
-  // animation frames (not just one — the first only guarantees *a*
-  // paint happened, not specifically the one carrying this update)
-  // before clearing is a small, deliberately conservative safety margin
-  // for that propagation to finish, at the cost of the thumb settling
-  // two frames later than the instant `onSeek` technically resolved —
-  // imperceptible next to the seek itself, and far better than a visible
-  // flash back to the wrong position.
-  const finishDrag = (fraction: number): void => {
+  // A pending navigation is not an active gesture. Keeping drag listeners
+  // alive after release used to submit another seek on every mouse move;
+  // an older completion could then erase the newest optimistic position.
+  const commitSeek = async (fraction: number): Promise<void> => {
+    const id = ++seekIdRef.current;
+    setPendingSeek({ id, fraction, preview: onPreview(fraction) });
+    try {
+      await onSeek(fraction);
+    } catch (error) {
+      if (id === seekIdRef.current) onSeekError(error);
+    } finally {
+      // The controller publishes its final external-store snapshot before
+      // settling. React reads that store in the same render that clears this
+      // overlay; no frame-count or timeout can stand in for seek completion.
+      setPendingSeek(current => current?.id === id ? undefined : current);
+    }
+  };
+
+  const releaseDrag = (): void => {
     const track = trackRef.current;
     const pointerId = activePointerIdRef.current;
+    activePointerIdRef.current = undefined;
     if (track && pointerId !== undefined && track.hasPointerCapture(pointerId)) {
       track.releasePointerCapture(pointerId);
     }
-    activePointerIdRef.current = undefined;
-    setDragFraction(fraction);
-    void onSeek(fraction).finally(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setDragFraction(undefined);
-        });
-      });
-    });
+    setDragFraction(undefined);
+  };
+
+  const finishDrag = (fraction: number): void => {
+    releaseDrag();
+    void commitSeek(fraction);
   };
 
   // The drag's move/release handling deliberately lives in a
@@ -234,10 +231,16 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     }
 
     const finalizeFromEvent = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerIdRef.current) return;
       finishDrag(fractionAt(event.clientX));
     };
 
+    const cancelFromEvent = (event: PointerEvent): void => {
+      if (event.pointerId === activePointerIdRef.current) releaseDrag();
+    };
+
     const handlePointerMove = (event: PointerEvent): void => {
+      if (event.pointerId !== activePointerIdRef.current) return;
       // `event.buttons` reflects the pointing device's *actual current*
       // button state on every move, independent of how this specific
       // event was routed to us — unlike relying solely on a captured
@@ -266,18 +269,18 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", finalizeFromEvent);
-    window.addEventListener("pointercancel", finalizeFromEvent);
+    window.addEventListener("pointercancel", cancelFromEvent);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", finalizeFromEvent);
-      window.removeEventListener("pointercancel", finalizeFromEvent);
+      window.removeEventListener("pointercancel", cancelFromEvent);
     };
     // `fractionAt`/`finishDrag` close over refs and stable props only —
     // deliberately excluded so this effect doesn't tear down and
     // re-attach its listeners on every fraction update mid-drag.
   }, [dragFraction !== undefined]);
 
-  const displayFraction = dragFraction ?? currentFraction(snapshot);
+  const displayFraction = optimisticFraction ?? currentFraction(snapshot);
 
   // "Page X of Y" and "Z pages left in this chapter" — the reader's
   // actual current position, not tied to a drag at all (unlike
@@ -348,10 +351,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     let next: number | undefined;
     switch (event.key) {
       case "ArrowRight":
+        next = Math.max(0, Math.min(1, displayFraction + (rtl ? -smallStep : smallStep)));
+        break;
+      case "ArrowLeft":
+        next = Math.max(0, Math.min(1, displayFraction + (rtl ? smallStep : -smallStep)));
+        break;
       case "ArrowUp":
         next = Math.min(1, displayFraction + smallStep);
         break;
-      case "ArrowLeft":
       case "ArrowDown":
         next = Math.max(0, displayFraction - smallStep);
         break;
@@ -371,7 +378,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         return;
     }
     event.preventDefault();
-    void onSeek(next);
+    releaseDrag();
+    void commitSeek(next);
   };
 
   // Scoped to paginated/spread reflowable content only (see this
@@ -446,7 +454,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             // inaccurate only at the extreme edges, on the first frame
             // of a drag, never visibly clipped since the layout effect
             // runs before the browser actually paints.
-            left: popupCenterPx ?? `${dragFraction! * 100}%`,
+            left: popupCenterPx ?? `${(rtl ? 1 - optimisticFraction! : optimisticFraction!) * 100}%`,
             // Without an explicit width, an absolutely positioned box
             // with only `left` set (no `right`) shrink-to-fits within
             // the space *remaining* to the containing block's edge —
@@ -497,7 +505,9 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(displayFraction * 100)}
-        aria-valuetext={currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`}
+        aria-valuetext={previewLabel
+          ? `${previewLabel} - ${preview!.chapterLabel}`
+          : currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`}
         style={{
           position: "relative",
           height: 16,
@@ -520,7 +530,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         <div
           style={{
             position: "absolute",
-            left: 0,
+            left: rtl ? "auto" : 0,
+            right: rtl ? 0 : "auto",
             width: `${displayFraction * 100}%`,
             height: 4,
             borderRadius: 2,
@@ -530,7 +541,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         <div
           style={{
             position: "absolute",
-            left: `${displayFraction * 100}%`,
+            left: `${(rtl ? 1 - displayFraction : displayFraction) * 100}%`,
             width: 12,
             height: 12,
             borderRadius: "50%",

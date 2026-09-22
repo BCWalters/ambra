@@ -77,25 +77,26 @@ export class AccessibilityController {
   public attach(
     document: Document,
     handlers: AccessibilityNavigationHandlers,
-    options: { interceptSpace?: boolean } = {},
+    options: { interceptSpace?: boolean; pageProgressionDirection?: string } = {},
   ): void {
     this.detach(document);
     const interceptSpace = options.interceptSpace ?? true;
+    const rtl = options.pageProgressionDirection === "rtl";
 
     const keydownHandler = (event: KeyboardEvent): void => {
       const chapterModifier = event.ctrlKey || event.metaKey;
       if (chapterModifier && event.key === "ArrowRight") {
         event.preventDefault();
-        handlers.onNextChapter?.();
+        (rtl ? handlers.onPreviousChapter : handlers.onNextChapter)?.();
       } else if (chapterModifier && event.key === "ArrowLeft") {
         event.preventDefault();
-        handlers.onPreviousChapter?.();
+        (rtl ? handlers.onNextChapter : handlers.onPreviousChapter)?.();
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
-        handlers.onNext();
+        (rtl ? handlers.onPrevious : handlers.onNext)();
       } else if (event.key === "ArrowLeft") {
         event.preventDefault();
-        handlers.onPrevious();
+        (rtl ? handlers.onNext : handlers.onPrevious)();
       } else if (interceptSpace && event.key === " ") {
         event.preventDefault();
         if (event.shiftKey) {

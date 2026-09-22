@@ -144,12 +144,16 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
         ]
       : [{ left: 0, right: 0, width: "auto" }];
   const headerTexts = columnBands.length > 1 ? [snapshot.title, snapshot.currentChapterLabel] : undefined;
-  const footerNumbers =
+  const footerNumbers = snapshot.spreadPageNumbers ? [...snapshot.spreadPageNumbers] :
     columnBands.length > 1
       ? snapshot.isPrimaryPageMergedTail
         ? [undefined, primaryPageNumber]
         : [primaryPageNumber, secondaryPageNumber]
       : [primaryPageNumber];
+  if (snapshot.pageProgressionDirection === "rtl" && snapshot.isSpread) {
+    headerTexts?.reverse();
+    footerNumbers.reverse();
+  }
 
   // Where each band's own *right* edge sits, for the bookmark ribbon
   // (issue #51) — deliberately not reusing `band.left`/`band.right`
@@ -272,7 +276,8 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
               reliable. */}
           {!chromeVisible &&
             columnBands.map((_band, index) => {
-              if (!snapshot.bookmarkedPages[index]) {
+              const readingIndex = snapshot.pageProgressionDirection === "rtl" && snapshot.isSpread ? 1 - index : index;
+              if (!snapshot.bookmarkedPages[readingIndex]) {
                 return null;
               }
               const edge = columnRightEdges[index];

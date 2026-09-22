@@ -1,15 +1,108 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader, currentPageLabel, currentPageText, clickForwardAndWait } from "../harness.js";
+import {
+  launchReader,
+  currentPageLabel,
+  currentPageText,
+  clickForwardAndWait,
+} from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epub");
 const TWO_CHAPTER_EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
-const MERGED_TAIL_VISIBILITY_EPUB = path.resolve(here, "..", "fixtures", "merged-tail-visibility.epub");
+const MERGED_TAIL_VISIBILITY_EPUB = path.resolve(
+  here,
+  "..",
+  "fixtures",
+  "merged-tail-visibility.epub",
+);
 const BOOK_START_MERGE_EPUB = path.resolve(here, "..", "fixtures", "book-start-merge.epub");
-const CHAINED_SINGLE_PAGE_CHAPTERS_EPUB = path.resolve(here, "..", "fixtures", "chained-single-page-chapters.epub");
+const CHAINED_SINGLE_PAGE_CHAPTERS_EPUB = path.resolve(
+  here,
+  "..",
+  "fixtures",
+  "chained-single-page-chapters.epub",
+);
 const TOTAL_PARAGRAPHS = 30;
+
+// Read only painted lines, not the full chapter DOM hidden by pagination.
+async function visibleSpreadSample(readerPage: Page) {
+  return readerPage.evaluate(() => {
+    const frames = Array.from(document.querySelectorAll("iframe"))
+      .filter((frame) => {
+        if (!frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+        const rect = frame.getBoundingClientRect();
+        const clip = getComputedStyle(frame).clipPath.match(/inset\(([\d.]+)px 0px ([\d.]+)px/);
+        let left = Math.max(0, rect.left);
+        let right = Math.min(innerWidth, rect.right);
+        let top = Math.max(0, rect.top + Number(clip?.[1] ?? 0));
+        let bottom = Math.min(innerHeight, rect.bottom - Number(clip?.[2] ?? 0));
+        // Estimator frames have real layout boxes inside a zero-sized clipping
+        // parent; their own computed visibility still says "visible".
+        for (let parent = frame.parentElement; parent; parent = parent.parentElement) {
+          const style = getComputedStyle(parent);
+          const bounds = parent.getBoundingClientRect();
+          if (/hidden|clip|scroll|auto/.test(style.overflowX)) {
+            left = Math.max(left, bounds.left);
+            right = Math.min(right, bounds.right);
+          }
+          if (/hidden|clip|scroll|auto/.test(style.overflowY)) {
+            top = Math.max(top, bounds.top);
+            bottom = Math.min(bottom, bounds.bottom);
+          }
+        }
+        return right > left && bottom > top &&
+          document.elementFromPoint((left + right) / 2, (top + bottom) / 2) === frame;
+      })
+      .sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+    const text = frames.map((frame) => {
+        const doc = frame.contentDocument;
+        if (!doc?.body) return "";
+        const clip = getComputedStyle(frame).clipPath.match(/inset\(([\d.]+)px 0px ([\d.]+)px/);
+        const top = Number(clip?.[1] ?? 0);
+        const bottom = frame.clientHeight - Number(clip?.[2] ?? 0);
+        const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+        let text = "";
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          for (let i = 0; i < (node.textContent?.length ?? 0); i++) {
+            const range = doc.createRange();
+            range.setStart(node, i);
+            range.setEnd(node, i + 1);
+            const r = range.getBoundingClientRect();
+            if (
+              r.width > 0 &&
+              r.top >= top - 0.5 &&
+              r.bottom <= bottom + 0.5 &&
+              r.right > 0 &&
+              r.left < frame.clientWidth
+            ) {
+              text += node.textContent![i];
+            }
+          }
+        }
+        return text.replace(/\s+/g, " ").trim();
+      });
+    const images = frames.flatMap(frame =>
+      Array.from(frame.contentDocument?.querySelectorAll("img, svg") ?? []).map(image => {
+        const rect = image.getBoundingClientRect();
+        return {
+          width: rect.width,
+          height: rect.height,
+          viewportWidth: frame.clientWidth,
+          viewportHeight: frame.clientHeight,
+        };
+      }));
+    return { text, images };
+  });
+}
+
+async function visibleSpreadText(readerPage: Page): Promise<string[]> {
+  return (await visibleSpreadSample(readerPage)).text;
+}
 
 function paragraphNumbers(text: string): number[] {
   const matches = [...text.matchAll(/Paragraph (\d+)\./g)];
@@ -34,6 +127,147 @@ function paragraphNumbers(text: string): number[] {
  *   this codebase's history, per the session's own design notes).
  */
 test.describe("paginated reflowable navigation correctness", () => {
+  test("painted spread sampling excludes clipped measurement and transparent staging frames", async () => {
+    const { context, readerPage } = await launchReader(CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      const before = await visibleSpreadSample(readerPage);
+      expect(before.text).toHaveLength(2);
+      await readerPage.evaluate(async () => {
+        for (const hiddenBy of ["clipping", "opacity"]) {
+          const container = document.createElement("div");
+          Object.assign(container.style, {
+            position: "fixed", left: "0", top: "0",
+            ...(hiddenBy === "clipping"
+              ? { width: "0", height: "0", overflow: "hidden" }
+              : { opacity: "0", pointerEvents: "none" }),
+          });
+          const frame = document.createElement("iframe");
+          Object.assign(frame.style, { width: "680px", height: "900px", border: "0" });
+          const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), { once: true }));
+          frame.srcdoc = '<p>Unpainted Chapter 23 probe text</p><svg width="123" height="234" xmlns="http://www.w3.org/2000/svg"><rect width="123" height="234"/></svg>';
+          container.appendChild(frame);
+          document.body.appendChild(container);
+          await loaded;
+        }
+      });
+      expect(await visibleSpreadSample(readerPage), "only the reader's painted pages are sampled").toEqual(before);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("spread positions survive seeking to the start and forward/backward round trips (#129)", async () => {
+    test.setTimeout(120_000);
+    const { context, readerPage } = await launchReader(CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, {
+      viewport: { width: 1400, height: 900 },
+    });
+    const visibleText = () => visibleSpreadText(readerPage);
+    try {
+      const snapshots: string[][] = [];
+      for (let i = 0; i < 50; i++) {
+        const text = await visibleText();
+        snapshots.push(text);
+        if (text.join(" ").includes("C1 Para 200.")) break;
+        await readerPage.keyboard.press("ArrowRight");
+        await readerPage.waitForTimeout(600);
+      }
+      expect(snapshots[0]?.join(" ")).toContain("Cover Para 1");
+      const painted = snapshots.flat().join(" ");
+      const expectedText = ["cover.xhtml", "titlepage.xhtml", "contents.xhtml", "chapter1.xhtml"]
+        .map(file => execFileSync("unzip", ["-p", CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, `OEBPS/${file}`], { encoding: "utf8" })
+          .match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]!.replace(/<[^>]+>/g, ""))
+        .join("");
+      expect(painted.replace(/\s/g, ""), "every painted character occurs once, in book order")
+        .toBe(expectedText.replace(/\s/g, ""));
+      expect(painted).toContain("Contents Para 1");
+      expect([...painted.matchAll(/Title Para (\d+)\./g)].map((match) => Number(match[1]))).toEqual(
+        Array.from({ length: 20 }, (_, i) => i + 1),
+      );
+      expect([...painted.matchAll(/C1 Para (\d+)\./g)].map((match) => Number(match[1]))).toEqual(
+        Array.from({ length: 200 }, (_, i) => i + 1),
+      );
+      expect(painted.match(/Chapter One/g)).toHaveLength(1);
+      for (let i = snapshots.length - 2; i >= 0; i--) {
+        await readerPage.keyboard.press("ArrowLeft");
+        await readerPage.waitForTimeout(600);
+        expect(await visibleText(), `backward spread ${i}`).toEqual(snapshots[i]);
+      }
+      await readerPage.keyboard.press("ArrowRight");
+      await readerPage.waitForTimeout(600);
+      const slider = readerPage.getByRole("slider").first();
+      await slider.focus();
+      await slider.press("Home");
+      await slider.press("Enter");
+      await readerPage.waitForTimeout(800);
+      expect(await visibleText(), "seek-to-start uses the same pair").toEqual(snapshots[0]);
+      await slider.blur();
+      for (let i = 1; i <= 3; i++) {
+        await readerPage.keyboard.press("ArrowRight");
+        await readerPage.waitForTimeout(600);
+        expect(await visibleText(), `forward after seek ${i}`).toEqual(snapshots[i]);
+      }
+      for (let i = 2; i >= 0; i--) {
+        await readerPage.keyboard.press("ArrowLeft");
+        await readerPage.waitForTimeout(600);
+        expect(await visibleText(), `backward after seek ${i}`).toEqual(snapshots[i]);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
+  for (const name of ["alice-in-wonderland", "frankenstein"]) {
+    test(`real book: ${name} fitted cover and exact spread round trips survive nondefault fonts (#129)`, async () => {
+      const book = path.resolve(here, "..", "real-books", `${name}.epub`);
+      test.skip(!fs.existsSync(book), "Optional real-book corpus is not installed");
+      const { context, readerPage } = await launchReader(book, {
+        viewport: { width: 1400, height: 900 },
+      });
+      try {
+        await readerPage.mouse.move(700, 20);
+        await readerPage.getByRole("button", { name: "Text and page options" }).click();
+        await readerPage.getByRole("menuitem", { name: "Text", exact: true }).click();
+        const font = readerPage.getByRole("slider", { name: "Font size" });
+        await font.focus();
+        await font.press("ArrowRight");
+        await font.press("ArrowRight");
+        await readerPage.keyboard.press("Escape");
+        await readerPage.keyboard.press("Escape");
+        await readerPage.waitForTimeout(800);
+        const slider = readerPage.getByRole("slider", { name: "Position in book" });
+        await slider.focus();
+        await slider.press("Home");
+        await readerPage.waitForTimeout(800);
+        await slider.blur();
+        const imageBounds = async () => (await visibleSpreadSample(readerPage)).images;
+        const images = await imageBounds();
+        expect(images.length).toBeGreaterThan(0);
+        for (const image of images) {
+          expect(image.width).toBeLessThanOrEqual(image.viewportWidth + 1);
+          expect(image.height).toBeLessThanOrEqual(image.viewportHeight + 1);
+        }
+        const snapshots: string[][] = [];
+        for (let i = 0; i < 5; i++) {
+          snapshots.push(await visibleSpreadText(readerPage));
+          await readerPage.keyboard.press("ArrowRight");
+          await readerPage.waitForTimeout(600);
+        }
+        for (let i = 4; i >= 0; i--) {
+          await readerPage.keyboard.press("ArrowLeft");
+          await readerPage.waitForTimeout(600);
+          expect(await visibleSpreadText(readerPage), `real-book backward spread ${i}`).toEqual(
+            snapshots[i],
+          );
+        }
+        expect(await imageBounds()).toEqual(images);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+
   test("single-column: every paragraph appears exactly once, in order, with no dead clicks", async () => {
     const { context, readerPage } = await launchReader(LONG_CONTENT_EPUB, {
       viewport: { width: 760, height: 900 },
@@ -54,8 +288,14 @@ test.describe("paginated reflowable navigation correctness", () => {
           break; // reached the last page of this (single-chapter) fixture
         }
 
-        const { changed, before, after } = await clickForwardAndWait(readerPage, { x: 700, y: 450 });
-        expect(changed, `click ${click} never advanced past "${before}" (stuck/dead click — issue #82)`).toBe(true);
+        const { changed, before, after } = await clickForwardAndWait(readerPage, {
+          x: 700,
+          y: 450,
+        });
+        expect(
+          changed,
+          `click ${click} never advanced past "${before}" (stuck/dead click — issue #82)`,
+        ).toBe(true);
         lastLabel = after;
       }
 
@@ -95,7 +335,9 @@ test.describe("paginated reflowable navigation correctness", () => {
         const index = indexMatch ? Number(indexMatch[1]) : undefined;
 
         const iframeTexts = await readerPage.evaluate(() =>
-          Array.from(document.querySelectorAll("iframe")).map((f) => f.contentDocument?.body?.innerText ?? ""),
+          Array.from(document.querySelectorAll("iframe")).map(
+            (f) => f.contentDocument?.body?.innerText ?? "",
+          ),
         );
         seenPerPage.push(paragraphNumbers(iframeTexts.join("\n")));
 
@@ -103,7 +345,10 @@ test.describe("paginated reflowable navigation correctness", () => {
           break;
         }
         const { changed, before } = await clickForwardAndWait(readerPage, { x: 1200, y: 450 });
-        expect(changed, `spread click ${click} never advanced past "${before}" (stuck/dead click)`).toBe(true);
+        expect(
+          changed,
+          `spread click ${click} never advanced past "${before}" (stuck/dead click)`,
+        ).toBe(true);
       }
 
       const allSeen = seenPerPage.flat();
@@ -111,7 +356,10 @@ test.describe("paginated reflowable navigation correctness", () => {
       const missing = Array.from({ length: TOTAL_PARAGRAPHS }, (_, i) => i + 1).filter(
         (n) => !uniqueSeen.includes(n),
       );
-      expect(missing, "paragraphs missing across the whole spread-mode run (skipped content)").toEqual([]);
+      expect(
+        missing,
+        "paragraphs missing across the whole spread-mode run (skipped content)",
+      ).toEqual([]);
     } finally {
       await context.close();
     }
@@ -149,7 +397,9 @@ test.describe("paginated reflowable navigation correctness", () => {
       async function visibleParagraphs(): Promise<string[]> {
         return readerPage.evaluate(() => {
           const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) => el.getBoundingClientRect().width > 600 && getComputedStyle(el).visibility !== "hidden",
+            (el) =>
+              el.getBoundingClientRect().width > 600 &&
+              getComputedStyle(el).visibility !== "hidden",
           );
           const seen = new Set<string>();
           for (const frame of iframes) {
@@ -203,7 +453,8 @@ test.describe("paginated reflowable navigation correctness", () => {
         // advance to.
         const chapterOneDone = sawChapterTwo || bestC1 >= 120;
         const chapterTwoDone = bestC2 >= 60;
-        const madeProgress = (!chapterOneDone && c1 > bestC1) || (sawChapterTwo && !chapterTwoDone && c2 > bestC2);
+        const madeProgress =
+          (!chapterOneDone && c1 > bestC1) || (sawChapterTwo && !chapterTwoDone && c2 > bestC2);
         const alreadyAtBookEnd = chapterOneDone && chapterTwoDone;
         expect(
           madeProgress || alreadyAtBookEnd,
@@ -248,7 +499,9 @@ test.describe("paginated reflowable navigation correctness", () => {
       async function visibleParagraphs(): Promise<string[]> {
         return readerPage.evaluate(() => {
           const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) => el.getBoundingClientRect().width > 600 && getComputedStyle(el).visibility !== "hidden",
+            (el) =>
+              el.getBoundingClientRect().width > 600 &&
+              getComputedStyle(el).visibility !== "hidden",
           );
           const seen = new Set<string>();
           for (const frame of iframes) {
@@ -342,7 +595,9 @@ test.describe("paginated reflowable navigation correctness", () => {
           // entirely, same as an actually-narrow/non-spread column
           // should be.
           const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) => el.getBoundingClientRect().width > 400 && getComputedStyle(el).visibility !== "hidden",
+            (el) =>
+              el.getBoundingClientRect().width > 400 &&
+              getComputedStyle(el).visibility !== "hidden",
           );
           const seen = new Set<string>();
           for (const frame of iframes) {
@@ -434,7 +689,9 @@ test.describe("paginated reflowable navigation correctness", () => {
           ),
         );
       }
-      expect(hasChapterTwo, "never reached the merged spread (chapter two never appeared)").toBe(true);
+      expect(hasChapterTwo, "never reached the merged spread (chapter two never appeared)").toBe(
+        true,
+      );
 
       const columns = await readerPage.evaluate(() => {
         return Array.from(document.querySelectorAll("iframe"))
@@ -614,7 +871,9 @@ test.describe("paginated reflowable navigation correctness", () => {
       for (let press = 0; press < 12; press++) {
         await readerPage.keyboard.press("ArrowRight");
         await readerPage.waitForTimeout(700);
-        expect(await rightSlotHidden(), `press ${press}: right column present but hidden`).toBe(false);
+        expect(await rightSlotHidden(), `press ${press}: right column present but hidden`).toBe(
+          false,
+        );
       }
     } finally {
       await context.close();
@@ -681,13 +940,18 @@ test.describe("paginated reflowable navigation correctness", () => {
       // the `BOOK_START_MERGE_EPUB` test above) — cover and title page
       // shown side by side, with no hidden facing column.
       const initialMarkers = await visibleMarkers();
-      expect(initialMarkers.everyColumnHasText, "the book's very first spread had a blank visible column").toBe(
-        true,
-      );
-      expect(initialMarkers.hasCover && initialMarkers.hasTitle, "the book didn't open on cover+title merged").toBe(
-        true,
-      );
-      expect(await rightSlotHiddenIframe(), "the book's very first spread had a hidden facing column").toBe(false);
+      expect(
+        initialMarkers.everyColumnHasText,
+        "the book's very first spread had a blank visible column",
+      ).toBe(true);
+      expect(
+        initialMarkers.hasCover && initialMarkers.hasTitle,
+        "the book didn't open on cover+title merged",
+      ).toBe(true);
+      expect(
+        await rightSlotHiddenIframe(),
+        "the book's very first spread had a hidden facing column",
+      ).toBe(false);
 
       // Advance well into the real (27-page) first chapter.
       for (let press = 0; press < 8; press++) {
@@ -710,17 +974,32 @@ test.describe("paginated reflowable navigation correctness", () => {
       for (let press = 0; press < MAX_BACK_PRESSES && !reachedStart; press++) {
         await readerPage.keyboard.press("ArrowLeft");
         await readerPage.waitForTimeout(700);
-        expect(await rightSlotHiddenIframe(), `back-press ${press}: a facing column was hidden`).toBe(false);
+        expect(
+          await rightSlotHiddenIframe(),
+          `back-press ${press}: a facing column was hidden`,
+        ).toBe(false);
         const markers = await visibleMarkers();
-        expect(markers.everyColumnHasText, `back-press ${press}: a visible column was blank`).toBe(true);
+        expect(markers.everyColumnHasText, `back-press ${press}: a visible column was blank`).toBe(
+          true,
+        );
         sawTitle ||= markers.hasTitle;
         sawContents ||= markers.hasContents;
-        reachedStart = markers.hasCover && markers.hasTitle && !markers.hasContents && !markers.hasChapter1;
+        reachedStart =
+          markers.hasCover && markers.hasTitle && !markers.hasContents && !markers.hasChapter1;
       }
 
-      expect(reachedStart, "backward navigation never returned to the book's cover+title start").toBe(true);
-      expect(sawTitle, "the title page chapter was never actually shown while navigating backward").toBe(true);
-      expect(sawContents, "the contents chapter was never actually shown while navigating backward").toBe(true);
+      expect(
+        reachedStart,
+        "backward navigation never returned to the book's cover+title start",
+      ).toBe(true);
+      expect(
+        sawTitle,
+        "the title page chapter was never actually shown while navigating backward",
+      ).toBe(true);
+      expect(
+        sawContents,
+        "the contents chapter was never actually shown while navigating backward",
+      ).toBe(true);
 
       // Once at the true start, further backward presses must leave it
       // there unchanged, not drift to some other, incorrect state.

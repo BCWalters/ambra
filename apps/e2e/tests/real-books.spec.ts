@@ -26,11 +26,11 @@ const REAL_BOOKS_DIR = path.resolve(here, "..", "real-books");
  * spuriously fail before anyone's had a chance to run the download
  * script — this file exists to be run deliberately, alongside it.
  */
-const BOOKS: Array<{ file: string; label: string }> = [
+const BOOKS: Array<{ file: string; label: string; direction?: "rtl" }> = [
   { file: "alice-in-wonderland.epub", label: "a full real novel (Project Gutenberg)" },
   { file: "childrens-literature.epub", label: "span-heading nav, TOC-in-spine (IDPF sample)" },
   { file: "accessible-epub-3.epub", label: "accessibility-focused authoring (IDPF sample)" },
-  { file: "israel-sailing.epub", label: "RTL/BIDI Hebrew content (IDPF sample)" },
+  { file: "israel-sailing.epub", label: "RTL/BIDI Hebrew content (IDPF sample)", direction: "rtl" },
   { file: "internal-links.epub", label: "internal hyperlink navigation (IDPF sample)" },
   {
     file: "frankenstein.epub",
@@ -95,7 +95,11 @@ for (const book of BOOKS) {
       // unpredictable pagination breaks.
       const before = await currentPageLabel(readerPage);
       if (before) {
-        const { changed } = await clickForwardAndWait(readerPage, { x: 700, y: 450 }, 4000);
+        const { changed } = await clickForwardAndWait(
+          readerPage,
+          { x: book.direction === "rtl" ? 200 : 700, y: 450 },
+          4000,
+        );
         expect(changed, `first forward click never advanced past "${before}"`).toBe(true);
       }
 

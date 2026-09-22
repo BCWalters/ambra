@@ -1,4 +1,9 @@
-import { collectTextNodesOf, positionFromTextNodes, sumTextLength, totalTextLength } from "./DomTextWalker.js";
+import {
+  collectTextNodesOf,
+  positionFromTextNodes,
+  sumTextLength,
+  totalTextLength,
+} from "./DomTextWalker.js";
 
 /** A single indivisible unit of content for pagination purposes: either
  * one visual line of text within a "leaf" block element, or one whole
@@ -56,7 +61,11 @@ function isLeaf(element: Element): boolean {
 }
 
 function isAtomic(element: Element): boolean {
-  return ATOMIC_TAG_NAMES.has(element.tagName.toLowerCase()) || totalTextLength(element) === 0;
+  return (
+    ATOMIC_TAG_NAMES.has(element.tagName.toLowerCase()) ||
+    (element.localName === "details" && !element.hasAttribute("open")) ||
+    totalTextLength(element) === 0
+  );
 }
 
 /** Walks `root`'s block structure, collecting each block-level leaf
@@ -77,7 +86,25 @@ function isAtomic(element: Element): boolean {
  * complex atomic tag (e.g. `<figure>` wrapping a captioned image). */
 function collectLeaves(root: Element, out: Element[]): void {
   for (const child of Array.from(root.children)) {
-    if (isAtomic(child) || isLeaf(child)) {
+    // Closed disclosures can return nonzero descendant rectangles even though
+    // those descendants are not rendered. Measuring them creates phantom pages.
+    if (child.localName === "details" && !child.hasAttribute("open")) {
+      const summary = Array.from(child.children).find((element) => element.localName === "summary");
+      if (!child.checkVisibility()) {
+        continue;
+      }
+      if (summary) {
+        if (isLeaf(summary)) out.push(summary);
+        else collectLeaves(summary, out);
+      } else {
+        // The browser supplies a default summary outside the authored DOM.
+        out.push(child);
+      }
+    } else if (getComputedStyle(child).display === "contents") {
+      collectLeaves(child, out);
+    } else if (!child.checkVisibility()) {
+      continue;
+    } else if (isAtomic(child) || isLeaf(child)) {
       out.push(child);
     } else {
       collectLeaves(child, out);
@@ -90,7 +117,9 @@ function measureAtomicChunk(element: Element): Chunk {
   const rect = element.getBoundingClientRect();
   const parent = element.parentNode;
   if (!parent) {
-    throw new Error("Atomic leaf element has no parent — cannot compute its break-before position.");
+    throw new Error(
+      "Atomic leaf element has no parent — cannot compute its break-before position.",
+    );
   }
   const index = Array.prototype.indexOf.call(parent.childNodes, element);
   return {
