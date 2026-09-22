@@ -1,41 +1,22 @@
 /**
- * Notices when the browser downloads a `.epub` file anywhere on the web and
- * offers a one-click way to add it to the library — the "EPUB mimetype
- * handling" a reader like this should have, rather than leaving a
- * downloaded book to sit in the Downloads folder as an unrecognized binary
- * the way it does with no handling at all.
+ * Fallback for an EPUB download that somehow still completed despite
+ * `epubDirectImport.ts`'s proactive interception (issue #122's own
+ * cancel-before-save path) — e.g. a download `chrome.downloads.cancel`
+ * couldn't stop in time, or one whose URL/MIME didn't look like an
+ * EPUB until later in the download than `onCreated` fires. Notices the
+ * completed download and offers a one-click way to add it to the
+ * library, rather than leaving it to sit in the Downloads folder as an
+ * unrecognized binary the way it does with no handling at all.
  *
- * Deliberately scoped to *detection + a prompt*, not a fully silent
- * one-click import: reading a just-downloaded file's actual bytes back
- * into the extension would need either the user's own (off-by-default,
- * per-extension, manually-toggled) "Allow access to file URLs" setting, or
- * broad `host_permissions` letting the extension `fetch()` arbitrary sites
- * directly (bypassing this entirely by intercepting the *link click*
- * before Chrome ever downloads it) — both are real, separate product/
- * permission-scope decisions (the latter especially: it's a
- * "read/change all your data on every site you visit" -grade permission,
- * with real Chrome Web Store review and user-trust implications) rather
- * than something to reach for silently. This first version only needs the
- * plain `downloads`/`notifications` permissions, asks for nothing new the
- * user wouldn't expect a download-aware extension to have, and still
- * removes the single biggest bit of friction: *noticing* a book was just
- * downloaded at all. Finishing the import still goes through the
- * library's own existing (already fully-trusted, user-gesture-driven)
- * file picker.
+ * Finishing the import still goes through the library's own existing
+ * file picker (`openLibraryTab`, not a direct fetch of the already-
+ * downloaded local file) — reading a completed download's bytes back
+ * off disk would need the user's own (off-by-default, manually
+ * toggled) "Allow access to file URLs" setting, a separate permission
+ * this extension doesn't ask for.
  */
 import { openLibraryTab } from "../navigation.js";
-
-/** Chrome's own `DownloadItem.mime` is populated from the server's
- * `Content-Type` response header when present — a genuine EPUB server
- * usually gets this right, but plenty of real-world hosts (a plain static
- * file server, a misconfigured CMS) serve `.epub` files as
- * `application/octet-stream` or omit the header entirely. Treating either
- * the declared mime type *or* the filename extension as sufficient (rather
- * than requiring both) means a correctly-configured server's download is
- * recognized just as reliably as a sloppy one's. */
-function isLikelyEpubDownload(item: Pick<chrome.downloads.DownloadItem, "filename" | "mime">): boolean {
-  return item.mime === "application/epub+zip" || /\.epub$/i.test(item.filename);
-}
+import { isLikelyEpubDownload } from "./epubUrlHeuristic.js";
 
 /** The basename only (no directory) — `DownloadItem.filename` is a full
  * local path, which would otherwise leak the reader's own local folder
@@ -47,6 +28,7 @@ function baseName(fullPath: string): string {
   const parts = fullPath.split(/[/\\]/);
   return parts[parts.length - 1] || fullPath;
 }
+
 
 const NOTIFICATION_ID_PREFIX = "ambra-epub-download-";
 

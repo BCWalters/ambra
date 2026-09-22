@@ -6,7 +6,9 @@
 
 export { openReaderTab } from "../navigation.js";
 import { registerEpubDownloadDetection } from "./epubDownloadDetection.js";
+import { registerEpubDirectImport } from "./epubDirectImport.js";
 
+registerEpubDirectImport();
 registerEpubDownloadDetection();
 
 chrome.runtime.onInstalled.addListener(() => {

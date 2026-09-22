@@ -4,7 +4,7 @@ import type { BookMetadata } from "./LibraryDatabase.js";
 import { LibraryDatabase } from "./LibraryDatabase.js";
 import { DEFAULT_LIBRARY_SORT } from "./LibrarySortOption.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
-import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, openLibraryTab, openReaderTab } from "../navigation.js";
+import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, openLibraryTab, openReaderTab } from "../navigation.js";
 import { DEFAULT_CHROME_THEME } from "../reader/chromeTheme.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
@@ -224,6 +224,44 @@ export function useLibrary(): UseLibraryResult {
     [],
   );
 
+  // Issue #122: a proactively-intercepted EPUB download (`epubDirectImport.ts`)
+  // lands here as a source URL to fetch and import automatically, rather
+  // than ever reaching the Downloads folder. A ref (not just gating on
+  // `db`) guards against double-handling — React 18 Strict Mode's
+  // development-only double-invocation of effects would otherwise import
+  // the same book twice.
+  const importUrlHandledRef = useRef(false);
+  useEffect(() => {
+    if (!db || importUrlHandledRef.current) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const importUrl = params.get(LIBRARY_IMPORT_URL_PARAM);
+    if (!importUrl) {
+      return;
+    }
+    importUrlHandledRef.current = true;
+    // Strip the param immediately (not after the fetch resolves) so a
+    // reload while the fetch is still in flight can't re-trigger it.
+    params.delete(LIBRARY_IMPORT_URL_PARAM);
+    const nextSearch = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
+
+    void (async () => {
+      try {
+        const response = await fetch(importUrl);
+        if (!response.ok) {
+          throw new Error(`That download couldn't be fetched (HTTP ${response.status}).`);
+        }
+        const blob = await response.blob();
+        const file = new File([blob], suggestedFileNameFor(importUrl), { type: "application/epub+zip" });
+        await importFiles([file]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [db, importFiles]);
+
   const books = useMemo(() => sortBooks(rawBooks, sort), [rawBooks, sort]);
 
   return {
@@ -292,4 +330,23 @@ function sortBooks(books: readonly LibraryBookViewModel[], sort: LibrarySortOpti
  * specifically improves on the raw error. */
 function describeImportError(err: unknown, fileName: string): string {
   return describeStorageError(err, "import", `"${fileName}"`);
+}
+
+/** A reasonable filename for a book fetched from `url` (issue #122) —
+ * `File`'s own name is purely informational here (`BookImporter` never
+ * requires a `.epub` extension to import successfully), but showing a
+ * blank or clearly-wrong name in the library's own UI later would be a
+ * needless rough edge. Falls back to a generic name if the URL's last
+ * path segment is missing or empty (e.g. a bare domain). */
+function suggestedFileNameFor(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const last = pathname.split("/").filter(Boolean).pop();
+    if (last) {
+      return /\.epub/i.test(last) ? last : `${last}.epub`;
+    }
+  } catch {
+    // Fall through to the generic name below.
+  }
+  return "book.epub";
 }

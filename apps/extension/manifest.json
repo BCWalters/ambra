@@ -22,5 +22,6 @@
     "type": "module"
   },
   "permissions": ["unlimitedStorage", "downloads", "notifications"],
+  "host_permissions": ["*://*/*"],
   "options_page": "src/library/index.html"
 }
