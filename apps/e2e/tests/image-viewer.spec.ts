@@ -5,6 +5,52 @@ import { launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+test("image viewer traps keyboard focus and restores the originating book image", async () => {
+  const { context, readerPage } = await launchReader(
+    path.resolve(here, "../fixtures/footnote.epub"),
+  );
+  try {
+    await readerPage.evaluate(async () => {
+      const doc = document.querySelector("iframe")!.contentDocument!;
+      const image = doc.createElement("img");
+      image.alt = "Keyboard image";
+      image.tabIndex = 0;
+      image.src = URL.createObjectURL(
+        new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"/>'], {
+          type: "image/svg+xml",
+        }),
+      );
+      image.style.cssText = "position:absolute;top:0;left:0;width:120px;height:120px";
+      doc.body.append(image);
+      await image.decode();
+      image.focus();
+    });
+    const source = readerPage.frameLocator("iframe").getByRole("img", { name: "Keyboard image" });
+    const dialog = readerPage.getByRole("dialog", { name: "Keyboard image" });
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+
+    for (const dismiss of ["Escape", "Enter", "click"]) {
+      await expect(source).toBeFocused();
+      await readerPage.keyboard.press("Enter");
+      await expect(close).toBeFocused();
+      for (const key of ["Tab", "Tab", "Shift+Tab", "Shift+Tab"]) {
+        await readerPage.keyboard.press(key);
+        await expect(close).toBeFocused();
+      }
+      if (dismiss === "click") {
+        await close.click();
+      } else {
+        await readerPage.keyboard.press(dismiss);
+      }
+      await expect(dialog).toBeHidden();
+      await expect(readerPage.locator("iframe")).toBeFocused();
+      await expect(source).toBeFocused();
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 for (const [width, height] of [
   [120, 120],
   [240, 120],

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
-import { Button, Tooltip } from "@fluentui/react-components";
+import { Button, Tooltip, useModalAttributes } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { ImageViewerState } from "../ReaderTypes.js";
@@ -35,6 +35,11 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [loadedImage, setLoadedImage] = useState<{ src: string; aspectRatio: number }>();
   const t = useTranslation();
+  // Fluent contains Tab focus; the controller restores focus into the book iframe.
+  const { modalAttributes } = useModalAttributes({
+    trapFocus: !!image,
+    legacyTrapFocus: true,
+  });
 
   useEffect(() => {
     if (!image) {
@@ -62,6 +67,7 @@ export const ImageViewer: FC<ImageViewerProps> = ({ image, onRequestClose }) => 
 
   return (
     <div
+      {...modalAttributes}
       role="dialog"
       aria-modal="true"
       aria-label={image.alt || t("imageViewer.dialogAriaLabel")}
