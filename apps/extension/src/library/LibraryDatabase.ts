@@ -26,6 +26,10 @@ function compareByCfiThenCreatedAt(cfiA: string, cfiB: string, fallbackA: number
  * live in their own object stores. */
 export interface BookMetadata {
   readonly id: string;
+  /** SHA-256 of the complete EPUB archive bytes, never its URL, filename,
+   * title or OPF identifier. Absent on pre-v6 records until the next import.
+   * Even a repackaged archive is distinct if its bytes changed. */
+  readonly contentHash?: string;
   readonly title: string;
   readonly creator: string | undefined;
   readonly identifier: string;
@@ -163,8 +167,9 @@ interface PreferenceRecord {
 }
 
 const DB_NAME = "ambra-library";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const BOOKS_STORE = "books";
+const CONTENT_HASH_INDEX = "contentHash";
 const FILES_STORE = "bookFiles";
 const COVERS_STORE = "bookCovers";
 const PROGRESS_STORE = "readingProgress";
@@ -184,6 +189,11 @@ const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
 const LOCALE_PREFERENCE_KEY = "localePreference";
 const LIBRARY_SORT_PREFERENCE_KEY = "defaultLibrarySort";
+
+async function hashBookFile(blob: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 /**
  * The extension's local book library: book metadata, the original EPUB
@@ -226,11 +236,27 @@ export class LibraryDatabase {
   public static open(): Promise<LibraryDatabase> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let blocked = false;
+
+      request.onblocked = () => {
+        blocked = true;
+        reject(
+          new Error(
+            "Ambra needs to update its library. Close or reload other Ambra tabs, then reload this page.",
+          ),
+        );
+      };
 
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(BOOKS_STORE)) {
           db.createObjectStore(BOOKS_STORE, { keyPath: "id" });
+        }
+        const books = request.transaction!.objectStore(BOOKS_STORE);
+        if (!books.indexNames.contains(CONTENT_HASH_INDEX)) {
+          // Existing duplicate records may have independent annotations:
+          // retain all of them rather than merging/deleting user data.
+          books.createIndex(CONTENT_HASH_INDEX, "contentHash");
         }
         if (!db.objectStoreNames.contains(FILES_STORE)) {
           db.createObjectStore(FILES_STORE, { keyPath: "id" });
@@ -252,26 +278,79 @@ export class LibraryDatabase {
         }
       };
 
-      request.onsuccess = () => resolve(new LibraryDatabase(request.result));
-      request.onerror = () => reject(request.error ?? new Error("Failed to open the Ambra library database."));
+      request.onsuccess = () => {
+        // IndexedDB cannot cancel a blocked open request. If the old tab
+        // closes later, do not leak a connection from the rejected promise.
+        if (blocked) {
+          request.result.close();
+          return;
+        }
+        resolve(new LibraryDatabase(request.result));
+      };
+      request.onerror = () =>
+        reject(request.error ?? new Error("Failed to open the Ambra library database."));
     });
   }
 
-  /** Adds a book to the library and returns its generated id. */
+  /** Reuses the oldest identical archive's id without rewriting any user
+   * data or metadata; otherwise adds a new book atomically. The index check
+   * and writes share a transaction so imports in separate tabs cannot race. */
   public async addBook(
     fileBlob: Blob,
-    metadata: Omit<BookMetadata, "id" | "addedAt">,
+    metadata: Omit<BookMetadata, "id" | "addedAt" | "contentHash">,
     coverBlob: Blob | undefined,
   ): Promise<string> {
-    const id = crypto.randomUUID();
-    const record: BookMetadata = { id, addedAt: Date.now(), ...metadata };
+    const contentHash = await hashBookFile(fileBlob);
+    await this.indexLegacyBooks();
 
-    await this.put(BOOKS_STORE, record);
-    await this.put(FILES_STORE, { id, blob: fileBlob });
-    if (coverBlob) {
-      await this.put(COVERS_STORE, { id, blob: coverBlob });
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction([BOOKS_STORE, FILES_STORE, COVERS_STORE], "readwrite");
+      const books = tx.objectStore(BOOKS_STORE);
+      const request = books.index(CONTENT_HASH_INDEX).getAll(contentHash);
+      let id: string;
+      request.onsuccess = () => {
+        const matches = request.result as BookMetadata[];
+        matches.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id));
+        const existing = matches[0];
+        if (existing) {
+          id = existing.id;
+          return;
+        }
+        id = crypto.randomUUID();
+        books.add({ ...metadata, id, addedAt: Date.now(), contentHash } satisfies BookMetadata);
+        tx.objectStore(FILES_STORE).add({ id, blob: fileBlob });
+        if (coverBlob) {
+          tx.objectStore(COVERS_STORE).add({ id, blob: coverBlob });
+        }
+      };
+      tx.oncomplete = () => resolve(id);
+      tx.onabort = () =>
+        reject(tx.error ?? new Error("Failed to import the book into the library."));
+      tx.onerror = () =>
+        reject(tx.error ?? new Error("Failed to import the book into the library."));
+    });
+  }
+
+  /** Lazy, resumable migration: hash stored archives only when importing,
+   * preserving every existing id. Hashing must happen outside an IndexedDB
+   * transaction; reread metadata inside the write transaction to avoid
+   * overwriting concurrent enrichment or resurrecting a deleted book.
+   * Errors propagate to the import UI — never guess identity from metadata. */
+  private async indexLegacyBooks(): Promise<void> {
+    for (const book of await this.listBooks()) {
+      if (book.contentHash !== undefined) {
+        continue;
+      }
+      const file = await this.getBookFile(book.id);
+      if (!file) {
+        throw new Error(`Cannot identify "${book.title}": its stored EPUB file is missing.`);
+      }
+      const contentHash = await hashBookFile(file);
+      await this.updateBookMetadata(book.id, (current) => ({
+        ...current,
+        contentHash: current.contentHash ?? contentHash,
+      }));
     }
-    return id;
   }
 
   public listBooks(): Promise<BookMetadata[]> {
@@ -295,20 +374,17 @@ export class LibraryDatabase {
    * book has since been removed from the library. */
   public async recordDescriptionFetchResult(
     bookId: string,
-    result: { description: string; sourceName: "Open Library" | "Wikipedia"; sourceUrl: string } | undefined,
+    result:
+      | { description: string; sourceName: "Open Library" | "Wikipedia"; sourceUrl: string }
+      | undefined,
   ): Promise<void> {
-    const record = await this.getBookMetadata(bookId);
-    if (!record) {
-      return;
-    }
-    const updated: BookMetadata = {
+    await this.updateBookMetadata(bookId, (record) => ({
       ...record,
       fetchedDescription: result?.description ?? record.fetchedDescription,
       fetchedDescriptionSourceName: result?.sourceName ?? record.fetchedDescriptionSourceName,
       fetchedDescriptionSourceUrl: result?.sourceUrl ?? record.fetchedDescriptionSourceUrl,
       descriptionFetchAttempts: (record.descriptionFetchAttempts ?? 0) + (result ? 0 : 1),
-    };
-    await this.put(BOOKS_STORE, updated);
+    }));
   }
 
   public async getBookFile(id: string): Promise<Blob | undefined> {
@@ -593,6 +669,28 @@ export class LibraryDatabase {
 
   public close(): void {
     this.db.close();
+  }
+
+  /** Metadata updates and identity backfills must not overwrite each
+   * other's fields or recreate a concurrently deleted record. */
+  private updateBookMetadata(
+    id: string,
+    update: (book: BookMetadata) => BookMetadata,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(BOOKS_STORE, "readwrite");
+      const books = tx.objectStore(BOOKS_STORE);
+      const request = books.get(id);
+      request.onsuccess = () => {
+        const current = request.result as BookMetadata | undefined;
+        if (current) {
+          books.put(update(current));
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error("Failed to update book metadata."));
+      tx.onerror = () => reject(tx.error ?? new Error("Failed to update book metadata."));
+    });
   }
 
   private put(storeName: string, value: unknown): Promise<void> {
