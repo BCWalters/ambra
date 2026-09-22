@@ -33,6 +33,7 @@ import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
 import type { EpubInspectionData } from "../reader/ReaderTypes.js";
 import type { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
+import { AboutFlyout } from "./AboutFlyout.js";
 
 const SORT_GROUP_NAME = "librarySort";
 
@@ -300,6 +301,7 @@ export const LibraryApp: FC = () => {
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [inspectionSession, setInspectionSession] = useState<EpubInspectionSession | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   // Issue #111: the Library has no live `ReaderController` to ask for
   // Inspector data — instead opens a standalone `EpubInspectionSession`
@@ -391,6 +393,16 @@ export const LibraryApp: FC = () => {
           </Tooltip>
         )}
 
+        <Tooltip content="About Ambra" relationship="label">
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<InfoRegular />}
+            onClick={() => setIsAboutOpen(true)}
+            aria-label="About Ambra"
+          />
+        </Tooltip>
+
         <Button
           appearance="primary"
           size="small"
@@ -446,6 +458,12 @@ export const LibraryApp: FC = () => {
               }
             : undefined
         }
+      />
+
+      <AboutFlyout
+        open={isAboutOpen}
+        onRequestClose={() => setIsAboutOpen(false)}
+        backgroundSolid={palette.backgroundSolid}
       />
 
       <ChromeThemeProvider theme={chromeTheme}>
