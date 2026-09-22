@@ -266,7 +266,7 @@ export const en: StringCatalog = {
   "toolbar.removeBookmark": "Remove bookmark",
   "toolbar.search": "Search",
   "toolbar.hideSearch": "Hide search",
-  "toolbar.backToLibrary": "Back to Library",
+  "toolbar.backToLibrary": "Library",
   "settings.language": "Language",
   "settings.languageSystemDefault": "System default",
   "settings.readingMode": "Reading mode",

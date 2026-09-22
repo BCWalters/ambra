@@ -15,7 +15,7 @@ export const it: StringCatalog = {
   "toolbar.removeBookmark": "Rimuovi segnalibro",
   "toolbar.search": "Cerca",
   "toolbar.hideSearch": "Nascondi ricerca",
-  "toolbar.backToLibrary": "Torna alla libreria",
+  "toolbar.backToLibrary": "Libreria",
   "settings.language": "Lingua",
   "settings.languageSystemDefault": "Predefinito di sistema",
   "toc.contents": "Contenuti",

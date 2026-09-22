@@ -23,7 +23,7 @@ export const LIBRARY_FULL_TAB_VALUE = "tab";
 
 /** The library page's own URL, in its full-tab form (see
  * `LIBRARY_FULL_TAB_PARAM`) — shared by `openLibraryTab` (opens it in a
- * new tab) and the reader's "Back to Library" button (issue #112, which
+ * new tab) and the reader's Library toolbar button (issue #112, which
  * instead navigates the reader's *own* tab there directly via
  * `window.location`, rather than leaving the reader tab open behind a
  * second new one). */

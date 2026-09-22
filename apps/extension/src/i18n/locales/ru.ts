@@ -15,7 +15,7 @@ export const ru: StringCatalog = {
   "toolbar.removeBookmark": "Удалить закладку",
   "toolbar.search": "Поиск",
   "toolbar.hideSearch": "Скрыть поиск",
-  "toolbar.backToLibrary": "Назад в библиотеку",
+  "toolbar.backToLibrary": "Библиотека",
   "settings.language": "Язык",
   "settings.languageSystemDefault": "Системный по умолчанию",
   "toc.contents": "Содержание",

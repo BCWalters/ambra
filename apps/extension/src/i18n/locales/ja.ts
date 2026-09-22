@@ -15,7 +15,7 @@ export const ja: StringCatalog = {
   "toolbar.removeBookmark": "ブックマークを削除",
   "toolbar.search": "検索",
   "toolbar.hideSearch": "検索を隠す",
-  "toolbar.backToLibrary": "ライブラリに戻る",
+  "toolbar.backToLibrary": "ライブラリ",
   "settings.language": "言語",
   "settings.languageSystemDefault": "システムのデフォルト",
   "toc.contents": "目次",

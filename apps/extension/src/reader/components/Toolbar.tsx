@@ -17,7 +17,6 @@ import {
   Tooltip,
 } from "@fluentui/react-components";
 import {
-  ArrowLeftRegular,
   BookInformationRegular,
   BookOpenRegular,
   BookmarkFilled,
@@ -51,6 +50,7 @@ import { LOCALE_NATIVE_NAMES, SUPPORTED_LOCALES } from "../../i18n/Locale.js";
 import type { LocalePreference } from "../../i18n/Locale.js";
 import type { StringCatalog } from "../../i18n/locales/en.js";
 import { DefaultableSlider } from "./DefaultableSlider.js";
+import { AmbraMarkIcon } from "./AmbraMarkIcon.js";
 
 export interface ToolbarProps {
   snapshot: ReaderSnapshot;
@@ -339,7 +339,7 @@ export const Toolbar: FC<ToolbarProps> = ({
         }}
       >
         <Tooltip content={t("toolbar.backToLibrary")} relationship="label">
-          <Button appearance="subtle" size="small" icon={<ArrowLeftRegular />} onClick={onBackToLibrary} />
+          <Button appearance="subtle" size="small" icon={<AmbraMarkIcon />} onClick={onBackToLibrary} />
         </Tooltip>
 
         <Tooltip content={isTocOpen ? t("toolbar.hideContents") : t("toolbar.showContents")} relationship="label">
