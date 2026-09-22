@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { currentPageLabel, launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ALICE = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
@@ -116,10 +116,15 @@ test.describe("Library UX: book details flyout", () => {
       viewport: { width: 1000, height: 700 },
     });
     try {
-      await readerPage.keyboard.press("ArrowRight");
-      await readerPage.waitForTimeout(300);
-      await readerPage.keyboard.press("ArrowRight");
-      await readerPage.waitForTimeout(300);
+      await expect.poll(() => currentPageLabel(readerPage)).not.toBeNull();
+      for (let turn = 0; turn < 2; turn++) {
+        const before = await currentPageLabel(readerPage);
+        await readerPage.keyboard.press("ArrowRight");
+        await expect.poll(async () => {
+          const after = await currentPageLabel(readerPage);
+          return after !== null && after !== before;
+        }).toBe(true);
+      }
       // Flush the reader's progress save (mirrors what a visibility
       // change/tab close does) before returning to the library.
       await readerPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
