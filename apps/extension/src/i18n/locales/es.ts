@@ -57,6 +57,14 @@ export const es: StringCatalog = {
   "annotations.notePlaceholder": "Añadir una nota…",
   "annotations.cancelNote": "Cancelar",
   "annotations.saveNote": "Guardar",
+  "annotations.notesTab": "Notas",
+  "annotations.noEmbeddedNotesYet": "Este libro no tiene notas del editor.",
+  "annotations.exportButton": "Exportar",
+  "annotations.exportTooltip":
+    "Exportar tus marcadores y resaltados a un archivo",
+  "annotations.importButton": "Importar",
+  "annotations.importTooltip":
+    "Importar marcadores y resaltados desde un archivo",
   "highlight.selectionToolbarAriaLabel": "Resaltar esta selección",
   "highlight.optionsDialogAriaLabel": "Opciones de resaltado",
   "highlight.changeColor": "Cambiar color",
@@ -75,6 +83,8 @@ export const es: StringCatalog = {
   "announcements.scrollView": "Vista de desplazamiento",
   "announcements.highlightAdded": "Resaltado añadido",
   "announcements.spreadOfTotal": "Páginas {first}–{second} de {total}",
+  "announcements.annotationsImported":
+    "Se importaron {highlights} resaltados y {bookmarks} marcadores. Se omitieron {skipped} entradas.",
   "reader.loading": "Cargando…",
   "reader.bookContentAriaLabel": "Contenido del libro",
   "inspector.specialFileContainer": "Descriptor del contenedor OCF",

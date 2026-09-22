@@ -57,6 +57,14 @@ export const ru: StringCatalog = {
   "annotations.notePlaceholder": "Добавить заметку…",
   "annotations.cancelNote": "Отмена",
   "annotations.saveNote": "Сохранить",
+  "annotations.notesTab": "Заметки",
+  "annotations.noEmbeddedNotesYet": "В этой книге нет заметок издателя.",
+  "annotations.exportButton": "Экспорт",
+  "annotations.exportTooltip":
+    "Экспортировать закладки и выделения в файл",
+  "annotations.importButton": "Импорт",
+  "annotations.importTooltip":
+    "Импортировать закладки и выделения из файла",
   "highlight.selectionToolbarAriaLabel": "Выделить выбранный текст",
   "highlight.optionsDialogAriaLabel": "Параметры выделения",
   "highlight.changeColor": "Изменить цвет",
@@ -75,6 +83,8 @@ export const ru: StringCatalog = {
   "announcements.paginatedView": "Постраничный режим",
   "announcements.scrollView": "Режим прокрутки",
   "announcements.spreadOfTotal": "Страницы {first}–{second} из {total}",
+  "announcements.annotationsImported":
+    "Импортировано {highlights} выделений и {bookmarks} закладок. Пропущено записей: {skipped}.",
   "bookDetails.closePanel": "Закрыть панель сведений о книге",
   "bookDetails.copyright": "Авторские права",
   "bookDetails.descriptionSourcePrefix": "Источник:",

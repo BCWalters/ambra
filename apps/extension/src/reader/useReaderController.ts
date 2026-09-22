@@ -4,8 +4,15 @@ import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
+import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
-import type { BookDetails, EpubInspectionData, PreviewPosition, ReaderSnapshot } from "./ReaderTypes.js";
+import type {
+  BookDetails,
+  EpubInspectionData,
+  PreviewPosition,
+  ReaderSnapshot,
+  ReadOnlyAnnotationView,
+} from "./ReaderTypes.js";
 import type { ViewMode } from "./ViewMode.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
@@ -50,6 +57,10 @@ export interface UseReaderControllerResult {
   goToSearchResult: (cfi: string) => Promise<void>;
   setSearchPanelState: (open: boolean, pinned: boolean) => void;
   goToHighlight: (cfi: string) => Promise<void>;
+  listEmbeddedAnnotations: () => ReadOnlyAnnotationView[];
+  goToReadOnlyAnnotation: (cfi: string) => Promise<void>;
+  exportAnnotations: () => Promise<{ filename: string; text: string } | undefined>;
+  importAnnotationsFile: (file: File) => Promise<AnnotationImportResult | undefined>;
   dismissSelectionToolbar: () => void;
   dismissActiveHighlight: () => void;
   openHighlightPopup: (id: string) => void;
@@ -372,6 +383,28 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
+  const listEmbeddedAnnotations = useCallback(() => {
+    return controller?.listEmbeddedAnnotations() ?? [];
+  }, [controller]);
+
+  const goToReadOnlyAnnotation = useCallback(
+    async (cfi: string) => {
+      await controller?.goToReadOnlyAnnotation(cfi);
+    },
+    [controller],
+  );
+
+  const exportAnnotations = useCallback(async () => {
+    return controller?.exportAnnotations();
+  }, [controller]);
+
+  const importAnnotationsFile = useCallback(
+    async (file: File) => {
+      return controller?.importAnnotationsFile(file);
+    },
+    [controller],
+  );
+
   const dismissSelectionToolbar = useCallback(() => {
     controller?.dismissSelectionToolbar();
   }, [controller]);
@@ -434,6 +467,10 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     goToSearchResult,
     setSearchPanelState,
     goToHighlight,
+    listEmbeddedAnnotations,
+    goToReadOnlyAnnotation,
+    exportAnnotations,
+    importAnnotationsFile,
     dismissSelectionToolbar,
     dismissActiveHighlight,
     openHighlightPopup,

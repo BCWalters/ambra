@@ -55,6 +55,13 @@ export const ja: StringCatalog = {
   "annotations.notePlaceholder": "メモを追加…",
   "annotations.cancelNote": "キャンセル",
   "annotations.saveNote": "保存",
+  "annotations.notesTab": "メモ",
+  "annotations.noEmbeddedNotesYet": "この本には出版社のメモがありません。",
+  "annotations.exportButton": "エクスポート",
+  "annotations.exportTooltip": "ブックマークとハイライトをファイルにエクスポート",
+  "annotations.importButton": "インポート",
+  "annotations.importTooltip":
+    "ファイルからブックマークとハイライトをインポート",
   "highlight.selectionToolbarAriaLabel": "この選択範囲をハイライト",
   "highlight.optionsDialogAriaLabel": "ハイライトのオプション",
   "highlight.changeColor": "色を変更",
@@ -73,6 +80,8 @@ export const ja: StringCatalog = {
   "announcements.paginatedView": "ページ表示",
   "announcements.scrollView": "スクロール表示",
   "announcements.spreadOfTotal": "{total}ページ中{first}〜{second}ページ",
+  "announcements.annotationsImported":
+    "{highlights}件のハイライトと{bookmarks}件のブックマークをインポートしました。{skipped}件はスキップされました。",
   "bookDetails.closePanel": "書籍の詳細パネルを閉じる",
   "bookDetails.copyright": "著作権",
   "bookDetails.descriptionSourcePrefix": "提供元",

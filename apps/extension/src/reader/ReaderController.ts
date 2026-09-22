@@ -13,15 +13,19 @@ import {
   NavigationList,
   NCX_MEDIA_TYPE,
   PaginatedContentHost,
+  parseAnnotationCollection,
   ReadingTheme,
   ResourceUrlResolver,
   resolveEpubPath,
   ScrollContentHost,
+  serializeAnnotationCollection,
   splitHrefFragment,
   SpreadPaginatedHost,
 } from "@ambra/engine";
 import type {
+  EpubAnnotation,
   FontFamilyChoice,
+  FragmentSelector,
   HighlightStyle,
   NavPoint,
   PackageDocument,
@@ -31,6 +35,8 @@ import type {
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
+import { buildAnnotationCollection, importAnnotations } from "../library/AnnotationInterop.js";
+import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { describeStorageError } from "../StorageErrors.js";
 import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
@@ -53,6 +59,7 @@ import type {
   ImageViewerState,
   PreviewPosition,
   ReaderSnapshot,
+  ReadOnlyAnnotationView,
   SelectionToolbarState,
 } from "./ReaderTypes.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
@@ -228,6 +235,11 @@ export class ReaderController {
   private imageViewerReturnFocusTarget: Element | undefined;
   private readonly highlights: HighlightManager;
   private readonly bookmarks: BookmarkManager;
+  /** A publisher-embedded, read-only annotation collection (issue
+   * #109), loaded best-effort in `open` — absent for the overwhelming
+   * majority of books. Never mutated by this reader; only the user's
+   * own highlights/bookmarks (above) are ever added to or removed. */
+  private embeddedAnnotations: EpubAnnotation[] = [];
   private selectionToolbar: SelectionToolbarState | undefined;
   /** The live `Range` backing `selectionToolbar` — `addHighlight` uses
    * this directly rather than re-querying `getSelection()`, since focus
@@ -428,6 +440,21 @@ export class ReaderController {
       (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
     controller.highlights.load(await library.listHighlightsForBook(bookId));
     await controller.bookmarks.load();
+    // A publisher-embedded annotation collection (issue #109) is rare
+    // and entirely optional — best-effort, non-fatal the same way the
+    // Nav Document fallback above is, since one malformed file
+    // shouldn't take down an otherwise perfectly readable book.
+    const annotationsItem = pkg.findAnnotationsDocument();
+    if (annotationsItem) {
+      try {
+        const jsonText = await contentLoader.readArchiveFileText(annotationsItem.path);
+        controller.embeddedAnnotations = parseAnnotationCollection(jsonText);
+      } catch (err) {
+        controller.diagnostics.record(
+          `Embedded annotations failed to load: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     // Fire-and-forget: never awaited, and any failure inside is already
     // caught by `fetchBookDescription` itself — a slow or failing
     // network request must never delay (or be able to break) opening
@@ -749,6 +776,83 @@ export class ReaderController {
   public async goToHighlight(cfi: string): Promise<void> {
     this.clearSearchHighlightUnlessPinned();
     await this.goToCfi(cfi, "that highlight");
+  }
+
+  /** Every embedded, read-only annotation (issue #109), resolved to a
+   * displayable label — the annotation's own note text if it has one,
+   * else the chapter it falls in. Only resolves annotations whose
+   * selector this reader understands (a `FragmentSelector` holding an
+   * EPUB CFI) and whose `target.source` matches a real spine item;
+   * anything else is silently omitted rather than shown broken. */
+  public listEmbeddedAnnotations(): ReadOnlyAnnotationView[] {
+    const views: ReadOnlyAnnotationView[] = [];
+    for (const annotation of this.embeddedAnnotations) {
+      const selector = annotation.target.selector?.find(
+        (candidate): candidate is FragmentSelector => candidate.type === "FragmentSelector",
+      );
+      if (!selector) {
+        continue;
+      }
+      const spineIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === annotation.target.source);
+      if (spineIndex === -1) {
+        continue;
+      }
+      let cfi: string;
+      try {
+        cfi = selector.value.includes(",") ? EpubCfi.parseRange(selector.value).start.toString() : selector.value;
+        EpubCfi.parse(cfi);
+      } catch {
+        continue;
+      }
+      const note = annotation.body?.type === "TextualBody" ? annotation.body.value : undefined;
+      views.push({
+        id: annotation.id,
+        cfi,
+        label: note && note.length > 0 ? note : this.chapterLabel(spineIndex),
+        note,
+      });
+    }
+    return views;
+  }
+
+  /** Navigates to a read-only embedded annotation's position — see
+   * `goToBookmark`'s doc comment. */
+  public async goToReadOnlyAnnotation(cfi: string): Promise<void> {
+    this.clearSearchHighlightUnlessPinned();
+    await this.goToCfi(cfi, "that note");
+  }
+
+  /** Builds this book's exportable annotation file (issue #107): every
+   * current highlight and bookmark, serialized per EPUB Annotations
+   * 1.0. `filename` is derived from the book's own title so a reader
+   * saving several exports can tell them apart. */
+  public async exportAnnotations(): Promise<{ filename: string; text: string }> {
+    const highlights = this.highlights.allSorted();
+    const bookmarks = await this.bookmarks.list();
+    const annotations = buildAnnotationCollection(this.pkg, { highlights, bookmarks });
+    const safeTitle = this.pkg.metadata.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "book";
+    return { filename: `${safeTitle} - annotations.json`, text: serializeAnnotationCollection(annotations) };
+  }
+
+  /** Imports a previously-exported (or third-party) annotation file
+   * (issue #108) into this book's own highlights/bookmarks, refreshing
+   * both caches and the on-screen highlight paint once done. Surfaces a
+   * malformed file the same way any other failed load does — see
+   * `reportTransientError`. */
+  public async importAnnotationsFile(file: File): Promise<AnnotationImportResult | undefined> {
+    try {
+      const text = await file.text();
+      const annotations = parseAnnotationCollection(text);
+      const result = await importAnnotations(this.pkg, this.locatorResolver, this.library, this.bookId, annotations);
+      this.highlights.load(await this.library.listHighlightsForBook(this.bookId));
+      await this.bookmarks.load();
+      this.highlightInteraction.applyHighlightsToCurrentHost();
+      this.notify();
+      return result;
+    } catch (err) {
+      this.reportTransientError(err, "import", "that annotation file");
+      return undefined;
+    }
   }
 
   /** Navigates to a search result's position — see `SearchCoordinator.goToResult`. */

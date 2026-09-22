@@ -409,6 +409,15 @@ export class PackageDocument {
     return this.manifest.find((item) => item.mediaType === NCX_MEDIA_TYPE);
   }
 
+  /** A publisher-embedded, read-only annotation collection (EPUB
+   * Annotations 1.0, issue #109): a manifest item marked
+   * `properties="annotations"`, per the spec's packaging convention. Most
+   * books don't have one; this is `undefined` for the overwhelming
+   * majority. */
+  public findAnnotationsDocument(): ManifestItem | undefined {
+    return this.manifest.find((item) => item.hasProperty("annotations"));
+  }
+
   /** Finds the spine index whose `packageCfiSteps` numerically matches
    * `steps` (as parsed from a CFI's package-steps segment) — the reverse
    * of `SpineItemRef.packageCfiSteps`, used when resolving a CFI back to

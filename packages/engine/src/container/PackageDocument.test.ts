@@ -512,3 +512,42 @@ describe("PackageDocument manifest fallback chains", () => {
     expect(chain.map((item) => item.id)).toEqual(["a", "b"]);
   });
 });
+
+describe("PackageDocument.findAnnotationsDocument", () => {
+  it("finds the manifest item marked properties=\"annotations\"", () => {
+    const xml = `<?xml version="1.0"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+          <dc:title>Test</dc:title>
+          <dc:language>en</dc:language>
+        </metadata>
+        <manifest>
+          <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+          <item id="anno" href="annotations.json" media-type="application/ld+json" properties="annotations"/>
+        </manifest>
+        <spine><itemref idref="chapter1"/></spine>
+      </package>`;
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.findAnnotationsDocument()?.id).toBe("anno");
+  });
+
+  it("returns undefined for the overwhelming majority of books that don't have one", () => {
+    const xml = `<?xml version="1.0"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:identifier id="pub-id">urn:uuid:test</dc:identifier>
+          <dc:title>Test</dc:title>
+          <dc:language>en</dc:language>
+        </metadata>
+        <manifest>
+          <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+        </manifest>
+        <spine><itemref idref="chapter1"/></spine>
+      </package>`;
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.findAnnotationsDocument()).toBeUndefined();
+  });
+});

@@ -126,3 +126,52 @@ describe("EpubCfi.compare", () => {
     ]);
   });
 });
+
+describe("EpubCfi.joinRange / parseRange", () => {
+  it("joins two point CFIs sharing a content-step prefix into a range CFI", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!/4/2/1:3)");
+    const end = EpubCfi.parse("epubcfi(/6/4!/4/2/1:10)");
+
+    expect(EpubCfi.joinRange(start, end)).toBe("epubcfi(/6/4!/4/2/1,:3,:10)");
+  });
+
+  it("joins two points that diverge at an earlier element into separate tails", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!/4/2/1:3)");
+    const end = EpubCfi.parse("epubcfi(/6/4!/4/6/1:1)");
+
+    expect(EpubCfi.joinRange(start, end)).toBe("epubcfi(/6/4!/4,/2/1:3,/6/1:1)");
+  });
+
+  it("preserves id assertions in the common prefix", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4[chap01ref]!/4[body01]/2/1:0)");
+    const end = EpubCfi.parse("epubcfi(/6/4[chap01ref]!/4[body01]/2/3:2)");
+
+    expect(EpubCfi.joinRange(start, end)).toBe("epubcfi(/6/4[chap01ref]!/4[body01]/2,/1:0,/3:2)");
+  });
+
+  it("throws when joining two points from different spine items", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!/4/2/1:3)");
+    const end = EpubCfi.parse("epubcfi(/6/6!/4/2/1:3)");
+
+    expect(() => EpubCfi.joinRange(start, end)).toThrow(EpubCfiParseError);
+  });
+
+  it("round-trips joinRange through parseRange back to the original two points", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4[chap01ref]!/4[body01]/2/1:3)");
+    const end = EpubCfi.parse("epubcfi(/6/4[chap01ref]!/4[body01]/6/1:10)");
+
+    const rangeCfi = EpubCfi.joinRange(start, end);
+    const parsed = EpubCfi.parseRange(rangeCfi);
+
+    expect(parsed.start.toString()).toBe(start.toString());
+    expect(parsed.end.toString()).toBe(end.toString());
+  });
+
+  it("throws parsing a range CFI missing the second comma", () => {
+    expect(() => EpubCfi.parseRange("epubcfi(/6/4!/4/2,/1:3)")).toThrow(EpubCfiParseError);
+  });
+
+  it("throws parsing a range CFI without the epubcfi(...) wrapper", () => {
+    expect(() => EpubCfi.parseRange("/6/4!/4/2,/1:3,/3:5")).toThrow(EpubCfiParseError);
+  });
+});

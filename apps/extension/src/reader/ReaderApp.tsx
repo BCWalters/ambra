@@ -79,6 +79,10 @@ const ReaderAppInner: FC = () => {
     addHighlight,
     removeHighlight,
     goToHighlight,
+    listEmbeddedAnnotations,
+    goToReadOnlyAnnotation,
+    exportAnnotations,
+    importAnnotationsFile,
     setHighlightNote,
     setHighlightStyle,
     dismissActiveHighlight,
@@ -312,6 +316,40 @@ const ReaderAppInner: FC = () => {
     }
   };
 
+  const handleSelectReadOnlyAnnotation = (cfi: string): void => {
+    void goToReadOnlyAnnotation(cfi);
+    if (!isAnnotationsPinned) {
+      setActivePanel(undefined);
+    }
+  };
+
+  /** Triggers a plain browser file download — no extension permission
+   * needed, unlike `chrome.downloads`, and works the same whether the
+   * reader is running as a packed extension or a plain dev page. */
+  const handleExportAnnotations = async (): Promise<void> => {
+    const result = await exportAnnotations();
+    if (!result) {
+      return;
+    }
+    const blob = new Blob([result.text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportAnnotationsFile = async (file: File): Promise<void> => {
+    await importAnnotationsFile(file);
+    // The controller's own highlight cache and `snapshot.highlights`
+    // update on their own (see `importAnnotationsFile`'s `notify()`),
+    // but `bookmarks` is separate local state (see the effect above) —
+    // refresh it explicitly so a newly imported bookmark shows up
+    // immediately rather than only after the panel is closed/reopened.
+    setBookmarks(await listBookmarks());
+  };
+
   const handleSelectSearchResult = (cfi: string): void => {
     void goToSearchResult(cfi);
     if (!isSearchPinned) {
@@ -427,6 +465,10 @@ const ReaderAppInner: FC = () => {
             onSelectHighlight={handleSelectHighlight}
             onRemoveHighlight={handleRemoveHighlight}
             onSetHighlightNote={handleSetHighlightNote}
+            readOnlyAnnotations={listEmbeddedAnnotations()}
+            onSelectReadOnlyAnnotation={handleSelectReadOnlyAnnotation}
+            onExport={handleExportAnnotations}
+            onImportFile={handleImportAnnotationsFile}
             open={isAnnotationsOpen}
             pinned={isAnnotationsPinned}
             onTogglePin={() => setIsActivePanelPinned((pinned) => !pinned)}

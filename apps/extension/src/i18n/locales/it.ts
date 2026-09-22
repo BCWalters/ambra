@@ -57,6 +57,14 @@ export const it: StringCatalog = {
   "annotations.notePlaceholder": "Aggiungi una nota…",
   "annotations.cancelNote": "Annulla",
   "annotations.saveNote": "Salva",
+  "annotations.notesTab": "Note",
+  "annotations.noEmbeddedNotesYet": "Questo libro non contiene note dell'editore.",
+  "annotations.exportButton": "Esporta",
+  "annotations.exportTooltip":
+    "Esporta i segnalibri e le evidenziazioni in un file",
+  "annotations.importButton": "Importa",
+  "annotations.importTooltip":
+    "Importa segnalibri ed evidenziazioni da un file",
   "highlight.selectionToolbarAriaLabel": "Evidenzia questa selezione",
   "highlight.optionsDialogAriaLabel": "Opzioni evidenziazione",
   "highlight.changeColor": "Cambia colore",
@@ -75,6 +83,8 @@ export const it: StringCatalog = {
   "announcements.paginatedView": "Vista impaginata",
   "announcements.scrollView": "Vista a scorrimento",
   "announcements.spreadOfTotal": "Pagine {first}–{second} di {total}",
+  "announcements.annotationsImported":
+    "Importate {highlights} evidenziazioni e {bookmarks} segnalibri. {skipped} voci ignorate.",
   "bookDetails.closePanel": "Chiudi pannello dettagli del libro",
   "bookDetails.copyright": "Copyright",
   "bookDetails.descriptionSourcePrefix": "tramite",

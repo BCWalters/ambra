@@ -57,6 +57,15 @@ export const de: StringCatalog = {
   "annotations.notePlaceholder": "Notiz hinzufügen…",
   "annotations.cancelNote": "Abbrechen",
   "annotations.saveNote": "Speichern",
+  "annotations.notesTab": "Notizen",
+  "annotations.noEmbeddedNotesYet":
+    "Dieses Buch enthält keine Verlagsnotizen.",
+  "annotations.exportButton": "Exportieren",
+  "annotations.exportTooltip":
+    "Lesezeichen und Hervorhebungen in eine Datei exportieren",
+  "annotations.importButton": "Importieren",
+  "annotations.importTooltip":
+    "Lesezeichen und Hervorhebungen aus einer Datei importieren",
   "highlight.selectionToolbarAriaLabel": "Diese Auswahl markieren",
   "highlight.optionsDialogAriaLabel": "Hervorhebungsoptionen",
   "highlight.changeColor": "Farbe ändern",
@@ -75,6 +84,8 @@ export const de: StringCatalog = {
   "announcements.paginatedView": "Seitenansicht",
   "announcements.scrollView": "Scrollansicht",
   "announcements.spreadOfTotal": "Seiten {first}–{second} von {total}",
+  "announcements.annotationsImported":
+    "{highlights} Hervorhebungen und {bookmarks} Lesezeichen importiert. {skipped} Einträge wurden übersprungen.",
   "bookDetails.closePanel": "Buchdetailspanel schließen",
   "bookDetails.copyright": "Urheberrecht",
   "bookDetails.descriptionSourcePrefix": "über",

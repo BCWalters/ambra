@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Tab, TabList, Textarea, Tooltip } from "@fluentui/react-components";
 import {
+  ArrowExportRegular,
+  ArrowImportRegular,
   BookmarkFilled,
   BookmarkRegular,
   DeleteRegular,
   DismissRegular,
+  DocumentRegular,
   HighlightRegular,
   NoteRegular,
   PinOffRegular,
@@ -18,6 +21,7 @@ import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
+import type { ReadOnlyAnnotationView } from "../ReaderTypes.js";
 
 interface BookmarkListProps {
   bookmarks: readonly Bookmark[];
@@ -272,6 +276,74 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
   );
 };
 
+interface ReadOnlyAnnotationListProps {
+  annotations: readonly ReadOnlyAnnotationView[];
+  onSelect: (cfi: string) => void;
+}
+
+/** The "Notes" tab's contents — a publisher-embedded, read-only
+ * annotation collection (issue #109). No remove/edit affordance at all
+ * (unlike bookmarks/highlights, these aren't the reader's own): each row
+ * is just a label and, if the annotation carries one, its note text. */
+const ReadOnlyAnnotationList: FC<ReadOnlyAnnotationListProps> = ({ annotations, onSelect }) => {
+  const t = useTranslation();
+  if (annotations.length === 0) {
+    return (
+      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
+        {t("annotations.noEmbeddedNotesYet")}
+      </Caption1>
+    );
+  }
+
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {annotations.map((annotation) => (
+        <li key={annotation.id}>
+          <button
+            type="button"
+            onClick={() => onSelect(annotation.cfi)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              background: "none",
+              border: "none",
+              borderRadius: 6,
+              color: "var(--colorNeutralForeground2, #333)",
+              cursor: "pointer",
+              padding: "7px 10px",
+              textAlign: "left",
+              font: "inherit",
+              lineHeight: 1.35,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "none";
+            }}
+          >
+            <DocumentRegular fontSize={16} style={{ flexShrink: 0, marginTop: 2, opacity: 0.7 }} />
+            <span
+              style={{
+                minWidth: 0,
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {annotation.label}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 export interface AnnotationsPanelProps {
   bookmarks: readonly Bookmark[];
   onSelectBookmark: (cfi: string) => void;
@@ -280,6 +352,17 @@ export interface AnnotationsPanelProps {
   onSelectHighlight: (cfi: string) => void;
   onRemoveHighlight: (id: string) => void;
   onSetHighlightNote: (id: string, note: string | undefined) => void;
+  /** A publisher-embedded, read-only annotation collection (issue #109)
+   * — empty for the overwhelming majority of books, in which case the
+   * "Notes" tab is never shown at all (see the tab list below). */
+  readOnlyAnnotations: readonly ReadOnlyAnnotationView[];
+  onSelectReadOnlyAnnotation: (cfi: string) => void;
+  /** Downloads the current book's bookmarks/highlights as a file (issue
+   * #107). */
+  onExport: () => void | Promise<void>;
+  /** Imports bookmarks/highlights from a previously-exported (or
+   * third-party) annotation file (issue #108). */
+  onImportFile: (file: File) => void | Promise<void>;
   /** Whether the panel should currently be shown at all. Always rendered
    * (never conditionally unmounted) so it can animate closed instead of
    * simply vanishing — see the `transform`/`opacity` transition below. */
@@ -316,13 +399,18 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   onSelectHighlight,
   onRemoveHighlight,
   onSetHighlightNote,
+  readOnlyAnnotations,
+  onSelectReadOnlyAnnotation,
+  onExport,
+  onImportFile,
   open,
   pinned,
   onTogglePin,
   onRequestClose,
   scrubberVisible,
 }) => {
-  const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
+  const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights" | "notes">("bookmarks");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
@@ -404,7 +492,11 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "bookmarks" ? t("annotations.bookmarksTab") : t("annotations.highlightsTab")}
+            {activeTab === "bookmarks"
+              ? t("annotations.bookmarksTab")
+              : activeTab === "highlights"
+                ? t("annotations.highlightsTab")
+                : t("annotations.notesTab")}
           </Body1>
           <Tooltip content={pinned ? t("annotations.unpinPanel") : t("annotations.pinPanel")} relationship="label">
             <Button
@@ -423,7 +515,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
         <TabList
           size="small"
           selectedValue={activeTab}
-          onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
+          onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights" | "notes")}
           style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
         >
           <Tab value="bookmarks" icon={<BookmarkRegular />}>
@@ -434,18 +526,69 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             {t("annotations.highlightsTab")}
             {highlights.length > 0 ? ` (${highlights.length})` : ""}
           </Tab>
+          {readOnlyAnnotations.length > 0 && (
+            <Tab value="notes" icon={<DocumentRegular />}>
+              {t("annotations.notesTab")} ({readOnlyAnnotations.length})
+            </Tab>
+          )}
         </TabList>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {activeTab === "bookmarks" ? (
             <BookmarkList bookmarks={bookmarks} onSelect={onSelectBookmark} onRemove={onRemoveBookmark} />
-          ) : (
+          ) : activeTab === "highlights" ? (
             <HighlightList
               highlights={highlights}
               onSelect={onSelectHighlight}
               onRemove={onRemoveHighlight}
               onSetNote={onSetHighlightNote}
             />
+          ) : (
+            <ReadOnlyAnnotationList annotations={readOnlyAnnotations} onSelect={onSelectReadOnlyAnnotation} />
           )}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            padding: "8px 10px",
+            borderTop: `1px solid ${CHROME_BORDER}`,
+          }}
+        >
+          <Tooltip content={t("annotations.exportTooltip")} relationship="label">
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<ArrowExportRegular />}
+              style={{ flex: 1 }}
+              onClick={() => void onExport()}
+            >
+              {t("annotations.exportButton")}
+            </Button>
+          </Tooltip>
+          <Tooltip content={t("annotations.importTooltip")} relationship="label">
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<ArrowImportRegular />}
+              style={{ flex: 1 }}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {t("annotations.importButton")}
+            </Button>
+          </Tooltip>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json,application/ld+json"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) {
+                void onImportFile(file);
+              }
+            }}
+          />
         </div>
       </nav>
     </>

@@ -189,6 +189,21 @@ export interface NoteMarkerState {
   readonly top: number;
 }
 
+/** One entry from a publisher-embedded, read-only annotation collection
+ * (issue #109) — display-ready for the Annotations panel's own "Notes"
+ * tab. Unlike `Bookmark`/`Highlight`, never persisted to
+ * `LibraryDatabase`: these live entirely in the EPUB itself and are
+ * simply re-read (via `ReaderController.listEmbeddedAnnotations`) every
+ * time the book opens. */
+export interface ReadOnlyAnnotationView {
+  readonly id: string;
+  /** The CFI to navigate to on selection — the start of the range for a
+   * highlight-shaped annotation, the sole point for anything else. */
+  readonly cfi: string;
+  readonly label: string;
+  readonly note: string | undefined;
+}
+
 export interface ImageViewerState {
   readonly src: string;
   readonly alt: string;

@@ -59,6 +59,23 @@ export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } fr
 export { Locator, LocatorResolver, LocatorResolutionError } from "./locator/Locator.js";
 export type { ResolvedLocator } from "./locator/Locator.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
+export {
+  parseAnnotationCollection,
+  serializeAnnotationCollection,
+  AnnotationParseError,
+  EPUB_CFI_CONFORMS_TO,
+} from "./annotations/EpubAnnotation.js";
+export type {
+  EpubAnnotation,
+  AnnotationMotivation,
+  AnnotationCreator,
+  AnnotationTarget,
+  AnnotationBody,
+  AnnotationSelector,
+  FragmentSelector,
+  CssSelector,
+  TextPositionSelector,
+} from "./annotations/EpubAnnotation.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";

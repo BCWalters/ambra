@@ -54,9 +54,14 @@ function parseSteps(segment: string, cfiString: string): CfiStep[] {
  * a path through the OPF package document's `<spine>` to a specific
  * `itemref` (`packageSteps`), an indirection into that spine item's content
  * document, a path within it (`contentSteps`), and an optional trailing
- * character offset. Range CFIs (`,` start/end forms, used for annotations)
- * and multiple levels of indirection are out of scope for Wave 1 — see the
- * `cfi-test-suite` work item for where this is expected to grow.
+ * character offset. Multiple levels of indirection are out of scope for
+ * Wave 1 — see the `cfi-test-suite` work item for where this is expected
+ * to grow. Range CFIs (`,` start/end forms) are supported only at the
+ * string level, via `joinRange`/`parseRange` — for annotation export/
+ * import interop (issues #107/#108), not for resolving a range directly
+ * against a live DOM (every other call site in this app still stores and
+ * resolves a highlight as two independent point CFIs — see `Highlight`'s
+ * own doc comment for why that remains functionally equivalent here).
  */
 export class EpubCfi {
   public constructor(
@@ -150,5 +155,103 @@ export class EpubCfi {
       }
     }
     return a.length - b.length;
+  }
+
+  /** Joins two point CFIs into a single canonical *range* CFI string
+   * (spec §3.4: `epubcfi(common,startTail,endTail)`) — the form used
+   * when exporting a highlight for interop (issue #107), since nothing
+   * inside this app itself ever needed one before (see this class's own
+   * doc comment). Both points must resolve to the same spine item
+   * (`packageSteps` identical); a highlight never spans two. The
+   * "common" prefix is the longest shared run of `contentSteps` — often
+   * everything but the final text node, sometimes less — with each
+   * point's own remaining steps (plus its own character offset) forming
+   * its comma-separated tail. */
+  public static joinRange(start: EpubCfi, end: EpubCfi): string {
+    if (
+      EpubCfi.compareSteps(start.packageSteps, end.packageSteps) !== 0 ||
+      start.packageSteps.length !== end.packageSteps.length
+    ) {
+      throw new EpubCfiParseError("Cannot join a range CFI across two different spine items.");
+    }
+    let commonLength = 0;
+    while (
+      commonLength < start.contentSteps.length &&
+      commonLength < end.contentSteps.length &&
+      start.contentSteps[commonLength]!.index === end.contentSteps[commonLength]!.index &&
+      start.contentSteps[commonLength]!.idAssertion === end.contentSteps[commonLength]!.idAssertion
+    ) {
+      commonLength++;
+    }
+    const packagePart = start.packageSteps.map((step) => step.toString()).join("");
+    const commonPart = start.contentSteps
+      .slice(0, commonLength)
+      .map((step) => step.toString())
+      .join("");
+    const tailPart = (steps: readonly CfiStep[], offset: number | undefined): string =>
+      steps
+        .slice(commonLength)
+        .map((step) => step.toString())
+        .join("") + (offset !== undefined ? `:${offset}` : "");
+    const startTail = tailPart(start.contentSteps, start.characterOffset);
+    const endTail = tailPart(end.contentSteps, end.characterOffset);
+    return `epubcfi(${packagePart}!${commonPart},${startTail},${endTail})`;
+  }
+
+  /** The inverse of `joinRange`: splits a range CFI string back into its
+   * two point CFIs (used when importing an annotation file — issue
+   * #108). Splits on the two *top-level* commas only (bracket-depth
+   * aware, since an id assertion's own contents are never split on). */
+  public static parseRange(cfiString: string): { start: EpubCfi; end: EpubCfi } {
+    const trimmed = cfiString.trim();
+    const wrapperMatch = /^epubcfi\((.*)\)$/.exec(trimmed);
+    if (!wrapperMatch) {
+      throw new EpubCfiParseError(
+        `Not a well-formed CFI (missing epubcfi(...) wrapper): "${cfiString}"`,
+      );
+    }
+    const parts = EpubCfi.splitTopLevelCommas(wrapperMatch[1] as string);
+    if (parts.length !== 3) {
+      throw new EpubCfiParseError(
+        `Not a well-formed range CFI (expected 2 commas): "${cfiString}"`,
+      );
+    }
+    const [common, startTail, endTail] = parts as [string, string, string];
+    const indirectionIndex = common.indexOf("!");
+    if (indirectionIndex === -1) {
+      throw new EpubCfiParseError(
+        `Range CFI is missing the required "!" indirection: "${cfiString}"`,
+      );
+    }
+    const packagePart = common.slice(0, indirectionIndex);
+    const commonContentPart = common.slice(indirectionIndex + 1);
+    return {
+      start: EpubCfi.parse(`epubcfi(${packagePart}!${commonContentPart}${startTail})`),
+      end: EpubCfi.parse(`epubcfi(${packagePart}!${commonContentPart}${endTail})`),
+    };
+  }
+
+  /** Splits on commas at bracket-depth 0 only, so a `[...]` id assertion
+   * (which per spec may itself contain arbitrary characters) is never
+   * mistaken for a range-CFI separator. */
+  private static splitTopLevelCommas(segment: string): string[] {
+    const parts: string[] = [];
+    let depth = 0;
+    let current = "";
+    for (const char of segment) {
+      if (char === "[") {
+        depth++;
+      } else if (char === "]") {
+        depth--;
+      }
+      if (char === "," && depth === 0) {
+        parts.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    parts.push(current);
+    return parts;
   }
 }

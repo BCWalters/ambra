@@ -126,6 +126,12 @@ export interface StringCatalog {
   "annotations.notePlaceholder": string;
   "annotations.cancelNote": string;
   "annotations.saveNote": string;
+  "annotations.notesTab": string;
+  "annotations.noEmbeddedNotesYet": string;
+  "annotations.exportButton": string;
+  "annotations.exportTooltip": string;
+  "annotations.importButton": string;
+  "annotations.importTooltip": string;
   "highlight.selectionToolbarAriaLabel": string;
   "highlight.optionsDialogAriaLabel": string;
   "highlight.changeColor": string;
@@ -144,6 +150,7 @@ export interface StringCatalog {
   "announcements.scrollView": string;
   "announcements.highlightAdded": string;
   "announcements.spreadOfTotal": string;
+  "announcements.annotationsImported": string;
   "reader.loading": string;
   "reader.bookContentAriaLabel": string;
   "inspector.specialFileContainer": string;
@@ -305,6 +312,12 @@ export const en: StringCatalog = {
   "annotations.notePlaceholder": "Add a note…",
   "annotations.cancelNote": "Cancel",
   "annotations.saveNote": "Save",
+  "annotations.notesTab": "Notes",
+  "annotations.noEmbeddedNotesYet": "This book has no publisher notes.",
+  "annotations.exportButton": "Export",
+  "annotations.exportTooltip": "Export your bookmarks and highlights to a file",
+  "annotations.importButton": "Import",
+  "annotations.importTooltip": "Import bookmarks and highlights from a file",
   "highlight.selectionToolbarAriaLabel": "Highlight this selection",
   "highlight.optionsDialogAriaLabel": "Highlight options",
   "highlight.changeColor": "Change color",
@@ -323,6 +336,7 @@ export const en: StringCatalog = {
   "announcements.scrollView": "Scroll view",
   "announcements.highlightAdded": "Highlight added",
   "announcements.spreadOfTotal": "Pages {first}–{second} of {total}",
+  "announcements.annotationsImported": "Imported {highlights} highlights and {bookmarks} bookmarks. {skipped} entries were skipped.",
   "reader.loading": "Loading…",
   "reader.bookContentAriaLabel": "Book content",
   "inspector.specialFileContainer": "OCF container descriptor",

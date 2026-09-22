@@ -57,6 +57,15 @@ export const fr: StringCatalog = {
   "annotations.notePlaceholder": "Ajouter une note…",
   "annotations.cancelNote": "Annuler",
   "annotations.saveNote": "Enregistrer",
+  "annotations.notesTab": "Notes",
+  "annotations.noEmbeddedNotesYet":
+    "Ce livre ne contient aucune note de l'éditeur.",
+  "annotations.exportButton": "Exporter",
+  "annotations.exportTooltip":
+    "Exporter vos signets et surlignages dans un fichier",
+  "annotations.importButton": "Importer",
+  "annotations.importTooltip":
+    "Importer des signets et surlignages depuis un fichier",
   "highlight.selectionToolbarAriaLabel": "Surligner cette sélection",
   "highlight.optionsDialogAriaLabel": "Options de surlignage",
   "highlight.changeColor": "Changer la couleur",
@@ -75,6 +84,8 @@ export const fr: StringCatalog = {
   "announcements.paginatedView": "Vue paginée",
   "announcements.scrollView": "Vue défilante",
   "announcements.spreadOfTotal": "Pages {first}–{second} sur {total}",
+  "announcements.annotationsImported":
+    "{highlights} surlignages et {bookmarks} signets importés. {skipped} entrées ignorées.",
   "bookDetails.closePanel": "Fermer le panneau des détails du livre",
   "bookDetails.copyright": "Droits d'auteur",
   "bookDetails.descriptionSourcePrefix": "via",
