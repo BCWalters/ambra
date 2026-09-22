@@ -56,6 +56,17 @@ into `apps/extension/dist`, which is reserved for the CRXJS *dev-mode*
 loader stubs the maintainer's own live-reloaded Chrome window depends on.
 Running this suite never disturbs that.
 
+For concurrent validation, set `AMBRA_E2E_EXTENSION_PATH` to a dedicated
+absolute build directory for both the build and test commands. This keeps
+one run's rebuild from replacing files used by another run's browser.
+Use only a disposable build directory: the build empties it first.
+
+```sh
+export AMBRA_E2E_EXTENSION_PATH="$(mktemp -d /tmp/ambra-e2e-build.XXXXXX)"
+pnpm --filter @ambra/e2e run build:extension
+pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts
+```
+
 ## Fixtures
 
 `fixtures/long-content.epub` — a small synthetic single-chapter book (30

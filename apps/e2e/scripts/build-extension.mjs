@@ -14,7 +14,9 @@ import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionDir = path.resolve(here, "..", "..", "extension");
-const outDir = path.resolve(here, "..", ".extension-build");
+const outDir = process.env.AMBRA_E2E_EXTENSION_PATH
+  ? path.resolve(process.env.AMBRA_E2E_EXTENSION_PATH)
+  : path.resolve(here, "..", ".extension-build");
 
 console.log(`Building @ambra/extension (production) into ${outDir} ...`);
 const result = spawnSync("npx", ["vite", "build", "--outDir", outDir, "--emptyOutDir"], {

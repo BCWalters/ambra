@@ -89,10 +89,14 @@ test.describe("Library UX: book details flyout", () => {
     const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
     try {
       await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
-      await libraryPage.getByRole("button", { name: /details$/ }).click();
+      const detailsButton = libraryPage.getByRole("button", { name: /details$/ });
+      await detailsButton.focus();
+      await libraryPage.keyboard.press("Enter");
 
-      const flyout = libraryPage.getByRole("complementary", { name: "Book details" });
+      const flyout = libraryPage.getByRole("dialog", { name: "Book details" });
       await expect(flyout).toBeVisible();
+      await expect(flyout).toHaveAttribute("aria-modal", "true");
+      await expect(flyout.getByRole("button", { name: "Close", exact: true })).toBeFocused();
       await expect(flyout.getByText("Alice's Adventures in Wonderland")).toBeVisible();
       await expect(flyout.getByText("Lewis Carroll")).toBeVisible();
       // No reading progress yet for a never-opened book — the flyout
@@ -101,6 +105,7 @@ test.describe("Library UX: book details flyout", () => {
 
       await libraryPage.keyboard.press("Escape");
       await expect(flyout).toBeHidden();
+      await expect(detailsButton).toBeFocused();
     } finally {
       await context.close();
     }
@@ -125,7 +130,7 @@ test.describe("Library UX: book details flyout", () => {
       await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
       await libraryPage.getByRole("button", { name: /details$/ }).click();
 
-      const flyout = libraryPage.getByRole("complementary", { name: "Book details" });
+      const flyout = libraryPage.getByRole("dialog", { name: "Book details" });
       await expect(flyout.getByText("Progress")).toBeVisible();
       await expect(flyout.getByText(/% read$/)).toBeVisible();
     } finally {

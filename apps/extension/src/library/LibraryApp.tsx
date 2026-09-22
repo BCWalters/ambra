@@ -13,6 +13,7 @@ import {
   Spinner,
   Title2,
   Tooltip,
+  useRestoreFocusTarget,
 } from "@fluentui/react-components";
 import {
   ArrowSortRegular,
@@ -69,6 +70,7 @@ const BookCard: FC<{
   onDelete: () => void;
   onShowDetails: () => void;
 }> = ({ book, accent, onOpen, onDelete, onShowDetails }) => {
+  const restoreFocusTarget = useRestoreFocusTarget();
   // Hovering/focusing a cover picks up the reader's own accent color
   // (issue #86 follow-up — the same idea as the TOC's current-chapter
   // border and the scrubber fill, extended here) instead of a plain
@@ -179,6 +181,7 @@ const BookCard: FC<{
             read-only Book Details flyout (`BookDetailsFlyout`). */}
         <Tooltip content={`${book.title} details`} relationship="label">
           <Button
+            {...restoreFocusTarget}
             appearance="secondary"
             size="small"
             icon={<InfoRegular />}
@@ -278,6 +281,7 @@ const BookCard: FC<{
  * a whole-app identity without needing to fight Fluent's own default
  * component styling. */
 export const LibraryApp: FC = () => {
+  const restoreAboutFocus = useRestoreFocusTarget();
   const {
     books,
     isLoading,
@@ -395,6 +399,7 @@ export const LibraryApp: FC = () => {
 
         <Tooltip content="About Ambra" relationship="label">
           <Button
+            {...restoreAboutFocus}
             appearance="subtle"
             size="small"
             icon={<InfoRegular />}

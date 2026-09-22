@@ -19,8 +19,15 @@ test.describe("About Ambra flyout", () => {
       await expect(aboutButton).toBeVisible();
       await aboutButton.click();
 
-      const aside = libraryPage.getByRole("complementary", { name: "About Ambra" });
+      const aside = libraryPage.getByRole("dialog", { name: "About Ambra" });
       await expect(aside).toBeVisible();
+      await expect(aside).toHaveAttribute("aria-modal", "true");
+      const closeButton = aside.getByRole("button", { name: "Close", exact: true });
+      await expect(closeButton).toBeFocused();
+      await libraryPage.keyboard.press("Shift+Tab");
+      await expect(aside.getByRole("button", { name: "Copy diagnostics" })).toBeFocused();
+      await libraryPage.keyboard.press("Tab");
+      await expect(closeButton).toBeFocused();
       await expect(aside.getByText("Ben Walters")).toBeVisible();
       await expect(aside.getByRole("link", { name: "Source code on GitHub" })).toHaveAttribute(
         "href",
@@ -33,6 +40,14 @@ test.describe("About Ambra flyout", () => {
 
       await libraryPage.keyboard.press("Escape");
       await expect(aside).not.toBeVisible();
+      await expect(aboutButton).toBeFocused();
+
+      // Reopening must establish a fresh focus scope, not retain a hidden trap.
+      await libraryPage.keyboard.press("Enter");
+      await expect(closeButton).toBeFocused();
+      await closeButton.press("Enter");
+      await expect(aside).not.toBeVisible();
+      await expect(aboutButton).toBeFocused();
     } finally {
       await context.close();
     }

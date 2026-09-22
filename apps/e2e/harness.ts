@@ -10,7 +10,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * (see `scripts/build-extension.mjs`) — deliberately *not*
  * `apps/extension/dist`, which is reserved for CRXJS's own dev-mode
  * loader stubs the maintainer's live-reloaded Chrome window depends on. */
-export const EXTENSION_PATH = path.resolve(here, ".extension-build");
+export const EXTENSION_PATH = process.env.AMBRA_E2E_EXTENSION_PATH
+  ? path.resolve(process.env.AMBRA_E2E_EXTENSION_PATH)
+  : path.resolve(here, ".extension-build");
 
 export interface LaunchedReader {
   context: BrowserContext;
