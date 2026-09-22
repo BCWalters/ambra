@@ -36,6 +36,8 @@ import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
+import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
+import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageTurnOrchestrator.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
@@ -247,6 +249,20 @@ export class ReaderController {
     pageTheme: () => this.pageTheme,
     pageTurnAnimationStyle: () => this.pageTurnAnimationStyle,
   });
+  private readonly pageTurnOrchestrator = new PageTurnOrchestrator(
+    {
+      containerEl: () => this.containerEl,
+      height: () => this.height,
+      width: () => this.width,
+      pageTheme: () => this.pageTheme,
+      pageTurnAnimationStyle: () => this.pageTurnAnimationStyle,
+      setAnimatingPageTurn: (isAnimating) => {
+        this.isAnimatingPageTurn = isAnimating;
+      },
+      notify: () => this.notify(),
+    },
+    this.pageTurnAnimator,
+  );
   /** Book-wide full-text search plus the live "highlight matches on the
    * current page" spotlight (issue #100) — see `SearchCoordinator`. */
   private readonly searchCoordinator: SearchCoordinator;
@@ -1837,56 +1853,14 @@ export class ReaderController {
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
   }
 
-  /** Animates a fixed-layout spread turn using the current page-turn style.
-   * Unlike the reflowable paths, this only moves whole staged spread
-   * wrappers and does not need pagination-specific clip-path workarounds.
-   * Returns `false` when animation is skipped. */
+  /** Animates a fixed-layout spread turn using the current page-turn
+   * style — see `PageTurnOrchestrator.animateFixedSpreadTurn`. */
   private async animateFixedSpreadTurn(
     previousWrapperEl: HTMLDivElement | undefined,
     stagingEl: HTMLDivElement,
     direction: 1 | -1,
   ): Promise<boolean> {
-    if (!this.containerEl || !previousWrapperEl || this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
-      return false;
-    }
-    const oldEl = previousWrapperEl;
-    const newEl = stagingEl;
-    const isScroll = this.pageTurnAnimationStyle === "scroll";
-    const entering = direction === -1;
-    const animatingEl = entering ? newEl : oldEl;
-
-    // Reveal the staging element so it can participate in the animation.
-    stagingEl.style.opacity = "";
-    stagingEl.style.pointerEvents = "";
-
-    // Non-scroll turns stack the wrappers, so give the animating one an
-    // opaque background to keep letterboxed margins from showing the other
-    // spread through them.
-    if (!isScroll) {
-      animatingEl.style.background = FixedContentHost.LETTERBOX_BACKGROUND;
-    }
-
-    this.isAnimatingPageTurn = true;
-    this.notify();
-
-    if (isScroll) {
-      await this.pageTurnAnimator.playScrollTurn([oldEl], [newEl], direction);
-    } else {
-      await this.pageTurnAnimator.playPageTurnAnimation(animatingEl, animatingEl, direction, [], entering);
-    }
-
-    animatingEl.style.background = "";
-    this.isAnimatingPageTurn = false;
-    // Reset animation-only styles on the surviving staging wrapper.
-    stagingEl.style.transform = "";
-    stagingEl.style.zIndex = "";
-    stagingEl.style.boxShadow = "";
-    stagingEl.style.transition = "";
-    if (animatingEl === oldEl) {
-      // Defensive: clear `oldEl`'s z-index too in case its lifecycle changes.
-      oldEl.style.zIndex = "";
-    }
-    return true;
+    return this.pageTurnOrchestrator.animateFixedSpreadTurn(previousWrapperEl, stagingEl, direction);
   }
 
   /** Returns the footer page number for this chapter page, using book-wide
@@ -1896,10 +1870,9 @@ export class ReaderController {
     return bookPageIndex ?? (pageCount > 0 ? pageIndex + 1 : undefined);
   }
 
-  /** Builds the incoming page in a new host and plays a page-turn animation
-   * within the current chapter. Returns `undefined` when the turn would
-   * cross a chapter boundary. Backward turns animate the incoming page in,
-   * while "scroll" moves both pages together. */
+  /** Builds the incoming page in a new host and plays a page-turn
+   * animation within the current chapter. Returns `undefined` when the
+   * turn would cross a chapter boundary. */
   private async animatePageTurn(
     oldHost: PaginatedContentHost,
     direction: 1 | -1,
@@ -1911,137 +1884,40 @@ export class ReaderController {
     if (!newHost) {
       return undefined;
     }
-    const newEl = newHost.element;
-    const entering = direction === -1;
-    const isScroll = this.pageTurnAnimationStyle === "scroll";
-    const animatingHost = entering ? newHost : oldHost;
-    const otherHost = entering ? oldHost : newHost;
-    // Overlapping "rotate" and "slide" turns suppress `clip-path` on both
-    // hosts; overlapping clipped iframes do not composite correctly in
-    // Chromium. Only "rotate" also grows the animating host to full
-    // height, and the natural height must be measured after clip
-    // suppression so the growth mask matches the real painted page.
-    if (this.pageTurnAnimationStyle === "rotate") {
-      animatingHost.suppressClipPathForAnimation();
-    }
-    const animatingNaturalHeight = animatingHost.element.getBoundingClientRect().height;
-    if (this.pageTurnAnimationStyle === "rotate") {
-      animatingHost.growToFullHeight(this.height);
-      otherHost.suppressClipPathForAnimation();
-    } else if (this.pageTurnAnimationStyle === "slide") {
-      animatingHost.suppressClipPathForAnimation();
-      otherHost.suppressClipPathForAnimation();
-    }
-
-    // "slide" leaves short pages at natural height, so add a backdrop behind
-    // the animating host to keep the fully rendered page underneath from
-    // showing through the gap.
-    let turnBackdrop: HTMLDivElement | undefined;
-    if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "slide") {
-      turnBackdrop = this.pageTurnAnimator.buildTurnBackdrop(animatingHost.element);
-      if (turnBackdrop) {
-        turnBackdrop.style.zIndex = "2";
-        animatingHost.element.parentElement?.insertBefore(turnBackdrop, animatingHost.element);
-      }
-    }
-    let turnGrowthMask: HTMLDivElement | undefined;
-    if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "rotate") {
-      turnGrowthMask = this.pageTurnAnimator.buildTurnGrowthMask(animatingHost.element, animatingNaturalHeight);
-      if (turnGrowthMask) {
-        turnGrowthMask.style.zIndex = "2";
-        animatingHost.element.parentElement?.insertBefore(turnGrowthMask, animatingHost.element.nextSibling);
-      }
-    }
-
-    // Build temporary header/footer overlays so the running furniture turns
-    // with the page. Skip them when no animation will play.
-    let outgoingOverlay: HTMLDivElement | undefined;
-    let incomingOverlay: HTMLDivElement | undefined;
-    if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
-      const title = this.pkg.metadata.title;
-      const chapterLabel = this.chapterLabel(this.spineIndex);
-      const outgoingNumber = this.furniturePageNumber(this.spineIndex, oldHost.currentPageIndex, oldHost.pageCount);
-      const incomingNumber = this.furniturePageNumber(this.spineIndex, newHost.currentPageIndex, newHost.pageCount);
-      const header = { mode: "split" as const, left: title, right: chapterLabel };
-      outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldHost.element, [
-        {
-          left: 0,
-          width: oldHost.element.getBoundingClientRect().width,
-          header,
-          footerText: outgoingNumber !== undefined ? `Page ${outgoingNumber}` : undefined,
-        },
-      ]);
-      incomingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(newEl, [
-        {
-          left: 0,
-          width: newEl.getBoundingClientRect().width,
-          header,
-          footerText: incomingNumber !== undefined ? `Page ${incomingNumber}` : undefined,
-        },
-      ]);
-      if (isScroll) {
-        // Scroll moves both pages and their overlays together.
-        if (outgoingOverlay) {
-          outgoingOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(outgoingOverlay);
-        }
-        if (incomingOverlay) {
-          incomingOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(incomingOverlay);
-        }
-      } else {
-        // Put the overlay for the moving page on top of the static one.
-        const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
-        const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
-        if (staticOverlay) {
-          staticOverlay.style.zIndex = "1";
-          this.containerEl.appendChild(staticOverlay);
-        }
-        if (animatedOverlay) {
-          animatedOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(animatedOverlay);
-        }
-      }
-      this.isAnimatingPageTurn = true;
-      this.notify();
-    }
-
-    if (isScroll) {
-      const oldGroup = [oldHost.element, ...(outgoingOverlay ? [outgoingOverlay] : [])];
-      const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
-      await this.pageTurnAnimator.playScrollTurn(oldGroup, newGroup, direction);
-    } else {
-      const turnEl = entering ? newEl : oldHost.element;
-      const extraTurnEls = [
-        ...((entering ? incomingOverlay : outgoingOverlay) ? [(entering ? incomingOverlay : outgoingOverlay)!] : []),
-        ...(turnBackdrop ? [turnBackdrop] : []),
-        ...(turnGrowthMask ? [turnGrowthMask] : []),
-      ];
-      await this.pageTurnAnimator.playPageTurnAnimation(turnEl, turnEl, direction, extraTurnEls, entering);
-    }
-
-    outgoingOverlay?.remove();
-    incomingOverlay?.remove();
-    turnBackdrop?.remove();
-    turnGrowthMask?.remove();
-    this.isAnimatingPageTurn = false;
-    // Reset any temporary height or clip-path changes on the surviving host.
-    newHost.restoreNaturalHeight();
-
-    // After disposing the old host, restore `newEl` to normal host
-    // positioning.
-    oldHost.dispose();
-    newEl.style.position = "";
-    newEl.style.top = "";
-    newEl.style.left = "";
-    newEl.style.transform = "";
-    newEl.style.zIndex = "";
+    await this.pageTurnOrchestrator.animatePageTurn(
+      oldHost,
+      newHost,
+      direction,
+      this.singlePageTurnFurniture(oldHost, newHost),
+    );
     return newHost;
+  }
+
+  /** The display data `PageTurnOrchestrator` needs to build an
+   * in-chapter turn's temporary furniture overlays — both sides share
+   * the same chapter label since a single-page turn never crosses a
+   * chapter boundary (that's `prepareIncomingPage` returning `undefined`
+   * instead, before this is ever called). */
+  private singlePageTurnFurniture(
+    oldHost: PaginatedContentHost,
+    newHost: PaginatedContentHost,
+  ): PageTurnFurnitureInfo {
+    return {
+      title: this.pkg.metadata.title,
+      chapterLabel: this.chapterLabel(this.spineIndex),
+      outgoingPage: this.furniturePageNumber(this.spineIndex, oldHost.currentPageIndex, oldHost.pageCount),
+      incomingPage: this.furniturePageNumber(this.spineIndex, newHost.currentPageIndex, newHost.pageCount),
+    };
   }
 
   /** Spread version of `animatePageTurn`. "slide" and "scroll" move the
    * whole spread, while "rotate" turns only the column nearest the
    * spine; "scroll" moves outgoing and incoming spreads together. */
+  /** Spread version of `animatePageTurn`: builds the incoming spread and
+   * plays a page-turn animation within the current chapter (or into a
+   * merged next chapter — see `prepareIncomingSpread`). Returns
+   * `undefined` when the turn would cross an unmergeable chapter
+   * boundary. */
   private async animateSpreadTurn(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
@@ -2053,244 +1929,49 @@ export class ReaderController {
     if (!newHost) {
       return undefined;
     }
-    const newEl = newHost.element;
-    const entering = direction === -1;
-    const isScroll = this.pageTurnAnimationStyle === "scroll";
-    // Backward turns animate the incoming spread rather than the outgoing one.
-    const turnHost = entering ? newHost : oldHost;
-    const otherHost = entering ? oldHost : newHost;
-
-    // "rotate" turns only the spine-side column and grows it to full
-    // height. "slide" moves the whole spread without growing columns, but
-    // both styles suppress `clip-path` on all overlapping columns because
-    // clipped iframes do not composite correctly in Chromium.
-    if (this.pageTurnAnimationStyle === "rotate") {
-      turnHost.suppressColumnClipPathForAnimation("right");
-    }
-    const turnColumnNaturalHeight = this.pageTurnAnimator.spreadColumnElement(turnHost, 1).getBoundingClientRect().height;
-    if (this.pageTurnAnimationStyle === "rotate") {
-      turnHost.growColumnToFullHeight("right", this.height);
-      turnHost.suppressColumnClipPathForAnimation("left");
-      otherHost.suppressColumnClipPathForAnimation("left");
-      otherHost.suppressColumnClipPathForAnimation("right");
-    } else if (this.pageTurnAnimationStyle === "slide") {
-      turnHost.suppressColumnClipPathForAnimation("left");
-      turnHost.suppressColumnClipPathForAnimation("right");
-      otherHost.suppressColumnClipPathForAnimation("left");
-      otherHost.suppressColumnClipPathForAnimation("right");
-    }
-    const turnEl = this.pageTurnAnimator.elementToTurn(turnHost);
-
-    // "slide" can leave a short turning column with a visible gap, so add
-    // one full-width backdrop behind the turning spread.
-    let turnBackdrop: HTMLDivElement | undefined;
-    if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "slide") {
-      turnBackdrop = this.pageTurnAnimator.buildTurnBackdrop(turnHost.element);
-      if (turnBackdrop) {
-        turnBackdrop.style.zIndex = "2";
-        turnHost.element.parentElement?.insertBefore(turnBackdrop, turnHost.element);
-      }
-    }
-    // "rotate" grows the turning column to full height, so mask that extra
-    // height the same way as the single-page case.
-    let turnGrowthMask: HTMLDivElement | undefined;
-    if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation() && this.pageTurnAnimationStyle === "rotate") {
-      turnGrowthMask = this.pageTurnAnimator.buildTurnGrowthMask(turnEl, turnColumnNaturalHeight);
-      if (turnGrowthMask) {
-        turnGrowthMask.style.zIndex = "2";
-        turnEl.parentElement?.insertBefore(turnGrowthMask, turnEl.nextSibling);
-      }
-    }
-
-    // For rotate turns, add a back face and run to 180° so the page lands
-    // visibly instead of disappearing just past edge-on.
-    const rotateBackFace =
-      this.pageTurnAnimationStyle === "rotate" && !this.pageTurnAnimator.shouldSkipPageTurnAnimation()
-        ? this.pageTurnAnimator.buildRotateBackFace(turnEl)
-        : undefined;
-
-    // Build the same temporary furniture overlays as `animatePageTurn`.
-    // "slide"/"scroll" need both columns; "rotate" only needs the turning
-    // right column.
-    let outgoingOverlay: HTMLDivElement | undefined;
-    let incomingOverlay: HTMLDivElement | undefined;
-    // Rotate turns also need left-column overlays, because that column stays
-    // stacked above or below the other spread for the whole animation.
-    let outgoingLeftOverlay: HTMLDivElement | undefined;
-    let incomingLeftOverlay: HTMLDivElement | undefined;
-    if (!this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
-      const title = this.pkg.metadata.title;
-      // Merge turns animate into the next chapter through this same path, so
-      // incoming labels and numbers must use the pending merged spine index.
-      const incomingSpineIndex = this.pendingSpreadMergeSpineIndex ?? this.spineIndex;
-      const isMergeTurn = this.pendingSpreadMergeSpineIndex !== undefined;
-      const outgoingChapterLabel = this.chapterLabel(this.spineIndex);
-      const incomingChapterLabel = this.chapterLabel(incomingSpineIndex);
-      const outgoingPrimary = this.furniturePageNumber(this.spineIndex, oldHost.pageIndex, oldHost.pageCount);
-      const outgoingSecondary =
-        oldHost.secondPageIndex !== undefined && outgoingPrimary !== undefined ? outgoingPrimary + 1 : undefined;
-      const incomingRightNumber = this.furniturePageNumber(incomingSpineIndex, newHost.pageIndex, newHost.pageCount);
-      // During a merge, the incoming left column is the borrowed tail page,
-      // so it has no page number of its own here.
-      const incomingPrimary = isMergeTurn ? undefined : incomingRightNumber;
-      const incomingSecondary = isMergeTurn
-        ? incomingRightNumber
-        : newHost.secondPageIndex !== undefined && incomingRightNumber !== undefined
-          ? incomingRightNumber + 1
-          : undefined;
-
-      if (this.pageTurnAnimationStyle !== "rotate") {
-        const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
-        const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
-        const bands = (chapterLabel: string, primary: number | undefined, secondary: number | undefined) => [
-          {
-            left: 0,
-            width: columnWidth,
-            header: { mode: "single" as const, text: title },
-            footerText: primary !== undefined ? `Page ${primary}` : undefined,
-          },
-          {
-            left: columnWidth + gutter,
-            width: columnWidth,
-            header: { mode: "single" as const, text: chapterLabel },
-            footerText: secondary !== undefined ? `Page ${secondary}` : undefined,
-          },
-        ];
-        outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(
-          oldHost.element,
-          bands(outgoingChapterLabel, outgoingPrimary, outgoingSecondary),
-        );
-        incomingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(
-          newEl,
-          bands(incomingChapterLabel, incomingPrimary, incomingSecondary),
-        );
-      } else {
-        // Rotate overlays attach to the right column, which carries the
-        // chapter label and secondary page number.
-        const oldColumnEl = this.pageTurnAnimator.spreadColumnElement(oldHost, 1);
-        const newColumnEl = this.pageTurnAnimator.spreadColumnElement(newHost, 1);
-        outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldColumnEl, [
-          {
-            left: 0,
-            width: oldColumnEl.getBoundingClientRect().width,
-            header: { mode: "single" as const, text: outgoingChapterLabel },
-            footerText: outgoingSecondary !== undefined ? `Page ${outgoingSecondary}` : undefined,
-          },
-        ]);
-        incomingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(newColumnEl, [
-          {
-            left: 0,
-            width: newColumnEl.getBoundingClientRect().width,
-            header: { mode: "single" as const, text: incomingChapterLabel },
-            footerText: incomingSecondary !== undefined ? `Page ${incomingSecondary}` : undefined,
-          },
-        ]);
-
-        // The left column needs its own overlay too; its title/page-number
-        // layout is independent of turn style.
-        const oldLeftColumnEl = this.pageTurnAnimator.spreadColumnElement(oldHost, 0);
-        const newLeftColumnEl = this.pageTurnAnimator.spreadColumnElement(newHost, 0);
-        const leftHeader = { mode: "single" as const, text: title };
-        outgoingLeftOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldLeftColumnEl, [
-          {
-            left: 0,
-            width: oldLeftColumnEl.getBoundingClientRect().width,
-            header: leftHeader,
-            footerText: outgoingPrimary !== undefined ? `Page ${outgoingPrimary}` : undefined,
-          },
-        ]);
-        incomingLeftOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(newLeftColumnEl, [
-          {
-            left: 0,
-            width: newLeftColumnEl.getBoundingClientRect().width,
-            header: leftHeader,
-            footerText: incomingPrimary !== undefined ? `Page ${incomingPrimary}` : undefined,
-          },
-        ]);
-      }
-      if (isScroll) {
-        // Scroll moves both spread overlays with their spreads.
-        if (outgoingOverlay) {
-          outgoingOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(outgoingOverlay);
-        }
-        if (incomingOverlay) {
-          incomingOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(incomingOverlay);
-        }
-      } else {
-        // Put the overlay for the moving spread on top of the static one.
-        const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
-        const staticOverlay = entering ? outgoingOverlay : incomingOverlay;
-        if (staticOverlay) {
-          staticOverlay.style.zIndex = "1";
-          this.containerEl.appendChild(staticOverlay);
-        }
-        if (animatedOverlay) {
-          animatedOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(animatedOverlay);
-        }
-        // Match left-column overlay z-order to whichever host stays visually
-        // on top during the turn.
-        const turnLeftOverlay = entering ? incomingLeftOverlay : outgoingLeftOverlay;
-        const otherLeftOverlay = entering ? outgoingLeftOverlay : incomingLeftOverlay;
-        if (otherLeftOverlay) {
-          otherLeftOverlay.style.zIndex = "1";
-          this.containerEl.appendChild(otherLeftOverlay);
-        }
-        if (turnLeftOverlay) {
-          turnLeftOverlay.style.zIndex = "2";
-          this.containerEl.appendChild(turnLeftOverlay);
-        }
-      }
-      this.isAnimatingPageTurn = true;
-      this.notify();
-    }
-
-    if (isScroll) {
-      const oldGroup = [oldHost.element, ...(outgoingOverlay ? [outgoingOverlay] : [])];
-      const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
-      await this.pageTurnAnimator.playScrollTurn(oldGroup, newGroup, direction);
-    } else {
-      const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
-      await this.pageTurnAnimator.playPageTurnAnimation(
-        turnHost.element,
-        turnEl,
-        direction,
-        [
-          ...(animatedOverlayEl ? [animatedOverlayEl] : []),
-          ...(rotateBackFace ? [rotateBackFace] : []),
-          ...(turnBackdrop ? [turnBackdrop] : []),
-          ...(turnGrowthMask ? [turnGrowthMask] : []),
-        ],
-        entering,
-        rotateBackFace ? 180 : undefined,
-      );
-    }
-
-    rotateBackFace?.remove();
-    outgoingOverlay?.remove();
-    incomingOverlay?.remove();
-    outgoingLeftOverlay?.remove();
-    incomingLeftOverlay?.remove();
-    turnBackdrop?.remove();
-    turnGrowthMask?.remove();
-    this.isAnimatingPageTurn = false;
-    // Reset any temporary height or clip-path changes on both columns of the
-    // surviving host.
-    if (this.pageTurnAnimationStyle === "rotate" || this.pageTurnAnimationStyle === "slide") {
-      newHost.restoreColumnNaturalHeight("left");
-      newHost.restoreColumnNaturalHeight("right");
-    }
-
-    oldHost.dispose();
-    newEl.style.position = "";
-    newEl.style.top = "";
-    newEl.style.left = "";
-    newEl.style.transform = "";
-    newEl.style.zIndex = "";
+    await this.pageTurnOrchestrator.animateSpreadTurn(
+      oldHost,
+      newHost,
+      direction,
+      this.spreadTurnFurniture(oldHost, newHost),
+    );
     return newHost;
   }
+
+  /** The display data `PageTurnOrchestrator` needs to build a spread
+   * turn's temporary furniture overlays. Merge turns animate into the
+   * next chapter through this same path, so incoming labels/numbers use
+   * the pending merged spine index — and the incoming left column is
+   * the borrowed tail page during a merge, so it has no page number of
+   * its own there (its number becomes the right column's *secondary*
+   * page instead). */
+  private spreadTurnFurniture(
+    oldHost: SpreadPaginatedHost,
+    newHost: SpreadPaginatedHost,
+  ): SpreadPageTurnFurnitureInfo {
+    const incomingSpineIndex = this.pendingSpreadMergeSpineIndex ?? this.spineIndex;
+    const isMergeTurn = this.pendingSpreadMergeSpineIndex !== undefined;
+    const outgoingPrimary = this.furniturePageNumber(this.spineIndex, oldHost.pageIndex, oldHost.pageCount);
+    const outgoingSecondary =
+      oldHost.secondPageIndex !== undefined && outgoingPrimary !== undefined ? outgoingPrimary + 1 : undefined;
+    const incomingRightNumber = this.furniturePageNumber(incomingSpineIndex, newHost.pageIndex, newHost.pageCount);
+    const incomingPrimary = isMergeTurn ? undefined : incomingRightNumber;
+    const incomingSecondary = isMergeTurn
+      ? incomingRightNumber
+      : newHost.secondPageIndex !== undefined && incomingRightNumber !== undefined
+        ? incomingRightNumber + 1
+        : undefined;
+    return {
+      title: this.pkg.metadata.title,
+      outgoingChapterLabel: this.chapterLabel(this.spineIndex),
+      incomingChapterLabel: this.chapterLabel(incomingSpineIndex),
+      outgoingPrimaryPage: outgoingPrimary,
+      outgoingSecondaryPage: outgoingSecondary,
+      incomingPrimaryPage: incomingPrimary,
+      incomingSecondaryPage: incomingSecondary,
+    };
+  }
+
 
   /** Builds the incoming page for an in-chapter turn and positions it
    * directly under `oldHost.element`. Returns `undefined` when the turn
