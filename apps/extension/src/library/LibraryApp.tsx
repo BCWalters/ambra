@@ -27,6 +27,7 @@ import type { LibraryBookViewModel } from "./useLibrary.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
+import { LibraryEmptyState } from "./LibraryEmptyState.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
@@ -414,9 +415,7 @@ export const LibraryApp: FC = () => {
         {isLoading ? (
           <Spinner label="Loading your library…" style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
-          <Body1 as="p" style={{ marginTop: 16 }}>
-            Your library is empty — import an .epub to get started.
-          </Body1>
+          <LibraryEmptyState accent={palette.accent} onImport={() => fileInputRef.current?.click()} />
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
             {books.map((book) => (
