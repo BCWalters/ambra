@@ -113,6 +113,28 @@ export class LocatorResolver {
     return this.resolveContentSteps(cfi, spineIndex, contentDocument.document);
   }
 
+  /** Resolves two locators expected to point into the same spine item,
+   * loading that item's content document only once so both resolve
+   * against the same DOM tree. Needed by any caller that then builds a
+   * `Range` spanning the pair (e.g. to re-extract a highlight's text): a
+   * `Range`'s two boundary points must share a document, and calling
+   * `resolve` twice would parse two independent documents, silently
+   * collapsing such a `Range` instead of throwing. Throws if the two
+   * locators don't actually resolve to the same spine index. */
+  public async resolvePair(
+    a: Locator,
+    b: Locator,
+  ): Promise<{ start: ResolvedLocator; end: ResolvedLocator; document: Document }> {
+    const cfiA = this.parseCfi(a);
+    const spineIndex = this.requireSpineIndexForCfi(cfiA);
+    const spineRef = this.requireSpineItem(spineIndex);
+
+    const contentDocument = await this.contentLoader.loadContentDocument(spineRef.manifestItem);
+    const start = this.resolveContentSteps(cfiA, spineIndex, contentDocument.document);
+    const end = this.resolveInDocument(b, spineIndex, contentDocument.document);
+    return { start, end, document: contentDocument.document };
+  }
+
   /** Resolves `locator` against an already-available `document` for
    * `spineIndex`, without loading anything — the caller is responsible for
    * ensuring `document` really is that spine item's content (e.g. because

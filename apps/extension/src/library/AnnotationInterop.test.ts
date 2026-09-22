@@ -6,7 +6,13 @@ import {
   type ResolvedLocator,
 } from "@ambra/engine";
 import type { Bookmark, Highlight, LibraryDatabase } from "./LibraryDatabase.js";
-import { buildAnnotationCollection, importAnnotations } from "./AnnotationInterop.js";
+import {
+  buildAnnotationCollection,
+  classifyImportOutcome,
+  classifyReadOnlyAnnotationKind,
+  importAnnotations,
+} from "./AnnotationInterop.js";
+import type { AnnotationImportResult } from "./AnnotationInterop.js";
 
 /** A two-chapter package, built the same way `PackageDocument.test.ts`
  * builds its own synthetic fixtures — real enough to exercise
@@ -119,12 +125,23 @@ describe("buildAnnotationCollection", () => {
 
 describe("importAnnotations", () => {
   function makeResolver(text = "Imported text"): LocatorResolver {
+    const doc = { createRange: () => fakeRange(text) } as unknown as Document;
     return {
-      resolve: vi.fn().mockImplementation(async (locator: Locator): Promise<ResolvedLocator> => {
-        const doc = { createRange: () => fakeRange(text) } as unknown as Document;
-        const node = { ownerDocument: doc } as unknown as Node;
-        return { spineIndex: 0, node, characterOffset: locator.cfi.includes(":0") ? 0 : 10 };
-      }),
+      resolvePair: vi
+        .fn()
+        .mockImplementation(
+          async (
+            startLocator: Locator,
+            endLocator: Locator,
+          ): Promise<{ start: ResolvedLocator; end: ResolvedLocator; document: Document }> => {
+            const node = { ownerDocument: doc } as unknown as Node;
+            return {
+              start: { spineIndex: 0, node, characterOffset: startLocator.cfi.includes(":0") ? 0 : 10 },
+              end: { spineIndex: 0, node, characterOffset: endLocator.cfi.includes(":0") ? 0 : 10 },
+              document: doc,
+            };
+          },
+        ),
     } as unknown as LocatorResolver;
   }
 
@@ -138,7 +155,9 @@ describe("importAnnotations", () => {
     } as unknown as Range;
   }
 
-  function makeLibrary(): {
+  function makeLibrary(
+    seed: { highlights?: Highlight[]; bookmarks?: Bookmark[] } = {},
+  ): {
     library: LibraryDatabase;
     addedHighlights: unknown[];
     addedBookmarks: unknown[];
@@ -146,6 +165,8 @@ describe("importAnnotations", () => {
     const addedHighlights: unknown[] = [];
     const addedBookmarks: unknown[] = [];
     const library = {
+      listHighlightsForBook: vi.fn().mockResolvedValue(seed.highlights ?? []),
+      listBookmarksForBook: vi.fn().mockResolvedValue(seed.bookmarks ?? []),
       addHighlight: vi.fn().mockImplementation(async (input: unknown) => {
         addedHighlights.push(input);
         return { ...(input as object), id: "new-hl", createdAt: 0 };
@@ -158,6 +179,21 @@ describe("importAnnotations", () => {
         }),
     } as unknown as LibraryDatabase;
     return { library, addedHighlights, addedBookmarks };
+  }
+
+  function makeHighlight(overrides: Partial<Highlight> = {}): Highlight {
+    return {
+      id: "existing-hl",
+      bookId: "book-1",
+      spineIndex: 0,
+      startCfi: "epubcfi(/6/2!/4/2/1:0)",
+      endCfi: "epubcfi(/6/2!/4/2/1:10)",
+      style: "yellow",
+      text: "The recovered text",
+      note: undefined,
+      createdAt: 0,
+      ...overrides,
+    };
   }
 
   it("imports a highlighting annotation with a range FragmentSelector as a Highlight", async () => {
@@ -178,7 +214,13 @@ describe("importAnnotations", () => {
       },
     ]);
 
-    expect(result).toEqual({ importedHighlights: 1, importedBookmarks: 0, skipped: 0 });
+    expect(result).toEqual({
+      importedHighlights: 1,
+      importedBookmarks: 0,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 0,
+    });
     expect(addedHighlights).toEqual([
       {
         bookId: "book-1",
@@ -211,7 +253,13 @@ describe("importAnnotations", () => {
       },
     ]);
 
-    expect(result).toEqual({ importedHighlights: 0, importedBookmarks: 1, skipped: 0 });
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 1,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 0,
+    });
     expect(addedBookmarks).toEqual([
       { bookId: "book-1", cfi: "epubcfi(/6/4!/4/2/1:0)", label: "My bookmark" },
     ]);
@@ -233,7 +281,13 @@ describe("importAnnotations", () => {
       },
     ]);
 
-    expect(result).toEqual({ importedHighlights: 0, importedBookmarks: 0, skipped: 1 });
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 0,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 1,
+    });
   });
 
   it("skips an annotation whose source doesn't match any spine item and whose CFI doesn't resolve either", async () => {
@@ -252,7 +306,13 @@ describe("importAnnotations", () => {
       },
     ]);
 
-    expect(result).toEqual({ importedHighlights: 0, importedBookmarks: 0, skipped: 1 });
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 0,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 1,
+    });
   });
 
   it("falls back to the CFI's own package-steps when the source href doesn't match", async () => {
@@ -274,9 +334,212 @@ describe("importAnnotations", () => {
       },
     ]);
 
-    expect(result).toEqual({ importedHighlights: 0, importedBookmarks: 1, skipped: 0 });
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 1,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 0,
+    });
     expect(addedBookmarks).toEqual([
       { bookId: "book-1", cfi: "epubcfi(/6/4!/4/2/1:0)", label: "" },
     ]);
+  });
+
+  it("dedupes a highlight that's an exact CFI re-import of one already in the book, without re-extracting its text", async () => {
+    const pkg = makePackage();
+    const resolver = makeResolver("should not be used");
+    const { library, addedHighlights } = makeLibrary({ highlights: [makeHighlight()] });
+
+    const result = await importAnnotations(pkg, resolver, library, "book-1", [
+      {
+        id: "urn:uuid:6",
+        type: "Annotation",
+        motivation: "highlighting",
+        created: "2024-01-01T00:00:00.000Z",
+        target: {
+          source: "OEBPS/chapter1.xhtml",
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+        },
+      },
+    ]);
+
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 0,
+      duplicateHighlights: 1,
+      duplicateBookmarks: 0,
+      skipped: 0,
+    });
+    expect(addedHighlights).toEqual([]);
+    expect(resolver.resolvePair).not.toHaveBeenCalled(); // never needed the text
+  });
+
+  it("dedupes a highlight with a different CFI encoding but the same text and note (\"almost identical\")", async () => {
+    const pkg = makePackage();
+    const resolver = makeResolver("The recovered text"); // same text, different CFI below
+    const { library, addedHighlights } = makeLibrary({
+      highlights: [makeHighlight({ startCfi: "epubcfi(/6/2!/4/2/1:0)", endCfi: "epubcfi(/6/2!/4/2/1:11)" })],
+    });
+
+    const result = await importAnnotations(pkg, resolver, library, "book-1", [
+      {
+        id: "urn:uuid:7",
+        type: "Annotation",
+        motivation: "highlighting",
+        created: "2024-01-01T00:00:00.000Z",
+        target: {
+          source: "OEBPS/chapter1.xhtml",
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+        },
+      },
+    ]);
+
+    expect(result.duplicateHighlights).toBe(1);
+    expect(result.importedHighlights).toBe(0);
+    expect(addedHighlights).toEqual([]);
+  });
+
+  it("does not dedupe two highlights of the same text with different notes — a differing note is meaningful", async () => {
+    const pkg = makePackage();
+    const resolver = makeResolver("The recovered text");
+    const { library, addedHighlights } = makeLibrary({
+      highlights: [
+        makeHighlight({
+          startCfi: "epubcfi(/6/2!/4/2/1:0)",
+          endCfi: "epubcfi(/6/2!/4/2/1:11)", // deliberately not an exact CFI match
+          note: "My original note",
+        }),
+      ],
+    });
+
+    const result = await importAnnotations(pkg, resolver, library, "book-1", [
+      {
+        id: "urn:uuid:8",
+        type: "Annotation",
+        motivation: "commenting",
+        created: "2024-01-01T00:00:00.000Z",
+        target: {
+          source: "OEBPS/chapter1.xhtml",
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+        },
+        body: { type: "TextualBody", value: "A different note" },
+      },
+    ]);
+
+    expect(result.duplicateHighlights).toBe(0);
+    expect(result.importedHighlights).toBe(1);
+    expect(addedHighlights).toHaveLength(1);
+  });
+
+  it("dedupes two identical highlights within the same imported file, not just against what's already saved", async () => {
+    const pkg = makePackage();
+    const resolver = makeResolver("The recovered text");
+    const { library, addedHighlights } = makeLibrary();
+    const sameAnnotation = {
+      id: "urn:uuid:9",
+      type: "Annotation" as const,
+      motivation: "highlighting" as const,
+      created: "2024-01-01T00:00:00.000Z",
+      target: {
+        source: "OEBPS/chapter1.xhtml",
+        selector: [{ type: "FragmentSelector" as const, value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+      },
+    };
+
+    const result = await importAnnotations(pkg, resolver, library, "book-1", [
+      sameAnnotation,
+      sameAnnotation,
+    ]);
+
+    expect(result.importedHighlights).toBe(1);
+    expect(result.duplicateHighlights).toBe(1);
+    expect(addedHighlights).toHaveLength(1);
+  });
+
+  it("dedupes a bookmark that's an exact CFI re-import of one already in the book", async () => {
+    const pkg = makePackage();
+    const resolver = makeResolver();
+    const { library, addedBookmarks } = makeLibrary({
+      bookmarks: [{ id: "existing-bm", bookId: "book-1", cfi: "epubcfi(/6/4!/4/2/1:0)", label: "", createdAt: 0 }],
+    });
+
+    const result = await importAnnotations(pkg, resolver, library, "book-1", [
+      {
+        id: "urn:uuid:10",
+        type: "Annotation",
+        motivation: "bookmarking",
+        created: "2024-01-01T00:00:00.000Z",
+        target: {
+          source: "OEBPS/chapter2.xhtml",
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/4!/4/2/1:0)" }],
+        },
+      },
+    ]);
+
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 0,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 1,
+      skipped: 0,
+    });
+    expect(addedBookmarks).toEqual([]);
+  });
+});
+
+describe("classifyReadOnlyAnnotationKind", () => {
+  it("classifies an explicit \"bookmarking\" motivation as a bookmark, even if the selector happens to be a range", () => {
+    expect(classifyReadOnlyAnnotationKind("bookmarking", true)).toBe("bookmark");
+  });
+
+  it("classifies an explicit \"highlighting\" motivation as a highlight, even if the selector happens to be a point", () => {
+    expect(classifyReadOnlyAnnotationKind("highlighting", false)).toBe("highlight");
+  });
+
+  it("classifies an explicit \"commenting\" motivation as a highlight (a highlight that also carries a note)", () => {
+    expect(classifyReadOnlyAnnotationKind("commenting", false)).toBe("highlight");
+  });
+
+  it("falls back to a range selector meaning a highlight when motivation is absent", () => {
+    expect(classifyReadOnlyAnnotationKind(undefined, true)).toBe("highlight");
+  });
+
+  it("falls back to a point selector meaning a bookmark when motivation is absent", () => {
+    expect(classifyReadOnlyAnnotationKind(undefined, false)).toBe("bookmark");
+  });
+});
+
+describe("classifyImportOutcome", () => {
+  function makeResult(overrides: Partial<AnnotationImportResult>): AnnotationImportResult {
+    return {
+      importedHighlights: 0,
+      importedBookmarks: 0,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 0,
+      ...overrides,
+    };
+  }
+
+  it("is \"imported\" whenever anything new was actually added, regardless of duplicates/skips alongside it", () => {
+    expect(classifyImportOutcome(makeResult({ importedHighlights: 1 }))).toBe("imported");
+    expect(classifyImportOutcome(makeResult({ importedBookmarks: 1 }))).toBe("imported");
+    expect(
+      classifyImportOutcome(makeResult({ importedHighlights: 1, duplicateBookmarks: 3, skipped: 2 })),
+    ).toBe("imported");
+  });
+
+  it("is \"allDuplicates\" when nothing new was added but at least one entry was a known duplicate (issue #115)", () => {
+    expect(classifyImportOutcome(makeResult({ duplicateHighlights: 1 }))).toBe("allDuplicates");
+    expect(classifyImportOutcome(makeResult({ duplicateBookmarks: 2 }))).toBe("allDuplicates");
+  });
+
+  it("is \"wrongBook\" when nothing new was added and nothing was even a recognized duplicate (issue #114)", () => {
+    expect(classifyImportOutcome(makeResult({ skipped: 3 }))).toBe("wrongBook");
+    // A literally empty file lands in the same bucket — rare enough not
+    // to need its own distinct message (see `ImportOutcome`'s doc
+    // comment).
+    expect(classifyImportOutcome(makeResult({}))).toBe("wrongBook");
   });
 });

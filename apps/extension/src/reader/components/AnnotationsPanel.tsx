@@ -25,8 +25,16 @@ import type { ReadOnlyAnnotationView } from "../ReaderTypes.js";
 
 interface BookmarkListProps {
   bookmarks: readonly Bookmark[];
+  /** Publisher-embedded, read-only bookmarks (issue #109/#116) — merged
+   * in after the reader's own, each rendered with `ReadOnlyRow`'s
+   * read-only treatment instead of a remove button. */
+  embedded: readonly ReadOnlyAnnotationView[];
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
+  /** Distinct from `onSelect` — navigating to a read-only annotation
+   * reports its own "that note" wording on a stale/broken CFI rather
+   * than "that bookmark" (see `ReaderController.goToReadOnlyAnnotation`). */
+  onSelectEmbedded: (cfi: string) => void;
 }
 
 /** The "Bookmarks" tab's contents — a flat, creation-order list (oldest
@@ -36,9 +44,9 @@ interface BookmarkListProps {
  * an inline remove button. No "current position" highlight the way the
  * TOC tree has one: unlike TOC entries, a bookmark is exactly one saved
  * position, not a section the reader might currently be inside. */
-const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) => {
+const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, embedded, onSelect, onRemove, onSelectEmbedded }) => {
   const t = useTranslation();
-  if (bookmarks.length === 0) {
+  if (bookmarks.length === 0 && embedded.length === 0) {
     return (
       <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
         {t("annotations.noBookmarksYet")}
@@ -91,15 +99,25 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, onSelect, onRemove }) 
           </Tooltip>
         </li>
       ))}
+      {embedded.map((annotation) => (
+        <ReadOnlyRow key={annotation.id} annotation={annotation} onSelect={onSelectEmbedded} clampLines={1} />
+      ))}
     </ul>
   );
 };
 
+
 interface HighlightListProps {
   highlights: readonly Highlight[];
+  /** Publisher-embedded, read-only highlights/comments (issue #109/
+   * #116) — merged in after the reader's own, each rendered with
+   * `ReadOnlyRow`'s read-only treatment instead of note/remove buttons. */
+  embedded: readonly ReadOnlyAnnotationView[];
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
   onSetNote: (id: string, note: string | undefined) => void;
+  /** Distinct from `onSelect` — see `BookmarkListProps.onSelectEmbedded`. */
+  onSelectEmbedded: (cfi: string) => void;
 }
 
 /** The "Highlights" tab's contents — each entry shows a small color
@@ -109,9 +127,16 @@ interface HighlightListProps {
  * see `Highlight.text` — so this never needs to re-resolve/re-extract
  * from the DOM just to render a list), and its note (if any — see
  * `HighlightListItem`). */
-const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove, onSetNote }) => {
+const HighlightList: FC<HighlightListProps> = ({
+  highlights,
+  embedded,
+  onSelect,
+  onRemove,
+  onSetNote,
+  onSelectEmbedded,
+}) => {
   const t = useTranslation();
-  if (highlights.length === 0) {
+  if (highlights.length === 0 && embedded.length === 0) {
     return (
       <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
         {t("annotations.noHighlightsYet")}
@@ -129,6 +154,9 @@ const HighlightList: FC<HighlightListProps> = ({ highlights, onSelect, onRemove,
           onRemove={onRemove}
           onSetNote={onSetNote}
         />
+      ))}
+      {embedded.map((annotation) => (
+        <ReadOnlyRow key={annotation.id} annotation={annotation} onSelect={onSelectEmbedded} clampLines={2} />
       ))}
     </ul>
   );
@@ -276,71 +304,77 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
   );
 };
 
-interface ReadOnlyAnnotationListProps {
-  annotations: readonly ReadOnlyAnnotationView[];
+interface ReadOnlyRowProps {
+  annotation: ReadOnlyAnnotationView;
   onSelect: (cfi: string) => void;
+  /** How many lines of `annotation.label` to show before truncating — 1
+   * (single-line ellipsis, matching `BookmarkList`'s own rows) or more
+   * (a line-clamped block, matching `HighlightList`'s own rows), since
+   * this one row shape is shared between both tabs (see issue #116). */
+  clampLines: 1 | 2;
 }
 
-/** The "Notes" tab's contents — a publisher-embedded, read-only
- * annotation collection (issue #109). No remove/edit affordance at all
- * (unlike bookmarks/highlights, these aren't the reader's own): each row
- * is just a label and, if the annotation carries one, its note text. */
-const ReadOnlyAnnotationList: FC<ReadOnlyAnnotationListProps> = ({ annotations, onSelect }) => {
+/** One publisher-embedded, read-only annotation (issue #109), styled to
+ * read clearly as *not* one of the reader's own: a muted document icon
+ * instead of the tab's own bookmark/highlight glyph, a small "Publisher
+ * note" tag, and no remove/edit affordance at all — there's nothing
+ * here for the reader to edit, since it lives in the EPUB itself, not
+ * this app's own library. Shared between `BookmarkList` and
+ * `HighlightList` (issue #116 removed the dedicated "Notes" tab these
+ * used to get, which routinely didn't fit the panel's fixed width for
+ * what's usually zero or one item). */
+const ReadOnlyRow: FC<ReadOnlyRowProps> = ({ annotation, onSelect, clampLines }) => {
   const t = useTranslation();
-  if (annotations.length === 0) {
-    return (
-      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
-        {t("annotations.noEmbeddedNotesYet")}
-      </Caption1>
-    );
-  }
-
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      {annotations.map((annotation) => (
-        <li key={annotation.id}>
-          <button
-            type="button"
-            onClick={() => onSelect(annotation.cfi)}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 8,
-              background: "none",
-              border: "none",
-              borderRadius: 6,
-              color: "var(--colorNeutralForeground2, #333)",
-              cursor: "pointer",
-              padding: "7px 10px",
-              textAlign: "left",
-              font: "inherit",
-              lineHeight: 1.35,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "none";
-            }}
+    <li>
+      <button
+        type="button"
+        onClick={() => onSelect(annotation.cfi)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 8,
+          background: "none",
+          border: "none",
+          borderRadius: 6,
+          color: "var(--colorNeutralForeground2, #333)",
+          cursor: "pointer",
+          padding: "7px 10px",
+          textAlign: "left",
+          font: "inherit",
+          lineHeight: 1.35,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "none";
+        }}
+      >
+        <DocumentRegular fontSize={16} style={{ flexShrink: 0, marginTop: 2, opacity: 0.6 }} />
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <Caption1 as="span" block style={{ opacity: 0.6 }}>
+            {t("annotations.publisherNoteTag")}
+          </Caption1>
+          <span
+            style={
+              clampLines === 1
+                ? { display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+                : {
+                    display: "-webkit-box",
+                    WebkitLineClamp: clampLines,
+                    WebkitBoxOrient: "vertical" as const,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }
+            }
           >
-            <DocumentRegular fontSize={16} style={{ flexShrink: 0, marginTop: 2, opacity: 0.7 }} />
-            <span
-              style={{
-                minWidth: 0,
-                display: "-webkit-box",
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {annotation.label}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+            {annotation.label}
+          </span>
+        </span>
+      </button>
+    </li>
   );
 };
 
@@ -353,8 +387,11 @@ export interface AnnotationsPanelProps {
   onRemoveHighlight: (id: string) => void;
   onSetHighlightNote: (id: string, note: string | undefined) => void;
   /** A publisher-embedded, read-only annotation collection (issue #109)
-   * — empty for the overwhelming majority of books, in which case the
-   * "Notes" tab is never shown at all (see the tab list below). */
+   * — empty for the overwhelming majority of books, in which case
+   * nothing extra shows up in either tab below (issue #116: these used
+   * to get a dedicated "Notes" tab, merged away since it routinely
+   * didn't fit the panel's own fixed width for what's usually zero or
+   * one item). */
   readOnlyAnnotations: readonly ReadOnlyAnnotationView[];
   onSelectReadOnlyAnnotation: (cfi: string) => void;
   /** Downloads the current book's bookmarks/highlights as a file (issue
@@ -409,13 +446,20 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   onRequestClose,
   scrubberVisible,
 }) => {
-  const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights" | "notes">("bookmarks");
+  const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
+
+  // Split once here rather than in `ReaderController` itself: which tab
+  // a read-only annotation belongs in is purely a presentation
+  // decision, not part of its own data model — see
+  // `classifyReadOnlyAnnotationKind`.
+  const embeddedBookmarks = readOnlyAnnotations.filter((annotation) => annotation.kind === "bookmark");
+  const embeddedHighlights = readOnlyAnnotations.filter((annotation) => annotation.kind === "highlight");
 
   useEffect(() => {
     if (!open || pinned) {
@@ -492,11 +536,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           }}
         >
           <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "bookmarks"
-              ? t("annotations.bookmarksTab")
-              : activeTab === "highlights"
-                ? t("annotations.highlightsTab")
-                : t("annotations.notesTab")}
+            {activeTab === "bookmarks" ? t("annotations.bookmarksTab") : t("annotations.highlightsTab")}
           </Body1>
           <Tooltip content={pinned ? t("annotations.unpinPanel") : t("annotations.pinPanel")} relationship="label">
             <Button
@@ -512,38 +552,50 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             </Tooltip>
           )}
         </div>
-        <TabList
-          size="small"
-          selectedValue={activeTab}
-          onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights" | "notes")}
-          style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
-        >
-          <Tab value="bookmarks" icon={<BookmarkRegular />}>
-            {t("annotations.bookmarksTab")}
-            {bookmarks.length > 0 ? ` (${bookmarks.length})` : ""}
-          </Tab>
-          <Tab value="highlights" icon={<HighlightRegular />}>
-            {t("annotations.highlightsTab")}
-            {highlights.length > 0 ? ` (${highlights.length})` : ""}
-          </Tab>
-          {readOnlyAnnotations.length > 0 && (
-            <Tab value="notes" icon={<DocumentRegular />}>
-              {t("annotations.notesTab")} ({readOnlyAnnotations.length})
+        {/* Translated tab labels can run longer than English, and each
+         * tab's own "(N)" count adds more still — scrolling horizontally
+         * rather than wrapping or truncating keeps every label fully
+         * readable and avoids the tab strip visually bleeding past the
+         * pane's edge (issue #116). */}
+        <div style={{ overflowX: "auto", borderBottom: `1px solid ${CHROME_BORDER}` }}>
+          <TabList
+            size="small"
+            selectedValue={activeTab}
+            onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
+            style={{ padding: "4px 8px 0", width: "max-content" }}
+          >
+            <Tab value="bookmarks" icon={<BookmarkRegular />}>
+              {t("annotations.bookmarksTab")}
+              {bookmarks.length + embeddedBookmarks.length > 0
+                ? ` (${bookmarks.length + embeddedBookmarks.length})`
+                : ""}
             </Tab>
-          )}
-        </TabList>
+            <Tab value="highlights" icon={<HighlightRegular />}>
+              {t("annotations.highlightsTab")}
+              {highlights.length + embeddedHighlights.length > 0
+                ? ` (${highlights.length + embeddedHighlights.length})`
+                : ""}
+            </Tab>
+          </TabList>
+        </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {activeTab === "bookmarks" ? (
-            <BookmarkList bookmarks={bookmarks} onSelect={onSelectBookmark} onRemove={onRemoveBookmark} />
-          ) : activeTab === "highlights" ? (
+            <BookmarkList
+              bookmarks={bookmarks}
+              embedded={embeddedBookmarks}
+              onSelect={onSelectBookmark}
+              onRemove={onRemoveBookmark}
+              onSelectEmbedded={onSelectReadOnlyAnnotation}
+            />
+          ) : (
             <HighlightList
               highlights={highlights}
+              embedded={embeddedHighlights}
               onSelect={onSelectHighlight}
               onRemove={onRemoveHighlight}
               onSetNote={onSetHighlightNote}
+              onSelectEmbedded={onSelectReadOnlyAnnotation}
             />
-          ) : (
-            <ReadOnlyAnnotationList annotations={readOnlyAnnotations} onSelect={onSelectReadOnlyAnnotation} />
           )}
         </div>
         <div

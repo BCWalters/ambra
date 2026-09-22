@@ -111,6 +111,13 @@ export interface StringCatalog {
    * goofiness in each language, not a literal translation of
    * "snickerdoodles" (which means nothing in most of them). */
   "error.somethingWentWrongHeadline": string;
+  /** The "actionFailed" toast's headline (issue #114) — a punchier,
+   * one-word interjection distinct from the blocking card's own (that
+   * one's self-deprecating "oh well"; this one's more "yikes", since a
+   * reader-initiated action just visibly failed). Localized to
+   * something with the same fun spirit, not a literal translation of
+   * "Zoinks" (which means nothing in most languages). */
+  "error.actionFailedHeadline": string;
   "annotations.panelAriaLabel": string;
   "annotations.pinPanel": string;
   "annotations.unpinPanel": string;
@@ -126,8 +133,21 @@ export interface StringCatalog {
   "annotations.notePlaceholder": string;
   "annotations.cancelNote": string;
   "annotations.saveNote": string;
-  "annotations.notesTab": string;
-  "annotations.noEmbeddedNotesYet": string;
+  /** The small read-only-row tag shown on a publisher-embedded
+   * annotation merged into the Bookmarks/Highlights tabs (issue #116). */
+  "annotations.publisherNoteTag": string;
+  /** Issue #114: a file that fails to even parse as an EPUB Annotations
+   * 1.0 collection (garbage/unrelated JSON, not just "the wrong book"
+   * — see `importWrongBook`). */
+  "annotations.importNotAnAnnotationsFile": string;
+  /** Issue #114: every annotation in an otherwise well-formed file
+   * failed to resolve against *this* book at all — overwhelmingly
+   * likely it was exported from a different one. */
+  "annotations.importWrongBook": string;
+  /** Issue #115: nothing new was added because every annotation in the
+   * file was already present — not an error, just worth saying so
+   * rather than silently doing nothing. */
+  "annotations.importAllDuplicates": string;
   "annotations.exportButton": string;
   "annotations.exportTooltip": string;
   "annotations.importButton": string;
@@ -297,6 +317,7 @@ export const en: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "{count} pages left in this chapter",
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh snickerdoodles, something went wrong.",
+  "error.actionFailedHeadline": "Zoinks!",
   "annotations.panelAriaLabel": "Bookmarks and highlights",
   "annotations.pinPanel": "Pin bookmarks and highlights panel",
   "annotations.unpinPanel": "Unpin bookmarks and highlights panel",
@@ -312,8 +333,10 @@ export const en: StringCatalog = {
   "annotations.notePlaceholder": "Add a note…",
   "annotations.cancelNote": "Cancel",
   "annotations.saveNote": "Save",
-  "annotations.notesTab": "Notes",
-  "annotations.noEmbeddedNotesYet": "This book has no publisher notes.",
+  "annotations.publisherNoteTag": "Publisher note",
+  "annotations.importNotAnAnnotationsFile": "We couldn't load the annotations from that file. It doesn't look like a valid annotations export.",
+  "annotations.importWrongBook": "We couldn't load the annotations from that file. It looks like they might be from a different book.",
+  "annotations.importAllDuplicates": "Looks like you already have all of these annotations — nothing new to add.",
   "annotations.exportButton": "Export",
   "annotations.exportTooltip": "Export your bookmarks and highlights to a file",
   "annotations.importButton": "Import",

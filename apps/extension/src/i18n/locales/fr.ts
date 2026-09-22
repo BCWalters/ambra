@@ -40,6 +40,7 @@ export const fr: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Il reste {count} pages dans ce chapitre",
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh zut, quelque chose s'est mal passé.",
+  "error.actionFailedHeadline": "Aïe !",
   "annotations.panelAriaLabel": "Signets et surlignages",
   "annotations.pinPanel": "Épingler le panneau des signets et surlignages",
   "annotations.unpinPanel": "Détacher le panneau des signets et surlignages",
@@ -57,9 +58,13 @@ export const fr: StringCatalog = {
   "annotations.notePlaceholder": "Ajouter une note…",
   "annotations.cancelNote": "Annuler",
   "annotations.saveNote": "Enregistrer",
-  "annotations.notesTab": "Notes",
-  "annotations.noEmbeddedNotesYet":
-    "Ce livre ne contient aucune note de l'éditeur.",
+  "annotations.publisherNoteTag": "Note de l'éditeur",
+  "annotations.importNotAnAnnotationsFile":
+    "Nous n'avons pas pu charger les annotations de ce fichier. Cela ne ressemble pas à un export d'annotations valide.",
+  "annotations.importWrongBook":
+    "Nous n'avons pas pu charger les annotations de ce fichier. Elles proviennent peut-être d'un autre livre.",
+  "annotations.importAllDuplicates":
+    "On dirait que vous avez déjà toutes ces annotations — rien de nouveau à ajouter.",
   "annotations.exportButton": "Exporter",
   "annotations.exportTooltip":
     "Exporter vos signets et surlignages dans un fichier",

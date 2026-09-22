@@ -40,6 +40,7 @@ export const ru: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Осталось {count} страниц в этой главе",
   "pageFurniture.pageNumber": "Страница {number}",
   "error.somethingWentWrongHeadline": "Ёлки-палки, что-то пошло не так.",
+  "error.actionFailedHeadline": "Ой!",
   "annotations.panelAriaLabel": "Закладки и выделения",
   "annotations.pinPanel": "Закрепить панель закладок и выделений",
   "annotations.unpinPanel": "Открепить панель закладок и выделений",
@@ -57,8 +58,13 @@ export const ru: StringCatalog = {
   "annotations.notePlaceholder": "Добавить заметку…",
   "annotations.cancelNote": "Отмена",
   "annotations.saveNote": "Сохранить",
-  "annotations.notesTab": "Заметки",
-  "annotations.noEmbeddedNotesYet": "В этой книге нет заметок издателя.",
+  "annotations.publisherNoteTag": "Заметка издателя",
+  "annotations.importNotAnAnnotationsFile":
+    "Не удалось загрузить аннотации из этого файла. Похоже, это не файл экспорта аннотаций.",
+  "annotations.importWrongBook":
+    "Не удалось загрузить аннотации из этого файла. Возможно, они из другой книги.",
+  "annotations.importAllDuplicates":
+    "Похоже, у вас уже есть все эти аннотации — добавлять нечего.",
   "annotations.exportButton": "Экспорт",
   "annotations.exportTooltip":
     "Экспортировать закладки и выделения в файл",

@@ -20,8 +20,13 @@ export interface FriendlyErrorProps {
    * screen to read); "transient" shows a small, quieter toast in the
    * corner, since the reader still has their previous page in front of
    * them and isn't actually stuck — see issue #27: these two situations
-   * shouldn't look equally alarming. */
-  severity: "blocking" | "transient";
+   * shouldn't look equally alarming. "actionFailed" is a third size in
+   * between: same corner placement as "transient", but with its own
+   * illustration and headline, and — critically — no auto-dismiss (see
+   * issue #114). "info" is a non-error acknowledgement: same placement/
+   * timing as "transient", but without its "that didn't work" framing,
+   * since nothing actually failed (see issue #115). */
+  severity: "blocking" | "transient" | "actionFailed" | "info";
   onDismiss: () => void;
   /** Returns the current diagnostics trail (see `DiagnosticsLog`) plus
    * basic reader state, ready to copy to the clipboard — `undefined` if
@@ -30,13 +35,14 @@ export interface FriendlyErrorProps {
 }
 
 /**
- * The reader's one error presentation, in two sizes — see `severity`.
- * Always shows the *actual* underlying message directly (never hidden
- * behind a click: per explicit product direction, "tell the user
- * directly if there's something actionable without making them click on
- * more"), but leads with a friendly illustration/headline rather than a
- * bare stack trace, and always offers a "Copy diagnostics" button for
- * anything worth debugging further.
+ * The reader's one error (and, for "info", non-error) presentation, in a
+ * few sizes — see `severity`. Always shows the *actual* underlying
+ * message directly (never hidden behind a click: per explicit product
+ * direction, "tell the user directly if there's something actionable
+ * without making them click on more"), but leads with a friendly
+ * illustration/headline rather than a bare stack trace where one's
+ * warranted, and offers a "Copy diagnostics" button for anything worth
+ * debugging further.
  */
 export const FriendlyError: FC<FriendlyErrorProps> = ({
   message,
@@ -50,7 +56,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   const headingRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (severity !== "transient") {
+    if (severity !== "transient" && severity !== "info") {
       return;
     }
     const timeout = setTimeout(onDismiss, TRANSIENT_AUTO_DISMISS_MS);
@@ -58,6 +64,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
     // `onDismiss` is a stable callback (see its callers) — only
     // `severity` changing (a fresh error) should re-arm the timer.
   }, [severity]);
+
 
   // Moves keyboard focus onto the card itself for a "blocking" error —
   // unlike "transient" (a small toast over content that's still there
@@ -116,6 +123,81 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         <Button appearance="outline" size="small" onClick={copyDiagnostics}>
           {copied ? "Copied!" : "Copy diagnostics"}
         </Button>
+      </div>
+    );
+  }
+
+  if (severity === "actionFailed") {
+    return (
+      <div
+        role="alert"
+        style={{
+          position: "absolute",
+          top: 64,
+          right: 16,
+          zIndex: 20,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+          maxWidth: 340,
+          padding: "12px 14px",
+          borderRadius: 10,
+          background: chromeTheme.backgroundSolid,
+          border: `1px solid ${CHROME_BORDER}`,
+          boxShadow: CHROME_SHADOW,
+        }}
+      >
+        <BookTroubleIllustration size={40} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <Body1 as="p" style={{ margin: 0, fontWeight: 600 }}>
+              {t("error.actionFailedHeadline")}
+            </Body1>
+            <Caption1 as="p" style={{ margin: 0, opacity: 0.85 }}>
+              {message}
+            </Caption1>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+            <Button appearance="outline" size="small" onClick={copyDiagnostics}>
+              {copied ? "Copied!" : "Copy diagnostics"}
+            </Button>
+            <Button appearance="subtle" size="small" onClick={onDismiss}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (severity === "info") {
+    return (
+      <div
+        role="status"
+        style={{
+          position: "absolute",
+          top: 64,
+          right: 16,
+          zIndex: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          maxWidth: 320,
+          padding: "10px 12px",
+          borderRadius: 8,
+          background: chromeTheme.backgroundSolid,
+          border: `1px solid ${CHROME_BORDER}`,
+          boxShadow: CHROME_SHADOW,
+        }}
+      >
+        <Body1 as="p" style={{ margin: 0 }}>
+          {message}
+        </Body1>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button appearance="subtle" size="small" onClick={onDismiss}>
+            Dismiss
+          </Button>
+        </div>
       </div>
     );
   }

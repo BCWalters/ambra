@@ -13,8 +13,8 @@ const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epu
  * own `createNoteOnLeadingText` helper, but stops after picking a
  * highlight color (no note) — this suite only needs a plain highlight
  * to exist to export. */
-async function createLeadingHighlight(readerPage: Page, spanChars: number): Promise<void> {
-  await readerPage.evaluate((span) => {
+async function createLeadingHighlight(readerPage: Page, spanChars: number): Promise<string> {
+  const highlightedText = await readerPage.evaluate((span) => {
     const iframe = document.querySelector("iframe") as HTMLIFrameElement;
     const doc = iframe.contentDocument!;
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
@@ -34,10 +34,12 @@ async function createLeadingHighlight(readerPage: Page, spanChars: number): Prom
     selection.removeAllRanges();
     selection.addRange(range);
     doc.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    return range.toString();
   }, spanChars);
 
   await readerPage.getByRole("button", { name: "Yellow", exact: true }).click();
   await readerPage.waitForTimeout(300);
+  return highlightedText;
 }
 
 /**
@@ -45,10 +47,10 @@ async function createLeadingHighlight(readerPage: Page, spanChars: number): Prom
  * trip (issues #107/#108): a highlight and a bookmark created in one
  * "session", exported to a file, then imported back — confirming the
  * whole pipeline (CFI range join/split, spine-index resolution, live
- * text re-extraction) works against the real built extension, not just
- * the unit-tested pieces in isolation.
+ * text re-extraction, and duplicate detection) works against the real
+ * built extension, not just the unit-tested pieces in isolation.
  */
-test("exporting and re-importing annotations round-trips a highlight and a bookmark", async () => {
+test("exporting and re-importing annotations round-trips a highlight and a bookmark, re-extracting text and deduping repeat imports", async () => {
   const { context, readerPage } = await launchReader(LONG_CONTENT_EPUB, {
     viewport: { width: 900, height: 900 },
   });
@@ -58,7 +60,7 @@ test("exporting and re-importing annotations round-trips a highlight and a bookm
     // first "wakes" it before the very first toolbar click below.
     await readerPage.mouse.move(450, 20);
     await readerPage.waitForTimeout(150);
-    await createLeadingHighlight(readerPage, 40);
+    const highlightedText = await createLeadingHighlight(readerPage, 40);
     await readerPage.getByRole("button", { name: "Bookmark this page" }).click();
     await readerPage.waitForTimeout(300);
 
@@ -83,17 +85,87 @@ test("exporting and re-importing annotations round-trips a highlight and a bookm
       expect(annotation.target?.selector?.[0]).toMatchObject({ type: "FragmentSelector" });
     }
 
-    // Import the very same file back in — every entry should round-trip
-    // as a *new* highlight/bookmark (this reader doesn't dedupe on
-    // import), so the panel's counts should exactly double.
+    // Delete the originals so the upcoming import is the *only* source of
+    // truth for what gets recreated — isolates the text re-extraction
+    // check below from the highlight/bookmark that already had its text
+    // snapshotted at creation time.
+    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
+    await readerPage.getByRole("button", { name: /^Remove highlight:/ }).click();
+    await expect(readerPage.getByText(/No highlights yet/)).toBeVisible();
+    await readerPage.getByRole("tab", { name: /Bookmarks/ }).click();
+    await readerPage.getByRole("button", { name: /^Remove bookmark:/ }).click();
+    await expect(readerPage.getByText(/No bookmarks yet/)).toBeVisible();
+
     const fileInput = readerPage.locator('input[type="file"][accept*="json"]');
     await fileInput.setInputFiles(savePath);
     await readerPage.waitForTimeout(700);
 
     await readerPage.getByRole("tab", { name: /Highlights/ }).click();
-    await expect(readerPage.getByText(/Highlights \(2\)/)).toBeVisible();
+    await expect(readerPage.getByText(/Highlights \(1\)/)).toBeVisible();
+    // The imported highlight's preview text isn't carried in the export
+    // file itself (EPUB Annotations 1.0 only serializes the CFI range,
+    // not a content snapshot) — it must be re-extracted from the live
+    // document on import. This is the real regression check: before the
+    // fix, this re-extraction silently produced an empty string.
+    await expect(readerPage.getByText(highlightedText, { exact: false })).toBeVisible();
     await readerPage.getByRole("tab", { name: /Bookmarks/ }).click();
-    await expect(readerPage.getByText(/Bookmarks \(2\)/)).toBeVisible();
+    await expect(readerPage.getByText(/Bookmarks \(1\)/)).toBeVisible();
+
+    // Import the very same file again, on top of what it just created —
+    // every entry is now an exact-CFI duplicate, so the counts must stay
+    // put rather than double, and a quiet, non-error toast should say so
+    // (issue #115) rather than silently doing nothing.
+    await fileInput.setInputFiles(savePath);
+    await readerPage.waitForTimeout(700);
+
+    await expect(
+      readerPage.getByRole("status").filter({ hasText: "already have all of these annotations" }),
+    ).toBeVisible();
+    await expect(readerPage.getByText(/Bookmarks \(1\)/)).toBeVisible();
+    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
+    await expect(readerPage.getByText(/Highlights \(1\)/)).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+/**
+ * Issue #114: a file that isn't even a valid EPUB Annotations 1.0
+ * collection (garbage JSON, not a real annotations export at all) gets
+ * a weightier, illustrated, non-auto-dismissing toast rather than a
+ * quiet one that might time out unnoticed — the reader deliberately
+ * picked a file and deserves an explanation that stays up until
+ * they've seen it.
+ */
+test("importing a file that isn't a valid annotations export surfaces a weightier, non-auto-dismissing error", async () => {
+  const { context, readerPage } = await launchReader(LONG_CONTENT_EPUB, {
+    viewport: { width: 900, height: 900 },
+  });
+  try {
+    await readerPage.waitForTimeout(500);
+    await readerPage.mouse.move(450, 20);
+    await readerPage.waitForTimeout(150);
+    await readerPage.getByRole("button", { name: "Bookmarks and highlights" }).click();
+    await readerPage.waitForTimeout(300);
+
+    const fileInput = readerPage.locator('input[type="file"][accept*="json"]');
+    await fileInput.setInputFiles({
+      name: "not-annotations.json",
+      mimeType: "application/json",
+      buffer: Buffer.from("this is not valid JSON at all {{{"),
+    });
+    await readerPage.waitForTimeout(500);
+
+    const errorToast = readerPage.getByRole("alert").filter({ hasText: "valid annotations export" });
+    await expect(errorToast).toBeVisible();
+    // Still visible well past a "transient" toast's own auto-dismiss
+    // window (see `TRANSIENT_AUTO_DISMISS_MS`) — this one requires an
+    // explicit dismissal.
+    await readerPage.waitForTimeout(8500);
+    await expect(errorToast).toBeVisible();
+
+    await readerPage.getByRole("button", { name: "Dismiss" }).click();
+    await expect(errorToast).not.toBeVisible();
   } finally {
     await context.close();
   }

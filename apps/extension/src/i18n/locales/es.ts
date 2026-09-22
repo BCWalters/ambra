@@ -40,6 +40,7 @@ export const es: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Quedan {count} páginas en este capítulo",
   "pageFurniture.pageNumber": "Página {number}",
   "error.somethingWentWrongHeadline": "Oh caramba, algo salió mal.",
+  "error.actionFailedHeadline": "¡Vaya!",
   "annotations.panelAriaLabel": "Marcadores y resaltados",
   "annotations.pinPanel": "Fijar panel de marcadores y resaltados",
   "annotations.unpinPanel": "Dejar de fijar panel de marcadores y resaltados",
@@ -57,8 +58,13 @@ export const es: StringCatalog = {
   "annotations.notePlaceholder": "Añadir una nota…",
   "annotations.cancelNote": "Cancelar",
   "annotations.saveNote": "Guardar",
-  "annotations.notesTab": "Notas",
-  "annotations.noEmbeddedNotesYet": "Este libro no tiene notas del editor.",
+  "annotations.publisherNoteTag": "Nota del editor",
+  "annotations.importNotAnAnnotationsFile":
+    "No pudimos cargar las anotaciones de ese archivo. No parece ser una exportación de anotaciones válida.",
+  "annotations.importWrongBook":
+    "No pudimos cargar las anotaciones de ese archivo. Puede que sean de un libro diferente.",
+  "annotations.importAllDuplicates":
+    "Parece que ya tienes todas estas anotaciones — no hay nada nuevo que añadir.",
   "annotations.exportButton": "Exportar",
   "annotations.exportTooltip":
     "Exportar tus marcadores y resaltados a un archivo",

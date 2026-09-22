@@ -40,6 +40,7 @@ export const ja: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "この章残り{count}ページ",
   "pageFurniture.pageNumber": "{number}ページ",
   "error.somethingWentWrongHeadline": "とほほ、何か問題が発生しました。",
+  "error.actionFailedHeadline": "うわっ!",
   "annotations.panelAriaLabel": "ブックマークとハイライト",
   "annotations.pinPanel": "ブックマークとハイライトパネルを固定",
   "annotations.unpinPanel": "ブックマークとハイライトパネルの固定を解除",
@@ -55,8 +56,12 @@ export const ja: StringCatalog = {
   "annotations.notePlaceholder": "メモを追加…",
   "annotations.cancelNote": "キャンセル",
   "annotations.saveNote": "保存",
-  "annotations.notesTab": "メモ",
-  "annotations.noEmbeddedNotesYet": "この本には出版社のメモがありません。",
+  "annotations.publisherNoteTag": "出版社のメモ",
+  "annotations.importNotAnAnnotationsFile":
+    "そのファイルから注釈を読み込めませんでした。有効な注釈のエクスポートファイルではないようです。",
+  "annotations.importWrongBook": "そのファイルから注釈を読み込めませんでした。別の本のものかもしれません。",
+  "annotations.importAllDuplicates":
+    "これらの注釈はすべて既に登録されているようです — 新しく追加するものはありません。",
   "annotations.exportButton": "エクスポート",
   "annotations.exportTooltip": "ブックマークとハイライトをファイルにエクスポート",
   "annotations.importButton": "インポート",

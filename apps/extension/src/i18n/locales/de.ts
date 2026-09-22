@@ -40,6 +40,7 @@ export const de: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Noch {count} Seiten in diesem Kapitel",
   "pageFurniture.pageNumber": "Seite {number}",
   "error.somethingWentWrongHeadline": "Oh Quatsch, da ist etwas schiefgelaufen.",
+  "error.actionFailedHeadline": "Autsch!",
   "annotations.panelAriaLabel": "Lesezeichen und Hervorhebungen",
   "annotations.pinPanel": "Panel für Lesezeichen und Hervorhebungen anheften",
   "annotations.unpinPanel": "Panel für Lesezeichen und Hervorhebungen lösen",
@@ -57,9 +58,13 @@ export const de: StringCatalog = {
   "annotations.notePlaceholder": "Notiz hinzufügen…",
   "annotations.cancelNote": "Abbrechen",
   "annotations.saveNote": "Speichern",
-  "annotations.notesTab": "Notizen",
-  "annotations.noEmbeddedNotesYet":
-    "Dieses Buch enthält keine Verlagsnotizen.",
+  "annotations.publisherNoteTag": "Verlagsnotiz",
+  "annotations.importNotAnAnnotationsFile":
+    "Die Anmerkungen aus dieser Datei konnten nicht geladen werden. Das sieht nicht nach einer gültigen Anmerkungsdatei aus.",
+  "annotations.importWrongBook":
+    "Die Anmerkungen aus dieser Datei konnten nicht geladen werden. Möglicherweise stammen sie aus einem anderen Buch.",
+  "annotations.importAllDuplicates":
+    "Sieht so aus, als hättest du all diese Anmerkungen schon — nichts Neues hinzuzufügen.",
   "annotations.exportButton": "Exportieren",
   "annotations.exportTooltip":
     "Lesezeichen und Hervorhebungen in eine Datei exportieren",

@@ -40,6 +40,7 @@ export const it: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "Mancano {count} pagine in questo capitolo",
   "pageFurniture.pageNumber": "Pagina {number}",
   "error.somethingWentWrongHeadline": "Oh caspita, qualcosa è andato storto.",
+  "error.actionFailedHeadline": "Ops!",
   "annotations.panelAriaLabel": "Segnalibri ed evidenziazioni",
   "annotations.pinPanel": "Blocca pannello di segnalibri ed evidenziazioni",
   "annotations.unpinPanel": "Sblocca pannello di segnalibri ed evidenziazioni",
@@ -57,8 +58,13 @@ export const it: StringCatalog = {
   "annotations.notePlaceholder": "Aggiungi una nota…",
   "annotations.cancelNote": "Annulla",
   "annotations.saveNote": "Salva",
-  "annotations.notesTab": "Note",
-  "annotations.noEmbeddedNotesYet": "Questo libro non contiene note dell'editore.",
+  "annotations.publisherNoteTag": "Nota dell'editore",
+  "annotations.importNotAnAnnotationsFile":
+    "Non siamo riusciti a caricare le annotazioni da quel file. Non sembra un'esportazione di annotazioni valida.",
+  "annotations.importWrongBook":
+    "Non siamo riusciti a caricare le annotazioni da quel file. Potrebbero provenire da un libro diverso.",
+  "annotations.importAllDuplicates":
+    "Sembra che tu abbia già tutte queste annotazioni — niente di nuovo da aggiungere.",
   "annotations.exportButton": "Esporta",
   "annotations.exportTooltip":
     "Esporta i segnalibri e le evidenziazioni in un file",

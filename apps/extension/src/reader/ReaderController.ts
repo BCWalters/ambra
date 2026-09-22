@@ -1,5 +1,6 @@
 import {
   AccessibilityController,
+  AnnotationParseError,
   BookPaginationEstimator,
   ContentLoader,
   EpubCfi,
@@ -35,7 +36,12 @@ import type {
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
-import { buildAnnotationCollection, importAnnotations } from "../library/AnnotationInterop.js";
+import {
+  buildAnnotationCollection,
+  classifyImportOutcome,
+  classifyReadOnlyAnnotationKind,
+  importAnnotations,
+} from "../library/AnnotationInterop.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { describeStorageError } from "../StorageErrors.js";
 import { BookmarkManager } from "./BookmarkManager.js";
@@ -210,7 +216,7 @@ export class ReaderController {
    * in-flight open settles instead. */
   private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
-  private errorSeverity: "blocking" | "transient" | undefined;
+  private errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
   /** Set by `open` when `NavigationDocument.load` failed (see its doc
    * comment) — surfaced by `mount` once the initial chapter has
    * actually finished loading, since `openSpineItem` itself
@@ -798,8 +804,9 @@ export class ReaderController {
         continue;
       }
       let cfi: string;
+      const isRange = selector.value.includes(",");
       try {
-        cfi = selector.value.includes(",") ? EpubCfi.parseRange(selector.value).start.toString() : selector.value;
+        cfi = isRange ? EpubCfi.parseRange(selector.value).start.toString() : selector.value;
         EpubCfi.parse(cfi);
       } catch {
         continue;
@@ -810,6 +817,7 @@ export class ReaderController {
         cfi,
         label: note && note.length > 0 ? note : this.chapterLabel(spineIndex),
         note,
+        kind: classifyReadOnlyAnnotationKind(annotation.motivation, isRange),
       });
     }
     return views;
@@ -836,22 +844,52 @@ export class ReaderController {
 
   /** Imports a previously-exported (or third-party) annotation file
    * (issue #108) into this book's own highlights/bookmarks, refreshing
-   * both caches and the on-screen highlight paint once done. Surfaces a
-   * malformed file the same way any other failed load does — see
-   * `reportTransientError`. */
+   * both caches and the on-screen highlight paint once done. A file
+   * that fails to even parse, and a file that parses fine but produces
+   * nothing usable (most likely: it's from a different book), both get
+   * the weightier `reportImportFailure` treatment rather than a quiet
+   * toast that might time out unnoticed — see issue #114. A file that
+   * resolves fine but turns out to be entirely already-known gets a
+   * lighter, non-error acknowledgement — see issue #115. */
   public async importAnnotationsFile(file: File): Promise<AnnotationImportResult | undefined> {
     try {
       const text = await file.text();
-      const annotations = parseAnnotationCollection(text);
+      let annotations: EpubAnnotation[];
+      try {
+        annotations = parseAnnotationCollection(text);
+      } catch (err) {
+        this.reportImportFailure(
+          err instanceof AnnotationParseError
+            ? this.translate("annotations.importNotAnAnnotationsFile")
+            : describeStorageError(err, "import", "that annotation file"),
+        );
+        return undefined;
+      }
       const result = await importAnnotations(this.pkg, this.locatorResolver, this.library, this.bookId, annotations);
       this.highlights.load(await this.library.listHighlightsForBook(this.bookId));
       await this.bookmarks.load();
       this.highlightInteraction.applyHighlightsToCurrentHost();
+      this.reportImportOutcome(result);
       this.notify();
       return result;
     } catch (err) {
-      this.reportTransientError(err, "import", "that annotation file");
+      this.reportImportFailure(describeStorageError(err, "import", "that annotation file"));
       return undefined;
+    }
+  }
+
+  /** Decides whether a *successfully parsed and processed* import needs
+   * to say anything at all — see `classifyImportOutcome`. */
+  private reportImportOutcome(result: AnnotationImportResult): void {
+    switch (classifyImportOutcome(result)) {
+      case "imported":
+        return;
+      case "allDuplicates":
+        this.reportInfo(this.translate("annotations.importAllDuplicates"));
+        return;
+      case "wrongBook":
+        this.reportImportFailure(this.translate("annotations.importWrongBook"));
+        return;
     }
   }
 
@@ -1689,6 +1727,32 @@ export class ReaderController {
   private reportTransientError(err: unknown, action: string, subject: string): void {
     this.error = describeStorageError(err, action, subject);
     this.errorSeverity = "transient";
+    this.notify();
+  }
+
+  /** Surfaces a "weightier" toast than `reportTransientError` — same
+   * corner placement, but includes `FriendlyError`'s illustration and,
+   * critically, does *not* auto-dismiss (see issue #114). For a
+   * reader-initiated action (so far: annotation import) that produced
+   * nothing usable at all — not just "one save failed in the
+   * background" — silently timing out on its own reads as broken, not
+   * just unlucky; the reader deliberately picked a file and deserves an
+   * explanation that stays up until they've seen it. */
+  private reportImportFailure(message: string): void {
+    this.error = message;
+    this.errorSeverity = "actionFailed";
+    this.notify();
+  }
+
+  /** Surfaces a quiet, non-error acknowledgement — same placement/
+   * timing as `reportTransientError`'s toast, but without its "that
+   * didn't work" framing, since nothing actually failed (see issue
+   * #115: importing a file whose annotations are all already present
+   * shouldn't look like an error, but silently doing nothing is just as
+   * confusing as it is for a real failure). */
+  private reportInfo(message: string): void {
+    this.error = message;
+    this.errorSeverity = "info";
     this.notify();
   }
 

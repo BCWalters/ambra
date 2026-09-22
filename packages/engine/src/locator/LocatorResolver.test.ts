@@ -87,6 +87,43 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     );
   });
 
+  it("resolvePair resolves both locators against the same parsed document — unlike two separate resolve() calls, which reparse independently (see the reload test above)", async () => {
+    const doc = await contentLoader.loadSpineDocument(0);
+    const p = doc.document.querySelector("p")!;
+    const textNode = p.firstChild!;
+    const startLocator = resolver.generate(0, textNode, 0);
+    const endLocator = resolver.generate(0, textNode, 4);
+
+    const { start, end, document } = await resolver.resolvePair(startLocator, endLocator);
+
+    // The real regression this guards against: two independently-
+    // `resolve()`d nodes belong to different parses (per the reload test
+    // above), so a Range spanning them would silently collapse instead of
+    // throwing. Asserted directly on node/offset identity rather than via
+    // a Range, since happy-dom's Range implementation doesn't reliably
+    // support this test package's DOMParser-produced documents (a test
+    // -environment limitation, not a product bug — see the e2e coverage
+    // in annotation-export-import.spec.ts for confirmation against a
+    // real browser).
+    expect(start.node).toBe(end.node);
+    expect(start.node.ownerDocument).toBe(document);
+    expect(start.node.textContent!.slice(start.characterOffset!, end.characterOffset!)).toBe(
+      "Hell",
+    );
+  });
+
+
+  it("resolvePair throws when the two locators resolve to different spine items", async () => {
+    const doc = await contentLoader.loadSpineDocument(0);
+    const h1 = doc.document.querySelector("h1")!;
+    const sameSpineLocator = resolver.generate(0, h1);
+    const outOfRangeLocator = new Locator("epubcfi(/6/4!/4/2/1:0)"); // no spine item at [6,4] in minimal.epub
+
+    await expect(resolver.resolvePair(sameSpineLocator, outOfRangeLocator)).rejects.toThrow(
+      LocatorResolutionError,
+    );
+  });
+
   it("resolve throws LocatorResolutionError for a syntactically invalid CFI", async () => {
     await expect(resolver.resolve(new Locator("not-a-cfi"))).rejects.toThrow(
       LocatorResolutionError,

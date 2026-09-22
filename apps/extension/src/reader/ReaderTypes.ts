@@ -147,9 +147,16 @@ export interface ReaderSnapshot {
   pageTurnAnimationStyle: PageTurnAnimationStyle;
   isLoading: boolean;
   error: string | undefined;
-  /** "blocking" (nothing readable on screen) vs. "transient" (a
-   * navigation failed but the previous content is still shown). */
-  errorSeverity: "blocking" | "transient" | undefined;
+  /** "blocking" (nothing readable on screen), "transient" (a navigation
+   * failed but the previous content is still shown, auto-dismisses),
+   * "actionFailed" (a reader-initiated action, e.g. an annotation
+   * import, produced nothing usable — weightier than "transient" and
+   * doesn't auto-dismiss, since silently timing out on a deliberate
+   * action reads as broken — see issue #114), or "info" (a non-error
+   * acknowledgement, e.g. "you already had all of these annotations" —
+   * see issue #115 — same quiet placement/timing as "transient" but
+   * without its "that didn't work" framing, since nothing failed). */
+  errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
   /** Text for the shell's `aria-live` region. */
   announcement: string | undefined;
   /** Increments on every announcement so `LiveRegion` re-announces even
@@ -190,8 +197,11 @@ export interface NoteMarkerState {
 }
 
 /** One entry from a publisher-embedded, read-only annotation collection
- * (issue #109) — display-ready for the Annotations panel's own "Notes"
- * tab. Unlike `Bookmark`/`Highlight`, never persisted to
+ * (issue #109) — merged directly into the Bookmarks/Highlights panel's
+ * own two tabs (issue #116: a separate, rarely-populated third "Notes"
+ * tab didn't fit the panel's fixed width alongside the other two, and
+ * having a whole extra tab for what's usually zero or one item wasn't
+ * worth it anyway). Unlike `Bookmark`/`Highlight`, never persisted to
  * `LibraryDatabase`: these live entirely in the EPUB itself and are
  * simply re-read (via `ReaderController.listEmbeddedAnnotations`) every
  * time the book opens. */
@@ -202,6 +212,8 @@ export interface ReadOnlyAnnotationView {
   readonly cfi: string;
   readonly label: string;
   readonly note: string | undefined;
+  /** Which tab this shows up in — see `classifyReadOnlyAnnotationKind`. */
+  readonly kind: "highlight" | "bookmark";
 }
 
 export interface ImageViewerState {
