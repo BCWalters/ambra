@@ -42,6 +42,7 @@ export const ru: StringCatalog = {
   "pageFurniture.pageNumber": "Страница {number}",
   "error.somethingWentWrongHeadline": "Ёлки-палки, что-то пошло не так.",
   "error.actionFailedHeadline": "Ой!",
+  "error.detailsPrefix": "Подробности ошибки:",
   "annotations.panelAriaLabel": "Закладки и выделения",
   "annotations.pinPanel": "Закрепить панель закладок и выделений",
   "annotations.unpinPanel": "Открепить панель закладок и выделений",
@@ -66,6 +67,8 @@ export const ru: StringCatalog = {
     "Не удалось загрузить аннотации из этого файла. Возможно, они из другой книги.",
   "annotations.importAllDuplicates":
     "Похоже, у вас уже есть все эти аннотации — добавлять нечего.",
+  "annotations.importGenericFailure":
+    "Импортированные аннотации не соответствуют этой книге. Вы уверены, что выбрали правильный файл?",
   "annotations.exportButton": "Экспорт",
   "annotations.exportTooltip":
     "Экспортировать закладки и выделения в файл",

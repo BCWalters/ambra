@@ -42,6 +42,7 @@ export const ja: StringCatalog = {
   "pageFurniture.pageNumber": "{number}ページ",
   "error.somethingWentWrongHeadline": "とほほ、何か問題が発生しました。",
   "error.actionFailedHeadline": "うわっ!",
+  "error.detailsPrefix": "エラーの詳細:",
   "annotations.panelAriaLabel": "ブックマークとハイライト",
   "annotations.pinPanel": "ブックマークとハイライトパネルを固定",
   "annotations.unpinPanel": "ブックマークとハイライトパネルの固定を解除",
@@ -63,6 +64,8 @@ export const ja: StringCatalog = {
   "annotations.importWrongBook": "そのファイルから注釈を読み込めませんでした。別の本のものかもしれません。",
   "annotations.importAllDuplicates":
     "これらの注釈はすべて既に登録されているようです — 新しく追加するものはありません。",
+  "annotations.importGenericFailure":
+    "インポートした注釈がこの本と一致しません。正しいファイルを選びましたか?",
   "annotations.exportButton": "エクスポート",
   "annotations.exportTooltip": "ブックマークとハイライトをファイルにエクスポート",
   "annotations.importButton": "インポート",

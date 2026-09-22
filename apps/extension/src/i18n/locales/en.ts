@@ -119,6 +119,10 @@ export interface StringCatalog {
    * something with the same fun spirit, not a literal translation of
    * "Zoinks" (which means nothing in most languages). */
   "error.actionFailedHeadline": string;
+  /** Prefix before a de-emphasized technical detail line shown under an
+   * "actionFailed" error's main message — see issue #119. e.g. "Error
+   * details: No element found at CFI step 2 under <p>." */
+  "error.detailsPrefix": string;
   "annotations.panelAriaLabel": string;
   "annotations.pinPanel": string;
   "annotations.unpinPanel": string;
@@ -149,6 +153,12 @@ export interface StringCatalog {
    * file was already present — not an error, just worth saying so
    * rather than silently doing nothing. */
   "annotations.importAllDuplicates": string;
+  /** Issue #119: fallback friendly message for an annotation-import
+   * failure that isn't specifically classified above (e.g. malformed
+   * JSON, or a per-annotation resolution error that still made it out
+   * of `importAnnotations`) — the raw exception is shown separately as
+   * a smaller detail line, never as this primary text. */
+  "annotations.importGenericFailure": string;
   "annotations.exportButton": string;
   "annotations.exportTooltip": string;
   "annotations.importButton": string;
@@ -320,6 +330,7 @@ export const en: StringCatalog = {
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh snickerdoodles, something went wrong.",
   "error.actionFailedHeadline": "Zoinks!",
+  "error.detailsPrefix": "Error details:",
   "annotations.panelAriaLabel": "Bookmarks and highlights",
   "annotations.pinPanel": "Pin bookmarks and highlights panel",
   "annotations.unpinPanel": "Unpin bookmarks and highlights panel",
@@ -339,6 +350,7 @@ export const en: StringCatalog = {
   "annotations.importNotAnAnnotationsFile": "We couldn't load the annotations from that file. It doesn't look like a valid annotations export.",
   "annotations.importWrongBook": "We couldn't load the annotations from that file. It looks like they might be from a different book.",
   "annotations.importAllDuplicates": "Looks like you already have all of these annotations — nothing new to add.",
+  "annotations.importGenericFailure": "The annotations you imported don't line up with this book. Are you sure you picked the right file?",
   "annotations.exportButton": "Export",
   "annotations.exportTooltip": "Export your bookmarks and highlights to a file",
   "annotations.importButton": "Import",

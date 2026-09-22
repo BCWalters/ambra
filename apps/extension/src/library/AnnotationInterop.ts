@@ -2,6 +2,7 @@ import {
   EpubCfi,
   EpubCfiParseError,
   Locator,
+  LocatorResolutionError,
   LocatorResolver,
   PackageDocument,
   EPUB_CFI_CONFORMS_TO,
@@ -380,7 +381,12 @@ export async function importAnnotations(
         result.importedBookmarks++;
       }
     } catch (err) {
-      if (err instanceof EpubCfiParseError) {
+      // A well-formed CFI that simply doesn't resolve against this
+      // book's actual content (issue #119 — most likely the annotation
+      // is from a different book, or a different edition of this one)
+      // is treated the same as an unparseable one: skip just this one
+      // annotation rather than aborting the entire import.
+      if (err instanceof EpubCfiParseError || err instanceof LocatorResolutionError) {
         result.skipped++;
         continue;
       }

@@ -42,6 +42,7 @@ export const ko: StringCatalog = {
   "pageFurniture.pageNumber": "{number}페이지",
   "error.somethingWentWrongHeadline": "아이고, 문제가 발생했어요.",
   "error.actionFailedHeadline": "이런!",
+  "error.detailsPrefix": "오류 세부정보:",
   "annotations.panelAriaLabel": "책갈피 및 하이라이트",
   "annotations.pinPanel": "책갈피 및 하이라이트 패널 고정",
   "annotations.unpinPanel": "책갈피 및 하이라이트 패널 고정 해제",
@@ -61,6 +62,8 @@ export const ko: StringCatalog = {
   "annotations.importNotAnAnnotationsFile": "해당 파일에서 주석을 불러올 수 없습니다. 올바른 주석 내보내기 파일이 아닌 것 같습니다.",
   "annotations.importWrongBook": "해당 파일에서 주석을 불러올 수 없습니다. 다른 책의 주석일 수도 있습니다.",
   "annotations.importAllDuplicates": "이 주석들은 이미 모두 가지고 계신 것 같아요 — 새로 추가할 내용이 없습니다.",
+  "annotations.importGenericFailure":
+    "가져온 주석이 이 책과 일치하지 않습니다. 올바른 파일을 선택하셨나요?",
   "annotations.exportButton": "내보내기",
   "annotations.exportTooltip": "책갈피와 하이라이트를 파일로 내보내기",
   "annotations.importButton": "가져오기",

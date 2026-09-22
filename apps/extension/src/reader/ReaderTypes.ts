@@ -157,6 +157,9 @@ export interface ReaderSnapshot {
    * see issue #115 — same quiet placement/timing as "transient" but
    * without its "that didn't work" framing, since nothing failed). */
   errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
+  /** A smaller, de-emphasized technical detail shown alongside `error`
+   * for "actionFailed" errors — see issue #119. */
+  errorDetail: string | undefined;
   /** Text for the shell's `aria-live` region. */
   announcement: string | undefined;
   /** Increments on every announcement so `LiveRegion` re-announces even

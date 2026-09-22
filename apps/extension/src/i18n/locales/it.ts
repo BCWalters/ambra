@@ -42,6 +42,7 @@ export const it: StringCatalog = {
   "pageFurniture.pageNumber": "Pagina {number}",
   "error.somethingWentWrongHeadline": "Oh caspita, qualcosa è andato storto.",
   "error.actionFailedHeadline": "Ops!",
+  "error.detailsPrefix": "Dettagli errore:",
   "annotations.panelAriaLabel": "Segnalibri ed evidenziazioni",
   "annotations.pinPanel": "Blocca pannello di segnalibri ed evidenziazioni",
   "annotations.unpinPanel": "Sblocca pannello di segnalibri ed evidenziazioni",
@@ -66,6 +67,8 @@ export const it: StringCatalog = {
     "Non siamo riusciti a caricare le annotazioni da quel file. Potrebbero provenire da un libro diverso.",
   "annotations.importAllDuplicates":
     "Sembra che tu abbia già tutte queste annotazioni — niente di nuovo da aggiungere.",
+  "annotations.importGenericFailure":
+    "Le annotazioni importate non corrispondono a questo libro. Sei sicuro di aver scelto il file giusto?",
   "annotations.exportButton": "Esporta",
   "annotations.exportTooltip":
     "Esporta i segnalibri e le evidenziazioni in un file",

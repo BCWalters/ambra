@@ -42,6 +42,7 @@ export const fr: StringCatalog = {
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh zut, quelque chose s'est mal passé.",
   "error.actionFailedHeadline": "Aïe !",
+  "error.detailsPrefix": "Détails de l'erreur :",
   "annotations.panelAriaLabel": "Signets et surlignages",
   "annotations.pinPanel": "Épingler le panneau des signets et surlignages",
   "annotations.unpinPanel": "Détacher le panneau des signets et surlignages",
@@ -66,6 +67,8 @@ export const fr: StringCatalog = {
     "Nous n'avons pas pu charger les annotations de ce fichier. Elles proviennent peut-être d'un autre livre.",
   "annotations.importAllDuplicates":
     "On dirait que vous avez déjà toutes ces annotations — rien de nouveau à ajouter.",
+  "annotations.importGenericFailure":
+    "Les annotations importées ne correspondent pas à ce livre. Êtes-vous sûr d'avoir choisi le bon fichier ?",
   "annotations.exportButton": "Exporter",
   "annotations.exportTooltip":
     "Exporter vos signets et surlignages dans un fichier",

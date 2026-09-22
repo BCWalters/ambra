@@ -16,6 +16,12 @@ const TRANSIENT_AUTO_DISMISS_MS = 8000;
 
 export interface FriendlyErrorProps {
   message: string;
+  /** A smaller, de-emphasized technical detail (e.g. the raw underlying
+   * exception message) shown below `message` for "actionFailed" errors
+   * only — see issue #119: a friendly, actionable sentence should
+   * always be the primary text a reader sees, with anything genuinely
+   * technical demoted rather than hidden entirely. */
+  detail?: string;
   /** "blocking" shows the full illustrated card (nothing else is on
    * screen to read); "transient" shows a small, quieter toast in the
    * corner, since the reader still has their previous page in front of
@@ -46,6 +52,7 @@ export interface FriendlyErrorProps {
  */
 export const FriendlyError: FC<FriendlyErrorProps> = ({
   message,
+  detail,
   severity,
   onDismiss,
   getDiagnosticsText,
@@ -156,6 +163,11 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
             <Caption1 as="p" style={{ margin: 0, opacity: 0.85 }}>
               {message}
             </Caption1>
+            {detail && (
+              <Caption1 as="p" style={{ margin: 0, opacity: 0.55, fontSize: 11 }}>
+                {t("error.detailsPrefix")} {detail}
+              </Caption1>
+            )}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
             <Button appearance="outline" size="small" onClick={copyDiagnostics}>

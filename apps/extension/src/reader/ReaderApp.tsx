@@ -668,6 +668,7 @@ const ReaderAppInner: FC = () => {
             {snapshot.error && snapshot.errorSeverity && (
               <FriendlyError
                 message={snapshot.error}
+                detail={snapshot.errorDetail}
                 severity={snapshot.errorSeverity}
                 onDismiss={dismissError}
                 getDiagnosticsText={getDiagnosticsText}

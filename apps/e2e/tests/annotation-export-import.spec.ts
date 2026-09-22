@@ -170,3 +170,102 @@ test("importing a file that isn't a valid annotations export surfaces a weightie
     await context.close();
   }
 });
+
+/**
+ * Issue #119: a well-formed EPUB Annotations 1.0 file whose CFI(s)
+ * don't actually resolve against this book's content (most likely:
+ * exported from a different book, or a different edition) used to
+ * throw a `LocatorResolutionError` straight out of `importAnnotations`,
+ * which aborted the *entire* import and surfaced the raw technical
+ * message ("No element found at CFI step...") as the toast's primary
+ * text. Two fixes are exercised here: a batch with only unresolvable
+ * annotations is treated the same as "nothing usable in this file" —
+ * the existing friendly `importWrongBook` message, never the raw
+ * exception text; and a batch with a mix of resolvable/unresolvable
+ * annotations silently imports what it can rather than losing
+ * everything to one bad entry.
+ */
+test("importing annotations that don't resolve against this book's content shows a friendly message, and a partially-bad file still imports what it can", async () => {
+  const { context, readerPage } = await launchReader(LONG_CONTENT_EPUB, {
+    viewport: { width: 900, height: 900 },
+  });
+  try {
+    await readerPage.waitForTimeout(500);
+    await readerPage.mouse.move(450, 20);
+    await readerPage.waitForTimeout(150);
+    const highlightedText = await createLeadingHighlight(readerPage, 40);
+
+    await readerPage.getByRole("button", { name: "Bookmarks and highlights" }).click();
+    await readerPage.waitForTimeout(300);
+
+    const downloadPromise = readerPage.waitForEvent("download");
+    await readerPage.getByRole("button", { name: "Export" }).click();
+    const download = await downloadPromise;
+    const savePath = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "ambra-annotations-")), "export.json");
+    await download.saveAs(savePath);
+    const exportedText = await fs.readFile(savePath, "utf-8");
+    const exported = JSON.parse(exportedText) as Array<{
+      target: { source: string; selector: Array<{ type: string; value: string }> };
+    }>;
+    const goodHighlight = exported.find((entry) => entry.target.selector[0].value.includes(","))!;
+
+    // A structurally-valid CFI (same source, resolvable spine item)
+    // whose content-steps point at a node that doesn't exist — the
+    // shape a genuinely different book's export would have.
+    const brokenSelector = goodHighlight.target.selector[0].value.replace(/!\/(\d+)/, "!/9999");
+    expect(brokenSelector).not.toBe(goodHighlight.target.selector[0].value);
+
+    // Clear the existing highlight so re-importing the good CFI is
+    // unambiguous.
+    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
+    await readerPage.getByRole("button", { name: /^Remove highlight:/ }).click();
+    await expect(readerPage.getByText(/No highlights yet/)).toBeVisible();
+
+    const fileInput = readerPage.locator('input[type="file"][accept*="json"]');
+
+    // First: a file with only unresolvable annotations.
+    await fileInput.setInputFiles({
+      name: "wrong-book.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify([
+          {
+            ...goodHighlight,
+            id: "urn:uuid:broken-only",
+            target: { ...goodHighlight.target, selector: [{ type: "FragmentSelector", value: brokenSelector }] },
+          },
+        ]),
+      ),
+    });
+    await readerPage.waitForTimeout(700);
+
+    const wrongBookToast = readerPage.getByRole("alert").filter({ hasText: "different book" });
+    await expect(wrongBookToast).toBeVisible();
+    await expect(readerPage.getByText(/No element found/)).toHaveCount(0);
+    await expect(readerPage.getByText(/Highlights \(0\)/).or(readerPage.getByText(/No highlights yet/))).toBeVisible();
+    await readerPage.getByRole("button", { name: "Dismiss" }).click();
+
+    // Second: a mix of one good, one broken — the good one should
+    // still import silently, with no error toast at all.
+    await fileInput.setInputFiles({
+      name: "mixed.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify([
+          goodHighlight,
+          {
+            ...goodHighlight,
+            id: "urn:uuid:broken-mixed",
+            target: { ...goodHighlight.target, selector: [{ type: "FragmentSelector", value: brokenSelector }] },
+          },
+        ]),
+      ),
+    });
+    await readerPage.waitForTimeout(700);
+
+    await expect(readerPage.getByText(highlightedText, { exact: false })).toBeVisible();
+    await expect(readerPage.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});

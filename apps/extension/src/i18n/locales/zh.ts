@@ -42,6 +42,7 @@ export const zh: StringCatalog = {
   "pageFurniture.pageNumber": "第 {number} 页",
   "error.somethingWentWrongHeadline": "哎呀，出了点问题。",
   "error.actionFailedHeadline": "糟糕！",
+  "error.detailsPrefix": "错误详情：",
   "annotations.panelAriaLabel": "书签和高亮",
   "annotations.pinPanel": "固定书签和高亮面板",
   "annotations.unpinPanel": "取消固定书签和高亮面板",
@@ -61,6 +62,8 @@ export const zh: StringCatalog = {
   "annotations.importNotAnAnnotationsFile": "无法从该文件加载注释。它似乎不是有效的注释导出文件。",
   "annotations.importWrongBook": "无法从该文件加载注释。它们可能来自另一本书。",
   "annotations.importAllDuplicates": "看起来您已经拥有所有这些注释了 — 没有新内容可添加。",
+  "annotations.importGenericFailure":
+    "导入的注释与这本书不匹配。您确定选择了正确的文件吗？",
   "annotations.exportButton": "导出",
   "annotations.exportTooltip": "将书签和高亮导出到文件",
   "annotations.importButton": "导入",

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   PackageDocument,
   Locator,
+  LocatorResolutionError,
   type LocatorResolver,
   type ResolvedLocator,
 } from "@ambra/engine";
@@ -313,6 +314,38 @@ describe("importAnnotations", () => {
       duplicateBookmarks: 0,
       skipped: 1,
     });
+  });
+
+  it("skips (rather than aborting the whole import) an annotation whose CFI is well-formed but doesn't resolve against this book's actual content — issue #119", async () => {
+    const pkg = makePackage();
+    const { library, addedHighlights } = makeLibrary();
+    const resolver = {
+      resolvePair: vi.fn().mockRejectedValue(
+        new LocatorResolutionError("No element found at CFI step 2 under <p>."),
+      ),
+    } as unknown as LocatorResolver;
+
+    const result = await importAnnotations(pkg, resolver, library, "book-1", [
+      {
+        id: "urn:uuid:5",
+        type: "Annotation",
+        motivation: "highlighting",
+        created: "2024-01-01T00:00:00.000Z",
+        target: {
+          source: "OEBPS/chapter1.xhtml",
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+        },
+      },
+    ]);
+
+    expect(result).toEqual({
+      importedHighlights: 0,
+      importedBookmarks: 0,
+      duplicateHighlights: 0,
+      duplicateBookmarks: 0,
+      skipped: 1,
+    });
+    expect(addedHighlights).toEqual([]);
   });
 
   it("falls back to the CFI's own package-steps when the source href doesn't match", async () => {

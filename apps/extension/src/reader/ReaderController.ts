@@ -217,6 +217,11 @@ export class ReaderController {
   private pendingResize: { width: number; height: number } | undefined;
   private error: string | undefined;
   private errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
+  /** A smaller, de-emphasized technical detail shown alongside `error`
+   * for "actionFailed" errors — e.g. the raw underlying exception
+   * message, for anyone who wants it, without it being the primary
+   * text the reader reads first (issue #119). */
+  private errorDetail: string | undefined;
   /** Set by `open` when `NavigationDocument.load` failed (see its doc
    * comment) — surfaced by `mount` once the initial chapter has
    * actually finished loading, since `openSpineItem` itself
@@ -580,6 +585,7 @@ export class ReaderController {
         isLoading: this.isLoading,
         error: this.error,
         errorSeverity: this.errorSeverity,
+        errorDetail: this.errorDetail,
         announcement: this.announcement,
         announcementId: this.announcementId,
         contentPointerActivityId: this.contentPointerActivityId,
@@ -637,6 +643,7 @@ export class ReaderController {
       this.pendingNavigationLoadError = undefined;
       this.error = `This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`;
       this.errorSeverity = "transient";
+      this.errorDetail = undefined;
       this.notify();
     }
   }
@@ -850,7 +857,11 @@ export class ReaderController {
    * the weightier `reportImportFailure` treatment rather than a quiet
    * toast that might time out unnoticed — see issue #114. A file that
    * resolves fine but turns out to be entirely already-known gets a
-   * lighter, non-error acknowledgement — see issue #115. */
+   * lighter, non-error acknowledgement — see issue #115. Any other
+   * unexpected failure (malformed JSON, a resolution error that slips
+   * past `importAnnotations`'s own per-annotation handling) gets a
+   * friendly primary message with the raw exception demoted to a
+   * `detail` line — see issue #119. */
   public async importAnnotationsFile(file: File): Promise<AnnotationImportResult | undefined> {
     try {
       const text = await file.text();
@@ -858,11 +869,11 @@ export class ReaderController {
       try {
         annotations = parseAnnotationCollection(text);
       } catch (err) {
-        this.reportImportFailure(
-          err instanceof AnnotationParseError
-            ? this.translate("annotations.importNotAnAnnotationsFile")
-            : describeStorageError(err, "import", "that annotation file"),
-        );
+        if (err instanceof AnnotationParseError) {
+          this.reportImportFailure(this.translate("annotations.importNotAnAnnotationsFile"));
+        } else {
+          this.reportGenericImportFailure(err);
+        }
         return undefined;
       }
       const result = await importAnnotations(this.pkg, this.locatorResolver, this.library, this.bookId, annotations);
@@ -873,7 +884,7 @@ export class ReaderController {
       this.notify();
       return result;
     } catch (err) {
-      this.reportImportFailure(describeStorageError(err, "import", "that annotation file"));
+      this.reportGenericImportFailure(err);
       return undefined;
     }
   }
@@ -1712,6 +1723,7 @@ export class ReaderController {
   public dismissError(): void {
     this.error = undefined;
     this.errorSeverity = undefined;
+    this.errorDetail = undefined;
     this.notify();
   }
 
@@ -1727,6 +1739,7 @@ export class ReaderController {
   private reportTransientError(err: unknown, action: string, subject: string): void {
     this.error = describeStorageError(err, action, subject);
     this.errorSeverity = "transient";
+    this.errorDetail = undefined;
     this.notify();
   }
 
@@ -1737,11 +1750,33 @@ export class ReaderController {
    * nothing usable at all — not just "one save failed in the
    * background" — silently timing out on its own reads as broken, not
    * just unlucky; the reader deliberately picked a file and deserves an
-   * explanation that stays up until they've seen it. */
-  private reportImportFailure(message: string): void {
+   * explanation that stays up until they've seen it. `detail` is an
+   * optional, smaller/de-emphasized technical string (e.g. the raw
+   * underlying exception message) shown alongside `message` rather than
+   * in place of it — see issue #119: a friendly, actionable sentence
+   * should always be the primary text; a raw error string never should. */
+  private reportImportFailure(message: string, detail?: string): void {
     this.error = message;
     this.errorSeverity = "actionFailed";
+    this.errorDetail = detail;
     this.notify();
+  }
+
+  /** Falls back to a generic "these don't line up with this book"
+   * message (issue #119's suggested wording) for an annotation-import
+   * failure that isn't one of the specifically-classified cases above —
+   * keeps the raw exception message available as `detail` rather than
+   * showing it as the primary text. A storage-quota failure already has
+   * its own specific, friendly message with nothing further to add. */
+  private reportGenericImportFailure(err: unknown): void {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      this.reportImportFailure(describeStorageError(err, "import", "that annotation file"));
+      return;
+    }
+    this.reportImportFailure(
+      this.translate("annotations.importGenericFailure"),
+      describeStorageError(err, "import", "that annotation file"),
+    );
   }
 
   /** Surfaces a quiet, non-error acknowledgement — same placement/
@@ -1753,6 +1788,7 @@ export class ReaderController {
   private reportInfo(message: string): void {
     this.error = message;
     this.errorSeverity = "info";
+    this.errorDetail = undefined;
     this.notify();
   }
 
@@ -3564,6 +3600,7 @@ export class ReaderController {
 
     this.error = undefined;
     this.errorSeverity = undefined;
+    this.errorDetail = undefined;
     this.isLoadInFlight = true;
     // Every return path below must check this token before mutating
     // shared state.
@@ -3820,6 +3857,7 @@ export class ReaderController {
         // A failed replacement leaves the previous host visible; only
         // the very first load can leave the reader with nothing shown.
         this.errorSeverity = this.host ? "transient" : "blocking";
+        this.errorDetail = undefined;
         this.diagnostics.record(
           `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message} severity=${this.errorSeverity}`,
         );
