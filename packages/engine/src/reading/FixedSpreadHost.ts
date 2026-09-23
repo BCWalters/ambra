@@ -166,15 +166,9 @@ export class FixedSpreadHost {
     spread: FixedSpread,
     packageViewport: ViewportSize | undefined,
   ): Promise<void> {
+    this.disposeChildren();
     this.currentSpread = spread;
     this.containerEl.replaceChildren();
-    this.leftHost = undefined;
-    this.rightHost = undefined;
-    this.singleHost = undefined;
-    this.leftWrapperEl = undefined;
-    this.rightWrapperEl = undefined;
-    this.leftNaturalSize = undefined;
-    this.rightNaturalSize = undefined;
 
     if (spread.kind === "single") {
       const host = new FixedContentHost(this.width, this.height, this.ownerDocument);
@@ -294,10 +288,22 @@ export class FixedSpreadHost {
   }
 
   public dispose(): void {
+    this.disposeChildren();
+    this.containerEl.remove();
+  }
+
+  private disposeChildren(): void {
     this.singleHost?.dispose();
     this.leftHost?.dispose();
     this.rightHost?.dispose();
-    this.containerEl.remove();
+    this.singleHost = undefined;
+    this.leftHost = undefined;
+    this.rightHost = undefined;
+    this.leftWrapperEl = undefined;
+    this.rightWrapperEl = undefined;
+    this.leftNaturalSize = undefined;
+    this.rightNaturalSize = undefined;
+    this.currentSpread = undefined;
   }
 
   /** A rough, generic half-and-half split — used only as `open`'s

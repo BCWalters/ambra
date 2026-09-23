@@ -8,6 +8,13 @@ export class RenderingSurfaceError extends Error {
   }
 }
 
+export class RenderingSurfaceCancelledError extends RenderingSurfaceError {
+  public constructor(message: string) {
+    super(message);
+    this.name = "RenderingSurfaceCancelledError";
+  }
+}
+
 const LOAD_TIMEOUT_MS = 10_000;
 
 /**
@@ -44,6 +51,8 @@ const LOAD_TIMEOUT_MS = 10_000;
 export class SandboxedContentHost {
   private readonly iframeEl: HTMLIFrameElement;
   private currentContentUrl: string | undefined;
+  private cancelPendingLoad: ((message: string) => void) | undefined;
+  private disposed = false;
 
   public constructor(ownerDocument: Document = document) {
     this.iframeEl = ownerDocument.createElement("iframe");
@@ -68,8 +77,13 @@ export class SandboxedContentHost {
   /** Loads `assembledXhtml` (the output of `ContentDocumentAssembler.assemble`)
    * into the sandboxed iframe as a `blob:` URL, resolving once the iframe's
    * `load` event fires. Revokes the previous content's blob URL, if any —
-   * each host displays one document at a time. */
+   * each host displays one document at a time. Replacing a pending render
+   * rejects it with `RenderingSurfaceCancelledError`. */
   public async render(assembledXhtml: string): Promise<void> {
+    if (this.disposed) {
+      throw new RenderingSurfaceCancelledError("Rendering surface has been disposed.");
+    }
+    this.cancelPendingLoad?.("Rendering was replaced by a newer render.");
     const blob = new Blob([assembledXhtml], { type: "application/xhtml+xml" });
     const url = URL.createObjectURL(blob);
     const previousUrl = this.currentContentUrl;
@@ -99,21 +113,37 @@ export class SandboxedContentHost {
         cleanup();
         reject(new RenderingSurfaceError("Failed to load content into the sandboxed iframe."));
       };
+      const cancel = (message: string): void => {
+        cleanup();
+        reject(new RenderingSurfaceCancelledError(message));
+      };
       const cleanup = (): void => {
         clearTimeout(timeoutId);
         this.iframeEl.removeEventListener("load", onLoad);
         this.iframeEl.removeEventListener("error", onError);
+        if (this.cancelPendingLoad === cancel) {
+          this.cancelPendingLoad = undefined;
+        }
       };
 
+      this.cancelPendingLoad = cancel;
       this.iframeEl.addEventListener("load", onLoad, { once: true });
       this.iframeEl.addEventListener("error", onError, { once: true });
-      this.iframeEl.src = url;
+      try {
+        this.iframeEl.src = url;
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
     });
   }
 
   /** Revokes the current content's blob URL and removes the iframe from
-   * the DOM (if attached). Call when this host is no longer needed. */
+   * the DOM (if attached). Terminal: pending and future renders reject with
+   * `RenderingSurfaceCancelledError`. */
   public dispose(): void {
+    this.disposed = true;
+    this.cancelPendingLoad?.("Rendering surface has been disposed.");
     if (this.currentContentUrl) {
       URL.revokeObjectURL(this.currentContentUrl);
       this.currentContentUrl = undefined;
