@@ -35,7 +35,11 @@ export interface LaunchedReader {
  * the context and removes it before rethrowing the original failure. */
 export async function launchReader(
   bookPath: string,
-  options: { viewport?: { width: number; height: number } | null } = {},
+  options: {
+    viewport?: { width: number; height: number } | null;
+    showScrollbars?: boolean;
+    forceAccessibility?: boolean;
+  } = {},
 ): Promise<LaunchedReader> {
   if (!fs.existsSync(EXTENSION_PATH)) {
     throw new Error(
@@ -59,8 +63,12 @@ export async function launchReader(
   try {
     context = await chromium.launchPersistentContext(profileDir, {
       headless: process.env.AMBRA_E2E_HEADLESS === "1",
+      ignoreDefaultArgs: options.showScrollbars ? ["--hide-scrollbars"] : [],
       ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
-      args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+      args: [
+        `--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`,
+        ...(options.forceAccessibility ? ["--force-renderer-accessibility"] : []),
+      ],
       viewport: options.viewport === null ? null : options.viewport ?? { width: 900, height: 900 },
     });
     context.once("close", removeOwnedProfile);

@@ -472,6 +472,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   scrubberVisible,
 }) => {
   const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
+  const tabsId = useId();
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = useTranslation();
@@ -589,12 +590,13 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
          * selected) instead of only when unselected, which doubled up
          * matching accessible text for the active tab. */}
         <TabList
+          aria-label={t("annotations.panelAriaLabel")}
           size="small"
           selectedValue={activeTab}
           onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
           style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
         >
-          <Tab value="bookmarks" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+          <Tab id={`${tabsId}-bookmarks`} aria-controls={`${tabsId}-panel`} value="bookmarks" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
             <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {t("annotations.bookmarksTab")}
               {bookmarks.length + embeddedBookmarks.length > 0
@@ -602,7 +604,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
                 : ""}
             </span>
           </Tab>
-          <Tab value="highlights" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+          <Tab id={`${tabsId}-highlights`} aria-controls={`${tabsId}-panel`} value="highlights" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
             <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {t("annotations.highlightsTab")}
               {highlights.length + embeddedHighlights.length > 0
@@ -611,7 +613,8 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             </span>
           </Tab>
         </TabList>
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
+        <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${activeTab}`}
+          tabIndex={0} style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {activeTab === "bookmarks" ? (
             <BookmarkList
               bookmarks={bookmarks}

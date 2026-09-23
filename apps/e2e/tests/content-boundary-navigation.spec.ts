@@ -307,6 +307,17 @@ for (const direction of ["ltr", "rtl"] as const) {
               .map((view: { spineIndex: number; physicalSide: string }) => [view.spineIndex, view.physicalSide]),
           );
           expect(order).toEqual(direction === "ltr" ? [[1, "left"], [2, "right"]] : [[1, "right"], [2, "left"]]);
+          const columns = await page.evaluate(() => {
+            const controller = Reflect.get(window, "__readerController");
+            const views = controller.contentDocumentViews() as { document: Document; spineIndex: number }[];
+            return Array.from(controller.host.element.querySelectorAll("iframe") as NodeListOf<HTMLIFrameElement>)
+              .map(frame => ({
+                spine: views.find(view => view.document === frame.contentDocument)?.spineIndex,
+                x: frame.getBoundingClientRect().x,
+              }));
+          });
+          expect(columns.map(column => column.spine)).toEqual([1, 2]);
+          expect(columns[0]!.x < columns[1]!.x).toBe(direction === "ltr");
         }
       }
       const final = await frameFor(page, 4);

@@ -90,7 +90,7 @@
     <main>
       <article>
         <h1>Ambra Privacy Policy</h1>
-        <p class="meta">Effective date: 2026-09-21</p>
+        <p class="meta">Effective date: 2026-09-23</p>
 
         <p>
           Ambra is a local-first EPUB3 reader for Chrome. It is designed to let you import, store, and read EPUB books
@@ -114,9 +114,22 @@
         </p>
 
         <h2>When data leaves your device</h2>
+        <h3>Importing books from websites</h3>
         <p>
-          Ambra makes one limited third-party network request in the current codebase. If a book does not include its
-          own EPUB description (<code>dc:description</code>), Ambra may request a short fallback description from:
+          When Chrome starts a likely EPUB download and Ambra has access to the source website, Ambra can open its
+          Library and fetch the download URL to import the book automatically. The website and any redirect
+          destinations receive the requested URL (including any query parameters) and normal browser network
+          metadata. Ambra does not upload your existing library to that website.
+        </p>
+        <p>
+          The original Chrome download continues until Ambra confirms a successful import. Ambra may then cancel a
+          still-running download and remove its canceled download record. A download that has already finished is
+          retained. If access is withheld or the import fails, you can import the downloaded file manually.
+        </p>
+        <h3>Looking up missing descriptions</h3>
+        <p>
+          When you open a book without its own EPUB description (<code>dc:description</code>), Ambra may make one or more
+          requests for a fallback description from:
         </p>
         <ul>
           <li><code>openlibrary.org</code> (Open Library), and if needed</li>
@@ -135,9 +148,16 @@
           book’s metadata.
         </p>
         <p>
-          Like any direct web request, Open Library or Wikipedia will also receive standard network metadata such as your
-          IP address and user-agent information from your browser connection. Ambra does not use these requests for
-          advertising, profiling, or cross-site tracking.
+          Like any direct web request, these services also receive standard network metadata such as your IP address
+          and browser headers. Ambra does not use these requests for advertising, profiling, or cross-site tracking.
+          Description lookup is automatic when an eligible book opens, not only when you open Book Details; there is
+          currently no dedicated lookup opt-out setting.
+        </p>
+        <h3>Links you open</h3>
+        <p>
+          Library discovery links, description attribution links, and external links you choose to open navigate to
+          third-party websites. Those websites have their own privacy policies. Reading an imported book does not
+          require an Ambra account or an Ambra-operated server.
         </p>
 
         <h2>What Ambra does not do</h2>
@@ -147,22 +167,33 @@
           <li>no sale of personal data;</li>
           <li>no remote account system;</li>
           <li>no cloud sync or backup service; and</li>
-          <li>no collection of your web browsing activity outside the extension’s own book-reading features.</li>
+          <li>no analytics collection of your browsing history. Chrome download events are examined locally to
+            recognize EPUB downloads; unrelated downloads are not imported or transmitted to Ambra.</li>
         </ul>
 
         <h2>Chrome permissions used by the extension</h2>
         <ul>
           <li><strong>unlimitedStorage</strong>: allows large local book libraries to be stored on-device without normal browser quota pressure.</li>
-          <li><strong>downloads</strong>: lets Ambra notice when an EPUB download finishes so it can offer a shortcut back into your library import flow.</li>
-          <li><strong>notifications</strong>: lets Ambra show that optional “add this EPUB to Ambra?” prompt.</li>
+          <li><strong>downloads</strong>: lets Ambra recognize EPUB downloads, start the automatic import described above,
+            cancel a redundant download after a successful import, and offer a library shortcut for a completed EPUB download.</li>
+          <li><strong>notifications</strong>: lets Ambra show an “add this EPUB to Ambra?” prompt for completed EPUB downloads.</li>
+          <li><strong>Website access (<code>*://*/*</code>)</strong>: allows HTTP/HTTPS EPUB downloads from different websites
+            and redirect hosts, and the description lookups above. The extension does not inject content scripts into ordinary
+            websites. You can restrict site access in Chrome; automatic imports then require access or manual file import.</li>
         </ul>
 
         <h2>Your choices</h2>
         <ul>
-          <li>You can remove books from the library inside Ambra.</li>
-          <li>You can disable or ignore the optional EPUB download notification flow.</li>
-          <li>You can choose not to use books that trigger fallback description lookups.</li>
-          <li>You can uninstall the extension at any time through Chrome.</li>
+          <li>You can remove books and their associated reading data from the library. This does not delete your original
+            EPUB or copies in Downloads.</li>
+          <li>You can restrict Ambra's website access in Chrome and use <strong>Import EPUB</strong> with local files instead
+            of automatic web imports.</li>
+          <li>You can ignore download notifications or control notifications through your browser/operating system.</li>
+          <li>Reading offline prevents description lookups from reaching external services. There is currently no
+            in-app lookup opt-out. Chrome site-access controls govern automatic import permissions, but do not
+            guarantee that metadata requests to public APIs are blocked.</li>
+          <li>You can uninstall the extension through Chrome to remove its local data. Ambra provides no cloud backup;
+            retain original files and any exported notes.</li>
         </ul>
 
         <h2>Changes to this policy</h2>
@@ -175,6 +206,12 @@
         <p>
           Project home and issue tracker:
           <a href="https://github.com/BCWalters/ambra/issues">https://github.com/BCWalters/ambra/issues</a>
+        </p>
+        <p>
+          If you choose to send feedback by email or post an issue, the recipient and hosting service receive what you
+          submit. Public issues are visible to others. The About pane's environment-information copy action writes to
+          your clipboard; it does not automatically send a report. Review and redact information before sharing it,
+          especially book contents, notes, local paths, or download links.
         </p>
       </article>
     </main>

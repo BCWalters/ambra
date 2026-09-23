@@ -34,6 +34,7 @@ describe("FixedSpreadHost child ownership", () => {
     expect(host.primaryContentDocument()).toBe(views[0]!.document);
     expect(host.currentPosition()?.node.ownerDocument).toBe(views[0]!.document);
     expect(host.contentDocuments().map(doc => doc.title)).toEqual(direction === "rtl" ? ["3", "2"] : ["2", "3"]);
+    expect([...host.element.querySelectorAll("iframe")].map(frame => frame.contentDocument?.title)).toEqual(["2", "3"]);
     host.dispose();
   });
 

@@ -26,4 +26,14 @@ describe("chrome theme text emphasis", () => {
     expect(CHROME_THEMES.ambra.accent).toBe("#f5a531");
     expect(CHROME_THEMES.ambra.accentForeground).not.toBe(CHROME_THEMES.ambra.accent);
   });
+
+  it.each(["#333333", "#424242", "#134e4a"])("keeps shell secondary text and Inspector links readable (%s)", (color) => {
+    const foreground = luminance(color.slice(1).match(/../g)!.map((part) => Number.parseInt(part, 16)));
+    for (const theme of Object.values(CHROME_THEMES)) {
+      for (const match of theme.backgroundSolid.matchAll(/rgb\((\d+), (\d+), (\d+)\)/g)) {
+        const background = luminance(match.slice(1).map(Number));
+        expect((background + 0.05) / (foreground + 0.05)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
 });

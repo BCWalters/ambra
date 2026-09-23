@@ -1,6 +1,7 @@
 {
   "name": "@ambra/engine",
   "private": true,
+  "license": "MIT",
   "version": "0.0.0",
   "description": "Ambra's core EPUB3 engine: container/OPF/Nav parsing, layout, pagination, and CFI locators. Zero runtime dependencies — built entirely on native browser APIs (DecompressionStream, DOMParser).",
   "type": "module",

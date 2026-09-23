@@ -123,6 +123,40 @@ describe("Inspector reader linking", () => {
     expect(container.textContent).not.toContain("Show in book");
   });
 
+  it("associates each selected tab with a named keyboard-focusable panel", async () => {
+    await render();
+    expect(container.querySelector('[role="tablist"]')?.getAttribute("aria-label")).toBe("EPUB Inspector");
+    for (const tab of container.querySelectorAll<HTMLButtonElement>('[role="tab"]')) {
+      await act(async () => tab.click());
+      const panel = container.querySelector<HTMLElement>('[role="tabpanel"]')!;
+      expect(tab.getAttribute("aria-selected")).toBe("true");
+      expect(tab.getAttribute("aria-controls")).toBe(panel.id);
+      expect(panel.getAttribute("aria-labelledby")).toBe(tab.id);
+      expect(panel.tabIndex).toBe(0);
+      if (tab.textContent?.includes("Metadata")) {
+        expect(panel.querySelector('th[scope="row"]')?.textContent).toBe("File name");
+        expect(panel.querySelector('th[scope="row"]')?.getAttribute("style")).not.toContain("opacity");
+      }
+    }
+  });
+
+  it("exposes the current file and prevents Space activation from also scrolling source", async () => {
+    await render();
+    expect(container.querySelector('[data-file-path][aria-current="true"]')?.getAttribute("data-file-path")).toBe("one.xhtml");
+    const link = container.querySelector<HTMLElement>('[data-nav-path="two.xhtml"]')!;
+    link.focus();
+    const key = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    await act(async () => link.dispatchEvent(key));
+    expect(key.defaultPrevented).toBe(true);
+    expect(container.querySelector('[data-file-path][aria-current="true"]')?.getAttribute("data-file-path")).toBe("two.xhtml");
+    expect(container.querySelectorAll('[data-file-path][aria-current="true"]')).toHaveLength(1);
+    expect(document.activeElement?.getAttribute("data-file-path")).toBe("two.xhtml");
+    await act(async () => button("Back").focus());
+    await click("Back");
+    expect(document.activeElement?.getAttribute("role")).toBe("tab");
+    expect(document.activeElement?.getAttribute("aria-selected")).toBe("true");
+  });
+
   it("locates from any tab, highlights the opening tag, and re-scrolls a same-file Locate", async () => {
     await render();
     await act(async () => Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))

@@ -198,12 +198,13 @@ export const SearchPanel: FC<SearchPanelProps> = ({
             value={input}
             onChange={(_event, data) => setInput(data.value)}
             placeholder={t("search.placeholder")}
+            aria-label={t("search.placeholder")}
             style={{ width: "100%" }}
           />
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
           {input.trim().length > 0 && input.trim().length < 3 && (
-            <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
+            <Caption1 as="p" style={{ padding: "6px 10px", color: "var(--colorNeutralForeground2, #333)", margin: 0 }}>
               {t("search.minCharacters")}
             </Caption1>
           )}
@@ -232,7 +233,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
                 e.currentTarget.style.background = "none";
               }}
             >
-              <Caption1 as="p" block style={{ margin: "0 0 2px", opacity: 0.6 }}>
+              <Caption1 as="p" block style={{ margin: "0 0 2px", color: "var(--colorNeutralForeground2, #333)" }}>
                 {result.chapterLabel}
               </Caption1>
               {/* Trims `before` down to a short prefix right at render
@@ -246,19 +247,21 @@ export const SearchPanel: FC<SearchPanelProps> = ({
               </span>
             </button>
           ))}
-          {isSearching && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
-              <Spinner size="tiny" />
-              <Caption1 as="span" style={{ opacity: 0.6 }}>
-                {t("search.searching")}
+          <div role="status" aria-atomic="true">
+            {isSearching && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
+                <Spinner size="tiny" role="presentation" aria-hidden="true" />
+                <Caption1 as="span" style={{ color: "var(--colorNeutralForeground2, #333)" }}>
+                  {t("search.searching")}
+                </Caption1>
+              </div>
+            )}
+            {!isSearching && input.trim() === query.trim() && input.trim().length >= 3 && results.length === 0 && (
+              <Caption1 as="p" style={{ padding: "6px 10px", color: "var(--colorNeutralForeground2, #333)", margin: 0 }}>
+                {t("search.noMatchesFound")}
               </Caption1>
-            </div>
-          )}
-          {!isSearching && input.trim().length >= 3 && results.length === 0 && (
-            <Caption1 as="p" style={{ padding: "6px 10px", opacity: 0.6, margin: 0 }}>
-              {t("search.noMatchesFound")}
-            </Caption1>
-          )}
+            )}
+          </div>
         </div>
       </nav>
     </>

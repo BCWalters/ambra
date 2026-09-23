@@ -1,8 +1,25 @@
 # Ambra
 
-A polished, accessible EPUB3 reader browser extension — built for Chrome first.
+A local-first EPUB3 reader browser extension — built for Chrome first, with
+reflowable and fixed-layout books, bookmarks, highlights, and recorded narration.
 
-See the project plan for goals, architecture decisions, and phasing.
+**Early beta:** expect rough edges and keep your original EPUBs. Live
+VoiceOver/NVDA validation is still pending; automated keyboard and accessibility
+checks are not a guarantee of assistive-technology behavior.
+
+## License and release status
+
+Ambra's original code and documentation use the standard [MIT license](LICENSE):
+you may use, modify, redistribute, and sell copies, including commercially,
+provided you retain the copyright and license notice. There is no
+non-commercial or friends-only restriction on the source code. Third-party
+materials retain their own licenses; see [notices and provenance](THIRD_PARTY_NOTICES.md).
+
+The first Chrome Web Store release is intended as a **private friends beta**, not
+a public store launch. Public source visibility, the store audience, and npm's
+`"private": true` (which prevents accidental package publication) are independent.
+See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
+and the [private-beta release checklist](store-assets/PRIVATE_BETA.md).
 
 ## Structure
 
@@ -12,22 +29,28 @@ This is a pnpm workspace monorepo:
   parsing, layout, pagination, CFI locators). Vanilla TypeScript, **zero runtime
   dependencies** — built entirely on native browser APIs (`DecompressionStream`,
   `DOMParser`). This package must never depend on React or any UI framework.
-- [`packages/shell`](./packages/shell) — the reader's shell UI components (toolbar, TOC
-  panel, library, settings), built with React and Fluent UI v9.
+- [`packages/shell`](./packages/shell) — shared React/Fluent UI theme provider.
 - [`apps/extension`](./apps/extension) — the Manifest V3 Chrome extension that wires the
   engine and shell together: background service worker, library popup, and the
-  full-tab reader page.
+  full-tab reader page, including the toolbar, panels, library, and settings UI.
 
 ## Getting started
 
+Use Node.js 24.18.0 and pnpm 11.11.0 to match CI. The current Vite toolchain
+requires at least Node 20.19 or 22.12, rather than any Node 20 release.
+From a fresh clone:
+
 ```sh
-pnpm install
+git clone https://github.com/BCWalters/ambra.git
+cd ambra
+pnpm install --frozen-lockfile
 pnpm --filter @ambra/extension dev   # Vite dev server with HMR for the extension
-pnpm build                            # build all packages/apps
-pnpm test                             # run all package tests
-pnpm typecheck                        # typecheck all packages/apps
-pnpm lint                             # lint all packages/apps
 ```
+
+Alternatively, `pnpm build` creates a standalone production bundle. Do not run
+it while another process owns the same live `apps/extension/dist`.
+`pnpm test`, `pnpm typecheck`, and `pnpm lint` run the workspace checks.
+Browser tests run separately; see [contributor setup](CONTRIBUTING.md).
 
 ## Manually loading the extension in Chrome
 
@@ -91,8 +114,8 @@ does not request or change system permissions. It moves the desktop pointer and
 foregrounds only its own test-browser process, so run it when not using the mouse.
 
 ```bash
-AMBRA_E2E_EXTENSION_PATH="$PWD/apps/e2e/.native-scrubber-build" pnpm --filter @ambra/e2e run build:extension
-AMBRA_E2E_EXTENSION_PATH="$PWD/apps/e2e/.native-scrubber-build" \
+AMBRA_E2E_EXTENSION_PATH="$PWD/dist/native-scrubber-build" pnpm --filter @ambra/e2e run build:extension
+AMBRA_E2E_EXTENSION_PATH="$PWD/dist/native-scrubber-build" \
   AMBRA_SCRUBBER_NATIVE_MOUSE=1 AMBRA_E2E_HEADLESS=0 \
   pnpm --filter @ambra/e2e exec playwright test scrubber-long-drag --workers=1
 ```
@@ -128,8 +151,41 @@ blur restores the normal surface without repagination.
 `content-boundary-navigation.spec.ts` checks Chromium accessibility-tree order,
 native Tab/Space/Enter behavior, destination focus, spread order, and text/CFI/page
 count invariance. These checks do not emulate an assistive technology's virtual
-cursor: continuous VoiceOver/NVDA reading through the new boundary still requires
-live testing, separately from the confirmed current-page entry behavior.
+cursor: continuous VoiceOver/NVDA reading through the boundary and exact
+current-page entry behavior still require live assistive-technology testing.
+
+Resume is best-effort: when Chrome exposes a collapsed text caret or publication
+focus, Ambra can save that more precise position, including the companion page of
+a spread. Otherwise it saves the visual reading position. A screen reader's
+virtual cursor does not always update DOM focus or selection, so Ambra cannot
+guarantee resuming at the last spoken word.
+
+### Optional native macOS accessibility regression
+
+`content-boundary-native-focus.spec.ts` invokes the native macOS **AXPress**
+action on a reading-boundary button and checks destination iframe focus and the
+DOM selection/caret. This is **not**
+proof of VoiceOver speech, virtual-cursor position, or continuous reading.
+
+Run only on an **unlocked macOS desktop**, with the existing Swift command-line
+tools and accessibility/automation permissions already granted. The test brings
+only its own headed test browser to the foreground, which can interrupt desktop
+work. It skips a locked desktop; it never attempts to unlock it or grant
+permissions. Unset `AMBRA_E2E_HEADLESS` for this test:
+
+```sh
+AMBRA_E2E_EXTENSION_PATH="$PWD/dist/native-accessibility-build" \
+  pnpm --filter @ambra/e2e run build:extension
+env -u AMBRA_E2E_HEADLESS \
+  AMBRA_E2E_EXTENSION_PATH="$PWD/dist/native-accessibility-build" \
+  AMBRA_NATIVE_ACCESSIBILITY=1 \
+  pnpm --filter @ambra/e2e exec playwright test content-boundary-native-focus.spec.ts \
+  --workers=1 --output test-results/native-accessibility
+```
+
+The build is isolated from the live unpacked extension. A locked-desktop skip
+is not a passing native test. Manual VoiceOver hand-off remains a separate
+pre-beta validation gate.
 
 ## Recorded narration
 

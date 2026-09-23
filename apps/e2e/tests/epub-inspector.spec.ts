@@ -176,6 +176,12 @@ test.describe("EPUB Inspector (issue #95)", () => {
 
       await readerPage.getByRole("button", { name: "Back", exact: true }).click();
       await expect.poll(() => selectedFilePath(readerPage)).toBe(frontMatterPath);
+      const sourceLink = readerPage.locator('.ambra-navlink[data-nav-path="OEBPS/pgepub.css"]');
+      await sourceLink.focus();
+      await sourceLink.press("Space");
+      await expect(readerPage.locator('button[data-file-path="OEBPS/pgepub.css"]')).toBeFocused();
+      await readerPage.getByRole("button", { name: "Back", exact: true }).press("Enter");
+      await expect(readerPage.getByRole("tab", { name: /^Files/ })).toBeFocused();
     } finally {
       await context.close();
     }

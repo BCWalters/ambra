@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FXL_SPREAD_LTR_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr.epub");
@@ -79,6 +80,7 @@ test.describe("fixed-layout (FXL) page-turn animation", () => {
         viewport: { width: 1200, height: 900 },
       });
       try {
+        await exposeReaderController(readerPage);
         await readerPage.waitForTimeout(500);
         await setPageTurnAnimationStyle(readerPage, style);
 
@@ -97,16 +99,10 @@ test.describe("fixed-layout (FXL) page-turn animation", () => {
         await readerPage.waitForTimeout(700);
         expect(await visiblePageTexts(readerPage), `${style}: pair -> pair backward`).toEqual(["P1", "P2"]);
 
-        // No stray inline transform left on the current host's wrapper
-        // once settled — `animateFixedSpreadTurn` must restore whatever
-        // it applied. `contentHostRef`'s own div (`role="main"`'s only
-        // child) always holds exactly one child: the current host's own
-        // wrapper (`ReaderController.hostWrapperEl`) — see
-        // `stageHiddenHostElement`'s doc comment.
-        const wrapperTransform = await readerPage.evaluate(() => {
-          const contentHost = document.querySelector('[role="main"] > div');
-          return (contentHost?.firstElementChild as HTMLElement | null)?.style.transform ?? "";
-        });
+        // Inspect the actual staging wrapper, not the shell's intentional transform.
+        const wrapperTransform = await readerPage.evaluate(() =>
+          Reflect.get(window, "__readerController").hostWrapperEl.style.transform,
+        );
         expect(wrapperTransform, `${style}: no leftover transform on the host wrapper after settling`).toBe("");
       } finally {
         await context.close();

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { navigationFixture } from "../navigation-fixture.js";
 import {
   launchReader,
   currentPageLabel,
@@ -104,6 +105,24 @@ async function visibleSpreadText(readerPage: Page): Promise<string[]> {
   return (await visibleSpreadSample(readerPage)).text;
 }
 
+// The scrubber announces the committed position after the old host is disposed.
+// Fixed sleeps can sample both outgoing and incoming pages during slow CI turns.
+async function turnAndWait(readerPage: Page, turn: () => Promise<unknown>): Promise<void> {
+  const position = readerPage.getByRole("slider", { name: "Position in book" });
+  await expect(position).toHaveAttribute("aria-valuetext", /Page \d+ of \d+/);
+  const pageNumber = async () =>
+    (await position.getAttribute("aria-valuetext"))?.match(/Page (\d+) of \d+/)?.[1];
+  const before = await pageNumber();
+  await turn();
+  // Background estimation can change the total without completing a turn.
+  await expect.poll(async () => (await pageNumber()) ?? before).not.toBe(before);
+}
+
+async function visibleParagraphs(readerPage: Page): Promise<string[]> {
+  return (await visibleSpreadText(readerPage)).flatMap(text =>
+    [...text.matchAll(/C(\d)Para (\d+)/g)].map(match => `${match[1]}:${match[2]}`));
+}
+
 function paragraphNumbers(text: string): number[] {
   const matches = [...text.matchAll(/Paragraph (\d+)\./g)];
   return matches.map((m) => Number(m[1]));
@@ -170,8 +189,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         const text = await visibleText();
         snapshots.push(text);
         if (text.join(" ").includes("C1 Para 200.")) break;
-        await readerPage.keyboard.press("ArrowRight");
-        await readerPage.waitForTimeout(600);
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
       }
       expect(snapshots[0]?.join(" ")).toContain("Cover Para 1");
       const painted = snapshots.flat().join(" ");
@@ -190,27 +208,22 @@ test.describe("paginated reflowable navigation correctness", () => {
       );
       expect(painted.match(/Chapter One/g)).toHaveLength(1);
       for (let i = snapshots.length - 2; i >= 0; i--) {
-        await readerPage.keyboard.press("ArrowLeft");
-        await readerPage.waitForTimeout(600);
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowLeft"));
         expect(await visibleText(), `backward spread ${i}`).toEqual(snapshots[i]);
       }
-      await readerPage.keyboard.press("ArrowRight");
-      await readerPage.waitForTimeout(600);
+      await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
       const slider = readerPage.getByRole("slider").first();
       await slider.focus();
       await slider.press("Home");
       await slider.press("Enter");
-      await readerPage.waitForTimeout(800);
-      expect(await visibleText(), "seek-to-start uses the same pair").toEqual(snapshots[0]);
+      await expect.poll(visibleText, { message: "seek-to-start uses the same pair" }).toEqual(snapshots[0]);
       await slider.blur();
       for (let i = 1; i <= 3; i++) {
-        await readerPage.keyboard.press("ArrowRight");
-        await readerPage.waitForTimeout(600);
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
         expect(await visibleText(), `forward after seek ${i}`).toEqual(snapshots[i]);
       }
       for (let i = 2; i >= 0; i--) {
-        await readerPage.keyboard.press("ArrowLeft");
-        await readerPage.waitForTimeout(600);
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowLeft"));
         expect(await visibleText(), `backward after seek ${i}`).toEqual(snapshots[i]);
       }
     } finally {
@@ -366,11 +379,7 @@ test.describe("paginated reflowable navigation correctness", () => {
   });
 
   test("two-page spread: crossing a chapter boundary never redisplays the same spread (issue #91)", async () => {
-    // `TWO_CHAPTER_EPUB`'s chapter one is long enough (120 short
-    // paragraphs) to land its last spread exactly full — both columns
-    // showing real content, no lone trailing page — regardless of
-    // reasonable font-size/viewport variation, the specific condition
-    // issue #91 needed: `SpreadPaginatedHost.nextSpread`/
+    // Issue #91: `SpreadPaginatedHost.nextSpread`/
     // `ReaderController.prepareIncomingSpread` both checked whether
     // there was "more to turn to" against `pageCount - 1` rather than
     // `pageCount - 2` — so once the right column already showed the
@@ -382,42 +391,6 @@ test.describe("paginated reflowable navigation correctness", () => {
       viewport: { width: 1400, height: 900 },
     });
     try {
-      // Visible (not just "anywhere in the DOM") paragraph numbers for
-      // whichever columns are actually shown — `contentDocument.body
-      // .innerText` alone (what `currentPageText` and the spread test
-      // above both use) reflects the *entire* flowing document
-      // regardless of scroll position, so it can't tell "was this
-      // exact spread redisplayed" from "did the reader advance
-      // normally" the way this regression specifically needs; sampling
-      // `elementFromPoint` down each visible column's own height does
-      // reflect what's actually on screen. Hidden columns (the lone
-      // last page of an odd-length chapter) are skipped — a hidden
-      // iframe's `elementFromPoint` doesn't reliably reflect its last
-      // *visible* layout, and it's never what the reader could see.
-      async function visibleParagraphs(): Promise<string[]> {
-        return readerPage.evaluate(() => {
-          const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) =>
-              el.getBoundingClientRect().width > 600 &&
-              getComputedStyle(el).visibility !== "hidden",
-          );
-          const seen = new Set<string>();
-          for (const frame of iframes) {
-            const doc = (frame as HTMLIFrameElement).contentDocument;
-            if (!doc) continue;
-            for (let y = 20; y < 850; y += 40) {
-              const el = doc.elementFromPoint(300, y);
-              const text = el?.closest("p")?.textContent ?? el?.textContent ?? "";
-              const match = text.match(/C(\d)Para (\d+)/);
-              if (match) {
-                seen.add(`${match[1]}:${match[2]}`);
-              }
-            }
-          }
-          return [...seen];
-        });
-      }
-
       // Track the highest paragraph number seen in either chapter so
       // far — real forward progress must strictly increase this every
       // click, until the book's own true end. A plain "is this click's
@@ -438,7 +411,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       let bestC2 = 0;
       let sawChapterTwo = false;
       for (let click = 0; click < 20; click++) {
-        const visible = await visibleParagraphs();
+        const visible = await visibleParagraphs(readerPage);
         const c1 = maxParagraph(visible, "1");
         const c2 = maxParagraph(visible, "2");
         if (c2 > 0) {
@@ -463,8 +436,8 @@ test.describe("paginated reflowable navigation correctness", () => {
         ).toBe(true);
         bestC1 = Math.max(bestC1, c1);
         bestC2 = Math.max(bestC2, c2);
-        await readerPage.mouse.click(1200, 450);
-        await readerPage.waitForTimeout(500);
+        if (bestC2 === 60) break;
+        await turnAndWait(readerPage, () => readerPage.mouse.click(1200, 450));
       }
       expect(sawChapterTwo, "never reached chapter two's content").toBe(true);
       expect(bestC1, "never reached chapter one's actual last paragraph").toBe(120);
@@ -475,181 +448,35 @@ test.describe("paginated reflowable navigation correctness", () => {
   });
 
   test("two-page spread: a chapter ending on a fully paired last spread opens the next chapter fresh, with no duplicate page or forced right-start (#94 regression fix)", async () => {
-    // The same 1400px viewport as the #91 test just above, for the same
-    // reason: it lands `TWO_CHAPTER_EPUB`'s chapter one last spread
-    // exactly *paired* (both columns showing real content, nothing left
-    // unpaired) — the opposite condition from the #90/#94 test below,
-    // and the specific one this test needs: crossing out of a chapter
-    // whose own ending needs no merge at all must still fall through to
-    // the *ordinary* chapter-open path, not get caught by the #94 fix
-    // meant only for a genuinely unpaired last page. A real, confirmed
-    // regression here: an off-by-one in that fix's own "would the next
-    // ordinary turn land on an unpaired page" check misfired right at
-    // *any* even-length chapter's true last spread — a `Math.min` clamp
-    // meant to detect "one more step lands unpaired" instead read
-    // "there's no further step at all" as if it were exactly that,
-    // wrongly duplicating the chapter's own already-visible last page
-    // into a merge and force-starting chapter two on the right.
-    const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
+    // Four real pages regardless of the platform's default serif font.
+    const { context, readerPage } = await launchReader(navigationFixture(test.info(), [4, 2]), {
       viewport: { width: 1400, height: 900 },
     });
     try {
-      // Same sampling technique as the #91/#90/#94 tests above/below —
-      // see their own doc comments for why.
-      async function visibleParagraphs(): Promise<string[]> {
-        return readerPage.evaluate(() => {
-          const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) =>
-              el.getBoundingClientRect().width > 600 &&
-              getComputedStyle(el).visibility !== "hidden",
-          );
-          const seen = new Set<string>();
-          for (const frame of iframes) {
-            const doc = (frame as HTMLIFrameElement).contentDocument;
-            if (!doc) continue;
-            for (let y = 20; y < 850; y += 40) {
-              const el = doc.elementFromPoint(300, y);
-              const text = el?.closest("p")?.textContent ?? el?.textContent ?? "";
-              const match = text.match(/C(\d)Para (\d+)/);
-              if (match) {
-                seen.add(`${match[1]}:${match[2]}`);
-              }
-            }
-          }
-          return [...seen];
-        });
-      }
-
-      let sawChapterOnePairedEnd = false;
-      let sawChapterTwoOpen = false;
-      let duplicatedLastPageIntoChapterTwoSpread = false;
-      for (let click = 0; click < 20; click++) {
-        const visible = await visibleParagraphs();
-        const hasChapterOneEnd = visible.includes("1:120");
-        const hasChapterTwo = visible.some((p) => p.startsWith("2:"));
-        if (hasChapterOneEnd && !hasChapterTwo) {
-          // Chapter one's own true last spread — both columns already
-          // real content (this viewport's whole point), so this is
-          // simply "still reading the end of chapter one," not a bug.
-          sawChapterOnePairedEnd = true;
-        }
-        if (hasChapterTwo) {
-          sawChapterTwoOpen = true;
-          if (hasChapterOneEnd) {
-            // The regression: chapter one's already-seen last page
-            // reappearing in the *same* spread as chapter two's first
-            // page — the merge path is only ever correct for a
-            // genuinely *unpaired* last page, never one that was just
-            // shown fully paired with its own real companion.
-            duplicatedLastPageIntoChapterTwoSpread = true;
-          }
-          break;
-        }
-        await readerPage.mouse.click(1200, 450);
-        await readerPage.waitForTimeout(500);
-      }
-      expect(
-        sawChapterOnePairedEnd,
-        "never reached chapter one's own fully paired last spread — check the fixture/viewport still lands an even page count",
-      ).toBe(true);
-      expect(
-        duplicatedLastPageIntoChapterTwoSpread,
-        "chapter one's already-seen last page reappeared alongside chapter two's first page — a paired last spread should never merge",
-      ).toBe(false);
-      expect(sawChapterTwoOpen, "never reached chapter two's content").toBe(true);
+      expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
+      await turnAndWait(readerPage, () => readerPage.mouse.click(1200, 450));
+      expect(await visibleSpreadText(readerPage), "chapter one's fully paired last spread")
+        .toEqual(["C1Para 3.", "C1Para 4."]);
+      await turnAndWait(readerPage, () => readerPage.mouse.click(1200, 450));
+      expect(await visibleSpreadText(readerPage), "chapter two opens left, without repeating chapter one")
+        .toEqual(["C2Para 1.", "C2Para 2."]);
     } finally {
       await context.close();
     }
   });
 
   test("two-page spread: a chapter starting right after the previous one's unpaired last page merges directly into the same spread, with no intervening blank/repeated page (issues #90/#94)", async () => {
-    // A width chosen so `TWO_CHAPTER_EPUB`'s chapter one (120 short
-    // paragraphs) lands its own real last page *unpaired* — alone in the
-    // left column, the right column empty — the opposite condition from
-    // the test above (which needs chapter one's last page *paired*) and
-    // the specific one this regression needs: the forward turn off
-    // chapter one's own last *paired* spread must land directly on the
-    // merged spread — chapter one's real last page in the left column,
-    // chapter two's real first page already in the right — without ever
-    // passing through an intermediate spread showing chapter one's last
-    // page *alone* first (issue #94: that intermediate blank-facing-page
-    // state, followed by a second turn that repeated chapter one's last
-    // page alongside chapter two's first, was exactly the bug — one
-    // extra turn, and one blank page, more than a reader should ever
-    // see).
-    const { context, readerPage } = await launchReader(TWO_CHAPTER_EPUB, {
+    const { context, readerPage } = await launchReader(navigationFixture(test.info(), [3, 3]), {
       viewport: { width: 1200, height: 900 },
     });
     try {
-      // Same technique as the test above — see its own doc comment for
-      // why `elementFromPoint` sampling (not `innerText`, which reflects
-      // a spine item's entire flowing document regardless of scroll
-      // position) is what actually reflects which page(s) are on screen.
-      async function visibleParagraphs(): Promise<string[]> {
-        return readerPage.evaluate(() => {
-          // `> 400`, not `600` (the test above's own threshold, correct
-          // for *its* 1400px-wide/680px-column viewport) — this test's
-          // narrower 1200px viewport gives each column only 580px
-          // (`SpreadPaginatedHost`'s own `MIN_SPREAD_COLUMN_WIDTH` is
-          // 480), which a 600px threshold would wrongly exclude
-          // entirely, same as an actually-narrow/non-spread column
-          // should be.
-          const iframes = Array.from(document.querySelectorAll("iframe")).filter(
-            (el) =>
-              el.getBoundingClientRect().width > 400 &&
-              getComputedStyle(el).visibility !== "hidden",
-          );
-          const seen = new Set<string>();
-          for (const frame of iframes) {
-            const doc = (frame as HTMLIFrameElement).contentDocument;
-            if (!doc) continue;
-            for (let y = 20; y < 850; y += 40) {
-              const el = doc.elementFromPoint(300, y);
-              const text = el?.closest("p")?.textContent ?? el?.textContent ?? "";
-              const match = text.match(/C(\d)Para (\d+)/);
-              if (match) {
-                seen.add(`${match[1]}:${match[2]}`);
-              }
-            }
-          }
-          return [...seen];
-        });
-      }
-
-      let sawUnpairedChapterOneEndAlone = false;
-      let sawMergedSpread = false;
-      for (let click = 0; click < 20; click++) {
-        const visible = await visibleParagraphs();
-        const hasChapterOneEnd = visible.includes("1:120");
-        const hasChapterTwo = visible.some((p) => p.startsWith("2:"));
-        if (hasChapterOneEnd && !hasChapterTwo) {
-          // The exact state issue #94 reports: chapter one's own last
-          // page shown *alone*, with no trace of chapter two yet — a
-          // blank facing column a reader has to turn *past* before ever
-          // reaching chapter two, instead of chapter two's first page
-          // already being right there alongside it.
-          sawUnpairedChapterOneEndAlone = true;
-        }
-        if (hasChapterOneEnd && hasChapterTwo) {
-          sawMergedSpread = true;
-          break;
-        }
-        // Comfortably inside the 1200px-wide pane (not right at its
-        // edge, which risks landing outside the page entirely and
-        // silently doing nothing — a real, confirmed flake at this
-        // narrower width, unlike the 1400px-wide test above where 1200
-        // is safely central).
-        await readerPage.mouse.click(1100, 450);
-        await readerPage.waitForTimeout(500);
-      }
-      expect(
-        sawUnpairedChapterOneEndAlone,
-        "chapter one's own unpaired last page was shown alone (with an empty facing column) at some point, instead of always merging directly into chapter two's first page in the very same spread",
-      ).toBe(false);
-      expect(
-        sawMergedSpread,
-        "chapter one's last page and chapter two's first page were never shown together in the same spread — check the fixture/viewport still produces an odd page count",
-      ).toBe(true);
+      expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
+      await turnAndWait(readerPage, () => readerPage.mouse.click(1100, 450));
+      expect(await visibleSpreadText(readerPage), "the first turn already merges the unpaired tail")
+        .toEqual(["C1Para 3.", "C2Para 1."]);
+      await turnAndWait(readerPage, () => readerPage.mouse.click(1100, 450));
+      expect(await visibleSpreadText(readerPage), "the next turn never repeats either merged page")
+        .toEqual(["C2Para 2.", "C2Para 3."]);
     } finally {
       await context.close();
     }
@@ -821,16 +648,25 @@ test.describe("paginated reflowable navigation correctness", () => {
       await readerPage.mouse.click(400, 200);
       await readerPage.waitForTimeout(300);
 
-      for (let press = 0; press < 6; press++) {
-        const before = await currentPageLabel(readerPage);
-        await readerPage.keyboard.press("ArrowRight");
-        let after = before;
-        const start = Date.now();
-        while (Date.now() - start < 2000 && after === before) {
-          await readerPage.waitForTimeout(50);
-          after = await currentPageLabel(readerPage);
-        }
-        expect(after, `ArrowRight press ${press} never advanced past "${before}"`).not.toBe(before);
+      const initial = (await currentPageLabel(readerPage))?.match(/Page (\d+) of (\d+)/);
+      expect(initial).not.toBeNull();
+      expect(Number(initial![1])).toBe(1);
+      const pages = Number(initial![2]);
+      expect(pages).toBeGreaterThan(1);
+      const snapshots = [await visibleSpreadText(readerPage)];
+      for (let page = 2; page <= pages; page++) {
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
+        expect(await currentPageLabel(readerPage)).toBe(`Page ${page} of ${pages}`);
+        snapshots.push(await visibleSpreadText(readerPage));
+      }
+      for (let page = pages - 1; page >= 1; page--) {
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowLeft"));
+        expect(await visibleSpreadText(readerPage)).toEqual(snapshots[page - 1]);
+      }
+      for (let page = 2; page <= pages; page++) {
+        await turnAndWait(readerPage, () => readerPage.mouse.click(650, 450));
+        expect(await visibleSpreadText(readerPage), `click and ArrowRight agree on page ${page}`)
+          .toEqual(snapshots[page - 1]);
       }
     } finally {
       await context.close();
@@ -838,6 +674,24 @@ test.describe("paginated reflowable navigation correctness", () => {
   });
 
   test("two-page spread: an ordinary forward turn landing on a lone unpaired chapter merges the next chapter in immediately, never showing a blank facing column (issue #103)", async () => {
+    const { context, readerPage } = await launchReader(navigationFixture(test.info(), [2, 1, 1, 2]), {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
+      await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
+      expect(await visibleSpreadText(readerPage), "ordinary chapter-open immediately pairs two short chapters")
+        .toEqual(["C2Para 1.", "C3Para 1."]);
+      await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
+      expect(await visibleSpreadText(readerPage)).toEqual(["C4Para 1.", "C4Para 2."]);
+      await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowLeft"));
+      expect(await visibleSpreadText(readerPage)).toEqual(["C2Para 1.", "C3Para 1."]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test("real book: ordinary forward turns never leave a blank facing column (issue #103)", async () => {
     // A real book (not a synthetic fixture) whose short front-matter
     // sections (each its own spine item — "Using Code Examples",
     // "Safari® Books Online", "How to Contact Us", ...) are exactly the
@@ -847,6 +701,7 @@ test.describe("paginated reflowable navigation correctness", () => {
     // omitted property), not the direct chapter-start/chapter-end merge
     // paths already covered by the synthetic fixtures above.
     const ACCESSIBLE_EPUB_3 = path.resolve(here, "..", "real-books", "accessible-epub-3.epub");
+    test.skip(!fs.existsSync(ACCESSIBLE_EPUB_3), "Optional real-book corpus is not installed");
     const { context, readerPage } = await launchReader(ACCESSIBLE_EPUB_3, {
       viewport: { width: 1546, height: 878 },
     });
@@ -869,8 +724,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       // so a hidden right-slot column at any of these stops can only be
       // this bug, never a legitimate last-page-of-the-book case.
       for (let press = 0; press < 12; press++) {
-        await readerPage.keyboard.press("ArrowRight");
-        await readerPage.waitForTimeout(700);
+        await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
         expect(await rightSlotHidden(), `press ${press}: right column present but hidden`).toBe(
           false,
         );

@@ -255,7 +255,7 @@ const BookCard: FC<{
         {book.title}
       </Body1>
       {book.creator && (
-        <Body1 as="p" style={{ margin: 0, color: "var(--colorNeutralForeground3, #666)" }}>
+        <Body1 as="p" style={{ margin: 0, color: "var(--colorNeutralForeground2, #333)" }}>
           {book.creator}
         </Body1>
       )}
@@ -348,7 +348,7 @@ export const LibraryApp: FC = () => {
           boxShadow: CHROME_SHADOW,
         }}
       >
-        <Title2 style={{ color: palette.accent, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <Title2 as="h1" style={{ margin: 0, color: palette.accentForeground, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           <AmbraMarkIcon size={24} />
           Ambra
         </Title2>
@@ -427,7 +427,7 @@ export const LibraryApp: FC = () => {
         />
       </div>
 
-      <div style={{ padding: 16, flex: 1 }}>
+      <main aria-label={t("library.pageTitle")} style={{ padding: 16, flex: 1 }}>
         <LibraryImportStatus activities={importActivities} onDismissCompleted={dismissCompletedImports} />
         {error && <LibraryImportError message={error} onDismiss={dismissError} />}
 
@@ -435,7 +435,7 @@ export const LibraryApp: FC = () => {
           <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
           importActivities.some(({ phase }) => phase !== "complete") ? null :
-            <LibraryEmptyState accent={palette.accent} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
+            <LibraryEmptyState accent={palette.accentForeground} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
         ) : (
           <>
             <div style={{ marginBottom: 16 }}>
@@ -455,7 +455,7 @@ export const LibraryApp: FC = () => {
             </div>
           </>
         )}
-      </div>
+      </main>
 
       <BookDetailsFlyout
         book={detailsBook}
@@ -513,7 +513,7 @@ export const LibraryApp: FC = () => {
             gap: 6,
             padding: "6px 16px",
             borderTop: `1px solid ${CHROME_BORDER}`,
-            color: "var(--colorNeutralForeground3, #666)",
+            color: "var(--colorNeutralForeground2, #333)",
             fontSize: 12,
           }}
         >

@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.18.0
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 11.11.0
+          run_install: false
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint, types, and unit tests
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          node --test .github/scripts/release.test.mjs
+      - name: Build isolated store package
+        run: node .github/scripts/package-extension.mjs
+      - name: Install Chromium
+        run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+      - name: Test the packaged production build
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/private-release/extension
+          AMBRA_E2E_HEADLESS: "1"
+        run: >-
+          pnpm --filter @ambra/e2e exec playwright test
+          book-opening.spec.ts
+          navigation-correctness.spec.ts
+          settings-focus.spec.ts
+          reader-viewport-stability.spec.ts
+          content-boundary-navigation.spec.ts
+          native-reading-resume.spec.ts
+          shell-accessibility-audit.spec.ts
+          --workers=1
+      - name: Keep verified package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: private-release-${{ github.sha }}
+          path: dist/private-release/artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Keep failed browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

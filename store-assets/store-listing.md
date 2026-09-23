@@ -4,6 +4,9 @@
 
 - **Name**: Ambra EPUB Reader
 - **Category**: Productivity
+- **Distribution**: Private, limited to the explicitly configured friends/tester
+  audience. Do not select Public or Unlisted for this beta. Public source code
+  does not change this store setting.
 
 ## Short description
 
@@ -19,9 +22,13 @@ Ambra lets users import, store, organize, and read EPUB3 e-books entirely within
 
 Ambra is a local-first EPUB3 reader for Chrome built from scratch for real book reading, not just file inspection.
 
-Import EPUB books into a private on-device library, reopen them later, and keep your place automatically. Ambra supports both reflowable and fixed-layout EPUBs, accessible reading, a dedicated full-tab reader, bookmarks, highlights, saved reading progress, and polished library/reader UI.
+Import EPUB books into an on-device library, reopen them later, and keep your place automatically. Ambra supports both reflowable and fixed-layout EPUBs, a dedicated full-tab reader, bookmarks, highlights, saved reading progress, and recorded narration in compatible books.
 
-Your library stays on your device. Ambra does not require an account, does not run analytics or ads, and only makes a narrow third-party metadata request when a book lacks its own description.
+Your library stays on your device. Ambra does not require an account or run analytics or ads. It can fetch EPUB downloads from websites for automatic import. When you open a book missing a description, it may send title, author, and ISBN to Open Library or Wikipedia for a summary. See the privacy policy for network activity and controls.
+
+This is an early private beta. Keyboard and accessibility-tree checks are automated;
+live VoiceOver/NVDA testing remains pending. Do not claim certified accessibility
+or exact virtual-cursor reading-position support.
 
 ## Permission justifications
 
@@ -31,22 +38,45 @@ Ambra stores complete EPUB files, extracted cover images, and per-book reading d
 
 ### downloads
 
-Ambra uses the downloads permission only to detect when a `.epub` file has finished downloading in Chrome, so it can offer a shortcut back into Ambra’s library import flow. It does not silently read arbitrary downloads or inspect unrelated website content.
+Ambra recognizes likely EPUB downloads at creation and completion. With website
+access, it opens the Library and imports the download URL. The native download
+continues until import succeeds; Ambra may then cancel the redundant download
+and erase its canceled download record. Completed downloads are retained and can
+trigger a library-import notification. It does not read arbitrary downloaded files.
 
 ### notifications
 
 Ambra uses notifications only to show the optional “this looks like an EPUB — add it to Ambra?” prompt after an EPUB download completes. Notifications are not used for advertising, marketing, or background engagement.
 
+### Website access (`*://*/*`)
+
+EPUB download links can originate on arbitrary HTTP/HTTPS websites and redirect to
+other download hosts. Host access permits Ambra's extension page to fetch those
+books and query Open Library/Wikipedia for missing descriptions. It does not
+inject content scripts into ordinary sites. If a user withholds site access,
+automatic import falls back to Chrome's download/manual file import. This broad
+permission must be declared and justified in the store dashboard, not described
+as absent or optional in the manifest.
+Restricting Chrome site access is not a guaranteed metadata-lookup opt-out:
+public APIs may still receive requests. Reading offline prevents lookups from
+reaching those services; there is currently no in-app lookup opt-out.
+
 ## Privacy/data-use notes for the dashboard
 
 - **Main local data handled**: imported EPUB files, extracted metadata/cover images, reading progress, bookmarks, highlights/notes, reader preferences.
 - **Where it is stored**: locally on-device in an IndexedDB database named `ambra-library`.
-- **Third-party transmission**: when a book lacks its own EPUB description, Ambra may send the book’s title, author, and ISBN to `openlibrary.org` and, if needed, `en.wikipedia.org` to fetch a fallback description.
-- **Not sent off-device**: EPUB file contents, reading progress, bookmarks, highlights, notes, account data, browsing history, analytics events.
+- **Third-party transmission**: automatic imports request the EPUB download URL
+  from its website/redirect hosts; when an opened book lacks a description, Ambra
+  may send title, author, and ISBN to `openlibrary.org` and, if needed,
+  `en.wikipedia.org`. These destinations receive normal request metadata.
+- **Not uploaded by Ambra**: EPUB contents, reading progress, bookmarks,
+  highlights, notes, or browsing-history logs.
 - **Ads / analytics / tracking**: none found in the current codebase.
 - **Sale of data**: none.
 - **Account creation**: none.
-- **Host permissions requested**: none.
+- **Host permissions requested**: `*://*/*` (HTTP/HTTPS).
+- Dashboard disclosures must reflect the metadata requests even though Ambra
+  operates no server. Do not equate "no analytics" with "no data leaves the device."
 
 ## Privacy policy URL
 
@@ -56,6 +86,15 @@ Paste this URL into the Chrome Web Store dashboard's privacy policy field:
 
 `https://victorious-forest-06eb42803.7.azurestaticapps.net/legal/ambra/privacy-policy.html`
 
-To update the hosted copy after future edits to `store-assets/privacy-policy.html`,
-copy the file into `ben-personal-site/legal/ambra/privacy-policy.html` and push —
-the site's GitHub Actions workflow redeploys automatically on every push to `main`.
+Before submission, have the site owner deploy the reviewed HTML policy through
+that site's normal change process, then verify the public URL's text and effective
+date. Editing this repository does not deploy that copy. Do not push directly to
+the personal site's `main` or assume the existing hosted policy matches this one.
+
+## Release assets
+
+Follow [PRIVATE_BETA.md](PRIVATE_BETA.md). Existing official-sample screenshots
+require [source attributions and CC license notices](ATTRIBUTIONS.md), not a
+blanket MIT claim. Include those notices with the listing if using these images;
+see the public-domain jurisdiction caveat. Prefer capturing the actual candidate
+with original synthetic books, not a developer's personal library.

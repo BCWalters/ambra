@@ -7,13 +7,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const FXL_SPREAD_LTR_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr.epub");
 const FXL_SPREAD_RTL_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-rtl.epub");
 
-/** All visible iframes' own text, in DOM order (left column, if any,
- * before right) — for a `FixedSpreadHost` spread, this is exactly its
- * currently-loaded page(s)' own rendered text. */
+/** Physical left-to-right pages; native DOM reading order can differ for RTL. */
 async function visiblePageTexts(readerPage: import("@playwright/test").Page): Promise<string[]> {
   return readerPage.evaluate(() =>
     Array.from(document.querySelectorAll("iframe"))
       .filter((f) => getComputedStyle(f).visibility !== "hidden")
+      .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left)
       .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText.trim() ?? ""),
   );
 }

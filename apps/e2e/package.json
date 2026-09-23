@@ -1,6 +1,7 @@
 {
   "name": "@ambra/e2e",
   "private": true,
+  "license": "MIT",
   "version": "0.0.1",
   "description": "End-to-end reading-experience correctness suite (real headless Chromium via Playwright, driving the actual built extension) — deliberately separate from @ambra/engine's unit tests: this catches real layout/rendering/interaction regressions unit tests structurally cannot (see README.md).",
   "type": "module",
