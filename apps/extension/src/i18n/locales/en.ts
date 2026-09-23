@@ -87,6 +87,10 @@ export interface StringCatalog {
   "library.notReady": string;
   "library.fileMissing": string;
   "library.downloadFailed": string;
+  "library.downloadNetworkFailed": string;
+  "library.downloadAccessDenied": string;
+  "library.downloadUnsupported": string;
+  "library.downloadImportFailed": string;
   "about.title": string;
   "about.version": string;
   "about.description": string;
@@ -410,7 +414,11 @@ export const en: StringCatalog = {
   "library.importNotReady": "The library isn't ready to import books. Wait for loading to finish, or reload this page if it failed.",
   "library.notReady": "The library isn't ready yet.",
   "library.fileMissing": "This book's file couldn't be found.",
-  "library.downloadFailed": "That download couldn't be fetched (HTTP {status}).",
+  "library.downloadFailed": "The site couldn't provide this book (HTTP {status}). Check Chrome's Downloads, or download the EPUB from the site, then choose Import EPUB.",
+  "library.downloadNetworkFailed": "Ambra couldn't fetch this book. Check your connection and Ambra's site access in Chrome. Check Chrome's Downloads, or download the EPUB from the site, then choose Import EPUB.",
+  "library.downloadAccessDenied": "Ambra doesn't have access to fetch this book here. Check its site access in Chrome's extension settings, or choose Import EPUB to open a downloaded copy.",
+  "library.downloadUnsupported": "This link can't be imported directly. Download the EPUB from the site, then choose Import EPUB.",
+  "library.downloadImportFailed": "This file couldn't be added to the library. Check Chrome's Downloads and make sure the file is an EPUB, then choose Import EPUB to try again. Error details: {detail}",
   "about.title": "About Ambra",
   "about.version": "Version {version}",
   "about.description": "An EPUB reader designed for comfortable, beautiful reading.",

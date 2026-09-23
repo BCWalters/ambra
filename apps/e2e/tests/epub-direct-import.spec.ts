@@ -1,119 +1,159 @@
-import { test, expect, chromium } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
-import os from "node:os";
 import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { EXTENSION_PATH } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epub");
+const fixture = path.resolve(here, "..", "fixtures", "long-content.epub");
+type Scenario = "success" | "network" | "http" | "parse" | "missing-access" | "closed-tab" | "completed-first";
 
-/** Starts a tiny local HTTP server serving `LONG_CONTENT_EPUB`'s own
- * bytes with the same `Content-Type`/`Content-Disposition` headers a
- * real EPUB-hosting site (e.g. Project Gutenberg) would send — the
- * minimum needed to make Chrome actually try to *download* the
- * response rather than navigate to it, so this test exercises the real
- * "click a direct link to an EPUB" scenario issue #122 asked for, not
- * a shortcut around it. */
-function startEpubServer(): Promise<{ url: string; close: () => Promise<void> }> {
-  const bytes = fs.readFileSync(LONG_CONTENT_EPUB);
-  const server = http.createServer((req, res) => {
-    res.writeHead(200, {
-      "Content-Type": "application/epub+zip",
-      "Content-Disposition": 'attachment; filename="test-book.epub"',
-      "Content-Length": bytes.length,
-    });
+/** No CORS headers: this requires real extension host access, like ReadBeyond.
+ * Hold the native download open while its independent Library fetch finishes. */
+async function startEpubServer(scenario: Scenario) {
+  const bytes = fs.readFileSync(fixture);
+  let nativeResponse: http.ServerResponse | undefined;
+  let importResponse: http.ServerResponse | undefined;
+  let importRequests = 0;
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    if (++requests === 1) {
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": 'attachment; filename="test-book.epub"',
+        "Content-Length": bytes.length,
+      });
+      if (scenario === "completed-first") res.end(bytes);
+      else {
+        nativeResponse = res;
+        res.write(bytes.subarray(0, 64));
+      }
+      return;
+    }
+    importRequests++;
+    if (scenario === "network") { res.destroy(); return; }
+    if (scenario === "http") { res.writeHead(403); res.end("Forbidden"); return; }
+    if (scenario === "parse") { res.end("<html>Sign in to download</html>"); return; }
+    if (scenario === "success" || scenario === "closed-tab" || scenario === "completed-first") {
+      importResponse = res;
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/octet-stream" });
     res.end(bytes);
   });
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address ? address.port : 0;
-      resolve({
-        url: `http://127.0.0.1:${port}/test-book.epub`,
-        close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
-      });
-    });
-  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as import("node:net").AddressInfo;
+  return {
+    url: `http://127.0.0.1:${address.port}/test-book.epub`,
+    importRequests: () => importRequests,
+    releaseNative: () => nativeResponse?.end(bytes.subarray(64)),
+    releaseImport: () => importResponse?.end(bytes),
+    close: () => new Promise<void>((resolve) => {
+      server.closeAllConnections();
+      server.close(() => resolve());
+    }),
+  };
 }
 
-test("navigating directly to an EPUB download link imports it into the library instead of downloading it (issue #122)", async () => {
-  const epubServer = await startEpubServer();
-  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "ambra-e2e-"));
-  const context = await chromium.launchPersistentContext(profileDir, {
-    headless: false,
-    args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
-    viewport: { width: 900, height: 700 },
-    acceptDownloads: true,
-  });
-  try {
-    let [serviceWorker] = context.serviceWorkers();
-    if (!serviceWorker) {
-      serviceWorker = await context.waitForEvent("serviceworker", { timeout: 15_000 });
+for (const scenario of [
+  "success", "network", "http", "parse", "missing-access", "closed-tab", "completed-first",
+] as const) {
+  test(`direct EPUB import preserves the native fallback: ${scenario} (#153)`, async ({ browserName }, testInfo) => {
+    test.skip(browserName !== "chromium", "Chrome extension download integration");
+    const profile = testInfo.outputPath("profile");
+    const downloadsPath = testInfo.outputPath("downloads");
+    fs.mkdirSync(downloadsPath, { recursive: true });
+    const manifest = JSON.parse(fs.readFileSync(path.join(EXTENSION_PATH, "manifest.json"), "utf8"));
+    const sourceManifest = JSON.parse(fs.readFileSync(path.resolve(here, "../../extension/manifest.json"), "utf8"));
+    expect(manifest.host_permissions).toEqual(sourceManifest.host_permissions);
+    let extensionPath = EXTENSION_PATH;
+    if (scenario === "missing-access") {
+      extensionPath = testInfo.outputPath("extension-without-host-access");
+      fs.cpSync(EXTENSION_PATH, extensionPath, { recursive: true });
+      delete manifest.host_permissions;
+      fs.writeFileSync(path.join(extensionPath, "manifest.json"), JSON.stringify(manifest));
     }
-    // A brand new MV3 service worker can take a brief moment to finish
-    // evaluating its top-level module code (which registers
-    // `epubDirectImport.ts`'s own `chrome.downloads.onCreated`
-    // listener) right after this test's own fresh profile/extension
-    // load — confirmed directly while building this feature:
-    // navigating too fast after context creation could race a real
-    // download past the not-yet-registered listener. A real user
-    // practically never hits this exact race (the service worker has
-    // almost always already handled some earlier event by the time
-    // they click a random EPUB link), so this settle delay reflects
-    // realistic usage rather than masking a genuine bug — see
-    // `epubDirectImport.ts`'s own doc comment for why the fallback
-    // notification (not a synthetic delay in production code) is this
-    // repo's actual answer to that race.
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const server = await startEpubServer(scenario);
+    let context: BrowserContext | undefined;
+    try {
+      context = await chromium.launchPersistentContext(profile, {
+        headless: false,
+        args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
+        acceptDownloads: true,
+        downloadsPath,
+      });
+      const worker = context.serviceWorkers()[0] ??
+        await context.waitForEvent("serviceworker", { timeout: 15_000 });
+      const origin = `chrome-extension://${worker.url().split("/")[2]}`;
+      // Wait for the actual top-level listener, not an arbitrary startup delay.
+      await expect.poll(() => worker.evaluate(() => chrome.downloads.onCreated.hasListeners())).toBe(true);
+      const browsingPage = await context.newPage();
+      const newPages: Page[] = [];
+      context.on("page", (page) => newPages.push(page));
+      const nativeDownload = browsingPage.waitForEvent("download");
+      await browsingPage.goto(server.url).catch(() => {});
+      const download = await nativeDownload;
+      const nativeRecords = () => worker.evaluate(
+        (url) => chrome.downloads.search({ url }), server.url,
+      );
+      await expect.poll(async () => (await nativeRecords()).length).toBe(1);
+      expect((await nativeRecords())[0]!.paused).toBe(false);
 
-    const browsingPage = await context.newPage();
-
-    // Collected via a plain listener (not `context.waitForEvent`'s own
-    // predicate form, which proved flaky here — likely evaluating
-    // `page.url()` before Playwright's own frame bookkeeping for a
-    // brand-new tab has caught up) attached *before* triggering the
-    // navigation below, so there's no race between the interception
-    // opening this tab and this test starting to listen for it.
-    const newPages: Page[] = [];
-    context.on("page", (page) => newPages.push(page));
-
-    // The real interaction: navigating straight to a link that would
-    // otherwise trigger a browser download.
-    const navigation = browsingPage.goto(epubServer.url).catch(() => {
-      // A canceled download often surfaces here as a navigation error
-      // (net::ERR_ABORTED) rather than a normal response — expected,
-      // not a test failure; what matters is what happens next.
-    });
-
-    let libraryTab: Page | undefined;
-    for (let attempt = 0; attempt < 40 && !libraryTab; attempt++) {
-      libraryTab = newPages.find((page) => page.url().includes("/library/") && page.url().includes("view=tab"));
-      if (!libraryTab) {
-        await browsingPage.waitForTimeout(250);
+      if (scenario === "missing-access") {
+        expect(await worker.evaluate(
+          () => chrome.permissions.contains({ origins: ["http://127.0.0.1/*"] }),
+        )).toBe(false);
+        server.releaseNative();
+        await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
+        expect(server.importRequests()).toBe(0);
+        expect(newPages.some((page) => page.url().startsWith(origin))).toBe(false);
+      } else {
+        let library!: Page;
+        await expect.poll(() => {
+          library = newPages.find((page) => page.url().startsWith(`${origin}/src/library/`))!;
+          return !!library;
+        }).toBe(true);
+        await expect.poll(server.importRequests).toBeGreaterThan(0);
+        if (scenario === "closed-tab") {
+          await library.close();
+          server.releaseNative();
+          await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
+        } else if (scenario === "success" || scenario === "completed-first") {
+          if (scenario === "completed-first") {
+            await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
+          }
+          server.releaseImport();
+          await expect(library.getByText("Ambra Long Content Test Fixture", { exact: true })).toBeVisible();
+          if (scenario === "success") {
+            await expect.poll(async () => (await nativeRecords()).length).toBe(0);
+            expect(await download.failure()).toBeTruthy();
+          } else {
+            expect((await nativeRecords())[0]?.state).toBe("complete");
+          }
+        } else {
+          await expect(library.getByRole("alert")).toContainText("Import EPUB");
+          await expect(library.getByRole("alert")).not.toContainText("Failed to fetch");
+          if (scenario === "http") await expect(library.getByRole("alert")).toContainText("403");
+          expect((await nativeRecords())[0]?.state).toBe("in_progress");
+          server.releaseNative();
+          await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
+          // Recover through the existing picker using the actual native download.
+          const downloadedFile = await download.path();
+          expect(fs.readFileSync(downloadedFile!)).toEqual(fs.readFileSync(fixture));
+          await library.locator('input[type="file"]').setInputFiles(downloadedFile!);
+          await expect(library.getByText("Ambra Long Content Test Fixture", { exact: true })).toBeVisible();
+        }
       }
+      if (scenario !== "success") {
+        expect(await download.failure()).toBeNull();
+        expect((await nativeRecords())[0]?.paused).toBe(false);
+      }
+    } finally {
+      await context?.close();
+      await server.close();
+      fs.rmSync(profile, { recursive: true, force: true });
+      if (extensionPath !== EXTENSION_PATH) fs.rmSync(extensionPath, { recursive: true, force: true });
     }
-    await navigation;
-    expect(libraryTab, "no library tab opened after navigating to the EPUB link").toBeTruthy();
-
-    await expect(libraryTab!.getByText("Ambra Long Content Test Fixture")).toBeVisible({ timeout: 15_000 });
-
-    // The book was intercepted before Chrome ever saved it — no real
-    // download should be sitting in the browser's download list.
-    const downloads = await serviceWorker.evaluate(
-      () => new Promise((resolve) => chrome.downloads.search({}, resolve)),
-    );
-    const completedRealDownloads = (downloads as Array<{ state: string; filename: string }>).filter(
-      (item) => item.state === "complete" && /test-book\.epub$/i.test(item.filename),
-    );
-    expect(
-      completedRealDownloads,
-      "the EPUB should have been intercepted and canceled, not actually downloaded to disk",
-    ).toHaveLength(0);
-  } finally {
-    await context.close();
-    await epubServer.close();
-  }
-});
+  });
+}

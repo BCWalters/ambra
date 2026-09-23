@@ -1,8 +1,6 @@
 /**
- * Fallback for an EPUB download that somehow still completed despite
- * `epubDirectImport.ts`'s proactive interception (issue #122's own
- * cancel-before-save path) — e.g. a download `chrome.downloads.cancel`
- * couldn't stop in time, or one whose URL/MIME didn't look like an
+ * Fallback for an EPUB download that completed before a successful
+ * direct import, without host access, or whose URL/MIME didn't look like an
  * EPUB until later in the download than `onCreated` fires. Notices the
  * completed download and offers a one-click way to add it to the
  * library, rather than leaving it to sit in the Downloads folder as an

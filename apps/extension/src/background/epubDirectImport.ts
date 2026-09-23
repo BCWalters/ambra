@@ -1,58 +1,81 @@
-/**
- * Proactively intercepts an EPUB download the instant it begins (issue
- * #122) — before Chrome saves anything to disk — cancels it, and opens
- * the library with the original source URL so the library page itself
- * can fetch and import it directly, without ever landing in the
- * Downloads folder at all. Matches how established EPUB reader
- * extensions (e.g. EPUBReader) handle this: fetching an arbitrary
- * third-party URL from an extension context is subject to the same
- * host-permission gate as any other cross-origin request, so this
- * needs the broad `host_permissions` declared in `manifest.json` (a
- * deliberate, user-confirmed product decision — see this repository's
- * own history for the discussion — not something requested quietly).
- *
- * `chrome.downloads.onCreated` fires the moment Chrome commits to a
- * download, with the response's URL/MIME type already known — so
- * cancelling here loses at most a few already-buffered bytes, discarded
- * along with the rest of the (never actually saved) file. If
- * `chrome.downloads.cancel` doesn't win the race for some reason,
- * `epubDownloadDetection.ts`'s own post-download notification still
- * catches the completed download as a fallback — including the one
- * genuine race this can lose to: a *freshly (re)started* MV3 service
- * worker (right after a browser launch, or after this one goes idle and
- * Chrome wakes it back up for the very event that would register this
- * listener) can take a brief moment to finish evaluating its top-level
- * module code and attach `onCreated`'s listener at all, during which a
- * download that begins can slip through uncaught. Confirmed directly
- * while building this (a fresh profile's very first download sometimes
- * missed interception until the service worker had been alive for a
- * moment) — there's no reliable "the service worker is fully ready" event
- * to wait for from here, so rather than adding a synthetic delay that
- * would just move the same race to a different, arbitrary point in
- * time, this leans on the fallback notification already covering it
- * gracefully instead.
- */
 import { openLibraryImportTab } from "../navigation.js";
+import { EPUB_IMPORT_RESULT, hasImportHostAccess } from "../epubImportHandoff.js";
 import { isLikelyEpubDownload } from "./epubUrlHeuristic.js";
 
+/**
+ * The native download keeps running until the library confirms persistence.
+ * No pause, retry, or durable worker state is needed: closing a tab, losing a
+ * message, or restarting this worker always leaves Chrome's download intact.
+ * A download that finishes first stays on disk and in Chrome's history.
+ */
 export function registerEpubDirectImport(): void {
+  const pending = new Map<string, { downloadId: number; tabId: number; createdAt: number }>();
+
   chrome.downloads.onCreated.addListener((item) => {
-    if (!isLikelyEpubDownload(item)) {
-      return;
+    if (!isLikelyEpubDownload(item) || item.state !== "in_progress") return;
+    void (async () => {
+      if (!await hasImportHostAccess([item.url, item.finalUrl || item.url])) return;
+      for (const [token, entry] of pending) {
+        if (Date.now() - entry.createdAt > 5 * 60_000) pending.delete(token);
+      }
+      if (pending.size >= 100) {
+        console.warn("Ambra skipped automatic EPUB import because too many handoffs are pending. The browser download was left running.");
+        return;
+      }
+      const token = crypto.randomUUID();
+      const tab = await openLibraryImportTab(item.finalUrl || item.url, token);
+      if (tab.id !== undefined) {
+        pending.set(token, { downloadId: item.id, tabId: tab.id, createdAt: Date.now() });
+      } else {
+        console.warn("Ambra could not track the EPUB import tab. The browser download was left running.");
+      }
+    })().catch((error: unknown) => {
+      console.warn("Ambra could not open the EPUB import. The browser download was left running.", error);
+    });
+  });
+
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    for (const [token, entry] of pending) {
+      if (entry.tabId === tabId) pending.delete(token);
     }
-    chrome.downloads.cancel(item.id, () => {
-      if (chrome.runtime.lastError) return;
-      // Chrome also reports cancellation success for a download that already
-      // completed. Keep those records for the normal notification/file-picker
-      // fallback instead of fetching again and hiding the saved file's history.
-      chrome.downloads.search({ id: item.id }, (items) => {
-        if (chrome.runtime.lastError) return;
-        const current = items[0];
-        if (current?.state !== "interrupted" || current.error !== "USER_CANCELED") return;
-        void openLibraryImportTab(item.url).then(() =>
-          chrome.downloads.erase({ id: item.id, state: "interrupted", error: "USER_CANCELED" }),
-        ).catch((error: unknown) => {
-          console.warn("Ambra could not finish handing off the EPUB download.", error);
+  });
+
+  chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+    if (!message || typeof message !== "object" || !("type" in message) ||
+        message.type !== EPUB_IMPORT_RESULT || !("token" in message) ||
+        typeof message.token !== "string" || !("imported" in message) ||
+        typeof message.imported !== "boolean") return;
+    const entry = pending.get(message.token);
+    if (!entry || sender.id !== chrome.runtime.id || sender.tab?.id !== entry.tabId ||
+        sender.frameId !== 0 ||
+        sender.url?.split("?")[0] !== chrome.runtime.getURL("src/library/index.html")) return;
+    pending.delete(message.token);
+    sendResponse({ received: true });
+    if (!message.imported) return;
+    chrome.downloads.search({ id: entry.downloadId }, (items) => {
+      if (chrome.runtime.lastError) {
+        console.warn("Ambra could not check the original download after EPUB import.", chrome.runtime.lastError.message);
+        return;
+      }
+      if (items[0]?.state !== "in_progress") return;
+      chrome.downloads.cancel(entry.downloadId, () => {
+        if (chrome.runtime.lastError) {
+          console.warn("Ambra could not cancel the original download after EPUB import. The imported book is saved.", chrome.runtime.lastError.message);
+          return;
+        }
+        // Completion can win the cancel race; never erase a completed record.
+        chrome.downloads.search({ id: entry.downloadId }, (current) => {
+          if (chrome.runtime.lastError) {
+            console.warn("Ambra could not verify download cancellation. Download history was left unchanged.", chrome.runtime.lastError.message);
+            return;
+          }
+          if (current[0]?.state !== "interrupted" ||
+              current[0].error !== "USER_CANCELED") return;
+          void chrome.downloads.erase({
+            id: entry.downloadId, state: "interrupted", error: "USER_CANCELED",
+          }).catch((error: unknown) => {
+            console.warn("Ambra could not clean up cancelled-download history. The imported book is saved.", error);
+          });
         });
       });
     });

@@ -7,6 +7,7 @@ import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { LibraryApp } from "./LibraryApp.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import { LocaleProvider, useLocale } from "../i18n/LocaleContext.js";
+import { EPUB_IMPORT_RESULT } from "../epubImportHandoff.js";
 
 vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue("book") }));
 
@@ -47,8 +48,12 @@ describe("useLibrary ownership and failures", () => {
   }
 
   beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal("chrome", { runtime: { getManifest: () => ({ version: "test" }) } });
+    vi.stubGlobal("chrome", {
+      runtime: { getManifest: () => ({ version: "test" }), sendMessage: vi.fn().mockResolvedValue({ received: true }) },
+      permissions: { contains: vi.fn().mockResolvedValue(true) },
+    });
     window.history.replaceState(null, "", "/?view=tab");
     db = makeDatabase();
     vi.spyOn(LibraryDatabase, "open").mockResolvedValue(db.value);
@@ -209,6 +214,116 @@ describe("useLibrary ownership and failures", () => {
     expect(importBook).toHaveBeenCalledOnce();
     expect((fetch.mock.calls[0]?.[1].signal as AbortSignal).aborted).toBe(false);
     expect(discarded.methods.close).toHaveBeenCalledOnce();
+  });
+
+  function setDirectImportUrl(url = "https://example.com/book.epub") {
+    window.history.replaceState(null, "", `/?view=tab&importUrl=${encodeURIComponent(url)}&importToken=handoff`);
+  }
+
+  it("acknowledges only after the book is persisted and strips handoff parameters", async () => {
+    const saving = deferred<string>();
+    vi.mocked(importBook).mockReturnValueOnce(saving.promise);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await render();
+    expect(importBook).toHaveBeenCalledOnce();
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(window.location.search).toBe("?view=tab");
+    await act(async () => saving.resolve("book"));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
+      type: EPUB_IMPORT_RESULT, token: "handoff", imported: true,
+    });
+  });
+
+  it.each(["network", "http", "body", "parse", "quota"])(
+    "reports an actionable %s failure without acknowledging success", async (failure) => {
+      const fetch = vi.fn().mockResolvedValue(new Response("epub"));
+      if (failure === "network") fetch.mockRejectedValue(new TypeError("Failed to fetch"));
+      if (failure === "http") fetch.mockResolvedValue(new Response("", { status: 403 }));
+      if (failure === "body") fetch.mockResolvedValue({ ok: true, blob: () => Promise.reject(new Error("Disconnected")) });
+      if (failure === "parse") vi.mocked(importBook).mockRejectedValueOnce(new Error("Invalid EPUB: missing OEBPS/chapter.xhtml"));
+      if (failure === "quota") vi.mocked(importBook).mockRejectedValueOnce(new DOMException("Full", "QuotaExceededError"));
+      vi.stubGlobal("fetch", fetch);
+      setDirectImportUrl();
+      await render();
+      expect(latest.error).toBeTruthy();
+      expect(latest.error).not.toContain("Failed to fetch");
+      if (failure === "quota") expect(latest.error).toContain("storage");
+      else expect(latest.error).toContain("Import EPUB");
+      if (failure === "http") expect(latest.error).toContain("403");
+      if (failure === "parse") expect(latest.error).toContain("Invalid EPUB: missing OEBPS/chapter.xhtml");
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
+        type: EPUB_IMPORT_RESULT, token: "handoff", imported: false,
+      });
+    },
+  );
+
+  it.each(["permission", "api-unavailable", "unsupported"])(
+    "does not fetch when access is unavailable: %s", async (reason) => {
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      if (reason === "permission") vi.mocked(chrome.permissions.contains).mockImplementation(async () => false);
+      if (reason === "api-unavailable") vi.mocked(chrome.permissions.contains).mockRejectedValue(new Error("No API"));
+      setDirectImportUrl(reason === "unsupported" ? "blob:https://example.com/id" : undefined);
+      await render();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(latest.error).toContain("Import EPUB");
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ imported: false }));
+    },
+  );
+
+  it("keeps a successfully imported book if the worker no longer owns its handoff", async () => {
+    vi.mocked(chrome.runtime.sendMessage).mockRejectedValue(new Error("No receiver"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await render();
+    expect(importBook).toHaveBeenCalledOnce();
+    expect(latest.error).toBeUndefined();
+    expect(latest.books).toHaveLength(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("could not report the EPUB import result"), expect.any(Error));
+  });
+
+  it("logs an unacknowledged handoff without presenting a persisted import as failed", async () => {
+    vi.mocked(chrome.runtime.sendMessage).mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await render();
+    expect(latest.error).toBeUndefined();
+    expect(latest.books).toHaveLength(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("did not acknowledge the EPUB import result"));
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain("handoff");
+  });
+
+  it("retains engine file diagnostics when the actionable import error is retranslated", async () => {
+    let changeLocale!: ReturnType<typeof useLocale>["setPreference"];
+    function LocalizedHarness() {
+      changeLocale = useLocale().setPreference;
+      return <Harness />;
+    }
+    vi.mocked(importBook).mockRejectedValueOnce(new Error("Missing OEBPS/chapter.xhtml"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await act(async () => root.render(<LocaleProvider><LocalizedHarness /></LocaleProvider>));
+    expect(latest.error).toContain("Import EPUB");
+    expect(latest.error).toContain("Missing OEBPS/chapter.xhtml");
+    await act(async () => changeLocale("fr"));
+    expect(latest.error).toContain("Importer un EPUB");
+    expect(latest.error).toContain("Missing OEBPS/chapter.xhtml");
+    expect(importBook).toHaveBeenCalledOnce();
+  });
+
+  it("does not acknowledge success when the library closes during persistence", async () => {
+    const saving = deferred<string>();
+    vi.mocked(importBook).mockReturnValueOnce(saving.promise);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await render();
+    act(() => root.unmount());
+    mounted = false;
+    await act(async () => saving.resolve("book"));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
+      type: EPUB_IMPORT_RESULT, token: "handoff", imported: false,
+    });
   });
 
   it("loads global settings and refreshes them after an atomic patch or external change", async () => {

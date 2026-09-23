@@ -10,6 +10,7 @@ import { DEFAULT_GLOBAL_READING_SETTINGS, type GlobalReadingSettings } from "./R
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
+import { EPUB_IMPORT_RESULT, LIBRARY_IMPORT_TOKEN_PARAM, hasImportHostAccess, httpImportOrigins } from "../epubImportHandoff.js";
 
 type LibraryError = string | { key: keyof StringCatalog; params?: Record<string, string | number> };
 
@@ -257,12 +258,8 @@ export function useLibrary(): UseLibraryResult {
     [],
   );
 
-  // Issue #122: a proactively-intercepted EPUB download (`epubDirectImport.ts`)
-  // lands here as a source URL to fetch and import automatically, rather
-  // than ever reaching the Downloads folder. A ref (not just gating on
-  // `db`) guards against double-handling — React 18 Strict Mode's
-  // development-only double-invocation of effects would otherwise import
-  // the same book twice.
+  // The original Chrome download remains a fallback until we acknowledge a
+  // persisted import. The ref also prevents duplicate imports in StrictMode.
   const importUrlHandledRef = useRef(false);
   useEffect(() => {
     if (!db || !canImport || importUrlHandledRef.current) {
@@ -274,15 +271,30 @@ export function useLibrary(): UseLibraryResult {
       return;
     }
     importUrlHandledRef.current = true;
+    const token = params.get(LIBRARY_IMPORT_TOKEN_PARAM);
     // Strip the param immediately (not after the fetch resolves) so a
     // reload while the fetch is still in flight can't re-trigger it.
     params.delete(LIBRARY_IMPORT_URL_PARAM);
+    params.delete(LIBRARY_IMPORT_TOKEN_PARAM);
     const nextSearch = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
 
     const abort = new AbortController();
     void (async () => {
+      let importing = false;
+      let imported = false;
       try {
+        if (!httpImportOrigins([importUrl])) {
+          setError({ key: "library.downloadUnsupported" });
+          return;
+        }
+        if (!await hasImportHostAccess([importUrl])) {
+          if (!abort.signal.aborted && ownsDatabase(db)) {
+            setError({ key: "library.downloadAccessDenied" });
+          }
+          return;
+        }
+        if (abort.signal.aborted || !ownsDatabase(db)) return;
         const response = await fetch(importUrl, { signal: abort.signal });
         if (!response.ok) {
           if (!abort.signal.aborted && ownsDatabase(db)) {
@@ -293,15 +305,47 @@ export function useLibrary(): UseLibraryResult {
         const blob = await response.blob();
         if (abort.signal.aborted || !ownsDatabase(db)) return;
         const file = new File([blob], suggestedFileNameFor(importUrl), { type: "application/epub+zip" });
-        await importFiles([file]);
+        importing = true;
+        // importFiles reports errors without rejecting; only importBook's
+        // persistence result can safely acknowledge this download handoff.
+        await importBook(db, file);
+        if (abort.signal.aborted || !ownsDatabase(db)) return;
+        imported = true;
+        await refresh(db);
+        if (ownsDatabase(db)) refreshStorageUsage();
       } catch (err) {
         if (!abort.signal.aborted && ownsDatabase(db)) {
-          setError(err instanceof Error ? err.message : String(err));
+          if (imported || (err instanceof DOMException && err.name === "QuotaExceededError")) {
+            setError(describeLibraryStorageError(err));
+          } else if (importing) {
+            setError({
+              key: "library.downloadImportFailed",
+              params: { detail: err instanceof Error ? err.message : String(err) },
+            });
+          } else {
+            setError({ key: "library.downloadNetworkFailed" });
+          }
+        }
+      } finally {
+        if (token) {
+          try {
+            const response = await chrome.runtime.sendMessage({
+              type: EPUB_IMPORT_RESULT, token,
+              imported: imported && !abort.signal.aborted && ownsDatabase(db),
+            });
+            if (response?.received !== true) {
+              console.warn("Ambra's background worker did not acknowledge the EPUB import result. The browser download was left unchanged.");
+            }
+          } catch (error) {
+            // A restarted worker may no longer own this handoff. Chrome's
+            // original download stays intact; the imported book is still safe.
+            console.warn("Ambra could not report the EPUB import result. The browser download was left unchanged.", error);
+          }
         }
       }
     })();
     return () => abort.abort();
-  }, [db, canImport, importFiles, ownsDatabase]);
+  }, [db, canImport, ownsDatabase, refresh, refreshStorageUsage]);
 
   const books = useMemo(() => sortBooks(rawBooks, sort, locale), [rawBooks, sort, locale]);
 

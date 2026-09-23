@@ -1,3 +1,5 @@
+import { LIBRARY_IMPORT_TOKEN_PARAM } from "./epubImportHandoff.js";
+
 const READER_PAGE_URL = "src/reader/index.html";
 const LIBRARY_PAGE_URL = "src/library/index.html";
 
@@ -49,26 +51,17 @@ export async function openLibraryTab(): Promise<void> {
 }
 
 /** The query param `LibraryApp` checks on mount to find a source URL
- * it should fetch and import automatically (issue #122's proactive
- * EPUB-download interception, `epubDirectImport.ts`) — set once, read
+ * it should fetch and import automatically (`epubDirectImport.ts`) — set once, read
  * once, then stripped from the URL so a later reload/back-navigation
  * never re-triggers the same import. */
 export const LIBRARY_IMPORT_URL_PARAM = "importUrl";
 
-/** Opens the library, in its full-tab form, with a source URL for it to
- * fetch and import right away (issue #122) — used only by
- * `epubDirectImport.ts`, right after cancelling a browser download that
- * looked like an EPUB. The library page does its own `fetch()` here
- * (rather than the background service worker fetching the bytes and
- * shipping them over via `chrome.runtime.sendMessage`) because a normal
- * page context needs nothing extra to turn a `Response` into the same
- * `File` its own manual file-picker import already knows how to
- * handle — no message-size limits or serialization to worry about for
- * a full EPUB's worth of bytes. */
-export async function openLibraryImportTab(sourceUrl: string): Promise<void> {
+/** Opens a parallel import while Chrome keeps the original download safe. */
+export async function openLibraryImportTab(sourceUrl: string, token: string): Promise<chrome.tabs.Tab> {
   const params = new URLSearchParams({
     [LIBRARY_FULL_TAB_PARAM]: LIBRARY_FULL_TAB_VALUE,
     [LIBRARY_IMPORT_URL_PARAM]: sourceUrl,
+    [LIBRARY_IMPORT_TOKEN_PARAM]: token,
   });
-  await chrome.tabs.create({ url: chrome.runtime.getURL(`${LIBRARY_PAGE_URL}?${params.toString()}`) });
+  return chrome.tabs.create({ url: chrome.runtime.getURL(`${LIBRARY_PAGE_URL}?${params.toString()}`) });
 }

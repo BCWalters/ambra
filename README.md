@@ -46,8 +46,8 @@ Load the built extension into Chrome to use the Library and reader.
    and import the book automatically.
 
 If you're using the dev server (step 1), leave it running — Chrome will pick up most changes
-automatically; for changes to `manifest.json` itself, click the reload icon on the extension
-card in `chrome://extensions`.
+automatically; for changes to `manifest.json` itself, restart the chosen build/dev process
+and then click the reload icon on the extension card in `chrome://extensions`.
 
 ### If EPUB links do not import
 
@@ -55,12 +55,27 @@ card in `chrome://extensions`.
   manifest. Direct web imports need the website access declared in the source
   `host_permissions`; rebuilding and reloading the extension updates that declaration.
 - Check Ambra's **Site access** in Chrome's extension details. Access withheld for the
-  download site can prevent the Library from fetching the EPUB.
+  download site leaves the normal Chrome download running instead of opening an automatic
+  import. Use **Import EPUB** to open the downloaded file; no new permission is required.
+- During automatic import, the native download continues until Ambra confirms the book
+  is saved. If it finishes first, the copy in Downloads is intentionally retained.
+  Failed imports, closed Library tabs, and worker restarts do not pause or discard it.
+  Authenticated, single-use, or non-HTTP links may require downloading and importing manually.
+- Only one process should own `apps/extension/dist`. In particular, an older
+  `vite build --watch` can keep rewriting a stale manifest even when a newer dev server
+  is running. Its CRXJS manifest is captured when the build starts; fresh output timestamps
+  do not prove that permission declarations are current. Identify the competing process
+  and stop it deliberately before restarting your chosen dev/build process. Never stop
+  another session's processes or replace its live output without coordinating.
 - A production build replaces the dev-server loaders in `dist`. Merely leaving Vite
   running does not turn that bundle back into a live development build. Stop and restart
   `pnpm --filter @ambra/extension dev`, then reload Ambra in `chrome://extensions`.
 - For a standalone bundle instead, run `pnpm --filter @ambra/extension build` and reload
   Ambra. Do not run that build over `dist` while relying on live dev-server updates.
+- After a coordinated restart/reload, inspect `chrome.runtime.getManifest().host_permissions`
+  and `await chrome.permissions.getAll()` in the actual extension's DevTools, not a
+  localhost web preview. The generated manifest and Chrome's effective site access must
+  both be checked; an ordinary localhost page does not acquire extension host permissions.
 
 The browser tests build into an isolated directory so they do not replace the unpacked
 extension you are using.
