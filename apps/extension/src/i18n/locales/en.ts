@@ -48,6 +48,7 @@ export interface StringCatalog {
   "settings.language": string;
   "settings.languageSystemDefault": string;
   "settings.readingMode": string;
+  "settings.globalScope": string;
   "settings.paginated": string;
   "settings.scroll": string;
   "settings.pageTurn": string;
@@ -59,6 +60,7 @@ export interface StringCatalog {
   "settings.brightness": string;
   "settings.readerTheme": string;
   "text.textMenuLabel": string;
+  "text.bookScope": string;
   "settings.resetToDefault": string;
   "settings.resetSliderToDefault": string;
   "text.pageMenuLabel": string;
@@ -101,6 +103,9 @@ export interface StringCatalog {
   "search.unpinSearchPanel": string;
   "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
+  "scrubber.preview": string;
+  "scrubber.releaseToSeek": string;
+  "scrubber.seeking": string;
   "scrubber.pageOfTotal": string;
   "scrubber.chapterOfTotal": string;
   "scrubber.pagesLeftInChapterOne": string;
@@ -253,6 +258,11 @@ export interface StringCatalog {
   "goTo.rangeValidation": string;
   "goTo.goButton": string;
   "imageViewer.dialogAriaLabel": string;
+  "imageViewer.zoomIn": string;
+  "imageViewer.zoomOut": string;
+  "imageViewer.fit": string;
+  "imageViewer.controls": string;
+  "imageViewer.instructions": string;
 }
 
 export const en: StringCatalog = {
@@ -272,6 +282,7 @@ export const en: StringCatalog = {
   "settings.language": "Language",
   "settings.languageSystemDefault": "System default",
   "settings.readingMode": "Reading mode",
+  "settings.globalScope": "All books",
   "settings.paginated": "Paginated",
   "settings.scroll": "Scroll",
   "settings.pageTurn": "Page turn",
@@ -283,6 +294,7 @@ export const en: StringCatalog = {
   "settings.brightness": "Brightness",
   "settings.readerTheme": "Reader theme",
   "text.textMenuLabel": "Text",
+  "text.bookScope": "Only this book",
   "settings.resetToDefault": "Reset to default",
   "settings.resetSliderToDefault": "Reset {label} to default",
   "text.pageMenuLabel": "Page",
@@ -325,6 +337,9 @@ export const en: StringCatalog = {
   "search.unpinSearchPanel": "Unpin search panel",
   "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
+  "scrubber.preview": "Preview",
+  "scrubber.releaseToSeek": "Release to go here",
+  "scrubber.seeking": "Going to position…",
   "scrubber.pageOfTotal": "Page {current} of {total}",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",
   "scrubber.pagesLeftInChapterOne": "1 page left in this chapter",
@@ -447,4 +462,9 @@ export const en: StringCatalog = {
   "goTo.rangeValidation": "Enter a number between 1 and {max}.",
   "goTo.goButton": "Go",
   "imageViewer.dialogAriaLabel": "Image viewer",
+  "imageViewer.zoomIn": "Zoom in",
+  "imageViewer.zoomOut": "Zoom out",
+  "imageViewer.fit": "Fit to window",
+  "imageViewer.controls": "Image zoom",
+  "imageViewer.instructions": "Scroll to zoom. Drag or use arrow keys to pan. Press 0 to fit.",
 };
