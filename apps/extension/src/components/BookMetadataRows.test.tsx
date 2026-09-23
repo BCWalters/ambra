@@ -30,14 +30,22 @@ describe("shared Book Details metadata rows", () => {
     expect(container.querySelectorAll("p")[1]?.textContent).toBe(value);
   });
 
-  it("does not repeat the Copyright label when it is already in the statement", () => {
-    act(() => root.render(<BookRightsRow label="Copyright" value="Copyright 2026 Example" />));
+  it.each([
+    "Copyright 2026 Example",
+    "Public domain",
+    "  Public domain in the USA.  ",
+    "PUBLIC DOMAIN",
+    "Public\ndomain",
+    "\u00a9 2026 Example",
+    "(C) 2026 Example",
+  ])("omits the label for the self-describing rights statement %j", (value) => {
+    act(() => root.render(<BookRightsRow label="Copyright" value={value} />));
     expect(container.querySelectorAll("p")).toHaveLength(1);
-    expect(container.textContent).toBe("Copyright 2026 Example");
+    expect(container.textContent).toBe(value);
   });
 
   it("keeps the localized label for other rights statements", () => {
-    act(() => root.render(<BookRightsRow label="Droits" value="Public domain" />));
-    expect(Array.from(container.querySelectorAll("p"), node => node.textContent)).toEqual(["Droits", "Public domain"]);
+    act(() => root.render(<BookRightsRow label="Droits" value="All rights reserved." />));
+    expect(Array.from(container.querySelectorAll("p"), node => node.textContent)).toEqual(["Droits", "All rights reserved."]);
   });
 });

@@ -35,6 +35,7 @@ import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeThe
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
 import { AboutFlyout } from "./AboutFlyout.js";
+import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 
 const SORT_GROUP_NAME = "librarySort";
 
@@ -327,7 +328,10 @@ export const LibraryApp: FC = () => {
           boxShadow: CHROME_SHADOW,
         }}
       >
-        <Title2 style={{ color: palette.accent }}>Ambra</Title2>
+        <Title2 style={{ color: palette.accent, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <AmbraMarkIcon size={24} />
+          Ambra
+        </Title2>
         <div style={{ flex: 1 }} />
 
         <Menu

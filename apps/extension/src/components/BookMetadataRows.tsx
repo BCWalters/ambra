@@ -5,10 +5,12 @@ interface BookDetailRowProps {
   label?: string | undefined;
   value: string | undefined;
   compact?: boolean;
+  small?: boolean;
 }
 
-export const BookDetailRow: FC<BookDetailRowProps> = ({ label, value, compact }) => {
+export const BookDetailRow: FC<BookDetailRowProps> = ({ label, value, compact, small }) => {
   if (!value) return null;
+  const ValueText = small ? Caption1 : Body1;
   return (
     <div style={{ marginBottom: compact ? 4 : 12, marginTop: compact ? 6 : 0, overflowWrap: "anywhere" }}>
       {label && (
@@ -16,17 +18,18 @@ export const BookDetailRow: FC<BookDetailRowProps> = ({ label, value, compact })
           {label}
         </Caption1>
       )}
-      <Body1 as="p" block style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+      <ValueText as="p" block style={{ margin: 0, whiteSpace: "pre-wrap" }}>
         {value}
-      </Body1>
+      </ValueText>
     </div>
   );
 };
 
 export const BookRightsRow: FC<{ label: string; value: string | undefined }> = ({ label, value }) => (
   <BookDetailRow
-    label={value && /^copyright\b/i.test(value.trim()) ? undefined : label}
+    label={value && /^(?:copyright\b|public\s+domain\b|\u00a9|\(c\))/i.test(value.trim()) ? undefined : label}
     value={value}
     compact
+    small
   />
 );

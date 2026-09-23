@@ -51,6 +51,8 @@ for (const width of [1000, 360]) {
         await expect(panel.getByRole("heading", { name: metadata.title })).toBeVisible();
         await expect(panel.getByText(metadata.description)).toHaveCSS("font-size", "14px");
         await expect(panel.getByText(metadata.rights, { exact: true })).toBeVisible();
+        await expect(panel.getByText(metadata.rights, { exact: true })).toHaveCSS("font-size", "12px");
+        await expect(panel.getByText(metadata.publisher, { exact: true })).toHaveCSS("font-size", "14px");
         await expect(panel.getByText("Copyright", { exact: true })).toHaveCount(0);
         await expect(panel.locator("img")).toHaveCSS("object-fit", "contain");
         const disclosure = panel.getByRole("button", { name: "Publication details" });
@@ -78,6 +80,13 @@ for (const width of [1000, 360]) {
   }, testInfo) => {
     const { context, libraryPage } = await launchReader(book, { viewport: { width, height: 800 } });
     try {
+      const brand = libraryPage.getByText("Ambra", { exact: true });
+      await expect(brand.locator("svg")).toHaveAttribute("aria-hidden", "true");
+      expect(await brand.evaluate(element => element.closest("button, a, [tabindex]"))).toBeNull();
+      expect(await brand.locator("button, a, [tabindex]").count()).toBe(0);
+      await expect.poll(() => brand.locator("..").evaluate(element =>
+        element.scrollWidth - element.clientWidth,
+      )).toBeLessThanOrEqual(1);
       for (const title of ["Book details", "About Ambra"]) {
         const trigger = title === "Book details"
           ? libraryPage.getByRole("button", { name: /details$/ })
@@ -86,6 +95,10 @@ for (const width of [1000, 360]) {
         await trigger.press("Enter");
         const dialog = libraryPage.getByRole("dialog", { name: title });
         const close = dialog.getByRole("button", { name: "Close", exact: true });
+        if (title === "About Ambra") {
+          expect(await dialog.locator("svg linearGradient").getAttribute("id"))
+            .not.toBe(await brand.locator("svg linearGradient").getAttribute("id"));
+        }
         await expect(close).toBeFocused();
         await expect.poll(async () => {
           const panel = await dialog.boundingBox();
