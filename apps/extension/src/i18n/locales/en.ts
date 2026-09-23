@@ -103,8 +103,6 @@ export interface StringCatalog {
   "search.unpinSearchPanel": string;
   "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
-  "scrubber.preview": string;
-  "scrubber.releaseToSeek": string;
   "scrubber.seeking": string;
   "scrubber.pageOfTotal": string;
   "scrubber.chapterOfTotal": string;
@@ -337,8 +335,6 @@ export const en: StringCatalog = {
   "search.unpinSearchPanel": "Unpin search panel",
   "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
-  "scrubber.preview": "Preview",
-  "scrubber.releaseToSeek": "Release to go here",
   "scrubber.seeking": "Going to position…",
   "scrubber.pageOfTotal": "Page {current} of {total}",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",

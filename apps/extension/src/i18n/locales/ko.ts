@@ -35,8 +35,6 @@ export const ko: StringCatalog = {
   "search.unpinSearchPanel": "검색 패널 고정 해제",
   "search.closeSearchPanel": "검색 패널 닫기",
   "scrubber.positionInBook": "책 속 위치",
-  "scrubber.preview": "미리 보기",
-  "scrubber.releaseToSeek": "놓으면 여기로 이동",
   "scrubber.seeking": "위치로 이동 중…",
   "scrubber.pageOfTotal": "{total}페이지 중 {current}페이지",
   "scrubber.chapterOfTotal": "{total}장 중 {current}장",

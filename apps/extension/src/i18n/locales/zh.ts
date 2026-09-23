@@ -35,8 +35,6 @@ export const zh: StringCatalog = {
   "search.unpinSearchPanel": "取消固定搜索面板",
   "search.closeSearchPanel": "关闭搜索面板",
   "scrubber.positionInBook": "书中位置",
-  "scrubber.preview": "预览",
-  "scrubber.releaseToSeek": "松开以跳转至此处",
   "scrubber.seeking": "正在跳转…",
   "scrubber.pageOfTotal": "第 {current} 页，共 {total} 页",
   "scrubber.chapterOfTotal": "第 {current} 章，共 {total} 章",

@@ -35,8 +35,6 @@ export const ja: StringCatalog = {
   "search.unpinSearchPanel": "検索パネルの固定を解除",
   "search.closeSearchPanel": "検索パネルを閉じる",
   "scrubber.positionInBook": "本の中の位置",
-  "scrubber.preview": "プレビュー",
-  "scrubber.releaseToSeek": "離すとここに移動",
   "scrubber.seeking": "移動中…",
   "scrubber.pageOfTotal": "{total}ページ中{current}ページ",
   "scrubber.chapterOfTotal": "{total}章中第{current}章",

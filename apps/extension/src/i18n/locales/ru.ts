@@ -35,8 +35,6 @@ export const ru: StringCatalog = {
   "search.unpinSearchPanel": "Открепить панель поиска",
   "search.closeSearchPanel": "Закрыть панель поиска",
   "scrubber.positionInBook": "Позиция в книге",
-  "scrubber.preview": "Предпросмотр",
-  "scrubber.releaseToSeek": "Отпустите, чтобы перейти сюда",
   "scrubber.seeking": "Переход к позиции…",
   "scrubber.pageOfTotal": "Страница {current} из {total}",
   "scrubber.chapterOfTotal": "Глава {current} из {total}",

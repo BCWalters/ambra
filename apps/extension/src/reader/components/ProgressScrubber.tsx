@@ -459,7 +459,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
 
   const shown = visible || optimisticFraction !== undefined;
   const previewStateLabel =
-    dragFraction !== undefined ? t("scrubber.preview") : t("scrubber.seeking");
+    dragFraction === undefined ? t("scrubber.seeking") : undefined;
 
   return (
     <div
@@ -579,18 +579,20 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           {/* Fluent's Caption1 sets its own `text-align: start`, which
               wins over the popup div's inherited `center` above — so
               each line needs `textAlign: "center"` set directly on it. */}
-          <Caption1
-            as="span"
-            block
-            style={{
-              color: chromeTheme.accentForeground,
-              fontWeight: 600,
-              textAlign: "center",
-              marginBottom: 4,
-            }}
-          >
-            {previewStateLabel}
-          </Caption1>
+          {previewStateLabel && (
+            <Caption1
+              as="span"
+              block
+              style={{
+                color: chromeTheme.accentForeground,
+                fontWeight: 600,
+                textAlign: "center",
+                marginBottom: 4,
+              }}
+            >
+              {previewStateLabel}
+            </Caption1>
+          )}
           <Caption1
             as="span"
             block
@@ -620,19 +622,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           >
             {preview.chapterLabel}
           </Caption1>
-          {dragFraction !== undefined && (
-            <Caption1
-              as="span"
-              block
-              style={{
-                color: "var(--colorNeutralForeground2, #444)",
-                textAlign: "center",
-                marginTop: 8,
-              }}
-            >
-              {t("scrubber.releaseToSeek")}
-            </Caption1>
-          )}
         </div>
       )}
 
@@ -653,7 +642,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         aria-valuenow={Math.round(displayFraction * 100)}
         aria-valuetext={
           previewLabel
-            ? `${previewStateLabel}: ${previewLabel} - ${preview!.chapterLabel}`
+            ? `${previewStateLabel ? `${previewStateLabel}: ` : ""}${previewLabel} - ${preview!.chapterLabel}`
             : (currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`)
         }
         style={{

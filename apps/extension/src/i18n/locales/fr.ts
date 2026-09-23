@@ -35,8 +35,6 @@ export const fr: StringCatalog = {
   "search.unpinSearchPanel": "Détacher le panneau de recherche",
   "search.closeSearchPanel": "Fermer le panneau de recherche",
   "scrubber.positionInBook": "Position dans le livre",
-  "scrubber.preview": "Aperçu",
-  "scrubber.releaseToSeek": "Relâchez pour aller ici",
   "scrubber.seeking": "Accès à la position…",
   "scrubber.pageOfTotal": "Page {current} sur {total}",
   "scrubber.chapterOfTotal": "Chapitre {current} sur {total}",

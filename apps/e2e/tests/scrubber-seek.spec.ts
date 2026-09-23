@@ -365,9 +365,12 @@ test("preview is readable at narrow widths and Escape leaves the book in place",
     await page.mouse.move(track.x + track.width * 0.5, track.y + track.height / 2);
     await page.mouse.down();
     await page.mouse.move(track.x + track.width * 0.8, track.y + track.height / 2);
-    await expect(slider).toHaveAttribute("aria-valuetext", /^Preview:/);
-    await expect(page.getByText("Release to go here", { exact: true })).toBeVisible();
-    const popup = page.getByText("Preview", { exact: true }).locator("..");
+    await expect(slider).toHaveAttribute("aria-valuetext", /^Page \d+ of \d+ - /);
+    await expect(page.getByText("Preview", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Release to go here", { exact: true })).toHaveCount(0);
+    const popup = slider.locator("..").locator("span[title]").locator("..");
+    await expect(popup).toBeVisible();
+    await expect(popup.locator("span")).toHaveCount(2);
     await slider.press("Escape");
     await page.mouse.up();
     await expect(slider).toHaveAttribute("aria-valuenow", before!);
@@ -435,7 +438,7 @@ test("touch preview cancels cleanly and release announces pending navigation", a
     const client = await context.newCDPSession(page);
     const touchPoints = [{ x: box.x + box.width * 0.8, y: box.y + box.height / 2 }];
     await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
-    await expect(slider).toHaveAttribute("aria-valuetext", /^Preview:/);
+    await expect(slider).toHaveAttribute("aria-valuetext", /^Page \d+ of \d+ - /);
     await client.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
     await expect(slider).toHaveAttribute("aria-valuenow", before!);
     expect(await page.evaluate(() => Reflect.get(window, "__scrubberState").calls)).toEqual([]);

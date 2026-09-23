@@ -123,16 +123,19 @@ describe("ProgressScrubber", () => {
     expect(bar.style.opacity).toBe("0");
   });
 
-  it("labels a drag as preview, keeps the actual position, and focuses the larger target", () => {
+  it("shows only the destination while dragging, keeps the actual position, and focuses the larger target", () => {
     const { slider, onSeek } = renderScrubber({ visible: false });
     pointer(slider, "pointerdown");
     expect(document.activeElement).toBe(slider);
     expect(slider.style.height).toBe("44px");
     expect(slider.getAttribute("aria-valuetext")).toBe(
-      "Preview: Page 80 of 100 - A long chapter title",
+      "Page 80 of 100 - A long chapter title",
     );
     expect(container.textContent).toContain("Page 5 of 100");
-    expect(container.textContent).toContain("Release to go here");
+    expect(container.textContent).not.toContain("Preview");
+    expect(container.textContent).not.toContain("Release to go here");
+    const popup = container.querySelector('[title="A long chapter title"]')!.parentElement!;
+    expect(popup.textContent).toBe("Page 80 of 100A long chapter title");
     expect(slider.parentElement!.style.opacity).toBe("1");
     expect(onSeek).not.toHaveBeenCalled();
   });
@@ -155,7 +158,7 @@ describe("ProgressScrubber", () => {
       pointer(slider, "pointerup", { buttons: 0 });
       expect(onSeek).not.toHaveBeenCalled();
       expect(slider.getAttribute("aria-valuenow")).toBe("5");
-      expect(container.textContent).not.toContain("Release to go here");
+      expect(container.querySelector('[title="A long chapter title"]')).toBeNull();
     },
   );
 
