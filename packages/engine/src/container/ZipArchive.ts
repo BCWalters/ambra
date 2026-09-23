@@ -24,6 +24,8 @@ const CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 
 const END_OF_CENTRAL_DIRECTORY_FIXED_SIZE = 22;
+const CENTRAL_DIRECTORY_HEADER_FIXED_SIZE = 46;
+const LOCAL_FILE_HEADER_FIXED_SIZE = 30;
 const MAX_COMMENT_LENGTH = 0xffff;
 
 const ZIP64_SENTINEL = 0xffffffff;
@@ -123,9 +125,14 @@ export class ZipArchive {
 
   private parseCentralDirectory(): void {
     const eocd = this.findEndOfCentralDirectory();
-    const cursor = new BinaryCursor(this.dataViewAt(eocd.centralDirectoryOffset));
+    const cursor = new BinaryCursor(
+      this.dataViewAt(eocd.centralDirectoryOffset, eocd.centralDirectorySize),
+    );
 
     for (let i = 0; i < eocd.entryCount; i++) {
+      if (cursor.position + CENTRAL_DIRECTORY_HEADER_FIXED_SIZE > eocd.centralDirectorySize) {
+        throw new ZipFormatError(`Truncated central directory header at entry ${i}.`);
+      }
       const signature = cursor.readUint32();
       if (signature !== CENTRAL_DIRECTORY_HEADER_SIGNATURE) {
         throw new ZipFormatError(
@@ -148,6 +155,12 @@ export class ZipArchive {
       cursor.skip(4); // external file attributes
       const localHeaderOffset = cursor.readUint32();
 
+      if (
+        cursor.position + fileNameLength + extraFieldLength + fileCommentLength >
+        eocd.centralDirectorySize
+      ) {
+        throw new ZipFormatError(`Truncated central directory fields at entry ${i}.`);
+      }
       const fileNameBytes = cursor.readBytes(fileNameLength);
       cursor.skip(extraFieldLength);
       cursor.skip(fileCommentLength);
@@ -182,12 +195,14 @@ export class ZipArchive {
   private findEndOfCentralDirectory(): {
     entryCount: number;
     centralDirectoryOffset: number;
+    centralDirectorySize: number;
   } {
     const searchWindowStart = Math.max(
       0,
       this.bytes.length - END_OF_CENTRAL_DIRECTORY_FIXED_SIZE - MAX_COMMENT_LENGTH,
     );
 
+    let invalidRecordReason: string | undefined;
     for (
       let offset = this.bytes.length - END_OF_CENTRAL_DIRECTORY_FIXED_SIZE;
       offset >= searchWindowStart;
@@ -196,16 +211,38 @@ export class ZipArchive {
       if (this.dataViewAt(offset).getUint32(0, true) === END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
         const cursor = new BinaryCursor(this.dataViewAt(offset));
         cursor.skip(4); // signature
-        cursor.skip(2 + 2); // disk number, disk where central directory starts
-        cursor.skip(2); // central directory records on this disk
+        const diskNumber = cursor.readUint16();
+        const centralDirectoryDisk = cursor.readUint16();
+        const entriesOnDisk = cursor.readUint16();
         const entryCount = cursor.readUint16();
-        cursor.skip(4); // size of central directory
+        const centralDirectorySize = cursor.readUint32();
         const centralDirectoryOffset = cursor.readUint32();
-        return { entryCount, centralDirectoryOffset };
+        const commentLength = cursor.readUint16();
+        if (offset + END_OF_CENTRAL_DIRECTORY_FIXED_SIZE + commentLength !== this.bytes.length) {
+          continue;
+        }
+        if (centralDirectorySize === ZIP64_SENTINEL || centralDirectoryOffset === ZIP64_SENTINEL) {
+          invalidRecordReason = "ZIP64 archives are not supported (central directory exceeds 32-bit range).";
+          continue;
+        }
+        if (diskNumber !== 0 || centralDirectoryDisk !== 0 || entriesOnDisk !== entryCount) {
+          invalidRecordReason = "Multi-disk ZIP archives are not supported.";
+          continue;
+        }
+        if (
+          centralDirectoryOffset + centralDirectorySize !== offset ||
+          entryCount * CENTRAL_DIRECTORY_HEADER_FIXED_SIZE > centralDirectorySize
+        ) {
+          invalidRecordReason = "Malformed ZIP central directory bounds.";
+          continue;
+        }
+        return { entryCount, centralDirectoryOffset, centralDirectorySize };
       }
     }
 
-    throw new ZipFormatError("Not a valid ZIP archive: End of Central Directory record not found.");
+    throw new ZipFormatError(
+      invalidRecordReason ?? "Not a valid ZIP archive: End of Central Directory record not found.",
+    );
   }
 
   /** Reads and decompresses a single entry's file data, given its central
@@ -213,7 +250,9 @@ export class ZipArchive {
    * name/extra-field lengths can differ from the central directory's, so
    * they must be read from the local header to locate the actual data. */
   public async readEntryBytes(metadata: ZipEntryMetadata): Promise<Uint8Array> {
-    const cursor = new BinaryCursor(this.dataViewAt(metadata.localHeaderOffset));
+    const cursor = new BinaryCursor(
+      this.dataViewAt(metadata.localHeaderOffset, LOCAL_FILE_HEADER_FIXED_SIZE),
+    );
     const signature = cursor.readUint32();
     if (signature !== LOCAL_FILE_HEADER_SIGNATURE) {
       throw new ZipFormatError(
@@ -227,9 +266,15 @@ export class ZipArchive {
     cursor.skip(fileNameLength + extraFieldLength);
 
     const dataStart = metadata.localHeaderOffset + cursor.position;
+    this.requireByteRange(dataStart, metadata.compressedSize);
     const compressed = this.bytes.subarray(dataStart, dataStart + metadata.compressedSize);
 
     const decompressed = await this.decompress(compressed, metadata.compressionMethod, metadata);
+    if (decompressed.length !== metadata.uncompressedSize) {
+      throw new ZipIntegrityError(
+        `Uncompressed size mismatch for "${metadata.fileName}": archive is corrupted or truncated.`,
+      );
+    }
 
     const actualCrc = crc32(decompressed);
     if (actualCrc !== metadata.crc32) {
@@ -266,7 +311,21 @@ export class ZipArchive {
     );
   }
 
-  private dataViewAt(offset: number): DataView {
-    return new DataView(this.bytes.buffer, this.bytes.byteOffset + offset);
+  private requireByteRange(offset: number, length: number): void {
+    if (
+      !Number.isSafeInteger(offset) ||
+      !Number.isSafeInteger(length) ||
+      offset < 0 ||
+      length < 0 ||
+      offset > this.bytes.length ||
+      length > this.bytes.length - offset
+    ) {
+      throw new ZipFormatError("ZIP record extends beyond the archive's byte range.");
+    }
+  }
+
+  private dataViewAt(offset: number, length = this.bytes.length - offset): DataView {
+    this.requireByteRange(offset, length);
+    return new DataView(this.bytes.buffer, this.bytes.byteOffset + offset, length);
   }
 }
