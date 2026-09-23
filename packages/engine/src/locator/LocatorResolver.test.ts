@@ -166,6 +166,29 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
       LocatorResolutionError,
     );
   });
+
+  it("rejects a text offset beyond the addressed run rather than clamping it", async () => {
+    const doc = await contentLoader.loadSpineDocument(0);
+    const textNode = doc.document.querySelector("p")!.firstChild!;
+    const locator = resolver.generate(0, textNode, textNode.textContent!.length + 1);
+
+    expect(() => resolver.resolveInDocument(locator, 0, doc.document)).toThrow(
+      LocatorResolutionError,
+    );
+  });
+
+  it("round-trips positions under IDs containing CFI delimiters", async () => {
+    const doc = await contentLoader.loadSpineDocument(0);
+    const paragraph = doc.document.querySelector("p")!;
+    paragraph.setAttribute("id", "part]1;note^");
+    const textNode = paragraph.firstChild!;
+    const locator = resolver.generate(0, textNode, 4);
+
+    const resolved = resolver.resolveInDocument(locator, 0, doc.document);
+
+    expect(resolved.node).toBe(textNode);
+    expect(resolved.characterOffset).toBe(4);
+  });
 });
 
 describe("LocatorResolver (fixed-layout.epub, multiple spine items)", () => {

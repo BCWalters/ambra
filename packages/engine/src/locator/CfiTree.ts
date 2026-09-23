@@ -131,6 +131,9 @@ export function resolveOffsetInRun(
   run: readonly ChildNode[],
   cfiOffset: number,
 ): { node: ChildNode; localOffset: number } | undefined {
+  if (!Number.isSafeInteger(cfiOffset) || cfiOffset < 0) {
+    return undefined;
+  }
   let remaining = cfiOffset;
   for (const node of run) {
     const length = node.textContent?.length ?? 0;
@@ -139,11 +142,7 @@ export function resolveOffsetInRun(
     }
     remaining -= length;
   }
-  // Offset lands exactly at the end of the last node in the run (or the
-  // run is empty and offset is 0) — spec allows an offset equal to the
-  // total length, meaning "right after the last character".
-  const last = run[run.length - 1];
-  return last ? { node: last, localOffset: last.textContent?.length ?? 0 } : undefined;
+  return undefined;
 }
 
 /** Computes CFI steps (without character offset) from `root` down to

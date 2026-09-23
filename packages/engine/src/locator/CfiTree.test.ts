@@ -129,6 +129,26 @@ describe("resolveTextRun / resolveOffsetInRun (round-trip with childStepIndex/ru
 
     expect(resolved?.localOffset).toBe(5);
   });
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 6])(
+    "rejects invalid or out-of-range offset %s",
+    (offset) => {
+      const doc = parseXhtmlFragment("<body>hello</body>");
+      const body = doc.getElementsByTagName("body")[0]!;
+
+      expect(resolveOffsetInRun(resolveTextRun(body, 1), offset)).toBeUndefined();
+    },
+  );
+
+  it("rejects overflow across adjacent text nodes while retaining the exact end", () => {
+    const doc = parseXhtmlFragment("<body>he<!--split-->llo</body>");
+    const body = doc.getElementsByTagName("body")[0]!;
+    const run = resolveTextRun(body, 1);
+
+    expect(resolveOffsetInRun(run, 5)).toEqual({ node: run[1], localOffset: 3 });
+    expect(resolveOffsetInRun(run, 6)).toBeUndefined();
+    expect(resolveOffsetInRun([], 0)).toBeUndefined();
+  });
 });
 
 describe("resolveElementChild", () => {

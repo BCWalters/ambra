@@ -9,6 +9,12 @@ describe("CfiStep", () => {
   it("serializes with an id assertion", () => {
     expect(new CfiStep(4, "chap01").toString()).toBe("/4[chap01]");
   });
+
+  it("escapes reserved assertion characters", () => {
+    expect(new CfiStep(4, "a^b[c](d),e;f=g").toString()).toBe(
+      "/4[a^^b^[c^]^(d^)^,e^;f^=g]",
+    );
+  });
 });
 
 describe("EpubCfi.parse / toString round-trip", () => {
@@ -58,6 +64,46 @@ describe("EpubCfi.parse / toString round-trip", () => {
     const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2[;s=b])");
 
     expect(cfi.contentSteps[1]?.idAssertion).toBeUndefined();
+  });
+
+  it("distinguishes an escaped semicolon in an ID from a side-bias parameter", () => {
+    const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2[a^;b;s=b])");
+
+    expect(cfi.contentSteps[1]?.idAssertion).toBe("a;b");
+    expect(cfi.toString()).toBe("epubcfi(/6/4!/4/2[a^;b])");
+  });
+
+  it.each(["a]b", "a[b", "a^b", "a;b", "a,b", "a(b)", "a=b", "a!b", "a/b", "a:b"])(
+    "round-trips package and content assertions containing %s",
+    (id) => {
+      const original = new EpubCfi(
+        [new CfiStep(6), new CfiStep(4, id)],
+        [new CfiStep(4, id), new CfiStep(1)],
+        3,
+      );
+
+      const parsed = EpubCfi.parse(original.toString());
+
+      expect(parsed.packageSteps[1]?.idAssertion).toBe(id);
+      expect(parsed.contentSteps[0]?.idAssertion).toBe(id);
+      expect(parsed.characterOffset).toBe(3);
+      expect(parsed.toString()).toBe(original.toString());
+    },
+  );
+
+  it.each([
+    "epubcfi(/6/4!/4[a^x])",
+    "epubcfi(/6/4!/4[a^])",
+    "epubcfi(/6/4!/4[a][b])",
+    "epubcfi(/6/4!/4[a[b]])",
+    "epubcfi(/6/4!/4[a]])",
+    "epubcfi(/6/4!/4/1:)",
+    "epubcfi(/6/4!/4/1:1:2)",
+    "epubcfi(/6/4!/4!/2)",
+    "epubcfi(/6/9007199254740992!/4)",
+    "epubcfi(/6/4!/4/1:9007199254740992)",
+  ])("rejects malformed or unsupported point syntax %s", (value) => {
+    expect(() => EpubCfi.parse(value)).toThrow(EpubCfiParseError);
   });
 
   it("throws EpubCfiParseError when missing the epubcfi(...) wrapper", () => {
@@ -162,6 +208,31 @@ describe("EpubCfi.joinRange / parseRange", () => {
 
     const rangeCfi = EpubCfi.joinRange(start, end);
     const parsed = EpubCfi.parseRange(rangeCfi);
+
+    expect(parsed.start.toString()).toBe(start.toString());
+    expect(parsed.end.toString()).toBe(end.toString());
+  });
+
+  it("ignores escaped brackets and commas when splitting a range", () => {
+    const packageSteps = [new CfiStep(6), new CfiStep(4, "chapter!one")];
+    const sharedStep = new CfiStep(4, "body],^");
+    const start = new EpubCfi(packageSteps, [sharedStep, new CfiStep(2, "p[one"), new CfiStep(1)], 0);
+    const end = new EpubCfi(packageSteps, [sharedStep, new CfiStep(4, "p;two"), new CfiStep(1)], 5);
+
+    const parsed = EpubCfi.parseRange(EpubCfi.joinRange(start, end));
+
+    expect(parsed.start.toString()).toBe(start.toString());
+    expect(parsed.end.toString()).toBe(end.toString());
+  });
+
+  it("round-trips same-node range offsets with escaped assertions", () => {
+    const start = new EpubCfi([new CfiStep(6), new CfiStep(2)], [
+      new CfiStep(4, "p],one"),
+      new CfiStep(1),
+    ], 2);
+    const end = new EpubCfi(start.packageSteps, start.contentSteps, 5);
+
+    const parsed = EpubCfi.parseRange(EpubCfi.joinRange(start, end));
 
     expect(parsed.start.toString()).toBe(start.toString());
     expect(parsed.end.toString()).toBe(end.toString());

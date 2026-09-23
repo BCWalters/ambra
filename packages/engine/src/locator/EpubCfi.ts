@@ -7,7 +7,8 @@ export class CfiStep {
   ) {}
 
   public toString(): string {
-    return `/${this.index}${this.idAssertion ? `[${this.idAssertion}]` : ""}`;
+    const assertion = this.idAssertion?.replace(/[\^[\](),;=]/g, "^$&");
+    return `/${this.index}${assertion ? `[${assertion}]` : ""}`;
   }
 }
 
@@ -19,33 +20,90 @@ export class EpubCfiParseError extends Error {
   }
 }
 
+const ESCAPABLE_CHARACTERS = new Set("^[](),;=");
+
+/** Structural delimiters only count outside assertions; an escaped bracket
+ * is assertion data, not a change in nesting. Shared by point and range CFIs. */
+function splitOutsideAssertions(segment: string, delimiter: string, cfiString: string): string[] {
+  const parts: string[] = [];
+  let inAssertion = false;
+  let start = 0;
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i]!;
+    if (char === "^") {
+      const escaped = segment[++i];
+      if (!inAssertion || escaped === undefined || !ESCAPABLE_CHARACTERS.has(escaped)) {
+        throw new EpubCfiParseError(`Malformed CFI escape in "${cfiString}".`);
+      }
+    } else if (char === "[") {
+      if (inAssertion) {
+        throw new EpubCfiParseError(`Malformed CFI assertion in "${cfiString}".`);
+      }
+      inAssertion = true;
+    } else if (char === "]") {
+      if (!inAssertion) {
+        throw new EpubCfiParseError(`Malformed CFI assertion in "${cfiString}".`);
+      }
+      inAssertion = false;
+    } else if (char === delimiter && !inAssertion) {
+      parts.push(segment.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (inAssertion) {
+    throw new EpubCfiParseError(`Unterminated CFI assertion in "${cfiString}".`);
+  }
+  parts.push(segment.slice(start));
+  return parts;
+}
+
+function parseIdAssertion(assertion: string | undefined, cfiString: string): string | undefined {
+  if (assertion === undefined) {
+    return undefined;
+  }
+  let id = "";
+  let inParameters = false;
+  for (let i = 0; i < assertion.length; i++) {
+    let char = assertion[i]!;
+    if (char === "^") {
+      char = assertion[++i]!;
+    } else if (char === ";") {
+      // Preserve the existing point-CFI profile: parameters (including
+      // side bias) are accepted but not retained in the value object.
+      inParameters = true;
+    } else if (char === "[" || char === "]") {
+      throw new EpubCfiParseError(`Malformed CFI assertion in "${cfiString}".`);
+    }
+    if (!inParameters) {
+      id += char;
+    }
+  }
+  return id.trim() || undefined;
+}
+
+function parseInteger(value: string, cfiString: string): number {
+  const number = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(number)) {
+    throw new EpubCfiParseError(`Invalid CFI integer in "${cfiString}".`);
+  }
+  return number;
+}
+
 function parseSteps(segment: string, cfiString: string): CfiStep[] {
   if (segment === "") {
     return [];
   }
-
-  const stepPattern = /\/(\d+)(?:\[([^\]]*)\])?/g;
-  const steps: CfiStep[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = stepPattern.exec(segment))) {
-    if (match.index !== lastIndex) {
-      throw new EpubCfiParseError(`Malformed CFI step syntax in "${cfiString}".`);
-    }
-    // An id assertion may carry a trailing `;s=a`/`;s=b` side-bias
-    // parameter (CFI §3.1.4); Wave 1 doesn't need side-bias for point
-    // text locations, so only the id portion before any `;` is kept.
-    const idAssertion = match[2]?.split(";")[0]?.trim() || undefined;
-    steps.push(new CfiStep(Number(match[1]), idAssertion));
-    lastIndex = stepPattern.lastIndex;
-  }
-
-  if (lastIndex !== segment.length) {
+  const [prefix, ...parts] = splitOutsideAssertions(segment, "/", cfiString);
+  if (prefix !== "") {
     throw new EpubCfiParseError(`Malformed CFI step syntax in "${cfiString}".`);
   }
-
-  return steps;
+  return parts.map((part) => {
+    const match = /^(\d+)(?:\[([\s\S]*)\])?$/.exec(part);
+    if (!match) {
+      throw new EpubCfiParseError(`Malformed CFI step syntax in "${cfiString}".`);
+    }
+    return new CfiStep(parseInteger(match[1]!, cfiString), parseIdAssertion(match[2], cfiString));
+  });
 }
 
 /**
@@ -87,22 +145,22 @@ export class EpubCfi {
     }
 
     const inner = wrapperMatch[1] as string;
-    const indirectionIndex = inner.indexOf("!");
-    if (indirectionIndex === -1) {
+    const indirectParts = splitOutsideAssertions(inner, "!", cfiString);
+    if (indirectParts.length !== 2) {
       throw new EpubCfiParseError(
-        `CFI is missing the required "!" indirection into a content document: "${cfiString}"`,
+        `CFI requires a single "!" indirection into a content document: "${cfiString}"`,
       );
     }
 
-    const packagePart = inner.slice(0, indirectionIndex);
-    let contentPart = inner.slice(indirectionIndex + 1);
-
-    let characterOffset: number | undefined;
-    const offsetMatch = /:(\d+)$/.exec(contentPart);
-    if (offsetMatch) {
-      characterOffset = Number(offsetMatch[1]);
-      contentPart = contentPart.slice(0, offsetMatch.index);
+    const [packagePart, contentWithOffset] = indirectParts as [string, string];
+    const offsetParts = splitOutsideAssertions(contentWithOffset, ":", cfiString);
+    if (offsetParts.length > 2) {
+      throw new EpubCfiParseError(`Malformed CFI character offset in "${cfiString}".`);
     }
+    const contentPart = offsetParts[0]!;
+    const characterOffset = offsetParts[1] === undefined
+      ? undefined
+      : parseInteger(offsetParts[1], cfiString);
 
     const packageSteps = parseSteps(packagePart, cfiString);
     const contentSteps = parseSteps(contentPart, cfiString);
@@ -210,48 +268,23 @@ export class EpubCfi {
         `Not a well-formed CFI (missing epubcfi(...) wrapper): "${cfiString}"`,
       );
     }
-    const parts = EpubCfi.splitTopLevelCommas(wrapperMatch[1] as string);
+    const parts = splitOutsideAssertions(wrapperMatch[1] as string, ",", cfiString);
     if (parts.length !== 3) {
       throw new EpubCfiParseError(
         `Not a well-formed range CFI (expected 2 commas): "${cfiString}"`,
       );
     }
     const [common, startTail, endTail] = parts as [string, string, string];
-    const indirectionIndex = common.indexOf("!");
-    if (indirectionIndex === -1) {
+    const commonParts = splitOutsideAssertions(common, "!", cfiString);
+    if (commonParts.length !== 2) {
       throw new EpubCfiParseError(
-        `Range CFI is missing the required "!" indirection: "${cfiString}"`,
+        `Range CFI requires a single "!" indirection: "${cfiString}"`,
       );
     }
-    const packagePart = common.slice(0, indirectionIndex);
-    const commonContentPart = common.slice(indirectionIndex + 1);
+    const [packagePart, commonContentPart] = commonParts as [string, string];
     return {
       start: EpubCfi.parse(`epubcfi(${packagePart}!${commonContentPart}${startTail})`),
       end: EpubCfi.parse(`epubcfi(${packagePart}!${commonContentPart}${endTail})`),
     };
-  }
-
-  /** Splits on commas at bracket-depth 0 only, so a `[...]` id assertion
-   * (which per spec may itself contain arbitrary characters) is never
-   * mistaken for a range-CFI separator. */
-  private static splitTopLevelCommas(segment: string): string[] {
-    const parts: string[] = [];
-    let depth = 0;
-    let current = "";
-    for (const char of segment) {
-      if (char === "[") {
-        depth++;
-      } else if (char === "]") {
-        depth--;
-      }
-      if (char === "," && depth === 0) {
-        parts.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    parts.push(current);
-    return parts;
   }
 }
