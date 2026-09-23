@@ -303,32 +303,31 @@ export class LibraryDatabase {
     const contentHash = await hashBookFile(fileBlob);
     await this.indexLegacyBooks();
 
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction([BOOKS_STORE, FILES_STORE, COVERS_STORE], "readwrite");
-      const books = tx.objectStore(BOOKS_STORE);
-      const request = books.index(CONTENT_HASH_INDEX).getAll(contentHash);
-      let id: string;
-      request.onsuccess = () => {
-        const matches = request.result as BookMetadata[];
-        matches.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id));
-        const existing = matches[0];
-        if (existing) {
-          id = existing.id;
-          return;
-        }
-        id = crypto.randomUUID();
-        books.add({ ...metadata, id, addedAt: Date.now(), contentHash } satisfies BookMetadata);
-        tx.objectStore(FILES_STORE).add({ id, blob: fileBlob });
-        if (coverBlob) {
-          tx.objectStore(COVERS_STORE).add({ id, blob: coverBlob });
-        }
-      };
-      tx.oncomplete = () => resolve(id);
-      tx.onabort = () =>
-        reject(tx.error ?? new Error("Failed to import the book into the library."));
-      tx.onerror = () =>
-        reject(tx.error ?? new Error("Failed to import the book into the library."));
-    });
+    return this.transaction<string>(
+      [BOOKS_STORE, FILES_STORE, COVERS_STORE],
+      "readwrite",
+      "Failed to import the book into the library.",
+      (tx, setResult) => {
+        const books = tx.objectStore(BOOKS_STORE);
+        const request = books.index(CONTENT_HASH_INDEX).getAll(contentHash);
+        request.onsuccess = () => {
+          const matches = request.result as BookMetadata[];
+          matches.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id));
+          const existing = matches[0];
+          if (existing) {
+            setResult(existing.id);
+            return;
+          }
+          const id = crypto.randomUUID();
+          books.add({ ...metadata, id, addedAt: Date.now(), contentHash } satisfies BookMetadata);
+          tx.objectStore(FILES_STORE).add({ id, blob: fileBlob });
+          if (coverBlob) {
+            tx.objectStore(COVERS_STORE).add({ id, blob: coverBlob });
+          }
+          setResult(id);
+        };
+      },
+    );
   }
 
   /** Lazy, resumable migration: hash stored archives only when importing,
@@ -593,16 +592,26 @@ export class LibraryDatabase {
   }
 
   public async deleteBook(id: string): Promise<void> {
-    await this.delete(BOOKS_STORE, id);
-    await this.delete(FILES_STORE, id);
-    await this.delete(COVERS_STORE, id);
-    await this.delete(PROGRESS_STORE, id);
-    for (const bookmark of await this.listBookmarksForBook(id)) {
-      await this.delete(BOOKMARKS_STORE, bookmark.id);
-    }
-    for (const highlight of await this.listHighlightsForBook(id)) {
-      await this.delete(HIGHLIGHTS_STORE, highlight.id);
-    }
+    const keyedStores = [BOOKS_STORE, FILES_STORE, COVERS_STORE, PROGRESS_STORE];
+    await this.transaction(
+      [...keyedStores, BOOKMARKS_STORE, HIGHLIGHTS_STORE],
+      "readwrite",
+      "Failed to remove the book from the library.",
+      (tx) => {
+        for (const name of keyedStores) {
+          tx.objectStore(name).delete(id);
+        }
+        for (const name of [BOOKMARKS_STORE, HIGHLIGHTS_STORE]) {
+          const request = tx.objectStore(name).openCursor();
+          request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return;
+            if ((cursor.value as Bookmark | Highlight).bookId === id) cursor.delete();
+            cursor.continue();
+          };
+        }
+      },
+    );
   }
 
   /** Creates a new bookmark for `bookId` at `cfi` (see `Bookmark`'s doc
@@ -616,7 +625,14 @@ export class LibraryDatabase {
   }
 
   public async removeBookmark(id: string): Promise<void> {
-    await this.delete(BOOKMARKS_STORE, id);
+    await this.removeBookmarks([id]);
+  }
+
+  public async removeBookmarks(ids: readonly string[]): Promise<void> {
+    await this.transaction(BOOKMARKS_STORE, "readwrite", "Failed to remove bookmarks.", (tx) => {
+      const bookmarks = tx.objectStore(BOOKMARKS_STORE);
+      for (const id of ids) bookmarks.delete(id);
+    });
   }
 
   /** All bookmarks for `bookId`, in book reading order (see
@@ -657,6 +673,33 @@ export class LibraryDatabase {
     await this.put(HIGHLIGHTS_STORE, highlight);
   }
 
+  /** Merge only changed fields against the committed record. A deleted
+   * highlight stays deleted; an explicit undefined note clears the note. */
+  public patchHighlight(
+    id: string,
+    patch: { note?: string | undefined; style?: HighlightStyle },
+  ): Promise<Highlight | undefined> {
+    return this.transaction<Highlight | undefined>(
+      HIGHLIGHTS_STORE,
+      "readwrite",
+      "Failed to update the highlight.",
+      (tx, setResult) => {
+        const highlights = tx.objectStore(HIGHLIGHTS_STORE);
+        const request = highlights.get(id);
+        request.onsuccess = () => {
+          const current = request.result as Highlight | undefined;
+          if (!current) {
+            setResult(undefined);
+            return;
+          }
+          const updated = { ...current, ...patch };
+          highlights.put(updated);
+          setResult(updated);
+        };
+      },
+    );
+  }
+
   /** All highlights for `bookId`, in book reading order — same "fetch
    * all, filter client-side" approach and book-order sort as
    * `listBookmarksForBook`, for the same reasons. */
@@ -677,8 +720,7 @@ export class LibraryDatabase {
     id: string,
     update: (book: BookMetadata) => BookMetadata,
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(BOOKS_STORE, "readwrite");
+    return this.transaction(BOOKS_STORE, "readwrite", "Failed to update book metadata.", (tx) => {
       const books = tx.objectStore(BOOKS_STORE);
       const request = books.get(id);
       request.onsuccess = () => {
@@ -687,45 +729,69 @@ export class LibraryDatabase {
           books.put(update(current));
         }
       };
-      tx.oncomplete = () => resolve();
-      tx.onabort = () => reject(tx.error ?? new Error("Failed to update book metadata."));
-      tx.onerror = () => reject(tx.error ?? new Error("Failed to update book metadata."));
     });
   }
 
   private put(storeName: string, value: unknown): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, "readwrite");
-      tx.objectStore(storeName).put(value);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error(`Failed to write to the "${storeName}" store.`));
-    });
+    return this.transaction(
+      storeName, "readwrite", `Failed to write to the "${storeName}" store.`,
+      (tx) => { tx.objectStore(storeName).put(value); },
+    );
   }
 
   private get<T>(storeName: string, key: string): Promise<T | undefined> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, "readonly");
-      const request = tx.objectStore(storeName).get(key);
-      request.onsuccess = () => resolve(request.result as T | undefined);
-      request.onerror = () => reject(request.error ?? new Error(`Failed to read from the "${storeName}" store.`));
-    });
+    return this.transaction<T | undefined>(
+      storeName, "readonly", `Failed to read from the "${storeName}" store.`,
+      (tx, setResult) => {
+        const request = tx.objectStore(storeName).get(key);
+        request.onsuccess = () => setResult(request.result as T | undefined);
+      },
+    );
   }
 
   private getAll<T>(storeName: string): Promise<T[]> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, "readonly");
-      const request = tx.objectStore(storeName).getAll();
-      request.onsuccess = () => resolve(request.result as T[]);
-      request.onerror = () => reject(request.error ?? new Error(`Failed to read from the "${storeName}" store.`));
-    });
+    return this.transaction<T[]>(
+      storeName, "readonly", `Failed to read from the "${storeName}" store.`,
+      (tx, setResult) => {
+        const request = tx.objectStore(storeName).getAll();
+        request.onsuccess = () => setResult(request.result as T[]);
+      },
+    );
   }
 
   private delete(storeName: string, key: string): Promise<void> {
+    return this.transaction(
+      storeName, "readwrite", `Failed to delete from the "${storeName}" store.`,
+      (tx) => { tx.objectStore(storeName).delete(key); },
+    );
+  }
+
+  /** Request success is not durability: publish results only on commit,
+   * and settle aborts even when no individual request emitted an error. */
+  private transaction<T = void>(
+    storeNames: string | string[],
+    mode: IDBTransactionMode,
+    failureMessage: string,
+    queueRequests: (tx: IDBTransaction, setResult: (value: T) => void) => void,
+  ): Promise<T> {
     return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, "readwrite");
-      tx.objectStore(storeName).delete(key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error(`Failed to delete from the "${storeName}" store.`));
+      const tx = this.db.transaction(storeNames, mode);
+      let result: T;
+      let requestError: DOMException | null = null;
+      let queueError: unknown;
+      tx.oncomplete = () => resolve(result);
+      tx.onabort = () => reject(queueError ?? tx.error ?? requestError ?? new Error(failureMessage));
+      // A request error bubbles before IndexedDB's default abort action;
+      // tx.error may still be null, and rollback has not finished yet.
+      tx.onerror = (event) => {
+        requestError ??= (event.target as IDBRequest).error;
+      };
+      try {
+        queueRequests(tx, (value) => { result = value; });
+      } catch (error) {
+        queueError = error;
+        tx.abort();
+      }
     });
   }
 }
