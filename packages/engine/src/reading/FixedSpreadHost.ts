@@ -4,6 +4,7 @@ import type { ViewportSize } from "../container/PackageDocument.js";
 import type { DomBreakPoint } from "../layout/Page.js";
 import { FixedContentHost } from "./FixedContentHost.js";
 import type { FixedSpread } from "./FixedLayoutSpreadPlanner.js";
+import type { ContentDocumentView } from "./ContentDocumentView.js";
 
 /**
  * A two-page fixed-layout spread for wide reader panes: either one
@@ -94,39 +95,37 @@ export class FixedSpreadHost {
     return this.currentSpread;
   }
 
-  /** Every content document currently loaded — one for a `"single"`
-   * spread, two for a `"pair"` (left column first, then right — matching
-   * `SpreadPaginatedHost.contentDocuments`'s own left-then-right
-   * convention, for whatever caller needs to treat both spread kinds
-   * uniformly, e.g. attaching the same click-to-turn/link-interception
-   * listeners to whichever documents actually exist right now). */
+  /** Legacy physical-order view; use documentViews for publication identity. */
   public contentDocuments(): Document[] {
-    if (this.singleHost) {
-      const doc = this.singleHost.element.contentDocument;
-      return doc ? [doc] : [];
-    }
-    const docs: Document[] = [];
-    const leftDoc = this.leftHost?.element.contentDocument;
-    const rightDoc = this.rightHost?.element.contentDocument;
-    if (leftDoc) {
-      docs.push(leftDoc);
-    }
-    if (rightDoc) {
-      docs.push(rightDoc);
-    }
-    return docs;
+    return this.physicalDocumentViews().map(view => view.document);
   }
 
-  /** The single document accessibility/CFI resolution should key off —
-   * the lone page for a `"single"` spread, or the left column of a
-   * `"pair"` (mirroring `SpreadPaginatedHost.primaryContentDocument`'s
-   * own left-column convention; fixed-layout content has no sub-item
-   * reading position to track either way — see
-   * `FixedContentHost.currentPosition` — so this is purely about which
-   * single document a screen reader's focus/keyboard nav attaches to,
-   * not about resuming a saved position). */
+  /** Reading-order documents carry their own physical column and spine index. */
+  public documentViews(): ContentDocumentView[] {
+    return this.physicalDocumentViews().sort((a, b) => a.spineIndex - b.spineIndex);
+  }
+
+  private physicalDocumentViews(): ContentDocumentView[] {
+    const spread = this.currentSpread;
+    if (!spread) return [];
+    const entries: ReadonlyArray<readonly [FixedContentHost | undefined, number, ContentDocumentView["physicalSide"]]> =
+      spread.kind === "single"
+        ? [[this.singleHost, spread.spineIndex, "single"]]
+        : [[this.leftHost, spread.leftSpineIndex, "left"], [this.rightHost, spread.rightSpineIndex, "right"]];
+    return entries.flatMap(([host, spineIndex, physicalSide]) => {
+      const document = host?.element.contentDocument;
+      return document ? [{ document, spineIndex, physicalSide }] : [];
+    });
+  }
+
+  private get primaryHost(): FixedContentHost | undefined {
+    const spread = this.currentSpread;
+    if (spread?.kind !== "pair") return this.singleHost;
+    return spread.leftSpineIndex < spread.rightSpineIndex ? this.leftHost : this.rightHost;
+  }
+
   public primaryContentDocument(): Document | undefined {
-    return (this.singleHost ?? this.leftHost)?.element.contentDocument ?? undefined;
+    return this.primaryHost?.element.contentDocument ?? undefined;
   }
 
   /** The primary column's reading position, for whatever generically
@@ -135,7 +134,7 @@ export class FixedSpreadHost {
    * always just "the start of this page's body," never a sub-item
    * offset. */
   public currentPosition(): DomBreakPoint | undefined {
-    return (this.singleHost ?? this.leftHost)?.currentPosition();
+    return this.primaryHost?.currentPosition();
   }
 
   /** Sets every loaded column's iframe `title` to `title` — mirrors

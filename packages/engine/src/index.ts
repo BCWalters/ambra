@@ -101,3 +101,4 @@ export { BookSearch, MIN_QUERY_LENGTH } from "./reading/BookSearch.js";
 export type { SearchResult } from "./reading/BookSearch.js";
 export { computePriorityOrder, aggregateBookPosition, resolveGlobalPage } from "./reading/BookPagination.js";
 export { DisclosureState } from "./reading/DisclosureState.js";
+export type { ContentDocumentView } from "./reading/ContentDocumentView.js";

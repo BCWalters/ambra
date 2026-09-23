@@ -14,6 +14,29 @@ describe("FixedSpreadHost child ownership", () => {
   const loader = {} as ContentLoader;
   const resolver = {} as ResourceUrlResolver;
 
+  it.each(["ltr", "rtl"] as const)("keeps %s physical sides distinct from reading order and primary focus", async direction => {
+    vi.spyOn(FixedContentHost.prototype, "open").mockImplementation(async function (this: FixedContentHost, _loader, _resolver, spineIndex) {
+      const doc = document.implementation.createHTMLDocument(String(spineIndex));
+      doc.title = String(spineIndex);
+      Object.defineProperty(this.element, "contentDocument", { configurable: true, value: doc });
+    });
+    const host = new FixedSpreadHost(1400, 900);
+    await host.open(loader, resolver, {
+      kind: "pair",
+      leftSpineIndex: direction === "rtl" ? 3 : 2,
+      rightSpineIndex: direction === "rtl" ? 2 : 3,
+    }, undefined);
+    const views = host.documentViews();
+    expect(views.map(view => [view.spineIndex, view.document.title, view.physicalSide])).toEqual([
+      [2, "2", direction === "rtl" ? "right" : "left"],
+      [3, "3", direction === "rtl" ? "left" : "right"],
+    ]);
+    expect(host.primaryContentDocument()).toBe(views[0]!.document);
+    expect(host.currentPosition()?.node.ownerDocument).toBe(views[0]!.document);
+    expect(host.contentDocuments().map(doc => doc.title)).toEqual(direction === "rtl" ? ["3", "2"] : ["2", "3"]);
+    host.dispose();
+  });
+
   it("disposes both old columns before opening a replacement single page", async () => {
     const open = vi.spyOn(FixedContentHost.prototype, "open").mockResolvedValue();
     const dispose = vi.spyOn(FixedContentHost.prototype, "dispose");

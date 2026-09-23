@@ -4,6 +4,7 @@ import type { DomBreakPoint, Page } from "../layout/Page.js";
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
 import type { DisclosureState } from "./DisclosureState.js";
 import type { ReflowablePagePosition, ReflowableSpread } from "./ReflowableSpreadPlanner.js";
+import type { ContentDocumentView } from "./ContentDocumentView.js";
 
 const MIN_SPREAD_COLUMN_WIDTH = 480;
 
@@ -76,10 +77,20 @@ export class SpreadPaginatedHost {
     return this.isShowingMergedTail ? (this.first.element.contentDocument ?? undefined) : undefined;
   }
   public contentDocuments(): Document[] {
-    return [
-      this.first.element.contentDocument,
-      this.spread.second ? this.second.element.contentDocument : null,
-    ].filter((doc): doc is Document => doc !== null);
+    return this.documentViews().map(view => view.document);
+  }
+  /** Reading order is stable even when RTL reverses the physical columns. */
+  public documentViews(): ContentDocumentView[] {
+    return ([
+      [this.first, this.spread.first, this.rtl ? "right" : "left"],
+      [this.second, this.spread.second, this.rtl ? "left" : "right"],
+    ] as const).flatMap(([host, position, physicalSide]) => {
+      const doc = host.element.contentDocument;
+      return doc && position ? [{
+        document: doc, spineIndex: position.spineIndex, physicalSide,
+        page: host.currentPageAndDocument()?.page,
+      }] : [];
+    });
   }
   public primaryContentDocument(): Document | undefined {
     return this.primary.element.contentDocument ?? undefined;
@@ -151,18 +162,8 @@ export class SpreadPaginatedHost {
     return this.primary.currentPosition();
   }
   public currentPagesAndDocuments(): Array<{ page: Page; document: Document; spineIndex: number }> {
-    const hosts = this.spread.second ? [this.first, this.second] : [this.first];
-    return hosts.flatMap((host, index) => {
-      const entry = host.currentPageAndDocument();
-      return entry
-        ? [
-            {
-              ...entry,
-              spineIndex: (index === 0 ? this.spread.first : this.spread.second!).spineIndex,
-            },
-          ]
-        : [];
-    });
+    return this.documentViews().flatMap(({ page, document, spineIndex }) =>
+      page ? [{ page, document, spineIndex }] : []);
   }
   public relayout(width: number, height: number): void {
     this.width = width;
