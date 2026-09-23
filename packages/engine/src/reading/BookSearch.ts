@@ -1,6 +1,7 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { SpineItemRef } from "../container/PackageDocument.js";
 import type { LocatorResolver } from "../locator/Locator.js";
+import { findTextMatchesInDocument } from "../content/DocumentTextSearch.js";
 
 /** One match — a CFI (so the shell can navigate straight to it, the same
  * way a bookmark or highlight does) plus enough surrounding text to show
@@ -77,7 +78,6 @@ export class BookSearch {
       onComplete();
       return;
     }
-    const needle = trimmed.toLowerCase();
 
     for (let spineIndex = 0; spineIndex < this.spine.length; spineIndex++) {
       if (token !== this.generation) {
@@ -100,7 +100,7 @@ export class BookSearch {
         return;
       }
 
-      this.searchDocument(contentDocument.document, spineIndex, needle, onResult);
+      this.searchDocument(contentDocument.document, spineIndex, trimmed, onResult);
 
       // Yield to the event loop between spine items — the actual "don't
       // hang the UI" mechanism, since a `for` loop with only synchronous
@@ -120,38 +120,20 @@ export class BookSearch {
     needle: string,
     onResult: (result: SearchResult) => void,
   ): void {
-    const root = doc.body ?? doc.documentElement;
-    if (!root) {
-      return;
-    }
-    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      const text = node.textContent ?? "";
-      const lowerText = text.toLowerCase();
-      let fromIndex = 0;
-      let matchIndex = lowerText.indexOf(needle, fromIndex);
-      while (matchIndex !== -1) {
-        try {
-          const locator = this.locatorResolver.generate(spineIndex, node, matchIndex);
-          onResult({
-            spineIndex,
-            cfi: locator.cfi,
-            before: text.slice(Math.max(0, matchIndex - EXCERPT_CONTEXT_CHARS), matchIndex),
-            match: text.slice(matchIndex, matchIndex + needle.length),
-            after: text.slice(
-              matchIndex + needle.length,
-              Math.min(text.length, matchIndex + needle.length + EXCERPT_CONTEXT_CHARS),
-            ),
-          });
-        } catch {
-          // A locator that fails to generate for one match shouldn't
-          // stop the rest of the search — skip just this one.
-        }
-        fromIndex = matchIndex + needle.length;
-        matchIndex = lowerText.indexOf(needle, fromIndex);
+    for (const match of findTextMatchesInDocument(doc, needle)) {
+      try {
+        const locator = this.locatorResolver.generate(spineIndex, match.start.node, match.start.offset);
+        onResult({
+          spineIndex,
+          cfi: locator.cfi,
+          before: match.text.slice(Math.max(0, match.startIndex - EXCERPT_CONTEXT_CHARS), match.startIndex),
+          match: match.text.slice(match.startIndex, match.endIndex),
+          after: match.text.slice(match.endIndex, match.endIndex + EXCERPT_CONTEXT_CHARS),
+        });
+      } catch {
+        // A locator that fails to generate for one match shouldn't
+        // stop the rest of the search — skip just this one.
       }
-      node = walker.nextNode();
     }
   }
 }
