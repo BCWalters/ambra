@@ -33,6 +33,25 @@ describe("compareDomPositions", () => {
 
     expect(compareDomPositions({ node: p, offset: 0 }, { node: text, offset: 2 })).toBeLessThan(0);
   });
+
+  it("orders an ancestor's child offsets on either side of a nested descendant", () => {
+    document.body.innerHTML = "<p><em>before</em></p><img/><p>after</p>";
+    const text = document.querySelector("em")!.firstChild!;
+    for (const offset of [0, 1, 2, 3]) {
+      const ancestor = { node: document.body, offset };
+      const descendant = { node: text, offset: 2 };
+      const expected = offset === 0 ? -1 : 1;
+      expect(compareDomPositions(ancestor, descendant)).toBe(expected);
+      expect(compareDomPositions(descendant, ancestor)).toBe(-expected);
+    }
+  });
+
+  it("rejects disconnected trees instead of assigning an arbitrary document order", () => {
+    expect(() => compareDomPositions(
+      { node: document.createTextNode("one"), offset: 0 },
+      { node: document.createTextNode("two"), offset: 0 },
+    )).toThrow("disconnected");
+  });
 });
 
 describe("findChunkAtScrollOffset", () => {
@@ -101,5 +120,30 @@ describe("findChunkForPosition", () => {
     const one = document.body.firstChild!.firstChild!;
 
     expect(findChunkForPosition([], one, 0)).toBeUndefined();
+  });
+
+  it("does not restore preceding text to a later atomic image's ancestor boundary", () => {
+    document.body.innerHTML = "<p>before</p><img/><p>after</p>";
+    const before = document.body.firstChild!;
+    const after = document.body.lastChild!;
+    const chunks: Chunk[] = [
+      { top: 0, bottom: 20, breakBefore: { node: before, offset: 0 } },
+      { top: 30, bottom: 130, breakBefore: { node: document.body, offset: 1 } },
+      { top: 140, bottom: 160, breakBefore: { node: after, offset: 0 } },
+    ];
+    expect(findChunkForPosition(chunks, before.firstChild!, 2)).toBe(chunks[0]);
+    expect(findChunkForPosition(chunks, document.body, 1)).toBe(chunks[1]);
+    expect(findChunkForPosition(chunks, after.firstChild!, 2)).toBe(chunks[2]);
+    expect(findChunkForPosition(chunks, document.body, 3)).toBe(chunks[2]);
+  });
+
+  it("returns no chunk for a position from a different document or detached tree", () => {
+    document.body.innerHTML = "<p>before</p>";
+    const chunks: Chunk[] = [
+      { top: 0, bottom: 20, breakBefore: { node: document.body.firstChild!, offset: 0 } },
+    ];
+    const other = document.implementation.createHTMLDocument();
+    expect(findChunkForPosition(chunks, other.body, 0)).toBeUndefined();
+    expect(findChunkForPosition(chunks, document.createTextNode("detached"), 0)).toBeUndefined();
   });
 });

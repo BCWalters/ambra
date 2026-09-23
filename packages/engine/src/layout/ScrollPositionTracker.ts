@@ -4,8 +4,8 @@ import type { DomBreakPoint } from "./Page.js";
 /**
  * Orders two DOM boundary points. Returns a negative number if `a` comes
  * before `b` in document order, positive if after, and `0` if they're the
- * same position. Depends only on `Node.compareDocumentPosition` — a
- * standard DOM method, not a real-layout query — so, unlike
+ * same position. Ancestor offsets are child boundaries, not merely the
+ * ancestor node's position. Uses DOM structure, not layout queries, so, unlike
  * `LineMeasurement.ts`, this is fully testable without a real browser
  * rendering engine.
  */
@@ -15,6 +15,15 @@ export function compareDomPositions(a: DomBreakPoint, b: DomBreakPoint): number 
   }
 
   const relation = a.node.compareDocumentPosition(b.node);
+  if (relation & Node.DOCUMENT_POSITION_DISCONNECTED) {
+    throw new DOMException("Cannot compare positions in disconnected trees.", "WrongDocumentError");
+  }
+  if (relation & Node.DOCUMENT_POSITION_CONTAINED_BY) {
+    return compareAncestorPosition(a, b.node);
+  }
+  if (relation & Node.DOCUMENT_POSITION_CONTAINS) {
+    return -compareAncestorPosition(b, a.node);
+  }
   if (relation & Node.DOCUMENT_POSITION_FOLLOWING) {
     return -1;
   }
@@ -22,6 +31,15 @@ export function compareDomPositions(a: DomBreakPoint, b: DomBreakPoint): number 
     return 1;
   }
   return 0;
+}
+
+function compareAncestorPosition(ancestor: DomBreakPoint, descendant: Node): number {
+  let child = descendant;
+  while (child.parentNode !== ancestor.node) {
+    child = child.parentNode!;
+  }
+  const childIndex = Array.prototype.indexOf.call(ancestor.node.childNodes, child);
+  return (ancestor.offset ?? 0) <= childIndex ? -1 : 1;
 }
 
 /**
@@ -52,6 +70,9 @@ export function findChunkAtScrollOffset(chunks: readonly Chunk[], scrollTop: num
  * resolved `Locator`/CFI). The inverse of `findChunkAtScrollOffset`.
  */
 export function findChunkForPosition(chunks: readonly Chunk[], node: Node, offset: number): Chunk | undefined {
+  if (chunks[0]?.breakBefore.node.getRootNode() !== node.getRootNode()) {
+    return undefined;
+  }
   let result: Chunk | undefined;
   for (const chunk of chunks) {
     if (compareDomPositions(chunk.breakBefore, { node, offset }) <= 0) {

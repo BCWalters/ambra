@@ -38,6 +38,7 @@ const ATOMIC_TAG_NAMES = new Set([
   "table",
   "hr",
   "figure",
+  "math",
 ]);
 
 function isBlockLevel(element: Element): boolean {
@@ -68,48 +69,62 @@ function isAtomic(element: Element): boolean {
   );
 }
 
-/** Walks `root`'s block structure, collecting each block-level leaf
- * element in document order (skipping into non-leaf block containers,
- * e.g. a `<div>` wrapping several `<p>`s, without treating the container
- * itself as a leaf). Checks `isAtomic` *before* `isLeaf` — a real,
- * confirmed bug: a `<table>` (declared atomic via `ATOMIC_TAG_NAMES`,
- * specifically so pagination never breaks in the middle of one) has
- * `<tr>`/`<td>` children, both block-level per `isBlockLevel` (their
- * default `display` is `table-row`/`table-cell`), so `isLeaf` alone
- * says a table is *not* a leaf and this recursed straight into it,
- * extracting each `<td>` as its own ordinary text leaf — completely
- * bypassing the "atomic, never split" intent and letting a page break
- * land mid-table. Caught via a real book (a DocBook-generated EPUB
- * using a `<table>` to lay out a short poem/rhyme) where the poem
- * visibly split across a page boundary — the reported "pages can be
- * cut off" bug. The same reasoning applies to any other structurally
- * complex atomic tag (e.g. `<figure>` wrapping a captioned image). */
-function collectLeaves(root: Element, out: Element[]): void {
-  for (const child of Array.from(root.children)) {
+interface InlineRun {
+  readonly root: Element;
+  readonly start: number;
+  readonly end: number;
+}
+
+type Leaf = Element | InlineRun;
+
+/** Partition a container into non-overlapping block leaves and inline runs.
+ * Keeping runs as DOM ranges preserves text around nested blocks without
+ * wrapping/moving nodes or measuring a descendant twice. Atomic containers
+ * (especially tables) must be recognized before descending into their blocks. */
+function collectLeaves(root: Element, out: Leaf[]): void {
+  const nodes = Array.from(root.childNodes);
+  let runStart = 0;
+  const flushRun = (end: number): void => {
+    const run = nodes.slice(runStart, end);
+    if (run.some((node) => node.nodeType === 1 || node.textContent?.trim())) {
+      out.push({ root, start: runStart, end });
+    }
+  };
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]!;
+    if (node.nodeType !== 1) continue;
+    const child = node as Element;
+    const display = getComputedStyle(child).display;
+    if (
+      display !== "contents" &&
+      child.checkVisibility() &&
+      !isBlockLevel(child) &&
+      !isAtomic(child) &&
+      isLeaf(child)
+    ) {
+      continue;
+    }
+    flushRun(index);
     // Closed disclosures can return nonzero descendant rectangles even though
     // those descendants are not rendered. Measuring them creates phantom pages.
     if (child.localName === "details" && !child.hasAttribute("open")) {
       const summary = Array.from(child.children).find((element) => element.localName === "summary");
-      if (!child.checkVisibility()) {
-        continue;
-      }
-      if (summary) {
+      if (child.checkVisibility() && summary) {
         if (isLeaf(summary)) out.push(summary);
         else collectLeaves(summary, out);
-      } else {
+      } else if (child.checkVisibility()) {
         // The browser supplies a default summary outside the authored DOM.
         out.push(child);
       }
-    } else if (getComputedStyle(child).display === "contents") {
+    } else if (display === "contents") {
       collectLeaves(child, out);
-    } else if (!child.checkVisibility()) {
-      continue;
-    } else if (isAtomic(child) || isLeaf(child)) {
-      out.push(child);
-    } else {
-      collectLeaves(child, out);
+    } else if (child.checkVisibility()) {
+      if (isAtomic(child) || isLeaf(child)) out.push(child);
+      else collectLeaves(child, out);
     }
+    runStart = index + 1;
   }
+  flushRun(nodes.length);
 }
 
 /** Measures a single atomic leaf as one unbreakable `Chunk`. */
@@ -134,44 +149,32 @@ function measureAtomicChunk(element: Element): Chunk {
  * not a meaningful visual difference. */
 const LINE_TOLERANCE_PX = 1;
 
-/** Measures a text leaf's rendered lines (via `Range.getClientRects()`,
+/** Measures a text run's rendered lines (via `Range.getClientRects()`,
  * a real layout query — not an approximation) as one `Chunk` per visual
  * line, each with its exact DOM break position found by bisecting the
- * leaf's concatenated text content against further `Range` measurements. */
-function measureTextLeafChunks(element: Element, ownerDocument: Document): Chunk[] {
-  const fullRange = ownerDocument.createRange();
-  fullRange.selectNodeContents(element);
+ * run's concatenated text content against further `Range` measurements. */
+function measureTextLeafChunks(fullRange: Range, textNodes: readonly Text[]): Chunk[] {
   const lineRects = Array.from(fullRange.getClientRects()).filter((r) => r.height > 0);
 
   if (lineRects.length === 0) {
     return [];
   }
 
-  // Collected once per leaf and reused for every line below, instead of
-  // each of `totalTextLength`/`globalTextOffsetToPosition` separately
-  // re-walking this leaf's whole DOM subtree on every call — a real,
-  // confirmed performance cliff for a leaf with many descendant text
-  // nodes (e.g. MathML content, which tends to spread a single equation
-  // across dozens of small `<mi>`/`<mn>`/`<mo>` text nodes): with the
-  // per-call re-walk, a leaf's total measurement cost scaled with
-  // `lines * log(totalLength) * totalLength` instead of `totalLength +
-  // lines * log(totalLength) * numTextNodes` — the difference between a
-  // page turn landing instantly and one taking tens of seconds on a
-  // MathML-dense textbook chapter (issue #102).
-  const textNodes = collectTextNodesOf(element);
+  // Reuse pre-collected text nodes during bisection rather than repeatedly
+  // walking the subtree, especially around large MathML expressions (#102).
   const totalLength = sumTextLength(textNodes);
   const chunks: Chunk[] = [];
 
-  // The first line always starts at the beginning of the leaf itself.
+  // A partial run begins at its own child boundary, not the container's start.
   chunks.push({
     top: lineRects[0]!.top,
     bottom: lineRects[0]!.bottom,
-    breakBefore: { node: element, offset: 0 },
+    breakBefore: { node: fullRange.startContainer, offset: fullRange.startOffset },
   });
 
   for (let lineIndex = 1; lineIndex < lineRects.length; lineIndex++) {
     const targetTop = lineRects[lineIndex]!.top;
-    const offset = bisectLineStartOffset(element, ownerDocument, textNodes, totalLength, targetTop);
+    const offset = bisectLineStartOffset(fullRange, textNodes, totalLength, targetTop);
     const position = positionFromTextNodes(textNodes, offset);
     if (!position) {
       continue;
@@ -186,16 +189,15 @@ function measureTextLeafChunks(element: Element, ownerDocument: Document): Chunk
   return chunks;
 }
 
-/** Binary-searches the smallest global text offset within `element` whose
+/** Binary-searches the smallest global text offset within `fullRange` whose
  * rendered position has already reached `targetTop` — i.e. the character
  * offset where the line starting at `targetTop` begins. Relies purely on
  * `Range.getClientRects()`, a real layout measurement, evaluated at each
- * candidate offset. `textNodes` is `element`'s own descendant text nodes,
+ * candidate offset. `textNodes` contains only this range's text nodes,
  * collected once by the caller (see `measureTextLeafChunks`) rather than
  * re-walked on every bisection step. */
 function bisectLineStartOffset(
-  element: Element,
-  ownerDocument: Document,
+  fullRange: Range,
   textNodes: readonly Text[],
   totalLength: number,
   targetTop: number,
@@ -205,7 +207,7 @@ function bisectLineStartOffset(
 
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(element, ownerDocument, textNodes, mid, targetTop)) {
+    if (hasReachedLine(fullRange, textNodes, mid, targetTop)) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -216,8 +218,7 @@ function bisectLineStartOffset(
 }
 
 function hasReachedLine(
-  element: Element,
-  ownerDocument: Document,
+  fullRange: Range,
   textNodes: readonly Text[],
   globalOffset: number,
   targetTop: number,
@@ -230,8 +231,7 @@ function hasReachedLine(
     return false;
   }
 
-  const range = ownerDocument.createRange();
-  range.selectNodeContents(element);
+  const range = fullRange.cloneRange();
   range.setEnd(position.node, position.offset);
   const rects = Array.from(range.getClientRects()).filter((r) => r.height > 0);
   const lastRect = rects[rects.length - 1];
@@ -250,15 +250,30 @@ function hasReachedLine(
  */
 export function measureChunks(bodyElement: Element): Chunk[] {
   const ownerDocument = bodyElement.ownerDocument;
-  const leaves: Element[] = [];
+  const leaves: Leaf[] = [];
   collectLeaves(bodyElement, leaves);
 
   const chunks: Chunk[] = [];
   for (const leaf of leaves) {
-    if (isAtomic(leaf)) {
+    if (!("root" in leaf) && isAtomic(leaf)) {
       chunks.push(measureAtomicChunk(leaf));
     } else {
-      chunks.push(...measureTextLeafChunks(leaf, ownerDocument));
+      const range = ownerDocument.createRange();
+      let textNodes: Text[];
+      if ("root" in leaf) {
+        range.setStart(leaf.root, leaf.start);
+        range.setEnd(leaf.root, leaf.end);
+        textNodes = [];
+        for (let index = leaf.start; index < leaf.end; index++) {
+          const node = leaf.root.childNodes[index]!;
+          if (node.nodeType === 3 || node.nodeType === 4) textNodes.push(node as Text);
+          else textNodes.push(...collectTextNodesOf(node));
+        }
+      } else {
+        range.selectNodeContents(leaf);
+        textNodes = collectTextNodesOf(leaf);
+      }
+      chunks.push(...measureTextLeafChunks(range, textNodes));
     }
   }
   return chunks;
