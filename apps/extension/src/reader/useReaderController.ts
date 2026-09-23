@@ -6,6 +6,7 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
+import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
 import type {
   BookDetails,
   EpubInspectionData,
@@ -120,7 +121,13 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
 
     const containerEl = contentHostRef.current;
     const rect = containerEl.getBoundingClientRect();
-    void controller.mount(containerEl, rect.width, rect.height).catch(error => controller.reportActionFailure(error));
+    const opening = prepareBookOpeningTransition(containerEl);
+    void controller.mount(containerEl, rect.width, rect.height)
+      .then(() => opening.reveal())
+      .catch(error => {
+        opening.cancel();
+        controller.reportActionFailure(error);
+      });
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -153,6 +160,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     window.addEventListener("focus", handleWindowFocus);
 
     return () => {
+      opening.cancel();
       observer.disconnect();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handleVisibilityChange);

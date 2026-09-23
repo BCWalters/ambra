@@ -2,12 +2,14 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ReaderController } from "./ReaderController.js";
+import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
 import { useReaderController, type UseReaderControllerResult } from "./useReaderController.js";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { ReaderSnapshot } from "./ReaderTypes.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
 vi.mock("./ReaderController.js", () => ({ ReaderController: { open: vi.fn() } }));
+vi.mock("./BookOpeningTransition.js", () => ({ prepareBookOpeningTransition: vi.fn() }));
 
 let root: Root;
 let element: HTMLDivElement;
@@ -18,6 +20,10 @@ const translate = ((key: string) => key) as Translate;
 function Harness() {
   latest = useReaderController(translate);
   return null;
+}
+function MountedHarness() {
+  latest = useReaderController(translate);
+  return latest.snapshot ? <div ref={latest.contentHostRef} /> : null;
 }
 function deferred() {
   let resolve!: (controller: ReaderController) => void;
@@ -36,6 +42,9 @@ function controller(title: string) {
     setTranslate: vi.fn(),
     dispose: vi.fn(),
     flushProgress: vi.fn().mockResolvedValue(undefined),
+    mount: vi.fn().mockResolvedValue(undefined),
+    resize: vi.fn(),
+    reportActionFailure: vi.fn(),
   };
   return { methods, value: methods as unknown as ReaderController, snapshot };
 }
@@ -47,6 +56,10 @@ function library() {
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.mocked(ReaderController.open).mockReset();
+  vi.mocked(prepareBookOpeningTransition).mockReset().mockReturnValue({
+    reveal: vi.fn(),
+    cancel: vi.fn(),
+  });
   element = document.createElement("div");
   document.body.append(element);
   root = createRoot(element);
@@ -115,4 +128,34 @@ it("flushes and disposes an adopted but unmounted controller", async () => {
   mounted = false;
   expect(opened.methods.flushProgress).toHaveBeenCalledOnce();
   expect(opened.methods.dispose).toHaveBeenCalledOnce();
+});
+
+it("reveals the opening only after mount restores the reading position", async () => {
+  const opened = controller("ready");
+  let finish!: () => void;
+  opened.methods.mount.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+  vi.mocked(ReaderController.open).mockResolvedValueOnce(opened.value);
+  await act(async () => root.render(<MountedHarness />));
+  await act(async () => latest.openBook(new ArrayBuffer(0), "ready", library().value));
+  const opening = vi.mocked(prepareBookOpeningTransition).mock.results[0]!.value;
+  expect(opening.reveal).not.toHaveBeenCalled();
+  expect(opened.methods.mount).toHaveBeenCalledOnce();
+  await act(async () => finish());
+  expect(opening.reveal).toHaveBeenCalledOnce();
+  act(() => root.unmount());
+  mounted = false;
+  expect(opening.cancel).toHaveBeenCalledOnce();
+});
+
+it("removes the opening cover and reports a failed mount", async () => {
+  const opened = controller("failed");
+  const error = new Error("Cannot mount book");
+  opened.methods.mount.mockRejectedValue(error);
+  vi.mocked(ReaderController.open).mockResolvedValueOnce(opened.value);
+  await act(async () => root.render(<MountedHarness />));
+  await act(async () => latest.openBook(new ArrayBuffer(0), "failed", library().value));
+  const opening = vi.mocked(prepareBookOpeningTransition).mock.results[0]!.value;
+  expect(opening.cancel).toHaveBeenCalledOnce();
+  expect(opening.reveal).not.toHaveBeenCalled();
+  expect(opened.methods.reportActionFailure).toHaveBeenCalledExactlyOnceWith(error);
 });

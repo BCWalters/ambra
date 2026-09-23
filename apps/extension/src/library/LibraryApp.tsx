@@ -13,6 +13,7 @@ import {
   Spinner,
   Title2,
   Tooltip,
+  makeStyles,
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
 import {
@@ -40,6 +41,18 @@ import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.js";
 
 const SORT_GROUP_NAME = "librarySort";
+
+const useBookCardStyles = makeStyles({
+  cover: {
+    transition: "border-color 120ms ease, box-shadow 120ms ease, filter 80ms ease",
+    ":active": {
+      filter: "brightness(0.88)",
+    },
+    "@media (prefers-reduced-motion: reduce)": {
+      transition: "none",
+    },
+  },
+});
 
 const SORT_LABELS: Readonly<Record<LibrarySortOption, string>> = {
   dateAddedDesc: "Date added (newest first)",
@@ -73,6 +86,7 @@ const BookCard: FC<{
   onDelete: () => void;
   onShowDetails: () => void;
 }> = ({ book, accent, onOpen, onDelete, onShowDetails }) => {
+  const styles = useBookCardStyles();
   const restoreFocusTarget = useRestoreFocusTarget();
   // Hovering/focusing a cover picks up the reader's own accent color
   // (issue #86 follow-up — the same idea as the TOC's current-chapter
@@ -122,6 +136,7 @@ const BookCard: FC<{
     >
       <div style={{ position: "relative", width: 140, height: 200 }}>
         <button
+          className={styles.cover}
           type="button"
           onClick={onOpen}
           onFocus={() => setIsFocused(true)}
@@ -143,7 +158,6 @@ const BookCard: FC<{
             textAlign: "center",
             font: "inherit",
             boxShadow: isActive ? `0 2px 10px ${accent}66` : "none",
-            transition: "border-color 120ms ease, box-shadow 120ms ease",
           }}
         >
           {!book.coverUrl && <Body1 style={{ padding: 8 }}>{book.title}</Body1>}
