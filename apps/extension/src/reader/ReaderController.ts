@@ -878,7 +878,7 @@ export class ReaderController {
    * saving several exports can tell them apart. */
   public async exportAnnotations(): Promise<{ filename: string; text: string }> {
     const highlights = this.highlights.allSorted();
-    const bookmarks = await this.bookmarks.list();
+    const bookmarks = await this.library.listBookmarksForBook(this.bookId);
     const annotations = buildAnnotationCollection(this.pkg, { highlights, bookmarks });
     const safeTitle = this.pkg.metadata.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "book";
     return { filename: `${safeTitle} - annotations.json`, text: serializeAnnotationCollection(annotations) };
