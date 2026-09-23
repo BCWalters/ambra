@@ -194,6 +194,25 @@ describe("ProgressScrubber", () => {
     expect(onSeek).toHaveBeenCalledExactlyOnceWith(0.8);
   });
 
+  it("commits a fast drag release before React has rendered the drag preview (#146)", () => {
+    const { slider, onSeek } = renderScrubber();
+    act(() => {
+      slider.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true, pointerId: 1, pointerType: "mouse", button: 0, buttons: 1, clientX: 30,
+      }));
+      window.dispatchEvent(new PointerEvent("pointermove", {
+        pointerId: 1, pointerType: "mouse", buttons: 1, clientX: 90,
+      }));
+      window.dispatchEvent(new PointerEvent("pointerup", {
+        pointerId: 1, pointerType: "mouse", buttons: 0, clientX: 110,
+      }));
+    });
+    expect(onSeek).toHaveBeenCalledExactlyOnceWith(0.9);
+    expect(slider.getAttribute("aria-valuenow")).toBe("90");
+    pointer(slider, "lostpointercapture");
+    expect(onSeek).toHaveBeenCalledTimes(1);
+  });
+
   it("Escape restores an earlier pending destination rather than cancelling its seek", () => {
     const { slider, onSeek } = renderScrubber();
     act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));

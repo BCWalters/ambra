@@ -262,17 +262,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     void commitSeek(fraction);
   };
 
-  // The drag's move/release handling deliberately lives in a
-  // window-level effect below, not as onPointerMove/onPointerUp props on
-  // the track element — see this effect's doc comment for why: relying
-  // solely on the captured element's own pointerup/pointercancel
-  // eventually arriving is exactly what caused a real, reported bug
-  // where the scrubber stayed stuck tracking the mouse after release.
+  // Install before a gesture starts: a fast release can arrive before
+  // React renders its preview. The pointer ref, not render state, owns
+  // the gesture; window listeners also recover releases outside the track.
   useEffect(() => {
-    if (dragFraction === undefined) {
-      return;
-    }
-
     const finalizeFromEvent = (event: PointerEvent): void => {
       if (event.pointerId !== activePointerIdRef.current) return;
       finishDrag(fractionAt(event.clientX));
@@ -323,10 +316,9 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       window.removeEventListener("pointercancel", cancelFromEvent);
       document.removeEventListener("visibilitychange", cancelWhenHidden);
     };
-    // `fractionAt`/`finishDrag` close over refs and stable props only —
-    // deliberately excluded so this effect doesn't tear down and
-    // re-attach its listeners on every fraction update mid-drag.
-  }, [dragFraction !== undefined]);
+    // Fraction updates do not change the listeners; navigation callbacks
+    // and direction remain current when the book or its settings change.
+  }, [rtl, onPreview, onSeek, onSeekError]);
 
   const displayFraction = optimisticFraction ?? currentFraction(snapshot);
 
