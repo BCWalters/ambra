@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
-import { Button, Textarea, Tooltip } from "@fluentui/react-components";
+import { Button, Tooltip } from "@fluentui/react-components";
 import { DeleteRegular, DismissRegular } from "@fluentui/react-icons";
 import type { HighlightStyle } from "@ambra/engine";
 import type { ActiveHighlightState } from "../ReaderTypes.js";
@@ -8,13 +8,14 @@ import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { HighlightStylePicker } from "./HighlightStylePicker.js";
+import { HighlightNoteEditor } from "./HighlightNoteEditor.js";
 import { useClampedPopupOffset } from "../useClampedPopupOffset.js";
 
 export interface HighlightActionPopupProps {
   /** `undefined` when nothing's currently "opened" this way — see
    * `ReaderController.checkExistingHighlightClick`. */
   state: ActiveHighlightState | undefined;
-  onSetNote: (id: string, note: string | undefined) => void;
+  onSetNote: (id: string, note: string | undefined) => Promise<boolean>;
   /** Issue #79: changes this highlight's color/style directly from the
    * popup, the same set of swatches `SelectionToolbar` offers when
    * first creating one — previously the only way to change color was
@@ -58,7 +59,11 @@ export interface HighlightActionPopupProps {
  * all (it acts on an already-created, CFI-anchored highlight), so
  * there's nothing here that guard would actually be defending against.
  */
-export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
+export const HighlightActionPopup: FC<HighlightActionPopupProps> = (props) => (
+  props.state ? <OpenHighlightActionPopup key={props.state.highlight.id} {...props} state={props.state} /> : null
+);
+
+const OpenHighlightActionPopup: FC<HighlightActionPopupProps & { state: ActiveHighlightState }> = ({
   state,
   onSetNote,
   onSetStyle,
@@ -67,8 +72,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
 }) => {
   const chromeTheme = useChromeTheme();
   const t = useTranslation();
-  const [draftNote, setDraftNote] = useState("");
-  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [draftNote, setDraftNote] = useState(state.highlight.note ?? "");
   const popupRef = useRef<HTMLDivElement | null>(null);
   // Keeps this popup fully on-screen even when the highlight it's
   // anchored to sits near the top/left/right edge of the viewport (an
@@ -77,37 +81,12 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
   // comment).
   const clampOffset = useClampedPopupOffset(
     popupRef,
-    state ? { left: state.left, top: state.top } : undefined,
+    { left: state.left, top: state.top },
     10,
     [],
   );
 
-  // Resets the note draft whenever a *different* highlight is opened
-  // (or this one closes) — without this, opening a second highlight
-  // would show the first highlight's leftover draft text for a moment.
   useEffect(() => {
-    setDraftNote(state?.highlight.note ?? "");
-  }, [state?.highlight.id]);
-
-  // This popup always opens straight into "edit" mode (issue #97: no
-  // separate view-only state to toggle out of first) — color swatches
-  // and the note field are both immediately visible and usable the
-  // moment a highlight is tapped/clicked, not gated behind a
-  // color-dot/note-icon toggle the reader has to find and click first.
-  // Focusing the note field to match follows the same reasoning
-  // `onAddNote`'s `openNoteEditor` flag already established: the whole
-  // point of opening this popup is almost always to act on the
-  // highlight (recolor it or note it), not just to look at it.
-  useEffect(() => {
-    if (state) {
-      noteTextareaRef.current?.focus();
-    }
-  }, [state?.highlight.id]);
-
-  useEffect(() => {
-    if (!state) {
-      return;
-    }
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
         onDismiss();
@@ -117,31 +96,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [state, onDismiss]);
 
-  if (!state) {
-    return null;
-  }
   const { highlight } = state;
-
-  const saveNote = (): void => {
-    const trimmed = draftNote.trim();
-    onSetNote(highlight.id, trimmed === "" ? undefined : trimmed);
-    onDismiss();
-  };
-
-  const cancelNoteEdit = (): void => {
-    setDraftNote(highlight.note ?? "");
-    onDismiss();
-  };
-
-  // "Add" mode (no note existed when this highlight was created/opened)
-  // vs. "edit" mode (one already exists) genuinely need different Save
-  // behavior: saving an empty note in *edit* mode is how a reader clears
-  // an existing one (see `saveNote`'s own `trimmed === "" ? undefined`),
-  // a real, intentional action — but in *add* mode, an empty note isn't
-  // "clearing" anything that existed; it's just nothing to save at all,
-  // so Save stays disabled until there's actual text.
-  const isAddMode = !highlight.note;
-  const isSaveDisabled = isAddMode && draftNote.trim() === "";
 
   return (
     <div
@@ -165,8 +120,11 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
         // "edit" mode (see below), so it's sized for that from the
         // start rather than for the old, narrower "just glance at it"
         // default.
-        minWidth: 330,
-        maxWidth: 420,
+        minWidth: "min(330px, calc(100vw - 16px))",
+        maxWidth: "min(420px, calc(100vw - 16px))",
+        maxHeight: "calc(100vh - 16px)",
+        overflowY: "auto",
+        boxSizing: "border-box",
         background: chromeTheme.backgroundSolid,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
@@ -201,25 +159,16 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
         </span>
       </div>
 
-      <div>
-        <Textarea
-          ref={noteTextareaRef}
-          value={draftNote}
-          onChange={(_event, data) => setDraftNote(data.value)}
-          placeholder={t("annotations.notePlaceholder")}
-          resize="vertical"
-          rows={4}
-          style={{ width: "100%" }}
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
-          <Button size="small" onClick={cancelNoteEdit}>
-            {t("annotations.cancelNote")}
-          </Button>
-          <Button size="small" appearance="primary" disabled={isSaveDisabled} onClick={saveNote}>
-            {t("annotations.saveNote")}
-          </Button>
-        </div>
-      </div>
+      <HighlightNoteEditor
+        value={draftNote}
+        onChange={setDraftNote}
+        hasExistingNote={!!highlight.note}
+        onSave={(note) => onSetNote(highlight.id, note)}
+        onSaved={onDismiss}
+        onCancel={onDismiss}
+        autoFocus
+        rows={4}
+      />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Tab, TabList, Textarea, Tooltip } from "@fluentui/react-components";
+import { Body1, Button, Caption1, Tab, TabList, Tooltip } from "@fluentui/react-components";
 import {
   ArrowExportRegular,
   ArrowImportRegular,
@@ -20,6 +20,7 @@ import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 import type { ReadOnlyAnnotationView } from "../ReaderTypes.js";
+import { HighlightNoteEditor } from "./HighlightNoteEditor.js";
 
 interface BookmarkListProps {
   bookmarks: readonly Bookmark[];
@@ -113,7 +114,7 @@ interface HighlightListProps {
   embedded: readonly ReadOnlyAnnotationView[];
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
-  onSetNote: (id: string, note: string | undefined) => void;
+  onSetNote: (id: string, note: string | undefined) => Promise<boolean>;
   /** Distinct from `onSelect` — see `BookmarkListProps.onSelectEmbedded`. */
   onSelectEmbedded: (cfi: string) => void;
 }
@@ -164,7 +165,7 @@ interface HighlightListItemProps {
   highlight: Highlight;
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
-  onSetNote: (id: string, note: string | undefined) => void;
+  onSetNote: (id: string, note: string | undefined) => Promise<boolean>;
 }
 
 /** One highlight's row, plus its own local "note editor open?" state —
@@ -176,18 +177,6 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState(highlight.note ?? "");
   const option = HighlightTheme.STYLES[highlight.style];
-
-  const saveNote = (): void => {
-    const trimmed = draftNote.trim();
-    onSetNote(highlight.id, trimmed === "" ? undefined : trimmed);
-    setIsEditingNote(false);
-  };
-
-  // See `HighlightActionPopup`'s identical guard: an empty note is a
-  // real, intentional "clear it" action in edit mode (there's an
-  // existing note to clear), but plain nothing-to-save in add mode.
-  const isAddMode = !highlight.note;
-  const isSaveDisabled = isAddMode && draftNote.trim() === "";
 
   return (
     <li style={{ padding: "2px 0" }}>
@@ -281,21 +270,14 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
       </div>
       {isEditingNote && (
         <div style={{ padding: "0 10px 8px 34px" }}>
-          <Textarea
+          <HighlightNoteEditor
             value={draftNote}
-            onChange={(_event, data) => setDraftNote(data.value)}
-            placeholder={t("annotations.notePlaceholder")}
-            resize="vertical"
-            style={{ width: "100%" }}
+            onChange={setDraftNote}
+            hasExistingNote={!!highlight.note}
+            onSave={(note) => onSetNote(highlight.id, note)}
+            onSaved={() => setIsEditingNote(false)}
+            onCancel={() => setIsEditingNote(false)}
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
-            <Button size="small" onClick={() => setIsEditingNote(false)}>
-              {t("annotations.cancelNote")}
-            </Button>
-            <Button size="small" appearance="primary" disabled={isSaveDisabled} onClick={saveNote}>
-              {t("annotations.saveNote")}
-            </Button>
-          </div>
         </div>
       )}
     </li>
@@ -383,7 +365,7 @@ export interface AnnotationsPanelProps {
   highlights: readonly Highlight[];
   onSelectHighlight: (cfi: string) => void;
   onRemoveHighlight: (id: string) => void;
-  onSetHighlightNote: (id: string, note: string | undefined) => void;
+  onSetHighlightNote: (id: string, note: string | undefined) => Promise<boolean>;
   /** A publisher-embedded, read-only annotation collection (issue #109)
    * — empty for the overwhelming majority of books, in which case
    * nothing extra shows up in either tab below (issue #116: these used

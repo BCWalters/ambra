@@ -150,30 +150,30 @@ export class HighlightManager {
     this.ctx.notify();
   }
 
-  public setNote(id: string, note: string | undefined): Promise<void> {
+  public setNote(id: string, note: string | undefined): Promise<boolean> {
     return this.update(id, { note });
   }
 
-  public setStyle(id: string, style: HighlightStyle): Promise<void> {
-    return this.update(id, { style });
+  public async setStyle(id: string, style: HighlightStyle): Promise<void> {
+    await this.update(id, { style });
   }
 
-  private async update(id: string, patch: Parameters<LibraryDatabase["patchHighlight"]>[1]): Promise<void> {
+  private async update(id: string, patch: Parameters<LibraryDatabase["patchHighlight"]>[1]): Promise<boolean> {
     if (!Array.from(this.cache.values()).some(highlights => highlights.some(highlight => highlight.id === id))) {
       this.ctx.reportError(new Error("The highlight is not part of the open book."));
-      return;
+      return false;
     }
     let updated: Highlight | undefined;
     try {
       updated = await this.library.patchHighlight(id, patch);
     } catch (error) {
       this.ctx.reportError(error);
-      return;
+      return false;
     }
     if (!updated) {
       this.removeFromCache(id);
       this.ctx.reportError(new Error("The highlight no longer exists."));
-      return;
+      return false;
     }
     // Look up the current cache after commit: import/refresh may have replaced it.
     const highlights = this.cache.get(updated.spineIndex);
@@ -189,5 +189,6 @@ export class HighlightManager {
     }
     this.ctx.updateNoteMarkers();
     this.ctx.notify();
+    return true;
   }
 }

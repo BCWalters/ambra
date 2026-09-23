@@ -1909,7 +1909,7 @@ export class ReaderController {
     return this.highlights.remove(id);
   }
 
-  public async setHighlightNote(id: string, note: string | undefined): Promise<void> {
+  public async setHighlightNote(id: string, note: string | undefined): Promise<boolean> {
     return this.highlights.setNote(id, note);
   }
 
