@@ -10,6 +10,7 @@ export {
   parseViewportDimensions,
 } from "./container/PackageDocument.js";
 export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry, AccessibilityMetadata } from "./container/PackageDocument.js";
+export type { PackageMetadataOptions } from "./container/PackageDocument.js";
 export type {
   RenditionSpread,
   RenditionOrientation,

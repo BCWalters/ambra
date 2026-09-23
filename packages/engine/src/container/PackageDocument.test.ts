@@ -3,7 +3,15 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "./EpubContainer.js";
-import { PackageDocument, PackageDocumentError, parseViewportDimensions } from "./PackageDocument.js";
+import {
+  ManifestItem,
+  PackageDocument,
+  PackageDocumentError,
+  PackageMetadata,
+  SpineItemRef,
+  parseViewportDimensions,
+} from "./PackageDocument.js";
+import type { PackageMetadataOptions, RenditionSpread } from "./PackageDocument.js";
 import { CfiStep } from "../locator/EpubCfi.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
@@ -12,6 +20,68 @@ async function loadFixture(name: string): Promise<Uint8Array> {
   );
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
+
+describe("PackageMetadata named options", () => {
+  function options(): PackageMetadataOptions {
+    return {
+      identifier: "urn:uuid:publication",
+      title: "Book title",
+      language: "en",
+      creator: "Author",
+      renditionLayout: "pre-paginated",
+      renditionViewport: { width: 800, height: 1200 },
+      description: "Book description",
+      publisher: "Publisher",
+      identifiers: [{ value: "9780000000000", scheme: "ISBN" }],
+      rights: "Copyright statement",
+      date: "2026-09-23",
+      subjects: ["Subject"],
+      contributors: ["Translator"],
+      metaEntries: [
+        { key: "media:duration", value: "0:01:05", refines: undefined },
+        { key: "media:duration", value: "2s", refines: "overlay" },
+        { key: "media:narrator", value: "Narrator", refines: undefined },
+        { key: "media:active-class", value: "reading", refines: undefined },
+      ],
+      creators: ["Author", "Co-author"],
+      renditionSpread: "landscape",
+      renditionOrientation: "portrait",
+      accessibility: {
+        accessModes: ["textual"],
+        accessibilityFeatures: ["structuralNavigation"],
+        accessibilityHazards: ["noFlashingHazard"],
+        accessibilitySummary: "Accessibility summary",
+      },
+    };
+  }
+
+  it("retains all named public fields and the existing derived metadata getters", () => {
+    const values = options();
+    const metadata = new PackageMetadata(values);
+
+    expect({ ...metadata }).toEqual(values);
+    expect(metadata.metaEntries).toBe(values.metaEntries);
+    expect(metadata.identifiers).toBe(values.identifiers);
+    expect(metadata.mediaOverlayDurationSeconds).toBe(65);
+    expect(metadata.mediaOverlayDurationForManifestId("overlay")).toBe(2);
+    expect(metadata.mediaOverlayNarrator).toBe("Narrator");
+    expect(metadata.mediaOverlayActiveClass).toBe("reading");
+  });
+
+  it("keeps absent optional values as undefined public fields", () => {
+    const values: PackageMetadataOptions = {
+      ...options(),
+      creator: undefined,
+      renditionViewport: undefined,
+      description: undefined,
+      publisher: undefined,
+      rights: undefined,
+      date: undefined,
+    };
+
+    expect({ ...new PackageMetadata(values) }).toEqual(values);
+  });
+});
 
 describe("parseViewportDimensions", () => {
   it("parses width/height from a comma-separated string", () => {
@@ -455,6 +525,67 @@ describe("PackageDocument rendition:orientation", () => {
     const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
     const item = pkg.spine[0]!;
     expect(item.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("portrait");
+  });
+
+  it("allows an explicit auto override to reset the package's fixed orientation", () => {
+    const xml = buildXml(
+      '<meta property="rendition:orientation">portrait</meta>',
+      'properties="rendition:orientation-auto"',
+    );
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.spine[0]!.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("auto");
+  });
+});
+
+describe("SpineItemRef rendition:spread overrides", () => {
+  function item(properties: string[]): SpineItemRef {
+    return new SpineItemRef(
+      new ManifestItem("page", "OEBPS/page.xhtml", "application/xhtml+xml", new Set()),
+      true,
+      new Set(properties),
+      [],
+    );
+  }
+
+  const defaults: readonly RenditionSpread[] = ["auto", "both", "landscape", "none"];
+
+  it.each(defaults)("inherits the package's %s spread when no override is present", (value) => {
+    expect(item([]).resolveRenditionSpread(value)).toBe(value);
+  });
+
+  it.each(defaults)("honors rendition:spread-%s independently of the package default", (value) => {
+    const ref = item([`rendition:spread-${value}`]);
+
+    for (const packageDefault of defaults) {
+      expect(ref.resolveRenditionSpread(packageDefault)).toBe(value);
+    }
+  });
+
+  it("normalizes the deprecated portrait override to both", () => {
+    expect(item(["rendition:spread-portrait"]).resolveRenditionSpread("none")).toBe("both");
+  });
+
+  it("ignores unknown overrides without confusing page placement with spread eligibility", () => {
+    const ref = item(["rendition:spread-unknown", "rendition:page-spread-center"]);
+
+    expect(ref.resolveRenditionSpread("landscape")).toBe("landscape");
+    expect(ref.pageSpread).toBe("center");
+  });
+
+  it("preserves the per-item override when parsing a package with a different global value", () => {
+    const xml = `<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="id">test</dc:identifier><dc:title>Test</dc:title><dc:language>en</dc:language>
+        <meta property="rendition:spread">both</meta>
+      </metadata>
+      <manifest><item id="page" href="page.xhtml" media-type="application/xhtml+xml"/></manifest>
+      <spine><itemref idref="page" properties="rendition:spread-none"/></spine>
+    </package>`;
+    const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
+
+    expect(pkg.metadata.renditionSpread).toBe("both");
+    expect(pkg.spine[0]!.resolveRenditionSpread(pkg.metadata.renditionSpread)).toBe("none");
   });
 });
 

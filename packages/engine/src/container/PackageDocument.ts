@@ -137,6 +137,20 @@ export class SpineItemRef {
     return packageDefault;
   }
 
+  /** This spine item's effective synthetic-spread hint. Viewport eligibility
+   * and page-spread placement remain the spread planner's responsibility. */
+  public resolveRenditionSpread(packageDefault: RenditionSpread): RenditionSpread {
+    for (const value of ["none", "landscape", "both", "auto"] as const) {
+      if (this.hasProperty(`rendition:spread-${value}`)) {
+        return value;
+      }
+    }
+    if (this.hasProperty("rendition:spread-portrait")) {
+      return "both";
+    }
+    return packageDefault;
+  }
+
   /** This spine item's explicit `page-spread-*` override, or `undefined`
    * if it declares none (in which case `FixedLayoutSpreadPlanner` falls
    * back to the default left/right alternation). Checks both the
@@ -166,7 +180,7 @@ export class SpineItemRef {
   }
 
   /** This spine item's effective `rendition:orientation`, applying its own
-   * `rendition:orientation-portrait`/`-landscape` override property if
+   * `rendition:orientation-portrait`/`-landscape`/`-auto` override property if
    * present, else falling back to the publication-wide default — same
    * override shape as `resolveRenditionLayout`. */
   public resolveRenditionOrientation(packageDefault: RenditionOrientation): RenditionOrientation {
@@ -175,6 +189,9 @@ export class SpineItemRef {
     }
     if (this.hasProperty("rendition:orientation-landscape")) {
       return "landscape";
+    }
+    if (this.hasProperty("rendition:orientation-auto")) {
+      return "auto";
     }
     return packageDefault;
   }
@@ -240,89 +257,86 @@ export interface AccessibilityMetadata {
 /** Core Dublin Core / package metadata read from the OPF `<metadata>`
  * element, plus the `rendition:*` metadata used to pick reflowable vs
  * fixed-layout rendering. */
-export class PackageMetadata {
-  public constructor(
-    /** The value of the `dc:identifier` element specifically referenced by
-     * `<package unique-identifier="...">` — not merely "the first
-     * `dc:identifier`", which real-world books may have several of (e.g.
-     * an ISBN alongside a UUID). This distinction matters beyond just
-     * correctness of the metadata itself: it's the exact value the EPUB
-     * font obfuscation algorithm is defined against (see
-     * `font-obfuscation`), so getting the wrong identifier here would
-     * silently produce the wrong de-obfuscation key. */
-    public readonly identifier: string,
-    public readonly title: string,
-    public readonly language: string,
-    /** `dc:creator` (author/editor/etc.) — optional per spec, unlike
-     * `dc:title`/`dc:language`, so real-world books that omit it (or use
-     * non-DC creator conventions this parser doesn't yet special-case)
-     * simply have `undefined` here rather than failing to parse. When
-     * multiple `dc:creator` elements are present, only the first is used;
-     * refiners like `role`/`file-as` are not yet interpreted. */
-    public readonly creator: string | undefined,
-    /** Publication-wide default rendition layout. Individual spine items
-     * may override this — see `SpineItemRef.resolveRenditionLayout`. */
-    public readonly renditionLayout: RenditionLayout,
-    /** The package-level `rendition:viewport` property (e.g.
-     * `<meta property="rendition:viewport">width=1400, height=2100</meta>`)
-     * — a fallback intrinsic page size for fixed-layout content whose own
-     * content document doesn't declare a `<meta name="viewport">` (the
-     * more common, per-content-document mechanism real fixed-layout books
-     * use, and preferred when present — see `fixed-layout-rendering`).
-     * `undefined` if absent, malformed, or the book isn't fixed-layout. */
-    public readonly renditionViewport: ViewportSize | undefined,
-    /** `dc:description` — a back-cover-blurb-style summary, when the book
-     * provides one. Used by the Book Details panel; nothing else in the
-     * reader depends on it. */
-    public readonly description: string | undefined,
-    /** `dc:publisher`. Used by the Book Details panel only. */
-    public readonly publisher: string | undefined,
-    /** Every `dc:identifier` element present (not just the unique one —
-     * see `identifier`), for the Book Details panel to show alongside
-     * whatever scheme each is marked with (e.g. "ISBN"). */
-    public readonly identifiers: readonly BookIdentifier[],
-    /** `dc:rights` — the book's copyright/license statement (e.g.
-     * "Copyright © 2020 Jane Author"). Shown as "Copyright" in the Book
-     * Details panel when present; entirely optional per spec. */
-    public readonly rights: string | undefined,
-    /** `dc:date` — publication date, in whatever form the book declares
-     * it (full ISO date, year-month, or bare year are all common). When
-     * multiple `dc:date` elements are present (rare, but legal — e.g.
-     * distinguishing original vs. this edition's publication date via
-     * `opf:event`), the one marked `opf:event="publication"` is
-     * preferred, falling back to the first if none is marked. */
-    public readonly date: string | undefined,
-    /** Every `dc:subject` element (genre/tag/BISAC-code style
-     * classifications) — a book may declare several, or none. */
-    public readonly subjects: readonly string[],
-    /** Every `dc:contributor` element (translator, illustrator, editor,
-     * etc. — distinct from `dc:creator`, the primary author(s)). */
-    public readonly contributors: readonly string[],
-    /** Every `<meta>` element in the OPF metadata, captured generically
-     * (see `OpfMetaEntry`) — the EPUB Inspector's Metadata tab surfaces
-     * these so an author can see *everything* their OPF declares, not
-     * just the handful of fields (rendition layout/viewport) this
-     * engine specifically interprets for rendering. */
-    public readonly metaEntries: readonly OpfMetaEntry[],
-    /** Every `dc:creator` element present (not just the first — see
-     * `creator`) — the EPUB Inspector's Metadata tab shows the full list
-     * for books with multiple authors/editors; `creator` remains
-     * singular for the handful of other consumers (Book Details, the
-     * library list) that only ever showed one name anyway. */
-    public readonly creators: readonly string[],
-    /** The publication-wide `rendition:spread` hint — see
-     * `RenditionSpread`'s own doc comment for exactly what each value
-     * means and how the deprecated `"portrait"` value is folded in.
-     * Individual spine items have no per-item override for this property
-     * (unlike `rendition:layout`) — spec defines it package-wide only. */
-    public readonly renditionSpread: RenditionSpread,
-    /** The publication-wide `rendition:orientation` hint — see
-     * `RenditionOrientation`. Individual spine items may override this —
-     * see `SpineItemRef.resolveRenditionOrientation`. */
-    public readonly renditionOrientation: RenditionOrientation,
-    /** EPUB Accessibility 1.1 metadata — see `AccessibilityMetadata`. */
-    public readonly accessibility: AccessibilityMetadata,
-  ) {}
+export interface PackageMetadataOptions {
+  readonly identifier: string;
+  readonly title: string;
+  readonly language: string;
+  readonly creator: string | undefined;
+  readonly renditionLayout: RenditionLayout;
+  readonly renditionViewport: ViewportSize | undefined;
+  readonly description: string | undefined;
+  readonly publisher: string | undefined;
+  readonly identifiers: readonly BookIdentifier[];
+  readonly rights: string | undefined;
+  readonly date: string | undefined;
+  readonly subjects: readonly string[];
+  readonly contributors: readonly string[];
+  readonly metaEntries: readonly OpfMetaEntry[];
+  readonly creators: readonly string[];
+  readonly renditionSpread: RenditionSpread;
+  readonly renditionOrientation: RenditionOrientation;
+  readonly accessibility: AccessibilityMetadata;
+}
+
+export class PackageMetadata implements PackageMetadataOptions {
+  /** The identifier referenced by package@unique-identifier, not necessarily
+   * the first dc:identifier. Font deobfuscation depends on this exact value. */
+  public readonly identifier: string;
+  public readonly title: string;
+  public readonly language: string;
+  /** First dc:creator; role and file-as refinements are not interpreted. */
+  public readonly creator: string | undefined;
+  /** Publication-wide default rendition layout. Individual spine items
+   * may override this — see `SpineItemRef.resolveRenditionLayout`. */
+  public readonly renditionLayout: RenditionLayout;
+  /** Fallback intrinsic FXL size; the content document's viewport takes priority. */
+  public readonly renditionViewport: ViewportSize | undefined;
+  public readonly description: string | undefined;
+  public readonly publisher: string | undefined;
+  /** All identifiers, including their declared schemes (such as ISBN). */
+  public readonly identifiers: readonly BookIdentifier[];
+  public readonly rights: string | undefined;
+  /** Original dc:date text, preferring opf:event="publication" over the first date. */
+  public readonly date: string | undefined;
+  public readonly subjects: readonly string[];
+  public readonly contributors: readonly string[];
+  /** All OPF meta elements, including properties not interpreted by the reader. */
+  public readonly metaEntries: readonly OpfMetaEntry[];
+  /** All creators; `creator` is the first for single-author UI surfaces. */
+  public readonly creators: readonly string[];
+  /** The publication-wide `rendition:spread` hint — see
+   * `RenditionSpread`'s own doc comment for exactly what each value
+   * means and how the deprecated `"portrait"` value is folded in.
+   * Individual spine items may override the package default — see
+   * `SpineItemRef.resolveRenditionSpread`. */
+  public readonly renditionSpread: RenditionSpread;
+  /** The publication-wide `rendition:orientation` hint — see
+   * `RenditionOrientation`. Individual spine items may override this —
+   * see `SpineItemRef.resolveRenditionOrientation`. */
+  public readonly renditionOrientation: RenditionOrientation;
+  /** EPUB Accessibility 1.1 metadata — see `AccessibilityMetadata`. */
+  public readonly accessibility: AccessibilityMetadata;
+
+  public constructor(options: PackageMetadataOptions) {
+    this.identifier = options.identifier;
+    this.title = options.title;
+    this.language = options.language;
+    this.creator = options.creator;
+    this.renditionLayout = options.renditionLayout;
+    this.renditionViewport = options.renditionViewport;
+    this.description = options.description;
+    this.publisher = options.publisher;
+    this.identifiers = options.identifiers;
+    this.rights = options.rights;
+    this.date = options.date;
+    this.subjects = options.subjects;
+    this.contributors = options.contributors;
+    this.metaEntries = options.metaEntries;
+    this.creators = options.creators;
+    this.renditionSpread = options.renditionSpread;
+    this.renditionOrientation = options.renditionOrientation;
+    this.accessibility = options.accessibility;
+  }
 
   /** `<meta property="media:duration">` with no `refines` — the book's
    * total Media Overlay narration duration, if declared. Derived from
@@ -563,7 +577,7 @@ export class PackageDocument {
     const creators = getElementsTextNS(metadataEl, DC_NAMESPACE, "creator");
     const accessibility = PackageDocument.parseAccessibilityMetadata(metadataEl);
 
-    return new PackageMetadata(
+    return new PackageMetadata({
       identifier,
       title,
       language,
@@ -582,7 +596,7 @@ export class PackageDocument {
       renditionSpread,
       renditionOrientation,
       accessibility,
-    );
+    });
   }
 
   /** Resolves `dc:date`, preferring an element specifically marked
