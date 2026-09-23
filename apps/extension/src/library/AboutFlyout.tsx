@@ -97,6 +97,8 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
           <Button
             as="a"
             href={`mailto:${REPORT_EMAIL}`}
+            target="_blank"
+            rel="noreferrer"
             appearance="primary"
             icon={<MailRegular />}
             style={{
