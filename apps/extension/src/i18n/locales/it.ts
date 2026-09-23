@@ -3,6 +3,16 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Italian speaker. */
 export const it: StringCatalog = {
+  "inspector.locateCurrentPassage": "Trova il passaggio attuale",
+  "inspector.locatingPassage": "Ricerca del passaggio…",
+  "inspector.locateError": "Impossibile trovare il passaggio attuale.",
+  "inspector.showInBook": "Mostra nel libro",
+  "inspector.showingInBook": "Apertura del passaggio…",
+  "inspector.showInBookError": "Impossibile aprire questa posizione nel libro.",
+  "inspector.sourceMappingError": "Impossibile collegare questa posizione del codice al libro. Seleziona un altro elemento o file.",
+  "inspector.sourceElementSelected": "Elemento del codice selezionato. Mostra nel libro apre questo elemento.",
+  "inspector.sourceSelectionHint": "Fai clic o seleziona il testo sorgente per scegliere un elemento. Con il codice attivo, usa le frecce; tieni premuto Maiusc per selezionare. Senza selezione, Mostra nel libro apre l’inizio del file.",
+  "inspector.sourceCode": "Codice sorgente",
   "toolbar.showContents": "Mostra sommario",
   "toolbar.hideContents": "Nascondi sommario",
   "toolbar.bookmarksAndHighlights": "Segnalibri ed evidenziazioni",

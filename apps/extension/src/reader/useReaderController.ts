@@ -10,6 +10,7 @@ import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
 import type {
   BookDetails,
   EpubInspectionData,
+  InspectorReaderBridge,
   PreviewPosition,
   ReaderSnapshot,
   ReadOnlyAnnotationView,
@@ -40,6 +41,7 @@ export interface UseReaderControllerResult {
   seekToFraction: (fraction: number) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
   getEpubInspectionData: () => EpubInspectionData | undefined;
+  getInspectorReaderBridge: () => InspectorReaderBridge | undefined;
   readInspectionFileText: (path: string) => Promise<string>;
   getInspectionFilePreviewUrl: (path: string, mediaType: string) => Promise<string>;
   closeImageViewer: () => void;
@@ -310,6 +312,11 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     return controller?.getEpubInspectionData();
   }, [controller]);
 
+  const getInspectorReaderBridge = useCallback(
+    () => controller?.getInspectorReaderBridge(),
+    [controller],
+  );
+
   const readInspectionFileText = useCallback(
     async (path: string) => {
       if (!controller) {
@@ -490,6 +497,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     seekToFraction,
     getBookDetails,
     getEpubInspectionData,
+    getInspectorReaderBridge,
     readInspectionFileText,
     getInspectionFilePreviewUrl,
     closeImageViewer,

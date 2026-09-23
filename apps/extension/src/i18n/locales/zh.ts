@@ -3,6 +3,16 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "inspector.locateCurrentPassage": "定位当前段落",
+  "inspector.locatingPassage": "正在定位段落…",
+  "inspector.locateError": "无法定位当前段落。",
+  "inspector.showInBook": "在书中显示",
+  "inspector.showingInBook": "正在打开段落…",
+  "inspector.showInBookError": "无法在书中打开此位置。",
+  "inspector.sourceMappingError": "无法将此源码位置对应到书中，请选择其他元素或文件。",
+  "inspector.sourceElementSelected": "已选择源码元素。“在书中显示”将打开此元素。",
+  "inspector.sourceSelectionHint": "点击或选择源码文本以指定元素。聚焦源码后可用方向键移动，按住 Shift 键选择。未选择时，“在书中显示”将打开文件开头。",
+  "inspector.sourceCode": "源代码",
   "toolbar.showContents": "显示目录",
   "toolbar.hideContents": "隐藏目录",
   "toolbar.bookmarksAndHighlights": "书签和高亮",

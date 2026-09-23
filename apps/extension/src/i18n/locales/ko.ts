@@ -3,6 +3,16 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Korean speaker. */
 export const ko: StringCatalog = {
+  "inspector.locateCurrentPassage": "현재 구절 찾기",
+  "inspector.locatingPassage": "구절을 찾는 중…",
+  "inspector.locateError": "현재 구절을 찾지 못했습니다.",
+  "inspector.showInBook": "책에서 보기",
+  "inspector.showingInBook": "구절을 여는 중…",
+  "inspector.showInBookError": "책에서 이 위치를 열지 못했습니다.",
+  "inspector.sourceMappingError": "이 소스 위치를 책에 연결하지 못했습니다. 다른 요소나 파일을 선택하세요.",
+  "inspector.sourceElementSelected": "소스 요소를 선택했습니다. 책에서 보기를 누르면 이 요소가 열립니다.",
+  "inspector.sourceSelectionHint": "소스 텍스트를 클릭하거나 선택하여 요소를 지정하세요. 소스에 초점이 있을 때 화살표 키로 이동하고 Shift 키를 누른 채 선택할 수 있습니다. 선택하지 않으면 책에서 보기가 파일의 시작을 엽니다.",
+  "inspector.sourceCode": "소스 코드",
   "toolbar.showContents": "목차 표시",
   "toolbar.hideContents": "목차 숨기기",
   "toolbar.bookmarksAndHighlights": "책갈피 및 하이라이트",

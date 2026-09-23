@@ -188,6 +188,16 @@ export interface StringCatalog {
   "reader.loading": string;
   "reader.bookContentAriaLabel": string;
   "inspector.specialFileContainer": string;
+  "inspector.locateCurrentPassage": string;
+  "inspector.locatingPassage": string;
+  "inspector.locateError": string;
+  "inspector.showInBook": string;
+  "inspector.showingInBook": string;
+  "inspector.showInBookError": string;
+  "inspector.sourceMappingError": string;
+  "inspector.sourceElementSelected": string;
+  "inspector.sourceSelectionHint": string;
+  "inspector.sourceCode": string;
   "inspector.specialFileOpf": string;
   "inspector.specialFileCover": string;
   "inspector.previewLoadError": string;
@@ -264,6 +274,16 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "inspector.locateCurrentPassage": "Locate current passage",
+  "inspector.locatingPassage": "Locating passage…",
+  "inspector.locateError": "Could not locate the current passage.",
+  "inspector.showInBook": "Show in book",
+  "inspector.showingInBook": "Opening passage…",
+  "inspector.showInBookError": "Could not open this location in the book.",
+  "inspector.sourceMappingError": "This source location could not be mapped to the book. Select another element or file.",
+  "inspector.sourceElementSelected": "Source element selected. Show in book opens this element.",
+  "inspector.sourceSelectionHint": "Click or select source text to choose an element. With source focused, use arrow keys; hold Shift to select. Without a selection, Show in book opens the file start.",
+  "inspector.sourceCode": "Source code",
   "toolbar.showContents": "Show contents",
   "toolbar.hideContents": "Hide contents",
   "toolbar.bookmarksAndHighlights": "Bookmarks and highlights",

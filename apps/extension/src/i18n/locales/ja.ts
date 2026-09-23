@@ -3,6 +3,16 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Japanese speaker. */
 export const ja: StringCatalog = {
+  "inspector.locateCurrentPassage": "現在の箇所を探す",
+  "inspector.locatingPassage": "箇所を検索中…",
+  "inspector.locateError": "現在の箇所が見つかりませんでした。",
+  "inspector.showInBook": "本で表示",
+  "inspector.showingInBook": "箇所を開いています…",
+  "inspector.showInBookError": "この位置を本で開けませんでした。",
+  "inspector.sourceMappingError": "このソースの位置を本に対応付けられませんでした。別の要素またはファイルを選択してください。",
+  "inspector.sourceElementSelected": "ソース要素を選択しました。「本で表示」でこの要素を開きます。",
+  "inspector.sourceSelectionHint": "ソースのテキストをクリックまたは選択して要素を指定します。ソースにフォーカスがあるときは矢印キーで移動し、Shift キーを押しながら選択できます。未選択の場合、「本で表示」はファイルの先頭を開きます。",
+  "inspector.sourceCode": "ソースコード",
   "toolbar.showContents": "目次を表示",
   "toolbar.hideContents": "目次を非表示",
   "toolbar.bookmarksAndHighlights": "ブックマークとハイライト",

@@ -3,6 +3,16 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Russian speaker. */
 export const ru: StringCatalog = {
+  "inspector.locateCurrentPassage": "Найти текущий отрывок",
+  "inspector.locatingPassage": "Поиск отрывка…",
+  "inspector.locateError": "Не удалось найти текущий отрывок.",
+  "inspector.showInBook": "Показать в книге",
+  "inspector.showingInBook": "Открытие отрывка…",
+  "inspector.showInBookError": "Не удалось открыть это место в книге.",
+  "inspector.sourceMappingError": "Не удалось сопоставить это место в исходном коде с книгой. Выберите другой элемент или файл.",
+  "inspector.sourceElementSelected": "Элемент исходного кода выбран. «Показать в книге» откроет этот элемент.",
+  "inspector.sourceSelectionHint": "Нажмите на текст исходного кода или выделите его, чтобы выбрать элемент. Когда код в фокусе, используйте стрелки; удерживайте Shift для выделения. Без выбора «Показать в книге» откроет начало файла.",
+  "inspector.sourceCode": "Исходный код",
   "toolbar.showContents": "Показать оглавление",
   "toolbar.hideContents": "Скрыть оглавление",
   "toolbar.bookmarksAndHighlights": "Закладки и выделения",

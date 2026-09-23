@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Spinner, Title2 } from "@fluentui/react-components";
 import { FixedContentHost, ReadingTheme } from "@ambra/engine";
@@ -24,7 +24,7 @@ import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import { LocaleProvider, useTranslation } from "../i18n/LocaleContext.js";
-import type { BookDetails, EpubInspectionData } from "./ReaderTypes.js";
+import type { BookDetails, EpubInspectionData, InspectorReaderBridge } from "./ReaderTypes.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -66,6 +66,7 @@ const ReaderAppInner: FC = () => {
     seekToFraction,
     getBookDetails,
     getEpubInspectionData,
+    getInspectorReaderBridge,
     readInspectionFileText,
     getInspectionFilePreviewUrl,
     closeImageViewer,
@@ -156,6 +157,8 @@ const ReaderAppInner: FC = () => {
   };
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectorReader, setInspectorReader] = useState<InspectorReaderBridge>();
+  const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
   // Shared between the toolbar and the progress scrubber (see
@@ -215,6 +218,20 @@ const ReaderAppInner: FC = () => {
     }
     setInspectionData(getEpubInspectionData());
   }, [isInspectorOpen, inspectionData, getEpubInspectionData]);
+
+  useEffect(() => {
+    if (isInspectorOpen || !inspectionFocusReturn.current) return;
+    const frame = requestAnimationFrame(() => {
+      inspectionFocusReturn.current?.();
+      inspectionFocusReturn.current = undefined;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isInspectorOpen]);
+
+  const openInspector = (): void => {
+    setInspectorReader(getInspectorReaderBridge());
+    setIsInspectorOpen(true);
+  };
 
   // Refresh on open for edits made in another reader tab; local mutations
   // already publish through the controller's single annotation snapshot.
@@ -556,7 +573,7 @@ const ReaderAppInner: FC = () => {
                 restoreContentFocus();
               }}
               details={bookDetails}
-              onOpenInspector={() => setIsInspectorOpen(true)}
+              onOpenInspector={openInspector}
               scrubberVisible={scrubberVisible}
               isPaginated={snapshot.viewMode === "paginated"}
               isFixedLayout={snapshot.isFixedLayout}
@@ -565,8 +582,15 @@ const ReaderAppInner: FC = () => {
             />
 
             <EpubInspectorPanel
+              reader={inspectorReader}
               open={isInspectorOpen}
-              onOpenChange={setIsInspectorOpen}
+              onOpenChange={(open, reason) => {
+                if (reason === "show-in-book") {
+                  inspectionFocusReturn.current = inspectorReader?.restoreFocus ?? restoreContentFocus;
+                  setRightPanel(undefined);
+                }
+                setIsInspectorOpen(open);
+              }}
               data={inspectionData}
               fileName={bookDetails?.fileName}
               onReadFile={readInspectionFileText}

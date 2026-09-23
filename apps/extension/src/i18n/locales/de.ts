@@ -3,6 +3,16 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native German speaker. */
 export const de: StringCatalog = {
+  "inspector.locateCurrentPassage": "Aktuelle Textstelle finden",
+  "inspector.locatingPassage": "Textstelle wird gesucht…",
+  "inspector.locateError": "Die aktuelle Textstelle konnte nicht gefunden werden.",
+  "inspector.showInBook": "Im Buch anzeigen",
+  "inspector.showingInBook": "Textstelle wird geöffnet…",
+  "inspector.showInBookError": "Diese Stelle konnte nicht im Buch geöffnet werden.",
+  "inspector.sourceMappingError": "Diese Quelltextstelle konnte dem Buch nicht zugeordnet werden. Ein anderes Element oder eine andere Datei wählen.",
+  "inspector.sourceElementSelected": "Quelltextelement ausgewählt. „Im Buch anzeigen“ öffnet dieses Element.",
+  "inspector.sourceSelectionHint": "Quelltext anklicken oder markieren, um ein Element auszuwählen. Bei fokussiertem Quelltext die Pfeiltasten verwenden; zum Markieren die Umschalttaste halten. Ohne Auswahl öffnet „Im Buch anzeigen“ den Dateianfang.",
+  "inspector.sourceCode": "Quelltext",
   "toolbar.showContents": "Inhalt anzeigen",
   "toolbar.hideContents": "Inhalt ausblenden",
   "toolbar.bookmarksAndHighlights": "Lesezeichen und Markierungen",

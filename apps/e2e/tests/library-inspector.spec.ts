@@ -37,6 +37,8 @@ test.describe("Library EPUB Inspector (issue #111)", () => {
       await inspectorButton.click();
 
       await fullTabPage.getByRole("tab", { name: /Files/ }).waitFor();
+      await expect(fullTabPage.getByRole("button", { name: "Locate current passage", exact: true })).toHaveCount(0);
+      await expect(fullTabPage.getByRole("button", { name: "Show in book", exact: true })).toHaveCount(0);
       await fullTabPage.getByRole("tab", { name: /Spine/ }).click();
       await expect(fullTabPage.getByRole("button", { name: "OEBPS/content.opf" }).first()).toBeVisible();
       await fullTabPage.keyboard.press("Escape");

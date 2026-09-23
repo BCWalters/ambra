@@ -60,6 +60,7 @@ import type { ReadingHost } from "./ReaderDocuments.js";
 import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageTurnOrchestrator.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
 import { EpubInspectionSession } from "./EpubInspectionSession.js";
+import { InspectorReadingBridge } from "./InspectorReadingBridge.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
@@ -71,6 +72,7 @@ import type {
   EpubInspectionData,
   FootnotePopupState,
   ImageViewerState,
+  InspectorReaderBridge,
   PreviewPosition,
   ReaderSnapshot,
   ReadOnlyAnnotationView,
@@ -336,6 +338,7 @@ export class ReaderController {
   /** Lazily created per-path by `getInspectionFilePreviewUrl` (issue
    * #46), revoked in `dispose`. */
   private readonly inspectionSession: EpubInspectionSession;
+  private readonly inspectionReading: InspectorReadingBridge;
 
   private constructor(
     private readonly contentLoader: ContentLoader,
@@ -348,6 +351,20 @@ export class ReaderController {
     rootFilePath: string,
   ) {
     this.inspectionSession = new EpubInspectionSession(contentLoader, pkg, rootFilePath);
+    this.inspectionReading = new InspectorReadingBridge(contentLoader, locatorResolver, pkg, {
+      documents: () => this.contentDocumentViews(),
+      currentPosition: () => this.host?.currentPosition(),
+      isDisposed: () => this.operations.disposed,
+      focus: (document, element) => this.accessibility.focusContent(document, element),
+      navigate: async (spineIndex, cfi) => {
+        await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
+        if (this.error) throw new Error(this.error);
+        if (this.operations.disposed ||
+            !this.contentDocumentViews().some(view => view.spineIndex === spineIndex)) {
+          throw new Error("The reading location changed before navigation completed.");
+        }
+      },
+    });
     this.searchCoordinator = new SearchCoordinator(contentLoader, locatorResolver, pkg.spine, {
       goToCfi: (cfi) => this.goToCfi(cfi, "that search result"),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
@@ -3399,6 +3416,10 @@ export class ReaderController {
     return this.inspectionSession.getEpubInspectionData();
   }
 
+  public getInspectorReaderBridge(): InspectorReaderBridge {
+    return this.inspectionReading.create();
+  }
+
   /** Reads one archive file's raw text for the Inspector file browser,
    * without any rendering-time parsing or rewriting. */
   public readInspectionFileText(path: string): Promise<string> {
@@ -3827,6 +3848,7 @@ export class ReaderController {
       return;
     }
 
+    const requestedSpineIndex = spineIndex;
     this.gestureCleanup?.();
     if (this.operations.current) this.spreadCounts.clear();
     const operation = this.operations.begin();
@@ -3994,7 +4016,7 @@ export class ReaderController {
             : undefined,
         );
       } else if (options.bridgeCfi) {
-        this.restoreCfi(options.bridgeCfi, spineIndex);
+        this.restoreCfi(options.bridgeCfi, requestedSpineIndex);
         this.setUpAccessibility();
       } else if (options.fragment) {
         const focusTarget = this.goToFragment(options.fragment);
@@ -4074,9 +4096,10 @@ export class ReaderController {
   }
 
   private restoreCfi(cfi: string, spineIndex: number): void {
-    const iframeDocument = this.primaryContentDocument();
+    const iframeDocument = this.contentDocumentViews()
+      .find(view => view.spineIndex === spineIndex)?.document;
     if (!iframeDocument) {
-      return;
+      throw new Error("The saved position does not belong to a visible reading document.");
     }
     const resolved = this.locatorResolver.resolveInDocument(
       new Locator(cfi),

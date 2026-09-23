@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FC, ReactNode } from "react";
 import {
   Body1,
@@ -40,7 +40,9 @@ import cssLanguage from "highlight.js/lib/languages/css";
 import javascriptLanguage from "highlight.js/lib/languages/javascript";
 import jsonLanguage from "highlight.js/lib/languages/json";
 import xmlFormat from "xml-formatter";
-import type { EpubInspectionData } from "../ReaderTypes.js";
+import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation } from "../ReaderTypes.js";
+import { buildInspectorSourceMap, inspectorElementAtOffset } from "../InspectorSourceMap.js";
+import { moveSourceCaret, normalizeInspectorSourceText, sourceSelectionOffset, sourceTextRange } from "./inspectorSourceSelection.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
@@ -56,7 +58,7 @@ hljs.registerLanguage("json", jsonLanguage);
 
 export interface EpubInspectorPanelProps {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (open: boolean, reason?: "show-in-book") => void;
   /** `undefined` until `ReaderApp` fetches it the first time this opens
    * (see `ReaderController.getEpubInspectionData`) — cheap/synchronous
    * once loaded, so unlike `BookDetails` this never needs to be
@@ -75,6 +77,26 @@ export interface EpubInspectorPanelProps {
   /** Builds an object URL for previewing an image/audio/video archive
    * member — see `ReaderController.getInspectionFilePreviewUrl`. */
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
+  reader?: InspectorReaderBridge;
+}
+
+interface SourceTarget {
+  readonly elementPath: readonly number[];
+  readonly scroll: boolean;
+}
+
+interface SourceMappingState {
+  readonly path: string;
+  readonly ready: boolean;
+  readonly valid: boolean;
+}
+
+function sameElementPath(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((index, position) => index === b[position]);
+}
+
+function describeLinkError(summary: string, error: unknown): string {
+  return error instanceof Error && error.message ? `${summary} ${error.message}` : summary;
 }
 
 /** Formats a byte count the way a developer tool would — "1.2 KB", not
@@ -156,6 +178,7 @@ const HighlightTheme: FC = () => (
        external) string keeps its ordinary hljs-string look. */
     .ambra-hljs .ambra-navlink { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
     .ambra-hljs .ambra-navlink:hover { color: #0f766e; }
+    .ambra-hljs::highlight(ambra-inspector-source) { background: #fde68a; color: #111827; }
   `}</style>
 );
 
@@ -178,7 +201,12 @@ const FilePreview: FC<{
   onReadFile: (path: string) => Promise<string>;
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
   onNavigateToFile: (path: string) => void;
-}> = ({ path, size, manifestMediaType, wrap, knownFilePaths, onReadFile, onGetPreviewUrl, onNavigateToFile }) => {
+  linked: boolean;
+  sourceTarget: SourceTarget | undefined;
+  onSourceTarget: (target: SourceTarget) => void;
+  onMappingState: (state: SourceMappingState) => void;
+}> = ({ path, size, manifestMediaType, wrap, knownFilePaths, onReadFile, onGetPreviewUrl, onNavigateToFile,
+  linked, sourceTarget, onSourceTarget, onMappingState }) => {
   const t = useTranslation();
   const classification = useMemo(() => classifyInspectionFile(path, manifestMediaType), [path, manifestMediaType]);
   const resolvedMediaType = guessMediaType(path, manifestMediaType);
@@ -189,6 +217,29 @@ const FilePreview: FC<{
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [sourceText, setSourceText] = useState<string | undefined>(undefined);
+  const [selectionFailed, setSelectionFailed] = useState(false);
+  const hintId = useId();
+  const sourceElements = useMemo(() => {
+    if (!linked || sourceText === undefined) return undefined;
+    try {
+      return buildInspectorSourceMap(sourceText);
+    } catch {
+      // Unmappable source stays readable; report only when linking is requested.
+      return undefined;
+    }
+  }, [linked, sourceText]);
+  const selectedElement = sourceTarget && sourceElements?.find((element) =>
+    sameElementPath(element.elementPath, sourceTarget.elementPath));
+  const mappingFailed = selectionFailed || (!isLoading && !!sourceTarget && !selectedElement);
+
+  useEffect(() => {
+    onMappingState({ path, ready: !isLoading, valid: !mappingFailed });
+  }, [path, isLoading, mappingFailed, onMappingState]);
+
+  useEffect(() => {
+    setSelectionFailed(false);
+  }, [sourceTarget]);
 
   useEffect(() => {
     setTextHtml(undefined);
@@ -196,6 +247,7 @@ const FilePreview: FC<{
     setPreviewUrl(undefined);
     setError(undefined);
     setIsLoading(true);
+    setSourceText(undefined);
     let cancelled = false;
 
     async function load(): Promise<void> {
@@ -214,6 +266,8 @@ const FilePreview: FC<{
         if (cancelled) {
           return;
         }
+        text = normalizeInspectorSourceText(text);
+        setSourceText(text);
         if (classification.highlightLanguage) {
           setTextHtml(hljs.highlight(text, { language: classification.highlightLanguage }).value);
         } else {
@@ -287,7 +341,44 @@ const FilePreview: FC<{
       stringSpan.setAttribute("tabindex", "0");
       stringSpan.title = t("inspector.openFile", { path: target });
     }
-  }, [textHtml, path, knownFilePaths, t]);
+  }, [textHtml, path, knownFilePaths, t, isLoading]);
+
+  const captureSourceSelection = useCallback(() => {
+    const container = preRef.current;
+    if (!linked || !container) return;
+    const offset = sourceSelectionOffset(container, container.ownerDocument.getSelection());
+    if (offset === undefined) return;
+    const element = sourceElements && inspectorElementAtOffset(sourceElements, offset);
+    if (!element) {
+      setSelectionFailed(true);
+      return;
+    }
+    setSelectionFailed(false);
+    onSourceTarget({ elementPath: element.elementPath, scroll: false });
+  }, [linked, sourceElements, onSourceTarget]);
+
+  useEffect(() => {
+    const container = preRef.current;
+    if (!linked || !container) return;
+    const doc = container.ownerDocument;
+    doc.addEventListener("selectionchange", captureSourceSelection);
+    return () => doc.removeEventListener("selectionchange", captureSourceSelection);
+  }, [linked, textHtml, captureSourceSelection, isLoading]);
+
+  useEffect(() => {
+    const container = preRef.current;
+    if (!container || !selectedElement || mappingFailed) return;
+    const range = sourceTextRange(container, selectedElement.start, selectedElement.openingEnd);
+    if (!range) return;
+    const highlights = globalThis.CSS?.highlights;
+    if (highlights && typeof Highlight !== "undefined") {
+      highlights.set("ambra-inspector-source", new Highlight(range));
+    }
+    if (sourceTarget?.scroll) {
+      range.startContainer.parentElement?.scrollIntoView({ block: "center", inline: "nearest" });
+    }
+    return () => { highlights?.delete("ambra-inspector-source"); };
+  }, [selectedElement, sourceTarget, textHtml, mappingFailed, isLoading]);
 
   function handleContentLinkActivate(target: EventTarget | null): void {
     const el = target instanceof Element ? target.closest<HTMLElement>("[data-nav-path]") : null;
@@ -335,9 +426,19 @@ const FilePreview: FC<{
   return textHtml !== undefined ? (
     <>
       <HighlightTheme />
+      {linked && (
+        <Caption1 id={hintId} as="p" style={{ margin: "0 0 8px" }} aria-live="polite">
+          {mappingFailed ? t("inspector.sourceMappingError")
+            : selectedElement ? t("inspector.sourceElementSelected") : t("inspector.sourceSelectionHint")}
+        </Caption1>
+      )}
       <pre
         ref={preRef}
         className="ambra-hljs"
+        tabIndex={linked ? 0 : undefined}
+        aria-label={linked ? t("inspector.sourceCode") : undefined}
+        aria-describedby={linked ? hintId : undefined}
+        onBlur={captureSourceSelection}
         style={{
           margin: 0,
           fontFamily: "ui-monospace, Menlo, Consolas, monospace",
@@ -349,8 +450,22 @@ const FilePreview: FC<{
         // the effect above, which gives each one `tabindex="0"`) and
         // activate it with Enter/Space — the same expectation a real
         // `<a>` would set.
-        onClick={(event) => handleContentLinkActivate(event.target)}
+        onClick={(event) => {
+          // A drag selection is for copying source, even when it ends on a link.
+          if (!event.currentTarget.ownerDocument.getSelection()?.isCollapsed) return;
+          handleContentLinkActivate(event.target);
+        }}
+        onMouseUp={(event) => {
+          if (!(event.target instanceof Element && event.target.closest("[data-nav-path]"))) {
+            captureSourceSelection();
+          }
+        }}
         onKeyDown={(event) => {
+          if (linked && event.target === event.currentTarget
+            && moveSourceCaret(event.currentTarget, event.key, event.shiftKey, event.ctrlKey || event.altKey)) {
+            event.preventDefault();
+            captureSourceSelection();
+          }
           if (event.key === "Enter" || event.key === " ") {
             handleContentLinkActivate(event.target);
           }
@@ -387,6 +502,11 @@ const FilesTab: FC<{
   onToggleFullScreen: () => void;
   onReadFile: (path: string) => Promise<string>;
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
+  reader: InspectorReaderBridge | undefined;
+  sourceTarget: SourceTarget | undefined;
+  onSourceTarget: (target: SourceTarget) => void;
+  onShowInBook: () => void;
+  showingInBook: boolean;
 }> = ({
   data,
   selectedPath,
@@ -396,6 +516,11 @@ const FilesTab: FC<{
   onToggleFullScreen,
   onReadFile,
   onGetPreviewUrl,
+  reader,
+  sourceTarget,
+  onSourceTarget,
+  onShowInBook,
+  showingInBook,
 }) => {
   const t = useTranslation();
   // Defaults to off (issue #70) — spine item/markup source reads more
@@ -403,6 +528,7 @@ const FilesTab: FC<{
   // rather than wrapped, and a reader can always switch it back on for a
   // narrower file.
   const [wrap, setWrap] = useState(false);
+  const [mappingState, setMappingState] = useState<SourceMappingState | undefined>();
   const selectedFile = data.files.find((file) => file.path === selectedPath);
   const selectedClassification = selectedFile
     ? classifyInspectionFile(selectedFile.path, selectedFile.mediaType)
@@ -494,6 +620,7 @@ const FilesTab: FC<{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexWrap: "wrap",
             gap: 8,
             padding: "4px 8px",
             borderBottom: `1px solid ${CHROME_BORDER}`,
@@ -518,7 +645,18 @@ const FilesTab: FC<{
               {selectedFile?.path ?? ""}
             </Body1>
           </Tooltip>
-          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {reader && (
+            <Button
+              size="small"
+              disabled={!selectedPath || !reader.canShowInBook(selectedPath) || showingInBook
+                || (mappingState?.path === selectedPath && !mappingState.valid)
+                || (!!sourceTarget && (mappingState?.path !== selectedPath || !mappingState.ready))}
+              onClick={onShowInBook}
+            >
+              {showingInBook ? t("inspector.showingInBook") : t("inspector.showInBook")}
+            </Button>
+          )}
           {selectedClassification?.isText && (
             <Tooltip content={wrap ? t("inspector.turnOffLineWrapping") : t("inspector.turnOnLineWrapping")} relationship="label">
               <Button
@@ -574,6 +712,10 @@ const FilesTab: FC<{
               onReadFile={onReadFile}
               onGetPreviewUrl={onGetPreviewUrl}
               onNavigateToFile={onNavigateToFile}
+              linked={!!reader && reader.canShowInBook(selectedFile.path)}
+              sourceTarget={sourceTarget}
+              onSourceTarget={onSourceTarget}
+              onMappingState={setMappingState}
             />
           )}
         </div>
@@ -870,6 +1012,8 @@ type InspectorTab = "files" | "metadata" | "spine" | "manifest";
 interface InspectorHistoryEntry {
   readonly tab: InspectorTab;
   readonly selectedFilePath: string | undefined;
+  readonly sourceTarget: SourceTarget | undefined;
+  readonly locatedFile: Omit<InspectorReadingLocation, "elementPath"> | undefined;
 }
 
 /**
@@ -899,6 +1043,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   fileName,
   onReadFile,
   onGetPreviewUrl,
+  reader,
 }) => {
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
@@ -906,18 +1051,107 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<readonly InspectorHistoryEntry[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [sourceTarget, setSourceTarget] = useState<SourceTarget | undefined>();
+  const [locatedFile, setLocatedFile] = useState<Omit<InspectorReadingLocation, "elementPath"> | undefined>();
+  const [operation, setOperation] = useState<"locate" | "show" | undefined>();
+  const [linkError, setLinkError] = useState<string | undefined>();
+  const requestId = useRef(0);
+  const wasOpen = useRef(false);
+  const isOpen = useRef(open);
+  isOpen.current = open;
+
+  useEffect(() => {
+    if (open && !wasOpen.current && reader) {
+      setSelectedFilePath(reader.currentPath);
+      setActiveTab("files");
+      setSourceTarget(undefined);
+      setLocatedFile(undefined);
+      setHistory([]);
+      setLinkError(undefined);
+      setOperation(undefined);
+    }
+    if (!open) requestId.current += 1;
+    wasOpen.current = open;
+  }, [open, reader]);
+
+  useEffect(() => () => { requestId.current += 1; }, []);
+
+  const cancelLinkRequest = useCallback(() => {
+    requestId.current += 1;
+    setOperation(undefined);
+    setLinkError(undefined);
+  }, []);
+
+  const selectSourceTarget = useCallback((target: SourceTarget) => {
+    cancelLinkRequest();
+    setSourceTarget((previous) =>
+      previous && sameElementPath(previous.elementPath, target.elementPath) && !previous.scroll ? previous : target);
+  }, [cancelLinkRequest]);
+
+  function changeOpen(nextOpen: boolean, reason?: "show-in-book"): void {
+    cancelLinkRequest();
+    if (reason) onOpenChange(nextOpen, reason);
+    else onOpenChange(nextOpen);
+  }
+
+  async function locateCurrentPassage(): Promise<void> {
+    if (!reader) return;
+    const id = ++requestId.current;
+    setOperation("locate");
+    setLinkError(undefined);
+    try {
+      const location = await reader.locateCurrentPassage();
+      if (id !== requestId.current || !isOpen.current) return;
+      if (!data?.files.some((file) => file.path === location.path)) {
+        throw new Error("The current reading file is not in this archive");
+      }
+      setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile }]);
+      setSelectedFilePath(location.path);
+      setLocatedFile({ path: location.path,
+        ...(location.spineIndex !== undefined ? { spineIndex: location.spineIndex } : {}) });
+      setSourceTarget(location.elementPath ? { elementPath: location.elementPath, scroll: true } : undefined);
+      setActiveTab("files");
+    } catch (error) {
+      if (id === requestId.current && isOpen.current) setLinkError(describeLinkError(t("inspector.locateError"), error));
+    } finally {
+      if (id === requestId.current) setOperation(undefined);
+    }
+  }
+
+  async function showInBook(): Promise<void> {
+    if (!reader || !selectedFilePath || !reader.canShowInBook(selectedFilePath)) return;
+    const id = ++requestId.current;
+    setOperation("show");
+    setLinkError(undefined);
+    const location: InspectorReadingLocation = {
+      ...(locatedFile?.path === selectedFilePath ? locatedFile : { path: selectedFilePath }),
+      ...(sourceTarget ? { elementPath: sourceTarget.elementPath } : {}),
+    };
+    try {
+      await reader.showInBook(location);
+      if (id === requestId.current && isOpen.current) changeOpen(false, "show-in-book");
+    } catch (error) {
+      if (id === requestId.current && isOpen.current) setLinkError(describeLinkError(t("inspector.showInBookError"), error));
+    } finally {
+      if (id === requestId.current) setOperation(undefined);
+    }
+  }
 
   // Issue #95: a cross-reference jump (unlike an ordinary Files-tab
   // sidebar click, or manually switching tabs — neither pushes history,
   // both are already trivial to undo by hand) — records exactly where
   // the jump came from, then lands on `path` in the Files tab.
   function navigateToFile(path: string): void {
-    setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath }]);
+    cancelLinkRequest();
+    setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile }]);
+    setSourceTarget(undefined);
+    if (path !== selectedFilePath) setLocatedFile(undefined);
     setSelectedFilePath(path);
     setActiveTab("files");
   }
 
   function goBack(): void {
+    cancelLinkRequest();
     setHistory((entries) => {
       const previous = entries[entries.length - 1];
       if (!previous) {
@@ -925,12 +1159,14 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       }
       setActiveTab(previous.tab);
       setSelectedFilePath(previous.selectedFilePath);
+      setSourceTarget(previous.sourceTarget && { ...previous.sourceTarget, scroll: true });
+      setLocatedFile(previous.locatedFile);
       return entries.slice(0, -1);
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_event, dialogData) => onOpenChange(dialogData.open)}>
+    <Dialog open={open} onOpenChange={(_event, dialogData) => changeOpen(dialogData.open)}>
       <DialogSurface
         onKeyDown={(event) => {
           // Escape dismisses this modal, not the underlying reader flyout.
@@ -960,7 +1196,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                   <Button
                     appearance="subtle"
                     icon={<DismissRegular />}
-                    onClick={() => onOpenChange(false)}
+                    onClick={() => changeOpen(false)}
                   />
                 </Tooltip>
               </div>
@@ -969,13 +1205,26 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
             {t("inspector.title")}
           </DialogTitle>
           <DialogContent style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            {reader && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                <Button disabled={!data || operation !== undefined} onClick={() => void locateCurrentPassage()}>
+                  {t("inspector.locateCurrentPassage")}
+                </Button>
+                {operation === "locate" && <Spinner size="tiny" label={t("inspector.locatingPassage")} />}
+                {linkError && <Caption1 role="alert">{linkError}</Caption1>}
+              </div>
+            )}
             {!data ? (
               <Spinner label={t("reader.loading")} />
             ) : (
               <>
                 <TabList
                   selectedValue={activeTab}
-                  onTabSelect={(_event, tabData) => setActiveTab(tabData.value as InspectorTab)}
+                  style={{ flexWrap: "wrap" }}
+                  onTabSelect={(_event, tabData) => {
+                    cancelLinkRequest();
+                    setActiveTab(tabData.value as InspectorTab);
+                  }}
                 >
                   <Tab value="files">
                     {t("inspector.filesTab")}
@@ -996,12 +1245,24 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                     <FilesTab
                       data={data}
                       selectedPath={selectedFilePath}
-                      onSelectPath={setSelectedFilePath}
+                      onSelectPath={(path) => {
+                        cancelLinkRequest();
+                        if (path !== selectedFilePath) {
+                          setSourceTarget(undefined);
+                          setLocatedFile(undefined);
+                        }
+                        setSelectedFilePath(path);
+                      }}
                       onNavigateToFile={navigateToFile}
                       isFullScreen={isFullScreen}
                       onToggleFullScreen={() => setIsFullScreen((value) => !value)}
                       onReadFile={onReadFile}
                       onGetPreviewUrl={onGetPreviewUrl}
+                      reader={reader}
+                      sourceTarget={sourceTarget}
+                      onSourceTarget={selectSourceTarget}
+                      onShowInBook={() => void showInBook()}
+                      showingInBook={operation === "show"}
                     />
                   )}
                   {activeTab === "metadata" && <MetadataTab data={data} fileName={fileName} />}
