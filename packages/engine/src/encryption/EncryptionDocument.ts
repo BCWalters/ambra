@@ -1,4 +1,5 @@
 import { getDescendantElementsByNS, getFirstChildElementByNS } from "../container/Xml.js";
+import { resolveEpubPath } from "../container/EpubPath.js";
 
 const CONTAINER_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container";
 const XMLENC_NAMESPACE = "http://www.w3.org/2001/04/xmlenc#";
@@ -90,13 +91,13 @@ export class EncryptionDocument {
     const cipherReferenceEl = cipherDataEl
       ? getFirstChildElementByNS(cipherDataEl, XMLENC_NAMESPACE, "CipherReference")
       : undefined;
-    const path = cipherReferenceEl?.getAttribute("URI");
-    if (!path) {
+    const uri = cipherReferenceEl?.getAttribute("URI");
+    if (!uri) {
       throw new EncryptionDocumentError(
         '<EncryptedData> is missing a required <CipherData><CipherReference URI="...">.',
       );
     }
 
-    return { path, algorithmUri };
+    return { path: resolveEpubPath("", uri), algorithmUri };
   }
 }

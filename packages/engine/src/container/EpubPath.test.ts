@@ -26,6 +26,36 @@ describe("resolveEpubPath", () => {
     expect(resolveEpubPath("OEBPS/content.opf", "chapter%201.xhtml")).toBe("OEBPS/chapter 1.xhtml");
   });
 
+  it.each([
+    ["ch%23one.xhtml", "ch#one.xhtml"],
+    ["ch%3Fone.xhtml", "ch?one.xhtml"],
+    ["100%25.xhtml", "100%.xhtml"],
+    ["ch%2520one.xhtml", "ch%20one.xhtml"],
+    ["caf%C3%A9.xhtml", "café.xhtml"],
+    ["100%.xhtml", "100%.xhtml"],
+  ])("decodes %s exactly once after URL resolution", (href, fileName) => {
+    expect(resolveEpubPath("OEBPS/content.opf", href)).toBe(`OEBPS/${fileName}`);
+  });
+
+  it.each(["part#one", "part?one", "part%20one", "part one"])(
+    "treats the referencing directory %s as an archive path, not a URL",
+    (directory) => {
+      expect(resolveEpubPath(`OEBPS/${directory}/content.opf`, "./chapter.xhtml")).toBe(
+        `OEBPS/${directory}/chapter.xhtml`,
+      );
+    },
+  );
+
+  it("resolves fragment-only references to the unchanged archive filename", () => {
+    expect(resolveEpubPath("OEBPS/ch#one%.xhtml", "#section")).toBe("OEBPS/ch#one%.xhtml");
+  });
+
+  it("keeps encoded delimiters in the filename while removing a real query and fragment", () => {
+    expect(resolveEpubPath("OEBPS/content.opf", "ch%3Fone%23two.xhtml?version=1#section")).toBe(
+      "OEBPS/ch?one#two.xhtml",
+    );
+  });
+
   it("strips a fragment identifier from the resolved path", () => {
     // Fragment resolution (the part after #) is the caller's concern for
     // things like nav.xhtml TOC entries; resolveEpubPath only resolves the

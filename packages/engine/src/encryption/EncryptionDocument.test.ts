@@ -34,6 +34,25 @@ describe("EncryptionDocument", () => {
     expect(doc.getEntry("OEBPS/ch1.xhtml")).toBeUndefined();
   });
 
+  it.each([
+    ["OEBPS/fonts/font%20name.otf", "OEBPS/fonts/font name.otf"],
+    ["OEBPS/fonts/font%23one.otf", "OEBPS/fonts/font#one.otf"],
+    ["OEBPS/fonts/font%2520name.otf", "OEBPS/fonts/font%20name.otf"],
+    ["./OEBPS/fonts/../fonts/font%25.otf", "OEBPS/fonts/font%.otf"],
+  ])("normalizes the root-relative CipherReference URI %s", (uri, path) => {
+    const xml = `<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+      <EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#">
+        <EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/>
+        <CipherData><CipherReference URI="${uri}"/></CipherData>
+      </EncryptedData>
+    </encryption>`;
+
+    const doc = EncryptionDocument.parse(xml);
+
+    expect(doc.getEntry(path)?.algorithmUri).toBe("http://www.idpf.org/2008/embedding");
+    expect(doc.entries.map((entry) => entry.path)).toEqual([path]);
+  });
+
   it("throws EncryptionDocumentError when the root element isn't <encryption>", () => {
     const xml = `<?xml version="1.0"?><not-encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"/>`;
 

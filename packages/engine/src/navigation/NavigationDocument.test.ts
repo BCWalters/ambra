@@ -104,7 +104,20 @@ describe("NavigationDocument.load error handling", () => {
   });
 });
 
-describe("NavigationDocument.parseNavDocument error handling", () => {
+describe("NavigationDocument.parseNavDocument", () => {
+  it("distinguishes an encoded hash in a filename from the navigation fragment", () => {
+    const xml = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+      <body><nav epub:type="toc"><ol><li>
+        <a href="ch%23one.xhtml#section">Chapter</a>
+      </li></ol></nav></body>
+    </html>`;
+
+    const item = NavigationDocument.parseNavDocument(xml, "OEBPS/nav.xhtml").toc.items[0]!;
+
+    expect(item.path).toBe("OEBPS/ch#one.xhtml");
+    expect(item.fragment).toBe("section");
+  });
+
   it('throws NavigationDocumentError when there is no <nav epub:type="toc">', () => {
     const xml = `<?xml version="1.0"?>
       <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">

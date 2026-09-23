@@ -78,6 +78,20 @@ describe("PackageDocument (reflowable fixture)", () => {
     expect(chapter1?.path).toBe("OEBPS/chapter1.xhtml");
   });
 
+  it("resolves URL-encoded manifest hrefs without losing filename delimiters", () => {
+    const xml = `<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="id">test</dc:identifier><dc:title>Test</dc:title><dc:language>en</dc:language>
+      </metadata>
+      <manifest><item id="chapter" href="ch%23one%25.xhtml" media-type="application/xhtml+xml"/></manifest>
+      <spine><itemref idref="chapter"/></spine>
+    </package>`;
+
+    const parsed = PackageDocument.parse(xml, "OEBPS/part?one/content.opf");
+
+    expect(parsed.spine[0]?.manifestItem.path).toBe("OEBPS/part?one/ch#one%.xhtml");
+  });
+
   it("identifies the nav document via its nav property", () => {
     expect(pkg.findNavDocument()?.id).toBe("nav");
   });

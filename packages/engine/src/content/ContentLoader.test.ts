@@ -4,7 +4,7 @@ import { fileURLToPath, URL as NodeURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ManifestItem } from "../container/PackageDocument.js";
-import { ContentLoader, ContentLoaderError } from "./ContentLoader.js";
+import { ContentLoader, ContentLoaderError, findResourceReferencesInDocument } from "./ContentLoader.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
   const buffer = await readFile(
@@ -61,6 +61,17 @@ describe("ContentLoader", () => {
   });
 
   describe("findResourceReferences", () => {
+    it("preserves encoded delimiters in resource filenames and literal delimiters in the base path", () => {
+      const document = new DOMParser().parseFromString(
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="images/100%25%23photo.png"/></body></html>',
+        "application/xhtml+xml",
+      );
+
+      expect(findResourceReferencesInDocument(document, "OEBPS/part#one/chapter.xhtml")[0]?.path).toBe(
+        "OEBPS/part#one/images/100%#photo.png",
+      );
+    });
+
     it("finds img, link[stylesheet], and svg:image references, resolved to archive-relative paths", async () => {
       const doc = await loader.loadSpineDocument(0);
       const references = loader.findResourceReferences(doc);

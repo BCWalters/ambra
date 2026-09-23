@@ -8,16 +8,18 @@
  * This is a small, pure, standalone utility (no state, no class needed).
  */
 export function resolveEpubPath(referencingFilePath: string, href: string): string {
-  const decodedHref = safeDecodeUriComponent(href);
-
   // Use the URL parser (via an opaque base) rather than hand-rolling `.`/
   // `..` segment resolution, since that's exactly what URL path resolution
   // already does correctly, including edge cases.
-  const base = new URL(`epub-path:///${referencingFilePath}`);
-  const resolved = new URL(decodedHref, base);
+  // The base is an archive path, not a URL: literal %, # and ? in its
+  // filenames must not become URL syntax. The href is already a URL
+  // reference, so decode only its resolved pathname, never before parsing.
+  const encodedBasePath = referencingFilePath.split("/").map(encodeURIComponent).join("/");
+  const base = new URL(`epub-path:///${encodedBasePath}`);
+  const resolved = new URL(href, base);
 
   // Strip the fake scheme and leading slash back down to a zip-relative path.
-  return decodeURIComponent(resolved.pathname).replace(/^\/+/, "");
+  return safeDecodeUriComponent(resolved.pathname).replace(/^\/+/, "");
 }
 
 function safeDecodeUriComponent(value: string): string {
@@ -25,7 +27,7 @@ function safeDecodeUriComponent(value: string): string {
     return decodeURIComponent(value);
   } catch {
     // Malformed percent-encoding: fall back to the raw string rather than
-    // throwing, since URL resolution below will still handle it reasonably.
+    // throwing when a publisher used a literal percent sign in a filename.
     return value;
   }
 }
