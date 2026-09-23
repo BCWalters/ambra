@@ -2,7 +2,7 @@ import type { Chunk } from "./LineMeasurement.js";
 import { measureChunks } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
 import { Page } from "./Page.js";
-import { findChunkForPosition } from "./ScrollPositionTracker.js";
+import { compareDomPositions, findChunkForPosition } from "./ScrollPositionTracker.js";
 
 /**
  * Plans page boundaries from an ordered list of measured `Chunk`s (one
@@ -101,7 +101,9 @@ export class PaginationEngine {
    * `(node, offset)` — the core of the resize/font-change flow: re-run
    * `paginate` at the new dimensions, resolve the preserved `Locator` to a
    * DOM position via `LocatorResolver`, then call this to find which new
-   * page to display. Returns the last page if no page's range contains
+   * page to display. Positions before the first measured content (such as
+   * a chapter wrapper or empty leading fragment anchor) select the first
+   * page. Returns the last page if no page's range contains
    * the position exactly (e.g. a position right at the very end of the
    * document), since a page's `endBreak` is an exclusive boundary. */
   public static findPageForPosition(
@@ -110,6 +112,14 @@ export class PaginationEngine {
     offset: number,
     ownerDocument: Document,
   ): Page | undefined {
+    const first = pages[0];
+    if (
+      first &&
+      node.getRootNode() === first.startBreak.node.getRootNode() &&
+      compareDomPositions({ node, offset }, first.startBreak) < 0
+    ) {
+      return first;
+    }
     for (const page of pages) {
       if (page.containsPosition(node, offset, ownerDocument)) {
         return page;
