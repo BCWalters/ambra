@@ -6,8 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { launchReader } from "../harness.js";
 
 /**
- * Direct EPUB downloads are intercepted before completion. The notification
- * fallback handles downloads whose EPUB filename only becomes known later.
+ * Native EPUB downloads remain available until an import is confirmed. The
+ * notification fallback also handles filenames only identified after creation.
  */
 test("a download identified as EPUB after creation surfaces an add-to-library notification", async ({
   browserName: _browserName,
@@ -50,7 +50,7 @@ test("a download identified as EPUB after creation surfaces an add-to-library no
   }
 });
 
-test("a download that completes before cancellation keeps its history and uses the notification fallback", async ({
+test("a non-HTTP EPUB download is never cancelled and uses the notification fallback", async ({
   browserName: _browserName,
 }, testInfo) => {
   const { context } = await launchReader(path.resolve(__dirname, "../real-books/alice-in-wonderland.epub"));
@@ -60,17 +60,8 @@ test("a download that completes before cancellation keeps its history and uses t
     await worker!.evaluate(() => {
       const cancel = chrome.downloads.cancel;
       chrome.downloads.cancel = ((id: number, callback: () => void) => {
-        chrome.downloads.cancel = cancel;
-        // Hold only the cancellation, not the real download or completion event.
-        const completed = (delta: chrome.downloads.DownloadDelta) => {
-          if (delta.id !== id || delta.state?.current !== "complete") return;
-          chrome.downloads.onChanged.removeListener(completed);
-          cancel(id, () => {
-            callback();
-            Reflect.set(globalThis, "__lateCancelReturned", true);
-          });
-        };
-        chrome.downloads.onChanged.addListener(completed);
+        Reflect.set(globalThis, "__cancelCalled", true);
+        cancel(id, callback);
       }) as typeof chrome.downloads.cancel;
     });
     const page = await context.newPage();
@@ -84,9 +75,6 @@ test("a download that completes before cancellation keeps its history and uses t
       '<a id="dl" download="late-cancel.epub" href="data:application/epub+zip;base64,UEsDBA==">download</a>',
     );
     await page.click("#dl");
-    await expect.poll(() => worker!.evaluate(
-      () => Reflect.get(globalThis, "__lateCancelReturned") === true,
-    )).toBe(true);
     await expect.poll(() => worker!.evaluate(async () => {
       const items = await chrome.downloads.search({ state: "complete" });
       const download = items.find((item) => /late-cancel\.epub$/.test(item.filename));
@@ -95,6 +83,7 @@ test("a download that completes before cancellation keeps its history and uses t
       return !!notifications[`ambra-epub-download-${download.id}`];
     })).toBe(true);
     expect((await fs.stat(path.join(directory, "late-cancel.epub"))).size).toBe(4);
+    expect(await worker!.evaluate(() => Reflect.get(globalThis, "__cancelCalled") === true)).toBe(false);
     expect(context.pages().filter((tab) => tab.url().includes("/library/"))).toHaveLength(initialLibraries);
   } finally {
     await context.close();
