@@ -76,6 +76,35 @@ export class MediaOverlayPlayer {
     return this.playing;
   }
 
+  /** Shared cueing policy for asynchronous, publication-wide playback hosts.
+   * Explicit passage/segment seeks restart the authored clip; ordinary resume
+   * and contiguous transitions preserve an already in-range audio position. */
+  public static cue(
+    host: Pick<MediaOverlayAudioHost, "currentSource" | "currentTime" | "setSource" | "seekTo">,
+    par: SmilPar,
+    forceSeek = false,
+  ): void {
+    if (!par.audio) {
+      throw new MediaOverlayError("This narration segment has no recorded audio; embedded media and text-to-speech overlays are not supported.");
+    }
+    const audio = par.audio;
+    if (
+      !Number.isFinite(audio.clipBeginSeconds) ||
+      audio.clipBeginSeconds < 0 ||
+      (audio.clipEndSeconds !== undefined &&
+        (!Number.isFinite(audio.clipEndSeconds) || audio.clipEndSeconds <= audio.clipBeginSeconds))
+    ) {
+      throw new MediaOverlayError("This narration segment has an invalid audio clip range.");
+    }
+    if (!forceSeek && host.currentSource === audio.path && isWithinClip(audio, host.currentTime)) {
+      return;
+    }
+    if (host.currentSource !== audio.path) {
+      host.setSource(audio.path);
+    }
+    host.seekTo(audio.clipBeginSeconds);
+  }
+
   /** Starts (or resumes) playback at the current clip, switching the
    * host's audio source/position only if it isn't already sitting on
    * this clip's own audio range. */
@@ -183,19 +212,7 @@ export class MediaOverlayPlayer {
   }
 
   private cueHostToClip(par: SmilPar): void {
-    if (!par.audio) {
-      return;
-    }
-    if (
-      this.host.currentSource === par.audio.path &&
-      isWithinClip(par.audio, this.host.currentTime)
-    ) {
-      return;
-    }
-    if (this.host.currentSource !== par.audio.path) {
-      this.host.setSource(par.audio.path);
-    }
-    this.host.seekTo(par.audio.clipBeginSeconds);
+    MediaOverlayPlayer.cue(this.host, par);
   }
 }
 

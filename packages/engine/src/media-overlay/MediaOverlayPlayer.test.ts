@@ -70,6 +70,30 @@ function makePlayer(): { player: MediaOverlayPlayer; host: ReturnType<typeof mak
 }
 
 describe("MediaOverlayPlayer", () => {
+  it("shares clip cueing without requiring synchronous audio playback", () => {
+    const { player, host } = makePlayer();
+    const par = player.currentClip!.par;
+    MediaOverlayPlayer.cue(host, par);
+    host.advanceTo(2);
+    MediaOverlayPlayer.cue(host, par);
+    expect(host.seeks).toEqual([0]);
+    MediaOverlayPlayer.cue(host, par, true);
+    expect(host.seeks).toEqual([0, 0]);
+    expect(host.play).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported audio-less segments rather than playing a previous audio source", () => {
+    const doc = SmilDocument.parse(
+      '<smil xmlns="http://www.w3.org/ns/SMIL"><body><par><text src="chapter.xhtml#text"/></par></body></smil>',
+      "overlay.smil",
+    );
+    const host = makeHost();
+    const player = new MediaOverlayPlayer(doc, host);
+    expect(() => player.play()).toThrow("no recorded audio");
+    expect(host.play).not.toHaveBeenCalled();
+    expect(player.isPlaying).toBe(false);
+  });
+
   it("starts on the first clip", () => {
     const { player } = makePlayer();
     expect(player.clipCount).toBe(3);
