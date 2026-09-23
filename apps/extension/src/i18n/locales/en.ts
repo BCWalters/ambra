@@ -198,6 +198,15 @@ export interface StringCatalog {
   "inspector.sourceElementSelected": string;
   "inspector.sourceSelectionHint": string;
   "inspector.sourceCode": string;
+  "inspector.help": string;
+  "inspector.referencesHelp": string;
+  "inspector.referenceSelected": string;
+  "inspector.findReferences": string;
+  "inspector.findingReferences": string;
+  "inspector.referencesCount": string;
+  "inspector.noReferences": string;
+  "inspector.referencesError": string;
+  "inspector.originalSourceLine": string;
   "inspector.specialFileOpf": string;
   "inspector.specialFileCover": string;
   "inspector.previewLoadError": string;
@@ -274,6 +283,15 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "inspector.help": "Inspector help",
+  "inspector.referencesHelp": "For images and CSS, Find references lists uses in this archive. Open a result to view its source and highlight the reference when available. Line numbers refer to the original source, before formatting. Use Tab and Enter to open results; Back returns to the list.",
+  "inspector.referenceSelected": "Source reference selected.",
+  "inspector.findReferences": "Find references",
+  "inspector.findingReferences": "Finding references…",
+  "inspector.referencesCount": "References ({count})",
+  "inspector.noReferences": "No references found in this archive.",
+  "inspector.referencesError": "Could not find references.",
+  "inspector.originalSourceLine": "Original source line {line}",
   "inspector.locateCurrentPassage": "Locate current passage",
   "inspector.locatingPassage": "Locating passage…",
   "inspector.locateError": "Could not locate the current passage.",

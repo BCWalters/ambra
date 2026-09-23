@@ -148,6 +148,14 @@ for (const mode of ["paginated", "scroll"]) {
             hasText: /^C1Para 80\./,
           }),
       ).toBeInViewport();
+      const spotlight = () => page.evaluate(() => {
+        const doc = document.querySelector("iframe")!.contentDocument!;
+        const target: Highlight | undefined = Reflect.get(doc.defaultView!, "CSS")
+          .highlights.get("ambra-navigation-target");
+        return target ? [...target].map(range => range.toString()).join("") : "";
+      });
+      await expect.poll(spotlight).toMatch(/^C1Para 80\./);
+      await expect.poll(spotlight, { timeout: 6000 }).toBe("");
       if (mode === "paginated") expect(await currentPageLabel(page)).not.toContain("Page 1 of");
 
       const reopened = await openInspector(page);
@@ -200,6 +208,21 @@ test("fixed-layout source linking follows the selected spread document, not just
         }),
       )
       .toBe("P4");
+    await expect.poll(() => page.evaluate(() => {
+      const frame = document.activeElement;
+      if (!(frame instanceof HTMLIFrameElement)) return "";
+      const doc = frame.contentDocument!;
+      const target: Highlight | undefined = Reflect.get(doc.defaultView!, "CSS")
+        .highlights.get("ambra-navigation-target");
+      return target ? [...target].map(range => range.toString()).join("") : "";
+    })).toBe("P4");
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(() => page.evaluate(() =>
+      [...document.querySelectorAll("iframe")].some(frame =>
+        frame.contentWindow && Reflect.get(frame.contentWindow, "CSS")
+          ?.highlights?.has("ambra-navigation-target"),
+      ),
+    )).toBe(false);
   } finally {
     await context.close();
   }

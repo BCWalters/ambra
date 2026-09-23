@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native German speaker. */
 export const de: StringCatalog = {
+  "inspector.help": "Inspektor-Hilfe",
+  "inspector.referencesHelp": "Für Bilder und CSS zeigt „Verweise finden“ die Verwendung in diesem Archiv. Ein Ergebnis öffnet den Quelltext und hebt den Verweis hervor, sofern möglich. Zeilennummern beziehen sich auf den ursprünglichen Quelltext vor der Formatierung. Mit Tab und Eingabe Ergebnisse öffnen; „Zurück“ führt zur Liste.",
+  "inspector.referenceSelected": "Quelltextverweis ausgewählt.",
+  "inspector.findReferences": "Verweise finden",
+  "inspector.findingReferences": "Verweise werden gesucht…",
+  "inspector.referencesCount": "Verweise ({count})",
+  "inspector.noReferences": "Keine Verweise in diesem Archiv gefunden.",
+  "inspector.referencesError": "Verweise konnten nicht gefunden werden.",
+  "inspector.originalSourceLine": "Ursprüngliche Quelltextzeile {line}",
   "inspector.locateCurrentPassage": "Aktuelle Textstelle finden",
   "inspector.locatingPassage": "Textstelle wird gesucht…",
   "inspector.locateError": "Die aktuelle Textstelle konnte nicht gefunden werden.",

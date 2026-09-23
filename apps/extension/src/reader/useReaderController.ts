@@ -7,6 +7,7 @@ import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
 import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
+import type { InspectorReference } from "./InspectorReferences.js";
 import type {
   BookDetails,
   EpubInspectionData,
@@ -42,6 +43,7 @@ export interface UseReaderControllerResult {
   getBookDetails: () => Promise<BookDetails | undefined>;
   getEpubInspectionData: () => EpubInspectionData | undefined;
   getInspectorReaderBridge: () => InspectorReaderBridge | undefined;
+  findInspectionReferences: (path: string) => Promise<readonly InspectorReference[]>;
   readInspectionFileText: (path: string) => Promise<string>;
   getInspectionFilePreviewUrl: (path: string, mediaType: string) => Promise<string>;
   closeImageViewer: () => void;
@@ -317,6 +319,11 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
+  const findInspectionReferences = useCallback((path: string) => {
+    if (!controller) return Promise.reject(new Error("The reader is not ready yet."));
+    return controller.findInspectionReferences(path);
+  }, [controller]);
+
   const readInspectionFileText = useCallback(
     async (path: string) => {
       if (!controller) {
@@ -498,6 +505,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     getBookDetails,
     getEpubInspectionData,
     getInspectorReaderBridge,
+    findInspectionReferences,
     readInspectionFileText,
     getInspectionFilePreviewUrl,
     closeImageViewer,

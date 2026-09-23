@@ -483,6 +483,12 @@ export const LibraryApp: FC = () => {
           onOpenChange={(open) => { if (!open) inspector.close(); }}
           data={inspector.data}
           fileName={detailsBook?.fileName}
+          onFindReferences={(path) => {
+            if (!inspector.session) {
+              return Promise.reject(new Error("The Inspector isn't ready yet."));
+            }
+            return inspector.session.findReferences(path);
+          }}
           onReadFile={(path) => {
             if (!inspector.session) {
               return Promise.reject(new Error("The Inspector isn't ready yet."));

@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Korean speaker. */
 export const ko: StringCatalog = {
+  "inspector.help": "검사기 도움말",
+  "inspector.referencesHelp": "이미지와 CSS에서 참조 찾기를 누르면 이 아카이브의 사용 위치를 표시합니다. 결과를 열면 소스가 표시되고 가능한 경우 참조가 강조됩니다. 줄 번호는 서식을 적용하기 전 원본 소스를 기준으로 합니다. Tab과 Enter로 결과를 열고 뒤로를 눌러 목록으로 돌아가세요.",
+  "inspector.referenceSelected": "소스 참조를 선택했습니다.",
+  "inspector.findReferences": "참조 찾기",
+  "inspector.findingReferences": "참조를 찾는 중…",
+  "inspector.referencesCount": "참조 ({count})",
+  "inspector.noReferences": "이 아카이브에서 참조를 찾지 못했습니다.",
+  "inspector.referencesError": "참조를 검색하지 못했습니다.",
+  "inspector.originalSourceLine": "원본 소스 {line}행",
   "inspector.locateCurrentPassage": "현재 구절 찾기",
   "inspector.locatingPassage": "구절을 찾는 중…",
   "inspector.locateError": "현재 구절을 찾지 못했습니다.",

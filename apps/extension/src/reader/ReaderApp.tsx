@@ -67,6 +67,7 @@ const ReaderAppInner: FC = () => {
     getBookDetails,
     getEpubInspectionData,
     getInspectorReaderBridge,
+    findInspectionReferences,
     readInspectionFileText,
     getInspectionFilePreviewUrl,
     closeImageViewer,
@@ -582,6 +583,7 @@ const ReaderAppInner: FC = () => {
             />
 
             <EpubInspectorPanel
+              onFindReferences={findInspectionReferences}
               reader={inspectorReader}
               open={isInspectorOpen}
               onOpenChange={(open, reason) => {

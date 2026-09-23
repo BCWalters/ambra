@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Russian speaker. */
 export const ru: StringCatalog = {
+  "inspector.help": "Справка инспектора",
+  "inspector.referencesHelp": "Для изображений и CSS команда «Найти ссылки» показывает места использования в этом архиве. Откройте результат, чтобы увидеть исходный код и, если возможно, выделенную ссылку. Номера строк относятся к исходному коду до форматирования. Используйте Tab и Enter для открытия результатов; «Назад» возвращает к списку.",
+  "inspector.referenceSelected": "Ссылка в исходном коде выбрана.",
+  "inspector.findReferences": "Найти ссылки",
+  "inspector.findingReferences": "Поиск ссылок…",
+  "inspector.referencesCount": "Ссылки ({count})",
+  "inspector.noReferences": "В этом архиве ссылки не найдены.",
+  "inspector.referencesError": "Не удалось найти ссылки.",
+  "inspector.originalSourceLine": "Строка {line} исходного кода",
   "inspector.locateCurrentPassage": "Найти текущий отрывок",
   "inspector.locatingPassage": "Поиск отрывка…",
   "inspector.locateError": "Не удалось найти текущий отрывок.",

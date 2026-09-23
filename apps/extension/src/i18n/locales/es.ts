@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Spanish speaker. */
 export const es: StringCatalog = {
+  "inspector.help": "Ayuda del inspector",
+  "inspector.referencesHelp": "Para imágenes y CSS, Buscar referencias muestra sus usos en este archivo EPUB. Abre un resultado para ver el código y resaltar la referencia cuando sea posible. Los números de línea corresponden al código original, antes de formatearlo. Usa Tab y Entrar para abrir resultados; Atrás vuelve a la lista.",
+  "inspector.referenceSelected": "Referencia del código seleccionada.",
+  "inspector.findReferences": "Buscar referencias",
+  "inspector.findingReferences": "Buscando referencias…",
+  "inspector.referencesCount": "Referencias ({count})",
+  "inspector.noReferences": "No se encontraron referencias en este archivo EPUB.",
+  "inspector.referencesError": "No se pudieron buscar las referencias.",
+  "inspector.originalSourceLine": "Línea {line} del código original",
   "inspector.locateCurrentPassage": "Localizar pasaje actual",
   "inspector.locatingPassage": "Localizando pasaje…",
   "inspector.locateError": "No se pudo localizar el pasaje actual.",

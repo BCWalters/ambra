@@ -242,6 +242,7 @@ export class HighlightTheme {
    * through this same CSS Custom Highlight mechanism since it's applied
    * to a document identically (`CSS.highlights.set`/`.delete`). */
   public static readonly SEARCH_MATCH_HIGHLIGHT_NAME = "ambra-search-match";
+  public static readonly NAVIGATION_TARGET_HIGHLIGHT_NAME = "ambra-navigation-target";
 
   /** The `::highlight()` name for "this is the specific highlight whose
    * popup is currently open," for `style` specifically (issue #113's
@@ -354,7 +355,7 @@ export class HighlightTheme {
       const color = averageHexColors(styles.map((style) => HighlightTheme.STYLES[style].swatch));
       return `::highlight(${name}) { background-color: ${color}; color: #1a1a1a; }`;
     }).join("\n") +
-    `\n::highlight(${HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME}) { background-color: #ffb020; color: #1a1a1a; }` +
+    `\n::highlight(${HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME}), ::highlight(${HighlightTheme.NAVIGATION_TARGET_HIGHLIGHT_NAME}) { background-color: #ffb020; color: #1a1a1a; }` +
     "\n" +
     (Object.keys(HighlightTheme.STYLES) as HighlightStyle[])
       .map((style) => {
@@ -367,4 +368,3 @@ export class HighlightTheme {
       })
       .join("\n");
 }
-

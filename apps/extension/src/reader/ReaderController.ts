@@ -61,6 +61,8 @@ import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageT
 import { SearchCoordinator } from "./SearchCoordinator.js";
 import { EpubInspectionSession } from "./EpubInspectionSession.js";
 import { InspectorReadingBridge } from "./InspectorReadingBridge.js";
+import { TransientReadingHighlight } from "./TransientReadingHighlight.js";
+import type { InspectorReference } from "./InspectorReferences.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
@@ -311,6 +313,7 @@ export class ReaderController {
   /** Book-wide full-text search plus the live "highlight matches on the
    * current page" spotlight (issue #100) — see `SearchCoordinator`. */
   private readonly searchCoordinator: SearchCoordinator;
+  private readonly navigationSpotlight = new TransientReadingHighlight();
 
   /** Detaches the current spine item's in-content interaction listeners
    * (link clicks, image-viewer triggers) — re-created on every
@@ -355,7 +358,12 @@ export class ReaderController {
       documents: () => this.contentDocumentViews(),
       currentPosition: () => this.host?.currentPosition(),
       isDisposed: () => this.operations.disposed,
-      focus: (document, element) => this.accessibility.focusContent(document, element),
+      focus: (document, element) => {
+        this.accessibility.focusContent(document, element);
+        if (element !== document.body && element !== document.documentElement) {
+          this.navigationSpotlight.show(element);
+        }
+      },
       navigate: async (spineIndex, cfi) => {
         await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
         if (this.error) throw new Error(this.error);
@@ -861,14 +869,14 @@ export class ReaderController {
 
   /** Navigates to a saved bookmark's CFI — see `goToCfi`. */
   public async goToBookmark(cfi: string): Promise<void> {
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     await this.goToCfi(cfi, "that bookmark");
   }
 
   /** Navigates to a highlight's starting position — see `goToBookmark`'s
    * doc comment. */
   public async goToHighlight(cfi: string): Promise<void> {
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     await this.goToCfi(cfi, "that highlight");
   }
 
@@ -917,7 +925,7 @@ export class ReaderController {
   /** Navigates to a read-only embedded annotation's position — see
    * `goToBookmark`'s doc comment. */
   public async goToReadOnlyAnnotation(cfi: string): Promise<void> {
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     await this.goToCfi(cfi, "that note");
   }
 
@@ -1472,6 +1480,7 @@ export class ReaderController {
    * threshold crossing reopens instead of relayouting. */
   public resize(width: number, height: number): void {
     if (this.operations.disposed) return;
+    if (width !== this.width || height !== this.height) this.navigationSpotlight.clear();
     this.diagnostics.record(
       `resize width=${width} height=${height} isLoadInFlight=${this.isLoadInFlight}`,
     );
@@ -1917,7 +1926,8 @@ export class ReaderController {
   }
 
   /** Clears the search highlight on ordinary navigation unless it is pinned. */
-  private clearSearchHighlightUnlessPinned(): void {
+  private clearNavigationHighlights(): void {
+    this.navigationSpotlight.clear();
     this.searchCoordinator.clearHighlightUnlessPinned();
   }
 
@@ -2026,7 +2036,7 @@ export class ReaderController {
       return;
     }
     this.gestureCleanup?.();
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     this.isTurningPage = true;
     const operation = this.operations.begin();
     this.diagnostics.record(`turnPage direction=${direction}`);
@@ -3420,6 +3430,10 @@ export class ReaderController {
     return this.inspectionReading.create();
   }
 
+  public findInspectionReferences(path: string): Promise<readonly InspectorReference[]> {
+    return this.inspectionSession.findReferences(path);
+  }
+
   /** Reads one archive file's raw text for the Inspector file browser,
    * without any rendering-time parsing or rewriting. */
   public readInspectionFileText(path: string): Promise<string> {
@@ -3456,7 +3470,7 @@ export class ReaderController {
     if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
       return;
     }
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     await this.openSpineItem(nextSpineIndex);
   }
 
@@ -3491,7 +3505,7 @@ export class ReaderController {
   public async seekToFraction(fraction: number): Promise<void> {
     const clamped = Math.max(0, Math.min(1, fraction));
     this.diagnostics.record(`seekToFraction fraction=${fraction} clamped=${clamped}`);
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     const totalPages = this.bookPagination?.positionFor(0, 0).totalPages;
     if (totalPages !== undefined && totalPages > 0) {
       const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
@@ -3531,7 +3545,7 @@ export class ReaderController {
     if (spineIndex === -1) {
       return;
     }
-    this.clearSearchHighlightUnlessPinned();
+    this.clearNavigationHighlights();
     await this.openSpineItem(spineIndex, { fragment: navPoint.fragment });
   }
 
@@ -3849,6 +3863,7 @@ export class ReaderController {
     }
 
     const requestedSpineIndex = spineIndex;
+    this.navigationSpotlight.clear();
     this.gestureCleanup?.();
     if (this.operations.current) this.spreadCounts.clear();
     const operation = this.operations.begin();
@@ -4129,6 +4144,7 @@ export class ReaderController {
   }
 
   public dispose(): void {
+    this.navigationSpotlight.clear();
     this.preferencesCleanup?.();
     if (this.operations.disposed) return;
     this.operations.dispose();

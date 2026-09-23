@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Japanese speaker. */
 export const ja: StringCatalog = {
+  "inspector.help": "インスペクターのヘルプ",
+  "inspector.referencesHelp": "画像と CSS の「参照を検索」で、このアーカイブ内の使用箇所を表示します。結果を開くとソースを表示し、可能な場合は参照を強調表示します。行番号は整形前の元のソースに対応します。Tab キーと Enter キーで結果を開き、「戻る」で一覧に戻れます。",
+  "inspector.referenceSelected": "ソースの参照を選択しました。",
+  "inspector.findReferences": "参照を検索",
+  "inspector.findingReferences": "参照を検索中…",
+  "inspector.referencesCount": "参照（{count}）",
+  "inspector.noReferences": "このアーカイブ内に参照が見つかりませんでした。",
+  "inspector.referencesError": "参照を検索できませんでした。",
+  "inspector.originalSourceLine": "元のソースの {line} 行目",
   "inspector.locateCurrentPassage": "現在の箇所を探す",
   "inspector.locatingPassage": "箇所を検索中…",
   "inspector.locateError": "現在の箇所が見つかりませんでした。",

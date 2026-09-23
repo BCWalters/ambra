@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation } from "../ReaderTypes.js";
+import type { InspectorReference } from "../InspectorReferences.js";
+import { CHROME_THEMES, DEFAULT_CHROME_THEME } from "../chromeTheme.js";
 import { EpubInspectorPanel } from "./EpubInspectorPanel.js";
 import { sourceSelectionOffset, sourceTextRange } from "./inspectorSourceSelection.js";
 
@@ -16,9 +18,10 @@ vi.mock("@fluentui/react-components", async (importOriginal) => {
 });
 
 const data: EpubInspectionData = {
-  files: ["one.xhtml", "two.xhtml", "style.css"].map((path) => ({
+  files: ["one.xhtml", "two.xhtml", "style.css", "picture.png", "diagram.svg"].map((path) => ({
     path, size: 100, isDirectory: false,
-    mediaType: path.endsWith("xhtml") ? "application/xhtml+xml" : "text/css",
+    mediaType: path.endsWith("xhtml") ? "application/xhtml+xml" : path.endsWith("png") ? "image/png"
+      : path.endsWith("svg") ? "image/svg+xml" : "text/css",
   })),
   rootFilePath: "book.opf", title: "Book", identifiers: [], language: "en", creator: undefined,
   creators: [], publisher: undefined, description: undefined, renditionLayout: "reflowable",
@@ -34,6 +37,7 @@ describe("Inspector reader linking", () => {
   const onOpenChange = vi.fn();
   const onReadFile = vi.fn();
   const onGetPreviewUrl = vi.fn();
+  const onFindReferences = vi.fn<(path: string) => Promise<readonly InspectorReference[]>>();
   const highlights = new Map<string, { ranges: Range[] }>();
   const scrollIntoView = vi.fn();
 
@@ -42,8 +46,16 @@ describe("Inspector reader linking", () => {
     vi.stubGlobal("Highlight", class { constructor(...publicRanges: Range[]) { this.ranges = publicRanges; } ranges: Range[]; });
     vi.stubGlobal("CSS", { ...CSS, highlights, escape: CSS.escape.bind(CSS) });
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(scrollIntoView);
+    const animate = Element.prototype.animate;
+    vi.spyOn(Element.prototype, "animate").mockImplementation(function (this: Element, keyframes, options) {
+      const animation = animate.call(this, keyframes, options);
+      queueMicrotask(() => animation.finish());
+      return animation;
+    });
     onOpenChange.mockReset();
     onReadFile.mockReset().mockResolvedValue(markup);
+    onGetPreviewUrl.mockReset().mockResolvedValue("blob:preview");
+    onFindReferences.mockReset().mockResolvedValue([]);
     scrollIntoView.mockClear();
     reader = {
       currentPath: "one.xhtml",
@@ -65,10 +77,11 @@ describe("Inspector reader linking", () => {
     vi.unstubAllGlobals();
   });
 
-  async function render(open = true, bridge: InspectorReaderBridge | undefined = reader) {
+  async function render(open = true, bridge: InspectorReaderBridge | null = reader) {
     await act(async () => root.render(
       <EpubInspectorPanel open={open} onOpenChange={onOpenChange} data={data} fileName="book.epub"
-        onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} {...(bridge ? { reader: bridge } : {})} />,
+        onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} onFindReferences={onFindReferences}
+        {...(bridge ? { reader: bridge } : {})} />,
     ));
   }
 
@@ -81,6 +94,14 @@ describe("Inspector reader linking", () => {
 
   async function click(label: string) {
     await act(async () => button(label).click());
+  }
+
+  async function selectFile(path: string) {
+    await act(async () => container.querySelector<HTMLButtonElement>(`[data-file-path="${path}"]`)!.click());
+  }
+
+  async function openReference(path: string) {
+    await act(async () => container.querySelector<HTMLButtonElement>(`[data-reference-source="${path}"]`)!.click());
   }
 
   function selectedPath() {
@@ -326,5 +347,121 @@ describe("Inspector reader linking", () => {
     expect(selectedPath()).toBe("one.xhtml");
     expect(pre.textContent).toBe(before);
     expect(document.getSelection()!.toString()).toBe('"two.xhtml"');
+  });
+
+  it("keeps source guidance in the help popover and themes Show in book", async () => {
+    await render();
+    expect(container.textContent).not.toContain("Click or select source text");
+    expect(document.body.textContent).not.toContain("Line numbers refer to the original source");
+    const themeStyle = document.createElement("span");
+    themeStyle.style.background = CHROME_THEMES[DEFAULT_CHROME_THEME].accentForeground;
+    expect(button("Show in book").style.background).toBe(themeStyle.style.background);
+    expect(button("Show in book").style.color).toBe("#fff");
+    await click("Inspector help");
+    expect(document.body.textContent).toContain("Click or select source text");
+    expect(document.body.textContent).toContain("Line numbers refer to the original source");
+    expect(document.body.textContent).toContain("Use Tab and Enter");
+  });
+
+  it("lists image references, navigates precise markup and CSS targets, and restores results with Back", async () => {
+    const css = '/* header */\r\n.picture { background: url("picture.png"); }\r\n';
+    const start = css.replace(/\r\n/g, "\n").indexOf("picture.png");
+    onReadFile.mockImplementation(async (path) => path === "style.css" ? css : markup);
+    onFindReferences.mockResolvedValue([
+      { sourcePath: "one.xhtml", kind: "markup", line: 9, snippet: "<img src='picture.png'/>", elementPath: [1, 1] },
+      { sourcePath: "style.css", kind: "css", line: 2, snippet: '.picture { background: url("picture.png"); }',
+        textRange: { start, end: start + "picture.png".length } },
+    ]);
+    await render();
+    expect(container.textContent).not.toContain("Find references");
+    await selectFile("picture.png");
+    await click("Find references");
+    expect(onFindReferences).toHaveBeenCalledWith("picture.png");
+    expect(container.textContent).toContain("References (2)");
+    expect(container.textContent).toContain("Original source line 9");
+    expect(container.querySelector("[data-reference-source] img")).toBeNull();
+    await openReference("one.xhtml");
+    expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe("<p>");
+    await click("Back");
+    expect(container.textContent).toContain("References (2)");
+    expect(container.querySelector("img")?.getAttribute("alt")).toBe("picture.png");
+    await openReference("style.css");
+    expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe("picture.png");
+    expect(container.querySelector("pre")!.textContent).not.toContain("\r");
+    expect(button("Show in book").disabled).toBe(true);
+  });
+
+  it("finds CSS references and highlights formatted markup in Library without reader actions", async () => {
+    onFindReferences.mockResolvedValue([
+      { sourcePath: "one.xhtml", kind: "markup", line: 1, snippet: '<link href="style.css"/>', elementPath: [0] },
+    ]);
+    await render(true, null);
+    await selectFile("style.css");
+    await click("Find references");
+    expect(onFindReferences).toHaveBeenCalledWith("style.css");
+    await openReference("one.xhtml");
+    expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe("<head/>");
+    expect(container.textContent).not.toContain("Locate current passage");
+    expect(container.textContent).not.toContain("Show in book");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("Source reference selected.");
+  });
+
+  it("reveals SVG source for a referring element rather than losing the target in its image preview", async () => {
+    onReadFile.mockResolvedValue('<svg xmlns="http://www.w3.org/2000/svg"><image href="picture.png"/></svg>');
+    onFindReferences.mockResolvedValue([
+      { sourcePath: "diagram.svg", kind: "markup", line: 1, snippet: '<image href="picture.png"/>', elementPath: [0] },
+    ]);
+    await render(true, null);
+    await selectFile("picture.png");
+    await click("Find references");
+    await openReference("diagram.svg");
+    expect(container.querySelector("pre")?.textContent).toContain('<image href="picture.png"/>');
+    expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe('<image href="picture.png"/>');
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("opens source without guessing a target when the reference has no safe mapping", async () => {
+    onFindReferences.mockResolvedValue([
+      { sourcePath: "one.xhtml", kind: "markup", line: 27, snippet: "<img src='picture.png'/>" },
+    ]);
+    await render(true, null);
+    await selectFile("picture.png");
+    await click("Find references");
+    await openReference("one.xhtml");
+    expect(container.querySelector("pre")?.textContent).toContain("<html");
+    expect(highlights.has("ambra-inspector-source")).toBe(false);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("shows empty and failed reference searches, including safe failure details", async () => {
+    await render();
+    await selectFile("picture.png");
+    await click("Find references");
+    expect(container.textContent).toContain("References (0)");
+    expect(container.textContent).toContain("No references found in this archive.");
+    onFindReferences.mockRejectedValue(new Error("Unreadable <script>source</script>"));
+    await click("Find references");
+    const alert = container.querySelector('[role="alert"]')!;
+    expect(alert.textContent).toBe("Could not find references. Unreadable <script>source</script>");
+    expect(alert.querySelector("script")).toBeNull();
+  });
+
+  it.each(["browse", "reopen"] as const)("ignores stale reference results after %s", async (action) => {
+    let resolve!: (references: readonly InspectorReference[]) => void;
+    onFindReferences.mockReturnValue(new Promise((done) => { resolve = done; }));
+    await render();
+    await selectFile("picture.png");
+    await click("Find references");
+    expect(container.textContent).toContain("Finding references");
+    expect(button("Find references").disabled).toBe(true);
+    if (action === "browse") await selectFile("style.css");
+    else {
+      await render(false);
+      await render();
+    }
+    await act(async () => resolve([{ sourcePath: "one.xhtml", kind: "markup", line: 1, snippet: "stale" }]));
+    expect(container.textContent).not.toContain("stale");
+    expect(container.textContent).not.toContain("Finding references");
+    expect(container.querySelector("[data-reference-source]")).toBeNull();
   });
 });

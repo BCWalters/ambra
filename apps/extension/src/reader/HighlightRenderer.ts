@@ -70,14 +70,24 @@ export function applyHighlightRanges(doc: Document, entries: readonly HighlightR
  * an empty `Highlight`, exactly like `applyHighlightRanges`'s own
  * per-style handling above. */
 export function applySearchMatchRanges(doc: Document, ranges: readonly Range[]): void {
+  applySpotlightRanges(doc, HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME, ranges);
+}
+
+export function applyNavigationTargetRange(doc: Document, range?: Range): void {
+  applySpotlightRanges(doc, HighlightTheme.NAVIGATION_TARGET_HIGHLIGHT_NAME, range ? [range] : [], 1);
+}
+
+function applySpotlightRanges(doc: Document, name: string, ranges: readonly Range[], priority = 0): void {
   const win = doc.defaultView as HighlightCapableWindow | null;
   if (!win?.CSS?.highlights || !win.Highlight) {
     return;
   }
   if (ranges.length > 0) {
-    win.CSS.highlights.set(HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME, new win.Highlight(...ranges));
+    const highlight = new win.Highlight(...ranges);
+    highlight.priority = priority;
+    win.CSS.highlights.set(name, highlight);
   } else {
-    win.CSS.highlights.delete(HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME);
+    win.CSS.highlights.delete(name);
   }
 }
 

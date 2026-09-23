@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "inspector.help": "检查器帮助",
+  "inspector.referencesHelp": "对于图片和 CSS，“查找引用”会列出此归档中的使用位置。打开结果可查看源码，并在能够定位时高亮引用。行号对应格式化前的原始源码。使用 Tab 和 Enter 键打开结果，“返回”可回到列表。",
+  "inspector.referenceSelected": "已选择源码引用。",
+  "inspector.findReferences": "查找引用",
+  "inspector.findingReferences": "正在查找引用…",
+  "inspector.referencesCount": "引用（{count}）",
+  "inspector.noReferences": "此归档中未找到引用。",
+  "inspector.referencesError": "无法查找引用。",
+  "inspector.originalSourceLine": "原始源码第 {line} 行",
   "inspector.locateCurrentPassage": "定位当前段落",
   "inspector.locatingPassage": "正在定位段落…",
   "inspector.locateError": "无法定位当前段落。",

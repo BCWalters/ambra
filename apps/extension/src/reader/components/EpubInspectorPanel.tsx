@@ -9,6 +9,9 @@ import {
   DialogContent,
   DialogSurface,
   DialogTitle,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Spinner,
   Tab,
   TabList,
@@ -27,6 +30,7 @@ import {
   FullScreenMinimizeRegular,
   ImageRegular,
   MusicNote2Regular,
+  QuestionCircleRegular,
   TextBulletListRegular,
   TextFontRegular,
   TextWrapOffRegular,
@@ -42,6 +46,7 @@ import jsonLanguage from "highlight.js/lib/languages/json";
 import xmlFormat from "xml-formatter";
 import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation } from "../ReaderTypes.js";
 import { buildInspectorSourceMap, inspectorElementAtOffset } from "../InspectorSourceMap.js";
+import type { InspectorReference } from "../InspectorReferences.js";
 import { moveSourceCaret, normalizeInspectorSourceText, sourceSelectionOffset, sourceTextRange } from "./inspectorSourceSelection.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -78,12 +83,20 @@ export interface EpubInspectorPanelProps {
    * member — see `ReaderController.getInspectionFilePreviewUrl`. */
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
   reader?: InspectorReaderBridge;
+  onFindReferences?: (targetPath: string) => Promise<readonly InspectorReference[]>;
 }
 
 interface SourceTarget {
-  readonly elementPath: readonly number[];
+  readonly elementPath?: readonly number[];
+  readonly textRange?: { readonly start: number; readonly end: number };
+  readonly reference?: boolean;
   readonly scroll: boolean;
 }
+
+type ReferenceSearch =
+  | { readonly path: string; readonly status: "loading" }
+  | { readonly path: string; readonly status: "ready"; readonly references: readonly InspectorReference[] }
+  | { readonly path: string; readonly status: "error"; readonly error: string };
 
 interface SourceMappingState {
   readonly path: string;
@@ -208,7 +221,9 @@ const FilePreview: FC<{
 }> = ({ path, size, manifestMediaType, wrap, knownFilePaths, onReadFile, onGetPreviewUrl, onNavigateToFile,
   linked, sourceTarget, onSourceTarget, onMappingState }) => {
   const t = useTranslation();
-  const classification = useMemo(() => classifyInspectionFile(path, manifestMediaType), [path, manifestMediaType]);
+  const revealSvgSource = !!sourceTarget?.reference && guessMediaType(path, manifestMediaType) === "image/svg+xml";
+  const classification = useMemo(() => classifyInspectionFile(path, revealSvgSource ? "application/xml" : manifestMediaType),
+    [path, manifestMediaType, revealSvgSource]);
   const resolvedMediaType = guessMediaType(path, manifestMediaType);
   const preRef = useRef<HTMLPreElement>(null);
 
@@ -221,17 +236,21 @@ const FilePreview: FC<{
   const [selectionFailed, setSelectionFailed] = useState(false);
   const hintId = useId();
   const sourceElements = useMemo(() => {
-    if (!linked || sourceText === undefined) return undefined;
+    if ((!linked && !sourceTarget?.elementPath) || sourceText === undefined) return undefined;
     try {
       return buildInspectorSourceMap(sourceText);
     } catch {
       // Unmappable source stays readable; report only when linking is requested.
       return undefined;
     }
-  }, [linked, sourceText]);
-  const selectedElement = sourceTarget && sourceElements?.find((element) =>
-    sameElementPath(element.elementPath, sourceTarget.elementPath));
-  const mappingFailed = selectionFailed || (!isLoading && !!sourceTarget && !selectedElement);
+  }, [linked, sourceText, sourceTarget?.elementPath]);
+  const elementPath = sourceTarget?.elementPath;
+  const selectedElement = elementPath && sourceElements?.find((element) =>
+    sameElementPath(element.elementPath, elementPath));
+  const textRange = sourceTarget?.textRange;
+  const validTextRange = textRange && classification.category === "css" && sourceText !== undefined
+    && textRange.start >= 0 && textRange.end > textRange.start && textRange.end <= sourceText.length ? textRange : undefined;
+  const mappingFailed = selectionFailed || (!isLoading && (!!elementPath || !!textRange) && !selectedElement && !validTextRange);
 
   useEffect(() => {
     onMappingState({ path, ready: !isLoading, valid: !mappingFailed });
@@ -367,8 +386,10 @@ const FilePreview: FC<{
 
   useEffect(() => {
     const container = preRef.current;
-    if (!container || !selectedElement || mappingFailed) return;
-    const range = sourceTextRange(container, selectedElement.start, selectedElement.openingEnd);
+    if (!container || mappingFailed) return;
+    const offsets = selectedElement ? { start: selectedElement.start, end: selectedElement.openingEnd } : validTextRange;
+    if (!offsets) return;
+    const range = sourceTextRange(container, offsets.start, offsets.end);
     if (!range) return;
     const highlights = globalThis.CSS?.highlights;
     if (highlights && typeof Highlight !== "undefined") {
@@ -378,7 +399,7 @@ const FilePreview: FC<{
       range.startContainer.parentElement?.scrollIntoView({ block: "center", inline: "nearest" });
     }
     return () => { highlights?.delete("ambra-inspector-source"); };
-  }, [selectedElement, sourceTarget, textHtml, mappingFailed, isLoading]);
+  }, [selectedElement, validTextRange, sourceTarget, textHtml, mappingFailed, isLoading]);
 
   function handleContentLinkActivate(target: EventTarget | null): void {
     const el = target instanceof Element ? target.closest<HTMLElement>("[data-nav-path]") : null;
@@ -426,18 +447,19 @@ const FilePreview: FC<{
   return textHtml !== undefined ? (
     <>
       <HighlightTheme />
-      {linked && (
-        <Caption1 id={hintId} as="p" style={{ margin: "0 0 8px" }} aria-live="polite">
-          {mappingFailed ? t("inspector.sourceMappingError")
-            : selectedElement ? t("inspector.sourceElementSelected") : t("inspector.sourceSelectionHint")}
-        </Caption1>
+      {mappingFailed && <Caption1 id={hintId} as="p" role="alert" style={{ margin: "0 0 8px" }}>{t("inspector.sourceMappingError")}</Caption1>}
+      {!mappingFailed && (selectedElement || validTextRange) && (
+        <span id={hintId} role="status" style={{ position: "absolute", width: 1, height: 1, padding: 0,
+          overflow: "hidden", clipPath: "inset(50%)", whiteSpace: "nowrap" }}>
+          {linked ? t("inspector.sourceElementSelected") : t("inspector.referenceSelected")}
+        </span>
       )}
       <pre
         ref={preRef}
         className="ambra-hljs"
         tabIndex={linked ? 0 : undefined}
-        aria-label={linked ? t("inspector.sourceCode") : undefined}
-        aria-describedby={linked ? hintId : undefined}
+        aria-label={linked || sourceTarget?.reference ? t("inspector.sourceCode") : undefined}
+        aria-describedby={mappingFailed || selectedElement || validTextRange ? hintId : undefined}
         onBlur={captureSourceSelection}
         style={{
           margin: 0,
@@ -507,6 +529,10 @@ const FilesTab: FC<{
   onSourceTarget: (target: SourceTarget) => void;
   onShowInBook: () => void;
   showingInBook: boolean;
+  canFindReferences: boolean;
+  onFindReferences: () => void;
+  referenceSearch: ReferenceSearch | undefined;
+  onNavigateReference: (reference: InspectorReference) => void;
 }> = ({
   data,
   selectedPath,
@@ -521,8 +547,13 @@ const FilesTab: FC<{
   onSourceTarget,
   onShowInBook,
   showingInBook,
+  canFindReferences,
+  onFindReferences,
+  referenceSearch,
+  onNavigateReference,
 }) => {
   const t = useTranslation();
+  const chromeTheme = useChromeTheme();
   // Defaults to off (issue #70) — spine item/markup source reads more
   // naturally with each line as its own row (indentation stays legible)
   // rather than wrapped, and a reader can always switch it back on for a
@@ -535,6 +566,9 @@ const FilesTab: FC<{
     : undefined;
   const specialFiles = useMemo(() => identifySpecialFiles(data), [data]);
   const knownFilePaths = useMemo(() => new Set(data.files.map((file) => file.path)), [data]);
+  const showInBookDisabled = !selectedPath || !reader?.canShowInBook(selectedPath) || showingInBook
+    || (mappingState?.path === selectedPath && !mappingState.valid)
+    || (!!sourceTarget && (mappingState?.path !== selectedPath || !mappingState.ready));
 
   const sidebarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -645,16 +679,22 @@ const FilesTab: FC<{
               {selectedFile?.path ?? ""}
             </Body1>
           </Tooltip>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginLeft: "auto", justifyContent: "flex-end" }}>
           {reader && (
             <Button
               size="small"
-              disabled={!selectedPath || !reader.canShowInBook(selectedPath) || showingInBook
-                || (mappingState?.path === selectedPath && !mappingState.valid)
-                || (!!sourceTarget && (mappingState?.path !== selectedPath || !mappingState.ready))}
+              appearance="primary"
+              style={{ background: chromeTheme.accentForeground, borderColor: chromeTheme.accentForeground, color: "#fff",
+                opacity: showInBookDisabled ? 0.5 : 1 }}
+              disabled={showInBookDisabled}
               onClick={onShowInBook}
             >
               {showingInBook ? t("inspector.showingInBook") : t("inspector.showInBook")}
+            </Button>
+          )}
+          {canFindReferences && (selectedClassification?.category === "image" || selectedClassification?.category === "css") && (
+            <Button size="small" appearance="subtle" onClick={onFindReferences} disabled={referenceSearch?.status === "loading"}>
+              {t("inspector.findReferences")}
             </Button>
           )}
           {selectedClassification?.isText && (
@@ -681,8 +721,50 @@ const FilesTab: FC<{
               onClick={onToggleFullScreen}
             />
           </Tooltip>
+          {(reader || canFindReferences) && (
+            <Popover positioning="below-end" trapFocus>
+              <PopoverTrigger disableButtonEnhancement>
+                <Button size="small" appearance="subtle" icon={<QuestionCircleRegular />} aria-label={t("inspector.help")} />
+              </PopoverTrigger>
+              <PopoverSurface aria-label={t("inspector.help")} style={{ maxWidth: 340, background: chromeTheme.backgroundSolid }}>
+                {reader && <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("inspector.sourceSelectionHint")}</Body1>}
+                {canFindReferences && <Body1 as="p" block style={{ margin: 0 }}>{t("inspector.referencesHelp")}</Body1>}
+              </PopoverSurface>
+            </Popover>
+          )}
           </div>
         </div>
+        {referenceSearch && (
+          <section aria-label={t("inspector.findReferences")} style={{ maxHeight: "35%", minHeight: 0, overflow: "auto",
+            padding: "8px 12px", borderBottom: `1px solid ${CHROME_BORDER}`, flexShrink: 0 }}>
+            {referenceSearch.status === "loading" && <Spinner size="tiny" label={t("inspector.findingReferences")} />}
+            {referenceSearch.status === "error" && <Caption1 role="alert">{referenceSearch.error}</Caption1>}
+            {referenceSearch.status === "ready" && (
+              <>
+                <Body1 as="p" block role="status" style={{ margin: "0 0 4px", fontWeight: 600 }}>
+                  {t("inspector.referencesCount", { count: referenceSearch.references.length })}
+                </Body1>
+                {referenceSearch.references.length === 0 ? <Caption1>{t("inspector.noReferences")}</Caption1> : (
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {referenceSearch.references.map((reference, index) => (
+                      <li key={`${reference.sourcePath}:${index}`}>
+                        <button type="button" data-reference-source={reference.sourcePath}
+                          onClick={() => onNavigateReference(reference)}
+                          style={{ display: "flex", flexDirection: "column", gap: 2, width: "100%", textAlign: "left",
+                            padding: "6px 0", background: "transparent", color: "inherit", border: 0, font: "inherit", cursor: "pointer" }}>
+                          <span style={{ overflowWrap: "anywhere", color: chromeTheme.accentForeground }}>
+                            {reference.sourcePath} — {t("inspector.originalSourceLine", { line: reference.line })}
+                          </span>
+                          <code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12 }}>{reference.snippet}</code>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+        )}
         <div
           style={{
             flex: 1,
@@ -1014,6 +1096,7 @@ interface InspectorHistoryEntry {
   readonly selectedFilePath: string | undefined;
   readonly sourceTarget: SourceTarget | undefined;
   readonly locatedFile: Omit<InspectorReadingLocation, "elementPath"> | undefined;
+  readonly referenceSearch: ReferenceSearch | undefined;
 }
 
 /**
@@ -1044,6 +1127,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   onReadFile,
   onGetPreviewUrl,
   reader,
+  onFindReferences,
 }) => {
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
@@ -1055,7 +1139,9 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const [locatedFile, setLocatedFile] = useState<Omit<InspectorReadingLocation, "elementPath"> | undefined>();
   const [operation, setOperation] = useState<"locate" | "show" | undefined>();
   const [linkError, setLinkError] = useState<string | undefined>();
+  const [referenceSearch, setReferenceSearch] = useState<ReferenceSearch | undefined>();
   const requestId = useRef(0);
+  const referenceRequestId = useRef(0);
   const wasOpen = useRef(false);
   const isOpen = useRef(open);
   isOpen.current = open;
@@ -1069,23 +1155,31 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       setHistory([]);
       setLinkError(undefined);
       setOperation(undefined);
+      setReferenceSearch(undefined);
     }
-    if (!open) requestId.current += 1;
+    if (!open) {
+      requestId.current += 1;
+      referenceRequestId.current += 1;
+      setReferenceSearch((previous) => previous?.status === "loading" ? undefined : previous);
+    }
     wasOpen.current = open;
   }, [open, reader]);
 
-  useEffect(() => () => { requestId.current += 1; }, []);
+  useEffect(() => () => { requestId.current += 1; referenceRequestId.current += 1; }, []);
 
   const cancelLinkRequest = useCallback(() => {
     requestId.current += 1;
+    referenceRequestId.current += 1;
     setOperation(undefined);
     setLinkError(undefined);
+    setReferenceSearch((previous) => previous?.status === "loading" ? undefined : previous);
   }, []);
 
   const selectSourceTarget = useCallback((target: SourceTarget) => {
     cancelLinkRequest();
     setSourceTarget((previous) =>
-      previous && sameElementPath(previous.elementPath, target.elementPath) && !previous.scroll ? previous : target);
+      previous?.elementPath && target.elementPath && sameElementPath(previous.elementPath, target.elementPath) && !previous.scroll
+        ? previous : { ...target, ...(previous?.reference ? { reference: true } : {}) });
   }, [cancelLinkRequest]);
 
   function changeOpen(nextOpen: boolean, reason?: "show-in-book"): void {
@@ -1096,6 +1190,8 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
 
   async function locateCurrentPassage(): Promise<void> {
     if (!reader) return;
+    referenceRequestId.current += 1;
+    setReferenceSearch((previous) => previous?.status === "loading" ? undefined : previous);
     const id = ++requestId.current;
     setOperation("locate");
     setLinkError(undefined);
@@ -1105,7 +1201,8 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       if (!data?.files.some((file) => file.path === location.path)) {
         throw new Error("The current reading file is not in this archive");
       }
-      setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile }]);
+      setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile, referenceSearch }]);
+      setReferenceSearch(undefined);
       setSelectedFilePath(location.path);
       setLocatedFile({ path: location.path,
         ...(location.spineIndex !== undefined ? { spineIndex: location.spineIndex } : {}) });
@@ -1125,7 +1222,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
     setLinkError(undefined);
     const location: InspectorReadingLocation = {
       ...(locatedFile?.path === selectedFilePath ? locatedFile : { path: selectedFilePath }),
-      ...(sourceTarget ? { elementPath: sourceTarget.elementPath } : {}),
+      ...(sourceTarget?.elementPath ? { elementPath: sourceTarget.elementPath } : {}),
     };
     try {
       await reader.showInBook(location);
@@ -1143,11 +1240,35 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   // the jump came from, then lands on `path` in the Files tab.
   function navigateToFile(path: string): void {
     cancelLinkRequest();
-    setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile }]);
+    setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile, referenceSearch }]);
     setSourceTarget(undefined);
+    setReferenceSearch(undefined);
     if (path !== selectedFilePath) setLocatedFile(undefined);
     setSelectedFilePath(path);
     setActiveTab("files");
+  }
+
+  async function findReferences(): Promise<void> {
+    if (!onFindReferences || !selectedFilePath) return;
+    cancelLinkRequest();
+    const id = ++referenceRequestId.current;
+    const path = selectedFilePath;
+    setReferenceSearch({ path, status: "loading" });
+    try {
+      const references = await onFindReferences(path);
+      if (id === referenceRequestId.current && isOpen.current) setReferenceSearch({ path, status: "ready", references });
+    } catch (error) {
+      if (id === referenceRequestId.current && isOpen.current) {
+        setReferenceSearch({ path, status: "error", error: describeLinkError(t("inspector.referencesError"), error) });
+      }
+    }
+  }
+
+  function navigateReference(reference: InspectorReference): void {
+    navigateToFile(reference.sourcePath);
+    setSourceTarget({ scroll: true, reference: true,
+      ...(reference.elementPath ? { elementPath: reference.elementPath } : {}),
+      ...(reference.textRange ? { textRange: reference.textRange } : {}) });
   }
 
   function goBack(): void {
@@ -1161,6 +1282,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       setSelectedFilePath(previous.selectedFilePath);
       setSourceTarget(previous.sourceTarget && { ...previous.sourceTarget, scroll: true });
       setLocatedFile(previous.locatedFile);
+      setReferenceSearch(previous.referenceSearch?.status === "loading" ? undefined : previous.referenceSearch);
       return entries.slice(0, -1);
     });
   }
@@ -1250,6 +1372,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                         if (path !== selectedFilePath) {
                           setSourceTarget(undefined);
                           setLocatedFile(undefined);
+                          setReferenceSearch(undefined);
                         }
                         setSelectedFilePath(path);
                       }}
@@ -1263,6 +1386,10 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                       onSourceTarget={selectSourceTarget}
                       onShowInBook={() => void showInBook()}
                       showingInBook={operation === "show"}
+                      canFindReferences={!!onFindReferences}
+                      onFindReferences={() => void findReferences()}
+                      referenceSearch={referenceSearch}
+                      onNavigateReference={navigateReference}
                     />
                   )}
                   {activeTab === "metadata" && <MetadataTab data={data} fileName={fileName} />}
