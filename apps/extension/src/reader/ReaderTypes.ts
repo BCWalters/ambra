@@ -36,6 +36,7 @@ export interface BookDetails {
   readonly language: string;
   readonly identifiers: readonly BookIdentifier[];
   readonly fileName: string | undefined;
+  readonly fileSizeBytes?: number;
   readonly rights: string | undefined;
   /** Object URL for the cover image, revoked on `dispose()`. */
   readonly coverUrl: string | undefined;

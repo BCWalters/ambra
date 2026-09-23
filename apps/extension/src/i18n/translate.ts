@@ -21,7 +21,11 @@ export const CATALOGS: Readonly<Record<Locale, StringCatalog>> = { en, es, fr, d
  * `getTranslate`/`ReaderController.setTranslate`, instead of only ever
  * emitting hardcoded English for things like screen-reader
  * announcements. */
-export type Translate = (key: keyof StringCatalog, params?: Record<string, string | number>) => string;
+export type Translate = {
+  (key: keyof StringCatalog, params?: Record<string, string | number>): string;
+  /** Native reader UI inside a different-language publication needs its own lang. */
+  readonly locale?: Locale;
+};
 
 function interpolate(template: string, params: Record<string, string | number> | undefined): string {
   if (!params) {
@@ -35,5 +39,6 @@ function interpolate(template: string, params: Record<string, string | number> |
  * outside the React tree. See `Translate`'s doc comment. */
 export function getTranslate(locale: Locale): Translate {
   const catalog = CATALOGS[locale];
-  return (key, params) => interpolate(catalog[key] ?? en[key], params);
+  const translate: Translate = (key, params) => interpolate(catalog[key] ?? en[key], params);
+  return Object.assign(translate, { locale });
 }

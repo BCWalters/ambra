@@ -11,6 +11,7 @@ import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
 import { EPUB_IMPORT_RESULT, LIBRARY_IMPORT_TOKEN_PARAM, hasImportHostAccess, httpImportOrigins } from "../epubImportHandoff.js";
+import type { LibraryImportActivity } from "./LibraryImportStatus.js";
 
 type LibraryError = string | { key: keyof StringCatalog; params?: Record<string, string | number> };
 
@@ -37,6 +38,8 @@ export interface UseLibraryResult {
   isLoading: boolean;
   /** Import requires a live database and completed initial library loading. */
   canImport: boolean;
+  importActivities: readonly LibraryImportActivity[];
+  dismissCompletedImports: () => void;
   error: string | undefined;
   /** Dismisses the current import-failure message (see
    * `LibraryImportError`) without otherwise affecting the library. */
@@ -82,6 +85,8 @@ export function useLibrary(): UseLibraryResult {
   const [rawBooks, setRawBooks] = useState<LibraryBookViewModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<LibraryError | undefined>(undefined);
+  const [importActivities, setImportActivities] = useState<LibraryImportActivity[]>([]);
+  const nextImportId = useRef(0);
   const [settings, setSettingsState] = useState<GlobalReadingSettings>(DEFAULT_GLOBAL_READING_SETTINGS);
   const settingsRevision = useRef(0);
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
@@ -91,6 +96,22 @@ export function useLibrary(): UseLibraryResult {
 
   const ownsDatabase = useCallback((database: LibraryDatabase): boolean =>
     sessionRef.current?.database === database, []);
+
+  const startImports = useCallback((files: readonly { name: string }[], phase: LibraryImportActivity["phase"]) => {
+    const activities = files.map(({ name }) => ({ id: ++nextImportId.current, fileName: name, phase }));
+    setImportActivities((current) => [...current.filter((entry) => entry.phase !== "complete"), ...activities]);
+    return activities;
+  }, []);
+
+  const updateImport = useCallback((id: number, phase?: LibraryImportActivity["phase"]) => {
+    setImportActivities((current) => phase
+      ? current.map((entry) => entry.id === id ? { ...entry, phase } : entry)
+      : current.filter((entry) => entry.id !== id));
+  }, []);
+
+  const dismissCompletedImports = useCallback(() => {
+    setImportActivities((current) => current.filter((entry) => entry.phase !== "complete"));
+  }, []);
 
   const refreshStorageUsage = useCallback((): void => {
     const session = sessionRef.current;
@@ -174,13 +195,25 @@ export function useLibrary(): UseLibraryResult {
         setError((current) => current ?? { key: "library.importNotReady" });
         return;
       }
+      if (!files.length) return;
       setError(undefined);
-      for (const file of files) {
+      const activities = startImports(files, "queued");
+      const saved: number[] = [];
+      for (const [index, file] of files.entries()) {
         if (!ownsDatabase(db)) return;
+        const activity = activities[index]!;
+        updateImport(activity.id, "processing");
         try {
-          await importBook(db, file);
+          await importBook(db, file, (phase) => {
+            if (ownsDatabase(db)) updateImport(activity.id, phase);
+          });
+          if (!ownsDatabase(db)) return;
+          saved.push(activity.id);
         } catch (err) {
-          if (ownsDatabase(db)) setError(describeLibraryStorageError(err, file.name));
+          if (ownsDatabase(db)) {
+            updateImport(activity.id);
+            setError(describeLibraryStorageError(err, file.name));
+          }
         }
       }
       try {
@@ -188,9 +221,13 @@ export function useLibrary(): UseLibraryResult {
         if (ownsDatabase(db)) refreshStorageUsage();
       } catch (err) {
         if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
+      } finally {
+        if (ownsDatabase(db)) {
+          for (const id of saved) updateImport(id, "complete");
+        }
       }
     },
-    [db, canImport, ownsDatabase, refresh, refreshStorageUsage],
+    [db, canImport, ownsDatabase, refresh, refreshStorageUsage, startImports, updateImport],
   );
 
   const removeBook = useCallback(
@@ -280,6 +317,7 @@ export function useLibrary(): UseLibraryResult {
     window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
 
     const abort = new AbortController();
+    const activity = startImports([{ name: suggestedFileNameFor(importUrl) }], "downloading")[0]!;
     void (async () => {
       let importing = false;
       let imported = false;
@@ -306,9 +344,12 @@ export function useLibrary(): UseLibraryResult {
         if (abort.signal.aborted || !ownsDatabase(db)) return;
         const file = new File([blob], suggestedFileNameFor(importUrl), { type: "application/epub+zip" });
         importing = true;
+        updateImport(activity.id, "processing");
         // importFiles reports errors without rejecting; only importBook's
         // persistence result can safely acknowledge this download handoff.
-        await importBook(db, file);
+        await importBook(db, file, (phase) => {
+          if (!abort.signal.aborted && ownsDatabase(db)) updateImport(activity.id, phase);
+        });
         if (abort.signal.aborted || !ownsDatabase(db)) return;
         imported = true;
         await refresh(db);
@@ -327,6 +368,9 @@ export function useLibrary(): UseLibraryResult {
           }
         }
       } finally {
+        if (!abort.signal.aborted && ownsDatabase(db)) {
+          updateImport(activity.id, imported ? "complete" : undefined);
+        }
         if (token) {
           try {
             const response = await chrome.runtime.sendMessage({
@@ -345,7 +389,7 @@ export function useLibrary(): UseLibraryResult {
       }
     })();
     return () => abort.abort();
-  }, [db, canImport, ownsDatabase, refresh, refreshStorageUsage]);
+  }, [db, canImport, ownsDatabase, refresh, refreshStorageUsage, startImports, updateImport]);
 
   const books = useMemo(() => sortBooks(rawBooks, sort, locale), [rawBooks, sort, locale]);
 
@@ -353,6 +397,8 @@ export function useLibrary(): UseLibraryResult {
     books,
     isLoading,
     canImport,
+    importActivities,
+    dismissCompletedImports,
     error: typeof error === "string" || error === undefined ? error : t(error.key, error.params),
     dismissError,
     importFiles,

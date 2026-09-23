@@ -1,6 +1,7 @@
 import { ContentLoader, EpubContainer } from "@ambra/engine";
-import type { BookMetadata } from "./LibraryDatabase.js";
-import { LibraryDatabase } from "./LibraryDatabase.js";
+import type { BookMetadata, LibraryDatabase } from "./LibraryDatabase.js";
+
+export type BookImportPhase = "processing" | "saving";
 
 /**
  * Parses `file` with the real engine (just enough to read metadata and
@@ -9,7 +10,12 @@ import { LibraryDatabase } from "./LibraryDatabase.js";
  * method since it depends on the engine, while the database class itself
  * deliberately doesn't (it's just IndexedDB plumbing).
  */
-export async function importBook(library: LibraryDatabase, file: File): Promise<BookMetadata["id"]> {
+export async function importBook(
+  library: LibraryDatabase,
+  file: File,
+  onPhase?: (phase: BookImportPhase) => void,
+): Promise<BookMetadata["id"]> {
+  onPhase?.("processing");
   const buffer = await file.arrayBuffer();
   const container = await EpubContainer.open(buffer);
   const pkg = await container.getPackageDocument();
@@ -22,6 +28,7 @@ export async function importBook(library: LibraryDatabase, file: File): Promise<
     coverBlob = new Blob([new Uint8Array(bytes)], { type: coverItem.mediaType });
   }
 
+  onPhase?.("saving");
   return library.addBook(
     new Blob([buffer], { type: "application/epub+zip" }),
     {

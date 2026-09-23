@@ -91,14 +91,15 @@ test("Library settings fit at 360px and propagate live both ways, including lang
     await library.setViewportSize({ width: 360, height: 800 });
     const settingsButton = library.getByRole("button", { name: "Settings", exact: true });
     await expect(settingsButton).toBeVisible();
-    const fits = await library.evaluate(() => {
-      const title = [...document.querySelectorAll("span, h2")].find(el => el.textContent === "Ambra" && el.querySelector("svg"));
-      const header = title?.parentElement;
-      if (!header) throw new Error("Library header missing");
+    const fits = await library.getByRole("toolbar").evaluate(header => {
       const boxes = [...header.querySelectorAll("button")].map(el => el.getBoundingClientRect());
       return boxes.every(box => box.x >= 0 && box.right <= 360) &&
         document.documentElement.scrollWidth <= 360 &&
-        boxes.every((box, index) => index === 0 || box.left >= boxes[index - 1]!.right);
+        // The responsive toolbar deliberately wraps; no pair may overlap.
+        boxes.every((box, index) => boxes.slice(index + 1).every(other =>
+          box.right <= other.left || other.right <= box.left ||
+          box.bottom <= other.top || other.bottom <= box.top,
+        ));
     });
     expect(fits).toBe(true);
     await settingsButton.click();

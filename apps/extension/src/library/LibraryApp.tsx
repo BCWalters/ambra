@@ -30,6 +30,7 @@ import { useLibraryInspector } from "./useLibraryInspector.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
+import { LibraryImportStatus } from "./LibraryImportStatus.js";
 import { LibraryEmptyState } from "./LibraryEmptyState.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
@@ -295,6 +296,8 @@ export const LibraryApp: FC = () => {
     books,
     isLoading,
     canImport,
+    importActivities,
+    dismissCompletedImports,
     error,
     dismissError,
     importFiles,
@@ -425,12 +428,14 @@ export const LibraryApp: FC = () => {
       </div>
 
       <div style={{ padding: 16, flex: 1 }}>
+        <LibraryImportStatus activities={importActivities} onDismissCompleted={dismissCompletedImports} />
         {error && <LibraryImportError message={error} onDismiss={dismissError} />}
 
         {isLoading ? (
           <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
-          <LibraryEmptyState accent={palette.accent} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
+          importActivities.some(({ phase }) => phase !== "complete") ? null :
+            <LibraryEmptyState accent={palette.accent} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
         ) : (
           <>
             <div style={{ marginBottom: 16 }}>

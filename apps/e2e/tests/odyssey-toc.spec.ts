@@ -28,12 +28,14 @@ function fixture(directory: string, direction: "ltr" | "rtl"): string {
   return book;
 }
 
-async function openTocEntry(page: Page, title: string) {
+async function openTocEntry(page: Page, title: string, keyboard = false) {
   await page.mouse.move(350, 2);
   await page.getByRole("button", { name: "Show contents", exact: true }).click();
   const navigation = page.getByRole("navigation", { name: "Table of contents" });
-  await navigation.getByRole("button")
-    .filter({ has: page.locator("span").filter({ hasText: new RegExp(`^${title}$`) }) }).click();
+  const entry = navigation.getByRole("button")
+    .filter({ has: page.locator("span").filter({ hasText: new RegExp(`^${title}$`) }) });
+  if (keyboard) await entry.press("Enter");
+  else await entry.click();
   await expect(navigation).not.toBeVisible();
 }
 
@@ -62,14 +64,22 @@ for (const { width, direction } of [
   { width: 1400, direction: "ltr" },
   { width: 1400, direction: "rtl" },
 ] as const) {
-  test(`BOOK II container and empty TOC anchors show the first page (${width}px ${direction}, #152)`, async () => {
+  test(`BOOK II container and empty TOC anchors show the first page without a focus box (${width}px ${direction}, #152/#154)`, async () => {
     const book = fixture(test.info().outputPath("fixture"), direction);
     const { context, readerPage } = await launchReader(book, { viewport: { width, height: 900 } });
     try {
       await readerPage.emulateMedia({ reducedMotion: "reduce" });
-      for (const title of ["BOOK II", "Empty heading anchor", "BOOK II"]) {
-        await openTocEntry(readerPage, title);
+      for (const [index, title] of ["BOOK II", "Empty heading anchor", "BOOK II"].entries()) {
+        await openTocEntry(readerPage, title, index < 2);
         await expect.poll(() => paintedChapterHeading(readerPage)).toBe(true);
+        await expect.poll(() => readerPage.evaluate(() => {
+          const frame = document.activeElement;
+          if (!(frame instanceof HTMLIFrameElement)) return false;
+          const doc = frame.contentDocument;
+          const target = doc?.activeElement;
+          return target?.hasAttribute("data-ambra-reading-focus") &&
+            doc?.defaultView?.getComputedStyle(target).outlineStyle === "none";
+        })).toBe(true);
         // Navigate away so the next click also exercises repositioning an
         // already-open chapter, rather than merely checking its retained DOM.
         for (let turn = 0; turn < 3; turn++) {

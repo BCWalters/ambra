@@ -27,5 +27,6 @@ export function readerDocumentViews(
     spineIndex,
     physicalSide: "single",
     page: host instanceof PaginatedContentHost ? host.currentPageAndDocument()?.page : undefined,
+    ...(host instanceof PaginatedContentHost ? { revealOverlay: () => host.revealReaderOverlay() } : {}),
   }];
 }

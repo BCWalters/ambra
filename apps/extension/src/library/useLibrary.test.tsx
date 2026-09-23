@@ -60,7 +60,7 @@ describe("useLibrary ownership and failures", () => {
     vi.spyOn(LibraryDatabase, "estimateStorageUsage").mockResolvedValue(undefined);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cover");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    vi.mocked(importBook).mockClear();
+    vi.mocked(importBook).mockReset().mockResolvedValue("book");
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -87,7 +87,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.error).toContain("isn't ready");
     await act(async () => { opening.resolve(db.value); });
     await act(async () => latest.importFiles([file]));
-    expect(importBook).toHaveBeenCalledExactlyOnceWith(db.value, file);
+    expect(importBook).toHaveBeenCalledExactlyOnceWith(db.value, file, expect.any(Function));
     expect(latest.error).toBeUndefined();
   });
 
@@ -212,6 +212,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.canImport).toBe(true);
     expect(fetch).toHaveBeenCalledOnce();
     expect(importBook).toHaveBeenCalledOnce();
+    expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "complete" }]);
     expect((fetch.mock.calls[0]?.[1].signal as AbortSignal).aborted).toBe(false);
     expect(discarded.methods.close).toHaveBeenCalledOnce();
   });
@@ -229,10 +230,107 @@ describe("useLibrary ownership and failures", () => {
     expect(importBook).toHaveBeenCalledOnce();
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
     expect(window.location.search).toBe("?view=tab");
+    expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "processing" }]);
     await act(async () => saving.resolve("book"));
     expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
       type: EPUB_IMPORT_RESULT, token: "handoff", imported: true,
     });
+    expect(latest.importActivities[0]?.phase).toBe("complete");
+  });
+
+  it("shows downloading while headers and the entire body are pending, then processing and saving through refresh", async () => {
+    const response = deferred<Response>();
+    const body = deferred<Blob>();
+    const saving = deferred<string>();
+    const refreshing = deferred<BookMetadata[]>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    vi.mocked(importBook).mockImplementationOnce((_db, _file, onPhase) => {
+      onPhase?.("processing");
+      return saving.promise;
+    });
+    setDirectImportUrl();
+    await render();
+    expect(latest.importActivities[0]?.phase).toBe("downloading");
+    await act(async () => response.resolve({ ok: true, blob: () => body.promise } as Response));
+    expect(latest.importActivities[0]?.phase).toBe("downloading");
+    expect(importBook).not.toHaveBeenCalled();
+    await act(async () => body.resolve(new Blob(["epub"])));
+    expect(latest.importActivities[0]?.phase).toBe("processing");
+    act(() => vi.mocked(importBook).mock.calls[0]?.[2]?.("saving"));
+    expect(latest.importActivities[0]?.phase).toBe("saving");
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    db.methods.listBooks.mockReturnValueOnce(refreshing.promise);
+    await act(async () => saving.resolve("book"));
+    expect(latest.importActivities[0]?.phase).toBe("saving");
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    await act(async () => refreshing.resolve([{ id: "book", title: "Saved" } as BookMetadata]));
+    expect(latest.importActivities[0]?.phase).toBe("complete");
+    expect(latest.books[0]?.title).toBe("Saved");
+    expect(latest.error).toBeUndefined();
+    act(() => latest.dismissCompletedImports());
+    expect(latest.importActivities).toEqual([]);
+  });
+
+  it("keeps automatic and overlapping manual batches independently busy, including queued files and partial failure", async () => {
+    const response = deferred<Response>();
+    const first = deferred<string>();
+    const second = deferred<string>();
+    const third = deferred<string>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    vi.mocked(importBook)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise)
+      .mockRejectedValueOnce(new Error("Fourth book is malformed"));
+    setDirectImportUrl();
+    await render();
+    let batch!: Promise<void>;
+    let other!: Promise<void>;
+    act(() => {
+      batch = latest.importFiles([new File(["1"], "first.epub"), new File(["3"], "third.epub"), new File(["4"], "fourth.epub")]);
+      other = latest.importFiles([new File(["2"], "second.epub")]);
+    });
+    expect(latest.importActivities.map(({ fileName, phase }) => [fileName, phase])).toEqual([
+      ["book.epub", "downloading"], ["first.epub", "processing"], ["third.epub", "queued"],
+      ["fourth.epub", "queued"], ["second.epub", "processing"],
+    ]);
+    await act(async () => { second.resolve("2"); await other; });
+    act(() => latest.dismissCompletedImports());
+    expect(latest.importActivities.map(({ fileName }) => fileName)).not.toContain("second.epub");
+    expect(latest.importActivities[0]?.phase).toBe("downloading");
+    await act(async () => first.resolve("1"));
+    expect(latest.importActivities.find(({ fileName }) => fileName === "third.epub")?.phase).toBe("processing");
+    await act(async () => { third.resolve("3"); await batch; });
+    expect(latest.error).toBe("Fourth book is malformed");
+    expect(latest.importActivities.map(({ fileName, phase }) => [fileName, phase])).toEqual([
+      ["book.epub", "downloading"], ["first.epub", "complete"], ["third.epub", "complete"],
+    ]);
+    expect(latest.canImport).toBe(true);
+    await act(async () => response.resolve(new Response("epub")));
+    expect(latest.importActivities.every(({ phase }) => phase === "complete")).toBe(true);
+    expect(latest.error).toBe("Fourth book is malformed");
+  });
+
+  it("keeps the status visible in the empty library without blocking manual import or moving focus", async () => {
+    const response = deferred<Response>();
+    db.methods.listBooks.mockResolvedValue([]);
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    setDirectImportUrl();
+    await act(async () => root.render(<LibraryApp />));
+    const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((entry) => entry.textContent === "Import EPUB")!;
+    button.focus();
+    const status = container.querySelector('[role="status"]')!;
+    expect(status.textContent).toContain("Downloading book.epub");
+    expect(status.textContent).toContain("Keep this library open");
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.hasAttribute("aria-busy")).toBe(false);
+    expect(container.textContent).not.toContain("Your library is empty");
+    expect(button.disabled).toBe(false);
+    await act(async () => response.resolve(new Response("epub")));
+    expect(status.textContent).toContain("Added book.epub to your library");
+    expect(status.textContent).not.toContain("Keep this library open");
+    expect(document.activeElement).toBe(button);
   });
 
   it.each(["network", "http", "body", "parse", "quota"])(
@@ -247,6 +345,7 @@ describe("useLibrary ownership and failures", () => {
       setDirectImportUrl();
       await render();
       expect(latest.error).toBeTruthy();
+      expect(latest.importActivities).toEqual([]);
       expect(latest.error).not.toContain("Failed to fetch");
       if (failure === "quota") expect(latest.error).toContain("storage");
       else expect(latest.error).toContain("Import EPUB");
@@ -268,6 +367,7 @@ describe("useLibrary ownership and failures", () => {
       await render();
       expect(fetch).not.toHaveBeenCalled();
       expect(latest.error).toContain("Import EPUB");
+      expect(latest.importActivities).toEqual([]);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ imported: false }));
     },
   );
@@ -280,6 +380,7 @@ describe("useLibrary ownership and failures", () => {
     expect(importBook).toHaveBeenCalledOnce();
     expect(latest.error).toBeUndefined();
     expect(latest.books).toHaveLength(1);
+    expect(latest.importActivities[0]?.phase).toBe("complete");
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("could not report the EPUB import result"), expect.any(Error));
   });
 
@@ -290,6 +391,7 @@ describe("useLibrary ownership and failures", () => {
     await render();
     expect(latest.error).toBeUndefined();
     expect(latest.books).toHaveLength(1);
+    expect(latest.importActivities[0]?.phase).toBe("complete");
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("did not acknowledge the EPUB import result"));
     expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain("handoff");
   });

@@ -3,6 +3,7 @@ import { measureChunks } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
 import { Page } from "./Page.js";
 import { compareDomPositions, findChunkForPosition } from "./ScrollPositionTracker.js";
+import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 
 /**
  * Plans page boundaries from an ordered list of measured `Chunk`s (one
@@ -87,9 +88,11 @@ export class PaginationEngine {
    * to `planPageBreaks` as a forced break point. */
   public static paginate(bodyElement: Element, pageHeight: number, anchor?: DomBreakPoint): Page[] {
     const chunks = measureChunks(bodyElement);
+    let endOffset = bodyElement.childNodes.length;
+    while (endOffset > 0 && isReaderOwnedContent(bodyElement.childNodes[endOffset - 1]!)) endOffset--;
     const endOfDocument: DomBreakPoint = {
       node: bodyElement,
-      offset: bodyElement.childNodes.length,
+      offset: endOffset,
     };
     const forcedBreakBefore = anchor
       ? findChunkForPosition(chunks, anchor.node, anchor.offset ?? 0)?.breakBefore

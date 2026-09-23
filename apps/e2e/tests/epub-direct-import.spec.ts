@@ -14,7 +14,8 @@ test("ReadBeyond's published EPUB imports through the real download handoff (#15
     "Opt in to the external ReadBeyond download in Chromium.");
   const profile = testInfo.outputPath("profile");
   const context = await chromium.launchPersistentContext(profile, {
-    headless: false,
+    headless: process.env.AMBRA_E2E_HEADLESS === "1",
+    ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
     args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     acceptDownloads: true,
     downloadsPath: testInfo.outputPath("downloads"),
@@ -48,6 +49,7 @@ async function startEpubServer(scenario: Scenario) {
   const bytes = fs.readFileSync(fixture);
   let nativeResponse: http.ServerResponse | undefined;
   let importResponse: http.ServerResponse | undefined;
+  let importBytesSent = 0;
   let importRequests = 0;
   let requests = 0;
   const server = http.createServer((_req, res) => {
@@ -81,12 +83,111 @@ async function startEpubServer(scenario: Scenario) {
     url: `http://127.0.0.1:${address.port}/test-book.epub`,
     importRequests: () => importRequests,
     releaseNative: () => nativeResponse?.end(bytes.subarray(64)),
-    releaseImport: () => importResponse?.end(bytes),
+    beginImport: () => {
+      importResponse?.writeHead(200, { "Content-Type": "application/epub+zip", "Content-Length": bytes.length });
+      importResponse?.write(bytes.subarray(0, 64));
+      importBytesSent = 64;
+    },
+    releaseImport: () => importResponse?.end(bytes.subarray(importBytesSent)),
+    rejectImport: () => {
+      importResponse?.writeHead(403);
+      importResponse?.end("Forbidden");
+    },
     close: () => new Promise<void>((resolve) => {
       server.closeAllConnections();
       server.close(() => resolve());
     }),
   };
+}
+
+for (const outcome of ["success", "http-error"] as const) {
+  test(`download import shows ongoing status without stealing focus: ${outcome} (#155)`, async ({ browserName }, testInfo) => {
+    test.skip(browserName !== "chromium", "Chrome extension download integration");
+    const profile = testInfo.outputPath("profile");
+    const downloadsPath = testInfo.outputPath("downloads");
+    fs.mkdirSync(downloadsPath, { recursive: true });
+    const server = await startEpubServer("success");
+    let context: BrowserContext | undefined;
+    try {
+      context = await chromium.launchPersistentContext(profile, {
+        headless: process.env.AMBRA_E2E_HEADLESS === "1",
+        ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
+        args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+        acceptDownloads: true,
+        downloadsPath,
+      });
+      const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
+      await expect.poll(() => worker.evaluate(() => chrome.downloads.onCreated.hasListeners())).toBe(true);
+      const origin = `chrome-extension://${worker.url().split("/")[2]}`;
+      const browsingPage = await context.newPage();
+      const newPages: Page[] = [];
+      context.on("page", (page) => newPages.push(page));
+      const nativeDownload = browsingPage.waitForEvent("download");
+      await browsingPage.goto(server.url).catch(() => {});
+      const download = await nativeDownload;
+      let library!: Page;
+      await expect.poll(() => {
+        library = newPages.find((page) => page.url().startsWith(`${origin}/src/library/`))!;
+        return !!library;
+      }).toBe(true);
+      await expect.poll(server.importRequests).toBe(1);
+      const nativeRecords = () => worker.evaluate((url) => chrome.downloads.search({ url }), server.url);
+      const status = library.getByRole("status");
+      const importButton = library.getByRole("button", { name: "Import EPUB", exact: true });
+      const openBook = library.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true });
+      await expect(status).toContainText("Downloading test-book.epub");
+      await expect(status).toContainText("Keep this library open");
+      await expect(status).toHaveAttribute("aria-live", "polite");
+      await expect(status.locator(".fui-Spinner")).toBeVisible();
+      await expect(openBook).toHaveCount(0);
+      await expect(importButton).toBeEnabled();
+      await importButton.focus();
+      expect((await nativeRecords())[0]?.state).toBe("in_progress");
+      expect((await nativeRecords())[0]?.paused).toBe(false);
+
+      if (outcome === "success") {
+        server.beginImport();
+        await expect(status).toContainText("Downloading test-book.epub");
+        await expect(importButton).toBeFocused();
+        server.releaseImport();
+        await expect(status).toContainText("Added test-book.epub to your library.");
+        await expect(openBook).toBeVisible();
+        await expect(library.getByRole("alert")).toHaveCount(0);
+        await expect.poll(async () => (await nativeRecords()).length).toBe(0);
+        expect(await download.failure()).toBeTruthy();
+      } else {
+        server.rejectImport();
+        await expect(library.getByRole("alert")).toContainText("403");
+        await expect(library.getByRole("alert")).toContainText("Import EPUB");
+        await expect(status).toBeEmpty();
+        await expect(openBook).toHaveCount(0);
+        expect((await nativeRecords())[0]?.state).toBe("in_progress");
+        server.releaseNative();
+        await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
+        expect(await download.failure()).toBeNull();
+      }
+      await expect(status).not.toContainText("Keep this library open");
+      await expect(status.locator(".fui-Spinner")).toHaveCount(0);
+      await expect(importButton).toBeFocused();
+      if (outcome === "http-error") {
+        // The native file remains usable via the existing manual-import picker.
+        const downloadedFile = await download.path();
+        await library.locator('input[type="file"]').setInputFiles(downloadedFile!);
+        await expect(openBook).toBeVisible();
+        await expect(library.getByRole("alert")).toHaveCount(0);
+        await expect(status.locator(".fui-Spinner")).toHaveCount(0);
+      }
+      await library.reload();
+      await expect(openBook).toBeVisible();
+      await expect(status).toBeEmpty();
+      await expect(library.getByRole("alert")).toHaveCount(0);
+      expect(server.importRequests()).toBe(1);
+    } finally {
+      await context?.close();
+      await server.close();
+      fs.rmSync(profile, { recursive: true, force: true });
+    }
+  });
 }
 
 for (const scenario of [
@@ -111,7 +212,8 @@ for (const scenario of [
     let context: BrowserContext | undefined;
     try {
       context = await chromium.launchPersistentContext(profile, {
-        headless: false,
+        headless: process.env.AMBRA_E2E_HEADLESS === "1",
+        ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
         args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
         acceptDownloads: true,
         downloadsPath,
@@ -156,6 +258,7 @@ for (const scenario of [
           if (scenario === "completed-first") {
             await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
           }
+
           server.releaseImport();
           await expect(library.getByText("Ambra Long Content Test Fixture", { exact: true })).toBeVisible();
           if (scenario === "success") {

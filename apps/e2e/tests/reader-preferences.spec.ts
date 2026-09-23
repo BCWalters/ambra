@@ -11,7 +11,7 @@ test("typography cascades preserve keyboard focus, checked choices and slider re
     const trigger = page.getByRole("button", { name: "Text and page options", exact: true });
     await trigger.focus();
     await trigger.press("Enter");
-    await expect(page.getByRole("menu", { name: "Text and page options", exact: true })).toHaveAccessibleDescription("Only this book");
+    await expect(page.getByRole("menu", { name: "Text and page options", exact: true })).toHaveAccessibleDescription("Book options");
     const text = page.getByRole("menuitem", { name: "Text", exact: true });
     await text.press("ArrowRight");
     const size = page.getByRole("slider", { name: "Font size", exact: true });
@@ -45,19 +45,16 @@ test("settings retain choices across reading-mode changes and disable animation 
   try {
     const trigger = page.getByRole("button", { name: "Settings", exact: true });
     await trigger.click();
-    await expect(page.getByRole("menu", { name: "Settings", exact: true })).toHaveAccessibleDescription("All books");
+    await expect(page.getByRole("menu", { name: "Settings", exact: true })).toHaveAccessibleDescription("Ambra settings");
     const blue = page.getByRole("menuitemradio", { name: "Blue", exact: true });
     await blue.click();
     await expect(blue).toHaveAttribute("aria-checked", "true");
     await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
-    // Replacing the content host restores book focus and dismisses the menu.
-    await expect(trigger).not.toHaveAttribute("aria-expanded", "true");
-    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("menuitemradio", { name: "Slide", exact: true })).toBeDisabled();
     await expect(blue).toHaveAttribute("aria-checked", "true");
     await page.getByRole("menuitemradio", { name: "Paginated", exact: true }).click();
-    await expect(trigger).not.toHaveAttribute("aria-expanded", "true");
-    await trigger.click();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
     const filmStrip = page.getByRole("menuitemradio", { name: "Film strip", exact: true });
     await expect(filmStrip).toBeEnabled();
     await filmStrip.click();

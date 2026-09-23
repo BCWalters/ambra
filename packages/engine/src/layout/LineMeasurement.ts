@@ -4,6 +4,7 @@ import {
   sumTextLength,
   totalTextLength,
 } from "./DomTextWalker.js";
+import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 
 /** A single indivisible unit of content for pagination purposes: either
  * one visual line of text within a "leaf" block element, or one whole
@@ -58,7 +59,7 @@ function isBlockLevel(element: Element): boolean {
  * leaf as far as pagination's block-structure walk is concerned, whether
  * it contains text (a "text leaf") or is atomic (an image, etc.). */
 function isLeaf(element: Element): boolean {
-  return !Array.from(element.children).some((child) => isBlockLevel(child));
+  return !Array.from(element.children).some((child) => !isReaderOwnedContent(child) && isBlockLevel(child));
 }
 
 function isAtomic(element: Element): boolean {
@@ -94,6 +95,11 @@ function collectLeaves(root: Element, out: Leaf[]): void {
     const node = nodes[index]!;
     if (node.nodeType !== 1) continue;
     const child = node as Element;
+    if (isReaderOwnedContent(child)) {
+      flushRun(index);
+      runStart = index + 1;
+      continue;
+    }
     const display = getComputedStyle(child).display;
     if (
       display !== "contents" &&

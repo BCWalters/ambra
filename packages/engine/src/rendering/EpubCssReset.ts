@@ -40,6 +40,11 @@ html, body {
   padding: 0;
 }
 
+/* A reading-entry caret is not an interactive control. */
+[data-ambra-reading-focus]:focus {
+  outline: none !important;
+}
+
 /* Images/SVG must never overflow their container's width — a common
    real-world EPUB authoring gap for images with fixed pixel dimensions
    embedded in reflowable content. Height auto preserves aspect ratio.

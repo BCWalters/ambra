@@ -1,3 +1,5 @@
+import { isReaderOwnedContent } from "./ReaderOwnedContent.js";
+
 /** A match in original source text, with both live DOM endpoints and
  * offsets into its contiguous text run for constructing an excerpt. */
 export interface DocumentTextMatch {
@@ -108,6 +110,7 @@ function inlineStyle(element: Element): CSSStyleDeclaration | undefined {
 function isExcluded(element: Element): boolean {
   const style = inlineStyle(element);
   return (
+    isReaderOwnedContent(element) ||
     EXCLUDED_ELEMENTS.has(element.localName.toLowerCase()) ||
     element.hasAttribute("hidden") ||
     element.getAttribute("aria-hidden") === "true" ||

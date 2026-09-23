@@ -139,16 +139,17 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
 
           {description && (
             <>
-              <Body1
+              <Caption1
                 as="p"
                 block
                 style={{
                   margin: descriptionSourceName ? "0 0 4px" : "0 0 16px",
+                  lineHeight: 1.5,
                   whiteSpace: "pre-wrap",
                 }}
               >
                 {description}
-              </Body1>
+              </Caption1>
               {descriptionSourceName && (
                 <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
                   {t("bookDetails.descriptionSourcePrefix")}{" "}

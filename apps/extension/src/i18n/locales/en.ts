@@ -32,6 +32,11 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "readingBoundary.navigation": string;
+  "readingBoundary.nextChapter": string;
+  "readingBoundary.nextSection": string;
+  "readingBoundary.nextPage": string;
+  "readingBoundary.endOfBook": string;
   "narration.listen": string;
   "narration.discoveryTitle": string;
   "narration.discoveryMessage": string;
@@ -65,6 +70,12 @@ export interface StringCatalog {
   "library.sortBy": string;
   "library.expand": string;
   "library.loading": string;
+  "library.importQueued": string;
+  "library.importDownloading": string;
+  "library.importProcessing": string;
+  "library.importSaving": string;
+  "library.importComplete": string;
+  "library.importKeepOpen": string;
   "library.inspectorNotReady": string;
   "library.bookCount": string;
   "library.storageUsedOf": string;
@@ -342,6 +353,7 @@ export interface StringCatalog {
   "bookDetails.publisher": string;
   "bookDetails.readingTools": string;
   "bookDetails.publicationDetails": string;
+  "bookDetails.fileSize": string;
   "bookDetails.descriptionSourcePrefix": string;
   "bookDetails.isbn": string;
   "bookDetails.identifier": string;
@@ -366,6 +378,11 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "readingBoundary.navigation": "Continue reading",
+  "readingBoundary.nextChapter": "Next chapter: {title}",
+  "readingBoundary.nextSection": "Next section",
+  "readingBoundary.nextPage": "Next page",
+  "readingBoundary.endOfBook": "End of book",
   "narration.listen": "Listen",
   "narration.discoveryTitle": "This book has narration",
   "narration.discoveryMessage": "Listen to recorded audio while the text is highlighted. You can start anytime with the headphones button.",
@@ -399,6 +416,12 @@ export const en: StringCatalog = {
   "library.sortBy": "Sort by",
   "library.expand": "Expand library into a full browser tab",
   "library.loading": "Loading your library…",
+  "library.importQueued": "Waiting to import {fileName}…",
+  "library.importDownloading": "Downloading {fileName}…",
+  "library.importProcessing": "Processing {fileName}…",
+  "library.importSaving": "Saving {fileName} to your library…",
+  "library.importComplete": "Added {fileName} to your library.",
+  "library.importKeepOpen": "Keep this library open until the import finishes. Large books with narration may take longer.",
   "library.inspectorNotReady": "The Inspector isn't ready yet.",
   "library.bookCount": "Books: {count}",
   "library.storageUsedOf": "{used} used of {available} available",
@@ -484,7 +507,7 @@ export const en: StringCatalog = {
   "settings.language": "Language",
   "settings.languageSystemDefault": "System default",
   "settings.readingMode": "Reading mode",
-  "settings.globalScope": "All books",
+  "settings.globalScope": "Ambra settings",
   "settings.paginated": "Paginated",
   "settings.scroll": "Scroll",
   "settings.pageTurn": "Page turn",
@@ -496,7 +519,7 @@ export const en: StringCatalog = {
   "settings.brightness": "Brightness",
   "settings.readerTheme": "Reader theme",
   "text.textMenuLabel": "Text",
-  "text.bookScope": "Only this book",
+  "text.bookScope": "Book options",
   "settings.resetToDefault": "Reset to default",
   "settings.resetSliderToDefault": "Reset {label} to default",
   "text.pageMenuLabel": "Page",
@@ -646,6 +669,7 @@ export const en: StringCatalog = {
   "bookDetails.publisher": "Publisher",
   "bookDetails.readingTools": "Reading tools",
   "bookDetails.publicationDetails": "Publication details",
+  "bookDetails.fileSize": "EPUB file size",
   "bookDetails.descriptionSourcePrefix": "via",
   "bookDetails.isbn": "ISBN",
   "bookDetails.identifier": "Identifier",

@@ -39,6 +39,7 @@ describe("Library localization and action order", () => {
     language.locale = "en";
     state = {
       books: [], isLoading: false, canImport: true, error: undefined,
+      importActivities: [], dismissCompletedImports: vi.fn(),
       dismissError: vi.fn(), importFiles: vi.fn(), removeBook: vi.fn(), openBook: vi.fn(),
       chromeTheme: "ambra", settings: DEFAULT_GLOBAL_READING_SETTINGS, setSettings: vi.fn(),
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: false, openInFullTab: vi.fn(),
@@ -88,6 +89,29 @@ describe("Library localization and action order", () => {
     state.isFullTab = true;
     await render();
     expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "About Ambra"]);
+  });
+
+  it.each(SUPPORTED_LOCALES)("localizes every import stage and completion in %s", async (locale) => {
+    language.locale = locale;
+    const t = getTranslate(locale);
+    state.importActivities = [
+      { id: 1, fileName: "queued.epub", phase: "queued" },
+      { id: 2, fileName: "narrated.epub", phase: "downloading" },
+      { id: 3, fileName: "processing.epub", phase: "processing" },
+      { id: 4, fileName: "saving.epub", phase: "saving" },
+      { id: 5, fileName: "complete.epub", phase: "complete" },
+    ];
+    await render();
+    const status = container.querySelector('[role="status"]')!;
+    expect(status.textContent).toContain(t("library.importQueued", { fileName: "queued.epub" }));
+    expect(status.textContent).toContain(t("library.importDownloading", { fileName: "narrated.epub" }));
+    expect(status.textContent).toContain(t("library.importProcessing", { fileName: "processing.epub" }));
+    expect(status.textContent).toContain(t("library.importSaving", { fileName: "saving.epub" }));
+    expect(status.textContent).toContain(t("library.importComplete", { fileName: "complete.epub" }));
+    expect(status.textContent).toContain(t("library.importKeepOpen"));
+    expect(status.querySelector('[aria-valuenow]')).toBeNull();
+    await act(async () => button(t("library.dismiss")).click());
+    expect(state.dismissCompletedImports).toHaveBeenCalledOnce();
   });
 
   it("updates an open details pane, localized dates, progress and errors while preserving book data", async () => {

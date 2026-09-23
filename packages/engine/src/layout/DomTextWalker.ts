@@ -1,3 +1,5 @@
+import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
+
 // See CfiTree.ts for why these are plain numeric literals rather than
 // references to the global `Node.*` constants — this module, like that
 // one, only needs objects that duck-type as DOM nodes (childNodes,
@@ -38,6 +40,7 @@ function isMathElement(node: Node): boolean {
  * via plain recursive child-node traversal (no `TreeWalker` dependency).
  * Never descends into a `<math>` subtree — see `isMathElement`. */
 function collectTextNodes(root: Node, out: Text[]): void {
+  if (isReaderOwnedContent(root)) return;
   for (const child of Array.from(root.childNodes)) {
     if (isTextLike(child)) {
       out.push(child);

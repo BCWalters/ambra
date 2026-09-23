@@ -89,6 +89,7 @@ export class SpreadPaginatedHost {
       return doc && position ? [{
         document: doc, spineIndex: position.spineIndex, physicalSide,
         page: host.currentPageAndDocument()?.page,
+        revealOverlay: () => host.revealReaderOverlay(),
       }] : [];
     });
   }

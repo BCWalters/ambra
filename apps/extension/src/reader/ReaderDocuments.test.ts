@@ -15,7 +15,8 @@ describe("readerDocumentViews", () => {
       const doc = document.implementation.createHTMLDocument();
       Object.defineProperty(host.element, "contentDocument", { configurable: true, value: doc });
       expect(readerDocumentViews(host, 9)).toEqual([
-        { document: doc, spineIndex: 9, physicalSide: "single", page: undefined },
+        { document: doc, spineIndex: 9, physicalSide: "single", page: undefined,
+          ...(host instanceof PaginatedContentHost ? { revealOverlay: expect.any(Function) } : {}) },
       ]);
       Object.defineProperty(host.element, "contentDocument", { value: null });
       expect(readerDocumentViews(host, 9)).toEqual([]);

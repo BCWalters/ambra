@@ -7,7 +7,8 @@ import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
-import { useTranslation } from "../../i18n/LocaleContext.js";
+import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
+import { formatLibraryBytes } from "../../library/LibraryFormatting.js";
 import { GoToDialog } from "./GoToDialog.js";
 import { BookDetailRow as DetailRow, BookRightsRow } from "../../components/BookMetadataRows.js";
 import { PaneCard, PaneDisclosure } from "../../components/PaneSections.js";
@@ -119,6 +120,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   onSeekToFraction,
 }) => {
   const t = useTranslation();
+  const { locale } = useLocale();
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const restoreInspectorFocus = useRestoreFocusTarget();
@@ -267,13 +269,13 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
 
               {details.description && (
                 <>
-                  <Body1
+                  <Caption1
                     as="p"
                     block
-                    style={{ margin: details.descriptionSourceName ? "0 0 4px" : "0 0 16px", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+                    style={{ margin: details.descriptionSourceName ? "0 0 4px" : "0 0 16px", lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
                   >
                     {details.description}
-                  </Body1>
+                  </Caption1>
                   {/* Attribution for a fetched fallback description
                       (issue follow-up: books with no dc:description of
                       their own) — required by both free sources' terms,
@@ -353,8 +355,12 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 </div>
               )}
 
-              {knownIdentifiers.length > 0 && (
+              {(knownIdentifiers.length > 0 || details.fileSizeBytes !== undefined) && (
                 <PaneDisclosure title={t("bookDetails.publicationDetails")}>
+                  <DetailRow
+                    label={t("bookDetails.fileSize")}
+                    value={details.fileSizeBytes === undefined ? undefined : formatLibraryBytes(details.fileSizeBytes, locale)}
+                  />
                   <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
                   {otherIdentifiers.map((id, index) => (
                     <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />

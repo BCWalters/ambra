@@ -6,4 +6,6 @@ export interface ContentDocumentView {
   readonly spineIndex: number;
   readonly physicalSide: "single" | "left" | "right";
   readonly page?: Page;
+  /** Temporarily gives a reader-owned top-layer control room, without repagination. */
+  readonly revealOverlay?: () => () => void;
 }

@@ -80,6 +80,35 @@ and then click the reload icon on the extension card in `chrome://extensions`.
 The browser tests build into an isolated directory so they do not replace the unpacked
 extension you are using.
 
+## Reading boundaries with a keyboard or screen reader
+
+Each content document ends with native **Continue reading** navigation inside the
+book iframe. It is visually hidden until focused. Reflowable books offer **Next
+chapter: …** when the TOC names the destination document, otherwise **Next section**.
+Fixed-layout books offer **Next page**, visiting both pages of a spread in logical
+reading order (including RTL) before moving to another spread. The final document
+instead says **End of book**; there is no inactive Next button or automatic advance.
+Like existing chapter navigation, these controls follow the spine, including
+non-linear items. Activating them moves reading focus to the destination and
+suspends narration following without starting or stopping audio.
+
+The reader appends an empty, registered reader-owned host at the document end.
+Its shadow DOM isolates native navigation text and styles from publication text,
+search, and CFIs; layout and CFI traversal explicitly exclude the host. A manual
+nonmodal popover keeps the navigation in the iframe's top layer, outside the
+paginated body's transform/clipping, without autofocus or light-dismiss. No
+publication nodes are wrapped, moved, or split, and controls add no pages.
+While a boundary is focused, paginated hosts temporarily give the iframe the full
+reading-pane height and transfer its page clip to the publication body. This keeps
+even a one-line final page's control visible without exposing adjacent page text;
+blur restores the normal surface without repagination.
+
+`content-boundary-navigation.spec.ts` checks Chromium accessibility-tree order,
+native Tab/Space/Enter behavior, destination focus, spread order, and text/CFI/page
+count invariance. These checks do not emulate an assistive technology's virtual
+cursor: continuous VoiceOver/NVDA reading through the new boundary still requires
+live testing, separately from the confirmed current-page entry behavior.
+
 ## Recorded narration
 
 Narrated books show a nonmodal discovery notice until you choose **Listen now**

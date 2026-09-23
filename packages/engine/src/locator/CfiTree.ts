@@ -20,6 +20,7 @@
  */
 
 import { CfiStep } from "./EpubCfi.js";
+import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 
 // Standardized DOM Node.nodeType values, used as plain numeric literals
 // (rather than referencing the global `ELEMENT_NODE` etc. constants)
@@ -49,7 +50,7 @@ function countPrecedingElementSiblings(child: Node): number {
   let count = 0;
   let node: ChildNode | null = child.previousSibling;
   while (node) {
-    if (node.nodeType === ELEMENT_NODE) {
+    if (node.nodeType === ELEMENT_NODE && !isReaderOwnedContent(node)) {
       count++;
     }
     node = node.previousSibling;
@@ -59,6 +60,7 @@ function countPrecedingElementSiblings(child: Node): number {
 
 /** The CFI step index for `child`, relative to its own parent. */
 export function childStepIndex(child: Node): number {
+  if (isReaderOwnedContent(child)) throw new Error("Reader-owned content has no publication CFI.");
   const precedingElements = countPrecedingElementSiblings(child);
   return child.nodeType === ELEMENT_NODE ? 2 * (precedingElements + 1) : 2 * precedingElements + 1;
 }
@@ -70,8 +72,8 @@ export function childStepIndex(child: Node): number {
 export function runCharacterOffset(textNode: Node, localOffset: number): number {
   let offset = localOffset;
   let node: ChildNode | null = textNode.previousSibling;
-  while (node && node.nodeType !== ELEMENT_NODE) {
-    if (isTextLike(node)) {
+  while (node && (node.nodeType !== ELEMENT_NODE || isReaderOwnedContent(node))) {
+    if (isTextLike(node) && !isReaderOwnedContent(node)) {
       offset += node.textContent?.length ?? 0;
     }
     node = node.previousSibling;
@@ -91,15 +93,15 @@ export function resolveTextRun(parent: Node, oddStepIndex: number): ChildNode[] 
 
   // Advance past the `targetPrecedingElementCount`-th element (if any).
   while (node && elementsSeen < targetPrecedingElementCount) {
-    if (node.nodeType === ELEMENT_NODE) {
+    if (node.nodeType === ELEMENT_NODE && !isReaderOwnedContent(node)) {
       elementsSeen++;
     }
     node = node.nextSibling;
   }
 
   const run: ChildNode[] = [];
-  while (node && node.nodeType !== ELEMENT_NODE) {
-    if (isTextLike(node)) {
+  while (node && (node.nodeType !== ELEMENT_NODE || isReaderOwnedContent(node))) {
+    if (isTextLike(node) && !isReaderOwnedContent(node)) {
       run.push(node);
     }
     node = node.nextSibling;
@@ -113,7 +115,7 @@ export function resolveElementChild(parent: Node, elementIndex: number): Element
   let elementsSeen = 0;
   let node: ChildNode | null = parent.firstChild;
   while (node) {
-    if (node.nodeType === ELEMENT_NODE) {
+    if (node.nodeType === ELEMENT_NODE && !isReaderOwnedContent(node)) {
       elementsSeen++;
       if (elementsSeen === elementIndex) {
         return node as Element;

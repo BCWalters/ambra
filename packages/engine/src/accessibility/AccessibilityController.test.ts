@@ -4,6 +4,7 @@ import { AccessibilityController } from "./AccessibilityController.js";
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  document.getSelection()?.removeAllRanges();
   vi.spyOn(document, "addEventListener");
 });
 
@@ -143,7 +144,32 @@ describe("AccessibilityController", () => {
       controller.focusContent(document, heading);
 
       expect(heading.getAttribute("tabindex")).toBe("-1");
+      expect(heading.hasAttribute("data-ambra-reading-focus")).toBe(true);
       expect(document.activeElement).toBe(heading);
+    });
+
+    it("cleans up reader-owned focus after an explicit chapter target loses focus", () => {
+      document.body.innerHTML = '<div id="chapter"><h2>Chapter 2</h2></div><button>Continue</button>';
+      const target = document.getElementById("chapter")!;
+      new AccessibilityController().focusContent(document, target);
+      expect(target.hasAttribute("data-ambra-reading-focus")).toBe(true);
+      document.querySelector("button")!.focus();
+      expect(target.hasAttribute("data-ambra-reading-focus")).toBe(false);
+      expect(target.hasAttribute("tabindex")).toBe(false);
+    });
+
+    it("makes an href-less chapter anchor focusable without suppressing linked anchors", () => {
+      document.body.innerHTML = '<h2><a id="chapter"></a>Chapter</h2><a href="#chapter">Reference</a>';
+      const chapter = document.getElementById("chapter")!;
+      const link = document.querySelector("a[href]")!;
+      const controller = new AccessibilityController();
+      controller.focusContent(document, chapter);
+      expect(document.activeElement).toBe(chapter);
+      expect(chapter.hasAttribute("data-ambra-reading-focus")).toBe(true);
+      controller.focusContent(document, link);
+      expect(document.activeElement).toBe(link);
+      expect(link.hasAttribute("tabindex")).toBe(false);
+      expect(link.hasAttribute("data-ambra-reading-focus")).toBe(false);
     });
 
     it("doesn't overwrite an existing tabindex", () => {
@@ -154,6 +180,94 @@ describe("AccessibilityController", () => {
       controller.focusContent(document, button);
 
       expect(button.getAttribute("tabindex")).toBe("0");
+    });
+
+    describe("focusReadingPosition", () => {
+      it("focuses the visible text's element and sets an exact native caret without changing text", () => {
+        document.body.innerHTML = "<p>Earlier page.</p><p id='visible'>Earlier line. The visible line starts here.</p>";
+        const paragraph = document.getElementById("visible")!;
+        const text = paragraph.firstChild!;
+        const content = document.body.textContent;
+        const focus = vi.spyOn(paragraph as HTMLElement, "focus");
+        new AccessibilityController().focusReadingPosition(document, { node: text, offset: 14 });
+        expect(document.activeElement).toBe(paragraph);
+        expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+        expect(document.getSelection()?.anchorNode).toBe(text);
+        expect(document.getSelection()?.anchorOffset).toBe(14);
+        expect(document.getSelection()?.isCollapsed).toBe(true);
+        expect(document.body.textContent).toBe(content);
+        expect(paragraph.firstChild).toBe(text);
+        expect(paragraph.childNodes).toHaveLength(1);
+      });
+
+      it("marks only temporary reading focus and cleans it up on blur, including after repeated entry", () => {
+        document.body.innerHTML = "<p>Reading text.</p><button>Continue</button>";
+        const paragraph = document.querySelector("p")!;
+        const controller = new AccessibilityController();
+        const position = { node: paragraph.firstChild!, offset: 3 };
+        controller.focusReadingPosition(document, position);
+        controller.focusReadingPosition(document, position);
+        expect(paragraph.hasAttribute("data-ambra-reading-focus")).toBe(true);
+        expect(paragraph.getAttribute("tabindex")).toBe("-1");
+        document.querySelector("button")!.focus();
+        expect(paragraph.hasAttribute("data-ambra-reading-focus")).toBe(false);
+        expect(paragraph.hasAttribute("tabindex")).toBe(false);
+        controller.focusReadingPosition(document, position);
+        expect(paragraph.hasAttribute("data-ambra-reading-focus")).toBe(true);
+        expect(document.activeElement).toBe(paragraph);
+      });
+
+      it.each([
+        '<a href="#reference">Reference</a>',
+        "<button>Continue</button>",
+        '<p tabindex="0">Scrollable text</p>',
+        '<p tabindex="-1">Authored focus target</p>',
+        '<p role="button">Custom control</p>',
+        '<p contenteditable="true">Editable text</p>',
+      ])("preserves authored focus indicators for %s", markup => {
+        document.body.innerHTML = markup;
+        const target = document.body.firstElementChild!;
+        const tabindex = target.getAttribute("tabindex");
+        new AccessibilityController().focusReadingPosition(document, { node: target.firstChild!, offset: 0 });
+        expect(target.hasAttribute("data-ambra-reading-focus")).toBe(false);
+        if (tabindex !== null || target.matches("a, button")) {
+          expect(target.getAttribute("tabindex")).toBe(tabindex);
+        }
+      });
+
+      it("preserves an existing backward text selection instead of moving to the page boundary", () => {
+        document.body.innerHTML = "<p>Page beginning.</p><p id='selection'>Keep this selected text.</p>";
+        const paragraph = document.getElementById("selection")!;
+        const text = paragraph.firstChild!;
+        const selection = document.getSelection()!;
+        selection.setBaseAndExtent(text, 18, text, 5);
+        const selectedText = selection.toString();
+        new AccessibilityController().focusReadingPosition(document, { node: document.body.firstChild!, offset: 0 });
+        expect(document.activeElement).toBe(paragraph);
+        expect(selection.toString()).toBe(selectedText);
+        expect(selection.anchorNode).toBe(text);
+        expect(selection.anchorOffset).toBe(18);
+        expect(selection.focusNode).toBe(text);
+        expect(selection.focusOffset).toBe(5);
+      });
+
+      it("resolves an element child boundary without jumping to earlier siblings", () => {
+        document.body.innerHTML = "<p id='visible'><em>Earlier text.</em>Visible text.</p>";
+        const paragraph = document.getElementById("visible")!;
+        document.getSelection()?.removeAllRanges();
+        new AccessibilityController().focusReadingPosition(document, { node: paragraph, offset: 1 });
+        expect(document.getSelection()?.anchorNode).toBe(paragraph.childNodes[1]);
+        expect(document.getSelection()?.anchorOffset).toBe(0);
+      });
+
+      it("rejects detached or foreign-document positions", () => {
+        const controller = new AccessibilityController();
+        expect(() => controller.focusReadingPosition(document, { node: document.createTextNode("detached") }))
+          .toThrow("current content document");
+        const other = document.implementation.createHTMLDocument();
+        expect(() => controller.focusReadingPosition(document, { node: other.body }))
+          .toThrow("current content document");
+      });
     });
   });
 });

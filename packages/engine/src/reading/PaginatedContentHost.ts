@@ -41,6 +41,7 @@ export class PaginatedContentHost {
   private pages: Page[] = [];
   private pageIndex = 0;
   private disclosureCleanup: (() => void) | undefined;
+  private readerOverlay: { body: HTMLElement; clipPath: string; priority: string } | undefined;
   // Grown past `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM`'s own
   // fixed floor by `refreshInsets` whenever the current font scale/
   // line-spacing demands more room — see `ReadingTheme.insetsForLineHeight`'s
@@ -346,6 +347,41 @@ export class PaginatedContentHost {
     // what the transform happens to place above/below it, independent of
     // how much natural gap the surrounding content has.
     this.sandboxedHost.element.style.clipPath = `inset(${this.insetTop}px 0 ${this.insetBottom}px 0)`;
+    if (this.readerOverlay) this.applyReaderOverlay();
+  }
+
+  /** Top-layer UI escapes body clipping, but not the iframe's own clip. Give it
+   * the reading pane while keeping publication paint confined to this page. */
+  public revealReaderOverlay(): () => void {
+    const body = this.element.contentDocument?.body;
+    if (!body) return () => {};
+    const overlay = this.readerOverlay ?? {
+      body,
+      clipPath: body.style.getPropertyValue("clip-path"),
+      priority: body.style.getPropertyPriority("clip-path"),
+    };
+    this.readerOverlay = overlay;
+    this.applyReaderOverlay();
+    return () => {
+      if (this.readerOverlay !== overlay) return;
+      this.readerOverlay = undefined;
+      body.style.setProperty("clip-path", overlay.clipPath, overlay.priority);
+      this.showCurrentPage();
+    };
+  }
+
+  private applyReaderOverlay(): void {
+    const page = this.pages[this.pageIndex];
+    const body = this.readerOverlay?.body;
+    if (!page || !body) return;
+    this.element.style.height = `${this.height}px`;
+    this.element.style.clipPath = "";
+    // The engine applies a translation (not scaling) to body. Convert the
+    // existing viewport clip to its local coordinates without repagination.
+    const top = this.insetTop - body.getBoundingClientRect().top;
+    const bottom = top + page.height;
+    body.style.setProperty("clip-path",
+      `polygon(0 ${top}px, 100% ${top}px, 100% ${bottom}px, 0 ${bottom}px)`, "important");
   }
 
   /** Temporarily grows this host's iframe to `fullHeight` (the reader
@@ -438,6 +474,7 @@ export class PaginatedContentHost {
   }
 
   public dispose(): void {
+    this.readerOverlay = undefined;
     this.disclosureCleanup?.();
     this.disclosureCleanup = undefined;
     this.sandboxedHost.dispose();

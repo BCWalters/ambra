@@ -56,6 +56,7 @@ import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
 import { readerDocumentViews } from "./ReaderDocuments.js";
+import { attachContentBoundary, contentBoundary } from "./ContentBoundaryNavigation.js";
 import type { ReadingHost } from "./ReaderDocuments.js";
 import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageTurnOrchestrator.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
@@ -323,6 +324,7 @@ export class ReaderController {
    * (link clicks, image-viewer triggers) — re-created on every
    * `openSpineItem` call since each gets a fresh iframe/document. */
   private contentInteractionCleanup: (() => void) | undefined;
+  private boundaryCleanup: (() => void) | undefined;
   /** Detaches the current drag-page-turn `pointerdown` listener — same
    * lifecycle as `contentInteractionCleanup`. */
   private dragCleanup: (() => void) | undefined;
@@ -361,6 +363,7 @@ export class ReaderController {
     private readonly bookId: string,
     private readonly library: LibraryDatabase,
     rootFilePath: string,
+    private readonly fileSizeBytes: number,
   ) {
     this.narrationReading = new NarrationReadingBridge(contentLoader, locatorResolver, {
       activeClass: pkg.metadata.mediaOverlayActiveClass,
@@ -496,6 +499,7 @@ export class ReaderController {
       bookId,
       library,
       container.rootFilePath,
+      buffer.byteLength,
     );
     try {
       if (navigationLoadError) {
@@ -1169,6 +1173,7 @@ export class ReaderController {
 
   public setTranslate(translate: Translate): void {
     this.translate = translate;
+    this.setUpContentBoundaries();
   }
 
   /** Queues live-region text and bumps the id so repeated text is announced again. */
@@ -1265,6 +1270,24 @@ export class ReaderController {
       return this.host.primaryContentDocument();
     }
     return this.host?.element.contentDocument ?? undefined;
+  }
+
+  private focusReadingContent(document: Document, target?: Element): void {
+    if (target) {
+      this.accessibility.focusContent(target.ownerDocument, target);
+      return;
+    }
+    // Same-chapter spreads expose one continuous chapter, not its duplicate frame.
+    if (document.defaultView?.frameElement?.getAttribute("aria-hidden") === "true") {
+      document = this.primaryContentDocument() ?? document;
+    }
+    const page = this.contentDocumentViews().find(view => view.document === document)?.page;
+    const position = page?.startBreak ?? this.host?.currentPosition();
+    if (position && position.node.ownerDocument === document) {
+      this.accessibility.focusReadingPosition(document, position);
+    } else {
+      this.accessibility.focusContent(document);
+    }
   }
 
   private contentDocumentViews(host: ReadingHost | undefined = this.host): readonly ContentDocumentView[] {
@@ -1376,7 +1399,7 @@ export class ReaderController {
     }
     const doc = this.primaryContentDocument();
     if (doc) {
-      this.accessibility.focusContent(doc);
+      this.focusReadingContent(doc);
     }
   }
 
@@ -1393,7 +1416,7 @@ export class ReaderController {
       ? newHost.primaryContentDocument()
       : frame.contentDocument;
     if (doc) {
-      this.accessibility.focusContent(doc);
+      this.focusReadingContent(doc);
     }
   }
 
@@ -1408,9 +1431,10 @@ export class ReaderController {
     const topDocument = this.containerEl?.ownerDocument;
     const menuOpen =
       topDocument?.querySelector('[role="menu"], [role="dialog"], [role="listbox"]') != null;
-    if (iframeDocument && topDocument && !menuOpen &&
-      !topDocument.activeElement?.closest("[data-narration-controls]")) {
-      this.accessibility.focusContent(iframeDocument);
+    const active = topDocument?.activeElement;
+    const hasFocusOwner = active && active !== topDocument?.body && active !== topDocument?.documentElement;
+    if (iframeDocument && topDocument && !menuOpen && !hasFocusOwner) {
+      this.focusReadingContent(iframeDocument);
     }
   }
 
@@ -1424,13 +1448,14 @@ export class ReaderController {
     if (!iframeDocument) {
       return;
     }
-    if (moveFocus) this.accessibility.focusContent(iframeDocument, focusTarget);
+    if (moveFocus) this.focusReadingContent(iframeDocument, focusTarget);
   }
 
   /** Intercepts in-content links for reader navigation, opens external
    * URIs in a new tab, and wires zoomable images for click and keyboard
    * activation across all active content documents. */
   private setUpContentInteraction(): void {
+    this.setUpContentBoundaries();
     const documents = this.allContentDocuments();
     if (documents.length === 0) {
       return;
@@ -1617,10 +1642,43 @@ export class ReaderController {
     }
 
     this.contentInteractionCleanup = () => {
+      this.boundaryCleanup?.();
+      this.boundaryCleanup = undefined;
       for (const cleanup of cleanups) {
         cleanup();
       }
     };
+  }
+
+  private setUpContentBoundaries(): void {
+    this.boundaryCleanup?.();
+    this.boundaryCleanup = undefined;
+    if (this.operations.disposed) return;
+    const host = this.host;
+    const cleanups = this.contentDocumentViews().map(view => attachContentBoundary(
+      view,
+      contentBoundary(view.spineIndex, this.isFixedLayoutHost(host), this.pkg, this.navigation.toc.items, this.translate),
+      this.translate("readingBoundary.navigation"),
+      async nextSpineIndex => {
+        if (this.operations.disposed || this.host !== host || this.isLoadInFlight ||
+          this.isTurningPage || this.isApplyingLayout) return;
+        this.clearNavigationHighlights();
+        const destination = this.contentDocumentViews().find(candidate => candidate.spineIndex === nextSpineIndex);
+        if (destination) {
+          // A spread's second document is the next reading stop, even in RTL.
+          if (this.isFixedLayoutHost(host)) {
+            this.accessibility.focusReadingPosition(destination.document, { node: destination.document.body, offset: 0 });
+          } else {
+            this.focusReadingContent(destination.document);
+          }
+          return;
+        }
+        // Uses the existing owned load/error path; never advances without activation.
+        await this.openSpineItem(nextSpineIndex);
+      },
+      this.translate.locale ?? DEFAULT_LOCALE,
+    ));
+    this.boundaryCleanup = () => cleanups.forEach(cleanup => cleanup());
   }
 
   /** Resizes the current host while preserving position; a spread-mode
@@ -1874,7 +1932,15 @@ export class ReaderController {
     const bridgeCfi = position
       ? this.locatorResolver.generate(spineIndex, position.node, position.offset).cfi
       : undefined;
-    const preserveFocus = Boolean(this.containerEl?.ownerDocument.activeElement?.closest("[data-narration-controls]"));
+    const doc = this.containerEl?.ownerDocument;
+    const activeElement = doc?.activeElement;
+    // A layout rebuild is not navigation: leave shell controls (including
+    // portalled settings menus) focused, but transfer old content focus to
+    // the replacement host rather than leaving it on the document body.
+    const preserveFocus = Boolean(
+      activeElement && activeElement !== doc?.body && activeElement !== doc?.documentElement &&
+      !this.host?.element.contains(activeElement),
+    );
     await this.openSpineItem(spineIndex, { bridgeCfi, preserveFocus });
   }
 
@@ -1997,7 +2063,7 @@ export class ReaderController {
     if (iframeDocument) {
       const stillConnected =
         returnTarget?.isConnected && returnTarget.ownerDocument === iframeDocument;
-      this.accessibility.focusContent(iframeDocument, stillConnected ? returnTarget : undefined);
+      this.focusReadingContent(iframeDocument, stillConnected ? returnTarget : undefined);
     }
     this.notify();
   }
@@ -2007,7 +2073,7 @@ export class ReaderController {
   public restoreContentFocus(): void {
     const iframeDocument = this.primaryContentDocument();
     if (iframeDocument) {
-      this.accessibility.focusContent(iframeDocument);
+      this.focusReadingContent(iframeDocument);
     }
   }
 
@@ -3550,6 +3616,7 @@ export class ReaderController {
       language: this.pkg.metadata.language,
       identifiers: this.pkg.metadata.identifiers,
       fileName: libraryRecord?.fileName,
+      fileSizeBytes: this.fileSizeBytes,
       rights: this.pkg.metadata.rights,
       coverUrl: this.cachedCoverUrl,
       accessibility: this.pkg.metadata.accessibility,
