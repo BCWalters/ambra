@@ -94,6 +94,23 @@ export interface EpubInspectionData {
 
 /** A plain-data snapshot of `ReaderController`'s state — what React
  * reads via `useReaderController`. */
+/** An element in the original publication, independent of pagination or source formatting. */
+export interface InspectorReadingLocation {
+  readonly path: string;
+  /** Preserves the occurrence when a file appears more than once in the spine. */
+  readonly spineIndex?: number;
+  /** Zero-based element-child indices from the document element; omitted for a whole file. */
+  readonly elementPath?: readonly number[];
+}
+
+export interface InspectorReaderBridge {
+  readonly currentPath: string | undefined;
+  readonly locateCurrentPassage: () => Promise<InspectorReadingLocation>;
+  readonly canShowInBook: (path: string) => boolean;
+  readonly showInBook: (location: InspectorReadingLocation) => Promise<void>;
+  readonly restoreFocus?: () => void;
+}
+
 export interface ReaderSnapshot {
   title: string;
   toc: readonly NavPoint[];

@@ -29,6 +29,7 @@ export {
   ContentLoader,
   ContentDocument,
   ContentLoaderError,
+  SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES,
   findResourceReferencesInDocument,
 } from "./content/ContentLoader.js";
 export type { ResourceReference } from "./content/ContentLoader.js";

@@ -15,7 +15,8 @@ const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
  * documents are near-universally `application/xhtml+xml` (`image/svg+xml`
  * is the spec's other sanctioned content document type, for an
  * SVG-only page). */
-const SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"]);
+export const SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES: ReadonlySet<string> =
+  new Set(["application/xhtml+xml", "image/svg+xml"]);
 
 /** Thrown when a spine/content document can't be loaded or parsed, or a
  * requested manifest resource doesn't exist. */
