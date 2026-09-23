@@ -42,9 +42,11 @@ function makeLibrary(initialBookmarks: Bookmark[] = []): LibraryDatabase {
       stored.push(bookmark);
       return bookmark;
     }),
-    removeBookmark: vi.fn().mockImplementation(async (id: string) => {
-      const index = stored.findIndex((b) => b.id === id);
-      if (index !== -1) stored.splice(index, 1);
+    removeBookmarks: vi.fn().mockImplementation(async (ids: readonly string[]) => {
+      for (const id of ids) {
+        const index = stored.findIndex((b) => b.id === id);
+        if (index !== -1) stored.splice(index, 1);
+      }
     }),
   } as unknown as LibraryDatabase;
 }
@@ -70,7 +72,7 @@ describe("BookmarkManager", () => {
 
     await manager.load();
 
-    expect(await manager.list()).toHaveLength(1);
+    expect(manager.allSorted()).toHaveLength(1);
   });
 
   it("adds a bookmark at the current position, labeled with chapter + page", async () => {
@@ -135,7 +137,54 @@ describe("BookmarkManager", () => {
     await manager.remove("bm-1");
 
     expect(ctx.notify).toHaveBeenCalled();
-    expect(library.removeBookmark).toHaveBeenCalledWith("bm-1");
+    expect(library.removeBookmarks).toHaveBeenCalledWith(["bm-1"]);
+  });
+
+  it("keeps bookmark state visible until removal commits", async () => {
+    const existing = makeBookmark();
+    const library = makeLibrary([existing]);
+    const ctx = makeContext();
+    const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), ctx);
+    await manager.load();
+    let commit!: () => void;
+    vi.mocked(library.removeBookmarks).mockImplementation(() => new Promise(resolve => { commit = resolve; }));
+
+    const removal = manager.remove(existing.id);
+    expect(manager.allSorted()).toEqual([existing]);
+    expect(manager.onCurrentPage()).toEqual([existing]);
+    expect(ctx.notify).not.toHaveBeenCalled();
+    commit();
+    await removal;
+    expect(manager.allSorted()).toEqual([]);
+    expect(ctx.notify).toHaveBeenCalledOnce();
+  });
+
+  it.each(["remove", "toggle"] as const)("failed %s preserves bookmarks and never announces success", async operation => {
+    const existing = makeBookmark();
+    const library = makeLibrary([existing]);
+    const error = new DOMException("Aborted", "AbortError");
+    vi.mocked(library.removeBookmarks).mockRejectedValue(error);
+    const ctx = makeContext();
+    const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), ctx);
+    await manager.load();
+
+    if (operation === "remove") await manager.remove(existing.id);
+    else await manager.toggle();
+    expect(manager.allSorted()).toEqual([existing]);
+    expect(ctx.notify).not.toHaveBeenCalled();
+    expect(ctx.announce).not.toHaveBeenCalled();
+    expect(ctx.reportError).toHaveBeenCalledWith(error);
+  });
+
+  it("publishes refreshed bookmarks and sorts newly added entries by position", async () => {
+    const later = makeBookmark({ id: "later", cfi: "epubcfi(/6/8!/4/2/2/1:0)" });
+    const library = makeLibrary([later]);
+    const ctx = makeContext();
+    const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), ctx);
+    await manager.refresh();
+    await manager.add();
+    expect(manager.allSorted().map(bookmark => bookmark.id)).toEqual(["bm-2", "later"]);
+    expect(ctx.notify).toHaveBeenCalledTimes(2);
   });
 
   it("onCurrentPage finds bookmarks whose CFI resolves onto the visible page", async () => {
@@ -192,7 +241,7 @@ describe("BookmarkManager", () => {
 
       await manager.toggle();
 
-      expect(await manager.list()).toHaveLength(1);
+      expect(manager.allSorted()).toHaveLength(1);
       expect(ctx.announce).toHaveBeenCalledWith("announcements.bookmarkAdded");
     });
 
@@ -206,7 +255,7 @@ describe("BookmarkManager", () => {
 
       await manager.toggle();
 
-      expect(await manager.list()).toHaveLength(0);
+      expect(manager.allSorted()).toHaveLength(0);
       expect(ctx.announce).toHaveBeenCalledWith("announcements.bookmarksRemoved");
     });
 

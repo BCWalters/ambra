@@ -25,7 +25,6 @@ import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import { LocaleProvider, useTranslation } from "../i18n/LocaleContext.js";
 import type { BookDetails, EpubInspectionData } from "./ReaderTypes.js";
-import type { Bookmark } from "../library/LibraryDatabase.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -73,7 +72,7 @@ const ReaderAppInner: FC = () => {
     restoreContentFocus,
     getDiagnosticsText,
     toggleBookmark,
-    listBookmarks,
+    refreshBookmarks,
     removeBookmark,
     goToBookmark,
     addHighlight,
@@ -158,7 +157,6 @@ const ReaderAppInner: FC = () => {
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [openError, setOpenError] = useState<string | null>(null);
   // Shared between the toolbar and the progress scrubber (see
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
@@ -218,41 +216,17 @@ const ReaderAppInner: FC = () => {
     setInspectionData(getEpubInspectionData());
   }, [isInspectorOpen, inspectionData, getEpubInspectionData]);
 
-  // Re-fetches every time the Bookmarks/Highlights panel opens (unlike
-  // book details above, which only ever needs fetching once per book) —
-  // bookmarks change far more often, via the toolbar's "Bookmark this
-  // page" button, so a stale list from an earlier open would routinely
-  // miss ones just added.
+  // Refresh on open for edits made in another reader tab; local mutations
+  // already publish through the controller's single annotation snapshot.
   useEffect(() => {
-    if (!isAnnotationsOpen) {
-      return;
-    }
-    let cancelled = false;
-    void listBookmarks().then((list) => {
-      if (!cancelled) {
-        setBookmarks(list);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isAnnotationsOpen, listBookmarks]);
+    if (isAnnotationsOpen) void refreshBookmarks();
+  }, [isAnnotationsOpen, refreshBookmarks]);
 
   const handleToggleBookmark = (): void => {
-    // Re-fetches the full list afterward rather than patching local state
-    // in place — unlike a plain add (always exactly one new entry),
-    // `toggleBookmark` can *remove* an arbitrary number of entries (every
-    // bookmark on the current page), so there's no single "diff" to
-    // apply locally that's simpler than just asking for the current
-    // truth again. Keeps the Bookmarks panel's list correct even if it's
-    // already open when this fires, not just the next time it opens.
-    void toggleBookmark()
-      .then(() => listBookmarks())
-      .then(setBookmarks);
+    void toggleBookmark();
   };
 
   const handleRemoveBookmark = (id: string): void => {
-    setBookmarks((current) => current.filter((bookmark) => bookmark.id !== id));
     void removeBookmark(id);
   };
 
@@ -316,12 +290,6 @@ const ReaderAppInner: FC = () => {
 
   const handleImportAnnotationsFile = async (file: File): Promise<void> => {
     await importAnnotationsFile(file);
-    // The controller's own highlight cache and `snapshot.highlights`
-    // update on their own (see `importAnnotationsFile`'s `notify()`),
-    // but `bookmarks` is separate local state (see the effect above) —
-    // refresh it explicitly so a newly imported bookmark shows up
-    // immediately rather than only after the panel is closed/reopened.
-    setBookmarks(await listBookmarks());
   };
 
   const handleSelectSearchResult = (cfi: string): void => {
@@ -432,7 +400,7 @@ const ReaderAppInner: FC = () => {
           />
 
           <AnnotationsPanel
-            bookmarks={bookmarks}
+            bookmarks={snapshot.bookmarks}
             onSelectBookmark={handleSelectBookmark}
             onRemoveBookmark={handleRemoveBookmark}
             highlights={snapshot.highlights}

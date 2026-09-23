@@ -6,7 +6,7 @@ import type {
   OpfMetaEntry,
   PageTheme,
 } from "@ambra/engine";
-import type { Highlight } from "../library/LibraryDatabase.js";
+import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { SearchResultItem } from "./SearchCoordinator.js";
@@ -139,6 +139,7 @@ export interface ReaderSnapshot {
   isBookmarked: boolean;
   /** Per-visible-page version of `isBookmarked`. */
   bookmarkedPages: readonly boolean[];
+  bookmarks: readonly Bookmark[];
   /** Font-size multiplier; always 1 for fixed-layout content. */
   fontScale: number;
   lineSpacing: number;

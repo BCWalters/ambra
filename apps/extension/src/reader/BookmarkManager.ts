@@ -1,4 +1,4 @@
-import { Locator } from "@ambra/engine";
+import { EpubCfi, Locator } from "@ambra/engine";
 import type { DomBreakPoint, LocatorResolver, Page } from "@ambra/engine";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
@@ -16,13 +16,6 @@ export interface BookmarkManagerContext {
   spineIndex(): number;
   chapterLabel(spineIndex: number): string;
   announce(translationKey: keyof StringCatalog): void;
-  /** Surfaces a failed save (e.g. a full storage quota) as a
-   * non-blocking transient toast — see
-   * `ReaderController.reportTransientError`. A bookmark the reader
-   * explicitly asked for that silently never appears, with no
-   * indication why, is exactly the kind of gap a dedicated error-
-   * handling pass needs to close (previously this just swallowed the
-   * error entirely). */
   reportError(err: unknown): void;
   notify(): void;
 }
@@ -62,14 +55,40 @@ export class BookmarkManager {
     }
   }
 
-  public list(): Promise<Bookmark[]> {
-    return this.library.listBookmarksForBook(this.bookId);
+  public allSorted(): Bookmark[] {
+    return [...this.cache].sort((a, b) => {
+      try {
+        return EpubCfi.compare(a.cfi, b.cfi);
+      } catch {
+        return a.createdAt - b.createdAt;
+      }
+    });
   }
 
-  public remove(id: string): Promise<void> {
-    this.cache = this.cache.filter((bookmark) => bookmark.id !== id);
+  public async refresh(): Promise<void> {
+    try {
+      await this.load();
+      this.ctx.notify();
+    } catch (error) {
+      this.ctx.reportError(error);
+    }
+  }
+
+  public async remove(id: string): Promise<void> {
+    await this.removeCommitted([id]);
+  }
+
+  private async removeCommitted(ids: readonly string[]): Promise<boolean> {
+    try {
+      await this.library.removeBookmarks(ids);
+    } catch (error) {
+      this.ctx.reportError(error);
+      return false;
+    }
+    const removed = new Set(ids);
+    this.cache = this.cache.filter(bookmark => !removed.has(bookmark.id));
     this.ctx.notify();
-    return this.library.removeBookmark(id);
+    return true;
   }
 
   /** Adds a bookmark at the current position, or removes every
@@ -80,13 +99,10 @@ export class BookmarkManager {
       await this.add();
       return;
     }
-    const removedIds = new Set(existing.map((bookmark) => bookmark.id));
-    this.cache = this.cache.filter((bookmark) => !removedIds.has(bookmark.id));
+    if (!await this.removeCommitted(existing.map(bookmark => bookmark.id))) return;
     this.ctx.announce(
       existing.length > 1 ? "announcements.bookmarksRemoved" : "announcements.bookmarkRemoved",
     );
-    this.ctx.notify();
-    await Promise.all(existing.map((bookmark) => this.library.removeBookmark(bookmark.id)));
   }
 
   /** Every saved bookmark on the current page(s). */

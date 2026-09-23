@@ -46,7 +46,7 @@ export interface UseReaderControllerResult {
   getDiagnosticsText: () => string | undefined;
   addBookmark: () => Promise<Bookmark | undefined>;
   toggleBookmark: () => Promise<void>;
-  listBookmarks: () => Promise<Bookmark[]>;
+  refreshBookmarks: () => Promise<void>;
   removeBookmark: (id: string) => Promise<void>;
   goToBookmark: (cfi: string) => Promise<void>;
   addHighlight: (style: HighlightStyle, openNoteEditor?: boolean) => Promise<void>;
@@ -309,8 +309,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     await controller?.toggleBookmark();
   }, [controller]);
 
-  const listBookmarks = useCallback(async () => {
-    return (await controller?.listBookmarks()) ?? [];
+  const refreshBookmarks = useCallback(async () => {
+    await controller?.refreshBookmarks();
   }, [controller]);
 
   const removeBookmark = useCallback(
@@ -456,7 +456,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     getDiagnosticsText,
     addBookmark,
     toggleBookmark,
-    listBookmarks,
+    refreshBookmarks,
     removeBookmark,
     goToBookmark,
     addHighlight,

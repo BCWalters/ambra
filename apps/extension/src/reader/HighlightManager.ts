@@ -6,10 +6,7 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
 import type { ActiveHighlightState } from "./ReaderTypes.js";
 
-/** What `HighlightManager` needs from `ReaderController`. Painting
- * highlights (`applyHighlightsToCurrentHost`) and note markers
- * (`updateNoteMarkers`) stay in `ReaderController`, since both need
- * live host/document access — this manager only triggers a repaint. */
+/** Persistence and cached annotations are independent of DOM painting. */
 export interface HighlightManagerContext {
   spineIndex(): number;
   spineIndexForDocument?(document: Document): number;
@@ -26,10 +23,6 @@ export interface HighlightManagerContext {
   announce(translationKey: keyof StringCatalog): void;
   getActiveHighlight(): ActiveHighlightState | undefined;
   setActiveHighlight(state: ActiveHighlightState | undefined): void;
-  /** Surfaces a failed save (e.g. a full storage quota) as a
-   * non-blocking transient toast — see
-   * `ReaderController.reportTransientError` and `BookmarkManagerContext`'s
-   * identical member. */
   reportError(err: unknown): void;
   notify(): void;
 }
@@ -131,7 +124,16 @@ export class HighlightManager {
   /** Removes a highlight and repaints the current host if it belonged
    * to the open spine item. */
   public async remove(id: string): Promise<void> {
-    await this.library.removeHighlight(id);
+    try {
+      await this.library.removeHighlight(id);
+    } catch (error) {
+      this.ctx.reportError(error);
+      return;
+    }
+    this.removeFromCache(id);
+  }
+
+  private removeFromCache(id: string): void {
     for (const [spineIndex, highlights] of this.cache) {
       const index = highlights.findIndex((highlight) => highlight.id === id);
       if (index !== -1) {
@@ -148,54 +150,44 @@ export class HighlightManager {
     this.ctx.notify();
   }
 
-  /** Attaches, edits, or clears (pass `undefined`) a note on a
-   * highlight (issue #25). */
-  public async setNote(id: string, note: string | undefined): Promise<void> {
-    for (const highlights of this.cache.values()) {
-      const index = highlights.findIndex((highlight) => highlight.id === id);
-      if (index !== -1) {
-        const updated: Highlight = { ...highlights[index]!, note };
-        try {
-          await this.library.updateHighlight(updated);
-        } catch (err) {
-          this.ctx.reportError(err);
-          return;
-        }
-        highlights[index] = updated;
-        const active = this.ctx.getActiveHighlight();
-        if (active?.highlight.id === id) {
-          this.ctx.setActiveHighlight({ ...active, highlight: updated });
-        }
-        this.ctx.updateNoteMarkers();
-        this.ctx.notify();
-        return;
-      }
-    }
+  public setNote(id: string, note: string | undefined): Promise<void> {
+    return this.update(id, { note });
   }
 
-  /** Changes a highlight's color/style (issue #79). */
-  public async setStyle(id: string, style: HighlightStyle): Promise<void> {
-    for (const [spineIndex, highlights] of this.cache) {
-      const index = highlights.findIndex((highlight) => highlight.id === id);
-      if (index !== -1) {
-        const updated: Highlight = { ...highlights[index]!, style };
-        try {
-          await this.library.updateHighlight(updated);
-        } catch (err) {
-          this.ctx.reportError(err);
-          return;
-        }
-        highlights[index] = updated;
-        const active = this.ctx.getActiveHighlight();
-        if (active?.highlight.id === id) {
-          this.ctx.setActiveHighlight({ ...active, highlight: updated });
-        }
-        if (this.ctx.isSpineVisible?.(spineIndex) ?? spineIndex === this.ctx.spineIndex()) {
-          this.ctx.applyHighlightsToCurrentHost();
-        }
-        this.ctx.notify();
-        return;
-      }
+  public setStyle(id: string, style: HighlightStyle): Promise<void> {
+    return this.update(id, { style });
+  }
+
+  private async update(id: string, patch: Parameters<LibraryDatabase["patchHighlight"]>[1]): Promise<void> {
+    if (!Array.from(this.cache.values()).some(highlights => highlights.some(highlight => highlight.id === id))) {
+      this.ctx.reportError(new Error("The highlight is not part of the open book."));
+      return;
     }
+    let updated: Highlight | undefined;
+    try {
+      updated = await this.library.patchHighlight(id, patch);
+    } catch (error) {
+      this.ctx.reportError(error);
+      return;
+    }
+    if (!updated) {
+      this.removeFromCache(id);
+      this.ctx.reportError(new Error("The highlight no longer exists."));
+      return;
+    }
+    // Look up the current cache after commit: import/refresh may have replaced it.
+    const highlights = this.cache.get(updated.spineIndex);
+    const index = highlights?.findIndex(highlight => highlight.id === id) ?? -1;
+    const styleChanged = highlights?.[index]?.style !== updated.style;
+    if (highlights && index !== -1) highlights[index] = updated;
+    const active = this.ctx.getActiveHighlight();
+    if (active?.highlight.id === id) {
+      this.ctx.setActiveHighlight({ ...active, highlight: updated });
+    }
+    if (styleChanged && (this.ctx.isSpineVisible?.(updated.spineIndex) ?? updated.spineIndex === this.ctx.spineIndex())) {
+      this.ctx.applyHighlightsToCurrentHost();
+    }
+    this.ctx.updateNoteMarkers();
+    this.ctx.notify();
   }
 }

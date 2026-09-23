@@ -602,6 +602,7 @@ export class ReaderController {
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarks.onCurrentPage().length > 0,
         bookmarkedPages: this.bookmarks.flagsForCurrentPages(),
+        bookmarks: this.bookmarks.allSorted(),
         fontScale: this.isFixedLayoutHost(this.host) ? 1 : requestedLayout.fontScale,
         lineSpacing: this.isFixedLayoutHost(this.host) ? ReadingTheme.DEFAULT_LINE_SPACING : requestedLayout.lineSpacing,
         letterSpacing: this.isFixedLayoutHost(this.host)
@@ -786,8 +787,8 @@ export class ReaderController {
     return this.bookmarks.add();
   }
 
-  public listBookmarks(): Promise<Bookmark[]> {
-    return this.bookmarks.list();
+  public refreshBookmarks(): Promise<void> {
+    return this.bookmarks.refresh();
   }
 
   public removeBookmark(id: string): Promise<void> {
