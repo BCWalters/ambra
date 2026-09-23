@@ -645,6 +645,7 @@ const ReaderAppInner: FC = () => {
             {(seekError || (snapshot.error && snapshot.errorSeverity)) && (
               <FriendlyError
                 message={seekError ?? snapshot.error!}
+                notificationId={snapshot.errorNotificationId}
                 detail={seekError ? undefined : snapshot.errorDetail}
                 severity={seekError ? "transient" : snapshot.errorSeverity!}
                 onDismiss={() => { setSeekError(undefined); dismissError(); }}

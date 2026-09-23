@@ -21,6 +21,8 @@ export interface ProgressScrubberProps {
   handlers: {
     onPointerEnter: () => void;
     onPointerLeave: () => void;
+    onFocus: () => void;
+    onBlur: () => void;
   };
   /** A live, side-effect-free preview of where a drag at `fraction`
    * would land — see `ReaderController.previewSeek`. */
@@ -400,6 +402,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       ref={barRef}
       onPointerEnter={handlers.onPointerEnter}
       onPointerLeave={handlers.onPointerLeave}
+      onFocus={handlers.onFocus}
+      onBlur={handlers.onBlur}
       style={{
         position: "absolute",
         bottom: 0,

@@ -64,9 +64,9 @@ export const GoToDialog: FC<GoToDialogProps> = ({
 
   const isPage = mode === "page";
   const max = isPage ? bookPageCount : 100;
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number(value);
   const isValid =
-    value.trim() !== "" && Number.isFinite(parsed) && parsed >= 1 && (max === undefined || parsed <= max);
+    /^\d+$/.test(value.trim()) && Number.isSafeInteger(parsed) && parsed >= 1 && max !== undefined && parsed <= max;
 
   const submit = (): void => {
     if (!isValid || max === undefined) {
@@ -78,7 +78,12 @@ export const GoToDialog: FC<GoToDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}>
-      <DialogSurface style={{ background: chromeTheme.backgroundSolid }}>
+      <DialogSurface
+        onKeyDown={(event) => {
+          if (event.key === "Escape") event.stopPropagation();
+        }}
+        style={{ background: chromeTheme.backgroundSolid }}
+      >
         <DialogBody>
           <DialogTitle>{isPage ? t("goTo.pageTitle") : t("goTo.percentageTitle")}</DialogTitle>
           <DialogContent>

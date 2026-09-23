@@ -174,6 +174,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const restoreInspectorFocus = useRestoreFocusTarget();
+  const restoreGoToFocus = useRestoreFocusTarget();
   const reduceMotion = usePrefersReducedMotion();
   const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
@@ -182,7 +183,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
       return;
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.defaultPrevented) {
         onRequestClose();
       }
     };
@@ -383,6 +384,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       appearance="secondary"
                       size="small"
                       icon={<DocumentPageNumberRegular style={{ color: chromeTheme.accent }} />}
+                        {...restoreGoToFocus}
                       onClick={() => setGoToDialogMode("page")}
                       style={goToButtonStyle(chromeTheme.backgroundSolid)}
                     >
@@ -393,6 +395,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                     appearance="secondary"
                     size="small"
                     icon={<TextPercentRegular style={{ color: chromeTheme.accent }} />}
+                    {...restoreGoToFocus}
                     onClick={() => setGoToDialogMode("percentage")}
                     style={goToButtonStyle(chromeTheme.backgroundSolid)}
                   >

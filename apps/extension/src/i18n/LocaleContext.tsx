@@ -81,6 +81,10 @@ export const LocaleProvider: FC<LocaleProviderProps> = ({ children }) => {
 
   const locale = resolveLocale(preference);
 
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
   return (
     <LocaleContext.Provider value={{ locale, preference, setPreference }}>{children}</LocaleContext.Provider>
   );

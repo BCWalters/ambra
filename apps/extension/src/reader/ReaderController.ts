@@ -232,6 +232,7 @@ export class ReaderController {
     this.handleDisclosureChange(spineIndex, source);
   });
   private error: string | undefined;
+  private errorNotificationId = 0;
   private errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
   /** A smaller, de-emphasized technical detail shown alongside `error`
    * for "actionFailed" errors — e.g. the raw underlying exception
@@ -616,6 +617,7 @@ export class ReaderController {
         pageTurnAnimationStyle: this.pageTurnAnimationStyle,
         isLoading: this.isLoading,
         error: this.error,
+        errorNotificationId: this.errorNotificationId,
         errorSeverity: this.errorSeverity,
         errorDetail: this.errorDetail,
         announcement: this.announcement,
@@ -673,8 +675,7 @@ export class ReaderController {
     if (this.pendingNavigationLoadError) {
       const message = this.pendingNavigationLoadError;
       this.pendingNavigationLoadError = undefined;
-      this.error = `This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`;
-      this.errorSeverity = "transient";
+      this.setNotification(`This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`, "transient");
       this.errorDetail = undefined;
       this.notify();
     }
@@ -1851,38 +1852,26 @@ export class ReaderController {
     this.notify();
   }
 
-  /** Surfaces a non-blocking "transient" error toast (see
-   * `FriendlyError`) for a failed user-initiated action that isn't
-   * severe enough to interrupt reading (the previous page stays fully
-   * visible/usable underneath) but *is* severe enough that silently
-   * doing nothing would be confusing — a bookmark or highlight the
-   * reader explicitly asked for that simply never appeared, with no
-   * explanation. `describeStorageError` gives the one common failure
-   * mode here (a full IndexedDB quota) a plain-language explanation;
-   * every other failure keeps its own underlying message, unmodified. */
+  private setNotification(
+    message: string,
+    severity: NonNullable<ReaderSnapshot["errorSeverity"]>,
+    detail?: string,
+  ): void {
+    this.errorNotificationId++;
+    this.error = message;
+    this.errorSeverity = severity;
+    this.errorDetail = detail;
+  }
+
+  /** Failed actions stay visible without interrupting the current reading surface. */
   private reportTransientError(err: unknown, action: string, subject: string): void {
-    this.error = describeStorageError(err, action, subject);
-    this.errorSeverity = "transient";
-    this.errorDetail = undefined;
+    this.setNotification(describeStorageError(err, action, subject), "transient");
     this.notify();
   }
 
-  /** Surfaces a "weightier" toast than `reportTransientError` — same
-   * corner placement, but includes `FriendlyError`'s illustration and,
-   * critically, does *not* auto-dismiss (see issue #114). For a
-   * reader-initiated action (so far: annotation import) that produced
-   * nothing usable at all — not just "one save failed in the
-   * background" — silently timing out on its own reads as broken, not
-   * just unlucky; the reader deliberately picked a file and deserves an
-   * explanation that stays up until they've seen it. `detail` is an
-   * optional, smaller/de-emphasized technical string (e.g. the raw
-   * underlying exception message) shown alongside `message` rather than
-   * in place of it — see issue #119: a friendly, actionable sentence
-   * should always be the primary text; a raw error string never should. */
+  /** Import failures persist until dismissed; technical details are secondary copy. */
   private reportImportFailure(message: string, detail?: string): void {
-    this.error = message;
-    this.errorSeverity = "actionFailed";
-    this.errorDetail = detail;
+    this.setNotification(message, "actionFailed", detail);
     this.notify();
   }
 
@@ -1903,16 +1892,9 @@ export class ReaderController {
     );
   }
 
-  /** Surfaces a quiet, non-error acknowledgement — same placement/
-   * timing as `reportTransientError`'s toast, but without its "that
-   * didn't work" framing, since nothing actually failed (see issue
-   * #115: importing a file whose annotations are all already present
-   * shouldn't look like an error, but silently doing nothing is just as
-   * confusing as it is for a real failure). */
+  /** Quiet acknowledgement, including imports whose annotations already exist. */
   private reportInfo(message: string): void {
-    this.error = message;
-    this.errorSeverity = "info";
-    this.errorDetail = undefined;
+    this.setNotification(message, "info");
     this.notify();
   }
 
@@ -3739,10 +3721,9 @@ export class ReaderController {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (token === this.spineOpenToken) {
-        this.error = message;
         // A failed replacement leaves the previous host visible; only
         // the very first load can leave the reader with nothing shown.
-        this.errorSeverity = this.host ? "transient" : "blocking";
+        this.setNotification(message, this.host ? "transient" : "blocking");
         this.errorDetail = undefined;
         this.diagnostics.record(
           `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message} severity=${this.errorSeverity}`,

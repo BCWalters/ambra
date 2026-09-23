@@ -16,6 +16,8 @@ const TRANSIENT_AUTO_DISMISS_MS = 8000;
 
 export interface FriendlyErrorProps {
   message: string;
+  /** Change for a fresh notification even when its message is identical. */
+  notificationId?: number;
   /** A smaller, de-emphasized technical detail (e.g. the raw underlying
    * exception message) shown below `message` for "actionFailed" errors
    * only — see issue #119: a friendly, actionable sentence should
@@ -52,6 +54,7 @@ export interface FriendlyErrorProps {
  */
 export const FriendlyError: FC<FriendlyErrorProps> = ({
   message,
+  notificationId,
   detail,
   severity,
   onDismiss,
@@ -61,16 +64,19 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   const t = useTranslation();
   const [copied, setCopied] = useState(false);
   const headingRef = useRef<HTMLDivElement | null>(null);
+  const onDismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   useEffect(() => {
     if (severity !== "transient" && severity !== "info") {
       return;
     }
-    const timeout = setTimeout(onDismiss, TRANSIENT_AUTO_DISMISS_MS);
+    const timeout = setTimeout(() => onDismissRef.current(), TRANSIENT_AUTO_DISMISS_MS);
     return () => clearTimeout(timeout);
-    // `onDismiss` is a stable callback (see its callers) — only
-    // `severity` changing (a fresh error) should re-arm the timer.
-  }, [severity]);
+  }, [severity, message, notificationId]);
 
 
   // Moves keyboard focus onto the card itself for a "blocking" error —

@@ -151,6 +151,7 @@ export interface ReaderSnapshot {
   pageTurnAnimationStyle: PageTurnAnimationStyle;
   isLoading: boolean;
   error: string | undefined;
+  errorNotificationId: number;
   /** "blocking" (nothing readable on screen), "transient" (a navigation
    * failed but the previous content is still shown, auto-dismisses),
    * "actionFailed" (a reader-initiated action, e.g. an annotation

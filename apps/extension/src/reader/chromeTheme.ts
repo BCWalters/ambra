@@ -93,6 +93,8 @@ interface ChromeThemePalette {
    * theme got one too, not just Ambra, so the same idea pays off across
    * the board — see the issue's own suggestion to do this. */
   readonly accent: string;
+  /** Text emphasis on backgroundSolid, with at least 4.5:1 contrast. */
+  readonly accentForeground: string;
 }
 
 export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "ambra";
@@ -117,29 +119,34 @@ export const CHROME_THEMES: Readonly<Record<ChromeThemeChoice, ChromeThemePalett
     // the whole chrome that actually reads as the same amber gem the
     // icon shows, addressing the issue's core complaint directly.
     accent: "#f5a531",
+    accentForeground: "#7a3e00",
   },
   silver: {
     label: "Silver",
     background: "linear-gradient(135deg, rgba(244, 245, 248, 0.90), rgba(222, 225, 231, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(244, 245, 248), rgb(222, 225, 231))",
     accent: "#5b6472",
+    accentForeground: "#404a59",
   },
   green: {
     label: "Green",
     background: "linear-gradient(135deg, rgba(206, 231, 218, 0.90), rgba(178, 212, 194, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(206, 231, 218), rgb(178, 212, 194))",
     accent: "#1f7a4d",
+    accentForeground: "#155d39",
   },
   blue: {
     label: "Blue",
     background: "linear-gradient(135deg, rgba(199, 215, 236, 0.90), rgba(176, 199, 226, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(199, 215, 236), rgb(176, 199, 226))",
     accent: "#1d5aa8",
+    accentForeground: "#154780",
   },
   purple: {
     label: "Purple",
     background: "linear-gradient(135deg, rgba(227, 212, 233, 0.90), rgba(211, 189, 223, 0.86))",
     backgroundSolid: "linear-gradient(135deg, rgb(227, 212, 233), rgb(211, 189, 223))",
     accent: "#7c3fa0",
+    accentForeground: "#612a82",
   },
 };
