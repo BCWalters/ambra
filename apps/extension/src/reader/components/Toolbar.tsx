@@ -509,7 +509,11 @@ export const Toolbar: FC<ToolbarProps> = ({
             size="small"
             checked={snapshot.isBookmarked}
             icon={snapshot.isBookmarked ? <BookmarkFilled /> : <BookmarkRegular />}
-            onClick={onToggleBookmark}
+            onClick={(event) => {
+              onToggleBookmark();
+              // Pointer activation must not pin chrome; keyboard/AT keeps focus.
+              if (event.detail > 0) event.currentTarget.blur();
+            }}
             style={{ marginLeft: 8 }}
           />
         </Tooltip>
