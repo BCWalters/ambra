@@ -5,8 +5,8 @@ import { LibrarySession, type LibraryBookViewModel } from "./LibrarySession.js";
 import { DEFAULT_LIBRARY_SORT } from "./LibrarySortOption.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, openLibraryTab, openReaderTab } from "../navigation.js";
-import { DEFAULT_CHROME_THEME } from "../reader/chromeTheme.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
+import { DEFAULT_GLOBAL_READING_SETTINGS, type GlobalReadingSettings } from "./ReadingSettings.js";
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { describeStorageError } from "../StorageErrors.js";
 
@@ -33,14 +33,10 @@ export interface UseLibraryResult {
   importFiles: (files: readonly File[]) => Promise<void>;
   removeBook: (id: string) => Promise<void>;
   openBook: (id: string) => void;
-  /** The same "Reader Theme" chosen in the reader's own Settings menu
-   * (`ReaderController.setChromeTheme`/`LibraryDatabase.
-   * getDefaultChromeTheme`) — read once, here, so the Library page can
-   * carry the same chrome color across as its own page background
-   * rather than reading as a completely separate, undecorated app once
-   * a reader has picked a theme. Not editable from here; the Settings
-   * menu inside the reader remains the one place it's chosen. */
+  /** App-global settings, shared live with open readers. */
   chromeTheme: ChromeThemeChoice;
+  settings: GlobalReadingSettings;
+  setSettings: (patch: Partial<GlobalReadingSettings>) => void;
   /** How `books` is ordered — persisted across reloads via
    * `LibraryDatabase.getDefaultLibrarySort`. */
   sort: LibrarySortOption;
@@ -65,15 +61,14 @@ export interface UseLibraryResult {
  * React library page: opens the database once, lists books (in whichever
  * order `sort` currently specifies), creates/revokes `blob:` object URLs
  * for cover images as the list changes so `<img>` tags can display them
- * directly, and reads the reader's own saved chrome theme preference so
- * the page can carry the same color across (see `chromeTheme` on
- * `UseLibraryResult`). */
+ * directly, and keeps app-global settings in sync with open readers. */
 export function useLibrary(): UseLibraryResult {
   const [db, setDb] = useState<LibraryDatabase | null>(null);
   const [rawBooks, setRawBooks] = useState<LibraryBookViewModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [chromeTheme, setChromeTheme] = useState<ChromeThemeChoice>(DEFAULT_CHROME_THEME);
+  const [settings, setSettingsState] = useState<GlobalReadingSettings>(DEFAULT_GLOBAL_READING_SETTINGS);
+  const settingsRevision = useRef(0);
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
   const [storageUsage, setStorageUsage] = useState<StorageUsageEstimate | undefined>(undefined);
   const sessionRef = useRef<LibrarySession | undefined>(undefined);
@@ -97,9 +92,16 @@ export function useLibrary(): UseLibraryResult {
     if (books && sessionRef.current === session) setRawBooks(books);
   }, []);
 
+  const refreshSettings = useCallback(async (database: LibraryDatabase): Promise<void> => {
+    const revision = ++settingsRevision.current;
+    const saved = await database.getGlobalReadingSettings();
+    if (ownsDatabase(database) && revision === settingsRevision.current) setSettingsState(saved);
+  }, [ownsDatabase]);
+
   useEffect(() => {
     let cancelled = false;
     let session: LibrarySession | undefined;
+    let unsubscribe: (() => void) | undefined;
 
     void (async () => {
       try {
@@ -112,11 +114,15 @@ export function useLibrary(): UseLibraryResult {
         sessionRef.current = session;
         setDb(database);
         refreshStorageUsage();
-        const [savedTheme, savedSort] = await Promise.all([
-          database.getDefaultChromeTheme(), database.getDefaultLibrarySort(),
+        unsubscribe = database.subscribePreferences(() => {
+          void refreshSettings(database).catch((err) => {
+            if (!cancelled) setError(describeStorageError(err, "open", "app settings"));
+          });
+        });
+        const [, savedSort] = await Promise.all([
+          refreshSettings(database), database.getDefaultLibrarySort(),
         ]);
         if (cancelled) return;
-        if (savedTheme) setChromeTheme(savedTheme);
         if (savedSort) setSortState(savedSort);
         await refresh(database);
       } catch (err) {
@@ -131,10 +137,20 @@ export function useLibrary(): UseLibraryResult {
     })();
     return () => {
       cancelled = true;
+      unsubscribe?.();
       if (sessionRef.current === session) sessionRef.current = undefined;
       session?.dispose();
     };
-  }, [refresh, refreshStorageUsage]);
+  }, [refresh, refreshStorageUsage, refreshSettings]);
+
+  const setSettings = useCallback((patch: Partial<GlobalReadingSettings>): void => {
+    if (!db || !ownsDatabase(db) || isLoading) return;
+    void db.patchGlobalReadingSettings(patch).then(() => {
+      if (ownsDatabase(db)) return refreshSettings(db);
+    }).catch((err) => {
+      if (ownsDatabase(db)) setError(describeStorageError(err, "save", "app settings"));
+    });
+  }, [db, isLoading, ownsDatabase, refreshSettings]);
 
   const importFiles = useCallback(
     async (files: readonly File[]): Promise<void> => {
@@ -282,7 +298,9 @@ export function useLibrary(): UseLibraryResult {
     importFiles,
     removeBook,
     openBook,
-    chromeTheme,
+    chromeTheme: settings.chromeTheme,
+    settings,
+    setSettings,
     sort,
     setSort,
     isFullTab,

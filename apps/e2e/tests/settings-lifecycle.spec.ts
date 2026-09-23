@@ -123,6 +123,7 @@ for (const trigger of ["animated turn", "held load"] as const) {
           const controller = Reflect.get(window, "__settingsController");
           const frames = Array.from(document.querySelectorAll("iframe"));
           const library = controller.library;
+          const settings = await library.getBookReadingSettings(controller.bookId);
           return {
             mode: controller.snapshot().viewMode,
             width: controller.width,
@@ -142,8 +143,8 @@ for (const trigger of ["animated turn", "held load"] as const) {
               frame.contentDocument!.documentElement.style.getPropertyValue("--ambra-font-family")),
             focused: frames.includes(document.activeElement as HTMLIFrameElement),
             persisted: await Promise.all([
-              library.getDefaultViewMode(), library.getDefaultFontScale(), library.getDefaultFontFamily(),
-              library.getDefaultLineSpacing(), library.getDefaultLetterSpacing(), library.getDefaultContentWidth(),
+              (await library.getGlobalReadingSettings()).viewMode, settings.fontScale, settings.fontFamily,
+              settings.lineSpacing, settings.letterSpacing, settings.contentWidthEm,
             ]),
           };
         });
@@ -225,7 +226,10 @@ test("setters arriving during a settings reload settle only after the latest lay
     expect(completions).toEqual(Array.from({ length: 5 }, () => ({
       scale: 1, mode: "paginated", width: 1100, busy: false, columns: 2,
     })));
-    expect(await page.evaluate(() => Reflect.get(window, "__settingsController").library.getDefaultFontScale())).toBe(1);
+    expect(await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__settingsController");
+      return (await controller.library.getBookReadingSettings(controller.bookId)).fontScale;
+    })).toBe(1);
     await expect.poll(() => page.locator("iframe").count()).toBe(2);
     await expect.poll(() => page.evaluate(() =>
       Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(2);
@@ -256,7 +260,7 @@ test("a failed settings reload rejects its waiter and still applies the newer qu
       const controller = Reflect.get(window, "__settingsController");
       return {
         scale: controller.fontScale,
-        persisted: await controller.library.getDefaultFontScale(),
+        persisted: (await controller.library.getBookReadingSettings(controller.bookId)).fontScale,
         busy: controller.isLoadInFlight || controller.isTurningPage || controller.isApplyingLayout,
       };
     });

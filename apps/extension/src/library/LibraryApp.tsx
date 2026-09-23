@@ -36,6 +36,7 @@ import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
 import { AboutFlyout } from "./AboutFlyout.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
+import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.js";
 
 const SORT_GROUP_NAME = "librarySort";
 
@@ -293,6 +294,8 @@ export const LibraryApp: FC = () => {
     removeBook,
     openBook,
     chromeTheme,
+    settings,
+    setSettings,
     sort,
     setSort,
     isFullTab,
@@ -322,8 +325,8 @@ export const LibraryApp: FC = () => {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          padding: "10px 16px",
+          gap: 4,
+          padding: "10px",
           borderBottom: `1px solid ${CHROME_BORDER}`,
           boxShadow: CHROME_SHADOW,
         }}
@@ -333,6 +336,15 @@ export const LibraryApp: FC = () => {
           Ambra
         </Title2>
         <div style={{ flex: 1 }} />
+        <ReaderSettingsMenu
+          {...settings}
+          disabled={isLoading || !canImport}
+          isFixedLayout={false}
+          onSetViewMode={(viewMode) => setSettings({ viewMode })}
+          onSetBrightness={(brightness) => setSettings({ brightness })}
+          onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
+          onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
+        />
 
         <Menu
           checkedValues={{ [SORT_GROUP_NAME]: [sort] }}

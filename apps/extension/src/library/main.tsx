@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AmbraThemeProvider } from "@ambra/shell";
 import { LibraryApp } from "./LibraryApp.js";
+import { LocaleProvider } from "../i18n/LocaleContext.js";
 
 const container = document.getElementById("root");
 if (!container) {
@@ -11,7 +12,9 @@ if (!container) {
 createRoot(container).render(
   <StrictMode>
     <AmbraThemeProvider>
-      <LibraryApp />
+      <LocaleProvider>
+        <LibraryApp />
+      </LocaleProvider>
     </AmbraThemeProvider>
   </StrictMode>,
 );

@@ -1,10 +1,9 @@
 import { EpubCfi } from "@ambra/engine";
-import type { PageTheme, FontFamilyChoice, HighlightStyle, BookIdentifier, AccessibilityMetadata } from "@ambra/engine";
-import type { ViewMode } from "../reader/ViewMode.js";
-import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
-import type { PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
+import type { HighlightStyle, BookIdentifier, AccessibilityMetadata } from "@ambra/engine";
 import type { LocalePreference } from "../i18n/Locale.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
+import { DEFAULT_BOOK_READING_SETTINGS, DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
+import type { BookReadingSettings, GlobalReadingSettings } from "./ReadingSettings.js";
 
 /** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
  * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
@@ -157,17 +156,15 @@ interface BlobRecord {
   readonly blob: Blob;
 }
 
-/** A single key/value preference row — the default view mode (see
- * `view-mode-preference`) and default font-size scale (see
- * `ReadingTheme`/`toolbar-redesign`), modeled generically since more
- * reader-wide settings (theme, etc.) are likely to follow. */
+/** App-global preference rows, retained for compatibility with existing data.
+ * Book typography lives in a typed record in BOOK_SETTINGS_STORE. */
 interface PreferenceRecord {
   readonly key: string;
   readonly value: unknown;
 }
 
 const DB_NAME = "ambra-library";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const BOOKS_STORE = "books";
 const CONTENT_HASH_INDEX = "contentHash";
 const FILES_STORE = "bookFiles";
@@ -176,6 +173,12 @@ const PROGRESS_STORE = "readingProgress";
 const PREFERENCES_STORE = "preferences";
 const BOOKMARKS_STORE = "bookmarks";
 const HIGHLIGHTS_STORE = "highlights";
+const BOOK_SETTINGS_STORE = "bookReadingSettings";
+
+interface BookReadingSettingsRecord {
+  readonly bookId: string;
+  readonly settings: BookReadingSettings;
+}
 
 const VIEW_MODE_PREFERENCE_KEY = "defaultViewMode";
 const FONT_SCALE_PREFERENCE_KEY = "defaultFontScale";
@@ -189,6 +192,33 @@ const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
 const LOCALE_PREFERENCE_KEY = "localePreference";
 const LIBRARY_SORT_PREFERENCE_KEY = "defaultLibrarySort";
+const LEGACY_BOOK_SETTING_KEYS = {
+  fontScale: FONT_SCALE_PREFERENCE_KEY,
+  fontFamily: FONT_FAMILY_PREFERENCE_KEY,
+  lineSpacing: LINE_SPACING_PREFERENCE_KEY,
+  letterSpacing: LETTER_SPACING_PREFERENCE_KEY,
+  contentWidthEm: CONTENT_WIDTH_PREFERENCE_KEY,
+  pageTheme: PAGE_THEME_PREFERENCE_KEY,
+} satisfies Record<keyof BookReadingSettings, string>;
+const GLOBAL_SETTING_KEYS = {
+  viewMode: VIEW_MODE_PREFERENCE_KEY,
+  brightness: BRIGHTNESS_PREFERENCE_KEY,
+  chromeTheme: CHROME_THEME_PREFERENCE_KEY,
+  pageTurnAnimationStyle: PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY,
+} satisfies Record<keyof GlobalReadingSettings, string>;
+
+function settingsFromPreferences<T extends object>(
+  defaults: T,
+  keys: Record<keyof T, string>,
+  records: readonly PreferenceRecord[],
+): T {
+  const result = { ...defaults };
+  for (const key of Object.keys(keys) as (keyof T)[]) {
+    const value = records.find((record) => record.key === keys[key])?.value;
+    if (value !== undefined) result[key] = value as T[typeof key];
+  }
+  return result;
+}
 
 async function hashBookFile(blob: Blob): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
@@ -204,6 +234,9 @@ async function hashBookFile(blob: Blob): Promise<string> {
  * section.
  */
 export class LibraryDatabase {
+  private static readonly preferenceListeners = new Map<() => void, LibraryDatabase>();
+  private readonly subscriptions = new Set<() => void>();
+  private readonly preferenceSender = crypto.randomUUID();
   private constructor(private readonly db: IDBDatabase) {}
 
   /** A rough read on how much disk this origin is using/has available
@@ -275,6 +308,26 @@ export class LibraryDatabase {
         }
         if (!db.objectStoreNames.contains(HIGHLIGHTS_STORE)) {
           db.createObjectStore(HIGHLIGHTS_STORE, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(BOOK_SETTINGS_STORE)) {
+          const settingsStore = db.createObjectStore(BOOK_SETTINGS_STORE, { keyPath: "bookId" });
+          const preferences = request.transaction!.objectStore(PREFERENCES_STORE);
+          const saved = preferences.getAll();
+          saved.onsuccess = () => {
+            const settings = settingsFromPreferences(
+              DEFAULT_BOOK_READING_SETTINGS, LEGACY_BOOK_SETTING_KEYS, saved.result as PreferenceRecord[],
+            );
+            const cursorRequest = books.openCursor();
+            cursorRequest.onsuccess = () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) return;
+              settingsStore.put({ bookId: (cursor.value as BookMetadata).id, settings } satisfies BookReadingSettingsRecord);
+              cursor.continue();
+            };
+            // Copy and removal share the upgrade transaction: an aborted migration
+            // leaves both the old settings and every existing book untouched.
+            for (const key of Object.values(LEGACY_BOOK_SETTING_KEYS)) preferences.delete(key);
+          };
         }
       };
 
@@ -415,150 +468,6 @@ export class LibraryDatabase {
     return new Map(all.map((record) => [record.bookId, record]));
   }
 
-  /** The reader-wide default view mode (paginated/scroll) new books
-   * should open in, persisted across sessions — see
-   * `view-mode-preference`. `undefined` if never set, in which case
-   * callers should fall back to the "paginated" default themselves. */
-  public async getDefaultViewMode(): Promise<ViewMode | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, VIEW_MODE_PREFERENCE_KEY);
-    return record?.value as ViewMode | undefined;
-  }
-
-  public async setDefaultViewMode(mode: ViewMode): Promise<void> {
-    const record: PreferenceRecord = { key: VIEW_MODE_PREFERENCE_KEY, value: mode };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default font-size scale (see `ReadingTheme`) new
-   * chapters should open at, persisted across sessions the same way as
-   * `getDefaultViewMode`. `undefined` if never set, in which case callers
-   * should fall back to `1` (the theme's default) themselves. */
-  public async getDefaultFontScale(): Promise<number | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, FONT_SCALE_PREFERENCE_KEY);
-    return record?.value as number | undefined;
-  }
-
-  public async setDefaultFontScale(scale: number): Promise<void> {
-    const record: PreferenceRecord = { key: FONT_SCALE_PREFERENCE_KEY, value: scale };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default line-spacing multiplier (see
-   * `ReadingTheme.LINE_SPACING_PROPERTY`), persisted the same way as
-   * `getDefaultFontScale`. `undefined` if never set, in which case
-   * callers should fall back to `ReadingTheme.DEFAULT_LINE_SPACING`. */
-  public async getDefaultLineSpacing(): Promise<number | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, LINE_SPACING_PREFERENCE_KEY);
-    return record?.value as number | undefined;
-  }
-
-  public async setDefaultLineSpacing(spacing: number): Promise<void> {
-    const record: PreferenceRecord = { key: LINE_SPACING_PREFERENCE_KEY, value: spacing };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default extra letter-spacing (see
-   * `ReadingTheme.LETTER_SPACING_PROPERTY`), persisted the same way as
-   * `getDefaultFontScale`. `undefined` if never set, in which case
-   * callers should fall back to `ReadingTheme.DEFAULT_LETTER_SPACING`. */
-  public async getDefaultLetterSpacing(): Promise<number | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, LETTER_SPACING_PREFERENCE_KEY);
-    return record?.value as number | undefined;
-  }
-
-  public async setDefaultLetterSpacing(spacing: number): Promise<void> {
-    const record: PreferenceRecord = { key: LETTER_SPACING_PREFERENCE_KEY, value: spacing };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default reading column width in `em` (see
-   * `ReadingTheme.CONTENT_WIDTH_PROPERTY` — what a reader thinks of as
-   * "margins"), persisted the same way as `getDefaultFontScale`.
-   * `undefined` if never set, in which case callers should fall back to
-   * `ReadingTheme.DEFAULT_CONTENT_WIDTH_EM`. */
-  public async getDefaultContentWidth(): Promise<number | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, CONTENT_WIDTH_PREFERENCE_KEY);
-    return record?.value as number | undefined;
-  }
-
-  public async setDefaultContentWidth(widthEm: number): Promise<void> {
-    const record: PreferenceRecord = { key: CONTENT_WIDTH_PREFERENCE_KEY, value: widthEm };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default page color theme (see `ReadingTheme.PageTheme`)
-   * new chapters should open at, persisted the same way as
-   * `getDefaultFontScale`. `undefined` if never set, in which case
-   * callers should fall back to `ReadingTheme.DEFAULT_PAGE_THEME`. */
-  public async getDefaultPageTheme(): Promise<PageTheme | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, PAGE_THEME_PREFERENCE_KEY);
-    return record?.value as PageTheme | undefined;
-  }
-
-  public async setDefaultPageTheme(theme: PageTheme): Promise<void> {
-    const record: PreferenceRecord = { key: PAGE_THEME_PREFERENCE_KEY, value: theme };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default page brightness multiplier (see
-   * `ReadingTheme.MIN_BRIGHTNESS`, issue #92), persisted the same
-   * way as `getDefaultFontScale`. `undefined` if never set, in which
-   * case callers should fall back to `ReadingTheme.DEFAULT_BRIGHTNESS`. */
-  public async getDefaultBrightness(): Promise<number | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, BRIGHTNESS_PREFERENCE_KEY);
-    return record?.value as number | undefined;
-  }
-
-  public async setDefaultBrightness(brightness: number): Promise<void> {
-    const record: PreferenceRecord = { key: BRIGHTNESS_PREFERENCE_KEY, value: brightness };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader-wide default font family (see
-   * `ReadingTheme.FontFamilyChoice`), persisted the same way as
-   * `getDefaultFontScale`. `undefined` if never set, in which case
-   * callers should fall back to `ReadingTheme.DEFAULT_FONT_FAMILY`. */
-  public async getDefaultFontFamily(): Promise<FontFamilyChoice | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, FONT_FAMILY_PREFERENCE_KEY);
-    return record?.value as FontFamilyChoice | undefined;
-  }
-
-  public async setDefaultFontFamily(family: FontFamilyChoice): Promise<void> {
-    const record: PreferenceRecord = { key: FONT_FAMILY_PREFERENCE_KEY, value: family };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** The reader's own chrome color (see `ChromeThemeChoice`) — distinct
-   * from `getDefaultPageTheme`, which is the book *page's* background,
-   * not the toolbar/TOC/scrubber. Persisted the same way as the other
-   * reader-wide preferences. `undefined` if never set, in which case
-   * callers should fall back to `DEFAULT_CHROME_THEME`. */
-  public async getDefaultChromeTheme(): Promise<ChromeThemeChoice | undefined> {
-    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, CHROME_THEME_PREFERENCE_KEY);
-    return record?.value as ChromeThemeChoice | undefined;
-  }
-
-  public async setDefaultChromeTheme(theme: ChromeThemeChoice): Promise<void> {
-    const record: PreferenceRecord = { key: CHROME_THEME_PREFERENCE_KEY, value: theme };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
-  /** Which page-turn animation (see `PageTurnAnimationStyle`) to use for
-   * click/drag-driven page turns. `undefined` if never set, in which case
-   * callers should fall back to `DEFAULT_PAGE_TURN_ANIMATION_STYLE`. */
-  public async getDefaultPageTurnAnimationStyle(): Promise<PageTurnAnimationStyle | undefined> {
-    const record = await this.get<PreferenceRecord>(
-      PREFERENCES_STORE,
-      PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY,
-    );
-    return record?.value as PageTurnAnimationStyle | undefined;
-  }
-
-  public async setDefaultPageTurnAnimationStyle(style: PageTurnAnimationStyle): Promise<void> {
-    const record: PreferenceRecord = { key: PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY, value: style };
-    await this.put(PREFERENCES_STORE, record);
-  }
-
   /** The reader's UI language preference (issue #50) — either an
    * explicit locale a reader picked in settings, or `"system"` (detect
    * from the browser — see `Locale.ts`'s `detectBrowserLocale`), the
@@ -592,7 +501,7 @@ export class LibraryDatabase {
   }
 
   public async deleteBook(id: string): Promise<void> {
-    const keyedStores = [BOOKS_STORE, FILES_STORE, COVERS_STORE, PROGRESS_STORE];
+    const keyedStores = [BOOKS_STORE, FILES_STORE, COVERS_STORE, PROGRESS_STORE, BOOK_SETTINGS_STORE];
     await this.transaction(
       [...keyedStores, BOOKMARKS_STORE, HIGHLIGHTS_STORE],
       "readwrite",
@@ -711,7 +620,76 @@ export class LibraryDatabase {
   }
 
   public close(): void {
+    for (const unsubscribe of this.subscriptions) unsubscribe();
     this.db.close();
+  }
+
+  public async getBookReadingSettings(bookId: string): Promise<BookReadingSettings> {
+    const record = await this.get<BookReadingSettingsRecord>(BOOK_SETTINGS_STORE, bookId);
+    return { ...DEFAULT_BOOK_READING_SETTINGS, ...record?.settings };
+  }
+
+  /** Read/merge/write in one transaction; independent tabs cannot lose fields,
+   * and a late reader write cannot recreate a deleted book's settings. */
+  public patchBookReadingSettings(bookId: string, patch: Partial<BookReadingSettings>): Promise<void> {
+    return this.transaction([BOOKS_STORE, BOOK_SETTINGS_STORE], "readwrite", "Failed to save book settings.", (tx) => {
+      const exists = tx.objectStore(BOOKS_STORE).getKey(bookId);
+      exists.onsuccess = () => {
+        if (exists.result === undefined) return;
+        const store = tx.objectStore(BOOK_SETTINGS_STORE);
+        const request = store.get(bookId);
+        request.onsuccess = () => {
+          const record = request.result as BookReadingSettingsRecord | undefined;
+          store.put({
+            bookId, settings: { ...DEFAULT_BOOK_READING_SETTINGS, ...record?.settings, ...patch },
+          } satisfies BookReadingSettingsRecord);
+        };
+      };
+    });
+  }
+
+  public async getGlobalReadingSettings(): Promise<GlobalReadingSettings> {
+    return settingsFromPreferences(
+      DEFAULT_GLOBAL_READING_SETTINGS, GLOBAL_SETTING_KEYS,
+      await this.getAll<PreferenceRecord>(PREFERENCES_STORE),
+    );
+  }
+
+  public async patchGlobalReadingSettings(patch: Partial<GlobalReadingSettings>): Promise<void> {
+    await this.transaction(PREFERENCES_STORE, "readwrite", "Failed to save app settings.", (tx) => {
+      for (const key of Object.keys(patch) as (keyof GlobalReadingSettings)[]) {
+        tx.objectStore(PREFERENCES_STORE).put({ key: GLOBAL_SETTING_KEYS[key], value: patch[key] });
+      }
+    });
+    this.preferencesChanged();
+  }
+
+  /** Invalidate after commit, both within this page and across extension tabs.
+   * Consumers reread IndexedDB rather than trusting potentially stale payloads. */
+  public subscribePreferences(listener: () => void): () => void {
+    const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("ambra-preferences");
+    if (channel) channel.onmessage = (event) => {
+      if (event.data !== this.preferenceSender) listener();
+    };
+    LibraryDatabase.preferenceListeners.set(listener, this);
+    const unsubscribe = () => {
+      channel?.close();
+      LibraryDatabase.preferenceListeners.delete(listener);
+      this.subscriptions.delete(unsubscribe);
+    };
+    this.subscriptions.add(unsubscribe);
+    return unsubscribe;
+  }
+
+  private preferencesChanged(): void {
+    for (const [listener, owner] of LibraryDatabase.preferenceListeners) {
+      if (owner !== this) listener();
+    }
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel("ambra-preferences");
+      channel.postMessage(this.preferenceSender);
+      channel.close();
+    }
   }
 
   /** Metadata updates and identity backfills must not overwrite each
@@ -732,11 +710,12 @@ export class LibraryDatabase {
     });
   }
 
-  private put(storeName: string, value: unknown): Promise<void> {
-    return this.transaction(
+  private async put(storeName: string, value: unknown): Promise<void> {
+    await this.transaction(
       storeName, "readwrite", `Failed to write to the "${storeName}" store.`,
       (tx) => { tx.objectStore(storeName).put(value); },
     );
+    if (storeName === PREFERENCES_STORE) this.preferencesChanged();
   }
 
   private get<T>(storeName: string, key: string): Promise<T | undefined> {

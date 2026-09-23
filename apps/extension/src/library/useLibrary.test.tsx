@@ -5,6 +5,7 @@ import { LibraryDatabase, type BookMetadata } from "./LibraryDatabase.js";
 import { importBook } from "./BookImporter.js";
 import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { LibraryApp } from "./LibraryApp.js";
+import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 
 vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue("book") }));
 
@@ -20,7 +21,9 @@ function makeDatabase() {
     listBooks: vi.fn().mockResolvedValue([{ id: "book", title: "Book" } as BookMetadata]),
     getAllProgress: vi.fn().mockResolvedValue(new Map()),
     getCoverBlob: vi.fn().mockResolvedValue(new Blob(["cover"])),
-    getDefaultChromeTheme: vi.fn().mockResolvedValue(undefined),
+    getGlobalReadingSettings: vi.fn().mockResolvedValue(DEFAULT_GLOBAL_READING_SETTINGS),
+    patchGlobalReadingSettings: vi.fn().mockResolvedValue(undefined),
+    subscribePreferences: vi.fn<LibraryDatabase["subscribePreferences"]>().mockReturnValue(vi.fn()),
     getDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
     deleteBook: vi.fn().mockResolvedValue(undefined),
     setDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
@@ -129,6 +132,7 @@ describe("useLibrary ownership and failures", () => {
     act(() => root.unmount());
     mounted = false;
     expect(db.methods.close).toHaveBeenCalledOnce();
+    expect(db.methods.subscribePreferences.mock.results[0]?.value).toHaveBeenCalledOnce();
     expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:cover");
   });
 
@@ -202,5 +206,43 @@ describe("useLibrary ownership and failures", () => {
     expect(importBook).toHaveBeenCalledOnce();
     expect((fetch.mock.calls[0]?.[1].signal as AbortSignal).aborted).toBe(false);
     expect(discarded.methods.close).toHaveBeenCalledOnce();
+  });
+
+  it("loads global settings and refreshes them after an atomic patch or external change", async () => {
+    await render();
+    const blue = { ...DEFAULT_GLOBAL_READING_SETTINGS, chromeTheme: "blue" as const };
+    db.methods.getGlobalReadingSettings.mockResolvedValue(blue);
+    await act(async () => latest.setSettings({ chromeTheme: "blue" }));
+    expect(db.methods.patchGlobalReadingSettings).toHaveBeenCalledExactlyOnceWith({ chromeTheme: "blue" });
+    expect(latest.chromeTheme).toBe("blue");
+    const external = { ...blue, viewMode: "scroll" as const, brightness: 0.8 };
+    db.methods.getGlobalReadingSettings.mockResolvedValue(external);
+    await act(async () => db.methods.subscribePreferences.mock.calls[0]![0]());
+    expect(latest.settings).toEqual(external);
+  });
+
+  it("does not let a stale settings read replace a newer external change", async () => {
+    await render();
+    const stale = deferred<typeof DEFAULT_GLOBAL_READING_SETTINGS>();
+    db.methods.getGlobalReadingSettings.mockReturnValueOnce(stale.promise);
+    const notify = db.methods.subscribePreferences.mock.calls[0]![0];
+    act(() => notify());
+    const latestSettings = { ...DEFAULT_GLOBAL_READING_SETTINGS, chromeTheme: "green" as const };
+    db.methods.getGlobalReadingSettings.mockResolvedValueOnce(latestSettings);
+    await act(async () => notify());
+    await act(async () => stale.resolve(DEFAULT_GLOBAL_READING_SETTINGS));
+    expect(latest.settings).toEqual(latestSettings);
+  });
+
+  it("retains saved settings on persistence failure and ignores setters after unmount", async () => {
+    await render();
+    db.methods.patchGlobalReadingSettings.mockRejectedValueOnce(new Error("Settings could not be saved"));
+    await act(async () => latest.setSettings({ chromeTheme: "blue" }));
+    expect(latest.error).toBe("Settings could not be saved");
+    expect(latest.settings).toEqual(DEFAULT_GLOBAL_READING_SETTINGS);
+    act(() => root.unmount());
+    mounted = false;
+    latest.setSettings({ brightness: 0.5 });
+    expect(db.methods.patchGlobalReadingSettings).toHaveBeenCalledOnce();
   });
 });

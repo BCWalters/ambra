@@ -59,6 +59,7 @@ export interface ReaderSettingsMenuActions {
 }
 
 export interface ReaderSettingsMenuProps extends ReaderSettingsMenuActions {
+  disabled?: boolean;
   isFixedLayout: boolean;
   viewMode: ViewMode;
   brightness: number;
@@ -310,44 +311,49 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
 
 const LanguageMenu: FC = () => {
   const t = useTranslation();
-  const { preference, setPreference } = useLocale();
+  const { preference, setPreference, ready, error } = useLocale();
   return (
-    <Menu
-      persistOnItemClick
-      checkedValues={{ locale: [preference] }}
-      onCheckedValueChange={(_event, data) => {
-        if (data.name === "locale") setPreference(data.checkedItems[0] as LocalePreference);
-      }}
-    >
-      <MenuTrigger disableButtonEnhancement>
-        <MenuItem
-          icon={<LocalLanguageRegular />}
-          secondaryContent={
-            preference === "system"
-              ? t("settings.languageSystemDefault")
-              : LOCALE_NATIVE_NAMES[preference]
-          }
-        >
-          {t("settings.language")}
-        </MenuItem>
-      </MenuTrigger>
-      <MenuPopover>
-        <MenuList>
-          <MenuItemRadio name="locale" value="system">
-            {t("settings.languageSystemDefault")}
-          </MenuItemRadio>
-          {SUPPORTED_LOCALES.map((locale) => (
-            <MenuItemRadio key={locale} name="locale" value={locale}>
-              {LOCALE_NATIVE_NAMES[locale]}
+    <>
+      <Menu
+        persistOnItemClick
+        checkedValues={{ locale: [preference] }}
+        onCheckedValueChange={(_event, data) => {
+          if (data.name === "locale") setPreference(data.checkedItems[0] as LocalePreference);
+        }}
+      >
+        <MenuTrigger disableButtonEnhancement>
+          <MenuItem
+            disabled={!ready}
+            icon={<LocalLanguageRegular />}
+            secondaryContent={
+              preference === "system"
+                ? t("settings.languageSystemDefault")
+                : LOCALE_NATIVE_NAMES[preference]
+            }
+          >
+            {t("settings.language")}
+          </MenuItem>
+        </MenuTrigger>
+        <MenuPopover>
+          <MenuList>
+            <MenuItemRadio name="locale" value="system">
+              {t("settings.languageSystemDefault")}
             </MenuItemRadio>
-          ))}
-        </MenuList>
-      </MenuPopover>
-    </Menu>
+            {SUPPORTED_LOCALES.map((locale) => (
+              <MenuItemRadio key={locale} name="locale" value={locale}>
+                {LOCALE_NATIVE_NAMES[locale]}
+              </MenuItemRadio>
+            ))}
+          </MenuList>
+        </MenuPopover>
+      </Menu>
+      {error && <div role="alert" style={{ padding: "6px 12px", maxWidth: 280 }}>{error}</div>}
+    </>
   );
 };
 
 export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
+  disabled,
   isFixedLayout,
   viewMode,
   brightness,
@@ -381,6 +387,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
             appearance="subtle"
             size="small"
             icon={<SettingsRegular />}
+            disabled={disabled}
             style={isFixedLayout ? { marginLeft: 8 } : undefined}
           />
         </Tooltip>

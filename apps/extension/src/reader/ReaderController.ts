@@ -328,6 +328,8 @@ export class ReaderController {
   private hiddenMeasureContainer: HTMLDivElement | undefined;
 
   private readonly listeners = new Set<() => void>();
+  private preferencesCleanup: (() => void) | undefined;
+  private preferencesRevision = 0;
   private cachedSnapshot: ReaderSnapshot | undefined;
   /** Lazily created by `getBookDetails`, revoked in `dispose`. */
   private cachedCoverUrl: string | undefined;
@@ -458,23 +460,14 @@ export class ReaderController {
         // actually finished loading.
         controller.pendingNavigationLoadError = navigationLoadError;
       }
-      controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
-      controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
-      controller.lineSpacing =
-        (await library.getDefaultLineSpacing()) ?? ReadingTheme.DEFAULT_LINE_SPACING;
-      controller.letterSpacing =
-        (await library.getDefaultLetterSpacing()) ?? ReadingTheme.DEFAULT_LETTER_SPACING;
-      controller.contentWidthEm =
-        (await library.getDefaultContentWidth()) ?? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
-      controller.fontFamily =
-        (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
-      controller.pageTheme =
-        (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
-      controller.brightness =
-        (await library.getDefaultBrightness()) ?? ReadingTheme.DEFAULT_BRIGHTNESS;
-      controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
-      controller.pageTurnAnimationStyle =
-        (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
+      Object.assign(controller, await library.getBookReadingSettings(bookId));
+      controller.preferencesCleanup = library.subscribePreferences(() => {
+        void controller.refreshGlobalSettings().catch((error) => {
+          if (!controller.operations.disposed)
+            controller.reportTransientError(error, "open", "app settings");
+        });
+      });
+      await controller.refreshGlobalSettings();
       controller.highlights.load(await library.listHighlightsForBook(bookId));
       await controller.bookmarks.load();
       // A publisher-embedded annotation collection (issue #109) is rare
@@ -509,6 +502,24 @@ export class ReaderController {
   public subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  private async refreshGlobalSettings(): Promise<void> {
+    if (this.operations.disposed) return;
+    const revision = ++this.preferencesRevision;
+    const { viewMode, ...settings } = await this.library.getGlobalReadingSettings();
+    if (this.operations.disposed || revision !== this.preferencesRevision) return;
+    const chromeChanged = this.brightness !== settings.brightness ||
+      this.chromeTheme !== settings.chromeTheme ||
+      this.pageTurnAnimationStyle !== settings.pageTurnAnimationStyle;
+    Object.assign(this, settings);
+    if (!this.containerEl) {
+      this.viewMode = viewMode;
+    } else if (viewMode !== (this.pendingLayout?.configuration.viewMode ?? this.viewMode)) {
+      // External changes use the same lifecycle queue, but never write back.
+      await this.requestLayout({ viewMode });
+    }
+    if (!this.operations.disposed && chromeChanged) this.notify();
   }
 
   /** Book-wide page position (current page / total pages across the
@@ -1569,14 +1580,16 @@ export class ReaderController {
       this.highlightInteraction.updateNoteMarkers();
     }
     if (this.operations.disposed) return;
-    await Promise.all([
-      ...(modeChanged ? [this.library.setDefaultViewMode(next.viewMode)] : []),
-      ...(previous.fontScale !== next.fontScale ? [this.library.setDefaultFontScale(next.fontScale)] : []),
-      ...(previous.fontFamily !== next.fontFamily ? [this.library.setDefaultFontFamily(next.fontFamily)] : []),
-      ...(previous.lineSpacing !== next.lineSpacing ? [this.library.setDefaultLineSpacing(next.lineSpacing)] : []),
-      ...(previous.letterSpacing !== next.letterSpacing ? [this.library.setDefaultLetterSpacing(next.letterSpacing)] : []),
-      ...(previous.contentWidthEm !== next.contentWidthEm ? [this.library.setDefaultContentWidth(next.contentWidthEm)] : []),
-    ]);
+    if (typographyChanged) {
+      await this.library.patchBookReadingSettings(this.bookId, {
+        ...(previous.fontScale !== next.fontScale ? { fontScale: next.fontScale } : {}),
+        ...(previous.fontFamily !== next.fontFamily ? { fontFamily: next.fontFamily } : {}),
+        ...(previous.lineSpacing !== next.lineSpacing ? { lineSpacing: next.lineSpacing } : {}),
+        ...(previous.letterSpacing !== next.letterSpacing ? { letterSpacing: next.letterSpacing } : {}),
+        ...(previous.contentWidthEm !== next.contentWidthEm ? { contentWidthEm: next.contentWidthEm } : {}),
+      });
+    }
+    if (this.operations.disposed) return;
     if (modeChanged) {
       this.announce(
         next.viewMode === "paginated"
@@ -1693,8 +1706,9 @@ export class ReaderController {
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
-    if (!this.containerEl) return;
-    await this.requestLayout({ viewMode: mode });
+    if (!this.containerEl || this.operations.disposed || this.isFixedLayoutHost(this.host)) return;
+    await this.library.patchGlobalReadingSettings({ viewMode: mode });
+    await Promise.all([this.requestLayout({ viewMode: mode }), this.refreshGlobalSettings()]);
   }
 
   /** Sets and persists font scale, then reapplies display settings and
@@ -1750,11 +1764,12 @@ export class ReaderController {
 
   /** Sets and persists page theme without relayout. No-op for fixed-layout content. */
   public async setPageTheme(theme: PageTheme): Promise<void> {
-    if (theme === this.pageTheme || this.isFixedLayoutHost(this.host)) {
+    if (this.operations.disposed || this.isFixedLayoutHost(this.host)) {
       return;
     }
+    await this.library.patchBookReadingSettings(this.bookId, { pageTheme: theme });
+    if (this.operations.disposed) return;
     this.pageTheme = theme;
-    await this.library.setDefaultPageTheme(theme);
     this.applyDisplaySettingsToHost({ relayout: false });
     this.notify();
   }
@@ -1763,32 +1778,29 @@ export class ReaderController {
    * level, so it also works for fixed-layout content. */
   public async setBrightness(brightness: number): Promise<void> {
     const clamped = ReadingTheme.clampBrightness(brightness);
-    if (clamped === this.brightness) {
+    if (this.operations.disposed) {
       return;
     }
-    this.brightness = clamped;
-    await this.library.setDefaultBrightness(clamped);
-    this.notify();
+    await this.library.patchGlobalReadingSettings({ brightness: clamped });
+    await this.refreshGlobalSettings();
   }
 
   /** Sets and persists the reader chrome theme. */
   public async setChromeTheme(theme: ChromeThemeChoice): Promise<void> {
-    if (theme === this.chromeTheme) {
+    if (this.operations.disposed) {
       return;
     }
-    this.chromeTheme = theme;
-    await this.library.setDefaultChromeTheme(theme);
-    this.notify();
+    await this.library.patchGlobalReadingSettings({ chromeTheme: theme });
+    await this.refreshGlobalSettings();
   }
 
   /** Sets and persists the page-turn animation style. */
   public async setPageTurnAnimationStyle(style: PageTurnAnimationStyle): Promise<void> {
-    if (style === this.pageTurnAnimationStyle) {
+    if (this.operations.disposed) {
       return;
     }
-    this.pageTurnAnimationStyle = style;
-    await this.library.setDefaultPageTurnAnimationStyle(style);
-    this.notify();
+    await this.library.patchGlobalReadingSettings({ pageTurnAnimationStyle: style });
+    await this.refreshGlobalSettings();
   }
 
   /** Opens the image viewer and remembers the source element so focus can
@@ -4095,6 +4107,7 @@ export class ReaderController {
   }
 
   public dispose(): void {
+    this.preferencesCleanup?.();
     if (this.operations.disposed) return;
     this.operations.dispose();
     this.gestureCleanup?.();

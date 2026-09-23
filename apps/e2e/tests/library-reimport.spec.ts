@@ -358,7 +358,7 @@ test("a blocked v5 upgrade reports recovery steps, closes its late connection, a
   );
   await oldConnection.evaluate((db) => db.close());
   await oldConnection.dispose();
-  await expect(page.locator("html")).toHaveAttribute("data-closed-database-version", "6");
+  await expect(page.locator("html")).toHaveAttribute("data-closed-database-version", "7");
   await page.reload();
   await expect(page.getByRole("button", { name: /^Open Legacy copy/ })).toHaveCount(2);
   await expect(page.getByRole("alert")).toHaveCount(0);

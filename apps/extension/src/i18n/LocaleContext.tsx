@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FC, ReactNode } from "react";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { DEFAULT_LOCALE, resolveLocale } from "./Locale.js";
 import type { Locale, LocalePreference } from "./Locale.js";
 import { getTranslate } from "./translate.js";
 import type { Translate } from "./translate.js";
+import { describeStorageError } from "../StorageErrors.js";
 
 export type { Translate } from "./translate.js";
 export { getTranslate } from "./translate.js";
@@ -21,61 +22,79 @@ interface LocaleContextValue {
    * locale that happens to currently resolve to). */
   preference: LocalePreference;
   setPreference: (preference: LocalePreference) => void;
+  ready: boolean;
+  error: string | undefined;
 }
 
 const LocaleContext = createContext<LocaleContextValue>({
   locale: DEFAULT_LOCALE,
   preference: "system",
   setPreference: () => {},
+  ready: false,
+  error: undefined,
 });
 
 export interface LocaleProviderProps {
   children: ReactNode;
 }
 
-/** Makes the current UI locale (and a setter for it) available to every
- * component without prop-drilling it through the whole tree — see
- * `ChromeThemeProvider` for the identical reasoning applied to chrome
- * color. Unlike that one, this owns its own state directly (loading the
- * saved preference once on mount, persisting every change) rather than
- * being handed a value from `ReaderSnapshot`, since the language choice
- * is a `LibraryDatabase`-backed setting shared across the whole
- * extension — including the library page, which has no
- * `ReaderSnapshot`/reader-specific `LibraryDatabase` connection of its
- * own at all. Opens (and closes on unmount) its own independent
- * `LibraryDatabase` connection rather than requiring every caller to
- * already have one handy — IndexedDB is fine with more than one
- * connection open to the same database at once, and this is the only
- * setting genuinely needed on *every* extension page, reader or
- * library. */
+/** Owns the shared UI language and its database connection independently of
+ * book loading. Library and reader menus use the same provider and receive
+ * committed changes from other open pages. */
 export const LocaleProvider: FC<LocaleProviderProps> = ({ children }) => {
   const [preference, setPreferenceState] = useState<LocalePreference>("system");
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string>();
+  const database = useRef<LibraryDatabase | undefined>(undefined);
+  const revision = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     let library: LibraryDatabase | undefined;
+    let unsubscribe: (() => void) | undefined;
     void LibraryDatabase.open().then(async (opened) => {
       if (cancelled) {
         opened.close();
         return;
       }
       library = opened;
-      const saved = await opened.getLocalePreference();
-      if (!cancelled && saved) {
-        setPreferenceState(saved);
-      }
+      database.current = opened;
+      const refresh = async () => {
+        const current = ++revision.current;
+        const saved = await opened.getLocalePreference();
+        if (!cancelled && current === revision.current) {
+          setPreferenceState(saved ?? "system");
+          setReady(true);
+        }
+      };
+      unsubscribe = opened.subscribePreferences(() => {
+        void refresh().catch((err) => {
+          if (!cancelled) setError(describeStorageError(err, "open", "language settings"));
+        });
+      });
+      await refresh();
+    }).catch((err) => {
+      if (!cancelled) setError(describeStorageError(err, "open", "language settings"));
     });
     return () => {
       cancelled = true;
+      unsubscribe?.();
+      if (database.current === library) database.current = undefined;
       library?.close();
     };
   }, []);
 
   const setPreference = useCallback((next: LocalePreference) => {
-    setPreferenceState(next);
-    void LibraryDatabase.open().then(async (db) => {
-      await db.setLocalePreference(next);
-      db.close();
+    const db = database.current;
+    if (!db) return;
+    const current = ++revision.current;
+    void db.setLocalePreference(next).then(() => {
+      if (database.current === db && current === revision.current) {
+        setPreferenceState(next);
+        setError(undefined);
+      }
+    }).catch((err) => {
+      if (database.current === db) setError(describeStorageError(err, "save", "language settings"));
     });
   }, []);
 
@@ -86,7 +105,7 @@ export const LocaleProvider: FC<LocaleProviderProps> = ({ children }) => {
   }, [locale]);
 
   return (
-    <LocaleContext.Provider value={{ locale, preference, setPreference }}>{children}</LocaleContext.Provider>
+    <LocaleContext.Provider value={{ locale, preference, setPreference, ready, error }}>{children}</LocaleContext.Provider>
   );
 };
 
