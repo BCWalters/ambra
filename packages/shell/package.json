@@ -1,6 +1,7 @@
 {
   "name": "@ambra/shell",
   "private": true,
+  "license": "MIT",
   "version": "0.0.0",
   "description": "Ambra's shell UI components (toolbar, TOC panel, library, settings) built with React and Fluent UI v9.",
   "type": "module",

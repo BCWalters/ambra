@@ -49,7 +49,8 @@ for (const width of [1000, 360]) {
         readerPage.getByRole("complementary", { name: "Book details" }),
       ]) {
         await expect(panel.getByRole("heading", { name: metadata.title })).toBeVisible();
-        await expect(panel.getByText(metadata.description)).toHaveCSS("font-size", "14px");
+        await expect(panel.getByText(metadata.description)).toHaveCSS("font-size", "12px");
+        await expect(panel.getByText(metadata.description)).toHaveCSS("line-height", "18px");
         await expect(panel.getByText(metadata.rights, { exact: true })).toBeVisible();
         await expect(panel.getByText(metadata.rights, { exact: true })).toHaveCSS("font-size", "12px");
         await expect(panel.getByText(metadata.publisher, { exact: true })).toHaveCSS("font-size", "14px");

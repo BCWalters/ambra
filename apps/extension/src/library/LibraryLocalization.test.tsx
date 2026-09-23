@@ -78,6 +78,7 @@ describe("Library localization and action order", () => {
     expect(container.textContent).toContain(t("about.version", { version: "1.2.3" }));
     expect(container.textContent).toContain("Ben Walters");
     expect(container.querySelector('a[href="mailto:AmbraEPUB@outlook.com"]')?.textContent).toBe(t("about.feedback"));
+    expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra"]')?.style.color).toBe("#7a3e00");
     expect(button(t("about.copyDiagnostics"))).toBeDefined();
   });
 
@@ -89,6 +90,16 @@ describe("Library localization and action order", () => {
     state.isFullTab = true;
     await render();
     expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "About Ambra"]);
+  });
+
+  it("exposes a Library main landmark and a readable top-level heading", async () => {
+    await render();
+    expect(container.querySelector("main")?.getAttribute("aria-label")).toBe("Ambra — Library");
+    const heading = container.querySelector("h1")!;
+    expect(heading.textContent).toBe("Ambra");
+    expect(heading.style.color).toBe("#7a3e00");
+    expect(container.querySelectorAll("h1")).toHaveLength(1);
+    expect(container.querySelector("main h2")?.getAttribute("style")).toContain("#7a3e00");
   });
 
   it.each(SUPPORTED_LOCALES)("localizes every import stage and completion in %s", async (locale) => {

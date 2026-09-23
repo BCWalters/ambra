@@ -170,7 +170,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
               {message}
             </Caption1>
             {detail && (
-              <Caption1 as="p" block style={{ margin: 0, opacity: 0.55, fontSize: 11 }}>
+              <Caption1 as="p" block style={{ margin: 0, color: "var(--colorNeutralForeground2, #333)", fontSize: 11 }}>
                 {t("error.detailsPrefix")} {detail}
               </Caption1>
             )}

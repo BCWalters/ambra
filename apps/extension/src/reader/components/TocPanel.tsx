@@ -96,7 +96,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   {item.label}
                 </span>
                 {pageNumber !== undefined && (
-                  <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
+                  <Caption1 as="span" style={{ flexShrink: 0, color: "var(--colorNeutralForeground2, #333)", fontWeight: 400 }}>
                     {pageNumber}
                   </Caption1>
                 )}
@@ -108,7 +108,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   display: "block",
                   padding: "7px 10px",
                   paddingLeft: 10 + depth * 16,
-                  color: "var(--colorNeutralForeground3, #666)",
+                  color: "var(--colorNeutralForeground2, #333)",
                   textTransform: "uppercase",
                   letterSpacing: "0.02em",
                 }}

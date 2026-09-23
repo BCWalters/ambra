@@ -11,6 +11,11 @@
         margin: 0;
         height: 100%;
       }
+      /* Only the book and panels scroll; shell portals must not resize the viewport. */
+      html,
+      body {
+        overflow: hidden;
+      }
     </style>
   </head>
   <body>

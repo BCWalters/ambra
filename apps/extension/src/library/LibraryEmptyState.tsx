@@ -34,10 +34,10 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImpor
     }}
   >
     <LibraryEmptyIllustration size={140} />
-    <Title2 as="h1" style={{ color: accent, margin: "8px 0 0" }}>
+    <Title2 as="h2" style={{ color: accent, margin: "8px 0 0" }}>
       {t("library.emptyTitle")}
     </Title2>
-    <Body1 as="p" style={{ margin: "4px 0 20px", color: "var(--colorNeutralForeground3, #666)" }}>
+    <Body1 as="p" style={{ margin: "4px 0 20px", color: "var(--colorNeutralForeground2, #333)" }}>
       {t("library.emptyDescription")}
     </Body1>
     <Button appearance="primary" icon={<DocumentAddRegular />} disabled={!canImport} onClick={onImport}>

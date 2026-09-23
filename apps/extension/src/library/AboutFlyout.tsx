@@ -142,18 +142,18 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
         <div style={{ margin: "20px 0" }}>
           <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("about.localLibrary")}</Body1>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
-            <Link href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">{t("about.privacy")}</Link>
-            <Link href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">{t("about.sourceCode")}</Link>
+            <Link style={{ color: accentForeground }} href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">{t("about.privacy")}</Link>
+            <Link style={{ color: accentForeground }} href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">{t("about.sourceCode")}</Link>
           </div>
         </div>
 
         <PaneDisclosure title={t("about.standards")}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Link href={EPUB_SPEC_URL} target="_blank" rel="noreferrer">{t("about.epubSpec")}</Link>
-            <Link href={PUBLISHING_WG_URL} target="_blank" rel="noreferrer">{t("about.publishingGroup")}</Link>
+            <Link style={{ color: accentForeground }} href={EPUB_SPEC_URL} target="_blank" rel="noreferrer">{t("about.epubSpec")}</Link>
+            <Link style={{ color: accentForeground }} href={PUBLISHING_WG_URL} target="_blank" rel="noreferrer">{t("about.publishingGroup")}</Link>
             <Caption1 as="p" block style={{ margin: "8px 0 0" }}>{t("about.openSourceCredits")}</Caption1>
             {OPEN_SOURCE_CREDITS.map((credit) => (
-              <Link key={credit.name} href={credit.url} target="_blank" rel="noreferrer">{credit.name}</Link>
+              <Link style={{ color: accentForeground }} key={credit.name} href={credit.url} target="_blank" rel="noreferrer">{credit.name}</Link>
             ))}
           </div>
         </PaneDisclosure>

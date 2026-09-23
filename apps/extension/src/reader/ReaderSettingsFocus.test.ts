@@ -19,6 +19,7 @@ describe("ReaderController layout-only focus", () => {
       host: { element: hostElement, currentPosition: () => ({ node, offset: 7 }) },
       locatorResolver: { generate: vi.fn(() => ({ cfi: "saved-position" })) },
       openSpineItem: vi.fn(async () => {}),
+      nativeReading: { current: () => undefined },
     });
     return { controller, hostElement, node };
   }
@@ -48,6 +49,16 @@ describe("ReaderController layout-only focus", () => {
     expect(document.activeElement).toBe(element);
     await controller.reopenForCurrentSize();
     expect(controller.openSpineItem).toHaveBeenCalledWith(3, {
+      bridgeCfi: "saved-position", preserveFocus: false,
+    });
+  });
+
+  it("bridges a precise companion reading position rather than the visual primary on reflow", async () => {
+    const { controller, node } = setUp();
+    controller.nativeReading.current = () => ({ spineIndex: 4, node, offset: 12 });
+    await controller.reopenForCurrentSize();
+    expect(controller.locatorResolver.generate).toHaveBeenCalledWith(4, node, 12);
+    expect(controller.openSpineItem).toHaveBeenCalledWith(4, {
       bridgeCfi: "saved-position", preserveFocus: false,
     });
   });

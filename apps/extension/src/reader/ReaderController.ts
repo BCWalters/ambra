@@ -65,6 +65,7 @@ import { InspectorReadingBridge } from "./InspectorReadingBridge.js";
 import { MediaOverlayNarration, type NarrationTarget } from "./MediaOverlayNarration.js";
 import { NarrationReadingBridge } from "./NarrationReadingBridge.js";
 import { selectedReadingRange } from "./ReadingPosition.js";
+import { NativeReadingPosition, type NativeReadingPoint } from "./NativeReadingPosition.js";
 import type { NarrationAction } from "./ReaderTypes.js";
 import { TransientReadingHighlight } from "./TransientReadingHighlight.js";
 import type { InspectorReference } from "./InspectorReferences.js";
@@ -254,6 +255,10 @@ export class ReaderController {
   private pendingNavigationLoadError: string | undefined;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
+  private readonly nativeReading = new NativeReadingPosition(
+    () => this.contentDocumentViews(),
+    () => this.host?.currentPosition(),
+  );
   private readonly diagnostics = new DiagnosticsLog();
   private announcement: string | undefined;
   private announcementId = 0;
@@ -853,21 +858,35 @@ export class ReaderController {
    * progress. Called after every navigation settles; also exposed as
    * `flushProgress` for the reader page to call on visibility/unload. */
   private async saveProgress(): Promise<void> {
-    const position = this.host?.currentPosition();
+    const native = this.nativeReading.current();
+    const position = native ?? this.host?.currentPosition();
     if (!position) {
       return;
     }
     try {
       const locator = this.locatorResolver.generate(
-        this.spineIndex,
+        native?.spineIndex ?? this.spineIndex,
         position.node,
         position.offset,
       );
-      await this.library.saveProgress(this.bookId, locator.cfi, this.currentBookFraction());
+      await this.library.saveProgress(this.bookId, locator.cfi,
+        native ? this.nativeBookFraction(native) : this.currentBookFraction());
     } catch {
       // Best-effort: resume-reading is a convenience, not something
       // that should surface an error mid-navigation.
     }
+  }
+
+  private nativeBookFraction(point: NativeReadingPoint): number | undefined {
+    const view = this.contentDocumentViews().find(view => view.document === point.node.ownerDocument);
+    // Off-page native reading has no measured page index. Do not attach the
+    // visual page's misleading percentage to its more precise CFI.
+    const pageIndex = view?.page?.containsPosition(point.node, point.offset ?? 0, view.document)
+      ? view.page.index : this.isFixedLayoutHost(this.host) ? 0 : undefined;
+    if (pageIndex === undefined || !this.bookPagination) return undefined;
+    const position = this.bookPagination.positionFor(point.spineIndex, pageIndex);
+    return position.currentPage !== undefined && position.totalPages
+      ? Math.max(0, Math.min(1, position.currentPage / position.totalPages)) : undefined;
   }
 
   public flushProgress(): Promise<void> {
@@ -1282,7 +1301,9 @@ export class ReaderController {
       document = this.primaryContentDocument() ?? document;
     }
     const page = this.contentDocumentViews().find(view => view.document === document)?.page;
-    const position = page?.startBreak ?? this.host?.currentPosition();
+    const native = this.nativeReading.current();
+    const position = native?.node.ownerDocument === document
+      ? native : page?.startBreak ?? this.host?.currentPosition();
     if (position && position.node.ownerDocument === document) {
       this.accessibility.focusReadingPosition(document, position);
     } else {
@@ -1489,6 +1510,7 @@ export class ReaderController {
     };
 
     for (const iframeDocument of documents) {
+      cleanups.push(this.nativeReading.attach(iframeDocument));
       applyEpubTypeAriaRoles(iframeDocument);
 
       const clickHandler = (event: MouseEvent): void => {
@@ -1797,6 +1819,7 @@ export class ReaderController {
         throw new Error(this.error ?? "The updated reading layout could not be loaded.");
       }
     } else {
+      const native = this.nativeReading.current();
       if (typographyChanged) {
         this.applyDisplaySettingsToHost({ relayout: true });
       } else if (this.host instanceof PaginatedContentHost) {
@@ -1808,6 +1831,7 @@ export class ReaderController {
       this.appliedHeight = next.height;
       this.refreshBookPagination();
       this.highlightInteraction.updateNoteMarkers();
+      if (native) this.nativeReading.retain(native);
     }
     if (this.operations.disposed) return;
     if (typographyChanged) {
@@ -1915,8 +1939,9 @@ export class ReaderController {
     spineIndex: number;
     ordinal: number;
   }): Promise<void> {
-    let spineIndex = this.spineIndex;
-    let position = this.host?.currentPosition();
+    const native = this.nativeReading.current();
+    let spineIndex = native?.spineIndex ?? this.spineIndex;
+    let position = native ?? this.host?.currentPosition();
     if (disclosureFocus && disclosureFocus.spineIndex !== spineIndex) {
       // Expanding the first chapter of a cross-chapter pair can move its
       // companion many pages away. Keep the interacted page, not the companion.
@@ -4293,6 +4318,19 @@ export class ReaderController {
           this.host.goToPageIndex(targetIndex);
         }
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus);
+      }
+      if (options.bridgeCfi) {
+        const view = this.contentDocumentViews().find(view => view.spineIndex === requestedSpineIndex);
+        if (view) {
+          const resolved = this.locatorResolver.resolveInDocument(
+            new Locator(options.bridgeCfi), requestedSpineIndex, view.document,
+          );
+          const point = { spineIndex: requestedSpineIndex, node: resolved.node, offset: resolved.characterOffset ?? 0 };
+          if (!options.automatic && !options.preserveFocus) {
+            this.accessibility.focusReadingPosition(view.document, point);
+          }
+          this.nativeReading.retain(point);
+        }
       }
       // Highlights and search ranges are page-independent, but note
       // markers snapshot pixel positions on the current page, so

@@ -72,7 +72,7 @@ test("image viewer traps keyboard focus and restores the originating book image"
 test("image zoom supports controls, wheel anchoring, drag, keyboard, fit and reopening", async () => {
   const { context, readerPage } = await launchReader(
     path.resolve(here, "../fixtures/footnote.epub"),
-    { viewport: { width: 1200, height: 900 } },
+    { viewport: { width: 1200, height: 900 }, showScrollbars: true },
   );
   try {
     await readerPage.emulateMedia({ reducedMotion: "reduce" });

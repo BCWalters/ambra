@@ -168,6 +168,7 @@ export class FixedSpreadHost {
     this.disposeChildren();
     this.currentSpread = spread;
     this.containerEl.replaceChildren();
+    this.containerEl.style.flexDirection = "row";
 
     if (spread.kind === "single") {
       const host = new FixedContentHost(this.width, this.height, this.ownerDocument);
@@ -213,7 +214,13 @@ export class FixedSpreadHost {
     gutter.style.background =
       "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.08) 46%, rgba(0,0,0,0.14) 50%, rgba(0,0,0,0.08) 54%, transparent 100%)";
 
-    this.containerEl.append(leftWrapperEl, gutter, rightWrapperEl);
+    // Keep native reading and tab order in spine order, independently of screen order.
+    if (spread.rightSpineIndex < spread.leftSpineIndex) {
+      this.containerEl.style.flexDirection = "row-reverse";
+      this.containerEl.append(rightWrapperEl, gutter, leftWrapperEl);
+    } else {
+      this.containerEl.append(leftWrapperEl, gutter, rightWrapperEl);
+    }
 
     // Concurrent, not sequential — see this method's own doc comment.
     await Promise.all([

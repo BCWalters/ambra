@@ -401,12 +401,14 @@ const FilePreview: FC<{
     return () => { highlights?.delete("ambra-inspector-source"); };
   }, [selectedElement, validTextRange, sourceTarget, textHtml, mappingFailed, isLoading]);
 
-  function handleContentLinkActivate(target: EventTarget | null): void {
+  function handleContentLinkActivate(target: EventTarget | null): boolean {
     const el = target instanceof Element ? target.closest<HTMLElement>("[data-nav-path]") : null;
     const navPath = el?.dataset.navPath;
     if (navPath) {
       onNavigateToFile(navPath);
+      return true;
     }
+    return false;
   }
 
   if (isLoading) {
@@ -475,7 +477,7 @@ const FilePreview: FC<{
         onClick={(event) => {
           // A drag selection is for copying source, even when it ends on a link.
           if (!event.currentTarget.ownerDocument.getSelection()?.isCollapsed) return;
-          handleContentLinkActivate(event.target);
+          if (handleContentLinkActivate(event.target)) event.preventDefault();
         }}
         onMouseUp={(event) => {
           if (!(event.target instanceof Element && event.target.closest("[data-nav-path]"))) {
@@ -489,7 +491,7 @@ const FilePreview: FC<{
             captureSourceSelection();
           }
           if (event.key === "Enter" || event.key === " ") {
-            handleContentLinkActivate(event.target);
+            if (handleContentLinkActivate(event.target)) event.preventDefault();
           }
         }}
         // Safe: highlight.js escapes the source text itself and only
@@ -608,6 +610,7 @@ const FilesTab: FC<{
               key={file.path}
               type="button"
               data-file-path={file.path}
+              aria-current={selectedPath === file.path ? "true" : undefined}
               onClick={() => onSelectPath(file.path)}
               style={{
                 display: "flex",
@@ -641,7 +644,7 @@ const FilesTab: FC<{
                   {file.path}
                 </span>
               </Tooltip>
-              <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6 }}>
+              <Caption1 as="span" style={{ flexShrink: 0, color: "var(--colorNeutralForeground2, #333)" }}>
                 {formatSize(file.size)}
               </Caption1>
             </button>
@@ -806,7 +809,10 @@ const FilesTab: FC<{
   );
 };
 
-const metadataRowStyle = { padding: "2px 12px 2px 0", opacity: 0.6, verticalAlign: "top" } as const;
+const metadataRowStyle = {
+  padding: "2px 12px 2px 0", color: "var(--colorNeutralForeground2, #333)",
+  verticalAlign: "top", fontWeight: 400, textAlign: "left",
+} as const;
 
 const Pill: FC<{ children: ReactNode }> = ({ children }) => (
   <span
@@ -840,63 +846,63 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
         <tbody>
           {fileName && (
             <tr>
-              <td style={metadataRowStyle}>{t("inspector.fileName")}</td>
+              <th scope="row" style={metadataRowStyle}>{t("inspector.fileName")}</th>
               <td>{fileName}</td>
             </tr>
           )}
           <tr>
-            <td style={metadataRowStyle}>{t("inspector.titleLabel")}</td>
+            <th scope="row" style={metadataRowStyle}>{t("inspector.titleLabel")}</th>
             <td>{data.title}</td>
           </tr>
           {creators.length > 0 && (
             <tr>
-              <td style={metadataRowStyle}>{creators.length > 1 ? t("inspector.creators") : t("inspector.creator")}</td>
+              <th scope="row" style={metadataRowStyle}>{creators.length > 1 ? t("inspector.creators") : t("inspector.creator")}</th>
               <td>{creators.join(", ")}</td>
             </tr>
           )}
           {data.contributors.length > 0 && (
             <tr>
-              <td style={metadataRowStyle}>{t("inspector.contributors")}</td>
+              <th scope="row" style={metadataRowStyle}>{t("inspector.contributors")}</th>
               <td>{data.contributors.join(", ")}</td>
             </tr>
           )}
           {data.publisher && (
             <tr>
-              <td style={metadataRowStyle}>{t("inspector.publisher")}</td>
+              <th scope="row" style={metadataRowStyle}>{t("inspector.publisher")}</th>
               <td>{data.publisher}</td>
             </tr>
           )}
           {data.date && (
             <tr>
-              <td style={metadataRowStyle}>{t("inspector.date")}</td>
+              <th scope="row" style={metadataRowStyle}>{t("inspector.date")}</th>
               <td>{data.date}</td>
             </tr>
           )}
           {data.rights && (
             <tr>
-              <td style={metadataRowStyle}>{t("inspector.rights")}</td>
+              <th scope="row" style={metadataRowStyle}>{t("inspector.rights")}</th>
               <td>{data.rights}</td>
             </tr>
           )}
           <tr>
-            <td style={metadataRowStyle}>{t("inspector.language")}</td>
+            <th scope="row" style={metadataRowStyle}>{t("inspector.language")}</th>
             <td>{data.language}</td>
           </tr>
           <tr>
-            <td style={metadataRowStyle}>{t("inspector.renditionLayout")}</td>
+            <th scope="row" style={metadataRowStyle}>{t("inspector.renditionLayout")}</th>
             <td>{data.renditionLayout}</td>
           </tr>
           <tr>
-            <td style={metadataRowStyle}>{t("inspector.renditionOrientation")}</td>
+            <th scope="row" style={metadataRowStyle}>{t("inspector.renditionOrientation")}</th>
             <td>{data.renditionOrientation}</td>
           </tr>
           <tr>
-            <td style={metadataRowStyle}>{t("inspector.rootFile")}</td>
+            <th scope="row" style={metadataRowStyle}>{t("inspector.rootFile")}</th>
             <td>{data.rootFilePath}</td>
           </tr>
           {data.identifiers.map((id, index) => (
             <tr key={index}>
-              <td style={metadataRowStyle}>{id.scheme ?? t("inspector.identifier")}</td>
+              <th scope="row" style={metadataRowStyle}>{id.scheme ?? t("inspector.identifier")}</th>
               <td>{id.value}</td>
             </tr>
           ))}
@@ -934,7 +940,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
           </Body1>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
-              <tr style={{ textAlign: "left", opacity: 0.6 }}>
+              <tr style={{ textAlign: "left", color: "var(--colorNeutralForeground2, #333)" }}>
                 <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.propertyOrName")}</th>
                 <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.value")}</th>
                 <th style={{ fontWeight: 400 }}>{t("inspector.refines")}</th>
@@ -973,7 +979,7 @@ const FileLink: FC<{ path: string; onNavigateToFile: (path: string) => void; chi
       padding: 0,
       margin: 0,
       font: "inherit",
-      color: "#0f766e",
+      color: "#134e4a",
       textDecoration: "underline",
       textDecorationStyle: "dotted",
       cursor: "pointer",
@@ -1012,12 +1018,12 @@ const SpineTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: string) 
 
   return (
     <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
-      <Caption1 as="p" style={{ margin: "0 0 12px", opacity: 0.8 }}>
+      <Caption1 as="p" style={{ margin: "0 0 12px" }}>
         {renderPathTemplate(t("inspector.spineDescription"), data.rootFilePath, onNavigateToFile)}
       </Caption1>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
-          <tr style={{ textAlign: "left", opacity: 0.6 }}>
+          <tr style={{ textAlign: "left", color: "var(--colorNeutralForeground2, #333)" }}>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>#</th>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.path")}</th>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.linear")}</th>
@@ -1053,12 +1059,12 @@ const ManifestTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: strin
 
   return (
     <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
-      <Caption1 as="p" style={{ margin: "0 0 12px", opacity: 0.8 }}>
+      <Caption1 as="p" style={{ margin: "0 0 12px" }}>
         {renderPathTemplate(t("inspector.manifestDescription"), data.rootFilePath, onNavigateToFile)}
       </Caption1>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
-          <tr style={{ textAlign: "left", opacity: 0.6 }}>
+          <tr style={{ textAlign: "left", color: "var(--colorNeutralForeground2, #333)" }}>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.id")}</th>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.path")}</th>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.mediaType")}</th>
@@ -1132,6 +1138,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const [activeTab, setActiveTab] = useState<InspectorTab>("files");
+  const tabsId = useId();
   const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<readonly InspectorHistoryEntry[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -1140,11 +1147,28 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const [operation, setOperation] = useState<"locate" | "show" | undefined>();
   const [linkError, setLinkError] = useState<string | undefined>();
   const [referenceSearch, setReferenceSearch] = useState<ReferenceSearch | undefined>();
+  const fileFocusRequest = useRef<string | undefined>(undefined);
+  const tabFocusRequest = useRef(false);
+  const backButtonRef = useRef<HTMLButtonElement>(null);
   const requestId = useRef(0);
   const referenceRequestId = useRef(0);
   const wasOpen = useRef(false);
   const isOpen = useRef(open);
   isOpen.current = open;
+
+  useEffect(() => {
+    const path = fileFocusRequest.current;
+    const focusTab = tabFocusRequest.current;
+    fileFocusRequest.current = undefined;
+    tabFocusRequest.current = false;
+    if (open && path) {
+      document.getElementById(`${tabsId}-panel`)
+        ?.querySelector<HTMLElement>(`[data-file-path="${CSS.escape(path)}"]`)
+        ?.focus({ preventScroll: true });
+    } else if (open && focusTab) {
+      document.getElementById(`${tabsId}-${activeTab}`)?.focus({ preventScroll: true });
+    }
+  }, [open, activeTab, selectedFilePath, history, tabsId]);
 
   useEffect(() => {
     if (open && !wasOpen.current && reader) {
@@ -1239,6 +1263,11 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   // both are already trivial to undo by hand) — records exactly where
   // the jump came from, then lands on `path` in the Files tab.
   function navigateToFile(path: string): void {
+    // Cross-reference navigation unmounts its source link or tab. Keep
+    // keyboard focus in the destination rather than dropping it to body.
+    if (document.getElementById(`${tabsId}-panel`)?.contains(document.activeElement)) {
+      fileFocusRequest.current = path;
+    }
     cancelLinkRequest();
     setHistory((entries) => [...entries, { tab: activeTab, selectedFilePath, sourceTarget, locatedFile, referenceSearch }]);
     setSourceTarget(undefined);
@@ -1272,6 +1301,9 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   }
 
   function goBack(): void {
+    if (history.length === 1 && document.activeElement === backButtonRef.current) {
+      tabFocusRequest.current = true;
+    }
     cancelLinkRequest();
     setHistory((entries) => {
       const previous = entries[entries.length - 1];
@@ -1310,6 +1342,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                       appearance="subtle"
                       icon={<ArrowLeftRegular />}
                       aria-label={t("inspector.back")}
+                      ref={backButtonRef}
                       onClick={goBack}
                     />
                   </Tooltip>
@@ -1341,6 +1374,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
             ) : (
               <>
                 <TabList
+                  aria-label={t("inspector.title")}
                   selectedValue={activeTab}
                   style={{ flexWrap: "wrap" }}
                   onTabSelect={(_event, tabData) => {
@@ -1348,21 +1382,22 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                     setActiveTab(tabData.value as InspectorTab);
                   }}
                 >
-                  <Tab value="files">
+                  <Tab id={`${tabsId}-files`} aria-controls={`${tabsId}-panel`} value="files">
                     {t("inspector.filesTab")}
                     {` (${data.files.length})`}
                   </Tab>
-                  <Tab value="metadata">{t("inspector.metadataTab")}</Tab>
-                  <Tab value="spine">
+                  <Tab id={`${tabsId}-metadata`} aria-controls={`${tabsId}-panel`} value="metadata">{t("inspector.metadataTab")}</Tab>
+                  <Tab id={`${tabsId}-spine`} aria-controls={`${tabsId}-panel`} value="spine">
                     {t("inspector.spineTab")}
                     {` (${data.spine.length})`}
                   </Tab>
-                  <Tab value="manifest">
+                  <Tab id={`${tabsId}-manifest`} aria-controls={`${tabsId}-panel`} value="manifest">
                     {t("inspector.manifestTab")}
                     {` (${data.manifest.length})`}
                   </Tab>
                 </TabList>
-                <div style={{ flex: 1, minHeight: 0, marginTop: 8 }}>
+                <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${activeTab}`}
+                  tabIndex={0} style={{ flex: 1, minHeight: 0, marginTop: 8 }}>
                   {activeTab === "files" && (
                     <FilesTab
                       data={data}
