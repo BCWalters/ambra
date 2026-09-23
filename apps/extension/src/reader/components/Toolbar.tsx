@@ -4,55 +4,32 @@ import {
   Body1,
   Button,
   Caption1,
-  Menu,
-  MenuDivider,
-  MenuGroup,
-  MenuGroupHeader,
-  MenuItem,
-  MenuItemRadio,
-  MenuList,
-  MenuPopover,
-  MenuTrigger,
   ToggleButton,
   Tooltip,
 } from "@fluentui/react-components";
 import {
   BookInformationRegular,
-  BookOpenRegular,
   BookmarkFilled,
   BookmarkRegular,
-  DocumentOnePageColumnsRegular,
-  LocalLanguageRegular,
   ReadingListRegular,
   SearchRegular,
-  SettingsRegular,
   TextBulletListRegular,
-  TextColumnOneRegular,
-  TextFontRegular,
 } from "@fluentui/react-icons";
-import { ReadingTheme } from "@ambra/engine";
-import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderTypes.js";
-import type { ViewMode } from "../ViewMode.js";
 import {
   CHROME_BACKDROP_FILTER,
   CHROME_BORDER,
   CHROME_HOVER_BACKGROUND,
   CHROME_SHADOW,
-  CHROME_THEMES,
 } from "../chromeTheme.js";
-import type { ChromeThemeChoice } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
-import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
-import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
-import { LOCALE_NATIVE_NAMES, SUPPORTED_LOCALES } from "../../i18n/Locale.js";
-import type { LocalePreference } from "../../i18n/Locale.js";
-import type { StringCatalog } from "../../i18n/locales/en.js";
-import { DefaultableSlider } from "./DefaultableSlider.js";
+import { useTranslation } from "../../i18n/LocaleContext.js";
+import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js";
+import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
 import { AmbraMarkIcon } from "./AmbraMarkIcon.js";
 
-export interface ToolbarProps {
+export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuActions {
   snapshot: ReaderSnapshot;
   /** Navigates away from the reader back to the library page (issue
    * #112) — plain navigation of the reader's own tab, not opening a
@@ -68,16 +45,6 @@ export interface ToolbarProps {
   isDetailsOpen: boolean;
   onToggleDetails: () => void;
   onToggleBookmark: () => void;
-  onSetViewMode: (mode: ViewMode) => void;
-  onSetFontScale: (scale: number) => void;
-  onSetLineSpacing: (spacing: number) => void;
-  onSetLetterSpacing: (spacing: number) => void;
-  onSetContentWidth: (widthEm: number) => void;
-  onSetFontFamily: (family: FontFamilyChoice) => void;
-  onSetPageTheme: (theme: PageTheme) => void;
-  onSetBrightness: (brightness: number) => void;
-  onSetChromeTheme: (theme: ChromeThemeChoice) => void;
-  onSetPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
   /** Whether the toolbar should currently be shown, and the pointer/
    * focus handlers that keep it visible — lifted up into `ReaderApp` (see
    * `useAutoHideChrome`) rather than owned here, so `ProgressScrubber`
@@ -91,105 +58,6 @@ export interface ToolbarProps {
     onBlur: () => void;
   };
 }
-
-const VIEW_MODE_GROUP_NAME = "viewMode";
-const FONT_FAMILY_GROUP_NAME = "fontFamily";
-const PAGE_THEME_GROUP_NAME = "pageTheme";
-const CHROME_THEME_GROUP_NAME = "chromeTheme";
-const PAGE_TURN_ANIMATION_GROUP_NAME = "pageTurnAnimation";
-const LOCALE_GROUP_NAME = "locale";
-
-/** Descriptive color/style words (unlike actual typeface names — see the
- * "Text" font list's own comment — these genuinely translate) mapped to
- * their `StringCatalog` key, so each theme/style enum's engine-owned
- * `.label` (English-only, since the engine itself has no notion of UI
- * locale) can be swapped for a translated one purely at the display
- * layer here. */
-const PAGE_THEME_LABEL_KEYS: Readonly<Record<PageTheme, keyof StringCatalog>> = {
-  white: "pageTheme.white",
-  sepia: "pageTheme.sepia",
-  dark: "pageTheme.dark",
-};
-const CHROME_THEME_LABEL_KEYS: Readonly<Partial<Record<ChromeThemeChoice, keyof StringCatalog>>> = {
-  silver: "chromeTheme.silver",
-  green: "chromeTheme.green",
-  blue: "chromeTheme.blue",
-  purple: "chromeTheme.purple",
-  // "ambra" is deliberately absent — the reader's own signature theme
-  // name (like the app's own "Ambra" name itself) rather than a
-  // descriptive color word, so it stays untranslated in every locale.
-};
-
-/** A small color swatch shown in place of a plain icon beside each
- * "Reader theme" option — an actual preview of that theme's own chrome
- * background (the exact `backgroundSolid` gradient/color `chromeTheme.ts`
- * paints the toolbar/panels with), not just a generic bullet, so a
- * reader can tell at a glance what each named option actually looks
- * like rather than having to apply it first to find out. Sits in
- * `MenuItemRadio`'s `icon` slot, which accepts any element, not just a
- * literal icon component.
- *
- * The small dot in the corner previews `accent` (issue #86) — the same
- * saturated color the progress scrubber picks up for that theme — so
- * this menu is also where a reader first sees that a theme now carries
- * a genuine accent color, not just its own soft background tint. */
-const ThemeSwatch: FC<{ background: string; accent: string }> = ({ background, accent }) => (
-  <span
-    aria-hidden="true"
-    style={{
-      position: "relative",
-      display: "inline-block",
-      width: 20,
-      height: 20,
-      borderRadius: 4,
-      background,
-      border: "1px solid rgba(0, 0, 0, 0.15)",
-      boxSizing: "border-box",
-    }}
-  >
-    <span
-      style={{
-        position: "absolute",
-        bottom: -2,
-        right: -2,
-        width: 9,
-        height: 9,
-        borderRadius: "50%",
-        background: accent,
-        border: "1.5px solid var(--colorNeutralBackground1, #fff)",
-        boxSizing: "border-box",
-      }}
-    />
-  </span>
-);
-
-/** The "Page style" counterpart to `ThemeSwatch` just above — a tiny
- * preview of the actual page (its background color, plus a couple of
- * short bars standing in for lines of text in the theme's own
- * foreground color) instead of a plain bullet, so "White"/"Sepia"/
- * "Dark" read as an actual look rather than requiring a reader to apply
- * each one just to see what it does. */
-const PageStyleSwatch: FC<{ background: string; foreground: string }> = ({ background, foreground }) => (
-  <span
-    aria-hidden="true"
-    style={{
-      display: "inline-flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      gap: 3,
-      width: 20,
-      height: 20,
-      borderRadius: 4,
-      background,
-      border: "1px solid rgba(0, 0, 0, 0.15)",
-      boxSizing: "border-box",
-      padding: "0 4px",
-    }}
-  >
-    <span style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "100%" }} />
-    <span style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "65%" }} />
-  </span>
-);
 
 /** The reader's toolbar: an unobtrusive, translucent overlay (see
  * `useAutoHideChrome`) in a silvery neutral tone deliberately distinct
@@ -247,7 +115,6 @@ export const Toolbar: FC<ToolbarProps> = ({
   const chromePalette = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
-  const { preference: localePreference, setPreference: setLocalePreference } = useLocale();
 
   // Centers the title/chapter group within the space left over between
   // the TOC toggle and the menu buttons whenever it comfortably fits
@@ -565,409 +432,33 @@ export const Toolbar: FC<ToolbarProps> = ({
         </Tooltip>
 
         {!snapshot.isFixedLayout && (
-          <Menu>
-            <MenuTrigger disableButtonEnhancement>
-              <Tooltip content={t("toolbar.textOptions")} relationship="label">
-                <Button
-                  appearance="subtle"
-                  size="small"
-                  icon={<TextFontRegular />}
-                  style={{ marginLeft: 8 }}
-                />
-              </Tooltip>
-            </MenuTrigger>
-            <MenuPopover>
-              <MenuList>
-                {/* Two cascading submenus ("Text"/"Page") rather than one
-                    flat list of four groups — each opens its own popover
-                    on hover/Enter/ArrowRight, Fluent's standard nested-
-                    menu pattern (built-in ARIA: `aria-haspopup`, arrow-key
-                    open/close, `Escape` steps back one level rather than
-                    closing everything at once). Each nested `<Menu>` gets
-                    its own `checkedValues`/`onCheckedValueChange`, scoped
-                    to just the radio group(s) inside it — simpler and
-                    more robust than trying to thread one shared context
-                    through the submenu boundary. */}
-                <Menu
-                  persistOnItemClick
-                  checkedValues={{
-                    [FONT_FAMILY_GROUP_NAME]: [snapshot.fontFamily],
-                  }}
-                  onCheckedValueChange={(_event, data) => {
-                    if (data.name === FONT_FAMILY_GROUP_NAME) {
-                      onSetFontFamily(data.checkedItems[0] as FontFamilyChoice);
-                    }
-                  }}
-                >
-                  <MenuTrigger disableButtonEnhancement>
-                    <MenuItem icon={<TextFontRegular />}>{t("text.textMenuLabel")}</MenuItem>
-                  </MenuTrigger>
-                  <MenuPopover>
-                    <MenuList>
-                      <MenuGroup>
-                        <MenuGroupHeader>{t("text.size")}</MenuGroupHeader>
-                        <div style={{ padding: "6px 12px 10px" }}>
-                          <DefaultableSlider
-                            min={ReadingTheme.MIN_FONT_SCALE}
-                            max={ReadingTheme.MAX_FONT_SCALE}
-                            step={ReadingTheme.FONT_SCALE_STEP}
-                            value={snapshot.fontScale}
-                            defaultValue={ReadingTheme.DEFAULT_FONT_SCALE}
-                            onChange={onSetFontScale}
-                            aria-label={t("text.fontSizeAriaLabel")}
-                          />
-                        </div>
-                      </MenuGroup>
-                      <MenuDivider />
-                      <MenuGroup>
-                        <MenuGroupHeader>{t("text.lineSpacing")}</MenuGroupHeader>
-                        <div style={{ padding: "6px 12px 10px" }}>
-                          <DefaultableSlider
-                            min={ReadingTheme.MIN_LINE_SPACING}
-                            max={ReadingTheme.MAX_LINE_SPACING}
-                            step={ReadingTheme.LINE_SPACING_STEP}
-                            value={snapshot.lineSpacing}
-                            defaultValue={ReadingTheme.DEFAULT_LINE_SPACING}
-                            onChange={onSetLineSpacing}
-                            aria-label={t("text.lineSpacing")}
-                          />
-                        </div>
-                      </MenuGroup>
-                      <MenuDivider />
-                      <MenuGroup>
-                        <MenuGroupHeader>{t("text.characterSpacing")}</MenuGroupHeader>
-                        <div style={{ padding: "6px 12px 10px" }}>
-                          <DefaultableSlider
-                            min={ReadingTheme.MIN_LETTER_SPACING}
-                            max={ReadingTheme.MAX_LETTER_SPACING}
-                            step={ReadingTheme.LETTER_SPACING_STEP}
-                            value={snapshot.letterSpacing}
-                            defaultValue={ReadingTheme.DEFAULT_LETTER_SPACING}
-                            onChange={onSetLetterSpacing}
-                            aria-label={t("text.characterSpacing")}
-                          />
-                        </div>
-                      </MenuGroup>
-                      <MenuDivider />
-                      <MenuGroup>
-                        <MenuGroupHeader>{t("text.font")}</MenuGroupHeader>
-                        {(Object.keys(ReadingTheme.FONT_FAMILIES) as FontFamilyChoice[]).map((key) => {
-                          // Preview each option in its own typeface (falling back
-                          // to the toolbar's own font for "Book default", which
-                          // has no fixed stack of its own by design — it defers
-                          // to whatever the book itself specifies) so the user
-                          // can see the difference between options before picking
-                          // one, rather than reading identical-looking labels.
-                          const stack = ReadingTheme.FONT_FAMILIES[key].stack;
-                          // Actual typeface names (Georgia, Palatino, Times,
-                          // Sitka) are proper nouns — left untranslated, the
-                          // same way a font picker in any language leaves
-                          // "Helvetica" as "Helvetica". Only the two
-                          // genuinely descriptive options get translated.
-                          const label =
-                            key === "sans"
-                              ? t("fontFamily.sansSerif")
-                              : key === "book-default"
-                                ? t("fontFamily.bookDefault")
-                                : ReadingTheme.FONT_FAMILIES[key].label;
-                          return (
-                            <MenuItemRadio
-                              key={key}
-                              name={FONT_FAMILY_GROUP_NAME}
-                              value={key}
-                              style={stack ? { fontFamily: stack } : undefined}
-                            >
-                              {label}
-                            </MenuItemRadio>
-                          );
-                        })}
-                      </MenuGroup>
-                    </MenuList>
-                  </MenuPopover>
-                </Menu>
-
-                <Menu
-                  persistOnItemClick
-                  checkedValues={{
-                    [PAGE_THEME_GROUP_NAME]: [snapshot.pageTheme],
-                  }}
-                  onCheckedValueChange={(_event, data) => {
-                    if (data.name === PAGE_THEME_GROUP_NAME) {
-                      onSetPageTheme(data.checkedItems[0] as PageTheme);
-                    }
-                  }}
-                >
-                  <MenuTrigger disableButtonEnhancement>
-                    <MenuItem icon={<DocumentOnePageColumnsRegular />}>{t("text.pageMenuLabel")}</MenuItem>
-                  </MenuTrigger>
-                  <MenuPopover>
-                    <MenuList>
-                      <MenuGroup>
-                        {/* Labeled by the underlying value it directly controls
-                            (a wider value = a wider text column) rather than
-                            "Margins" (the inverse framing some readers use,
-                            where turning it up means *narrower* text/more
-                            margin) — avoids an inverted slider whose visual
-                            direction wouldn't match its own value. Named
-                            "Column width" (issue #77), not "Page text
-                            width" — this is a two-page spread's column
-                            measure just as much as a single page's, and
-                            "column" is the more precise, print-typography
-                            term for what's actually being adjusted. */}
-                        <MenuGroupHeader>{t("text.columnWidth")}</MenuGroupHeader>
-                        <div style={{ padding: "6px 12px 10px" }}>
-                          <DefaultableSlider
-                            min={ReadingTheme.MIN_CONTENT_WIDTH_EM}
-                            max={ReadingTheme.MAX_CONTENT_WIDTH_EM}
-                            step={ReadingTheme.CONTENT_WIDTH_STEP}
-                            value={snapshot.contentWidthEm}
-                            defaultValue={ReadingTheme.DEFAULT_CONTENT_WIDTH_EM}
-                            onChange={onSetContentWidth}
-                            aria-label={t("text.columnWidth")}
-                          />
-                        </div>
-                      </MenuGroup>
-                      <MenuDivider />
-                      <MenuGroup>
-                        <MenuGroupHeader>{t("text.pageStyle")}</MenuGroupHeader>
-                        {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
-                          <MenuItemRadio
-                            key={key}
-                            name={PAGE_THEME_GROUP_NAME}
-                            value={key}
-                            icon={
-                              <PageStyleSwatch
-                                background={ReadingTheme.PAGE_THEMES[key].background}
-                                foreground={ReadingTheme.PAGE_THEMES[key].foreground}
-                              />
-                            }
-                          >
-                            {t(PAGE_THEME_LABEL_KEYS[key])}
-                          </MenuItemRadio>
-                        ))}
-                      </MenuGroup>
-                    </MenuList>
-                  </MenuPopover>
-                </Menu>
-              </MenuList>
-            </MenuPopover>
-          </Menu>
+          <TypographyMenu
+            fontScale={snapshot.fontScale}
+            lineSpacing={snapshot.lineSpacing}
+            letterSpacing={snapshot.letterSpacing}
+            contentWidthEm={snapshot.contentWidthEm}
+            fontFamily={snapshot.fontFamily}
+            pageTheme={snapshot.pageTheme}
+            onSetFontScale={onSetFontScale}
+            onSetLineSpacing={onSetLineSpacing}
+            onSetLetterSpacing={onSetLetterSpacing}
+            onSetContentWidth={onSetContentWidth}
+            onSetFontFamily={onSetFontFamily}
+            onSetPageTheme={onSetPageTheme}
+          />
         )}
 
-        <Menu
-          persistOnItemClick
-          checkedValues={{
-            [VIEW_MODE_GROUP_NAME]: [snapshot.viewMode],
-            [CHROME_THEME_GROUP_NAME]: [snapshot.chromeTheme],
-            [PAGE_TURN_ANIMATION_GROUP_NAME]: [snapshot.pageTurnAnimationStyle],
-          }}
-          onCheckedValueChange={(_event, data) => {
-            if (data.name === VIEW_MODE_GROUP_NAME) {
-              onSetViewMode(data.checkedItems[0] as ViewMode);
-            } else if (data.name === CHROME_THEME_GROUP_NAME) {
-              onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
-            } else if (data.name === PAGE_TURN_ANIMATION_GROUP_NAME) {
-              onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
-            }
-          }}
-        >
-          <MenuTrigger disableButtonEnhancement>
-            <Tooltip content={t("toolbar.settings")} relationship="label">
-              <Button
-                appearance="subtle"
-                size="small"
-                icon={<SettingsRegular />}
-                // Only the "Aa" menu (Text and page layout) is skipped
-                // for fixed-layout books, at which point Settings becomes
-                // the first button in this group instead — it needs the
-                // same grouping gap "Aa" normally carries in that case,
-                // not an extra one stacked on top of it otherwise.
-                style={snapshot.isFixedLayout ? { marginLeft: 8 } : undefined}
-              />
-            </Tooltip>
-          </MenuTrigger>
-          <MenuPopover>
-            <MenuList>
-              {/* A nested submenu, like "Text"/"Page" above, rather than
-                  a flat list of radio items directly in this menu — with
-                  9 supported locales (and growing), a flat "System
-                  default" + 9-language list ate most of this menu's own
-                  height every time it opened, for a setting most readers
-                  touch once and never again. Collapsing it behind one
-                  entry (showing the current choice as its own
-                  `secondaryContent`, the same way "Page flip" shows
-                  "Experimental") keeps this menu's height stable
-                  regardless of how many locales ship in the future. */}
-              <Menu
-                persistOnItemClick
-                checkedValues={{
-                  [LOCALE_GROUP_NAME]: [localePreference],
-                }}
-                onCheckedValueChange={(_event, data) => {
-                  if (data.name === LOCALE_GROUP_NAME) {
-                    setLocalePreference(data.checkedItems[0] as LocalePreference);
-                  }
-                }}
-              >
-                <MenuTrigger disableButtonEnhancement>
-                  <MenuItem
-                    icon={<LocalLanguageRegular />}
-                    secondaryContent={
-                      localePreference === "system"
-                        ? t("settings.languageSystemDefault")
-                        : LOCALE_NATIVE_NAMES[localePreference]
-                    }
-                  >
-                    {t("settings.language")}
-                  </MenuItem>
-                </MenuTrigger>
-                <MenuPopover>
-                  <MenuList>
-                    <MenuItemRadio name={LOCALE_GROUP_NAME} value="system">
-                      {t("settings.languageSystemDefault")}
-                    </MenuItemRadio>
-                    {SUPPORTED_LOCALES.map((localeOption) => (
-                      <MenuItemRadio key={localeOption} name={LOCALE_GROUP_NAME} value={localeOption}>
-                        {LOCALE_NATIVE_NAMES[localeOption]}
-                      </MenuItemRadio>
-                    ))}
-                  </MenuList>
-                </MenuPopover>
-              </Menu>
-              <MenuDivider />
-              {!snapshot.isFixedLayout && (
-                <>
-                  <MenuGroup>
-                    <MenuGroupHeader>{t("settings.readingMode")}</MenuGroupHeader>
-                    <MenuItemRadio
-                      name={VIEW_MODE_GROUP_NAME}
-                      value="paginated"
-                      icon={<BookOpenRegular />}
-                    >
-                      {t("settings.paginated")}
-                    </MenuItemRadio>
-                    <MenuItemRadio
-                      name={VIEW_MODE_GROUP_NAME}
-                      value="scroll"
-                      icon={<TextColumnOneRegular />}
-                    >
-                      {t("settings.scroll")}
-                    </MenuItemRadio>
-                  </MenuGroup>
-                  <MenuDivider />
-                </>
-              )}
-              {/* Moved out from under the reflowable-only section above
-                  (same reasoning issue #93 already gave for "Brightness"/
-                  "Reader theme" just below) once fixed-layout turns
-                  themselves gained page-turn animation support — every
-                  style here now applies equally to a fixed-layout book's
-                  own spread-to-spread turn (`ReaderController
-                  .animateFixedSpreadTurn`), not just a reflowable
-                  chapter/page turn, so hiding this whole group for
-                  fixed-layout content would leave no way to change it
-                  without first opening a reflowable book. "Reading mode"
-                  above stays reflowable-only, though — fixed-layout
-                  content has no equivalent of a continuous-scroll view;
-                  it's always shown one spread at a time. */}
-              <MenuGroup>
-                <MenuGroupHeader>{t("settings.pageTurn")}</MenuGroupHeader>
-                {/* Meaningless in continuous-scroll mode (issue #100) —
-                    there's no discrete page turn to animate at all, just
-                    a native scrollbar — so every option here is disabled
-                    (not hidden: the group and the reader's last-chosen
-                    style both stay visible/selected, ready to take
-                    effect again the moment they switch back to
-                    Paginated) whenever `viewMode` is "scroll". Never
-                    true for fixed-layout content, which has no
-                    continuous-scroll view to begin with (see "Reading
-                    mode" above). */}
-                <MenuItemRadio
-                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
-                  value="slide"
-                  disabled={snapshot.viewMode === "scroll"}
-                >
-                  {t("settings.slide")}
-                </MenuItemRadio>
-                <MenuItemRadio
-                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
-                  value="scroll"
-                  disabled={snapshot.viewMode === "scroll"}
-                >
-                  {t("settings.filmStrip")}
-                </MenuItemRadio>
-                <MenuItemRadio
-                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
-                  value="rotate"
-                  secondaryContent={t("settings.experimental")}
-                  disabled={snapshot.viewMode === "scroll"}
-                >
-                  {t("settings.pageFlip")}
-                </MenuItemRadio>
-                <MenuItemRadio
-                  name={PAGE_TURN_ANIMATION_GROUP_NAME}
-                  value="none"
-                  disabled={snapshot.viewMode === "scroll"}
-                >
-                  {t("settings.off")}
-                </MenuItemRadio>
-              </MenuGroup>
-              <MenuDivider />
-              <MenuGroup>
-                <MenuGroupHeader>{t("settings.readerTheme")}</MenuGroupHeader>
-                {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
-                  <MenuItemRadio
-                    key={key}
-                    name={CHROME_THEME_GROUP_NAME}
-                    value={key}
-                    icon={
-                      <ThemeSwatch
-                        background={CHROME_THEMES[key].backgroundSolid}
-                        accent={CHROME_THEMES[key].accent}
-                      />
-                    }
-                  >
-                    {CHROME_THEME_LABEL_KEYS[key] ? t(CHROME_THEME_LABEL_KEYS[key]!) : CHROME_THEMES[key].label}
-                  </MenuItemRadio>
-                ))}
-              </MenuGroup>
-              <MenuDivider />
-              <MenuGroup>
-                {/* Issue #92: dims the whole reading pane (text,
-                    background, margins, and any images) below whichever
-                    "Page style" theme is active — a single slider that
-                    works the same way across every theme, rather than a
-                    separate darkening mechanism per theme, since a plain
-                    brightness filter already dims a lighter theme's
-                    whole page while dimming mostly the *text* of the
-                    already-dark "Dark" theme, exactly the two behaviors
-                    asked for. Moved here from the "Aa" menu's "Page"
-                    submenu, and out from under the reflowable-only
-                    section above (issue #93) — it's a reading-chrome
-                    setting applied by the shell itself (see
-                    `ReaderController.setBrightness`'s doc comment), not
-                    a per-host typography/layout one, so — like "Reader
-                    theme" just above — it belongs here, and works for
-                    fixed-layout books too, not just reflowable ones.
-                    Last in this menu (rather than just after "Page
-                    turn", where it used to sit) — it's the setting
-                    readers reach for least often of the group. */}
-                <MenuGroupHeader>{t("settings.brightness")}</MenuGroupHeader>
-                <div style={{ padding: "6px 12px 10px" }}>
-                  <DefaultableSlider
-                    min={ReadingTheme.MIN_BRIGHTNESS}
-                    max={ReadingTheme.MAX_BRIGHTNESS}
-                    step={ReadingTheme.BRIGHTNESS_STEP}
-                    value={snapshot.brightness}
-                    defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
-                    onChange={onSetBrightness}
-                    aria-label={t("settings.brightness")}
-                  />
-                </div>
-              </MenuGroup>
-            </MenuList>
-          </MenuPopover>
-        </Menu>
+        <ReaderSettingsMenu
+          isFixedLayout={snapshot.isFixedLayout}
+          viewMode={snapshot.viewMode}
+          brightness={snapshot.brightness}
+          chromeTheme={snapshot.chromeTheme}
+          pageTurnAnimationStyle={snapshot.pageTurnAnimationStyle}
+          onSetViewMode={onSetViewMode}
+          onSetBrightness={onSetBrightness}
+          onSetChromeTheme={onSetChromeTheme}
+          onSetPageTurnAnimationStyle={onSetPageTurnAnimationStyle}
+        />
 
         <Tooltip
           content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}

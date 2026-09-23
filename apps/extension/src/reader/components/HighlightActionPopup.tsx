@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Button, Textarea, Tooltip } from "@fluentui/react-components";
 import { DeleteRegular, DismissRegular } from "@fluentui/react-icons";
-import { HighlightTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import type { ActiveHighlightState } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
-import { HIGHLIGHT_STYLE_LABEL_KEYS } from "./SelectionToolbar.js";
+import { HighlightStylePicker } from "./HighlightStylePicker.js";
 import { useClampedPopupOffset } from "../useClampedPopupOffset.js";
 
 export interface HighlightActionPopupProps {
@@ -183,37 +182,7 @@ export const HighlightActionPopup: FC<HighlightActionPopupProps> = ({
           the book right behind this popup, so echoing it back was pure
           redundancy. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div role="radiogroup" aria-label={t("highlight.colorGroupAriaLabel")} style={{ display: "flex", gap: 6 }}>
-          {HighlightTheme.STYLE_ORDER.map((style) => {
-            const swatchOption = HighlightTheme.STYLES[style];
-            const label = t(HIGHLIGHT_STYLE_LABEL_KEYS[style]);
-            const selected = style === highlight.style;
-            return (
-              <Tooltip key={style} content={label} relationship="label">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  aria-label={label}
-                  onClick={() => onSetStyle(highlight.id, style)}
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    border: selected ? "2px solid rgba(15, 23, 42, 0.75)" : "1px solid rgba(0, 0, 0, 0.15)",
-                    boxShadow: selected ? "0 0 0 2px rgba(255, 255, 255, 0.9)" : "none",
-                    cursor: "pointer",
-                    padding: 0,
-                    background:
-                      style === "underline"
-                        ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${swatchOption.swatch} 65%, ${swatchOption.swatch} 80%, transparent 80%)`
-                        : swatchOption.swatch,
-                  }}
-                />
-              </Tooltip>
-            );
-          })}
-        </div>
+        <HighlightStylePicker value={highlight.style} onChange={(style) => onSetStyle(highlight.id, style)} />
         <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
           <Tooltip content={t("highlight.deleteHighlight")} relationship="label">
             <Button
