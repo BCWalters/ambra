@@ -41,12 +41,20 @@ export function registerEpubDirectImport(): void {
       return;
     }
     chrome.downloads.cancel(item.id, () => {
-      // Cancelling still leaves a "canceled" entry in the downloads
-      // list/shelf — erase it so no partial/zero-byte file or history
-      // entry lingers for something that was never really a download
-      // from the reader's own point of view.
-      chrome.downloads.erase({ id: item.id });
+      if (chrome.runtime.lastError) return;
+      // Chrome also reports cancellation success for a download that already
+      // completed. Keep those records for the normal notification/file-picker
+      // fallback instead of fetching again and hiding the saved file's history.
+      chrome.downloads.search({ id: item.id }, (items) => {
+        if (chrome.runtime.lastError) return;
+        const current = items[0];
+        if (current?.state !== "interrupted" || current.error !== "USER_CANCELED") return;
+        void openLibraryImportTab(item.url).then(() =>
+          chrome.downloads.erase({ id: item.id, state: "interrupted", error: "USER_CANCELED" }),
+        ).catch((error: unknown) => {
+          console.warn("Ambra could not finish handing off the EPUB download.", error);
+        });
+      });
     });
-    void openLibraryImportTab(item.url);
   });
 }
