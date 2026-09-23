@@ -48,6 +48,7 @@ async function expectDiscovery(page: Page) {
   for (const [name, href] of [
     ["Project Gutenberg", "https://www.gutenberg.org/ebooks/"],
     ["Standard Ebooks", "https://standardebooks.org/ebooks"],
+    ["ReadBeyond", "https://www.readbeyond.it/ebooks.html"],
   ]) {
     const link = discovery.getByRole("link", { name, exact: true });
     await expect(link).toHaveAttribute("href", href);
@@ -55,6 +56,8 @@ async function expectDiscovery(page: Page) {
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
   }
   await expect(discovery).toContainText("Links open in a new tab");
+  await expect(discovery).toContainText("recorded narration and synchronized text");
+  await expect(discovery).toContainText("Check each book's license");
   await expect(discovery.getByRole("listitem").first()).toContainText(
     "EPUB download (not Kindle or PDF)",
   );
@@ -106,6 +109,8 @@ test("empty library exposes discovery, safe links and keyboard-accessible local 
     await expect(page.getByRole("link", { name: "Project Gutenberg", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "Standard Ebooks", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: "ReadBeyond", exact: true })).toBeFocused();
     await page.screenshot({
       path: testInfo.outputPath("empty-library-desktop.png"),
       fullPage: true,

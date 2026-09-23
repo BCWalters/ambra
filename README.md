@@ -104,6 +104,12 @@ source control; set `AMBRA_MEDIA_OVERLAY_BOOK` to its local path to run
 `apps/e2e/tests/media-overlay-real-book.spec.ts`. Synthetic audio fixtures can be
 regenerated with `node apps/e2e/scripts/generate-media-overlay-fixtures.mjs`.
 
+[ReadBeyond's A Horseman in the Sky](https://www.readbeyond.it/ebooks/1a62c8e6.html)
+is a complete, roughly 15-minute narrated story with synchronized text. Its EPUB
+package is CC BY-NC-SA 4.0, not entirely public domain. Set `AMBRA_READBEYOND_BOOK`
+to a local copy to exercise its playback, highlighting, and browse/return behavior
+in the same real-book test. Library discovery links to ReadBeyond's wider collection.
+
 ## Coding conventions
 
 - Favor object-oriented design (classes with clear responsibilities) for the engine's core

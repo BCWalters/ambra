@@ -77,6 +77,7 @@ export interface StringCatalog {
   "library.discoveryDescription": string;
   "library.gutenbergDescription": string;
   "library.standardEbooksDescription": string;
+  "library.readBeyondDescription": string;
   "library.discoverySteps": string;
   "library.discoveryDownload": string;
   "library.discoveryImport": string;
@@ -405,10 +406,11 @@ export const en: StringCatalog = {
   "library.discoveryDescription": "Start with these free EPUB collections. Links open in a new tab.",
   "library.gutenbergDescription": "Explore classic literature and discover your next favorite.",
   "library.standardEbooksDescription": "Carefully edited classics with beautiful typography.",
+  "library.readBeyondDescription": "Read along with recorded narration and synchronized text.",
   "library.discoverySteps": "From discovery to your library",
   "library.discoveryDownload": "Choose a book, then choose its EPUB download (not Kindle or PDF).",
   "library.discoveryImport": "Ambra may open a direct EPUB link for you. If it downloads instead, return here, select {importLabel}, and choose the saved {extension} file.",
-  "library.discoveryNotice": "These collections focus on works in the U.S. public domain. Check copyright rules where you live. Your library stays on this device; Ambra does not browse these sites for you.",
+  "library.discoveryNotice": "Check each book's license and the copyright rules where you live. Free does not always mean public domain. Your library stays on this device; Ambra does not browse these sites for you.",
   "library.importStorageFull": "Couldn't import \"{fileName}\" — your device appears to be out of storage space. Free up some disk space and try again.",
   "library.storageFull": "Your device appears to be out of storage space. Free up some disk space and try again.",
   "library.importNotReady": "The library isn't ready to import books. Wait for loading to finish, or reload this page if it failed.",

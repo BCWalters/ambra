@@ -16,6 +16,11 @@ const SOURCES = [
     href: "https://standardebooks.org/ebooks",
     description: "library.standardEbooksDescription" as const,
   },
+  {
+    name: "ReadBeyond",
+    href: "https://www.readbeyond.it/ebooks.html",
+    description: "library.readBeyondDescription" as const,
+  },
 ];
 
 /** Discovery is always visible before the first import, then available on demand at any library size. */
