@@ -2954,12 +2954,22 @@ export class ReaderController {
     return columnRole === "left" ? { left: 1, right: 1 } : { left: 1, right: -1 };
   }
 
+  private dismissContentSelection(): boolean {
+    const selected = this.contentDocumentViews().some(
+      ({ document }) => document.getSelection()?.isCollapsed === false,
+    );
+    if (selected) this.highlightInteraction.dismissSelectionToolbar();
+    return selected;
+  }
+
   private onGestureRelease(
     target: Document | HTMLElement,
     start: PointerEvent,
     release: (event: PointerEvent) => void,
   ): void {
     this.gestureCleanup?.();
+    // Native pointerdown clears selection before pointerup can inspect it.
+    if (this.dismissContentSelection()) return;
     const cleanup = (): void => {
       target.removeEventListener("pointerup", listener);
       target.removeEventListener("pointercancel", listener);
@@ -2991,6 +3001,7 @@ export class ReaderController {
       return;
     }
     this.gestureCleanup?.();
+    if (this.dismissContentSelection()) return;
     const oldHost = this.host;
     const startX = startEvent.clientX;
     const startY = startEvent.clientY;
