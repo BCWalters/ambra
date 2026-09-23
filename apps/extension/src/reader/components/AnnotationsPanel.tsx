@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Tab, TabList, Tooltip } from "@fluentui/react-components";
 import {
@@ -21,6 +21,7 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 import type { ReadOnlyAnnotationView } from "../ReaderTypes.js";
 import { HighlightNoteEditor } from "./HighlightNoteEditor.js";
+import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 interface BookmarkListProps {
   bookmarks: readonly Bookmark[];
@@ -47,9 +48,9 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, embedded, onSelect, on
   const t = useTranslation();
   if (bookmarks.length === 0 && embedded.length === 0) {
     return (
-      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
+      <Body1 as="p" block style={{ padding: "16px 12px", opacity: 0.75, margin: 0 }}>
         {t("annotations.noBookmarksYet")}
-      </Caption1>
+      </Body1>
     );
   }
 
@@ -137,9 +138,9 @@ const HighlightList: FC<HighlightListProps> = ({
   const t = useTranslation();
   if (highlights.length === 0 && embedded.length === 0) {
     return (
-      <Caption1 as="p" style={{ padding: "12px 10px", opacity: 0.6, margin: 0 }}>
+      <Body1 as="p" block style={{ padding: "16px 12px", opacity: 0.75, margin: 0 }}>
         {t("annotations.noHighlightsYet")}
-      </Caption1>
+      </Body1>
     );
   }
 
@@ -172,75 +173,106 @@ interface HighlightListItemProps {
  * split out from `HighlightList` specifically so each row can hold that
  * state independently (a `useState` inside a `.map()` callback isn't
  * possible; a real sub-component is the correct fix, not a workaround). */
-const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, onRemove, onSetNote }) => {
+const HighlightListItem: FC<HighlightListItemProps> = ({
+  highlight,
+  onSelect,
+  onRemove,
+  onSetNote,
+}) => {
   const t = useTranslation();
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState(highlight.note ?? "");
+  const noteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const editorId = useId();
   const option = HighlightTheme.STYLES[highlight.style];
+  const closeNoteEditor = () => {
+    setIsEditingNote(false);
+    noteButtonRef.current?.focus();
+  };
 
   return (
-    <li style={{ padding: "2px 0" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 2 }}>
-        <button
-          type="button"
-          onClick={() => onSelect(highlight.startCfi)}
+    <li
+      style={{
+        marginBottom: 8,
+        border: `1px solid ${CHROME_BORDER}`,
+        borderRadius: 8,
+        background: "rgba(255, 255, 255, 0.16)",
+        overflowWrap: "anywhere",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(highlight.startCfi)}
+        style={{
+          width: "100%",
+          minWidth: 0,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 8,
+          background: "none",
+          border: "none",
+          borderRadius: 6,
+          color: "var(--colorNeutralForeground2, #333)",
+          cursor: "pointer",
+          padding: "10px",
+          textAlign: "left",
+          font: "inherit",
+          lineHeight: 1.35,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "none";
+        }}
+      >
+        <span
+          aria-hidden="true"
           style={{
-            flex: 1,
-            minWidth: 0,
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 8,
-            background: "none",
-            border: "none",
-            borderRadius: 6,
-            color: "var(--colorNeutralForeground2, #333)",
-            cursor: "pointer",
-            padding: "7px 10px",
-            textAlign: "left",
-            font: "inherit",
-            lineHeight: 1.35,
+            flexShrink: 0,
+            marginTop: 4,
+            width: 12,
+            height: 12,
+            borderRadius: "50%",
+            border: "1px solid rgba(0, 0, 0, 0.15)",
+            background:
+              highlight.style === "underline"
+                ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+                : option.swatch,
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "none";
-          }}
-        >
+        />
+        <span style={{ minWidth: 0, flex: 1 }}>
           <span
-            aria-hidden="true"
             style={{
-              flexShrink: 0,
-              marginTop: 4,
-              width: 12,
-              height: 12,
-              borderRadius: "50%",
-              border: "1px solid rgba(0, 0, 0, 0.15)",
-              background:
-                highlight.style === "underline"
-                  ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
-                  : option.swatch,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
-          />
-          <span style={{ minWidth: 0, flex: 1 }}>
-            <span
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {highlight.text}
-            </span>
-            {highlight.note && !isEditingNote && (
-              <Caption1 as="span" block style={{ marginTop: 2, fontStyle: "italic", opacity: 0.75 }}>
-                {highlight.note}
-              </Caption1>
-            )}
+          >
+            {highlight.text}
           </span>
-        </button>
+        </span>
+      </button>
+      {highlight.note && !isEditingNote && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "0 10px 8px" }}>
+          <NoteRegular aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+          <Body1 as="p" block style={{ margin: 0, whiteSpace: "pre-wrap", minWidth: 0 }}>
+            {highlight.note}
+          </Body1>
+        </div>
+      )}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          padding: "0 8px 8px",
+        }}
+      >
         <Tooltip
           content={
             highlight.note
@@ -250,16 +282,28 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
           relationship="label"
         >
           <Button
+            ref={noteButtonRef}
             appearance="subtle"
             size="small"
             icon={<NoteRegular />}
+            aria-expanded={isEditingNote}
+            aria-controls={isEditingNote ? editorId : undefined}
             onClick={() => {
+              if (isEditingNote) {
+                editorRef.current?.querySelector("textarea")?.focus();
+                return;
+              }
               setDraftNote(highlight.note ?? "");
-              setIsEditingNote((open) => !open);
+              setIsEditingNote(true);
             }}
-          />
+          >
+            {t(highlight.note ? "highlight.editNote" : "highlight.addNote")}
+          </Button>
         </Tooltip>
-        <Tooltip content={t("annotations.removeHighlight", { text: highlight.text })} relationship="label">
+        <Tooltip
+          content={t("annotations.removeHighlight", { text: highlight.text })}
+          relationship="label"
+        >
           <Button
             appearance="subtle"
             size="small"
@@ -269,14 +313,15 @@ const HighlightListItem: FC<HighlightListItemProps> = ({ highlight, onSelect, on
         </Tooltip>
       </div>
       {isEditingNote && (
-        <div style={{ padding: "0 10px 8px 34px" }}>
+        <div ref={editorRef} id={editorId} style={{ padding: "0 10px 10px" }}>
           <HighlightNoteEditor
             value={draftNote}
             onChange={setDraftNote}
             hasExistingNote={!!highlight.note}
             onSave={(note) => onSetNote(highlight.id, note)}
-            onSaved={() => setIsEditingNote(false)}
-            onCancel={() => setIsEditingNote(false)}
+            onSaved={closeNoteEditor}
+            onCancel={closeNoteEditor}
+            autoFocus
           />
         </div>
       )}
@@ -484,7 +529,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
         style={{
           position: pinned ? "relative" : "absolute",
           outline: "none",
-          top: pinned ? 0 : 44,
+          top: pinned ? 0 : CHROME_TOOLBAR_HEIGHT,
           left: 0,
           bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
           zIndex: 8,

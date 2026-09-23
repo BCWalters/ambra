@@ -78,9 +78,15 @@ for (const width of [1000, 360]) {
   test(`Library flyout close buttons stay at the right edge at ${width}px`, async ({
     browserName: _browserName,
   }, testInfo) => {
-    const { context, libraryPage } = await launchReader(book, { viewport: { width, height: 800 } });
+    const { context, libraryPage, readerPage } = await launchReader(book, { viewport: { width, height: 800 } });
     try {
       const brand = libraryPage.getByText("Ambra", { exact: true });
+      const libraryHeader = brand.locator("..");
+      const readerSettings = readerPage.getByRole("button", { name: "Settings", exact: true });
+      await expect(libraryHeader).toHaveCSS("height", "56px");
+      await expect(readerSettings.locator("..")).toHaveCSS("height", "56px");
+      await expect(libraryPage.getByRole("button", { name: "Settings", exact: true }).locator("svg")).toHaveCSS("width", "20px");
+      await expect(readerSettings.locator("svg")).toHaveCSS("width", "20px");
       await expect(brand.locator("svg")).toHaveAttribute("aria-hidden", "true");
       expect(await brand.evaluate(element => element.closest("button, a, [tabindex]"))).toBeNull();
       expect(await brand.locator("button, a, [tabindex]").count()).toBe(0);
@@ -114,6 +120,24 @@ for (const width of [1000, 360]) {
         await close.click();
         await expect(dialog).toBeHidden();
         await expect(trigger).toBeFocused();
+      }
+      for (const [trigger, role, name] of [
+        ["Show contents", "navigation", "Table of contents"],
+        ["Search", "navigation", "Search"],
+        ["Bookmarks and highlights", "navigation", "Bookmarks and highlights"],
+        ["Book details", "complementary", "Book details"],
+      ] as const) {
+        await readerPage.mouse.move(150, 2);
+        await readerPage.getByRole("button", { name: trigger, exact: true }).click();
+        const panel = readerPage.getByRole(role, { name, exact: true });
+        await expect(panel).toBeVisible();
+        const bounds = await panel.boundingBox();
+        expect(bounds!.y).toBeGreaterThanOrEqual(56);
+        if (name === "Table of contents") {
+          await expect(panel.locator('[aria-current="location"]').first()).toHaveCSS("font-weight", "600");
+        }
+        await panel.press("Escape");
+        await expect(panel).toBeHidden();
       }
     } finally {
       await context.close();

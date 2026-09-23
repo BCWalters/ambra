@@ -70,7 +70,16 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
   };
 
   return (
-    <div aria-busy={pending}>
+    <div
+      aria-busy={pending}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
       <Textarea
         ref={textareaRef}
         value={value}

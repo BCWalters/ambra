@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useId, type FC } from "react";
 import {
   Button,
   Menu,
@@ -176,6 +176,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
   onSetPageTheme,
 }) => {
   const t = useTranslation();
+  const scopeId = useId();
   return (
     <Menu>
       <MenuTrigger disableButtonEnhancement>
@@ -189,7 +190,8 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
         </Tooltip>
       </MenuTrigger>
       <MenuPopover>
-        <MenuList>
+        <MenuList aria-describedby={scopeId}>
+          <MenuGroupHeader id={scopeId}>{t("text.bookScope")}</MenuGroupHeader>
           <Menu
             persistOnItemClick
             checkedValues={{ fontFamily: [fontFamily] }}
@@ -365,6 +367,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   onSetPageTurnAnimationStyle,
 }) => {
   const t = useTranslation();
+  const scopeId = useId();
   return (
     <Menu
       persistOnItemClick
@@ -393,7 +396,8 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
         </Tooltip>
       </MenuTrigger>
       <MenuPopover>
-        <MenuList>
+        <MenuList aria-describedby={scopeId}>
+          <MenuGroupHeader id={scopeId}>{t("settings.globalScope")}</MenuGroupHeader>
           <LanguageMenu />
           <MenuDivider />
           {!isFixedLayout && (

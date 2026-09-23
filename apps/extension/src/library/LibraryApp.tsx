@@ -36,6 +36,7 @@ import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
 import { AboutFlyout } from "./AboutFlyout.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
+import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.js";
 
 const SORT_GROUP_NAME = "librarySort";
@@ -305,6 +306,7 @@ export const LibraryApp: FC = () => {
   } = useLibrary();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const palette = CHROME_THEMES[chromeTheme];
+  const toolbarStyles = useChromeToolbarStyles();
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
   const detailsBook = books.find((book) => book.id === detailsBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
@@ -322,6 +324,7 @@ export const LibraryApp: FC = () => {
   return (
     <div style={{ minHeight: "100vh", background: palette.backgroundSolid, display: "flex", flexDirection: "column" }}>
       <div
+        className={toolbarStyles.root}
         style={{
           display: "flex",
           alignItems: "center",

@@ -8,6 +8,7 @@ import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { SearchResultItem } from "../SearchCoordinator.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 /** Debounces the search box's `onChange` before actually calling
  * `ReaderController.search` (see `TocPanel`'s former identical
@@ -140,7 +141,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
           // mode this panel spans the full app row height, which would
           // otherwise put its own header directly underneath the
           // toolbar's identical top:0 row.
-          top: pinned ? 0 : 44,
+          top: pinned ? 0 : CHROME_TOOLBAR_HEIGHT,
           // Docks/flies out from the *right* edge now (issue #68),
           // mirroring `BookDetailsPanel` rather than `TocPanel`/
           // `AnnotationsPanel` on the left.

@@ -37,6 +37,50 @@ async function releaseSave(page: Page, commit: boolean): Promise<void> {
   }, commit);
 }
 
+test("annotation actions are explicit and inline note editing keeps focus and drafts predictable", async ({ browserName: _browserName }, testInfo) => {
+  const { context, readerPage: page } = await launchReader(book, {
+    viewport: { width: 360, height: 800 },
+  });
+  try {
+    await selectText(page);
+    const selection = page.getByRole("toolbar", { name: "Highlight this selection" });
+    await expect(selection.getByRole("button", { name: "Add note", exact: true })).toHaveText("Add note");
+    await expect(selection.getByRole("button", { name: "Yellow", exact: true })).toHaveCSS("width", "28px");
+    await expect.poll(() => selection.evaluate(element => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= innerWidth;
+    })).toBe(true);
+    await selection.getByRole("button", { name: "Yellow", exact: true }).click();
+    await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
+    const panel = page.getByRole("navigation", { name: "Bookmarks and highlights", exact: true });
+    await panel.getByRole("tab", { name: /Highlights/ }).click();
+    const addNote = panel.getByRole("button", { name: /^Add note:/ });
+    await expect(addNote).toHaveText("Add note");
+    await addNote.click();
+    const textarea = panel.getByRole("textbox", { name: "Add a note…" });
+    await expect(textarea).toBeFocused();
+    await textarea.fill("Still thinking");
+    await addNote.click();
+    await expect(textarea).toHaveValue("Still thinking");
+    await expect(textarea).toBeFocused();
+    await textarea.press("Escape");
+    await expect(textarea).toBeHidden();
+    await expect(panel).toBeVisible();
+    await expect(addNote).toBeFocused();
+    await addNote.click();
+    await textarea.fill("My note is separate from the highlighted quotation.");
+    await panel.getByRole("button", { name: "Save", exact: true }).click();
+    const editNote = panel.getByRole("button", { name: /^Edit note:/ });
+    await expect(editNote).toHaveText("Edit note");
+    await expect(editNote).toBeFocused();
+    await expect(panel.getByText("My note is separate from the highlighted quotation.", { exact: true })).toBeVisible();
+    await expect.poll(() => panel.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath("annotations-polish.png") });
+  } finally {
+    await context.close();
+  }
+});
+
 for (const surface of ["popup", "panel"] as const) {
   test(`${surface} retains note drafts after quota failure, retries, and clears committed notes`, async () => {
     const { context, readerPage: page } = await launchReader(book);

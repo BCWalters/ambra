@@ -11,6 +11,7 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
 import { GoToDialog } from "./GoToDialog.js";
 import { BookDetailRow as DetailRow, BookRightsRow } from "../../components/BookMetadataRows.js";
 import { PaneCard, PaneDisclosure } from "../../components/PaneSections.js";
+import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -172,7 +173,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
         style={{
           position: "absolute",
           outline: "none",
-          top: 44,
+          top: CHROME_TOOLBAR_HEIGHT,
           right: 0,
           bottom: scrubberVisible ? SCRUBBER_HEIGHT : 8,
           zIndex: 8,

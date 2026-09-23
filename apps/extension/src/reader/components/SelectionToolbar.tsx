@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { FC } from "react";
-import { Tooltip } from "@fluentui/react-components";
+import { Button, Tooltip } from "@fluentui/react-components";
 import { NoteRegular } from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
@@ -58,10 +58,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
   const chromeTheme = useChromeTheme();
   const t = useTranslation();
   const toolbarRef = useRef<HTMLDivElement | null>(null);
-  // See `HighlightActionPopup`'s identical use of this hook — this
-  // toolbar's own size never actually changes (always the same six
-  // swatches + note button), so only the anchor point itself needs
-  // watching.
+  // The shared observer also re-clamps when a translated note label wraps.
   const clampOffset = useClampedPopupOffset(
     toolbarRef,
     state ? { left: state.left, top: state.top } : undefined,
@@ -89,6 +86,8 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
         transform: `translate(calc(-50% + ${clampOffset.x}px), calc(-100% - 10px + ${clampOffset.y}px))`,
         zIndex: 20,
         display: "flex",
+        flexWrap: "wrap",
+        justifyContent: "center",
         alignItems: "center",
         gap: 6,
         padding: "6px 8px",
@@ -96,57 +95,43 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
         background: chromeTheme.backgroundSolid,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
+        width: "max-content",
+        maxWidth: "calc(100vw - 20px)",
+        boxSizing: "border-box",
       }}
     >
-      {HighlightTheme.STYLE_ORDER.map((style) => {
-        const option = HighlightTheme.STYLES[style];
-        const label = t(HIGHLIGHT_STYLE_LABEL_KEYS[style]);
-        return (
-          <Tooltip key={style} content={label} relationship="label">
-            <button
-              type="button"
-              aria-label={label}
-              onClick={() => onPick(style)}
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                border: "1px solid rgba(0, 0, 0, 0.15)",
-                cursor: "pointer",
-                padding: 0,
-                background:
-                  style === "underline"
-                    ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
-                    : option.swatch,
-              }}
-            />
-          </Tooltip>
-        );
-      })}
-
-      <div aria-hidden="true" style={{ width: 1, alignSelf: "stretch", background: CHROME_BORDER }} />
+      <div style={{ display: "flex", gap: 6 }}>
+        {HighlightTheme.STYLE_ORDER.map((style) => {
+          const option = HighlightTheme.STYLES[style];
+          const label = t(HIGHLIGHT_STYLE_LABEL_KEYS[style]);
+          return (
+            <Tooltip key={style} content={label} relationship="label">
+              <button
+                type="button"
+                aria-label={label}
+                onClick={() => onPick(style)}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(0, 0, 0, 0.15)",
+                  cursor: "pointer",
+                  padding: 0,
+                  background:
+                    style === "underline"
+                      ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+                      : option.swatch,
+                }}
+              />
+            </Tooltip>
+          );
+        })}
+      </div>
 
       <Tooltip content={t("highlight.addNote")} relationship="label">
-        <button
-          type="button"
-          aria-label={t("highlight.addNote")}
-          onClick={onAddNote}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
-            background: "none",
-            color: "inherit",
-          }}
-        >
-          <NoteRegular fontSize={16} />
-        </button>
+        <Button appearance="subtle" size="small" icon={<NoteRegular />} onClick={onAddNote}>
+          {t("highlight.addNote")}
+        </Button>
       </Tooltip>
     </div>
   );

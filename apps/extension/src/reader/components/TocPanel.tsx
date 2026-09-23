@@ -8,6 +8,7 @@ import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
  * document order) — used to detect whether the TOC's own first entry
@@ -76,7 +77,8 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   padding: "7px 10px",
                   paddingLeft: 10 + depth * 16,
                   textAlign: "left",
-                  font: "inherit",
+                  fontFamily: "inherit",
+                  fontSize: "inherit",
                   lineHeight: 1.35,
                 }}
                 onMouseEnter={(e) => {
@@ -90,7 +92,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   }
                 }}
               >
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>
                   {item.label}
                 </span>
                 {pageNumber !== undefined && (
@@ -270,7 +272,7 @@ export const TocPanel: FC<TocPanelProps> = ({
           // the content pane, which already starts to the right of a
           // *pinned* panel's reserved width, so the two never overlap
           // there in the first place.
-          top: pinned ? 0 : 44,
+          top: pinned ? 0 : CHROME_TOOLBAR_HEIGHT,
           left: 0,
           bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
           zIndex: 8,
@@ -343,7 +345,8 @@ export const TocPanel: FC<TocPanelProps> = ({
                 padding: "7px 10px",
                 marginBottom: 4,
                 textAlign: "left",
-                font: "inherit",
+                fontFamily: "inherit",
+                fontSize: "inherit",
                 lineHeight: 1.35,
               }}
               onMouseEnter={(e) => {

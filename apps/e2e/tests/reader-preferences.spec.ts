@@ -11,6 +11,7 @@ test("typography cascades preserve keyboard focus, checked choices and slider re
     const trigger = page.getByRole("button", { name: "Text and page options", exact: true });
     await trigger.focus();
     await trigger.press("Enter");
+    await expect(page.getByRole("menu", { name: "Text and page options", exact: true })).toHaveAccessibleDescription("Only this book");
     const text = page.getByRole("menuitem", { name: "Text", exact: true });
     await text.press("ArrowRight");
     const size = page.getByRole("slider", { name: "Font size", exact: true });
@@ -44,6 +45,7 @@ test("settings retain choices across reading-mode changes and disable animation 
   try {
     const trigger = page.getByRole("button", { name: "Settings", exact: true });
     await trigger.click();
+    await expect(page.getByRole("menu", { name: "Settings", exact: true })).toHaveAccessibleDescription("All books");
     const blue = page.getByRole("menuitemradio", { name: "Blue", exact: true });
     await blue.click();
     await expect(blue).toHaveAttribute("aria-checked", "true");

@@ -118,6 +118,21 @@ describe.each(["popup", "panel"] as const)("%s note persistence", (surface) => {
     else expect(container.querySelector("textarea")).toBeNull();
   }
 
+  it("Escape cancels only the note editor", () => {
+    render();
+    const textarea = edit("Unsaved draft");
+    act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    })));
+    expectClosed();
+    expect(onSetNote).not.toHaveBeenCalled();
+    if (surface === "panel") {
+      expect(document.activeElement?.textContent).toBe("Edit note");
+    }
+  });
+
   it("keeps the draft pending, prevents duplicate submissions, and closes only after commit", async () => {
     const save = deferredSave();
     onSetNote.mockReturnValue(save.promise);

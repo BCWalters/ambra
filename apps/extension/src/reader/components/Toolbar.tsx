@@ -28,6 +28,7 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
 import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js";
 import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
 import { AmbraMarkIcon } from "./AmbraMarkIcon.js";
+import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
 
 export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuActions {
   snapshot: ReaderSnapshot;
@@ -156,6 +157,8 @@ export const Toolbar: FC<ToolbarProps> = ({
     return () => observer.disconnect();
   }, [snapshot.title, snapshot.currentChapterLabel]);
 
+  const toolbarStyles = useChromeToolbarStyles();
+
   return (
     <>
       {/* A thin, always-present hover target at the very top edge of the
@@ -173,6 +176,7 @@ export const Toolbar: FC<ToolbarProps> = ({
       />
 
       <div
+        className={toolbarStyles.root}
         onPointerEnter={handlers.onPointerEnter}
         onPointerLeave={handlers.onPointerLeave}
         onFocus={handlers.onFocus}
