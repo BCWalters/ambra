@@ -9,6 +9,39 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = path.resolve(here, "..", "fixtures", "long-content.epub");
 type Scenario = "success" | "network" | "http" | "parse" | "missing-access" | "closed-tab" | "completed-first";
 
+test("ReadBeyond's published EPUB imports through the real download handoff (#153)", async ({ browserName }, testInfo) => {
+  test.skip(browserName !== "chromium" || process.env.AMBRA_VERIFY_READBEYOND_DOWNLOAD !== "1",
+    "Opt in to the external ReadBeyond download in Chromium.");
+  const profile = testInfo.outputPath("profile");
+  const context = await chromium.launchPersistentContext(profile, {
+    headless: false,
+    args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+    acceptDownloads: true,
+    downloadsPath: testInfo.outputPath("downloads"),
+  });
+  try {
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
+    await expect.poll(() => worker.evaluate(() => chrome.downloads.onCreated.hasListeners())).toBe(true);
+    expect(await worker.evaluate(() =>
+      chrome.permissions.contains({ origins: ["https://www.readbeyond.it/*"] }),
+    )).toBe(true);
+    const browsingPage = await context.newPage();
+    const importPage = context.waitForEvent("page");
+    await browsingPage.setContent(
+      '<a href="https://www.readbeyond.it/samples/1a62c8e6.epub">Download narrated EPUB</a>',
+    );
+    await browsingPage.getByRole("link", { name: "Download narrated EPUB" }).click();
+    const library = await importPage;
+    await expect(library.getByRole("button", { name: /^Open A Horseman In The Sky/ })).toBeVisible();
+    await expect(library.getByRole("alert")).toHaveCount(0);
+    await library.reload();
+    await expect(library.getByRole("button", { name: /^Open A Horseman In The Sky/ })).toBeVisible();
+  } finally {
+    await context.close();
+    fs.rmSync(profile, { recursive: true, force: true });
+  }
+});
+
 /** No CORS headers: this requires real extension host access, like ReadBeyond.
  * Hold the native download open while its independent Library fetch finishes. */
 async function startEpubServer(scenario: Scenario) {

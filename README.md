@@ -109,6 +109,8 @@ is a complete, roughly 15-minute narrated story with synchronized text. Its EPUB
 package is CC BY-NC-SA 4.0, not entirely public domain. Set `AMBRA_READBEYOND_BOOK`
 to a local copy to exercise its playback, highlighting, and browse/return behavior
 in the same real-book test. Library discovery links to ReadBeyond's wider collection.
+Set `AMBRA_VERIFY_READBEYOND_DOWNLOAD=1` when running `epub-direct-import.spec.ts`
+to verify its live download-to-library handoff; this opt-in test contacts ReadBeyond.
 
 ## Coding conventions
 
