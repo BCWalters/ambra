@@ -15,6 +15,7 @@ import { EpubInspectorPanel } from "./components/EpubInspectorPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
 import { NarrationControls } from "./components/NarrationControls.js";
+import { NarrationDiscoveryNotice } from "./components/NarrationDiscoveryNotice.js";
 import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
 import { FootnotePopup } from "./components/FootnotePopup.js";
 import { NoteMarkers } from "./components/NoteMarkers.js";
@@ -54,6 +55,7 @@ const ReaderAppInner: FC = () => {
     openBook,
     narrationAction,
     setNarrationRate,
+    dismissNarrationNotice,
     goToNavPoint,
     setViewMode,
     setFontScale,
@@ -174,7 +176,7 @@ const ReaderAppInner: FC = () => {
   // reasons to keep the chrome from auto-hiding out from under an open
   // panel.
   const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
-    activePanel !== undefined || rightPanel !== undefined,
+    activePanel !== undefined || rightPanel !== undefined || snapshot?.narrationNoticeVisible === true,
     snapshot?.contentPointerActivityId,
   );
 
@@ -390,6 +392,10 @@ const ReaderAppInner: FC = () => {
   // the flyout panels need to know this too so they can stop above the
   // scrubber bar instead of running underneath it (issue #59).
   const scrubberVisible = !snapshot.isFixedLayout && snapshot.viewMode === "paginated";
+  const startNarration = (): void => {
+    setIsNarrationOpen(true);
+    narrationAction("start");
+  };
 
   return (
     <ChromeThemeProvider theme={snapshot.chromeTheme}>
@@ -508,6 +514,16 @@ const ReaderAppInner: FC = () => {
               }}
             />
             <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
+            {snapshot.narrationNoticeVisible && !snapshot.isLoading && !snapshot.error &&
+              activePanel === undefined && rightPanel === undefined && !isNarrationOpen && (
+              <NarrationDiscoveryNotice
+                onListen={startNarration}
+                onDismiss={() => {
+                  dismissNarrationNotice();
+                  restoreContentFocus();
+                }}
+              />
+            )}
             {snapshot.isLoading && (
               <Spinner
                 label="Loading…"
@@ -525,10 +541,7 @@ const ReaderAppInner: FC = () => {
                 overlaps the TOC panel's own clickable area when both are
                 open at once. */}
             <Toolbar
-              onListen={snapshot.narration?.available ? () => {
-                setIsNarrationOpen(true);
-                narrationAction("start");
-              } : undefined}
+              onListen={snapshot.narration?.available ? startNarration : undefined}
               snapshot={snapshot}
               onBackToLibrary={() => {
                 window.location.href = libraryFullTabUrl();
@@ -659,6 +672,7 @@ const ReaderAppInner: FC = () => {
             </div>
             {isNarrationOpen && snapshot.narration?.available && (
               <NarrationControls
+                hasSelection={snapshot.hasReadingSelection === true}
                 state={snapshot.narration}
                 focusOnOpen
                 onPlayPause={() => narrationAction("toggle")}

@@ -13,6 +13,12 @@ const audioSelector = "audio[data-ambra-narration-audio]";
 const controls = (page: Page) => page.getByRole("region", { name: "Narration controls" });
 const button = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 const position = (page: Page) => page.getByRole("slider", { name: "Position in book" });
+const speedButton = (page: Page) => controls(page).getByRole("button", { name: /^Narration speed/ });
+
+async function setSpeed(page: Page, rate: number) {
+  await speedButton(page).click();
+  await page.getByRole("menuitemradio", { name: `${rate}×`, exact: true }).click();
+}
 
 async function audioState(page: Page) {
   return page.locator(audioSelector).evaluate((element) => {
@@ -125,7 +131,7 @@ test("real audio advances, pause/resume preserves its point, speed and close wor
     await page.waitForTimeout(250);
     expect((await audioState(page)).time).toBeCloseTo(pausedAt, 2);
 
-    await controls(page).getByRole("combobox", { name: "Narration speed" }).selectOption("1.5");
+    await setSpeed(page, 1.5);
     expect((await audioState(page)).rate).toBe(1.5);
     await button(page, "Play narration").click();
     await expect.poll(async () => (await audioState(page)).paused).toBe(false);
@@ -145,8 +151,8 @@ test("clip boundaries follow pages and chapters without stealing control focus",
   const { readerPage: page, context } = await launchReader(narrated);
   try {
     await listen(page);
-    const speed = controls(page).getByRole("combobox", { name: "Narration speed" });
-    await speed.selectOption("0.75");
+    const speed = speedButton(page);
+    await setSpeed(page, 0.75);
     await speed.focus();
     await expect.poll(() => highlighted(page)).toContain("c1-p1");
     const firstPosition = await position(page).getAttribute("aria-valuetext");
@@ -198,16 +204,16 @@ test("opening Listen starts at the displayed narrated passage, not the book begi
 });
 
 for (const browsing of ["page", "contents", "scrubber"] as const) {
-  test(`${browsing} browsing keeps audio playing; Return follows audio, Listen from here changes it`, async () => {
+  test(`${browsing} browsing keeps audio playing; Return follows audio, Listen from this page changes it`, async () => {
     const { readerPage: page, context } = await launchReader(narrated);
     try {
       await listen(page);
-      await controls(page).getByRole("combobox", { name: "Narration speed" }).selectOption("0.75");
+      await setSpeed(page, 0.75);
       await seek(page, 0.2);
       const source = (await audioState(page)).source;
       if (browsing === "page") {
         const before = await position(page).getAttribute("aria-valuetext");
-        await controls(page).getByRole("combobox", { name: "Narration speed" }).blur();
+        await speedButton(page).blur();
         await page.keyboard.press("ArrowRight");
         await expect(position(page)).not.toHaveAttribute("aria-valuetext", before!);
       } else if (browsing === "contents") {
@@ -236,7 +242,7 @@ for (const browsing of ["page", "contents", "scrubber"] as const) {
 
       await toc(page, "Narrated chapter 2");
       await expect(button(page, "Return to narration")).toBeVisible();
-      await button(page, "Listen from here").click();
+      await button(page, "Listen from this page").click();
       await expect.poll(() => highlighted(page)).toContain("c2-p1");
       await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
       expect((await audioState(page)).time).toBeLessThan(4);
@@ -326,8 +332,8 @@ test("1400px reflowable spreads follow narration into another chapter and retain
     const frames = await visibleFrames(page);
     expect(frames[0]!.x).toBeLessThan(frames[1]!.x);
     await listen(page);
-    const speed = controls(page).getByRole("combobox", { name: "Narration speed" });
-    await speed.selectOption("0.75");
+    const speed = speedButton(page);
+    await setSpeed(page, 0.75);
     await speed.focus();
     await expect.poll(() => highlighted(page)).toEqual(["c1-p1"]);
     await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(0.15);
@@ -363,7 +369,7 @@ test("scroll mode native wheel browsing keeps audio playing and Return restores 
     await page.keyboard.press("Escape");
     await expect(position(page)).toHaveCount(0);
     await listen(page);
-    await controls(page).getByRole("combobox", { name: "Narration speed" }).selectOption("0.75");
+    await setSpeed(page, 0.75);
     await expect.poll(() => highlighted(page)).toEqual(["c1-p1"]);
     const source = (await audioState(page)).source;
     const frame = (await page.locator("iframe").first().boundingBox())!;
@@ -405,8 +411,8 @@ test("fixed-layout narration highlights the secondary spread document without mo
       .toEqual(["Narrated chapter 1", "Narrated chapter 2"]);
     await expect(position(page)).toHaveCount(0);
     await listen(page);
-    const speed = controls(page).getByRole("combobox", { name: "Narration speed" });
-    await speed.selectOption("0.75");
+    const speed = speedButton(page);
+    await setSpeed(page, 0.75);
     await speed.focus();
     await expect.poll(() => highlighted(page)).toEqual(["c1-p1"]);
     await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(0.15);

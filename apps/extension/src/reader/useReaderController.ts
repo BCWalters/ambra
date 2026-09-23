@@ -29,6 +29,7 @@ export interface UseReaderControllerResult {
   turnPage: (direction: 1 | -1) => void;
   narrationAction: (action: NarrationAction) => void;
   setNarrationRate: (rate: number) => void;
+  dismissNarrationNotice: () => void;
   goToChapter: (direction: 1 | -1) => void;
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -208,6 +209,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     void controller?.performNarrationAction(action);
   }, [controller]);
   const setNarrationRate = useCallback((rate: number) => controller?.setNarrationRate(rate), [controller]);
+  const dismissNarrationNotice = useCallback(() => controller?.dismissNarrationNotice(), [controller]);
 
   const turnPage = useCallback(
     (direction: 1 | -1) => {
@@ -494,6 +496,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   return {
     narrationAction,
     setNarrationRate,
+    dismissNarrationNotice,
     snapshot,
     contentHostRef,
     openBook,

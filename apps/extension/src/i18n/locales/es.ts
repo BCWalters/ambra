@@ -4,6 +4,10 @@ import type { StringCatalog } from "./en.js";
  * not yet reviewed by a native Spanish speaker. */
 export const es: StringCatalog = {
   "narration.listen": "Escuchar",
+  "narration.discoveryTitle": "Este libro tiene narración",
+  "narration.discoveryMessage": "Escucha el audio grabado mientras se resalta el texto. Puedes empezar cuando quieras con el botón de los auriculares.",
+  "narration.notNow": "Ahora no",
+  "narration.noticeListen": "Escuchar ahora",
   "narration.controls": "Controles de narración",
   "narration.play": "Reproducir narración",
   "narration.pause": "Pausar narración",
@@ -12,7 +16,8 @@ export const es: StringCatalog = {
   "narration.speed": "Velocidad de narración",
   "narration.close": "Cerrar narración",
   "narration.return": "Volver a la narración",
-  "narration.listenFromHere": "Escuchar desde aquí",
+  "narration.listenFromPage": "Escuchar desde esta página",
+  "narration.listenFromSelection": "Escuchar desde la selección",
   "narration.loading": "Cargando narración…",
   "narration.browsing": "Estás leyendo en un lugar distinto al de la narración.",
   "narration.error": "No se pudo reproducir la narración.",

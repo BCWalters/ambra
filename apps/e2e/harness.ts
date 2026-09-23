@@ -58,7 +58,8 @@ export async function launchReader(
   let context: BrowserContext | undefined;
   try {
     context = await chromium.launchPersistentContext(profileDir, {
-      headless: false,
+      headless: process.env.AMBRA_E2E_HEADLESS === "1",
+      ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
       viewport: options.viewport ?? { width: 900, height: 900 },
     });

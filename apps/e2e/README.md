@@ -56,6 +56,11 @@ into `apps/extension/dist`, which is reserved for the CRXJS *dev-mode*
 loader stubs the maintainer's own live-reloaded Chrome window depends on.
 Running this suite never disturbs that.
 
+Tests using the shared `launchReader` harness can opt into full Chromium's
+headless mode with `AMBRA_E2E_HEADLESS=1`. This keeps validation from opening
+windows or interrupting someone testing the live extension. It still loads the
+real unpacked extension, not a web-only preview.
+
 For concurrent validation, set `AMBRA_E2E_EXTENSION_PATH` to a dedicated
 absolute build directory for both the build and test commands. This keeps
 one run's rebuild from replacing files used by another run's browser.

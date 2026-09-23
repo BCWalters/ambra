@@ -116,6 +116,8 @@ export interface InspectorReaderBridge {
 
 export interface ReaderSnapshot {
   narration?: NarrationState;
+  narrationNoticeVisible?: boolean;
+  hasReadingSelection?: boolean;
   title: string;
   toc: readonly NavPoint[];
   spineIndex: number;

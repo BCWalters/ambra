@@ -78,6 +78,7 @@ export interface BookMetadata {
    * `undefined` for books imported before this field existed, or that
    * declare none. */
   readonly accessibility: AccessibilityMetadata | undefined;
+  readonly narrationNoticeDismissed?: boolean;
 }
 
 /** Where a reader last left off in a given book — a CFI, since it's the
@@ -415,6 +416,13 @@ export class LibraryDatabase {
    * open `PackageDocument` (description, publisher, every identifier). */
   public getBookMetadata(id: string): Promise<BookMetadata | undefined> {
     return this.get<BookMetadata>(BOOKS_STORE, id);
+  }
+
+  public dismissNarrationNotice(bookId: string): Promise<void> {
+    return this.updateBookMetadata(bookId, (record) => ({
+      ...record,
+      narrationNoticeDismissed: true,
+    }));
   }
 
   /** Persists the outcome of one description-fetch attempt (see

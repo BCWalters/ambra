@@ -4,6 +4,10 @@ import type { StringCatalog } from "./en.js";
  * not yet reviewed by a native Korean speaker. */
 export const ko: StringCatalog = {
   "narration.listen": "듣기",
+  "narration.discoveryTitle": "이 책에는 낭독이 있습니다",
+  "narration.discoveryMessage": "텍스트가 강조 표시되는 동안 녹음된 오디오를 들어 보세요. 헤드폰 버튼으로 언제든지 시작할 수 있습니다.",
+  "narration.notNow": "나중에",
+  "narration.noticeListen": "지금 듣기",
   "narration.controls": "낭독 제어",
   "narration.play": "낭독 재생",
   "narration.pause": "낭독 일시 정지",
@@ -12,7 +16,8 @@ export const ko: StringCatalog = {
   "narration.speed": "낭독 속도",
   "narration.close": "낭독 닫기",
   "narration.return": "낭독 위치로 돌아가기",
-  "narration.listenFromHere": "여기서부터 듣기",
+  "narration.listenFromPage": "이 페이지부터 듣기",
+  "narration.listenFromSelection": "선택한 부분부터 듣기",
   "narration.loading": "낭독을 불러오는 중…",
   "narration.browsing": "낭독 위치와 다른 곳을 읽고 있습니다.",
   "narration.error": "낭독을 재생할 수 없습니다.",

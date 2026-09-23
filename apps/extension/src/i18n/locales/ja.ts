@@ -4,6 +4,10 @@ import type { StringCatalog } from "./en.js";
  * not yet reviewed by a native Japanese speaker. */
 export const ja: StringCatalog = {
   "narration.listen": "聴く",
+  "narration.discoveryTitle": "この本には朗読があります",
+  "narration.discoveryMessage": "テキストのハイライトに合わせて、録音された音声を聴くことができます。ヘッドホンのボタンからいつでも再生できます。",
+  "narration.notNow": "今はしない",
+  "narration.noticeListen": "今すぐ聴く",
   "narration.controls": "朗読の操作",
   "narration.play": "朗読を再生",
   "narration.pause": "朗読を一時停止",
@@ -12,7 +16,8 @@ export const ja: StringCatalog = {
   "narration.speed": "朗読の速度",
   "narration.close": "朗読を閉じる",
   "narration.return": "朗読箇所に戻る",
-  "narration.listenFromHere": "ここから聴く",
+  "narration.listenFromPage": "このページから聴く",
+  "narration.listenFromSelection": "選択範囲から聴く",
   "narration.loading": "朗読を読み込み中…",
   "narration.browsing": "朗読とは別の箇所を読んでいます。",
   "narration.error": "朗読を再生できませんでした。",

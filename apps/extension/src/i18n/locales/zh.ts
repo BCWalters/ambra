@@ -4,6 +4,10 @@ import type { StringCatalog } from "./en.js";
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
   "narration.listen": "收听",
+  "narration.discoveryTitle": "这本书提供朗读",
+  "narration.discoveryMessage": "收听录制的音频，同时查看高亮显示的文本。你可以随时点击耳机按钮开始收听。",
+  "narration.notNow": "暂时不用",
+  "narration.noticeListen": "立即收听",
   "narration.controls": "朗读控制",
   "narration.play": "播放朗读",
   "narration.pause": "暂停朗读",
@@ -12,7 +16,8 @@ export const zh: StringCatalog = {
   "narration.speed": "朗读速度",
   "narration.close": "关闭朗读",
   "narration.return": "返回朗读位置",
-  "narration.listenFromHere": "从此处收听",
+  "narration.listenFromPage": "从本页收听",
+  "narration.listenFromSelection": "从所选内容收听",
   "narration.loading": "正在加载朗读…",
   "narration.browsing": "你正在阅读朗读位置以外的内容。",
   "narration.error": "无法播放朗读。",

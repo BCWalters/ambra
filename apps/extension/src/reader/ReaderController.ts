@@ -63,6 +63,7 @@ import { EpubInspectionSession } from "./EpubInspectionSession.js";
 import { InspectorReadingBridge } from "./InspectorReadingBridge.js";
 import { MediaOverlayNarration, type NarrationTarget } from "./MediaOverlayNarration.js";
 import { NarrationReadingBridge } from "./NarrationReadingBridge.js";
+import { selectedReadingRange } from "./ReadingPosition.js";
 import type { NarrationAction } from "./ReaderTypes.js";
 import { TransientReadingHighlight } from "./TransientReadingHighlight.js";
 import type { InspectorReference } from "./InspectorReferences.js";
@@ -349,6 +350,7 @@ export class ReaderController {
   private readonly narrationReading: NarrationReadingBridge;
   private narrationOperation: ReaderOperation | undefined;
   private narrationCommand = 0;
+  private narrationNoticeVisible = false;
 
   private constructor(
     private readonly contentLoader: ContentLoader,
@@ -508,6 +510,10 @@ export class ReaderController {
         controller.pendingNavigationLoadError = navigationLoadError;
       }
       Object.assign(controller, await library.getBookReadingSettings(bookId));
+      if (controller.narration.snapshot.available) {
+        const metadata = await library.getBookMetadata(bookId);
+        controller.narrationNoticeVisible = metadata !== undefined && !metadata.narrationNoticeDismissed;
+      }
       controller.preferencesCleanup = library.subscribePreferences(() => {
         void controller.refreshGlobalSettings().catch((error) => {
           if (!controller.operations.disposed)
@@ -635,6 +641,8 @@ export class ReaderController {
 
       this.cachedSnapshot = {
         narration: this.narration.snapshot,
+        narrationNoticeVisible: this.narrationNoticeVisible && this.host !== undefined,
+        hasReadingSelection: this.narration.snapshot.available && selectedReadingRange(this.contentDocumentViews()) !== undefined,
         title: this.pkg.metadata.title,
         toc: this.navigation.toc.items,
         spineIndex: this.spineIndex,
@@ -1030,6 +1038,7 @@ export class ReaderController {
   }
 
   public async performNarrationAction(action: NarrationAction): Promise<void> {
+    if (action === "start") this.dismissNarrationNotice();
     const command = ++this.narrationCommand;
     this.cancelNarrationNavigation();
     try {
@@ -1064,6 +1073,15 @@ export class ReaderController {
 
   public setNarrationRate(rate: number): void {
     this.narration.setRate(rate);
+  }
+
+  public dismissNarrationNotice(): void {
+    if (!this.narrationNoticeVisible) return;
+    this.narrationNoticeVisible = false;
+    this.notify();
+    void this.library.dismissNarrationNotice(this.bookId).catch((error: unknown) => {
+      this.reportTransientError(error, "save", "the narration reminder");
+    });
   }
 
   private cancelNarrationNavigation(): void {
@@ -1571,6 +1589,14 @@ export class ReaderController {
       };
       iframeDocument.addEventListener("pointerdown", pointerDownHandler);
       cleanups.push(() => iframeDocument.removeEventListener("pointerdown", pointerDownHandler));
+      if (this.narration.snapshot.available) {
+        const selectionChange = (): void => {
+          const hasSelection = selectedReadingRange(this.contentDocumentViews()) !== undefined;
+          if (hasSelection !== this.cachedSnapshot?.hasReadingSelection) this.notify();
+        };
+        iframeDocument.addEventListener("selectionchange", selectionChange);
+        cleanups.push(() => iframeDocument.removeEventListener("selectionchange", selectionChange));
+      }
       const scrollIntent = (): void => {
         if (this.host instanceof ScrollContentHost) this.suspendNarrationFollowing();
       };

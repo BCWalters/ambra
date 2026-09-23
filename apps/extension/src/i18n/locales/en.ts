@@ -33,6 +33,10 @@
  * ship-quality copy. */
 export interface StringCatalog {
   "narration.listen": string;
+  "narration.discoveryTitle": string;
+  "narration.discoveryMessage": string;
+  "narration.notNow": string;
+  "narration.noticeListen": string;
   "narration.controls": string;
   "narration.play": string;
   "narration.pause": string;
@@ -41,7 +45,8 @@ export interface StringCatalog {
   "narration.speed": string;
   "narration.close": string;
   "narration.return": string;
-  "narration.listenFromHere": string;
+  "narration.listenFromPage": string;
+  "narration.listenFromSelection": string;
   "narration.loading": string;
   "narration.browsing": string;
   "narration.error": string;
@@ -362,6 +367,10 @@ export interface StringCatalog {
 
 export const en: StringCatalog = {
   "narration.listen": "Listen",
+  "narration.discoveryTitle": "This book has narration",
+  "narration.discoveryMessage": "Listen to recorded audio while the text is highlighted. You can start anytime with the headphones button.",
+  "narration.notNow": "Not now",
+  "narration.noticeListen": "Listen now",
   "narration.controls": "Narration controls",
   "narration.play": "Play narration",
   "narration.pause": "Pause narration",
@@ -370,7 +379,8 @@ export const en: StringCatalog = {
   "narration.speed": "Narration speed",
   "narration.close": "Close narration",
   "narration.return": "Return to narration",
-  "narration.listenFromHere": "Listen from here",
+  "narration.listenFromPage": "Listen from this page",
+  "narration.listenFromSelection": "Listen from selection",
   "narration.loading": "Loading narration…",
   "narration.browsing": "Browsing away from narration.",
   "narration.error": "Narration could not be played.",

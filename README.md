@@ -82,6 +82,11 @@ extension you are using.
 
 ## Recorded narration
 
+Narrated books show a nonmodal discovery notice until you choose **Listen now**
+or **Not now**. That choice is remembered per book. Opening the notice never
+starts audio or moves keyboard focus. Playback uses a compact control strip with
+a themed speed menu; the X at the far right pauses and closes it.
+
 Books with EPUB Media Overlays offer **Listen** in the reader toolbar. The playback
 strip supports pause/resume, previous/next authored passage, and playback speed.
 Narration highlights its current passage and follows it across pages and chapters,
@@ -89,7 +94,8 @@ without moving keyboard focus.
 
 Manual page, contents, scrubber, or scroll navigation keeps audio playing but stops
 automatic following. **Return to narration** reveals the current audio passage without
-seeking; **Listen from here** starts narration at the selected or displayed passage.
+seeking; **Listen from this page** starts at the displayed passage, changing to
+**Listen from selection** when book text is selected.
 Closing the strip pauses playback. Unnarrated front matter advances to the next
 narrated linear section; the reader does not silently substitute text-to-speech.
 

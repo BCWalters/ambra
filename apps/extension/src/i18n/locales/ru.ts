@@ -4,6 +4,10 @@ import type { StringCatalog } from "./en.js";
  * not yet reviewed by a native Russian speaker. */
 export const ru: StringCatalog = {
   "narration.listen": "Слушать",
+  "narration.discoveryTitle": "В этой книге есть озвучка",
+  "narration.discoveryMessage": "Слушайте аудиозапись, пока текст подсвечивается. Начать можно в любой момент с помощью кнопки с наушниками.",
+  "narration.notNow": "Не сейчас",
+  "narration.noticeListen": "Слушать сейчас",
   "narration.controls": "Управление озвучкой",
   "narration.play": "Воспроизвести озвучку",
   "narration.pause": "Приостановить озвучку",
@@ -12,7 +16,8 @@ export const ru: StringCatalog = {
   "narration.speed": "Скорость озвучки",
   "narration.close": "Закрыть озвучку",
   "narration.return": "Вернуться к озвучке",
-  "narration.listenFromHere": "Слушать отсюда",
+  "narration.listenFromPage": "Слушать с этой страницы",
+  "narration.listenFromSelection": "Слушать с выделенного фрагмента",
   "narration.loading": "Загрузка озвучки…",
   "narration.browsing": "Вы читаете в другом месте, не совпадающем с озвучкой.",
   "narration.error": "Не удалось воспроизвести озвучку.",
