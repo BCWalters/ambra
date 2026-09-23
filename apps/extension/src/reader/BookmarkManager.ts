@@ -9,8 +9,7 @@ export interface BookmarkManagerContext {
   /** Current caret/scroll position, or `undefined` if nothing's
    * mounted or the content is fixed-layout. */
   currentPosition(): DomBreakPoint | undefined;
-  /** The `{ page, document }` pair(s) on screen right now. */
-  currentPagesAndDocuments(): Array<{ page: Page; document: Document; spineIndex?: number }>;
+  currentPagesAndDocuments(): Array<{ page: Page; document: Document; spineIndex: number }>;
   /** Current page/column index, for the bookmark's saved label. */
   currentPageIndex(): number | undefined;
   spineIndex(): number;
@@ -116,7 +115,7 @@ export class BookmarkManager {
       const locator = new Locator(bookmark.cfi);
       for (const { page, document, spineIndex } of pagesAndDocuments) {
         try {
-          const resolved = this.locatorResolver.resolveInDocument(locator, spineIndex ?? this.ctx.spineIndex(), document);
+          const resolved = this.locatorResolver.resolveInDocument(locator, spineIndex, document);
           if (page.containsPosition(resolved.node, resolved.characterOffset ?? 0, document)) {
             matches.push(bookmark);
             break;
@@ -141,7 +140,7 @@ export class BookmarkManager {
       for (const bookmark of this.cache) {
         const locator = new Locator(bookmark.cfi);
         try {
-          const resolved = this.locatorResolver.resolveInDocument(locator, spineIndex ?? this.ctx.spineIndex(), document);
+          const resolved = this.locatorResolver.resolveInDocument(locator, spineIndex, document);
           if (page.containsPosition(resolved.node, resolved.characterOffset ?? 0, document)) {
             return true;
           }

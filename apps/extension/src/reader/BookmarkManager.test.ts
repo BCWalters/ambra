@@ -54,7 +54,7 @@ function makeLibrary(initialBookmarks: Bookmark[] = []): LibraryDatabase {
 function makeContext(overrides: Partial<BookmarkManagerContext> = {}): BookmarkManagerContext {
   return {
     currentPosition: () => ({ node: {} as Node, offset: 0 }),
-    currentPagesAndDocuments: () => [{ page: makePage(true), document: {} as Document }],
+    currentPagesAndDocuments: () => [{ page: makePage(true), document: {} as Document, spineIndex: 2 }],
     currentPageIndex: () => 4,
     spineIndex: () => 2,
     chapterLabel: () => "Chapter 3",
@@ -222,8 +222,8 @@ describe("BookmarkManager", () => {
     const library = makeLibrary([existing]);
     const ctx = makeContext({
       currentPagesAndDocuments: () => [
-        { page: makePage(false), document: {} as Document },
-        { page: makePage(true), document: {} as Document },
+        { page: makePage(false), document: {} as Document, spineIndex: 2 },
+        { page: makePage(true), document: {} as Document, spineIndex: 3 },
       ],
     });
     const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), ctx);

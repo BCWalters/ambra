@@ -2,6 +2,7 @@ import { PaginatedContentHost, ReadingTheme, SpreadPaginatedHost } from "@ambra/
 import type { PageTheme } from "@ambra/engine";
 import { HEADER_TEXT_TOP_OFFSET } from "./furnitureLayout.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
+import { runOwnedTransition } from "./OwnedTransition.js";
 
 /** What `PageTurnAnimator` needs from `ReaderController` — plain
  * getters only; this class owns no reader state of its own. */
@@ -11,6 +12,7 @@ export interface PageTurnAnimatorContext {
   height(): number;
   pageTheme(): PageTheme;
   pageTurnAnimationStyle(): PageTurnAnimationStyle;
+  operationSignal?(): AbortSignal | undefined;
 }
 
 /** The pure mechanics behind an animated page turn: building the
@@ -31,8 +33,8 @@ export class PageTurnAnimator {
   /** Whether to skip the page-turn animation entirely — OS-level
    * `prefers-reduced-motion`, or the reader's own "off" choice (issue
    * #69). */
-  public shouldSkipPageTurnAnimation(): boolean {
-    return this.ctx.pageTurnAnimationStyle() === "none" || this.prefersReducedMotion();
+  public shouldSkipPageTurnAnimation(style = this.ctx.pageTurnAnimationStyle()): boolean {
+    return style === "none" || this.prefersReducedMotion();
   }
 
   /** An opaque backdrop behind the animating side of a "slide" turn,
@@ -253,6 +255,8 @@ export class PageTurnAnimator {
     entering = false,
     fullTurnDegrees?: number,
   ): Promise<void> {
+    const style = this.ctx.pageTurnAnimationStyle();
+    const containerEl = this.ctx.containerEl();
     if (this.shouldSkipPageTurnAnimation()) {
       return;
     }
@@ -274,39 +278,16 @@ export class PageTurnAnimator {
       }
     }
 
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const finish = (): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        turnEl.removeEventListener("transitionend", onTransitionEnd);
-        resolve();
-      };
-      const onTransitionEnd = (event: TransitionEvent): void => {
-        if (event.target === turnEl && event.propertyName === "transform") {
-          finish();
-        }
-      };
-      turnEl.addEventListener("transitionend", onTransitionEnd);
-      const transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
-      for (const el of [turnEl, ...extraTurnEls]) {
-        // Same offsetHeight-forced-layout reasoning as above, for any
-        // freshly-inserted furniture overlay.
-        void el.offsetHeight;
-        el.style.transition = transition;
-      }
-      requestAnimationFrame(() => {
-        this.setPageTurnTransform(turnEl, entering ? 0 : fullyTurnedAmount, entering ? 0 : 1, extraTurnEls);
-      });
-      // Safety net in case transitionend never fires (e.g. the element
-      // was removed mid-transition).
-      setTimeout(finish, 600);
-    });
-    const containerEl = this.ctx.containerEl();
-    if (containerEl) {
-      containerEl.style.perspective = "";
+    for (const el of [turnEl, ...extraTurnEls]) {
+      void el.offsetHeight;
+      el.style.transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 380ms ease";
+    }
+    try {
+      await runOwnedTransition(turnEl, () => {
+        this.setPageTurnTransform(turnEl, entering ? 0 : fullyTurnedAmount, entering ? 0 : 1, extraTurnEls, style);
+      }, 600, this.ctx.operationSignal?.());
+    } finally {
+      if (containerEl) containerEl.style.perspective = "";
     }
   }
 
@@ -336,37 +317,17 @@ export class PageTurnAnimator {
 
     const transition = "transform 380ms cubic-bezier(0.4, 0, 0.2, 1)";
     const primaryEl = oldGroup[0];
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const finish = (): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        primaryEl?.removeEventListener("transitionend", onTransitionEnd);
-        resolve();
-      };
-      const onTransitionEnd = (event: TransitionEvent): void => {
-        if (event.target === primaryEl && event.propertyName === "transform") {
-          finish();
-        }
-      };
-      if (primaryEl) {
-        primaryEl.addEventListener("transitionend", onTransitionEnd);
-      }
-      for (const el of [...oldGroup, ...newGroup]) {
-        el.style.transition = transition;
-      }
-      requestAnimationFrame(() => {
+    for (const el of [...oldGroup, ...newGroup]) {
+      el.style.transition = transition;
+    }
+    await runOwnedTransition(primaryEl, () => {
         for (const el of oldGroup) {
           el.style.transform = `translateX(${exitAmount}%)`;
         }
         for (const el of newGroup) {
           el.style.transform = "translateX(0%)";
         }
-      });
-      setTimeout(finish, 600);
-    });
+    }, 600, this.ctx.operationSignal?.());
   }
 
   /** Puts `hostEl` into "ready to turn" state — elevated above the
@@ -384,6 +345,7 @@ export class PageTurnAnimator {
     direction: 1 | -1,
     extraTurnEls: HTMLElement[] = [],
     entering = false,
+    style = this.ctx.pageTurnAnimationStyle(),
   ): void {
     const containerEl = this.ctx.containerEl();
     if (!containerEl) {
@@ -397,7 +359,7 @@ export class PageTurnAnimator {
       hostEl.style.position = "relative";
     }
     hostEl.style.zIndex = "2";
-    if (this.ctx.pageTurnAnimationStyle() !== "rotate") {
+    if (style !== "rotate") {
       return;
     }
     containerEl.style.perspective = "2200px";
@@ -418,8 +380,8 @@ export class PageTurnAnimator {
    * degrees for "rotate" (quarter turn at 1), percent for "slide"/
    * "none" (full page-width at 1) — signed so the outgoing page always
    * moves "out of view" the same way for a given direction. */
-  public pageTurnPartialAmount(direction: 1 | -1, fraction: number): number {
-    const scale = this.ctx.pageTurnAnimationStyle() !== "rotate" ? 100 : 90;
+  public pageTurnPartialAmount(direction: 1 | -1, fraction: number, style = this.ctx.pageTurnAnimationStyle()): number {
+    const scale = style !== "rotate" ? 100 : 90;
     return this.physicalDirection(direction) * -scale * fraction;
   }
 
@@ -440,9 +402,12 @@ export class PageTurnAnimator {
    * the current style, plus a shadow that deepens with `fraction` so a
    * partial drag reads as physically lifting/sliding. `extraEls` get
    * the same treatment in lockstep. */
-  public setPageTurnTransform(el: HTMLElement, amount: number, fraction: number, extraEls: HTMLElement[] = []): void {
+  public setPageTurnTransform(
+    el: HTMLElement, amount: number, fraction: number, extraEls: HTMLElement[] = [],
+    style = this.ctx.pageTurnAnimationStyle(),
+  ): void {
     for (const target of [el, ...extraEls]) {
-      if (this.ctx.pageTurnAnimationStyle() !== "rotate") {
+      if (style !== "rotate") {
         target.style.transform = `translateX(${amount}%)`;
         // Shadow falls on the trailing (most recently uncovered) edge.
         const edge = amount < 0 ? "" : "-";

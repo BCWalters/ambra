@@ -25,6 +25,7 @@ import {
   ReflowableSpreadPlanner,
 } from "@ambra/engine";
 import type {
+  ContentDocumentView,
   EpubAnnotation,
   FontFamilyChoice,
   FragmentSelector,
@@ -52,6 +53,10 @@ import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
+import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
+import { runOwnedTransition } from "./OwnedTransition.js";
+import { readerDocumentViews } from "./ReaderDocuments.js";
+import type { ReadingHost } from "./ReaderDocuments.js";
 import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageTurnOrchestrator.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
 import { EpubInspectionSession } from "./EpubInspectionSession.js";
@@ -168,7 +173,12 @@ function applyEpubTypeAriaRoles(doc: Document): void {
  */
 export class ReaderController {
   private host:
-    PaginatedContentHost | ScrollContentHost | FixedContentHost | SpreadPaginatedHost | FixedSpreadHost | undefined;
+    | PaginatedContentHost
+    | ScrollContentHost
+    | FixedContentHost
+    | SpreadPaginatedHost
+    | FixedSpreadHost
+    | undefined;
   /** The wrapper `stageHiddenHostElement` created around `this.host`'s
    * element — removed once `this.host` is replaced. `this.host.element`
    * itself must never be reparented once loaded (most browsers reload
@@ -213,17 +223,9 @@ export class ReaderController {
    * pagination state. Ignores a call that arrives mid-turn rather than
    * queuing it. */
   private isTurningPage = false;
-  /** Incremented on every new page-turn gesture; a stale gesture whose
-   * captured token no longer matches discards its own work instead of
-   * clobbering newer state (a second safety net beyond `isTurningPage`
-   * for the same race). */
-  private turnToken = 0;
-  /** Incremented at the start of every `openSpineItem` call; every
-   * return path checks its captured token against the current one so a
-   * stale, slow-loading call can't clobber a newer one's result once it
-   * finally resolves. */
-  private spineOpenToken = 0;
+  private readonly operations = new ReaderOperations();
   private pendingLayout: PendingLayout | undefined;
+  private activeLayout: PendingLayout | undefined;
   private isApplyingLayout = false;
   private readonly disclosures = new DisclosureState((spineIndex, source) => {
     this.handleDisclosureChange(spineIndex, source);
@@ -286,6 +288,7 @@ export class ReaderController {
     height: () => this.height,
     pageTheme: () => this.pageTheme,
     pageTurnAnimationStyle: () => this.pageTurnAnimationStyle,
+    operationSignal: () => this.operations.current?.signal,
   });
   private readonly pageTurnOrchestrator = new PageTurnOrchestrator(
     {
@@ -295,6 +298,7 @@ export class ReaderController {
       width: () => this.width,
       pageTheme: () => this.pageTheme,
       pageTurnAnimationStyle: () => this.pageTurnAnimationStyle,
+      operationSignal: () => this.operations.current?.signal,
       setAnimatingPageTurn: (isAnimating) => {
         this.isAnimatingPageTurn = isAnimating;
       },
@@ -313,6 +317,7 @@ export class ReaderController {
   /** Detaches the current drag-page-turn `pointerdown` listener — same
    * lifecycle as `contentInteractionCleanup`. */
   private dragCleanup: (() => void) | undefined;
+  private gestureCleanup: (() => void) | undefined;
   private isAnimatingPageTurn = false;
   /** Background-paginates the whole book for book-wide page numbers —
    * `undefined` until `mount` creates it. */
@@ -362,11 +367,9 @@ export class ReaderController {
       notify: () => this.notify(),
     });
     this.highlights = new HighlightManager(library, bookId, locatorResolver, {
-      spineIndex: () => this.spineIndex,
-      spineIndexForDocument: doc => this.spineIndexForDocument(doc),
-      isSpineVisible: index => this.host instanceof SpreadPaginatedHost
-        ? [this.host.positions.first, this.host.positions.second].some(position => position?.spineIndex === index)
-        : index === this.spineIndex,
+      spineIndexForDocument: (doc) => this.spineIndexForDocument(doc),
+      isSpineVisible: (index) =>
+        this.contentDocumentViews().some((view) => view.spineIndex === index),
       isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
       pendingSelectionRange: () => this.pendingSelectionRange,
       selectionToolbarAnchor: () => this.selectionToolbar,
@@ -383,10 +386,8 @@ export class ReaderController {
       notify: () => this.notify(),
     });
     this.highlightInteraction = new HighlightInteraction(locatorResolver, {
-      spineIndex: () => this.spineIndex,
       isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
-      allContentDocuments: () => this.allContentDocuments(),
-      mergedTailDocument: () => (this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined),
+      contentDocuments: () => this.contentDocumentViews(),
       forSpineIndex: (spineIndex) => this.highlights.forSpineIndex(spineIndex),
       currentSearchHighlightQuery: () => this.searchCoordinator.currentHighlightQuery,
       getActiveHighlight: () => this.activeHighlight,
@@ -445,55 +446,64 @@ export class ReaderController {
       library,
       container.rootFilePath,
     );
-    if (navigationLoadError) {
-      controller.diagnostics.record(`NavigationDocument.load failed: ${navigationLoadError}`);
-      // Not set directly on `error`/`errorSeverity` here: `mount` always
-      // opens the initial spine item right after this returns, and
-      // `openSpineItem` unconditionally clears both at its own start (a
-      // fresh chapter load should never show a stale previous error) —
-      // so anything set here would be wiped before a reader ever saw
-      // it. `mount` surfaces this itself, once the initial chapter has
-      // actually finished loading.
-      controller.pendingNavigationLoadError = navigationLoadError;
-    }
-    controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
-    controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
-    controller.lineSpacing =
-      (await library.getDefaultLineSpacing()) ?? ReadingTheme.DEFAULT_LINE_SPACING;
-    controller.letterSpacing =
-      (await library.getDefaultLetterSpacing()) ?? ReadingTheme.DEFAULT_LETTER_SPACING;
-    controller.contentWidthEm =
-      (await library.getDefaultContentWidth()) ?? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
-    controller.fontFamily =
-      (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
-    controller.pageTheme = (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
-    controller.brightness = (await library.getDefaultBrightness()) ?? ReadingTheme.DEFAULT_BRIGHTNESS;
-    controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
-    controller.pageTurnAnimationStyle =
-      (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
-    controller.highlights.load(await library.listHighlightsForBook(bookId));
-    await controller.bookmarks.load();
-    // A publisher-embedded annotation collection (issue #109) is rare
-    // and entirely optional — best-effort, non-fatal the same way the
-    // Nav Document fallback above is, since one malformed file
-    // shouldn't take down an otherwise perfectly readable book.
-    const annotationsItem = pkg.findAnnotationsDocument();
-    if (annotationsItem) {
-      try {
-        const jsonText = await contentLoader.readArchiveFileText(annotationsItem.path);
-        controller.embeddedAnnotations = parseAnnotationCollection(jsonText);
-      } catch (err) {
-        controller.diagnostics.record(
-          `Embedded annotations failed to load: ${err instanceof Error ? err.message : String(err)}`,
-        );
+    try {
+      if (navigationLoadError) {
+        controller.diagnostics.record(`NavigationDocument.load failed: ${navigationLoadError}`);
+        // Not set directly on `error`/`errorSeverity` here: `mount` always
+        // opens the initial spine item right after this returns, and
+        // `openSpineItem` unconditionally clears both at its own start (a
+        // fresh chapter load should never show a stale previous error) —
+        // so anything set here would be wiped before a reader ever saw
+        // it. `mount` surfaces this itself, once the initial chapter has
+        // actually finished loading.
+        controller.pendingNavigationLoadError = navigationLoadError;
       }
+      controller.viewMode = (await library.getDefaultViewMode()) ?? "paginated";
+      controller.fontScale = (await library.getDefaultFontScale()) ?? 1;
+      controller.lineSpacing =
+        (await library.getDefaultLineSpacing()) ?? ReadingTheme.DEFAULT_LINE_SPACING;
+      controller.letterSpacing =
+        (await library.getDefaultLetterSpacing()) ?? ReadingTheme.DEFAULT_LETTER_SPACING;
+      controller.contentWidthEm =
+        (await library.getDefaultContentWidth()) ?? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
+      controller.fontFamily =
+        (await library.getDefaultFontFamily()) ?? ReadingTheme.DEFAULT_FONT_FAMILY;
+      controller.pageTheme =
+        (await library.getDefaultPageTheme()) ?? ReadingTheme.DEFAULT_PAGE_THEME;
+      controller.brightness =
+        (await library.getDefaultBrightness()) ?? ReadingTheme.DEFAULT_BRIGHTNESS;
+      controller.chromeTheme = (await library.getDefaultChromeTheme()) ?? DEFAULT_CHROME_THEME;
+      controller.pageTurnAnimationStyle =
+        (await library.getDefaultPageTurnAnimationStyle()) ?? DEFAULT_PAGE_TURN_ANIMATION_STYLE;
+      controller.highlights.load(await library.listHighlightsForBook(bookId));
+      await controller.bookmarks.load();
+      // A publisher-embedded annotation collection (issue #109) is rare
+      // and entirely optional — best-effort, non-fatal the same way the
+      // Nav Document fallback above is, since one malformed file
+      // shouldn't take down an otherwise perfectly readable book.
+      const annotationsItem = pkg.findAnnotationsDocument();
+      if (annotationsItem) {
+        try {
+          const jsonText = await contentLoader.readArchiveFileText(annotationsItem.path);
+          controller.embeddedAnnotations = parseAnnotationCollection(jsonText);
+        } catch (err) {
+          controller.diagnostics.record(
+            `Embedded annotations failed to load: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      // Fire-and-forget: never awaited, and any failure inside is already
+      // caught by `fetchBookDescription` itself — a slow or failing
+      // network request must never delay (or be able to break) opening
+      // the book itself.
+      void controller.maybeEnrichDescription().catch((error) => {
+        controller.diagnostics.record(`Description enrichment failed: ${String(error)}`);
+      });
+      return controller;
+    } catch (error) {
+      controller.dispose();
+      throw error;
     }
-    // Fire-and-forget: never awaited, and any failure inside is already
-    // caught by `fetchBookDescription` itself — a slow or failing
-    // network request must never delay (or be able to break) opening
-    // the book itself.
-    void controller.maybeEnrichDescription();
-    return controller;
   }
 
   public subscribe(listener: () => void): () => void {
@@ -591,10 +601,14 @@ export class ReaderController {
         isPrimaryPageMergedTail:
           this.host instanceof SpreadPaginatedHost ? this.host.isShowingMergedTail : false,
         pageProgressionDirection: this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr",
-        spreadPageNumbers: this.host instanceof SpreadPaginatedHost
-          ? [this.host.positions.first, this.host.positions.second].map(position => position
-            ? this.furniturePageNumber(position.spineIndex, position.pageIndex, 1) : undefined)
-          : undefined,
+        spreadPageNumbers:
+          this.host instanceof SpreadPaginatedHost
+            ? [this.host.positions.first, this.host.positions.second].map((position) =>
+                position
+                  ? this.furniturePageNumber(position.spineIndex, position.pageIndex, 1)
+                  : undefined,
+              )
+            : undefined,
         paneWidth: this.width,
         isAnimatingPageTurn: this.isAnimatingPageTurn,
         isBookmarked: this.bookmarks.onCurrentPage().length > 0,
@@ -634,6 +648,7 @@ export class ReaderController {
   }
 
   private notify(): void {
+    if (this.operations.disposed) return;
     this.cachedSnapshot = undefined;
     for (const listener of this.listeners) {
       listener();
@@ -650,6 +665,7 @@ export class ReaderController {
    * opens a previously-saved reading position, or spine item 0. Call
    * once, after the container div is available. */
   public async mount(containerEl: HTMLDivElement, width: number, height: number): Promise<void> {
+    if (this.operations.disposed) return;
     this.containerEl = containerEl;
     this.width = width;
     this.height = height;
@@ -665,15 +681,20 @@ export class ReaderController {
     this.isLoadInFlight = true;
     this.notify();
 
-    const resumed = await this.tryResume();
-    if (!resumed) {
+    const resumeOperation = this.operations.begin();
+    const resumed = await this.tryResume(resumeOperation);
+    if (this.operations.disposed) return;
+    if (!resumed && this.operations.owns(resumeOperation)) {
       await this.openSpineItem(0);
     }
 
     if (this.pendingNavigationLoadError) {
       const message = this.pendingNavigationLoadError;
       this.pendingNavigationLoadError = undefined;
-      this.setNotification(`This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`, "transient");
+      this.setNotification(
+        `This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`,
+        "transient",
+      );
       this.errorDetail = undefined;
       this.notify();
     }
@@ -737,9 +758,10 @@ export class ReaderController {
   /** Looks up a saved CFI and, if it resolves to a valid spine item,
    * opens directly there. Returns `false` if there's no saved progress
    * or it can't be resolved, so the caller falls back to the start. */
-  private async tryResume(): Promise<boolean> {
+  private async tryResume(operation: ReaderOperation): Promise<boolean> {
     try {
       const progress = await this.library.getProgress(this.bookId);
+      if (!this.operations.owns(operation)) return true;
       if (!progress) {
         return false;
       }
@@ -795,15 +817,14 @@ export class ReaderController {
   /** The `{ page, document }` pair(s) on screen right now — both
    * columns of a spread, the single page in paginated mode, or empty
    * for scroll mode/fixed-layout content (bookmarking is inert there). */
-  private currentPagesAndDocuments(): Array<{ page: Page; document: Document; spineIndex?: number }> {
-    if (this.host instanceof PaginatedContentHost) {
-      const entry = this.host.currentPageAndDocument();
-      return entry ? [entry] : [];
-    }
-    if (this.host instanceof SpreadPaginatedHost) {
-      return this.host.currentPagesAndDocuments();
-    }
-    return [];
+  private currentPagesAndDocuments(): Array<{
+    page: Page;
+    document: Document;
+    spineIndex: number;
+  }> {
+    return this.contentDocumentViews().flatMap((view) =>
+      view.page ? [{ page: view.page, document: view.document, spineIndex: view.spineIndex }] : [],
+    );
   }
 
   public async toggleBookmark(): Promise<void> {
@@ -838,7 +859,9 @@ export class ReaderController {
       if (!selector) {
         continue;
       }
-      const spineIndex = this.pkg.spine.findIndex((ref) => ref.manifestItem.path === annotation.target.source);
+      const spineIndex = this.pkg.spine.findIndex(
+        (ref) => ref.manifestItem.path === annotation.target.source,
+      );
       if (spineIndex === -1) {
         continue;
       }
@@ -879,7 +902,10 @@ export class ReaderController {
     const bookmarks = await this.library.listBookmarksForBook(this.bookId);
     const annotations = buildAnnotationCollection(this.pkg, { highlights, bookmarks });
     const safeTitle = this.pkg.metadata.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "book";
-    return { filename: `${safeTitle} - annotations.json`, text: serializeAnnotationCollection(annotations) };
+    return {
+      filename: `${safeTitle} - annotations.json`,
+      text: serializeAnnotationCollection(annotations),
+    };
   }
 
   /** Imports a previously-exported (or third-party) annotation file
@@ -909,7 +935,13 @@ export class ReaderController {
         }
         return undefined;
       }
-      const result = await importAnnotations(this.pkg, this.locatorResolver, this.library, this.bookId, annotations);
+      const result = await importAnnotations(
+        this.pkg,
+        this.locatorResolver,
+        this.library,
+        this.bookId,
+        annotations,
+      );
       this.highlights.load(await this.library.listHighlightsForBook(this.bookId));
       await this.bookmarks.load();
       this.highlightInteraction.applyHighlightsToCurrentHost();
@@ -1079,21 +1111,13 @@ export class ReaderController {
     return this.host?.element.contentDocument ?? undefined;
   }
 
-  /** All content documents for a host, including both columns in spread mode. */
-  private allContentDocuments(
-    host:
-      | FixedContentHost
-      | SpreadPaginatedHost
-      | FixedSpreadHost
-      | PaginatedContentHost
-      | ScrollContentHost
-      | undefined = this.host,
-  ): Document[] {
-    if (host instanceof SpreadPaginatedHost || host instanceof FixedSpreadHost) {
-      return host.contentDocuments();
-    }
-    const doc = host?.element.contentDocument;
-    return doc ? [doc] : [];
+  private contentDocumentViews(host: ReadingHost | undefined = this.host): readonly ContentDocumentView[] {
+    return readerDocumentViews(host, this.spineIndex);
+  }
+
+  /** Visible content documents in reading order, with ownership resolved by the host. */
+  private allContentDocuments(host: ReadingHost | undefined = this.host): Document[] {
+    return this.contentDocumentViews(host).map(view => view.document);
   }
 
   private updateContentTitle(): void {
@@ -1153,16 +1177,22 @@ export class ReaderController {
     this.globalArrowKeyCleanup?.();
     const keyboard = new AccessibilityController();
     const interceptSpace = (): boolean => !(this.host instanceof ScrollContentHost);
-    keyboard.attach(ownerDocument, {
-      onNext: () => this.dispatchArrowNavigation(1),
-      onPrevious: () => this.dispatchArrowNavigation(-1),
-      onNextChapter: () => void this.goToChapter(1),
-      onPreviousChapter: () => void this.goToChapter(-1),
-    }, {
-      scope: "shell",
-      get interceptSpace() { return interceptSpace(); },
-      pageProgressionDirection: this.pkg.pageProgressionDirection,
-    });
+    keyboard.attach(
+      ownerDocument,
+      {
+        onNext: () => this.dispatchArrowNavigation(1),
+        onPrevious: () => this.dispatchArrowNavigation(-1),
+        onNextChapter: () => void this.goToChapter(1),
+        onPreviousChapter: () => void this.goToChapter(-1),
+      },
+      {
+        scope: "shell",
+        get interceptSpace() {
+          return interceptSpace();
+        },
+        pageProgressionDirection: this.pkg.pageProgressionDirection,
+      },
+    );
     this.globalArrowKeyCleanup = () => keyboard.detach();
   }
 
@@ -1249,22 +1279,12 @@ export class ReaderController {
     if (documents.length === 0) {
       return;
     }
-    // A cross-chapter spread's first document belongs to the previous
-    // spine item, so links in it must resolve relative to that item.
-    const tailDoc = this.host instanceof SpreadPaginatedHost ? this.host.mergedTailDocument() : undefined;
-    // In a fixed spread, each column can be a different spine item, so
-    // resolve links against the clicked document's own spine index.
-    const fixedSpread = this.host instanceof FixedSpreadHost ? this.host.spread : undefined;
-    const fixedSpreadDocs = this.host instanceof FixedSpreadHost ? this.host.contentDocuments() : [];
-    const pathAndSpineIndexFor = (doc: Document): { path: string; spineIndex: number } | undefined => {
-      let spineIndex = doc === tailDoc ? this.spineIndex - 1 : this.spineIndex;
-      if (fixedSpread?.kind === "pair") {
-        if (doc === fixedSpreadDocs[0]) {
-          spineIndex = fixedSpread.leftSpineIndex;
-        } else if (doc === fixedSpreadDocs[1]) {
-          spineIndex = fixedSpread.rightSpineIndex;
-        }
-      }
+    const views = this.contentDocumentViews();
+    const pathAndSpineIndexFor = (
+      doc: Document,
+    ): { path: string; spineIndex: number } | undefined => {
+      const spineIndex = views.find((view) => view.document === doc)?.spineIndex;
+      if (spineIndex === undefined) return undefined;
       const path = this.pkg.spine[spineIndex]?.manifestItem.path;
       return path ? { path, spineIndex } : undefined;
     };
@@ -1424,7 +1444,10 @@ export class ReaderController {
   /** Resizes the current host while preserving position; a spread-mode
    * threshold crossing reopens instead of relayouting. */
   public resize(width: number, height: number): void {
-    this.diagnostics.record(`resize width=${width} height=${height} isLoadInFlight=${this.isLoadInFlight}`);
+    if (this.operations.disposed) return;
+    this.diagnostics.record(
+      `resize width=${width} height=${height} isLoadInFlight=${this.isLoadInFlight}`,
+    );
     this.enqueueLayout({ width, height });
     this.applyPendingLayout();
   }
@@ -1448,15 +1471,25 @@ export class ReaderController {
   }
 
   private requestLayout(changes: Partial<ReaderLayout>): Promise<void> {
+    if (this.operations.disposed) return Promise.resolve();
     const pending = this.enqueueLayout(changes);
-    const settled = new Promise<void>((resolve, reject) => pending.waiters.push({ resolve, reject }));
+    const settled = new Promise<void>((resolve, reject) =>
+      pending.waiters.push({ resolve, reject }),
+    );
     this.notify();
     this.applyPendingLayout();
     return settled;
   }
 
   private applyPendingLayout(): void {
-    if (this.isLoadInFlight || this.isTurningPage || this.isApplyingLayout || !this.pendingLayout) return;
+    if (
+      this.operations.disposed ||
+      this.isLoadInFlight ||
+      this.isTurningPage ||
+      this.isApplyingLayout ||
+      !this.pendingLayout
+    )
+      return;
     void this.drainLayout();
   }
 
@@ -1472,11 +1505,13 @@ export class ReaderController {
   private async drainLayout(): Promise<void> {
     this.isApplyingLayout = true;
     try {
-      while (!this.isLoadInFlight && !this.isTurningPage) {
+      while (!this.operations.disposed && !this.isLoadInFlight && !this.isTurningPage) {
         const pending = this.takePendingLayout();
         if (!pending) break;
+        this.activeLayout = pending;
         try {
           await this.applyLayout(pending);
+          if (this.operations.disposed) break;
           if (this.pendingLayout) {
             this.pendingLayout.disclosureFocus ??= pending.disclosureFocus;
             this.pendingLayout.waiters.unshift(...pending.waiters);
@@ -1485,11 +1520,13 @@ export class ReaderController {
             for (const waiter of pending.waiters) waiter.resolve();
           }
         } catch (error) {
+          if (this.operations.disposed) break;
           for (const waiter of pending.waiters) waiter.reject(error);
           this.reportTransientError(error, "open", "the updated reading layout");
         }
       }
     } finally {
+      this.activeLayout = undefined;
       this.isApplyingLayout = false;
     }
   }
@@ -1510,6 +1547,10 @@ export class ReaderController {
       this.host instanceof SpreadPaginatedHost) {
       const previousHost = this.host;
       await this.reopenForCurrentSize(pending.disclosureFocus);
+      // A direct navigation may supersede this rebuild while retaining the
+      // active layout. Its replacement must settle before settings promises do.
+      while (this.operations.current) await this.operations.current.settled;
+      if (this.operations.disposed) return;
       if (this.containerEl && this.host === previousHost) {
         Object.assign(this, previous);
         throw new Error(this.error ?? "The updated reading layout could not be loaded.");
@@ -1527,6 +1568,7 @@ export class ReaderController {
       this.refreshBookPagination();
       this.highlightInteraction.updateNoteMarkers();
     }
+    if (this.operations.disposed) return;
     await Promise.all([
       ...(modeChanged ? [this.library.setDefaultViewMode(next.viewMode)] : []),
       ...(previous.fontScale !== next.fontScale ? [this.library.setDefaultFontScale(next.fontScale)] : []),
@@ -1536,8 +1578,11 @@ export class ReaderController {
       ...(previous.contentWidthEm !== next.contentWidthEm ? [this.library.setDefaultContentWidth(next.contentWidthEm)] : []),
     ]);
     if (modeChanged) {
-      this.announce(next.viewMode === "paginated"
-        ? this.translate("announcements.paginatedView") : this.translate("announcements.scrollView"));
+      this.announce(
+        next.viewMode === "paginated"
+          ? this.translate("announcements.paginatedView")
+          : this.translate("announcements.scrollView"),
+      );
     }
     this.notify();
     if (typographyChanged) await this.saveProgress();
@@ -1558,9 +1603,9 @@ export class ReaderController {
     }
   }
 
-  private spineIndexForDocument(doc: Document): number {
-    return this.host instanceof SpreadPaginatedHost && doc === this.host.mergedTailDocument()
-      ? this.host.positions.first.spineIndex : this.spineIndex;
+  private spineIndexForDocument(doc: Document): number | undefined {
+    return this.contentDocumentViews().find((view) => view.document === doc)
+      ?.spineIndex;
   }
 
   private handleDisclosureChange(spineIndex: number, source: Document): void {
@@ -1587,7 +1632,7 @@ export class ReaderController {
     this.applyPendingLayout();
   }
 
-  /** Whether the new width changes spread eligibility for the open host. */
+  /** Whether the new dimensions change the open host's spread pairing. */
   private shouldSwitchSpreadMode(width: number): boolean {
     if (this.host instanceof FixedSpreadHost) {
       const planned = FixedLayoutSpreadPlanner.spreadContaining(
@@ -1623,14 +1668,18 @@ export class ReaderController {
 
   /** Reopens the current spine item at the current size, bridging
    * position through a CFI. */
-  private async reopenForCurrentSize(disclosureFocus?: { spineIndex: number; ordinal: number }): Promise<void> {
+  private async reopenForCurrentSize(disclosureFocus?: {
+    spineIndex: number;
+    ordinal: number;
+  }): Promise<void> {
     let spineIndex = this.spineIndex;
     let position = this.host?.currentPosition();
     if (disclosureFocus && disclosureFocus.spineIndex !== spineIndex) {
       // Expanding the first chapter of a cross-chapter pair can move its
       // companion many pages away. Keep the interacted page, not the companion.
-      const doc = this.allContentDocuments().find(document =>
-        this.spineIndexForDocument(document) === disclosureFocus.spineIndex);
+      const doc = this.allContentDocuments().find(
+        (document) => this.spineIndexForDocument(document) === disclosureFocus.spineIndex,
+      );
       const summary = doc?.querySelectorAll("details")[disclosureFocus.ordinal]?.querySelector("summary");
       if (summary) {
         spineIndex = disclosureFocus.spineIndex;
@@ -1882,8 +1931,13 @@ export class ReaderController {
 
   /** Failed actions stay visible without interrupting the current reading surface. */
   private reportTransientError(err: unknown, action: string, subject: string): void {
+    if (this.operations.disposed) return;
     this.setNotification(describeStorageError(err, action, subject), "transient");
     this.notify();
+  }
+
+  public reportActionFailure(error: unknown): void {
+    this.reportTransientError(error, "update", "the reader");
   }
 
   /** Import failures persist until dismissed; technical details are secondary copy. */
@@ -1935,22 +1989,49 @@ export class ReaderController {
    * boundaries when needed. No-op in scroll mode and while a turn is
    * already in progress. */
   public async turnPage(direction: 1 | -1): Promise<void> {
-    if (this.isTurningPage || this.isLoadInFlight || this.isApplyingLayout) {
+    if (
+      this.operations.disposed ||
+      this.isTurningPage ||
+      this.isLoadInFlight ||
+      this.isApplyingLayout
+    ) {
       return;
     }
+    this.gestureCleanup?.();
     this.clearSearchHighlightUnlessPinned();
     this.isTurningPage = true;
-    const token = ++this.turnToken;
-    this.diagnostics.record(`turnPage direction=${direction} token=${token}`);
+    const operation = this.operations.begin();
+    this.diagnostics.record(`turnPage direction=${direction}`);
     try {
-      await this.turnPageInternal(direction, token);
+      await this.turnPageInternal(direction, operation);
+    } catch (error) {
+      if (this.operations.owns(operation))
+        this.reportTransientError(error, "open", "the next page");
     } finally {
-      this.isTurningPage = false;
-      this.applyPendingLayout();
+      this.finishTurn(operation);
     }
   }
 
-  private async turnPageInternal(direction: 1 | -1, token: number): Promise<void> {
+  private finishTurn(operation: ReaderOperation): void {
+    if (!this.operations.owns(operation)) return;
+    this.operations.finish(operation);
+    this.isTurningPage = false;
+    this.applyPendingLayout();
+  }
+
+  private ownCandidate(
+    operation: ReaderOperation,
+    host: NonNullable<ReaderController["host"]>,
+    wrapper?: HTMLElement,
+  ): void {
+    operation.own(() => {
+      if (this.host === host) return;
+      host.dispose();
+      wrapper?.remove();
+    });
+  }
+
+  private async turnPageInternal(direction: 1 | -1, operation: ReaderOperation): Promise<void> {
     // Page turns do not rebuild the content document, so clear any highlight
     // popup that now points at content no longer on screen — and repaint
     // its "selected" emphasis away immediately (issue #113's follow-up),
@@ -1966,16 +2047,15 @@ export class ReaderController {
       // Capture focus before disposing the old spread so it can be restored
       // after the host swap.
       const focusedColumn = this.spreadFocusedColumn(this.host);
-      const animatedSpread = await this.animateSpreadTurn(this.host, direction);
+      const oldHost = this.host;
+      const animatedSpread = await this.animateSpreadTurn(oldHost, direction, operation);
+      operation.check();
       if (animatedSpread) {
-        if (token !== this.turnToken) {
-          animatedSpread.dispose();
-          return;
-        }
         this.contentInteractionCleanup?.();
         this.contentInteractionCleanup = undefined;
         this.dragCleanup?.();
         this.dragCleanup = undefined;
+        oldHost.dispose();
         this.host = animatedSpread;
         this.clearStaleHostWrapper();
         if (animatedSpread.primarySpineIndex !== this.spineIndex) {
@@ -2015,23 +2095,23 @@ export class ReaderController {
               second: second + 1,
               total: this.host.pageCount,
             })
-          : this.translate("scrubber.pageOfTotal", { current: this.host.pageIndex + 1, total: this.host.pageCount });
+          : this.translate("scrubber.pageOfTotal", {
+              current: this.host.pageIndex + 1,
+              total: this.host.pageCount,
+            });
     } else if (this.host instanceof PaginatedContentHost) {
       // Capture focus before disposing the old host so keyboard
       // navigation can be restored after the swap.
       const hadKeyboardFocus = this.iframeHasFocus(this.host);
-      const animatedHost = await this.animatePageTurn(this.host, direction);
+      const oldHost = this.host;
+      const animatedHost = await this.animatePageTurn(oldHost, direction, operation);
+      operation.check();
       if (animatedHost) {
-        if (token !== this.turnToken) {
-          // Discard stale results if a newer turn finished while this host
-          // was still loading or animating.
-          animatedHost.dispose();
-          return;
-        }
         this.contentInteractionCleanup?.();
         this.contentInteractionCleanup = undefined;
         this.dragCleanup?.();
         this.dragCleanup = undefined;
+        oldHost.dispose();
         this.host = animatedHost;
         this.clearStaleHostWrapper();
         this.updateContentTitle();
@@ -2060,7 +2140,7 @@ export class ReaderController {
       // Fixed-layout content has no in-chapter pagination step here:
       // `turnFixedSpread` either swaps to another spread or falls through to
       // chapter navigation.
-      await this.turnFixedSpread(this.host, direction, token);
+      await this.turnFixedSpread(this.host, direction, operation);
       return;
     } else {
       return;
@@ -2077,14 +2157,21 @@ export class ReaderController {
     if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
       return;
     }
-    await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1, animateDirection: direction });
+    await this.openSpineItem(nextSpineIndex, {
+      landOnLastPage: direction === -1,
+      animateDirection: direction,
+    });
   }
 
   /** Turns within fixed-layout content by loading the next or previous
    * `FixedSpread`. If no adjacent spread exists, it falls through to
    * `openSpineItem` using this spread's outer spine edge so a paired
    * spread is skipped as a unit. */
-  private async turnFixedSpread(host: FixedSpreadHost, direction: 1 | -1, token: number): Promise<void> {
+  private async turnFixedSpread(
+    host: FixedSpreadHost,
+    direction: 1 | -1,
+    operation: ReaderOperation,
+  ): Promise<void> {
     const currentSpread = host.spread;
     const indices = host.spineIndices;
     if (!currentSpread || indices.length === 0) {
@@ -2116,32 +2203,34 @@ export class ReaderController {
           : Math.min(nextSpread.leftSpineIndex, nextSpread.rightSpineIndex);
     const stillPrePaginated =
       nextPrimaryIndex !== undefined &&
-      this.pkg.spine[nextPrimaryIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) ===
-        "pre-paginated";
+      this.pkg.spine[nextPrimaryIndex]?.resolveRenditionLayout(
+        this.pkg.metadata.renditionLayout,
+      ) === "pre-paginated";
 
     if (nextSpread && stillPrePaginated && this.containerEl) {
       const newHost = new FixedSpreadHost(this.width, this.height);
       // Attach before `open()`; detached iframes may never navigate, and the
       // staged wrapper keeps the new host hidden while it loads.
       const newStagingEl = this.stageHiddenHostElement(newHost.element);
+      this.ownCandidate(operation, newHost, newStagingEl);
       try {
-        await newHost.open(this.contentLoader, this.resolver, nextSpread, this.pkg.metadata.renditionViewport);
+        await newHost.open(
+          this.contentLoader,
+          this.resolver,
+          nextSpread,
+          this.pkg.metadata.renditionViewport,
+        );
       } catch (err) {
         newHost.dispose();
         newStagingEl.remove();
         throw err;
       }
-      if (token !== this.turnToken) {
-        // Discard stale results if a newer turn or chapter change finished
-        // while this spread was still loading.
-        newHost.dispose();
-        newStagingEl.remove();
-        return;
-      }
+      operation.check();
       // Animate before disposing the old host so the outgoing spread stays
       // intact for the whole turn.
       const previousWrapperEl = this.hostWrapperEl;
       await this.animateFixedSpreadTurn(previousWrapperEl, newStagingEl, direction);
+      operation.check();
       this.contentInteractionCleanup?.();
       this.contentInteractionCleanup = undefined;
       this.dragCleanup?.();
@@ -2165,7 +2254,10 @@ export class ReaderController {
               second: newIndices[1]! + 1,
               total: this.pkg.spine.length,
             })
-          : this.translate("scrubber.pageOfTotal", { current: newIndices[0]! + 1, total: this.pkg.spine.length }),
+          : this.translate("scrubber.pageOfTotal", {
+              current: newIndices[0]! + 1,
+              total: this.pkg.spine.length,
+            }),
       );
       this.notify();
       await this.saveProgress();
@@ -2187,12 +2279,20 @@ export class ReaderController {
     stagingEl: HTMLDivElement,
     direction: 1 | -1,
   ): Promise<boolean> {
-    return this.pageTurnOrchestrator.animateFixedSpreadTurn(previousWrapperEl, stagingEl, direction);
+    return this.pageTurnOrchestrator.animateFixedSpreadTurn(
+      previousWrapperEl,
+      stagingEl,
+      direction,
+    );
   }
 
   /** Returns the footer page number for this chapter page, using book-wide
    * pagination when available and the local page number otherwise. */
-  private furniturePageNumber(spineIndex: number, pageIndex: number, pageCount: number): number | undefined {
+  private furniturePageNumber(
+    spineIndex: number,
+    pageIndex: number,
+    pageCount: number,
+  ): number | undefined {
     const bookPageIndex = this.bookPagination?.positionFor(spineIndex, pageIndex).currentPage;
     return bookPageIndex ?? (pageCount > 0 ? pageIndex + 1 : undefined);
   }
@@ -2203,11 +2303,13 @@ export class ReaderController {
   private async animatePageTurn(
     oldHost: PaginatedContentHost,
     direction: 1 | -1,
+    operation: ReaderOperation,
   ): Promise<PaginatedContentHost | undefined> {
     if (!this.containerEl) {
       return undefined;
     }
-    const newHost = await this.prepareIncomingPage(oldHost, direction);
+    const newHost = await this.prepareIncomingPage(oldHost, direction, operation);
+    operation.check();
     if (!newHost) {
       return undefined;
     }
@@ -2232,8 +2334,16 @@ export class ReaderController {
     return {
       title: this.pkg.metadata.title,
       chapterLabel: this.chapterLabel(this.spineIndex),
-      outgoingPage: this.furniturePageNumber(this.spineIndex, oldHost.currentPageIndex, oldHost.pageCount),
-      incomingPage: this.furniturePageNumber(this.spineIndex, newHost.currentPageIndex, newHost.pageCount),
+      outgoingPage: this.furniturePageNumber(
+        this.spineIndex,
+        oldHost.currentPageIndex,
+        oldHost.pageCount,
+      ),
+      incomingPage: this.furniturePageNumber(
+        this.spineIndex,
+        newHost.currentPageIndex,
+        newHost.pageCount,
+      ),
     };
   }
 
@@ -2244,11 +2354,13 @@ export class ReaderController {
   private async animateSpreadTurn(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
+    operation: ReaderOperation,
   ): Promise<SpreadPaginatedHost | undefined> {
     if (!this.containerEl) {
       return undefined;
     }
-    const newHost = await this.prepareIncomingSpread(oldHost, direction);
+    const newHost = await this.prepareIncomingSpread(oldHost, direction, operation);
+    operation.check();
     if (!newHost) {
       return undefined;
     }
@@ -2267,12 +2379,29 @@ export class ReaderController {
     newHost: SpreadPaginatedHost,
   ): SpreadPageTurnFurnitureInfo {
     const incomingSpineIndex = newHost.primarySpineIndex;
-    const outgoingPrimary = this.furniturePageNumber(oldHost.positions.first.spineIndex, oldHost.positions.first.pageIndex, oldHost.pageCount);
-    const outgoingSecondary =
-      oldHost.positions.second ? this.furniturePageNumber(oldHost.positions.second.spineIndex, oldHost.positions.second.pageIndex, oldHost.pageCount) : undefined;
-    const incomingPrimary = this.furniturePageNumber(newHost.positions.first.spineIndex, newHost.positions.first.pageIndex, newHost.pageCount);
+    const outgoingPrimary = this.furniturePageNumber(
+      oldHost.positions.first.spineIndex,
+      oldHost.positions.first.pageIndex,
+      oldHost.pageCount,
+    );
+    const outgoingSecondary = oldHost.positions.second
+      ? this.furniturePageNumber(
+          oldHost.positions.second.spineIndex,
+          oldHost.positions.second.pageIndex,
+          oldHost.pageCount,
+        )
+      : undefined;
+    const incomingPrimary = this.furniturePageNumber(
+      newHost.positions.first.spineIndex,
+      newHost.positions.first.pageIndex,
+      newHost.pageCount,
+    );
     const incomingSecondary = newHost.positions.second
-      ? this.furniturePageNumber(newHost.positions.second.spineIndex, newHost.positions.second.pageIndex, newHost.pageCount)
+      ? this.furniturePageNumber(
+          newHost.positions.second.spineIndex,
+          newHost.positions.second.pageIndex,
+          newHost.pageCount,
+        )
       : undefined;
     return {
       title: this.pkg.metadata.title,
@@ -2285,7 +2414,6 @@ export class ReaderController {
     };
   }
 
-
   /** Builds the incoming page for an in-chapter turn and positions it
    * directly under `oldHost.element`. Returns `undefined` when the turn
    * would cross a chapter boundary. Attach the new iframe before `open()`,
@@ -2294,6 +2422,7 @@ export class ReaderController {
   private async prepareIncomingPage(
     oldHost: PaginatedContentHost,
     direction: 1 | -1,
+    operation: ReaderOperation,
   ): Promise<PaginatedContentHost | undefined> {
     if (!this.containerEl) {
       return undefined;
@@ -2305,6 +2434,7 @@ export class ReaderController {
 
     const containerEl = this.containerEl;
     const newHost = new PaginatedContentHost(this.width, this.height);
+    this.ownCandidate(operation, newHost);
     const newEl = newHost.element;
     newEl.style.position = "absolute";
     newEl.style.top = "0";
@@ -2319,6 +2449,7 @@ export class ReaderController {
     containerEl.appendChild(newEl);
 
     await newHost.open(this.contentLoader, this.resolver, this.spineIndex, this.disclosures);
+    operation.check();
     const newDoc = newHost.element.contentDocument;
     if (newDoc) {
       ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
@@ -2372,32 +2503,51 @@ export class ReaderController {
     ReadingTheme.applyPageTheme(doc, this.pageTheme);
   }
 
-  private spreadPlanner(): ReflowableSpreadPlanner {
-    const key = JSON.stringify([this.width, this.height, this.fontScale, this.fontFamily,
-      this.lineSpacing, this.letterSpacing, this.contentWidthEm]);
+  private spreadPlanner(operation: ReaderOperation): ReflowableSpreadPlanner {
+    const key = JSON.stringify([
+      this.width,
+      this.height,
+      this.fontScale,
+      this.fontFamily,
+      this.lineSpacing,
+      this.letterSpacing,
+      this.contentWidthEm,
+    ]);
     if (key !== this.spreadLayoutKey) {
       this.spreadLayoutKey = key;
       this.spreadCounts.clear();
     }
-    return new ReflowableSpreadPlanner(index => this.spreadPageCount(index), index => this.canMergeSpreadIntoNext(index));
+    return new ReflowableSpreadPlanner(
+      (index) => this.spreadPageCount(index, operation),
+      (index) => this.canMergeSpreadIntoNext(index),
+    );
   }
 
-  private spreadPageCount(spineIndex: number): Promise<number> {
+  private spreadPageCount(spineIndex: number, operation: ReaderOperation): Promise<number> {
+    operation.check();
     let count = this.spreadCounts.get(spineIndex);
     if (!count) {
-      count = this.measureSpreadChapter(spineIndex);
+      count = this.measureSpreadChapter(spineIndex, operation);
       this.spreadCounts.set(spineIndex, count);
-      void count.catch(() => this.spreadCounts.delete(spineIndex));
+      void count.catch(() => {
+        if (this.spreadCounts.get(spineIndex) === count) this.spreadCounts.delete(spineIndex);
+      });
     }
     return count;
   }
 
-  private async measureSpreadChapter(spineIndex: number): Promise<number> {
+  private async measureSpreadChapter(
+    spineIndex: number,
+    operation: ReaderOperation,
+  ): Promise<number> {
+    operation.check();
     const width = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const probe = new PaginatedContentHost(width, this.height);
     const staging = this.stageHiddenHostElement(probe.element);
+    this.ownCandidate(operation, probe, staging);
     try {
       await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+      operation.check();
       this.configureSpreadDocument(probe.element.contentDocument!);
       probe.relayout(width, this.height, undefined, false);
       return probe.pageCount;
@@ -2407,13 +2557,31 @@ export class ReaderController {
     }
   }
 
-  private async buildSpreadHost(spread: ReflowableSpread): Promise<SpreadPaginatedHost> {
+  private async buildSpreadHost(
+    spread: ReflowableSpread,
+    operation: ReaderOperation,
+  ): Promise<SpreadPaginatedHost> {
+    operation.check();
     const host = new SpreadPaginatedHost(this.width, this.height);
     host.setProgressionDirection(this.pkg.pageProgressionDirection);
-    Object.assign(host.element.style, { position: "absolute", top: "0", left: "0", zIndex: "1", opacity: "0" });
+    Object.assign(host.element.style, {
+      position: "absolute",
+      top: "0",
+      left: "0",
+      zIndex: "1",
+      opacity: "0",
+    });
     this.containerEl!.appendChild(host.element);
+    this.ownCandidate(operation, host);
     try {
-      await host.openSpread(this.contentLoader, this.resolver, spread, doc => this.configureSpreadDocument(doc), this.disclosures);
+      await host.openSpread(
+        this.contentLoader,
+        this.resolver,
+        spread,
+        (doc) => this.configureSpreadDocument(doc),
+        this.disclosures,
+      );
+      operation.check();
       host.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(host.primarySpineIndex)}`);
       return host;
     } catch (error) {
@@ -2422,25 +2590,40 @@ export class ReaderController {
     }
   }
 
-  private async prepareSpreadForOpen(spineIndex: number, options: {
-    fragment?: string; bridgeCfi?: string; landOnLastPage?: boolean;
-    landOnPageIndex?: number; landOnFractionInItem?: number;
-  }): Promise<SpreadPaginatedHost> {
-    const planner = this.spreadPlanner();
-    const count = await this.spreadPageCount(spineIndex);
-    let pageIndex = options.landOnLastPage ? count - 1
-      : options.landOnPageIndex ?? Math.round((options.landOnFractionInItem ?? 0) * (count - 1));
+  private async prepareSpreadForOpen(
+    spineIndex: number,
+    options: {
+      fragment?: string;
+      bridgeCfi?: string;
+      landOnLastPage?: boolean;
+      landOnPageIndex?: number;
+      landOnFractionInItem?: number;
+    },
+    operation: ReaderOperation,
+  ): Promise<SpreadPaginatedHost> {
+    const planner = this.spreadPlanner(operation);
+    const count = await this.spreadPageCount(spineIndex, operation);
+    operation.check();
+    let pageIndex = options.landOnLastPage
+      ? count - 1
+      : (options.landOnPageIndex ?? Math.round((options.landOnFractionInItem ?? 0) * (count - 1)));
     if (options.bridgeCfi || options.fragment) {
       const width = SpreadPaginatedHost.effectiveColumnWidth(this.width);
       const probe = new PaginatedContentHost(width, this.height);
       const staging = this.stageHiddenHostElement(probe.element);
+      this.ownCandidate(operation, probe, staging);
       try {
         await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+        operation.check();
         const doc = probe.element.contentDocument!;
         this.configureSpreadDocument(doc);
         probe.relayout(width, this.height, undefined, false);
         if (options.bridgeCfi) {
-          const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), spineIndex, doc);
+          const resolved = this.locatorResolver.resolveInDocument(
+            new Locator(options.bridgeCfi),
+            spineIndex,
+            doc,
+          );
           probe.goToPosition(resolved.node, resolved.characterOffset ?? 0, false);
         } else {
           const target = doc.getElementById(options.fragment!);
@@ -2452,21 +2635,27 @@ export class ReaderController {
         staging.remove();
       }
     }
-    return this.buildSpreadHost(await planner.containing({
-      spineIndex, pageIndex: Math.max(0, Math.min(pageIndex, count - 1)),
-    }));
+    return this.buildSpreadHost(
+      await planner.containing({
+        spineIndex,
+        pageIndex: Math.max(0, Math.min(pageIndex, count - 1)),
+      }),
+      operation,
+    );
   }
 
   private async prepareIncomingSpread(
     oldHost: SpreadPaginatedHost,
     direction: 1 | -1,
+    operation: ReaderOperation,
   ): Promise<SpreadPaginatedHost | undefined> {
     if (!this.containerEl) {
       return undefined;
     }
-    const spread = await this.spreadPlanner().turn(oldHost.positions, direction);
+    const spread = await this.spreadPlanner(operation).turn(oldHost.positions, direction);
+    operation.check();
     if (!spread) return undefined;
-    const newHost = await this.buildSpreadHost(spread);
+    const newHost = await this.buildSpreadHost(spread, operation);
     newHost.element.style.opacity = "";
     return newHost;
   }
@@ -2551,7 +2740,7 @@ export class ReaderController {
         }
         // Middle third: no-op, exactly like `handleContentClick`.
       };
-      containerEl.addEventListener("pointerup", onPointerUp);
+      this.onGestureRelease(containerEl, event, onPointerUp);
     };
     containerEl.addEventListener("pointerdown", onContainerPointerDown);
     return () => containerEl.removeEventListener("pointerdown", onContainerPointerDown);
@@ -2566,13 +2755,14 @@ export class ReaderController {
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
     const cleanups: Array<() => void> = [];
 
-    host.contentDocuments().forEach((doc, columnIndex) => {
+    this.contentDocumentViews(host).forEach(({ document: doc, physicalSide }) => {
       // The right column's left edge is the gutter, so that zone still
       // means "forward" rather than "back."
       const rtl = this.pkg.pageProgressionDirection === "rtl";
-      const physicalRight = (columnIndex === 1) !== rtl;
-      const { left: leftThirdAction, right: rightThirdAction } =
-        this.fixedSpreadThirdActions(physicalRight ? "right" : "left", rtl);
+      const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(
+        physicalSide,
+        rtl,
+      );
       const onPointerDown = (event: PointerEvent): void => {
         if (event.pointerType === "mouse" && event.button !== 0) {
           return;
@@ -2586,9 +2776,17 @@ export class ReaderController {
             void this.turnPage(this.physicalDirection(upEvent.clientX < startX ? 1 : -1));
             return;
           }
-          this.handleContentClick(upEvent, startX, startY, columnWidth, doc, leftThirdAction, rightThirdAction);
+          this.handleContentClick(
+            upEvent,
+            startX,
+            startY,
+            columnWidth,
+            doc,
+            leftThirdAction,
+            rightThirdAction,
+          );
         };
-        doc.addEventListener("pointerup", onPointerUp);
+        this.onGestureRelease(doc, event, onPointerUp);
       };
       doc.addEventListener("pointerdown", onPointerDown);
       cleanups.push(() => doc.removeEventListener("pointerdown", onPointerDown));
@@ -2614,7 +2812,7 @@ export class ReaderController {
         }
         void this.turnPage(1);
       };
-      containerEl.addEventListener("pointerup", onContainerPointerUp);
+      this.onGestureRelease(containerEl, event, onContainerPointerUp);
     };
     containerEl.addEventListener("pointerdown", onContainerPointerDown);
     cleanups.push(() => containerEl.removeEventListener("pointerdown", onContainerPointerDown));
@@ -2635,11 +2833,11 @@ export class ReaderController {
     const cleanups: Array<() => void> = [];
     const rtl = this.pkg.pageProgressionDirection === "rtl";
 
-    host.contentDocuments().forEach((doc, columnIndex) => {
-      // Only meaningful for a `"pair"` spread.
-      const columnRole: "single" | "left" | "right" =
-        host.spread?.kind === "pair" ? (columnIndex === 1 ? "right" : "left") : "single";
-      const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(columnRole, rtl);
+    this.contentDocumentViews(host).forEach(({ document: doc, physicalSide }) => {
+      const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(
+        physicalSide,
+        rtl,
+      );
       const onPointerDown = (event: PointerEvent): void => {
         if (event.pointerType === "mouse" && event.button !== 0) {
           return;
@@ -2649,9 +2847,17 @@ export class ReaderController {
         const containerWidth = doc.defaultView?.innerWidth ?? this.width;
         const onPointerUp = (upEvent: PointerEvent): void => {
           doc.removeEventListener("pointerup", onPointerUp);
-          this.handleContentClick(upEvent, startX, startY, containerWidth, doc, leftThirdAction, rightThirdAction);
+          this.handleContentClick(
+            upEvent,
+            startX,
+            startY,
+            containerWidth,
+            doc,
+            leftThirdAction,
+            rightThirdAction,
+          );
         };
-        doc.addEventListener("pointerup", onPointerUp);
+        this.onGestureRelease(doc, event, onPointerUp);
       };
       doc.addEventListener("pointerdown", onPointerDown);
       cleanups.push(() => doc.removeEventListener("pointerdown", onPointerDown));
@@ -2660,7 +2866,10 @@ export class ReaderController {
     const containerEl = host.element;
     // Margin clicks belong to no specific page, so treat them as
     // `"single"` and use the outer-edge convention.
-    const { left: containerLeftAction, right: containerRightAction } = this.fixedSpreadThirdActions("single", rtl);
+    const { left: containerLeftAction, right: containerRightAction } = this.fixedSpreadThirdActions(
+      "single",
+      rtl,
+    );
     const onContainerPointerDown = (event: PointerEvent): void => {
       this.bumpContentActivity();
       if (event.pointerType === "mouse" && event.button !== 0) {
@@ -2682,7 +2891,7 @@ export class ReaderController {
           containerRightAction,
         );
       };
-      containerEl.addEventListener("pointerup", onContainerPointerUp);
+      this.onGestureRelease(containerEl, event, onContainerPointerUp);
     };
     containerEl.addEventListener("pointerdown", onContainerPointerDown);
     cleanups.push(() => containerEl.removeEventListener("pointerdown", onContainerPointerDown));
@@ -2707,28 +2916,58 @@ export class ReaderController {
     return columnRole === "left" ? { left: 1, right: 1 } : { left: 1, right: -1 };
   }
 
+  private onGestureRelease(
+    target: Document | HTMLElement,
+    start: PointerEvent,
+    release: (event: PointerEvent) => void,
+  ): void {
+    this.gestureCleanup?.();
+    const cleanup = (): void => {
+      target.removeEventListener("pointerup", listener);
+      target.removeEventListener("pointercancel", listener);
+      if (this.gestureCleanup === cleanup) this.gestureCleanup = undefined;
+    };
+    const listener = (event: Event): void => {
+      const pointer = event as PointerEvent;
+      if (pointer.pointerId !== start.pointerId) return;
+      cleanup();
+      if (event.type === "pointerup" && !this.operations.disposed) release(pointer);
+    };
+    this.gestureCleanup = cleanup;
+    target.addEventListener("pointerup", listener);
+    target.addEventListener("pointercancel", listener);
+  }
+
   /** Tracks one drag-to-turn gesture from `pointerdown` through release.
    * Direction locks once movement clears the dead zone, then the incoming
    * page loads; if release happens first, settlement waits for that load
    * and uses the last recorded fraction. */
   private beginDragPageTurn(startEvent: PointerEvent, doc: Document): void {
-    if (this.isTurningPage || this.isLoadInFlight || this.isApplyingLayout || !(this.host instanceof PaginatedContentHost)) {
+    if (
+      this.operations.disposed ||
+      this.isTurningPage ||
+      this.isLoadInFlight ||
+      this.isApplyingLayout ||
+      !(this.host instanceof PaginatedContentHost)
+    ) {
       return;
     }
+    this.gestureCleanup?.();
     const oldHost = this.host;
     const startX = startEvent.clientX;
     const startY = startEvent.clientY;
     const containerWidth = Math.max(1, this.width);
     // "scroll" moves the incoming page with the drag instead of only
     // revealing it underneath.
-    const isScroll = this.pageTurnAnimationStyle === "scroll";
+    const style = this.pageTurnAnimationStyle;
+    const isScroll = style === "scroll";
 
     let direction: 1 | -1 | undefined;
     let newHost: PaginatedContentHost | undefined;
     let preparing = false;
     let released = false;
     let latestFraction = 0;
-    let capturedToken: number | undefined;
+    let operation: ReaderOperation | undefined;
     // Built once when the incoming page is ready: "slide" needs a
     // backdrop for short-page bleed, and "rotate" needs a mask for the
     // newly exposed grown-height region.
@@ -2739,9 +2978,12 @@ export class ReaderController {
       doc.removeEventListener("pointermove", onPointerMove);
       doc.removeEventListener("pointerup", onPointerUp);
       doc.removeEventListener("pointercancel", onPointerUp);
+      if (this.gestureCleanup === cleanupListeners) this.gestureCleanup = undefined;
     };
+    this.gestureCleanup = cleanupListeners;
 
     const onPointerMove = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== startEvent.pointerId) return;
       const deltaX = moveEvent.clientX - startX;
 
       if (direction === undefined) {
@@ -2751,70 +2993,106 @@ export class ReaderController {
         const lockedDirection = this.physicalDirection(deltaX < 0 ? 1 : -1);
         direction = lockedDirection;
         this.isTurningPage = true;
-        const token = ++this.turnToken;
-        capturedToken = token;
-        preparing = true;
-        void this.prepareIncomingPage(oldHost, lockedDirection).then((prepared) => {
-          preparing = false;
-          newHost = prepared;
-          if (released) {
-            void this.settleDragPageTurn(
-              oldHost,
-              prepared,
-              lockedDirection,
-              latestFraction,
-              token,
-              turnBackdrop,
-              turnGrowthMask,
-            );
-            return;
+        const turn = this.operations.begin();
+        operation = turn;
+        const originalStyle = oldHost.element.style.cssText;
+        turn.own(() => {
+          cleanupListeners();
+          turnBackdrop?.remove();
+          turnGrowthMask?.remove();
+          if (this.host === oldHost) {
+            oldHost.restoreNaturalHeight();
+            oldHost.element.style.cssText = originalStyle;
           }
-          if (prepared) {
-            // Drop `clip-path` on both hosts during overlapping drag
-            // previews; the Chromium compositing bug this avoids is not
-            // specific to committed turns.
-            //
-            // Only "rotate" grows `oldHost` to full height; "slide" must
-            // not, or a short page would reveal extra document flow once
-            // its clip-path is gone.
-            //
-            // "slide" and "rotate" also need their usual bleed-masking in
-            // the interactive preview path.
-            if (this.pageTurnAnimationStyle === "rotate") {
-              oldHost.suppressClipPathForAnimation();
-              const naturalHeight = oldHost.element.getBoundingClientRect().height;
-              oldHost.growToFullHeight(this.height);
-              prepared.suppressClipPathForAnimation();
-              turnGrowthMask = this.pageTurnAnimator.buildTurnGrowthMask(oldHost.element, naturalHeight);
-              if (turnGrowthMask) {
-                turnGrowthMask.style.zIndex = "2";
-                oldHost.element.parentElement?.insertBefore(turnGrowthMask, oldHost.element.nextSibling);
-              }
-            } else if (this.pageTurnAnimationStyle === "slide") {
-              oldHost.suppressClipPathForAnimation();
-              prepared.suppressClipPathForAnimation();
-              turnBackdrop = this.pageTurnAnimator.buildTurnBackdrop(oldHost.element);
-              if (turnBackdrop) {
-                turnBackdrop.style.zIndex = "2";
-                oldHost.element.parentElement?.insertBefore(turnBackdrop, oldHost.element);
-              }
-            }
-            this.pageTurnAnimator.stagePageTurn(oldHost.element, oldHost.element, lockedDirection);
-            this.pageTurnAnimator.setPageTurnTransform(
-              oldHost.element,
-              this.pageTurnAnimator.pageTurnPartialAmount(lockedDirection, latestFraction),
-              latestFraction,
-              [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])],
-            );
-            if (isScroll) {
-              prepared.element.style.transform = `translateX(${this.pageTurnAnimator.scrollDragEnterAmount(lockedDirection, latestFraction)}%)`;
-            }
-          } else {
-            // Chapter boundary: this pass has nothing to drag into.
-            this.isTurningPage = false;
-            this.applyPendingLayout();
-          }
+          if (this.containerEl) this.containerEl.style.perspective = "";
         });
+        preparing = true;
+        void this.prepareIncomingPage(oldHost, lockedDirection, turn)
+          .then(async (prepared) => {
+            turn.check();
+            preparing = false;
+            newHost = prepared;
+            if (released) {
+              await this.settleDragPageTurn(
+                oldHost,
+                prepared,
+                lockedDirection,
+                latestFraction,
+                turn,
+                style,
+                turnBackdrop,
+                turnGrowthMask,
+              );
+              return;
+            }
+            if (prepared) {
+              // Drop `clip-path` on both hosts during overlapping drag
+              // previews; the Chromium compositing bug this avoids is not
+              // specific to committed turns.
+              //
+              // Only "rotate" grows `oldHost` to full height; "slide" must
+              // not, or a short page would reveal extra document flow once
+              // its clip-path is gone.
+              //
+              // "slide" and "rotate" also need their usual bleed-masking in
+              // the interactive preview path.
+              if (style === "rotate") {
+                oldHost.suppressClipPathForAnimation();
+                const naturalHeight = oldHost.element.getBoundingClientRect().height;
+                oldHost.growToFullHeight(this.height);
+                prepared.suppressClipPathForAnimation();
+                turnGrowthMask = this.pageTurnAnimator.buildTurnGrowthMask(
+                  oldHost.element,
+                  naturalHeight,
+                );
+                if (turnGrowthMask) {
+                  turnGrowthMask.style.zIndex = "2";
+                  oldHost.element.parentElement?.insertBefore(
+                    turnGrowthMask,
+                    oldHost.element.nextSibling,
+                  );
+                }
+              } else if (style === "slide") {
+                oldHost.suppressClipPathForAnimation();
+                prepared.suppressClipPathForAnimation();
+                turnBackdrop = this.pageTurnAnimator.buildTurnBackdrop(oldHost.element);
+                if (turnBackdrop) {
+                  turnBackdrop.style.zIndex = "2";
+                  oldHost.element.parentElement?.insertBefore(turnBackdrop, oldHost.element);
+                }
+              }
+              this.pageTurnAnimator.stagePageTurn(
+                oldHost.element,
+                oldHost.element,
+                lockedDirection,
+                [],
+                false,
+                style,
+              );
+              this.pageTurnAnimator.setPageTurnTransform(
+                oldHost.element,
+                this.pageTurnAnimator.pageTurnPartialAmount(lockedDirection, latestFraction, style),
+                latestFraction,
+                [
+                  ...(turnBackdrop ? [turnBackdrop] : []),
+                  ...(turnGrowthMask ? [turnGrowthMask] : []),
+                ],
+                style,
+              );
+              if (isScroll) {
+                prepared.element.style.transform = `translateX(${this.pageTurnAnimator.scrollDragEnterAmount(lockedDirection, latestFraction)}%)`;
+              }
+            } else {
+              // Chapter boundary: this pass has nothing to drag into.
+              this.finishTurn(turn);
+            }
+          })
+          .catch((error) => {
+            preparing = false;
+            if (this.operations.owns(turn))
+              this.reportTransientError(error, "open", "the next page");
+            this.finishTurn(turn);
+          });
       }
 
       moveEvent.preventDefault();
@@ -2823,9 +3101,10 @@ export class ReaderController {
       if (newHost && direction !== undefined) {
         this.pageTurnAnimator.setPageTurnTransform(
           oldHost.element,
-          this.pageTurnAnimator.pageTurnPartialAmount(direction, fraction),
+          this.pageTurnAnimator.pageTurnPartialAmount(direction, fraction, style),
           fraction,
           [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])],
+          style,
         );
         if (isScroll) {
           newHost.element.style.transform = `translateX(${this.pageTurnAnimator.scrollDragEnterAmount(direction, fraction)}%)`;
@@ -2834,8 +3113,9 @@ export class ReaderController {
     };
 
     const onPointerUp = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== startEvent.pointerId) return;
       cleanupListeners();
-      if (direction === undefined || capturedToken === undefined) {
+      if (direction === undefined || operation === undefined) {
         // Still a tap, not a drag; only a real release should trigger
         // click-to-navigate.
         if (upEvent.type === "pointerup") {
@@ -2844,11 +3124,21 @@ export class ReaderController {
         return;
       }
       released = true;
+      if (upEvent.type === "pointercancel") latestFraction = 0;
       if (preparing) {
         // Settled by the prepare promise once the incoming page is ready.
         return;
       }
-      void this.settleDragPageTurn(oldHost, newHost, direction, latestFraction, capturedToken, turnBackdrop, turnGrowthMask);
+      void this.settleDragPageTurn(
+        oldHost,
+        newHost,
+        direction,
+        latestFraction,
+        operation,
+        style,
+        turnBackdrop,
+        turnGrowthMask,
+      );
     };
 
     doc.addEventListener("pointermove", onPointerMove);
@@ -2911,55 +3201,41 @@ export class ReaderController {
 
   /** Settles a released drag gesture once the incoming page is ready.
    * Commits past `DRAG_COMMIT_THRESHOLD`, otherwise animates back closed.
-   * `newHost` is absent at chapter boundaries, and `token` prevents a
+   * `newHost` is absent at chapter boundaries, and ownership prevents a
    * stale completion from clobbering a newer turn. */
   private async settleDragPageTurn(
     oldHost: PaginatedContentHost,
     newHost: PaginatedContentHost | undefined,
     direction: 1 | -1,
     fraction: number,
-    token: number,
+    operation: ReaderOperation,
+    style: PageTurnAnimationStyle,
     turnBackdrop?: HTMLDivElement,
     turnGrowthMask?: HTMLDivElement,
   ): Promise<void> {
-    if (!newHost) {
-      this.isTurningPage = false;
-      turnBackdrop?.remove();
-      turnGrowthMask?.remove();
-      this.applyPendingLayout();
-      return;
-    }
+    try {
+      operation.check();
+      if (!newHost) {
+        return;
+      }
 
-    // Capture before anything below disposes `oldHost`.
-    const hadKeyboardFocus = this.iframeHasFocus(oldHost);
-    const oldEl = oldHost.element;
-    const newEl = newHost.element;
-    const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
-    const reduceMotion = this.pageTurnAnimator.shouldSkipPageTurnAnimation();
-    // Only "scroll" moves `newEl` during the drag, so only it needs a
-    // matching release animation here.
-    const isScroll = this.pageTurnAnimationStyle === "scroll";
-    const extraEls = [...(turnBackdrop ? [turnBackdrop] : []), ...(turnGrowthMask ? [turnGrowthMask] : [])];
+      // Capture before anything below disposes `oldHost`.
+      const hadKeyboardFocus = this.iframeHasFocus(oldHost);
+      const oldEl = oldHost.element;
+      const newEl = newHost.element;
+      const commit = fraction >= ReaderController.DRAG_COMMIT_THRESHOLD;
+      const reduceMotion = this.pageTurnAnimator.shouldSkipPageTurnAnimation(style);
+      // Only "scroll" moves `newEl` during the drag, so only it needs a
+      // matching release animation here.
+      const isScroll = style === "scroll";
+      const extraEls = [
+        ...(turnBackdrop ? [turnBackdrop] : []),
+        ...(turnGrowthMask ? [turnGrowthMask] : []),
+      ];
 
-    if (!reduceMotion) {
-      const remainingFraction = commit ? 1 - fraction : fraction;
-      const duration = Math.max(80, Math.round(remainingFraction * 260));
-      await new Promise<void>((resolve) => {
-        let settled = false;
-        const finish = (): void => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          oldEl.removeEventListener("transitionend", onTransitionEnd);
-          resolve();
-        };
-        const onTransitionEnd = (event: TransitionEvent): void => {
-          if (event.target === oldEl && event.propertyName === "transform") {
-            finish();
-          }
-        };
-        oldEl.addEventListener("transitionend", onTransitionEnd);
+      if (!reduceMotion) {
+        const remainingFraction = commit ? 1 - fraction : fraction;
+        const duration = Math.max(80, Math.round(remainingFraction * 260));
         // Only the non-scroll styles animate box-shadow.
         for (const el of [oldEl, ...extraEls]) {
           el.style.transition = isScroll
@@ -2969,93 +3245,84 @@ export class ReaderController {
         if (isScroll) {
           newEl.style.transition = `transform ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
         }
-        requestAnimationFrame(() => {
-          if (commit) {
-            this.pageTurnAnimator.setPageTurnTransform(oldEl, this.physicalDirection(direction) * -100, 1, extraEls);
-            if (isScroll) {
-              newEl.style.transform = "translateX(0%)";
+        await runOwnedTransition(
+          oldEl,
+          () => {
+            if (commit) {
+              this.pageTurnAnimator.setPageTurnTransform(
+                oldEl,
+                this.physicalDirection(direction) * -100,
+                1,
+                extraEls,
+                style,
+              );
+              if (isScroll) {
+                newEl.style.transform = "translateX(0%)";
+              }
+            } else {
+              this.pageTurnAnimator.setPageTurnTransform(oldEl, 0, 0, extraEls, style);
+              if (isScroll) {
+                newEl.style.transform = `translateX(${this.physicalDirection(direction) * 100}%)`;
+              }
             }
-          } else {
-            this.pageTurnAnimator.setPageTurnTransform(oldEl, 0, 0, extraEls);
-            if (isScroll) {
-              newEl.style.transform = `translateX(${this.physicalDirection(direction) * 100}%)`;
-            }
-          }
-        });
-        setTimeout(finish, duration + 250);
-      });
-    }
-    turnBackdrop?.remove();
-    turnGrowthMask?.remove();
-
-    if (this.containerEl) {
-      this.containerEl.style.perspective = "";
-    }
-
-    if (token !== this.turnToken) {
-      // Discard stale completion if a newer turn won the race.
-      newHost.dispose();
-      if (!commit) {
-        oldEl.style.position = "";
-        oldEl.style.zIndex = "";
-        oldEl.style.backfaceVisibility = "";
-        oldEl.style.transformOrigin = "";
-        oldEl.style.transition = "";
-        oldEl.style.transform = "";
-        oldEl.style.boxShadow = "";
-        oldHost.restoreNaturalHeight();
+          },
+          duration + 250,
+          operation.signal,
+        );
       }
-      this.isTurningPage = false;
-      this.applyPendingLayout();
-      return;
-    }
+      turnBackdrop?.remove();
+      turnGrowthMask?.remove();
 
-    if (commit) {
-      // A committed drag turn also invalidates any highlight popup tied
-      // to the outgoing page.
-      this.activeHighlight = undefined;
-      this.footnotePopup = undefined;
-      oldHost.dispose();
-      newEl.style.position = "";
-      newEl.style.top = "";
-      newEl.style.left = "";
-      newEl.style.transform = "";
-      newEl.style.zIndex = "";
-      // Restore anything `suppressClipPathForAnimation` changed while
-      // `newHost` sat underneath the drag preview.
-      newHost.restoreNaturalHeight();
+      if (this.containerEl) {
+        this.containerEl.style.perspective = "";
+      }
 
-      this.contentInteractionCleanup?.();
-      this.contentInteractionCleanup = undefined;
-      this.dragCleanup?.();
-      this.dragCleanup = undefined;
-      this.host = newHost;
-      this.clearStaleHostWrapper();
-      this.updateContentTitle();
-      this.reattachKeyboardNav();
-      this.setUpContentInteraction();
-      this.setUpDragPageTurn();
-      this.highlightInteraction.setUpHighlightSelection();
-      this.highlightInteraction.applyHighlightsToCurrentHost();
-      this.restoreFocusAfterHostSwap(hadKeyboardFocus);
-      this.announce(
-        this.translate("scrubber.pageOfTotal", { current: newHost.currentPageIndex + 1, total: newHost.pageCount }),
-      );
-      this.notify();
-      await this.saveProgress();
-    } else {
-      oldEl.style.position = "";
-      oldEl.style.zIndex = "";
-      oldEl.style.backfaceVisibility = "";
-      oldEl.style.transformOrigin = "";
-      oldEl.style.transition = "";
-      oldEl.style.transform = "";
-      oldEl.style.boxShadow = "";
-      oldHost.restoreNaturalHeight();
-      newHost.dispose();
+      operation.check();
+
+      if (commit) {
+        // A committed drag turn also invalidates any highlight popup tied
+        // to the outgoing page.
+        this.activeHighlight = undefined;
+        this.footnotePopup = undefined;
+        oldHost.dispose();
+        newEl.style.position = "";
+        newEl.style.top = "";
+        newEl.style.left = "";
+        newEl.style.transform = "";
+        newEl.style.zIndex = "";
+        newEl.style.transition = "";
+        // Restore anything `suppressClipPathForAnimation` changed while
+        // `newHost` sat underneath the drag preview.
+        newHost.restoreNaturalHeight();
+
+        this.contentInteractionCleanup?.();
+        this.contentInteractionCleanup = undefined;
+        this.dragCleanup?.();
+        this.dragCleanup = undefined;
+        this.host = newHost;
+        this.clearStaleHostWrapper();
+        this.updateContentTitle();
+        this.reattachKeyboardNav();
+        this.setUpContentInteraction();
+        this.setUpDragPageTurn();
+        this.highlightInteraction.setUpHighlightSelection();
+        this.highlightInteraction.applyHighlightsToCurrentHost();
+        this.restoreFocusAfterHostSwap(hadKeyboardFocus);
+        this.announce(
+          this.translate("scrubber.pageOfTotal", {
+            current: newHost.currentPageIndex + 1,
+            total: newHost.pageCount,
+          }),
+        );
+        this.notify();
+        await this.saveProgress();
+      }
+    } catch (error) {
+      if (this.operations.owns(operation))
+        this.reportTransientError(error, "open", "the next page");
+    } finally {
+      this.finishTurn(operation);
     }
-    this.isTurningPage = false;
-    this.applyPendingLayout();
   }
 
   /** Assembles the Book Details panel data from parsed OPF metadata plus
@@ -3066,7 +3333,7 @@ export class ReaderController {
 
     if (this.cachedCoverUrl === undefined) {
       const coverBlob = await this.library.getCoverBlob(this.bookId);
-      if (coverBlob) {
+      if (coverBlob && !this.operations.disposed) {
         this.cachedCoverUrl = URL.createObjectURL(coverBlob);
       }
     }
@@ -3105,8 +3372,14 @@ export class ReaderController {
       return;
     }
 
-    const isbn = this.pkg.metadata.identifiers.find((id) => id.scheme?.toUpperCase() === "ISBN")?.value;
-    const result = await fetchBookDescription(this.pkg.metadata.title, this.pkg.metadata.creator, isbn);
+    const isbn = this.pkg.metadata.identifiers.find(
+      (id) => id.scheme?.toUpperCase() === "ISBN",
+    )?.value;
+    const result = await fetchBookDescription(
+      this.pkg.metadata.title,
+      this.pkg.metadata.creator,
+      isbn,
+    );
     await this.library.recordDescriptionFetchResult(this.bookId, result);
   }
 
@@ -3255,10 +3528,10 @@ export class ReaderController {
 
     const oldEl = previousWrapperEl ?? previousHost.element;
     const newEl = stagingEl;
+    const oldStyle = oldEl.style.cssText;
     const isScroll = this.pageTurnAnimationStyle === "scroll";
     const entering = direction === -1;
     const animatingEl = entering ? newEl : oldEl;
-    const otherEl = entering ? oldEl : newEl;
     const animatingHost = entering ? newHost : previousHost;
     const otherHost = entering ? previousHost : newHost;
 
@@ -3282,7 +3555,10 @@ export class ReaderController {
         (otherHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("left");
         (otherHost as SpreadPaginatedHost).suppressColumnClipPathForAnimation("right");
         turnGrowthMaskLeft = this.pageTurnAnimator.buildTurnGrowthMask(leftEl, leftNaturalHeight);
-        turnGrowthMaskRight = this.pageTurnAnimator.buildTurnGrowthMask(rightEl, rightNaturalHeight);
+        turnGrowthMaskRight = this.pageTurnAnimator.buildTurnGrowthMask(
+          rightEl,
+          rightNaturalHeight,
+        );
         if (turnGrowthMaskLeft) {
           turnGrowthMaskLeft.style.zIndex = "2";
           animatingEl.parentElement?.insertBefore(turnGrowthMaskLeft, animatingEl.nextSibling);
@@ -3297,7 +3573,10 @@ export class ReaderController {
         const naturalHeight = singleAnimatingHost.element.getBoundingClientRect().height;
         singleAnimatingHost.growToFullHeight(this.height);
         (otherHost as PaginatedContentHost).suppressClipPathForAnimation();
-        turnGrowthMaskLeft = this.pageTurnAnimator.buildTurnGrowthMask(singleAnimatingHost.element, naturalHeight);
+        turnGrowthMaskLeft = this.pageTurnAnimator.buildTurnGrowthMask(
+          singleAnimatingHost.element,
+          naturalHeight,
+        );
         if (turnGrowthMaskLeft) {
           turnGrowthMaskLeft.style.zIndex = "2";
           animatingEl.parentElement?.insertBefore(turnGrowthMaskLeft, animatingEl.nextSibling);
@@ -3342,7 +3621,11 @@ export class ReaderController {
       const newSpread = newHost as SpreadPaginatedHost;
       const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
       const gutter = SpreadPaginatedHost.GUTTER_WIDTH;
-      const bands = (chapterLabel: string, primary: number | undefined, secondary: number | undefined) => [
+      const bands = (
+        chapterLabel: string,
+        primary: number | undefined,
+        secondary: number | undefined,
+      ) => [
         {
           left: 0,
           width: columnWidth,
@@ -3356,19 +3639,45 @@ export class ReaderController {
           footerText: secondary !== undefined ? `Page ${secondary}` : undefined,
         },
       ];
-      const oldPrimary = this.furniturePageNumber(oldSpineIndex, oldSpread.pageIndex, oldSpread.pageCount);
+      const oldPrimary = this.furniturePageNumber(
+        oldSpineIndex,
+        oldSpread.pageIndex,
+        oldSpread.pageCount,
+      );
       const oldSecondary =
-        oldSpread.secondPageIndex !== undefined && oldPrimary !== undefined ? oldPrimary + 1 : undefined;
-      const newPrimary = this.furniturePageNumber(newSpineIndex, newSpread.pageIndex, newSpread.pageCount);
+        oldSpread.secondPageIndex !== undefined && oldPrimary !== undefined
+          ? oldPrimary + 1
+          : undefined;
+      const newPrimary = this.furniturePageNumber(
+        newSpineIndex,
+        newSpread.pageIndex,
+        newSpread.pageCount,
+      );
       const newSecondary =
-        newSpread.secondPageIndex !== undefined && newPrimary !== undefined ? newPrimary + 1 : undefined;
-      outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldEl, bands(oldChapterLabel, oldPrimary, oldSecondary));
-      incomingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(newEl, bands(newChapterLabel, newPrimary, newSecondary));
+        newSpread.secondPageIndex !== undefined && newPrimary !== undefined
+          ? newPrimary + 1
+          : undefined;
+      outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(
+        oldEl,
+        bands(oldChapterLabel, oldPrimary, oldSecondary),
+      );
+      incomingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(
+        newEl,
+        bands(newChapterLabel, newPrimary, newSecondary),
+      );
     } else {
       const oldSingle = previousHost as PaginatedContentHost;
       const newSingle = newHost as PaginatedContentHost;
-      const oldNumber = this.furniturePageNumber(oldSpineIndex, oldSingle.currentPageIndex, oldSingle.pageCount);
-      const newNumber = this.furniturePageNumber(newSpineIndex, newSingle.currentPageIndex, newSingle.pageCount);
+      const oldNumber = this.furniturePageNumber(
+        oldSpineIndex,
+        oldSingle.currentPageIndex,
+        oldSingle.pageCount,
+      );
+      const newNumber = this.furniturePageNumber(
+        newSpineIndex,
+        newSingle.currentPageIndex,
+        newSingle.pageCount,
+      );
       outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldEl, [
         {
           left: 0,
@@ -3412,52 +3721,47 @@ export class ReaderController {
     this.isAnimatingPageTurn = true;
     this.notify();
 
-    if (isScroll) {
-      const oldGroup = [oldEl, ...(outgoingOverlay ? [outgoingOverlay] : [])];
-      const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
-      await this.pageTurnAnimator.playScrollTurn(oldGroup, newGroup, direction);
-    } else {
-      const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
-      await this.pageTurnAnimator.playPageTurnAnimation(
-        animatingEl,
-        animatingEl,
-        direction,
-        [
-          ...(animatedOverlayEl ? [animatedOverlayEl] : []),
-          ...(turnBackdrop ? [turnBackdrop] : []),
-          ...(turnGrowthMaskLeft ? [turnGrowthMaskLeft] : []),
-          ...(turnGrowthMaskRight ? [turnGrowthMaskRight] : []),
-        ],
-        entering,
-      );
-    }
-
-    outgoingOverlay?.remove();
-    incomingOverlay?.remove();
-    turnBackdrop?.remove();
-    turnGrowthMaskLeft?.remove();
-    turnGrowthMaskRight?.remove();
-    this.isAnimatingPageTurn = false;
-
-    if (this.pageTurnAnimationStyle === "slide" || this.pageTurnAnimationStyle === "rotate") {
-      // Restore the surviving host's natural sizing and clip state after
-      // slide/rotate turns.
-      if (bothSpread) {
-        (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("left");
-        (newHost as SpreadPaginatedHost).restoreColumnNaturalHeight("right");
+    try {
+      if (isScroll) {
+        const oldGroup = [oldEl, ...(outgoingOverlay ? [outgoingOverlay] : [])];
+        const newGroup = [newEl, ...(incomingOverlay ? [incomingOverlay] : [])];
+        await this.pageTurnAnimator.playScrollTurn(oldGroup, newGroup, direction);
       } else {
-        (newHost as PaginatedContentHost).restoreNaturalHeight();
+        const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
+        await this.pageTurnAnimator.playPageTurnAnimation(
+          animatingEl,
+          animatingEl,
+          direction,
+          [
+            ...(animatedOverlayEl ? [animatedOverlayEl] : []),
+            ...(turnBackdrop ? [turnBackdrop] : []),
+            ...(turnGrowthMaskLeft ? [turnGrowthMaskLeft] : []),
+            ...(turnGrowthMaskRight ? [turnGrowthMaskRight] : []),
+          ],
+          entering,
+        );
       }
-    }
+    } finally {
+      outgoingOverlay?.remove();
+      incomingOverlay?.remove();
+      turnBackdrop?.remove();
+      turnGrowthMaskLeft?.remove();
+      turnGrowthMaskRight?.remove();
+      this.isAnimatingPageTurn = false;
 
-    // Reset the surviving staging wrapper to its resting state.
-    stagingEl.style.transform = "";
-    stagingEl.style.zIndex = "";
-    stagingEl.style.boxShadow = "";
-    stagingEl.style.transition = "";
-    if (otherEl === oldEl) {
-      // Defensive only; `oldEl` is about to be disposed by the caller.
-      otherEl.style.zIndex = "";
+      for (const host of [previousHost, newHost]) {
+        if (host instanceof SpreadPaginatedHost) {
+          host.restoreColumnNaturalHeight("left");
+          host.restoreColumnNaturalHeight("right");
+        } else host.restoreNaturalHeight();
+      }
+
+      // Reset the surviving staging wrapper to its resting state.
+      stagingEl.style.transform = "";
+      stagingEl.style.zIndex = "";
+      stagingEl.style.boxShadow = "";
+      stagingEl.style.transition = "";
+      oldEl.style.cssText = oldStyle;
     }
 
     return true;
@@ -3508,30 +3812,31 @@ export class ReaderController {
       animateDirection?: 1 | -1;
     } = {},
   ): Promise<void> {
-    if (!this.containerEl) {
+    if (this.operations.disposed || !this.containerEl) {
       return;
     }
 
+    this.gestureCleanup?.();
+    if (this.operations.current) this.spreadCounts.clear();
+    const operation = this.operations.begin();
+    this.isTurningPage = false;
     this.error = undefined;
     this.errorSeverity = undefined;
     this.errorDetail = undefined;
     this.isLoadInFlight = true;
     const openingSize = { width: this.width, height: this.height };
-    // Every return path below must check this token before mutating
-    // shared state.
-    const token = ++this.spineOpenToken;
     // Only show the loading spinner for slower loads. `finished`
     // prevents the timer from turning it back on after this call has
     // already completed.
     let finished = false;
     const loadingTimeout = setTimeout(() => {
-      if (!finished && token === this.spineOpenToken) {
+      if (!finished && this.operations.owns(operation)) {
         this.isLoading = true;
         this.notify();
       }
     }, 200);
     this.diagnostics.record(
-      `openSpineItem start spineIndex=${spineIndex} token=${token} options=${JSON.stringify(options)}`,
+      `openSpineItem start spineIndex=${spineIndex} options=${JSON.stringify(options)}`,
     );
 
     try {
@@ -3569,10 +3874,16 @@ export class ReaderController {
           const fixedHost = new FixedSpreadHost(this.width, this.height);
           createdHost = fixedHost;
           stagingEl = this.stageHiddenHostElement(fixedHost.element);
-          await fixedHost.open(this.contentLoader, this.resolver, spread, this.pkg.metadata.renditionViewport);
+          this.ownCandidate(operation, fixedHost, stagingEl);
+          await fixedHost.open(
+            this.contentLoader,
+            this.resolver,
+            spread,
+            this.pkg.metadata.renditionViewport,
+          );
           spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
-          const host = await this.prepareSpreadForOpen(spineIndex, options);
+          const host = await this.prepareSpreadForOpen(spineIndex, options, operation);
           createdHost = host;
           spineIndex = host.primarySpineIndex;
         } else {
@@ -3582,6 +3893,7 @@ export class ReaderController {
               : new ScrollContentHost(this.width, this.height);
           createdHost = host;
           stagingEl = this.stageHiddenHostElement(host.element);
+          this.ownCandidate(operation, host, stagingEl);
           await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
           applyDisplaySettings = true;
         }
@@ -3594,20 +3906,13 @@ export class ReaderController {
       }
       const newHost = createdHost;
 
-      if (token !== this.spineOpenToken) {
-        this.diagnostics.record(
-          `openSpineItem stale-discard spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken}`,
-        );
-        newHost.dispose();
-        stagingEl?.remove();
-        return;
-      }
+      operation.check();
+      if (applyDisplaySettings) this.applyPersistedDisplaySettingsToFreshHost(newHost);
 
       // For chapter-boundary turns, land on the target page and apply
       // display settings before reveal so the animation shows the right
       // content. Reflowable spread hosts own their staging directly;
       // only the other host types have a separate wrapper to reveal.
-      let animatedReveal = false;
       if (
         options.animateDirection !== undefined &&
         stagingEl !== undefined &&
@@ -3617,10 +3922,7 @@ export class ReaderController {
         if (options.landOnLastPage) {
           newHost.goToLastPage();
         }
-        if (applyDisplaySettings) {
-          this.applyPersistedDisplaySettingsToFreshHost(newHost);
-        }
-        animatedReveal = await this.animateChapterCrossingReveal(
+        await this.animateChapterCrossingReveal(
           previousHost,
           previousWrapperEl,
           newHost,
@@ -3631,11 +3933,7 @@ export class ReaderController {
         );
       }
 
-      if (token !== this.spineOpenToken) {
-        newHost.dispose();
-        stagingEl?.remove();
-        return;
-      }
+      operation.check();
 
       this.accessibility.detach();
       this.contentInteractionCleanup?.();
@@ -3657,12 +3955,13 @@ export class ReaderController {
       this.host = newHost;
       this.hostWrapperEl = stagingEl;
       if (newHost instanceof SpreadPaginatedHost) {
-        Object.assign(newHost.element.style, { position: "", top: "", left: "", zIndex: "", opacity: "" });
-      }
-      // Skip a second settings pass if the animation path already
-      // applied it.
-      if (applyDisplaySettings && !animatedReveal) {
-        this.applyPersistedDisplaySettingsToFreshHost();
+        Object.assign(newHost.element.style, {
+          position: "",
+          top: "",
+          left: "",
+          zIndex: "",
+          opacity: "",
+        });
       }
 
       this.spineIndex = spineIndex;
@@ -3675,9 +3974,14 @@ export class ReaderController {
       this.refreshBookPagination();
 
       if (newHost instanceof SpreadPaginatedHost) {
-        this.setUpAccessibility(options.fragment
-          ? newHost.contentDocuments().map(doc => doc.getElementById(options.fragment!)).find(el => el !== null)
-          : undefined);
+        this.setUpAccessibility(
+          options.fragment
+            ? newHost
+                .contentDocuments()
+                .map((doc) => doc.getElementById(options.fragment!))
+                .find((el) => el !== null)
+            : undefined,
+        );
       } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, spineIndex);
         this.setUpAccessibility();
@@ -3726,21 +4030,20 @@ export class ReaderController {
             `network access is not available, so any remote reference will not display`,
         );
       }
-      this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex} token=${token}`);
+      this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (token === this.spineOpenToken) {
+      if (this.operations.owns(operation)) {
         // A failed replacement leaves the previous host visible; only
         // the very first load can leave the reader with nothing shown.
         this.setNotification(message, this.host ? "transient" : "blocking");
         this.errorDetail = undefined;
         this.diagnostics.record(
-          `openSpineItem ERROR spineIndex=${spineIndex} token=${token} message=${message} severity=${this.errorSeverity}`,
+          `openSpineItem ERROR spineIndex=${spineIndex} message=${message} severity=${this.errorSeverity}`,
         );
-        console.error(this.diagnostics.format(this.diagnosticsContext()));
       } else {
         this.diagnostics.record(
-          `openSpineItem stale-error (suppressed) spineIndex=${spineIndex} token=${token} currentToken=${this.spineOpenToken} message=${message}`,
+          `openSpineItem cancelled spineIndex=${spineIndex} message=${message}`,
         );
       }
       // Ignore stale-load failures; a newer `openSpineItem` call has
@@ -3748,7 +4051,8 @@ export class ReaderController {
     } finally {
       finished = true;
       clearTimeout(loadingTimeout);
-      if (token === this.spineOpenToken) {
+      if (this.operations.owns(operation)) {
+        this.operations.finish(operation);
         this.isLoading = false;
         this.isLoadInFlight = false;
         this.notify();
@@ -3791,6 +4095,22 @@ export class ReaderController {
   }
 
   public dispose(): void {
+    if (this.operations.disposed) return;
+    this.operations.dispose();
+    this.gestureCleanup?.();
+    this.gestureCleanup = undefined;
+    // Cancellation is a settled no-op, not a layout failure to display after
+    // unmount. Both queued and currently-draining setters must be released.
+    for (const pending of [this.pendingLayout, this.activeLayout]) {
+      for (const waiter of pending?.waiters ?? []) waiter.resolve();
+    }
+    this.pendingLayout = undefined;
+    this.activeLayout = undefined;
+    this.isLoadInFlight = false;
+    this.isLoading = false;
+    this.isTurningPage = false;
+    this.isAnimatingPageTurn = false;
+    this.isApplyingLayout = false;
     this.accessibility.detach();
     this.globalArrowKeyCleanup?.();
     this.contentInteractionCleanup?.();
@@ -3799,6 +4119,10 @@ export class ReaderController {
     this.searchCoordinator.dispose();
     this.host?.dispose();
     this.hostWrapperEl?.remove();
+    this.host = undefined;
+    this.hostWrapperEl = undefined;
+    if (this.containerEl) this.containerEl.style.perspective = "";
+    this.containerEl = undefined;
     this.bookPagination?.dispose();
     this.hiddenMeasureContainer?.remove();
     this.resolver.dispose();

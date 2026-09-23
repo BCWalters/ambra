@@ -23,10 +23,11 @@ function makeHighlight(overrides: Partial<Highlight> = {}): Highlight {
  * container/offset endpoints and stringifies it, never touches the real
  * DOM Range API. */
 function makeRange(text = "a bad Faun"): Range {
+  const ownerDocument = {} as Document;
   return {
-    startContainer: {} as Node,
+    startContainer: { ownerDocument } as Node,
     startOffset: 0,
-    endContainer: {} as Node,
+    endContainer: { ownerDocument } as Node,
     endOffset: text.length,
     toString: () => text,
   } as unknown as Range;
@@ -62,10 +63,12 @@ function makeLibrary(initial: Highlight[] = []): LibraryDatabase {
 
 function makeContext(overrides: Partial<HighlightManagerContext> = {}): HighlightManagerContext {
   let active: ActiveHighlightState | undefined;
+  const selection = makeRange();
   return {
-    spineIndex: () => 0,
+    spineIndexForDocument: () => 0,
+    isSpineVisible: spineIndex => spineIndex === 0,
     isFixedLayoutHost: () => false,
-    pendingSelectionRange: () => makeRange(),
+    pendingSelectionRange: () => selection,
     selectionToolbarAnchor: () => ({ left: 10, top: 20 }),
     dismissSelectionToolbar: vi.fn(),
     applyHighlightsToCurrentHost: vi.fn(),
@@ -136,6 +139,41 @@ describe("HighlightManager", () => {
     await manager.add("yellow", true);
 
     expect(ctx.getActiveHighlight()).toMatchObject({ left: 10, top: 20, openNoteEditor: true });
+  });
+
+  it("add() uses the selected document's spine identity", async () => {
+    const library = makeLibrary();
+    const ctx = makeContext({ spineIndexForDocument: () => 12 });
+    const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
+    await manager.add("green");
+    expect(library.addHighlight).toHaveBeenCalledWith(expect.objectContaining({ spineIndex: 12 }));
+    expect(manager.forSpineIndex(12)).toHaveLength(1);
+  });
+
+  it("add() rejects a selection whose document is no longer visible", async () => {
+    const library = makeLibrary();
+    const ctx = makeContext({ spineIndexForDocument: () => undefined });
+    const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
+    await manager.add("green");
+    expect(library.addHighlight).not.toHaveBeenCalled();
+    expect(ctx.reportError).toHaveBeenCalledWith(new Error("The selection no longer belongs to a visible document."));
+  });
+
+  it("a late addition publishes its record without dismissing a newer selection or opening a stale editor", async () => {
+    let selection = makeRange();
+    const library = makeLibrary();
+    let commit!: (highlight: Highlight) => void;
+    vi.mocked(library.addHighlight).mockImplementation(() => new Promise(resolve => { commit = resolve; }));
+    const ctx = makeContext({ pendingSelectionRange: () => selection });
+    const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
+    const saving = manager.add("yellow", true);
+    selection = makeRange("A newer selection");
+    commit(makeHighlight());
+    await saving;
+    expect(manager.allSorted()).toHaveLength(1);
+    expect(ctx.notify).toHaveBeenCalled();
+    expect(ctx.dismissSelectionToolbar).not.toHaveBeenCalled();
+    expect(ctx.getActiveHighlight()).toBeUndefined();
   });
 
   it("add() reports a failed save via reportError instead of silently doing nothing", async () => {
@@ -209,7 +247,7 @@ describe("HighlightManager", () => {
     const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
     manager.load([existing]);
 
-    await manager.setNote("hl-1", "a note");
+    expect(await manager.setNote("hl-1", "a note")).toBe(true);
 
     expect(library.patchHighlight).toHaveBeenCalledWith("hl-1", { note: "a note" });
     expect(manager.forSpineIndex(0)?.[0]?.note).toBe("a note");
@@ -234,7 +272,7 @@ describe("HighlightManager", () => {
   it("setStyle() skips the repaint when the highlight belongs to a different (not-current) spine item", async () => {
     const existing = makeHighlight({ id: "hl-1", spineIndex: 3 });
     const library = makeLibrary([existing]);
-    const ctx = makeContext({ spineIndex: () => 0 });
+    const ctx = makeContext({ isSpineVisible: spineIndex => spineIndex === 0 });
     const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
     manager.load([existing]);
 
@@ -285,7 +323,7 @@ describe("HighlightManager", () => {
     manager.load([existing]);
 
     if (operation === "remove") await manager.remove(existing.id);
-    else if (operation === "setNote") await manager.setNote(existing.id, "Rejected");
+    else if (operation === "setNote") expect(await manager.setNote(existing.id, "Rejected")).toBe(false);
     else await manager.setStyle(existing.id, "green");
     expect(manager.forSpineIndex(0)).toEqual([existing]);
     expect(ctx.getActiveHighlight()?.highlight).toEqual(existing);

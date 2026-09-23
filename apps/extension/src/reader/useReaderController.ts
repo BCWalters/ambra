@@ -80,6 +80,20 @@ export interface UseReaderControllerResult {
 export function useReaderController(translate: Translate): UseReaderControllerResult {
   const [controller, setController] = useState<ReaderController | null>(null);
   const contentHostRef = useRef<HTMLDivElement | null>(null);
+  const openGeneration = useRef(0);
+  const mounted = useRef(true);
+  const ownedController = useRef<ReaderController | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      openGeneration.current++;
+      void ownedController.current?.flushProgress();
+      ownedController.current?.dispose();
+      ownedController.current = null;
+    };
+  }, []);
 
   // Keeps the controller's screen-reader announcements (see
   // `ReaderController.announce`) in whatever locale the reader has
@@ -106,7 +120,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
 
     const containerEl = contentHostRef.current;
     const rect = containerEl.getBoundingClientRect();
-    void controller.mount(containerEl, rect.width, rect.height);
+    void controller.mount(containerEl, rect.width, rect.height).catch(error => controller.reportActionFailure(error));
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -150,7 +164,26 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
 
   const openBook = useCallback(
     async (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase): Promise<void> => {
-      const opened = await ReaderController.open(buffer, bookId, library);
+      if (!mounted.current) {
+        library.close();
+        return;
+      }
+      const generation = ++openGeneration.current;
+      let opened: ReaderController;
+      try {
+        opened = await ReaderController.open(buffer, bookId, library);
+      } catch (error) {
+        library.close();
+        if (mounted.current && generation === openGeneration.current) throw error;
+        return;
+      }
+      if (!mounted.current || generation !== openGeneration.current) {
+        opened.dispose();
+        return;
+      }
+      void ownedController.current?.flushProgress();
+      ownedController.current?.dispose();
+      ownedController.current = opened;
       setController(opened);
     },
     [],
@@ -179,70 +212,70 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
 
   const setViewMode = useCallback(
     (mode: ViewMode) => {
-      void controller?.setViewMode(mode);
+      void controller?.setViewMode(mode).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setFontScale = useCallback(
     (scale: number) => {
-      void controller?.setFontScale(scale);
+      void controller?.setFontScale(scale).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setLineSpacing = useCallback(
     (spacing: number) => {
-      void controller?.setLineSpacing(spacing);
+      void controller?.setLineSpacing(spacing).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setLetterSpacing = useCallback(
     (spacing: number) => {
-      void controller?.setLetterSpacing(spacing);
+      void controller?.setLetterSpacing(spacing).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setContentWidth = useCallback(
     (widthEm: number) => {
-      void controller?.setContentWidth(widthEm);
+      void controller?.setContentWidth(widthEm).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setFontFamily = useCallback(
     (family: FontFamilyChoice) => {
-      void controller?.setFontFamily(family);
+      void controller?.setFontFamily(family).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setPageTheme = useCallback(
     (theme: PageTheme) => {
-      void controller?.setPageTheme(theme);
+      void controller?.setPageTheme(theme).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setBrightness = useCallback(
     (brightness: number) => {
-      void controller?.setBrightness(brightness);
+      void controller?.setBrightness(brightness).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setChromeTheme = useCallback(
     (theme: ChromeThemeChoice) => {
-      void controller?.setChromeTheme(theme);
+      void controller?.setChromeTheme(theme).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );
 
   const setPageTurnAnimationStyle = useCallback(
     (style: PageTurnAnimationStyle) => {
-      void controller?.setPageTurnAnimationStyle(style);
+      void controller?.setPageTurnAnimationStyle(style).catch(error => controller.reportActionFailure(error));
     },
     [controller],
   );

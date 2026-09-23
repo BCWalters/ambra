@@ -8,9 +8,8 @@ import type { ActiveHighlightState } from "./ReaderTypes.js";
 
 /** Persistence and cached annotations are independent of DOM painting. */
 export interface HighlightManagerContext {
-  spineIndex(): number;
-  spineIndexForDocument?(document: Document): number;
-  isSpineVisible?(spineIndex: number): boolean;
+  spineIndexForDocument(document: Document): number | undefined;
+  isSpineVisible(spineIndex: number): boolean;
   isFixedLayoutHost(): boolean;
   /** The live `Range` `setUpHighlightSelection` last captured. */
   pendingSelectionRange(): Range | undefined;
@@ -27,10 +26,8 @@ export interface HighlightManagerContext {
   notify(): void;
 }
 
-/** Owns the current book's highlights: the in-memory cache mirroring
- * `LibraryDatabase`'s persisted copy (grouped by spine index), and
- * every add/remove/edit op the reader UI needs. Painting/hit-testing
- * stays in `ReaderController`, which owns the live host/document. */
+/** Owns persisted highlight mutations and their cache. Painting and hit testing
+ * belong to HighlightInteraction, using the reader's visible document views. */
 export class HighlightManager {
   private cache = new Map<number, Highlight[]>();
 
@@ -89,9 +86,9 @@ export class HighlightManager {
     // Captured before `dismissSelectionToolbar` clears it, below.
     const anchor = this.ctx.selectionToolbarAnchor();
     const document = range.startContainer.ownerDocument;
-    const spineIndex = document && this.ctx.spineIndexForDocument
-      ? this.ctx.spineIndexForDocument(document) : this.ctx.spineIndex();
     try {
+      const spineIndex = document ? this.ctx.spineIndexForDocument(document) : undefined;
+      if (spineIndex === undefined) throw new Error("The selection no longer belongs to a visible document.");
       const startLocator = this.locatorResolver.generate(spineIndex, range.startContainer, range.startOffset);
       const endLocator = this.locatorResolver.generate(spineIndex, range.endContainer, range.endOffset);
       const highlight = await this.library.addHighlight({
@@ -111,13 +108,15 @@ export class HighlightManager {
       }
       this.ctx.applyHighlightsToCurrentHost();
       this.ctx.announce("announcements.highlightAdded");
-      if (openNoteEditor && anchor) {
+      if (openNoteEditor && anchor && this.ctx.pendingSelectionRange() === range &&
+          document && this.ctx.spineIndexForDocument(document) === spineIndex) {
         this.ctx.setActiveHighlight({ highlight, left: anchor.left, top: anchor.top, openNoteEditor: true });
       }
+      this.ctx.notify();
     } catch (err) {
       this.ctx.reportError(err);
     } finally {
-      this.ctx.dismissSelectionToolbar();
+      if (this.ctx.pendingSelectionRange() === range) this.ctx.dismissSelectionToolbar();
     }
   }
 
@@ -138,7 +137,7 @@ export class HighlightManager {
       const index = highlights.findIndex((highlight) => highlight.id === id);
       if (index !== -1) {
         highlights.splice(index, 1);
-        if (this.ctx.isSpineVisible?.(spineIndex) ?? spineIndex === this.ctx.spineIndex()) {
+        if (this.ctx.isSpineVisible(spineIndex)) {
           this.ctx.applyHighlightsToCurrentHost();
         }
         break;
@@ -184,7 +183,7 @@ export class HighlightManager {
     if (active?.highlight.id === id) {
       this.ctx.setActiveHighlight({ ...active, highlight: updated });
     }
-    if (styleChanged && (this.ctx.isSpineVisible?.(updated.spineIndex) ?? updated.spineIndex === this.ctx.spineIndex())) {
+    if (styleChanged && this.ctx.isSpineVisible(updated.spineIndex)) {
       this.ctx.applyHighlightsToCurrentHost();
     }
     this.ctx.updateNoteMarkers();

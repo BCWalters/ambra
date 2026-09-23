@@ -1,0 +1,118 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ReaderController } from "./ReaderController.js";
+import { useReaderController, type UseReaderControllerResult } from "./useReaderController.js";
+import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import type { ReaderSnapshot } from "./ReaderTypes.js";
+import type { Translate } from "../i18n/LocaleContext.js";
+
+vi.mock("./ReaderController.js", () => ({ ReaderController: { open: vi.fn() } }));
+
+let root: Root;
+let element: HTMLDivElement;
+let latest: UseReaderControllerResult;
+let mounted: boolean;
+const translate = ((key: string) => key) as Translate;
+
+function Harness() {
+  latest = useReaderController(translate);
+  return null;
+}
+function deferred() {
+  let resolve!: (controller: ReaderController) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<ReaderController>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+function controller(title: string) {
+  const snapshot = { title } as ReaderSnapshot;
+  const methods = {
+    snapshot: () => snapshot,
+    subscribe: () => () => {},
+    setTranslate: vi.fn(),
+    dispose: vi.fn(),
+    flushProgress: vi.fn().mockResolvedValue(undefined),
+  };
+  return { methods, value: methods as unknown as ReaderController, snapshot };
+}
+function library() {
+  const close = vi.fn();
+  return { close, value: { close } as unknown as LibraryDatabase };
+}
+
+beforeEach(async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.mocked(ReaderController.open).mockReset();
+  element = document.createElement("div");
+  document.body.append(element);
+  root = createRoot(element);
+  mounted = true;
+  await act(async () => root.render(<Harness />));
+});
+afterEach(() => {
+  if (mounted) act(() => root.unmount());
+  element.remove();
+  vi.unstubAllGlobals();
+});
+
+it("only adopts the latest requested book, disposing a slow obsolete open", async () => {
+  const slow = deferred();
+  const first = controller("first");
+  const second = controller("second");
+  vi.mocked(ReaderController.open)
+    .mockReturnValueOnce(slow.promise)
+    .mockResolvedValueOnce(second.value);
+  const pending = latest.openBook(new ArrayBuffer(0), "first", library().value);
+  await act(async () => latest.openBook(new ArrayBuffer(0), "second", library().value));
+  expect(latest.snapshot).toBe(second.snapshot);
+  await act(async () => {
+    slow.resolve(first.value);
+    await pending;
+  });
+  expect(first.methods.dispose).toHaveBeenCalledOnce();
+  expect(second.methods.dispose).not.toHaveBeenCalled();
+  expect(latest.snapshot).toBe(second.snapshot);
+});
+
+it("disposes a controller that finishes opening after unmount", async () => {
+  const slow = deferred();
+  const opened = controller("late");
+  vi.mocked(ReaderController.open).mockReturnValueOnce(slow.promise);
+  const pending = latest.openBook(new ArrayBuffer(0), "late", library().value);
+  act(() => root.unmount());
+  mounted = false;
+  slow.resolve(opened.value);
+  await pending;
+  expect(opened.methods.dispose).toHaveBeenCalledOnce();
+});
+
+it("suppresses obsolete open failures but reports current failures and releases their connection", async () => {
+  const slow = deferred();
+  const firstLibrary = library();
+  const secondLibrary = library();
+  vi.mocked(ReaderController.open)
+    .mockReturnValueOnce(slow.promise)
+    .mockRejectedValueOnce(new Error("current failure"));
+  const pending = latest.openBook(new ArrayBuffer(0), "first", firstLibrary.value);
+  await expect(latest.openBook(new ArrayBuffer(0), "second", secondLibrary.value)).rejects.toThrow(
+    "current failure",
+  );
+  slow.reject(new Error("obsolete failure"));
+  await expect(pending).resolves.toBeUndefined();
+  expect(firstLibrary.close).toHaveBeenCalledOnce();
+  expect(secondLibrary.close).toHaveBeenCalledOnce();
+});
+
+it("flushes and disposes an adopted but unmounted controller", async () => {
+  const opened = controller("active");
+  vi.mocked(ReaderController.open).mockResolvedValueOnce(opened.value);
+  await act(async () => latest.openBook(new ArrayBuffer(0), "active", library().value));
+  act(() => root.unmount());
+  mounted = false;
+  expect(opened.methods.flushProgress).toHaveBeenCalledOnce();
+  expect(opened.methods.dispose).toHaveBeenCalledOnce();
+});

@@ -253,10 +253,6 @@ const ReaderAppInner: FC = () => {
     void removeHighlight(id);
   };
 
-  const handleSetHighlightNote = (id: string, note: string | undefined): void => {
-    void setHighlightNote(id, note);
-  };
-
   const handleSelectHighlight = (cfi: string): void => {
     void goToHighlight(cfi);
     if (!isAnnotationsPinned) {
@@ -311,8 +307,13 @@ const ReaderAppInner: FC = () => {
       // Deliberately not closed here: `ReaderController` keeps this
       // connection open for the whole reading session to persist/restore
       // progress (see `resume-reading`), and closes it itself on dispose.
-      const library = await LibraryDatabase.open();
+      let library: LibraryDatabase | undefined;
       try {
+        library = await LibraryDatabase.open();
+        if (cancelled) {
+          library.close();
+          return;
+        }
         const blob = await library.getBookFile(bookId);
         if (!blob) {
           throw new Error(
@@ -326,7 +327,7 @@ const ReaderAppInner: FC = () => {
           library.close();
         }
       } catch (err) {
-        library.close();
+        library?.close();
         if (!cancelled) {
           setOpenError(err instanceof Error ? err.message : String(err));
         }
@@ -406,7 +407,7 @@ const ReaderAppInner: FC = () => {
             highlights={snapshot.highlights}
             onSelectHighlight={handleSelectHighlight}
             onRemoveHighlight={handleRemoveHighlight}
-            onSetHighlightNote={handleSetHighlightNote}
+            onSetHighlightNote={setHighlightNote}
             readOnlyAnnotations={listEmbeddedAnnotations()}
             onSelectReadOnlyAnnotation={handleSelectReadOnlyAnnotation}
             onExport={handleExportAnnotations}

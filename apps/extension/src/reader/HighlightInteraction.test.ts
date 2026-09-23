@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocatorResolver } from "@ambra/engine";
+import type { ContentDocumentView, LocatorResolver } from "@ambra/engine";
 import type { Highlight } from "../library/LibraryDatabase.js";
 import type { ActiveHighlightState, SelectionToolbarState } from "./ReaderTypes.js";
 import { applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
@@ -93,10 +93,8 @@ function makeContext(overrides: Partial<HighlightInteractionContext> = {}): High
     pendingSelectionRange: undefined as Range | undefined,
   };
   return {
-    spineIndex: () => 3,
     isFixedLayoutHost: () => false,
-    allContentDocuments: () => [],
-    mergedTailDocument: () => undefined,
+    contentDocuments: () => [],
     forSpineIndex: () => undefined,
     currentSearchHighlightQuery: () => undefined,
     getActiveHighlight: () => state.activeHighlight,
@@ -123,6 +121,10 @@ function makeContext(overrides: Partial<HighlightInteractionContext> = {}): High
   };
 }
 
+function views(...documents: Document[]): ContentDocumentView[] {
+  return documents.map(document => ({ document, spineIndex: 3, physicalSide: "single" }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -130,10 +132,10 @@ beforeEach(() => {
 describe("HighlightInteraction", () => {
   describe("applyHighlightsToCurrentHost()", () => {
     it("is a no-op for fixed-layout content", () => {
-      const ctx = makeContext({ isFixedLayoutHost: () => true, allContentDocuments: vi.fn() });
+      const ctx = makeContext({ isFixedLayoutHost: () => true, contentDocuments: vi.fn() });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applyHighlightsToCurrentHost();
-      expect(ctx.allContentDocuments).not.toHaveBeenCalled();
+      expect(ctx.contentDocuments).not.toHaveBeenCalled();
       expect(applyHighlightRanges).not.toHaveBeenCalled();
     });
 
@@ -142,7 +144,7 @@ describe("HighlightInteraction", () => {
       const { doc: doc2 } = makeFakeDoc();
       const highlight = makeHighlight();
       const ctx = makeContext({
-        allContentDocuments: () => [doc1, doc2],
+        contentDocuments: () => views(doc1, doc2),
         forSpineIndex: (spineIndex) => (spineIndex === 3 ? [highlight] : undefined),
       });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
@@ -152,19 +154,19 @@ describe("HighlightInteraction", () => {
       expect(entries.filter((e) => e.style === "yellow")).toHaveLength(1);
     });
 
-    it("paints a merged spread's tail document against spineIndex - 1, and skips it in the main loop", () => {
+    it("paints nonconsecutive spine items using explicit document ownership", () => {
       const { doc: tailDoc } = makeFakeDoc();
       const { doc: primaryDoc } = makeFakeDoc();
-      const tailHighlight = makeHighlight({ id: "hl-tail", spineIndex: 2 });
+      const tailHighlight = makeHighlight({ id: "hl-tail", spineIndex: 9 });
       const ctx = makeContext({
-        mergedTailDocument: () => tailDoc,
-        allContentDocuments: () => [tailDoc, primaryDoc],
-        forSpineIndex: (spineIndex) => (spineIndex === 2 ? [tailHighlight] : undefined),
+        contentDocuments: () => [
+          { document: tailDoc, spineIndex: 9, physicalSide: "left" },
+          { document: primaryDoc, spineIndex: 14, physicalSide: "right" },
+        ],
+        forSpineIndex: (spineIndex) => (spineIndex === 9 ? [tailHighlight] : undefined),
       });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applyHighlightsToCurrentHost();
-      // Once for the tail document (spineIndex 2) and once for the
-      // primary document (spineIndex 3) — never twice for the tail doc.
       expect(applyHighlightRanges).toHaveBeenCalledTimes(2);
       const [firstDoc, firstEntries] = vi.mocked(applyHighlightRanges).mock.calls[0]!;
       expect(firstDoc).toBe(tailDoc);
@@ -173,7 +175,7 @@ describe("HighlightInteraction", () => {
 
     it("also refreshes the search-match spotlight and note markers", () => {
       const { doc } = makeFakeDoc();
-      const ctx = makeContext({ allContentDocuments: () => [doc], currentSearchHighlightQuery: () => "faun" });
+      const ctx = makeContext({ contentDocuments: () => views(doc), currentSearchHighlightQuery: () => "faun" });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applyHighlightsToCurrentHost();
       expect(findTextRangesInDocument).toHaveBeenCalledWith(doc, "faun");
@@ -183,15 +185,15 @@ describe("HighlightInteraction", () => {
 
   describe("applySearchHighlightToCurrentHost()", () => {
     it("is a no-op for fixed-layout content", () => {
-      const ctx = makeContext({ isFixedLayoutHost: () => true, allContentDocuments: vi.fn() });
+      const ctx = makeContext({ isFixedLayoutHost: () => true, contentDocuments: vi.fn() });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applySearchHighlightToCurrentHost();
-      expect(ctx.allContentDocuments).not.toHaveBeenCalled();
+      expect(ctx.contentDocuments).not.toHaveBeenCalled();
     });
 
     it("clears matches (empty ranges) when there's no current query", () => {
       const { doc } = makeFakeDoc();
-      const ctx = makeContext({ allContentDocuments: () => [doc], currentSearchHighlightQuery: () => undefined });
+      const ctx = makeContext({ contentDocuments: () => views(doc), currentSearchHighlightQuery: () => undefined });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applySearchHighlightToCurrentHost();
       expect(findTextRangesInDocument).not.toHaveBeenCalled();
@@ -212,7 +214,7 @@ describe("HighlightInteraction", () => {
       const { doc } = makeFakeDoc({ iframeRect: { top: 10, left: 5 }, range });
       const highlighted = makeHighlight({ id: "hl-note", note: "remember this" });
       const ctx = makeContext({
-        allContentDocuments: () => [doc],
+        contentDocuments: () => views(doc),
         forSpineIndex: () => [highlighted],
       });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
@@ -223,7 +225,7 @@ describe("HighlightInteraction", () => {
     it("skips a highlight without a note", () => {
       const range = makeFakeRange([{ top: 100, bottom: 120 }]);
       const { doc } = makeFakeDoc({ range });
-      const ctx = makeContext({ allContentDocuments: () => [doc], forSpineIndex: () => [makeHighlight({ note: undefined })] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight({ note: undefined })] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.updateNoteMarkers();
       expect(interaction.noteMarkers).toEqual([]);
@@ -234,7 +236,7 @@ describe("HighlightInteraction", () => {
       // the highlight's only rect sits entirely above it.
       const range = makeFakeRange([{ top: 100, bottom: 120 }]);
       const { doc } = makeFakeDoc({ clipPath: "inset(900px 0px 100px 0px)", range });
-      const ctx = makeContext({ allContentDocuments: () => [doc], forSpineIndex: () => [makeHighlight({ note: "x" })] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight({ note: "x" })] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.updateNoteMarkers();
       expect(interaction.noteMarkers).toEqual([]);
@@ -242,9 +244,37 @@ describe("HighlightInteraction", () => {
   });
 
   describe("findHighlightAtPoint()", () => {
+    it("hits and opens notes from the earlier document in a cross-chapter spread", () => {
+      const caret = { startContainer: {} as Node, startOffset: 0 } as Range;
+      const { doc: earlier, listeners } = makeFakeDoc({
+        caretRangeFromPoint: () => caret, range: makeFakeRange([{ top: 100, bottom: 120 }]),
+      });
+      const { doc: later } = makeFakeDoc();
+      const highlight = makeHighlight({ spineIndex: 7, note: "Earlier chapter" });
+      const resolver = makeLocatorResolver();
+      const ctx = makeContext({
+        contentDocuments: () => [
+          { document: earlier, spineIndex: 7, physicalSide: "right" },
+          { document: later, spineIndex: 12, physicalSide: "left" },
+        ],
+        forSpineIndex: index => index === 7 ? [highlight] : undefined,
+      });
+      const interaction = new HighlightInteraction(resolver, ctx);
+      expect(interaction.findHighlightAtPoint(earlier, 1, 2)).toBe(highlight);
+      expect(interaction.findHighlightAtPoint(later, 1, 2)).toBeUndefined();
+      expect(resolver.resolveInDocument).toHaveBeenCalledWith(expect.anything(), 7, earlier);
+      interaction.setUpHighlightSelection();
+      listeners.get("pointerup")!({ clientX: 1, clientY: 2 });
+      expect(ctx.activeHighlight?.highlight).toBe(highlight);
+      interaction.dismissActiveHighlight();
+      interaction.updateNoteMarkers();
+      interaction.openHighlightPopup(highlight.id);
+      expect(ctx.activeHighlight?.highlight).toBe(highlight);
+    });
+
     it("returns undefined when the document has no caretRangeFromPoint support", () => {
       const { doc } = makeFakeDoc({ caretRangeFromPoint: undefined });
-      const ctx = makeContext({ forSpineIndex: () => [makeHighlight()] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       expect(interaction.findHighlightAtPoint(doc, 1, 2)).toBeUndefined();
     });
@@ -254,7 +284,7 @@ describe("HighlightInteraction", () => {
       const matchingRange = makeFakeRange();
       const { doc } = makeFakeDoc({ caretRangeFromPoint: () => caretRange, range: matchingRange });
       const highlight = makeHighlight();
-      const ctx = makeContext({ forSpineIndex: () => [highlight] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [highlight] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       expect(interaction.findHighlightAtPoint(doc, 1, 2)).toBe(highlight);
     });
@@ -264,7 +294,7 @@ describe("HighlightInteraction", () => {
       const nonMatchingRange = makeFakeRange();
       vi.mocked(nonMatchingRange.comparePoint).mockReturnValue(1);
       const { doc } = makeFakeDoc({ caretRangeFromPoint: () => caretRange, range: nonMatchingRange });
-      const ctx = makeContext({ forSpineIndex: () => [makeHighlight()] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       expect(interaction.findHighlightAtPoint(doc, 1, 2)).toBeUndefined();
     });
@@ -276,7 +306,7 @@ describe("HighlightInteraction", () => {
       const selection = { isCollapsed: false, rangeCount: 1, getRangeAt: () => range } as unknown as Selection;
       const { doc, listeners } = makeFakeDoc({ iframeRect: { top: 0, left: 0 } });
       vi.mocked(doc.getSelection).mockReturnValue(selection);
-      const ctx = makeContext({ allContentDocuments: () => [doc] });
+      const ctx = makeContext({ contentDocuments: () => views(doc) });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.setUpHighlightSelection();
       listeners.get("pointerup")!({ clientX: 1, clientY: 2 });
@@ -292,7 +322,7 @@ describe("HighlightInteraction", () => {
       const { doc, listeners } = makeFakeDoc({ caretRangeFromPoint: () => caretRange, range: matchingRange });
       vi.mocked(doc.getSelection).mockReturnValue(selection);
       const highlight = makeHighlight();
-      const ctx = makeContext({ allContentDocuments: () => [doc], forSpineIndex: () => [highlight] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [highlight] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.setUpHighlightSelection();
       listeners.get("pointerup")!({ clientX: 1, clientY: 2 });
@@ -301,7 +331,7 @@ describe("HighlightInteraction", () => {
 
     it("teardownSelection() detaches every listener setUpHighlightSelection attached", () => {
       const { doc, listeners } = makeFakeDoc();
-      const ctx = makeContext({ allContentDocuments: () => [doc] });
+      const ctx = makeContext({ contentDocuments: () => views(doc) });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.setUpHighlightSelection();
       expect(listeners.size).toBeGreaterThan(0);
@@ -315,7 +345,7 @@ describe("HighlightInteraction", () => {
       const removeAllRanges = vi.fn();
       const { doc } = makeFakeDoc();
       vi.mocked(doc.getSelection).mockReturnValue({ removeAllRanges } as unknown as Selection);
-      const ctx = makeContext({ allContentDocuments: () => [doc] });
+      const ctx = makeContext({ contentDocuments: () => views(doc) });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.dismissSelectionToolbar();
       expect(removeAllRanges).toHaveBeenCalled();
@@ -340,7 +370,7 @@ describe("HighlightInteraction", () => {
       const range = makeFakeRange([{ top: 100, bottom: 120 }]);
       const { doc } = makeFakeDoc({ iframeRect: { top: 10, left: 5 }, range });
       const highlight = makeHighlight({ id: "hl-note", note: "x" });
-      const ctx = makeContext({ allContentDocuments: () => [doc], forSpineIndex: () => [highlight] });
+      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [highlight] });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.updateNoteMarkers();
       interaction.openHighlightPopup("hl-note");

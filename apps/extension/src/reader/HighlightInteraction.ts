@@ -1,5 +1,5 @@
 import { Locator } from "@ambra/engine";
-import type { LocatorResolver } from "@ambra/engine";
+import type { ContentDocumentView, LocatorResolver } from "@ambra/engine";
 import type { Highlight } from "../library/LibraryDatabase.js";
 import { applyActiveHighlightRange, applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
 import type { HighlightRangeEntry } from "./HighlightOverlap.js";
@@ -11,12 +11,8 @@ import type { ActiveHighlightState, NoteMarkerState, SelectionToolbarState } fro
  * owned by `ReaderController` (other things touch them too — e.g.
  * every page turn clears `activeHighlight`). */
 export interface HighlightInteractionContext {
-  spineIndex(): number;
   isFixedLayoutHost(): boolean;
-  allContentDocuments(): Document[];
-  /** The previous spine item's merged-tail document borrowed into the
-   * current spread, or `undefined` if not showing one. */
-  mergedTailDocument(): Document | undefined;
+  contentDocuments(): readonly ContentDocumentView[];
   forSpineIndex(spineIndex: number): readonly Highlight[] | undefined;
   currentSearchHighlightQuery(): string | undefined;
   /** Whichever highlight's popup is currently open, if any — read (not
@@ -70,64 +66,31 @@ export class HighlightInteraction {
     applyHighlightRanges(doc, entries);
   }
 
-  /** Applies highlights to every content document the current host
-   * owns. A cross-chapter spread's first document belongs to the
-   * *previous* spine item (`spineIndex() - 1`), not the current one —
-   * `applyHighlightRanges` replaces a document's whole registry per
-   * call, so applying the wrong index there would blank out highlights
-   * already showing on it. */
+  /** Each document owns its spine identity, including cross-chapter spreads. */
   public applyHighlightsToCurrentHost(): void {
     if (this.ctx.isFixedLayoutHost()) {
       return;
     }
-    const tailDoc = this.ctx.mergedTailDocument();
-    if (tailDoc) {
-      this.applyHighlightsToDocument(tailDoc, this.ctx.spineIndex() - 1);
-    }
-    for (const doc of this.ctx.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
-      this.applyHighlightsToDocument(doc, this.ctx.spineIndex());
+    for (const { document, spineIndex } of this.ctx.contentDocuments()) {
+      this.applyHighlightsToDocument(document, spineIndex);
     }
     this.applySearchHighlightToCurrentHost();
     this.applyActiveHighlightOverlay();
     this.updateNoteMarkers();
   }
 
-  /** Re-paints (or clears) the "this highlight's popup is open" emphasis
-   * (issue #113's follow-up) across every content document the current
-   * host owns, the same tail/primary-document split
-   * `applyHighlightsToDocument` uses — a highlight only ever belongs to
-   * *one* spine item, so every document *except* the one matching its
-   * own `spineIndex` gets the emphasis cleared rather than left
-   * showing a stale one from before. Called both by
-   * `applyHighlightsToCurrentHost` (so a full repaint — page turn,
-   * font-size change, etc. — never leaves this out of sync) and
-   * directly by `ReaderController` every time `activeHighlight` itself
-   * changes (opening/closing a popup doesn't otherwise trigger a full
-   * highlight repaint, and shouldn't need to just for this). */
+  /** Clear emphasis on other spine items as well as painting the active one. */
   public applyActiveHighlightOverlay(): void {
     if (this.ctx.isFixedLayoutHost()) {
       return;
     }
     const active = this.ctx.getActiveHighlight();
-    const applyToDoc = (doc: Document, spineIndex: number): void => {
+    for (const { document: doc, spineIndex } of this.ctx.contentDocuments()) {
       const range =
         active && active.highlight.spineIndex === spineIndex
           ? this.resolveHighlightRange(active.highlight, spineIndex, doc)
           : undefined;
       applyActiveHighlightRange(doc, range, active?.highlight.style);
-    };
-    const tailDoc = this.ctx.mergedTailDocument();
-    if (tailDoc) {
-      applyToDoc(tailDoc, this.ctx.spineIndex() - 1);
-    }
-    for (const doc of this.ctx.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
-      applyToDoc(doc, this.ctx.spineIndex());
     }
   }
 
@@ -141,14 +104,7 @@ export class HighlightInteraction {
     if (this.ctx.isFixedLayoutHost()) {
       return;
     }
-    const tailDoc = this.ctx.mergedTailDocument();
-    if (tailDoc) {
-      this.applySearchHighlightToDocument(tailDoc);
-    }
-    for (const doc of this.ctx.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
+    for (const { document: doc } of this.ctx.contentDocuments()) {
       this.applySearchHighlightToDocument(doc);
     }
   }
@@ -169,7 +125,6 @@ export class HighlightInteraction {
       return;
     }
     const markers: NoteMarkerState[] = [];
-    const tailDoc = this.ctx.mergedTailDocument();
     const resolveForDoc = (doc: Document, spineIndex: number): void => {
       const iframeEl = doc.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
       const highlights = this.ctx.forSpineIndex(spineIndex);
@@ -206,14 +161,8 @@ export class HighlightInteraction {
         });
       }
     };
-    if (tailDoc) {
-      resolveForDoc(tailDoc, this.ctx.spineIndex() - 1);
-    }
-    for (const doc of this.ctx.allContentDocuments()) {
-      if (doc === tailDoc) {
-        continue;
-      }
-      resolveForDoc(doc, this.ctx.spineIndex());
+    for (const { document, spineIndex } of this.ctx.contentDocuments()) {
+      resolveForDoc(document, spineIndex);
     }
     this.markers = markers;
   }
@@ -272,7 +221,7 @@ export class HighlightInteraction {
     if (this.ctx.isFixedLayoutHost()) {
       return;
     }
-    const documents = this.ctx.allContentDocuments();
+    const documents = this.ctx.contentDocuments().map(view => view.document);
     if (documents.length === 0) {
       return;
     }
@@ -364,7 +313,9 @@ export class HighlightInteraction {
    * own. Also used by `handleContentClick` (issue #62) so a highlight
    * click doesn't also turn the page underneath it. */
   public findHighlightAtPoint(doc: Document, clientX: number, clientY: number): Highlight | undefined {
-    const highlights = this.ctx.forSpineIndex(this.ctx.spineIndex());
+    const view = this.ctx.contentDocuments().find(view => view.document === doc);
+    if (!view) return undefined;
+    const highlights = this.ctx.forSpineIndex(view.spineIndex);
     const caretRangeFromPoint = (
       doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
     ).caretRangeFromPoint;
@@ -376,7 +327,7 @@ export class HighlightInteraction {
       return undefined;
     }
     for (const highlight of highlights) {
-      const range = this.resolveHighlightRange(highlight, this.ctx.spineIndex(), doc);
+      const range = this.resolveHighlightRange(highlight, view.spineIndex, doc);
       if (!range) {
         continue;
       }
@@ -400,7 +351,7 @@ export class HighlightInteraction {
       this.ctx.setActiveHighlight(undefined);
       return;
     }
-    const range = this.resolveHighlightRange(highlight, this.ctx.spineIndex(), doc);
+    const range = this.resolveHighlightRange(highlight, highlight.spineIndex, doc);
     const iframeRect = iframeEl.getBoundingClientRect();
     this.ctx.setActiveHighlight({
       highlight,
@@ -412,7 +363,7 @@ export class HighlightInteraction {
   /** Hides the selection toolbar and clears the native text selection
    * on every content document. */
   public dismissSelectionToolbar(): void {
-    for (const doc of this.ctx.allContentDocuments()) {
+    for (const { document: doc } of this.ctx.contentDocuments()) {
       doc.getSelection()?.removeAllRanges();
     }
     this.ctx.setPendingSelectionRange(undefined);
@@ -430,7 +381,9 @@ export class HighlightInteraction {
    * anchor. */
   public openHighlightPopup(id: string): void {
     const marker = this.markers.find((candidate) => candidate.id === id);
-    const highlight = this.ctx.forSpineIndex(this.ctx.spineIndex())?.find((candidate) => candidate.id === id);
+    const highlight = this.ctx.contentDocuments()
+      .flatMap(view => this.ctx.forSpineIndex(view.spineIndex) ?? [])
+      .find(candidate => candidate.id === id);
     if (!marker || !highlight) {
       return;
     }
