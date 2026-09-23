@@ -6,6 +6,40 @@ import { exposeReaderController } from "../reader-controller.js";
 
 const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/two-chapter.epub");
 
+test("reader error variants keep headings, explanations and technical details separated", async () => {
+  const { context, readerPage } = await launchReader(book);
+  try {
+    await exposeReaderController(readerPage);
+    for (const severity of ["blocking", "actionFailed", "transient", "info"] as const) {
+      await readerPage.evaluate((severity) => {
+        const controller = Reflect.get(window, "__readerController");
+        controller.setNotification("First sentence. Second sentence.", severity, "Technical explanation.");
+        controller.notify();
+      }, severity);
+      const card = readerPage.getByRole(severity === "blocking" || severity === "actionFailed" ? "alert" : "status")
+        .filter({ hasText: "First sentence. Second sentence." });
+      await expect(card).toBeVisible();
+      const paragraphs = card.locator("p");
+      for (const paragraph of await paragraphs.all()) {
+        await expect(paragraph).toHaveCSS("display", "block");
+      }
+      const bounds = await paragraphs.evaluateAll(elements => elements.map(element => {
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom };
+      }));
+      for (let index = 1; index < bounds.length; index++) {
+        expect(bounds[index]!.top).toBeGreaterThan(bounds[index - 1]!.bottom);
+      }
+      await expect(card).toContainText("First sentence. Second sentence.");
+      if (severity === "actionFailed") {
+        await expect(card).toContainText("Error details: Technical explanation.");
+      }
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("repeated identical reader notifications receive a fresh full lifetime", async () => {
   const { context, readerPage } = await launchReader(book);
   try {

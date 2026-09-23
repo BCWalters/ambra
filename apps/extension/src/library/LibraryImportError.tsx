@@ -35,10 +35,10 @@ export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDis
   >
     <BookTroubleIllustration size={48} />
     <div style={{ flex: 1, minWidth: 0 }}>
-      <Body1 as="p" style={{ margin: 0, fontWeight: 600 }}>
+      <Body1 as="p" block style={{ margin: 0, fontWeight: 600 }}>
         Oh snickerdoodles, something went wrong.
       </Body1>
-      <Caption1 as="p" style={{ margin: "2px 0 0", opacity: 0.75 }}>
+      <Caption1 as="p" block style={{ margin: "2px 0 0", opacity: 0.75 }}>
         {message}
       </Caption1>
     </div>

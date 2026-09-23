@@ -126,11 +126,11 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
       >
         <BookTroubleIllustration />
         <div ref={headingRef} tabIndex={-1} style={{ outline: "none" }}>
-          <Body1 as="p" style={{ margin: 0, fontWeight: 600 }}>
+          <Body1 as="p" block style={{ margin: 0, fontWeight: 600 }}>
             {t("error.somethingWentWrongHeadline")}
           </Body1>
         </div>
-        <Caption1 as="p" style={{ margin: 0, maxWidth: 360, opacity: 0.75 }}>
+        <Caption1 as="p" block style={{ margin: 0, maxWidth: 360, opacity: 0.75 }}>
           {message}
         </Caption1>
         <Button appearance="outline" size="small" onClick={copyDiagnostics}>
@@ -163,14 +163,14 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         <BookTroubleIllustration size={40} />
         <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <Body1 as="p" style={{ margin: 0, fontWeight: 600 }}>
+            <Body1 as="p" block style={{ margin: 0, fontWeight: 600 }}>
               {t("error.actionFailedHeadline")}
             </Body1>
-            <Caption1 as="p" style={{ margin: 0, opacity: 0.85 }}>
+            <Caption1 as="p" block style={{ margin: 0, opacity: 0.85 }}>
               {message}
             </Caption1>
             {detail && (
-              <Caption1 as="p" style={{ margin: 0, opacity: 0.55, fontSize: 11 }}>
+              <Caption1 as="p" block style={{ margin: 0, opacity: 0.55, fontSize: 11 }}>
                 {t("error.detailsPrefix")} {detail}
               </Caption1>
             )}
@@ -208,7 +208,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
           boxShadow: CHROME_SHADOW,
         }}
       >
-        <Body1 as="p" style={{ margin: 0 }}>
+        <Body1 as="p" block style={{ margin: 0 }}>
           {message}
         </Body1>
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -239,7 +239,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         boxShadow: CHROME_SHADOW,
       }}
     >
-      <Body1 as="p" style={{ margin: 0 }}>
+      <Body1 as="p" block style={{ margin: 0 }}>
         Hmm, that didn't quite work: {message}
       </Body1>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>

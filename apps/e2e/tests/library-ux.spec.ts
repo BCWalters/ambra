@@ -147,23 +147,34 @@ test.describe("Library UX: book details flyout", () => {
 /** Covers issue #106: a themed, "snickerdoodles"-toned error surface for
  * a failed import, replacing a bare red error-message line. */
 test.describe("Library UX: friendly import error", () => {
-  test("shows a themed error card (not raw text) for a corrupt file, and it can be dismissed", async () => {
-    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
-    try {
-      await libraryPage.locator('input[type="file"]').setInputFiles({
-        name: "bogus.epub",
-        mimeType: "application/epub+zip",
-        buffer: Buffer.from("not a real epub"),
-      });
-      await libraryPage.waitForTimeout(500);
+  for (const width of [1000, 360]) {
+    test(`import errors separate the headline and explanation at ${width}px and can be dismissed`, async () => {
+      const { context, libraryPage } = await launchReader(ALICE, { viewport: { width, height: 700 } });
+      try {
+        await libraryPage.locator('input[type="file"]').setInputFiles({
+          name: "bogus.epub",
+          mimeType: "application/epub+zip",
+          buffer: Buffer.from("not a real epub"),
+        });
 
-      await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toBeVisible();
-      await expect(libraryPage.getByRole("alert")).toBeVisible();
+        await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toBeVisible();
+        const alert = libraryPage.getByRole("alert");
+        await expect(alert).toBeVisible();
+        const headline = alert.locator("p").nth(0);
+        const explanation = alert.locator("p").nth(1);
+        await expect(headline).toHaveCSS("display", "block");
+        await expect(explanation).toHaveCSS("display", "block");
+        const headlineBounds = await headline.boundingBox();
+        const explanationBounds = await explanation.boundingBox();
+        expect(headlineBounds).not.toBeNull();
+        expect(explanationBounds).not.toBeNull();
+        expect(explanationBounds!.y).toBeGreaterThan(headlineBounds!.y + headlineBounds!.height);
 
-      await libraryPage.getByRole("button", { name: "Dismiss" }).click();
-      await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toHaveCount(0);
-    } finally {
-      await context.close();
-    }
-  });
+        await libraryPage.getByRole("button", { name: "Dismiss" }).click();
+        await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toHaveCount(0);
+      } finally {
+        await context.close();
+      }
+    });
+  }
 });
