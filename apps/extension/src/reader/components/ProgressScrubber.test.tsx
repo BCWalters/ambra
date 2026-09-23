@@ -213,6 +213,43 @@ describe("ProgressScrubber", () => {
     expect(onSeek).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["ltr", "rtl"] as const)("commits %s native capture loss after release before pointerup (#146)", direction => {
+    const { slider, onSeek } = renderScrubber({
+      snapshot: { ...snapshot, pageProgressionDirection: direction },
+    });
+    pointer(slider, "pointerdown", { clientX: 30 });
+    pointer(slider, "pointermove", { clientX: 90 });
+    pointer(slider, "lostpointercapture", { buttons: 0, clientX: 110 });
+    const fraction = direction === "rtl" ? 1 - 0.9 : 0.9;
+    expect(onSeek).toHaveBeenCalledExactlyOnceWith(fraction);
+    expect(slider.getAttribute("aria-valuenow")).toBe(direction === "rtl" ? "10" : "90");
+    pointer(slider, "pointermove", { buttons: 0, clientX: 120 });
+    pointer(slider, "pointerup", { buttons: 0, clientX: 120 });
+    expect(onSeek).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["Escape", "pointercancel"])("does not turn %s into a seek when capture loss follows", cancel => {
+    const { slider, onSeek } = renderScrubber();
+    pointer(slider, "pointerdown");
+    if (cancel === "Escape") {
+      act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    } else {
+      pointer(slider, cancel, { buttons: 0 });
+    }
+    pointer(slider, "lostpointercapture", { buttons: 0 });
+    pointer(slider, "pointerup", { buttons: 0 });
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it("cancels capture loss in a hidden document instead of committing", () => {
+    const { slider, onSeek } = renderScrubber();
+    pointer(slider, "pointerdown");
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    pointer(slider, "lostpointercapture", { buttons: 0 });
+    pointer(slider, "pointerup", { buttons: 0 });
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
   it("Escape restores an earlier pending destination rather than cancelling its seek", () => {
     const { slider, onSeek } = renderScrubber();
     act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));

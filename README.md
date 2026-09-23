@@ -80,6 +80,28 @@ and then click the reload icon on the extension card in `chrome://extensions`.
 The browser tests build into an isolated directory so they do not replace the unpacked
 extension you are using.
 
+### Native macOS scrubber regression
+
+Chrome can deliver `lostpointercapture` with no buttons held before `pointerup`
+during a fast physical drag. DevTools mouse input does not reproduce that ordering.
+The optional macOS path in `scrubber-long-drag.spec.ts` uses CoreGraphics mouse
+events, an isolated headed test-browser profile, and an unemulated viewport. It
+requires the existing Swift command-line tools and permission to post input; it
+does not request or change system permissions. It moves the desktop pointer and
+foregrounds only its own test-browser process, so run it when not using the mouse.
+
+```bash
+AMBRA_E2E_EXTENSION_PATH="$PWD/apps/e2e/.native-scrubber-build" pnpm --filter @ambra/e2e run build:extension
+AMBRA_E2E_EXTENSION_PATH="$PWD/apps/e2e/.native-scrubber-build" \
+  AMBRA_SCRUBBER_NATIVE_MOUSE=1 AMBRA_E2E_HEADLESS=0 \
+  pnpm --filter @ambra/e2e exec playwright test scrubber-long-drag --workers=1
+```
+
+Set `AMBRA_SCRUBBER_BOOK` to a local EPUB path to test a particular book instead
+of the original fixture. Each layout performs 24 long drags and verifies actual
+navigation, exactly one seek per release, and the native capture-loss ordering.
+Without the native-input flag, the same test uses ordinary Playwright mouse input.
+
 ## Reading boundaries with a keyboard or screen reader
 
 Each content document ends with native **Continue reading** navigation inside the

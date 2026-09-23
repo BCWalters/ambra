@@ -621,7 +621,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         ref={trackRef}
         onPointerDown={beginDrag}
         onLostPointerCapture={(event) => {
-          if (event.pointerId === activePointerIdRef.current) releaseDrag();
+          if (event.pointerId !== activePointerIdRef.current) return;
+          // Chrome can report released capture before pointerup during a fast
+          // native drag. A released button commits; capture loss while held cancels.
+          if (event.buttons === 0 && !document.hidden) {
+            finishDrag(fractionAt(event.clientX));
+          } else {
+            releaseDrag();
+          }
         }}
         onKeyDown={handleKeyDown}
         className={styles.track}

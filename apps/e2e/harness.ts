@@ -35,7 +35,7 @@ export interface LaunchedReader {
  * the context and removes it before rethrowing the original failure. */
 export async function launchReader(
   bookPath: string,
-  options: { viewport?: { width: number; height: number } } = {},
+  options: { viewport?: { width: number; height: number } | null } = {},
 ): Promise<LaunchedReader> {
   if (!fs.existsSync(EXTENSION_PATH)) {
     throw new Error(
@@ -61,7 +61,7 @@ export async function launchReader(
       headless: process.env.AMBRA_E2E_HEADLESS === "1",
       ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
-      viewport: options.viewport ?? { width: 900, height: 900 },
+      viewport: options.viewport === null ? null : options.viewport ?? { width: 900, height: 900 },
     });
     context.once("close", removeOwnedProfile);
 
