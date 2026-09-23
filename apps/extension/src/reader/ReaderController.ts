@@ -1151,13 +1151,7 @@ export class ReaderController {
     for (const iframeDocument of documents) {
       this.accessibility.attach(
         iframeDocument,
-        {
-          onNext: () => this.dispatchArrowNavigation(1),
-          onPrevious: () => this.dispatchArrowNavigation(-1),
-          // Ctrl/Cmd+Arrow always means chapter navigation.
-          onNextChapter: () => void this.goToChapter(1),
-          onPreviousChapter: () => void this.goToChapter(-1),
-        },
+        this.keyboardNavigationHandlers,
         // Preserve Space's native viewport scroll in continuous-scroll mode.
         {
           interceptSpace: !(this.host instanceof ScrollContentHost),
@@ -1167,14 +1161,24 @@ export class ReaderController {
     }
   }
 
-  /** Plain ArrowLeft/ArrowRight navigation: page/spread turn in paginated
-   * mode, chapter jump otherwise. */
-  private dispatchArrowNavigation(direction: 1 | -1): void {
+  /** Shared by the shell and every current content document. */
+  private readonly keyboardNavigationHandlers = {
+    onNext: () => this.dispatchArrowNavigation(1),
+    onPrevious: () => this.dispatchArrowNavigation(-1),
+    onNextChapter: () => this.dispatchArrowNavigation(1, true),
+    onPreviousChapter: () => this.dispatchArrowNavigation(-1, true),
+  };
+
+  /** Plain arrows turn pages/spreads when paginated; Ctrl/Cmd always jumps chapters. */
+  private dispatchArrowNavigation(direction: 1 | -1, chapter = false): void {
+    // Focus may still belong to an iframe or the shell when the modal opens.
+    // Guard at dispatch, not only at the dialog's React event boundary.
+    if (this.imageViewer) return;
     const isPaginated =
       this.host instanceof PaginatedContentHost ||
       this.host instanceof SpreadPaginatedHost ||
       this.host instanceof FixedSpreadHost;
-    void (isPaginated ? this.turnPage(direction) : this.goToChapter(direction));
+    void (isPaginated && !chapter ? this.turnPage(direction) : this.goToChapter(direction));
   }
 
   private physicalDirection(direction: 1 | -1): 1 | -1 {
@@ -1190,12 +1194,7 @@ export class ReaderController {
     const interceptSpace = (): boolean => !(this.host instanceof ScrollContentHost);
     keyboard.attach(
       ownerDocument,
-      {
-        onNext: () => this.dispatchArrowNavigation(1),
-        onPrevious: () => this.dispatchArrowNavigation(-1),
-        onNextChapter: () => void this.goToChapter(1),
-        onPreviousChapter: () => void this.goToChapter(-1),
-      },
+      this.keyboardNavigationHandlers,
       {
         scope: "shell",
         get interceptSpace() {

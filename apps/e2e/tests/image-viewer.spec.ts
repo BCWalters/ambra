@@ -1,9 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { currentPageLabel, launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+async function scrollState(image: Locator) {
+  return image.evaluate((img) => {
+    const viewport = img.parentElement!.parentElement!;
+    return {
+      left: viewport.scrollLeft,
+      top: viewport.scrollTop,
+      maxLeft: viewport.scrollWidth - viewport.clientWidth,
+      maxTop: viewport.scrollHeight - viewport.clientHeight,
+    };
+  });
+}
 
 test("image viewer traps keyboard focus and restores the originating book image", async () => {
   const { context, readerPage } = await launchReader(
@@ -100,31 +112,38 @@ test("image zoom supports controls, wheel anchoring, drag, keyboard, fit and reo
     const zoomOut = dialog.getByRole("button", { name: "Zoom out", exact: true });
     const fit = dialog.getByRole("button", { name: "Fit to window", exact: true });
     await expect(dialog).toBeVisible();
-    await expect(image).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    await expect(image).toHaveCSS("transform", "none");
     await expect(zoomOut).toBeDisabled();
+    expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
     const fitted = (await image.boundingBox())!;
     await zoomIn.click();
-    await expect(image).toHaveCSS("transform", "matrix(1.25, 0, 0, 1.25, 0, 0)");
+    await expect(dialog.locator("output")).toHaveText("125%");
     expect((await image.boundingBox())!.width).toBeCloseTo(fitted.width * 1.25, 0);
+    const zoomed = await scrollState(image);
+    expect(zoomed.maxLeft).toBeGreaterThan(0);
+    expect(zoomed.maxTop).toBeGreaterThan(0);
 
     await readerPage.mouse.move(600, 400);
     await readerPage.mouse.down();
     await readerPage.mouse.move(680, 440, { steps: 4 });
     await readerPage.mouse.up();
-    await expect(image).toHaveCSS("transform", "matrix(1.25, 0, 0, 1.25, 80, 40)");
+    const dragged = await scrollState(image);
+    expect(dragged.left).toBeCloseTo(Math.max(0, zoomed.left - 80), 0);
+    expect(dragged.top).toBeCloseTo(Math.max(0, zoomed.top - 40), 0);
     await expect(dialog).toBeVisible();
     await readerPage.mouse.move(600, 400);
     await readerPage.mouse.down();
     await readerPage.mouse.move(1190, 890, { steps: 4 });
     await readerPage.mouse.up();
     await expect(dialog).toBeVisible();
-    await expect(image).toHaveCSS("transform", "matrix(1.25, 0, 0, 1.25, 90, 94.5)");
+    expect((await scrollState(image)).left).toBe(0);
+    expect((await scrollState(image)).top).toBe(0);
     await fit.click();
-    await expect(image).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
     const wheelEvent = image.evaluate(
       (img) =>
         new Promise<{ deltaY: number; deltaMode: number }>((resolve) => {
-          img.parentElement!.addEventListener(
+          img.parentElement!.parentElement!.addEventListener(
             "wheel",
             (event) => {
               resolve({ deltaY: event.deltaY, deltaMode: event.deltaMode });
@@ -140,34 +159,213 @@ test("image zoom supports controls, wheel anchoring, drag, keyboard, fit and reo
     // Chromium's native wheel deltas can vary with the host's pixel density.
     const wheelScale = Math.exp(-Math.max(-200, Math.min(200, wheel.deltaY)) * 0.005);
     await expect
-      .poll(() => image.evaluate((img) => new DOMMatrix(getComputedStyle(img).transform).a))
-      .toBeCloseTo(wheelScale, 4);
-    const matrix = await image.evaluate((img) => {
-      const m = new DOMMatrix(getComputedStyle(img).transform);
-      return { x: m.e, y: m.f };
+      .poll(async () => (await image.boundingBox())!.width / fitted.width)
+      .toBeCloseTo(wheelScale, 3);
+    const wheeled = (await image.boundingBox())!;
+    expect(Math.abs(wheeled.x + (750 - fitted.x) * wheelScale - 750)).toBeLessThan(1);
+    expect(Math.abs(wheeled.y + (350 - fitted.y) * wheelScale - 350)).toBeLessThan(1);
+
+    // A native scroll (e.g. scrollbar thumb) must become the next pan/zoom origin.
+    await image.evaluate((img) => {
+      const viewport = img.parentElement!.parentElement!;
+      viewport.scrollLeft = 10;
+      viewport.scrollTop = 20;
     });
-    expect(matrix.x).toBeCloseTo((750 - fitted.x - fitted.width / 2) * (1 - wheelScale), 2);
-    expect(matrix.y).toBeCloseTo((350 - fitted.y - fitted.height / 2) * (1 - wheelScale), 2);
+    await fit.focus();
+    await readerPage.keyboard.press("ArrowRight");
+    await readerPage.keyboard.press("ArrowDown");
+    expect((await scrollState(image)).left).toBe(50);
+    expect((await scrollState(image)).top).toBe(60);
+    for (const axis of ["vertical", "horizontal"]) {
+      const before = await scrollState(image);
+      const thumb = await image.evaluate((img, axis) => {
+        const viewport = img.parentElement!.parentElement!;
+        const box = viewport.getBoundingClientRect();
+        const vertical = axis === "vertical";
+        const size = vertical ? viewport.clientHeight : viewport.clientWidth;
+        const content = vertical ? viewport.scrollHeight : viewport.scrollWidth;
+        const offset = vertical ? viewport.scrollTop : viewport.scrollLeft;
+        return {
+          gutter: vertical ? box.width - viewport.clientWidth : box.height - viewport.clientHeight,
+          x:
+            box.x +
+            (vertical
+              ? (box.width + viewport.clientWidth) / 2
+              : ((offset + size / 2) * size) / content),
+          y:
+            box.y +
+            (vertical
+              ? ((offset + size / 2) * size) / content
+              : (box.height + viewport.clientHeight) / 2),
+        };
+      }, axis);
+      expect(thumb.gutter).toBeGreaterThan(0);
+      await readerPage.mouse.move(thumb.x, thumb.y);
+      await readerPage.mouse.down();
+      await readerPage.mouse.move(
+        thumb.x + (axis === "horizontal" ? 25 : 0),
+        thumb.y + (axis === "vertical" ? 25 : 0),
+        { steps: 4 },
+      );
+      await readerPage.mouse.up();
+      await expect
+        .poll(async () => {
+          const after = await scrollState(image);
+          return axis === "vertical" ? after.top > before.top : after.left > before.left;
+        })
+        .toBe(true);
+      await expect(dialog).toBeVisible();
+    }
+    const scrolled = (await image.boundingBox())!;
+    await readerPage.mouse.move(650, 350);
+    await readerPage.mouse.wheel(0, -50);
+    await expect
+      .poll(async () => (await image.boundingBox())!.width)
+      .toBeGreaterThan(scrolled.width);
+    const rezoomed = (await image.boundingBox())!;
+    const ratio = rezoomed.width / scrolled.width;
+    expect(Math.abs(rezoomed.x + (650 - scrolled.x) * ratio - 650)).toBeLessThan(1);
+    expect(Math.abs(rezoomed.y + (350 - scrolled.y) * ratio - 350)).toBeLessThan(1);
 
     await fit.focus();
     await readerPage.keyboard.press("0");
     await readerPage.keyboard.press("+");
+    const beforeArrow = await scrollState(image);
     await readerPage.keyboard.press("ArrowRight");
-    await expect(image).toHaveCSS("transform", "matrix(1.25, 0, 0, 1.25, -40, 0)");
+    expect((await scrollState(image)).left).toBe(
+      Math.min(beforeArrow.maxLeft, beforeArrow.left + 40),
+    );
     await expect(dialog).toBeVisible();
     await expect(image).toHaveCSS("transition-duration", "0s");
     await dialog.screenshot({ path: test.info().outputPath("image-zoom.png") });
     await readerPage.keyboard.press("0");
-    await expect(image).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
     expect((await image.boundingBox())!.width).toBeCloseTo(fitted.width, 0);
     await readerPage.keyboard.press("+");
     await readerPage.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(source).toBeFocused();
     await readerPage.keyboard.press("Enter");
-    await expect(image).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+    expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
+    await zoomIn.click();
+    await image.evaluate((img) => {
+      const viewport = img.parentElement!.parentElement!;
+      viewport.scrollLeft = viewport.scrollWidth;
+      viewport.scrollTop = viewport.scrollHeight;
+      // Resize just the canvas, keeping the injected source in the book alive.
+      viewport.parentElement!.style.height = "400px";
+    });
+    await expect.poll(async () => (await scrollState(image)).maxLeft).toBe(0);
+    expect((await scrollState(image)).left).toBe(0);
+    expect((await scrollState(image)).maxTop).toBeGreaterThan(0);
+    await expect(dialog.locator("output")).toHaveText("125%");
+    await image.evaluate((img) => {
+      img.parentElement!.parentElement!.parentElement!.style.height = "";
+    });
+    await fit.click();
+    expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await expect(source).toBeFocused();
+  } finally {
+    await context.close();
+  }
+});
+
+test("image viewer blocks reader page and chapter shortcuts in both documents (#143)", async () => {
+  // Unlike the single-page footnote book, both chapters have many real pages:
+  // leaked arrows must visibly move the reader rather than hit a book boundary.
+  const { context, readerPage } = await launchReader(
+    path.resolve(here, "../fixtures/two-chapter.epub"),
+    { viewport: { width: 1200, height: 900 } },
+  );
+  try {
+    await readerPage.emulateMedia({ reducedMotion: "reduce" });
+    const chapter = () => readerPage.locator("iframe").first().getAttribute("title");
+    const firstChapter = await chapter();
+    for (const direction of ["ArrowRight", "ArrowLeft"]) {
+      const start = await currentPageLabel(readerPage);
+      await readerPage.keyboard.press("ArrowRight");
+      await expect.poll(() => currentPageLabel(readerPage)).not.toBe(start);
+      const position = await currentPageLabel(readerPage);
+      const title = await chapter();
+      expect(position).toMatch(/Page \d+ of \d+/);
+      await readerPage.evaluate(async () => {
+        const doc = document.querySelector("iframe")!.contentDocument!;
+        const image = doc.createElement("img");
+        image.alt = "Navigation isolation map";
+        image.tabIndex = 0;
+        image.src = URL.createObjectURL(
+          new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"/>'], {
+            type: "image/svg+xml",
+          }),
+        );
+        image.style.cssText = "position:absolute;top:0;left:0;width:160px;height:120px";
+        doc.body.append(image);
+        await image.decode();
+        image.click();
+      });
+      const dialog = readerPage.getByRole("dialog", { name: "Navigation isolation map" });
+      const image = dialog.getByRole("img");
+      await expect(dialog).toBeVisible();
+      await readerPage.keyboard.press("+");
+      await readerPage.keyboard.press("+");
+      const beforePan = await scrollState(image);
+      await readerPage.keyboard.press(direction);
+      expect((await scrollState(image)).left).not.toBe(beforePan.left);
+      expect(await currentPageLabel(readerPage)).toBe(position);
+
+      for (const scope of ["shell", "iframe"]) {
+        for (const modifier of ["plain", "ctrl", "meta", "space"]) {
+          // Simulate stale focus outside React's dialog boundary. These events
+          // reach the real AccessibilityControllers in each document.
+          await readerPage.evaluate(
+            ({ scope, modifier, direction }) => {
+              const doc =
+                scope === "shell" ? document : document.querySelector("iframe")!.contentDocument!;
+              doc.body.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                  key: modifier === "space" ? " " : direction,
+                  ctrlKey: modifier === "ctrl",
+                  metaKey: modifier === "meta",
+                  shiftKey: modifier === "space" && direction === "ArrowLeft",
+                  bubbles: true,
+                  cancelable: true,
+                }),
+              );
+            },
+            { scope, modifier, direction },
+          );
+          await readerPage.waitForTimeout(200);
+          expect(await currentPageLabel(readerPage), `${scope} ${modifier} ${direction}`).toBe(
+            position,
+          );
+          expect(await chapter()).toBe(title);
+          await expect(dialog).toBeVisible();
+        }
+      }
+      if (direction === "ArrowRight") await readerPage.keyboard.press("Escape");
+      else await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await readerPage.keyboard.press(direction);
+      await expect.poll(() => currentPageLabel(readerPage)).not.toBe(position);
+      const resumed = await currentPageLabel(readerPage);
+      await readerPage.evaluate(() => {
+        document.body.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "ArrowRight",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      await expect.poll(() => currentPageLabel(readerPage)).not.toBe(resumed);
+      // Modified shortcuts also resume, in both directions across a real spine boundary.
+      await readerPage.keyboard.press(
+        direction === "ArrowRight" ? "Control+ArrowRight" : "Meta+ArrowLeft",
+      );
+      await expect.poll(chapter).not.toBe(title);
+      if (direction === "ArrowLeft") expect(await chapter()).toBe(firstChapter);
+    }
   } finally {
     await context.close();
   }
@@ -280,7 +478,7 @@ test("image fit respects a pinned contents pane and narrow translated controls",
         .poll(async () => {
           const pane = (await dialog.boundingBox())!;
           const box = (await image.boundingBox())!;
-          const canvas = (await image.locator("..").boundingBox())!;
+          const canvas = (await image.locator("xpath=../../..").boundingBox())!;
           return (
             pane.width < width &&
             Math.abs(box.width - pane.width * 0.9) < 1 &&
@@ -294,7 +492,7 @@ test("image fit respects a pinned contents pane and narrow translated controls",
         .toBe(true);
       const pane = (await dialog.boundingBox())!;
       const toolbar = (await controls.boundingBox())!;
-      const canvas = (await image.locator("..").boundingBox())!;
+      const canvas = (await image.locator("xpath=../../..").boundingBox())!;
       expect(toolbar.x).toBeGreaterThanOrEqual(pane.x);
       expect(toolbar.x + toolbar.width).toBeLessThanOrEqual(pane.x + pane.width);
       expect(canvas.y + canvas.height).toBeLessThanOrEqual(toolbar.y);
@@ -303,18 +501,23 @@ test("image fit respects a pinned contents pane and narrow translated controls",
         expect(box.x).toBeGreaterThanOrEqual(toolbar.x);
         expect(box.x + box.width).toBeLessThanOrEqual(toolbar.x + toolbar.width);
       }
+      const fitted = (await image.boundingBox())!;
+      await readerPage.mouse.move(fitted.x + fitted.width / 2, fitted.y + fitted.height / 2);
+      await readerPage.mouse.wheel(0, -5);
+      await expect
+        .poll(async () => (await image.boundingBox())!.width)
+        .toBeGreaterThan(fitted.width);
+      // A slight enlargement still fits: neither axis should acquire a scrollbar.
+      expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
+      await fit.click();
       await zoomIn.click();
       await readerPage.keyboard.press("ArrowRight");
       await expect
-        .poll(() =>
-          image.evaluate((img) => {
-            const matrix = new DOMMatrix(getComputedStyle(img).transform);
-            return matrix.a === 1.25 && matrix.e < 0;
-          }),
-        )
+        .poll(() => scrollState(image).then((state) => state.left > 0 && state.maxLeft > 0))
         .toBe(true);
+      expect((await scrollState(image)).maxTop).toBe(0);
       await fit.click();
-      await expect(image).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+      expect(await scrollState(image)).toEqual({ left: 0, top: 0, maxLeft: 0, maxTop: 0 });
     }
     await dialog.screenshot({ path: test.info().outputPath("image-zoom-narrow.png") });
   } finally {

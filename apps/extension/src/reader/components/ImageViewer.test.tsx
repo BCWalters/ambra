@@ -59,14 +59,41 @@ describe("ImageViewer", () => {
 
   function setGeometry() {
     const image = loadImage(120, 120);
-    const canvas = image.parentElement!;
-    Object.defineProperties(image, {
-      clientWidth: { configurable: true, value: 810 },
-      clientHeight: { configurable: true, value: 810 },
-    });
+    const canvas = image.parentElement!.parentElement!;
+    const scale = () => Number(image.style.width.match(/\* ([\d.]+)\)$/)?.[1] ?? 1);
+    let left = 0;
+    let top = 0;
     Object.defineProperties(canvas, {
       clientWidth: { configurable: true, value: 900 },
       clientHeight: { configurable: true, value: 810 },
+      scrollLeft: {
+        get: () => left,
+        set: (value: number) => {
+          left = Math.max(0, Math.min(810 * scale() - 900, value));
+        },
+      },
+      scrollTop: {
+        get: () => top,
+        set: (value: number) => {
+          top = Math.max(0, Math.min(810 * scale() - 810, value));
+        },
+      },
+    });
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => {
+      const size = 810 * scale();
+      const x = Math.max(0, (900 - size) / 2) - left;
+      const y = 45 + Math.max(0, (810 - size) / 2) - top;
+      return {
+        x,
+        y,
+        left: x,
+        top: y,
+        right: x + size,
+        bottom: y + size,
+        width: size,
+        height: size,
+        toJSON: () => ({}),
+      };
     });
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
       x: 0,
@@ -94,11 +121,11 @@ describe("ImageViewer", () => {
   }
 
   it.each([
-    ["small square", 120, 120, "calc(100cqh * 1)"],
-    ["small landscape", 240, 120, "calc(100cqh * 2)"],
-    ["small portrait", 120, 240, "calc(100cqh * 0.5)"],
-    ["large landscape", 4000, 2000, "calc(100cqh * 2)"],
-    ["large portrait", 2000, 4000, "calc(100cqh * 0.5)"],
+    ["small square", 120, 120, "calc(min(90cqw, 100cqh * 1) * 1)"],
+    ["small landscape", 240, 120, "calc(min(90cqw, 100cqh * 2) * 1)"],
+    ["small portrait", 120, 240, "calc(min(90cqw, 100cqh * 0.5) * 1)"],
+    ["large landscape", 4000, 2000, "calc(min(90cqw, 100cqh * 2) * 1)"],
+    ["large portrait", 2000, 4000, "calc(min(90cqw, 100cqh * 0.5) * 1)"],
   ])(
     "fits a %s image to the canvas rather than capping at intrinsic size",
     (_, width, height, expectedWidth) => {
@@ -106,9 +133,9 @@ describe("ImageViewer", () => {
       const image = loadImage(width, height);
       expect(image.style.width).toBe(expectedWidth);
       expect(image.style.height).toBe("auto");
-      expect(image.style.maxWidth).toBe("90%");
-      expect(image.style.maxHeight).toBe("100%");
-      expect(image.parentElement!.style.containerType).toBe("size");
+      expect(image.style.maxWidth).toBe("");
+      expect(image.style.maxHeight).toBe("");
+      expect(image.parentElement!.parentElement!.parentElement!.style.containerType).toBe("size");
     },
   );
 
@@ -116,8 +143,8 @@ describe("ImageViewer", () => {
     render();
     const image = loadImage(0, 0);
     expect(image.style.width).toBe("");
-    expect(image.style.maxWidth).toBe("90%");
-    expect(image.style.maxHeight).toBe("100%");
+    expect(image.style.maxWidth).toBe("90cqw");
+    expect(image.style.maxHeight).toBe("100cqh");
   });
 
   it("does not reuse the previous image's aspect ratio for a different source", () => {
@@ -125,7 +152,7 @@ describe("ImageViewer", () => {
     loadImage(120, 240);
     render({ src: "landscape.png", alt: "Landscape" });
     expect(container.querySelector("img")!.style.width).toBe("");
-    expect(loadImage(240, 120).style.width).toBe("calc(100cqh * 2)");
+    expect(loadImage(240, 120).style.width).toBe("calc(min(90cqw, 100cqh * 2) * 1)");
   });
 
   it("focuses Close on open and retains the accessible image description", () => {
@@ -160,24 +187,28 @@ describe("ImageViewer", () => {
     expect(container.querySelector('[role="dialog"]')!.getAttribute("aria-label")).toBe(
       "Image viewer",
     );
-    expect(loadImage(100, 100).style.width).toBe("calc(100cqh * 1)");
+    expect(loadImage(100, 100).style.width).toBe("calc(min(90cqw, 100cqh * 1) * 1)");
   });
 
   it("zooms beyond the fitted size, enforces bounds and resets both scale and pan", () => {
     render();
-    const { image } = setGeometry();
+    const { image, canvas } = setGeometry();
     expect(button("Zoom out").disabled).toBe(true);
     act(() => button("Zoom in").click());
-    expect(image.style.transform).toBe("translate(0px, 0px) scale(1.25)");
+    expect(image.style.transform).toBe("");
+    expect(image.style.width).toBe("calc(min(90cqw, 100cqh * 1) * 1.25)");
+    expect(canvas.style.overflow).toBe("auto");
+    expect(canvas.scrollLeft).toBe(56.25);
     expect(container.querySelector("output")!.textContent).toBe("125%");
     expect(onRequestClose).not.toHaveBeenCalled();
     press("ArrowRight");
-    expect(image.style.transform).toBe("translate(-40px, 0px) scale(1.25)");
+    expect(canvas.scrollLeft).toBe(96.25);
     for (let i = 0; i < 20; i++) act(() => button("Zoom in").click());
     expect(button("Zoom in").disabled).toBe(true);
     expect(container.querySelector("output")!.textContent).toBe("800%");
     act(() => button("Fit to window").click());
-    expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
+    expect(canvas.scrollLeft).toBe(0);
+    expect(canvas.scrollTop).toBe(0);
     expect(button("Zoom out").disabled).toBe(true);
   });
 
@@ -187,32 +218,32 @@ describe("ImageViewer", () => {
     press("+");
     press("ArrowRight");
     render({ src: "other.png", alt: "Other" });
-    expect(container.querySelector("img")!.style.transform).toBe("translate(0px, 0px) scale(1)");
+    expect(container.querySelector("output")!.textContent).toBe("100%");
     press("+");
     act(() => root.render(<ImageViewer image={undefined} onRequestClose={onRequestClose} />));
     render({ src: "other.png", alt: "Other" });
-    expect(container.querySelector("img")!.style.transform).toBe("translate(0px, 0px) scale(1)");
+    expect(container.querySelector("output")!.textContent).toBe("100%");
   });
 
   it("contains image keyboard shortcuts, but does not intercept browser or global shortcuts", () => {
     render();
-    const { image } = setGeometry();
+    const { canvas } = setGeometry();
     const globalKey = vi.fn();
     document.addEventListener("keydown", globalKey);
     try {
       expect(press("=").defaultPrevented).toBe(true);
       expect(press("ArrowDown").defaultPrevented).toBe(true);
-      expect(image.style.transform).toBe("translate(0px, -40px) scale(1.25)");
+      expect(canvas.scrollTop).toBe(141.25);
       expect(globalKey).not.toHaveBeenCalled();
       expect(press("+", { ctrlKey: true }).defaultPrevented).toBe(false);
       expect(globalKey).toHaveBeenCalledTimes(1);
       press("0");
-      expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
+      expect(canvas.scrollTop).toBe(0);
       act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "+" })));
-      expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
+      expect(container.querySelector("output")!.textContent).toBe("100%");
       press("+");
       press("-");
-      expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
+      expect(container.querySelector("output")!.textContent).toBe("100%");
     } finally {
       document.removeEventListener("keydown", globalKey);
     }
@@ -240,15 +271,18 @@ describe("ImageViewer", () => {
       act(() => canvas.dispatchEvent(event));
       expect(event.defaultPrevented).toBe(true);
       const scale = Math.exp(0.5);
-      expect(image.style.transform).toBe(`translate(${100 - 100 * scale}px, 0px) scale(${scale})`);
+      expect(canvas.scrollLeft).toBeCloseTo(505 * scale - 550);
+      expect(canvas.scrollTop).toBeCloseTo(405 * (scale - 1));
+      expect(image.style.transform).toBe("");
       act(() => canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: 200, cancelable: true })));
-      expect(image.style.transform).toBe("translate(0px, 0px) scale(1)");
+      expect(canvas.scrollLeft).toBe(0);
+      expect(canvas.scrollTop).toBe(0);
     },
   );
 
   it("pans a captured pointer with bounds and releases the drag without dismissing", () => {
     render();
-    const { image } = setGeometry();
+    const { image, canvas } = setGeometry();
     image.setPointerCapture = vi.fn();
     image.hasPointerCapture = vi.fn(() => true);
     image.releasePointerCapture = vi.fn();
@@ -270,39 +304,34 @@ describe("ImageViewer", () => {
     pointer("pointerdown", 450, 450);
     expect(image.setPointerCapture).toHaveBeenCalledWith(1);
     pointer("pointermove", 500, 475);
-    expect(image.style.transform).toBe("translate(50px, 25px) scale(1.25)");
+    expect(canvas.scrollLeft).toBe(6.25);
+    expect(canvas.scrollTop).toBe(76.25);
     pointer("pointermove", 2000, -2000);
-    expect(image.style.transform).toBe("translate(101.25px, -101.25px) scale(1.25)");
+    expect(canvas.scrollLeft).toBe(0);
+    expect(canvas.scrollTop).toBe(202.5);
     pointer("pointerup", 2000, -2000);
     expect(image.releasePointerCapture).toHaveBeenCalledWith(1);
     pointer("lostpointercapture", 2000, -2000);
     expect(image.style.cursor).toBe("grab");
     pointer("pointermove", 450, 450);
-    expect(image.style.transform).toBe("translate(101.25px, -101.25px) scale(1.25)");
+    expect(canvas.scrollLeft).toBe(0);
+    expect(canvas.scrollTop).toBe(202.5);
     expect(onRequestClose).not.toHaveBeenCalled();
   });
 
-  it("reclamps pan after resizing and disconnects its observer when closed", () => {
-    let resize: (() => void) | undefined;
-    const disconnect = vi.fn();
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(callback: () => void) {
-          resize = callback;
-        }
-        observe = vi.fn();
-        disconnect = disconnect;
-      },
-    );
+  it("continues from native scrollbar offsets when panning and zooming", () => {
     render();
     const { image, canvas } = setGeometry();
     press("+");
+    canvas.scrollLeft = 20;
+    canvas.scrollTop = 30;
     press("ArrowRight");
-    Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 1800 });
-    act(() => resize!());
-    expect(image.style.transform).toBe("translate(0px, 0px) scale(1.25)");
-    act(() => root.render(<ImageViewer image={undefined} onRequestClose={onRequestClose} />));
-    expect(disconnect).toHaveBeenCalledOnce();
+    expect(canvas.scrollLeft).toBe(60);
+    press("+");
+    expect(canvas.scrollLeft).toBeCloseTo(187.5);
+    expect(canvas.scrollTop).toBeCloseTo(138.75);
+    expect(image.style.transform).toBe("");
+    act(() => canvas.click());
+    expect(onRequestClose).not.toHaveBeenCalled();
   });
 });

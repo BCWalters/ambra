@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Button, Tooltip, useModalAttributes } from "@fluentui/react-components";
 import { DismissRegular, ZoomInRegular, ZoomOutRegular } from "@fluentui/react-icons";
@@ -16,7 +16,6 @@ export interface ImageViewerProps {
   onRequestClose: () => void;
 }
 
-const FIT = { scale: 1, x: 0, y: 0 };
 const MAX_SCALE = 8;
 const ZOOM_STEP = 1.25;
 
@@ -34,9 +33,12 @@ const OpenImageViewer: FC<{
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const anchorRef = useRef<
+    { x: number; y: number; fractionX: number; fractionY: number } | undefined
+  >(undefined);
   const dragRef = useRef<{ id: number; x: number; y: number } | undefined>(undefined);
   const [aspectRatio, setAspectRatio] = useState<number>();
-  const [view, setView] = useState(FIT);
+  const [scale, setScale] = useState(1);
   const [dragging, setDragging] = useState(false);
   const instructionsId = useId();
   const t = useTranslation();
@@ -63,33 +65,39 @@ const OpenImageViewer: FC<{
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [image, onRequestClose]);
 
-  const constrain = useCallback((next: typeof FIT): typeof FIT => {
-    const canvas = canvasRef.current;
-    const img = imageRef.current;
-    if (!canvas || !img || next.scale === 1) return FIT;
-    const maxX = Math.max(0, (img.clientWidth * next.scale - canvas.clientWidth * 0.9) / 2);
-    const maxY = Math.max(0, (img.clientHeight * next.scale - canvas.clientHeight) / 2);
-    return {
-      scale: next.scale,
-      x: Math.max(-maxX, Math.min(maxX, next.x)),
-      y: Math.max(-maxY, Math.min(maxY, next.y)),
-    };
+  const zoom = useCallback((factor: number, point?: { x: number; y: number }) => {
+    const canvas = canvasRef.current!;
+    const viewport = canvas.getBoundingClientRect();
+    const image = imageRef.current!.getBoundingClientRect();
+    const x = point?.x ?? viewport.left + canvas.clientWidth / 2;
+    const y = point?.y ?? viewport.top + canvas.clientHeight / 2;
+    anchorRef.current =
+      image.width && image.height
+        ? {
+            x,
+            y,
+            fractionX: (x - image.left) / image.width,
+            fractionY: (y - image.top) / image.height,
+          }
+        : undefined;
+    setScale((previous) => Math.max(1, Math.min(MAX_SCALE, previous * factor)));
   }, []);
 
-  const zoom = useCallback(
-    (factor: number, point = { x: 0, y: 0 }) => {
-      setView((previous) => {
-        const scale = Math.max(1, Math.min(MAX_SCALE, previous.scale * factor));
-        const ratio = scale / previous.scale;
-        return constrain({
-          scale,
-          x: point.x - (point.x - previous.x) * ratio,
-          y: point.y - (point.y - previous.y) * ratio,
-        });
-      });
-    },
-    [constrain],
-  );
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current!;
+    const anchor = anchorRef.current;
+    if (scale === 1) {
+      canvas.scrollLeft = 0;
+      canvas.scrollTop = 0;
+    } else if (anchor) {
+      const image = imageRef.current!.getBoundingClientRect();
+      // Scroll offsets are the only pan state, including after native scrollbar
+      // interaction. Keep the same image point under the zoom anchor.
+      canvas.scrollLeft += image.left + anchor.fractionX * image.width - anchor.x;
+      canvas.scrollTop += image.top + anchor.fractionY * image.height - anchor.y;
+    }
+    anchorRef.current = undefined;
+  }, [scale]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -102,19 +110,15 @@ const OpenImageViewer: FC<{
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
       const delta = Math.max(-200, Math.min(200, event.deltaY * unit));
       zoom(Math.exp(-delta * 0.005), {
-        x: event.clientX - rect.left - rect.width / 2,
-        y: event.clientY - rect.top - rect.height / 2,
+        x: event.clientX,
+        y: event.clientY,
       });
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
-    const observer = new ResizeObserver(() => setView((previous) => constrain(previous)));
-    observer.observe(canvas);
-    observer.observe(imageRef.current!);
     return () => {
       canvas.removeEventListener("wheel", onWheel);
-      observer.disconnect();
     };
-  }, [constrain, zoom]);
+  }, [zoom]);
 
   return (
     <div
@@ -128,17 +132,12 @@ const OpenImageViewer: FC<{
         if (event.ctrlKey || event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
         if (event.key === "+" || event.key === "=") zoom(ZOOM_STEP);
         else if (event.key === "-") zoom(1 / ZOOM_STEP);
-        else if (event.key === "0") setView(FIT);
+        else if (event.key === "0") setScale(1);
         else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-          setView((previous) =>
-            constrain({
-              ...previous,
-              x:
-                previous.x +
-                (event.key === "ArrowLeft" ? 40 : event.key === "ArrowRight" ? -40 : 0),
-              y: previous.y + (event.key === "ArrowUp" ? 40 : event.key === "ArrowDown" ? -40 : 0),
-            }),
-          );
+          const canvas = canvasRef.current!;
+          canvas.scrollLeft +=
+            event.key === "ArrowLeft" ? -40 : event.key === "ArrowRight" ? 40 : 0;
+          canvas.scrollTop += event.key === "ArrowUp" ? -40 : event.key === "ArrowDown" ? 40 : 0;
         } else return;
         event.preventDefault();
         event.stopPropagation();
@@ -156,7 +155,6 @@ const OpenImageViewer: FC<{
       }}
     >
       <div
-        ref={canvasRef}
         style={{
           position: "relative",
           gridRow: 2,
@@ -164,65 +162,86 @@ const OpenImageViewer: FC<{
           // Fit to the reading pane, including any space taken by pinned panels
           // or a wrapped control row, rather than to the browser viewport.
           containerType: "size",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-          touchAction: "none",
         }}
       >
-        <img
-          ref={imageRef}
-          src={image.src}
-          alt={image.alt}
-          draggable={false}
-          onLoad={(event) => {
-            const { naturalWidth, naturalHeight } = event.currentTarget;
-            if (naturalWidth > 0 && naturalHeight > 0) {
-              setAspectRatio(naturalWidth / naturalHeight);
-            }
-          }}
-          onClick={(event) => event.stopPropagation()}
-          onPointerDown={(event) => {
-            if (view.scale === 1 || event.button !== 0 || dragRef.current) return;
-            event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-            setDragging(true);
-          }}
-          onPointerMove={(event) => {
-            const drag = dragRef.current;
-            if (!drag || drag.id !== event.pointerId) return;
-            const dx = event.clientX - drag.x;
-            const dy = event.clientY - drag.y;
-            drag.x = event.clientX;
-            drag.y = event.clientY;
-            setView((previous) =>
-              constrain({ ...previous, x: previous.x + dx, y: previous.y + dy }),
-            );
-          }}
-          onPointerUp={(event) => {
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            }
-          }}
-          onLostPointerCapture={() => {
-            dragRef.current = undefined;
-            setDragging(false);
+        <div
+          ref={canvasRef}
+          onClick={(event) => {
+            // A scrollbar click must not dismiss the viewer.
+            if (event.target === event.currentTarget) event.stopPropagation();
           }}
           style={{
-            width: aspectRatio ? `calc(100cqh * ${aspectRatio})` : undefined,
-            height: "auto",
-            maxWidth: "90%",
-            maxHeight: "100%",
-            objectFit: "contain",
-            boxShadow: "0 8px 40px rgba(0, 0, 0, 0.5)",
-            borderRadius: 4,
-            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-            cursor: view.scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
-            userSelect: "none",
+            position: "absolute",
+            inset: 0,
+            overflow: "auto",
+            colorScheme: "dark",
+            overscrollBehavior: "contain",
+            touchAction: "none",
           }}
-        />
+        >
+          <div
+            style={{
+              width: "max-content",
+              minWidth: "100%",
+              minHeight: "100%",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <img
+              ref={imageRef}
+              src={image.src}
+              alt={image.alt}
+              draggable={false}
+              onLoad={(event) => {
+                const { naturalWidth, naturalHeight } = event.currentTarget;
+                if (naturalWidth > 0 && naturalHeight > 0) {
+                  setAspectRatio(naturalWidth / naturalHeight);
+                }
+              }}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => {
+                if (scale === 1 || event.button !== 0 || dragRef.current) return;
+                event.preventDefault();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+                setDragging(true);
+              }}
+              onPointerMove={(event) => {
+                const drag = dragRef.current;
+                if (!drag || drag.id !== event.pointerId) return;
+                const dx = event.clientX - drag.x;
+                const dy = event.clientY - drag.y;
+                drag.x = event.clientX;
+                drag.y = event.clientY;
+                canvasRef.current!.scrollLeft -= dx;
+                canvasRef.current!.scrollTop -= dy;
+              }}
+              onPointerUp={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
+              onLostPointerCapture={() => {
+                dragRef.current = undefined;
+                setDragging(false);
+              }}
+              style={{
+                width: aspectRatio
+                  ? `calc(min(90cqw, 100cqh * ${aspectRatio}) * ${scale})`
+                  : undefined,
+                height: "auto",
+                maxWidth: aspectRatio ? undefined : "90cqw",
+                maxHeight: aspectRatio ? undefined : "100cqh",
+                objectFit: "contain",
+                boxShadow: "0 8px 40px rgba(0, 0, 0, 0.5)",
+                borderRadius: 4,
+                cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
+                userSelect: "none",
+              }}
+            />
+          </div>
+        </div>
       </div>
       <Tooltip content={t("highlight.close")} relationship="label">
         <Button
@@ -272,28 +291,28 @@ const OpenImageViewer: FC<{
             appearance="transparent"
             icon={<ZoomOutRegular />}
             aria-keyshortcuts="-"
-            disabled={view.scale === 1}
+            disabled={scale === 1}
             onClick={() => zoom(1 / ZOOM_STEP)}
-            style={{ color: "inherit", opacity: view.scale === 1 ? 0.4 : 1 }}
+            style={{ color: "inherit", opacity: scale === 1 ? 0.4 : 1 }}
           />
         </Tooltip>
         <output style={{ minWidth: 48, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
-          {Math.round(view.scale * 100)}%
+          {Math.round(scale * 100)}%
         </output>
         <Tooltip content={t("imageViewer.zoomIn")} relationship="label">
           <Button
             appearance="transparent"
             icon={<ZoomInRegular />}
             aria-keyshortcuts="+ ="
-            disabled={view.scale === MAX_SCALE}
+            disabled={scale === MAX_SCALE}
             onClick={() => zoom(ZOOM_STEP)}
-            style={{ color: "inherit", opacity: view.scale === MAX_SCALE ? 0.4 : 1 }}
+            style={{ color: "inherit", opacity: scale === MAX_SCALE ? 0.4 : 1 }}
           />
         </Tooltip>
         <Button
           appearance="transparent"
           aria-keyshortcuts="0"
-          onClick={() => setView(FIT)}
+          onClick={() => setScale(1)}
           style={{ color: "inherit", minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" }}
         >
           {t("imageViewer.fit")}
