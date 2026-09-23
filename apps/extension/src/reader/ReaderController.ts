@@ -1108,6 +1108,7 @@ export class ReaderController {
   /** Reattaches arrow-key navigation to every current content document
    * without moving focus. */
   private reattachKeyboardNav(): void {
+    this.accessibility.detach();
     const documents = this.allContentDocuments();
     if (documents.length === 0) {
       return;
@@ -1145,44 +1146,24 @@ export class ReaderController {
     return this.pkg.pageProgressionDirection === "rtl" ? (direction === 1 ? -1 : 1) : direction;
   }
 
-  /** Elements that should keep ArrowLeft/ArrowRight for their own interaction. */
-  private static readonly ARROW_KEY_EXEMPT_SELECTOR =
-    'input, textarea, select, [contenteditable="true"], [role="slider"], ' +
-    '[role="menu"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], ' +
-    '[role="listbox"], [role="option"], [role="tree"], [role="treeitem"], ' +
-    '[role="tablist"], [role="tab"], [role="dialog"], nav, aside';
-
   private globalArrowKeyCleanup: (() => void) | undefined;
 
-  /** Handles ArrowLeft/ArrowRight on the parent document so page turns
-   * still work when focus is outside the content iframe, except inside
-   * controls and panels matched by `ARROW_KEY_EXEMPT_SELECTOR`. */
+  /** The shell uses the same shortcut policy, with additional panel exemptions. */
   private setUpGlobalArrowKeyFallback(ownerDocument: Document): void {
     this.globalArrowKeyCleanup?.();
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.altKey) {
-        return;
-      }
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== " ") {
-        return;
-      }
-      const active = ownerDocument.activeElement;
-      if (active instanceof Element && active.closest(ReaderController.ARROW_KEY_EXEMPT_SELECTOR)) {
-        return;
-      }
-      if (event.key === " ") {
-        if (active instanceof Element && active.closest("button, a[href]") || this.host instanceof ScrollContentHost) return;
-        event.preventDefault();
-        this.dispatchArrowNavigation(event.shiftKey ? -1 : 1);
-        return;
-      }
-      event.preventDefault();
-      const direction = this.physicalDirection(event.key === "ArrowRight" ? 1 : -1);
-      if (event.ctrlKey || event.metaKey) void this.goToChapter(direction);
-      else this.dispatchArrowNavigation(direction);
-    };
-    ownerDocument.addEventListener("keydown", handleKeyDown);
-    this.globalArrowKeyCleanup = () => ownerDocument.removeEventListener("keydown", handleKeyDown);
+    const keyboard = new AccessibilityController();
+    const interceptSpace = (): boolean => !(this.host instanceof ScrollContentHost);
+    keyboard.attach(ownerDocument, {
+      onNext: () => this.dispatchArrowNavigation(1),
+      onPrevious: () => this.dispatchArrowNavigation(-1),
+      onNextChapter: () => void this.goToChapter(1),
+      onPreviousChapter: () => void this.goToChapter(-1),
+    }, {
+      scope: "shell",
+      get interceptSpace() { return interceptSpace(); },
+      pageProgressionDirection: this.pkg.pageProgressionDirection,
+    });
+    this.globalArrowKeyCleanup = () => keyboard.detach();
   }
 
   /** Whether the host iframe currently has parent-document focus. */

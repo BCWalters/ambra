@@ -1,9 +1,17 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AccessibilityController } from "./AccessibilityController.js";
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  vi.spyOn(document, "addEventListener");
+});
+
+afterEach(() => {
+  for (const [type, listener, options] of vi.mocked(document.addEventListener).mock.calls) {
+    document.removeEventListener(type, listener, options);
+  }
+  vi.restoreAllMocks();
 });
 
 describe("AccessibilityController", () => {
