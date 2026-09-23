@@ -77,6 +77,10 @@ export function applyNavigationTargetRange(doc: Document, range?: Range): void {
   applySpotlightRanges(doc, HighlightTheme.NAVIGATION_TARGET_HIGHLIGHT_NAME, range ? [range] : [], 1);
 }
 
+export function applyNarrationRange(doc: Document, range?: Range): void {
+  applySpotlightRanges(doc, HighlightTheme.NARRATION_HIGHLIGHT_NAME, range ? [range] : [], 2);
+}
+
 function applySpotlightRanges(doc: Document, name: string, ranges: readonly Range[], priority = 0): void {
   const win = doc.defaultView as HighlightCapableWindow | null;
   if (!win?.CSS?.highlights || !win.Highlight) {

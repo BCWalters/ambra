@@ -65,6 +65,30 @@ card in `chrome://extensions`.
 The browser tests build into an isolated directory so they do not replace the unpacked
 extension you are using.
 
+## Recorded narration
+
+Books with EPUB Media Overlays offer **Listen** in the reader toolbar. The playback
+strip supports pause/resume, previous/next authored passage, and playback speed.
+Narration highlights its current passage and follows it across pages and chapters,
+without moving keyboard focus.
+
+Manual page, contents, scrubber, or scroll navigation keeps audio playing but stops
+automatic following. **Return to narration** reveals the current audio passage without
+seeking; **Listen from here** starts narration at the selected or displayed passage.
+Closing the strip pauses playback. Unnarrated front matter advances to the next
+narrated linear section; the reader does not silently substitute text-to-speech.
+
+The first version supports recorded audio in reflowable and fixed-layout books,
+including authored highlighting classes. Semantic skipping/escaping and overlays
+that rely on embedded media or synthesized speech are not implemented yet.
+
+For real-content testing, the [W3C/IDPF Moby-Dick media-overlay sample](https://idpf.github.io/epub3-samples/30/samples.html#moby-dick-mo)
+contains the full novel with narration for the first two chapters. Its sample package
+is CC BY-SA, not an entirely public-domain artifact. Keep third-party EPUBs outside
+source control; set `AMBRA_MEDIA_OVERLAY_BOOK` to its local path to run
+`apps/e2e/tests/media-overlay-real-book.spec.ts`. Synthetic audio fixtures can be
+regenerated with `node apps/e2e/scripts/generate-media-overlay-fixtures.mjs`.
+
 ## Coding conventions
 
 - Favor object-oriented design (classes with clear responsibilities) for the engine's core

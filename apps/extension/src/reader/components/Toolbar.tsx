@@ -11,6 +11,7 @@ import {
   BookInformationRegular,
   BookmarkFilled,
   BookmarkRegular,
+  HeadphonesRegular,
   ReadingListRegular,
   SearchRegular,
   TextBulletListRegular,
@@ -46,6 +47,7 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
   isDetailsOpen: boolean;
   onToggleDetails: () => void;
   onToggleBookmark: () => void;
+  onListen?: () => void;
   /** Whether the toolbar should currently be shown, and the pointer/
    * focus handlers that keep it visible — lifted up into `ReaderApp` (see
    * `useAutoHideChrome`) rather than owned here, so `ProgressScrubber`
@@ -100,6 +102,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   isDetailsOpen,
   onToggleDetails,
   onToggleBookmark,
+  onListen,
   onSetViewMode,
   onSetFontScale,
   onSetLineSpacing,
@@ -476,6 +479,19 @@ export const Toolbar: FC<ToolbarProps> = ({
             onClick={onToggleDetails}
           />
         </Tooltip>
+
+        {onListen && (
+          <Tooltip content={t("narration.listen")} relationship="label">
+            <Button
+              appearance="subtle"
+              size="small"
+              icon={<HeadphonesRegular />}
+              aria-label={t("narration.listen")}
+              onClick={onListen}
+              style={{ marginLeft: 8 }}
+            />
+          </Tooltip>
+        )}
 
         {/* Bookmark stands alone at the far right, set apart from the
             Text/Settings/Details group with some extra breathing room

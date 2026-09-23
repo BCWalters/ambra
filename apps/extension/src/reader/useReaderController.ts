@@ -12,6 +12,7 @@ import type {
   BookDetails,
   EpubInspectionData,
   InspectorReaderBridge,
+  NarrationAction,
   PreviewPosition,
   ReaderSnapshot,
   ReadOnlyAnnotationView,
@@ -26,6 +27,8 @@ export interface UseReaderControllerResult {
   contentHostRef: RefObject<HTMLDivElement | null>;
   openBook: (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase) => Promise<void>;
   turnPage: (direction: 1 | -1) => void;
+  narrationAction: (action: NarrationAction) => void;
+  setNarrationRate: (rate: number) => void;
   goToChapter: (direction: 1 | -1) => void;
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -200,6 +203,11 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     },
     [],
   );
+
+  const narrationAction = useCallback((action: NarrationAction) => {
+    void controller?.performNarrationAction(action);
+  }, [controller]);
+  const setNarrationRate = useCallback((rate: number) => controller?.setNarrationRate(rate), [controller]);
 
   const turnPage = useCallback(
     (direction: 1 | -1) => {
@@ -484,6 +492,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   }, [controller]);
 
   return {
+    narrationAction,
+    setNarrationRate,
     snapshot,
     contentHostRef,
     openBook,

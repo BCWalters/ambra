@@ -7,6 +7,7 @@ import type {
   PackageDocument,
 } from "@ambra/engine";
 import type { InspectorReaderBridge, InspectorReadingLocation } from "./ReaderTypes.js";
+import { selectedReadingPosition, visibleReadingPosition, type ReadingPosition } from "./ReadingPosition.js";
 
 interface ReadingContext {
   documents: () => readonly ContentDocumentView[];
@@ -14,11 +15,6 @@ interface ReadingContext {
   navigate: (spineIndex: number, cfi?: string) => Promise<void>;
   focus: (document: Document, element: Element) => void;
   isDisposed: () => boolean;
-}
-
-interface ReadingPosition {
-  spineIndex: number;
-  cfi?: string;
 }
 
 /** Converts between original-source elements and the reader's canonical positions. */
@@ -67,44 +63,11 @@ export class InspectorReadingBridge {
   }
 
   private selectedPosition(): ReadingPosition | undefined {
-    for (const view of this.context.documents()) {
-      const selection = view.document.getSelection();
-      if (!selection || selection.isCollapsed || selection.rangeCount === 0) continue;
-      const range = selection.getRangeAt(0);
-      let node = range.startContainer;
-      let offset = range.startOffset;
-      if (node.nodeType === 1 && node.childNodes[offset]) {
-        node = node.childNodes[offset]!;
-        offset = 0;
-      }
-      return {
-        spineIndex: view.spineIndex,
-        cfi: this.resolver.generate(view.spineIndex, node, node.nodeType === 1 ? undefined : offset)
-          .cfi,
-      };
-    }
-    return undefined;
+    return selectedReadingPosition(this.context.documents(), this.resolver);
   }
 
   private visiblePosition(): ReadingPosition | undefined {
-    const views = this.context.documents();
-    const position = this.context.currentPosition();
-    const view = position
-      ? views.find((candidate) => candidate.document === position.node.ownerDocument)
-      : views[0];
-    if (!view) return undefined;
-    const node = position?.node ?? view.document.body ?? view.document.documentElement;
-    return {
-      spineIndex: view.spineIndex,
-      cfi:
-        node === view.document.documentElement
-          ? undefined
-          : this.resolver.generate(
-              view.spineIndex,
-              node,
-              node.nodeType === 1 ? undefined : position?.offset,
-            ).cfi,
-    };
+    return visibleReadingPosition(this.context.documents(), this.context.currentPosition(), this.resolver);
   }
 
   private async locate(position: ReadingPosition | undefined): Promise<InspectorReadingLocation> {

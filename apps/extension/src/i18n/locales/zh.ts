@@ -3,6 +3,19 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "narration.listen": "收听",
+  "narration.controls": "朗读控制",
+  "narration.play": "播放朗读",
+  "narration.pause": "暂停朗读",
+  "narration.previous": "上一朗读段落",
+  "narration.next": "下一朗读段落",
+  "narration.speed": "朗读速度",
+  "narration.close": "关闭朗读",
+  "narration.return": "返回朗读位置",
+  "narration.listenFromHere": "从此处收听",
+  "narration.loading": "正在加载朗读…",
+  "narration.browsing": "你正在阅读朗读位置以外的内容。",
+  "narration.error": "无法播放朗读。",
   "library.pageTitle": "Ambra — 书库",
   "library.toolbar": "书库操作",
   "library.sortNewest": "添加日期（从新到旧）",

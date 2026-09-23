@@ -243,6 +243,7 @@ export class HighlightTheme {
    * to a document identically (`CSS.highlights.set`/`.delete`). */
   public static readonly SEARCH_MATCH_HIGHLIGHT_NAME = "ambra-search-match";
   public static readonly NAVIGATION_TARGET_HIGHLIGHT_NAME = "ambra-navigation-target";
+  public static readonly NARRATION_HIGHLIGHT_NAME = "ambra-narration";
 
   /** The `::highlight()` name for "this is the specific highlight whose
    * popup is currently open," for `style` specifically (issue #113's
@@ -356,6 +357,7 @@ export class HighlightTheme {
       return `::highlight(${name}) { background-color: ${color}; color: #1a1a1a; }`;
     }).join("\n") +
     `\n::highlight(${HighlightTheme.SEARCH_MATCH_HIGHLIGHT_NAME}), ::highlight(${HighlightTheme.NAVIGATION_TARGET_HIGHLIGHT_NAME}) { background-color: #ffb020; color: #1a1a1a; }` +
+    `\n::highlight(${HighlightTheme.NARRATION_HIGHLIGHT_NAME}) { background-color: #b9e5ff; color: #102a43; }` +
     "\n" +
     (Object.keys(HighlightTheme.STYLES) as HighlightStyle[])
       .map((style) => {

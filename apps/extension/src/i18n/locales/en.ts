@@ -32,6 +32,19 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "narration.listen": string;
+  "narration.controls": string;
+  "narration.play": string;
+  "narration.pause": string;
+  "narration.previous": string;
+  "narration.next": string;
+  "narration.speed": string;
+  "narration.close": string;
+  "narration.return": string;
+  "narration.listenFromHere": string;
+  "narration.loading": string;
+  "narration.browsing": string;
+  "narration.error": string;
   "library.pageTitle": string;
   "library.toolbar": string;
   "library.sortNewest": string;
@@ -343,6 +356,19 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "narration.listen": "Listen",
+  "narration.controls": "Narration controls",
+  "narration.play": "Play narration",
+  "narration.pause": "Pause narration",
+  "narration.previous": "Previous narrated passage",
+  "narration.next": "Next narrated passage",
+  "narration.speed": "Narration speed",
+  "narration.close": "Close narration",
+  "narration.return": "Return to narration",
+  "narration.listenFromHere": "Listen from here",
+  "narration.loading": "Loading narration…",
+  "narration.browsing": "Browsing away from narration.",
+  "narration.error": "Narration could not be played.",
   "library.pageTitle": "Ambra — Library",
   "library.toolbar": "Library actions",
   "library.sortNewest": "Date added (newest first)",

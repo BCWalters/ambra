@@ -14,6 +14,7 @@ import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { EpubInspectorPanel } from "./components/EpubInspectorPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
+import { NarrationControls } from "./components/NarrationControls.js";
 import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
 import { FootnotePopup } from "./components/FootnotePopup.js";
 import { NoteMarkers } from "./components/NoteMarkers.js";
@@ -51,6 +52,8 @@ const ReaderAppInner: FC = () => {
     snapshot,
     contentHostRef,
     openBook,
+    narrationAction,
+    setNarrationRate,
     goToNavPoint,
     setViewMode,
     setFontScale,
@@ -106,6 +109,7 @@ const ReaderAppInner: FC = () => {
   const [activePanel, setActivePanel] = useState<LeftPanel | undefined>(undefined);
   const [isActivePanelPinned, setIsActivePanelPinned] = useState(false);
   const [seekError, setSeekError] = useState<string>();
+  const [isNarrationOpen, setIsNarrationOpen] = useState(false);
   const isTocOpen = activePanel === "toc";
   const isAnnotationsOpen = activePanel === "annotations";
   const isTocPinned = isTocOpen && isActivePanelPinned;
@@ -441,10 +445,11 @@ const ReaderAppInner: FC = () => {
           />
 
           <div
-            style={{ flex: 1, position: "relative", minHeight: 0 }}
+            style={{ flex: 1, position: "relative", minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}
             role="main"
             aria-label={t("reader.bookContentAriaLabel")}
           >
+            <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
             {/* This div is owned entirely by imperative code (ReaderController
                 mounts the active content host's iframe into it) — it must never
                 receive React-rendered children, or React's reconciliation and
@@ -520,6 +525,10 @@ const ReaderAppInner: FC = () => {
                 overlaps the TOC panel's own clickable area when both are
                 open at once. */}
             <Toolbar
+              onListen={snapshot.narration?.available ? () => {
+                setIsNarrationOpen(true);
+                narrationAction("start");
+              } : undefined}
               snapshot={snapshot}
               onBackToLibrary={() => {
                 window.location.href = libraryFullTabUrl();
@@ -645,6 +654,24 @@ const ReaderAppInner: FC = () => {
                 severity={seekError ? "transient" : snapshot.errorSeverity!}
                 onDismiss={() => { setSeekError(undefined); dismissError(); }}
                 getDiagnosticsText={getDiagnosticsText}
+              />
+            )}
+            </div>
+            {isNarrationOpen && snapshot.narration?.available && (
+              <NarrationControls
+                state={snapshot.narration}
+                focusOnOpen
+                onPlayPause={() => narrationAction("toggle")}
+                onPrevious={() => narrationAction("previous")}
+                onNext={() => narrationAction("next")}
+                onReturnToNarration={() => narrationAction("return")}
+                onListenFromHere={() => narrationAction("here")}
+                onRateChange={setNarrationRate}
+                onClose={() => {
+                  narrationAction("close");
+                  setIsNarrationOpen(false);
+                  restoreContentFocus();
+                }}
               />
             )}
           </div>

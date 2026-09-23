@@ -61,6 +61,9 @@ import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageT
 import { SearchCoordinator } from "./SearchCoordinator.js";
 import { EpubInspectionSession } from "./EpubInspectionSession.js";
 import { InspectorReadingBridge } from "./InspectorReadingBridge.js";
+import { MediaOverlayNarration, type NarrationTarget } from "./MediaOverlayNarration.js";
+import { NarrationReadingBridge } from "./NarrationReadingBridge.js";
+import type { NarrationAction } from "./ReaderTypes.js";
 import { TransientReadingHighlight } from "./TransientReadingHighlight.js";
 import type { InspectorReference } from "./InspectorReferences.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
@@ -342,6 +345,10 @@ export class ReaderController {
    * #46), revoked in `dispose`. */
   private readonly inspectionSession: EpubInspectionSession;
   private readonly inspectionReading: InspectorReadingBridge;
+  private readonly narration: MediaOverlayNarration;
+  private readonly narrationReading: NarrationReadingBridge;
+  private narrationOperation: ReaderOperation | undefined;
+  private narrationCommand = 0;
 
   private constructor(
     private readonly contentLoader: ContentLoader,
@@ -353,6 +360,20 @@ export class ReaderController {
     private readonly library: LibraryDatabase,
     rootFilePath: string,
   ) {
+    this.narrationReading = new NarrationReadingBridge(contentLoader, locatorResolver, {
+      activeClass: pkg.metadata.mediaOverlayActiveClass,
+      playbackActiveClass: pkg.metadata.metaEntries.find(entry => entry.key === "media:playback-active-class")?.value,
+    }, {
+      documents: () => this.contentDocumentViews(),
+      position: () => this.host?.currentPosition(),
+      disposed: () => this.operations.disposed,
+      navigate: target => this.navigateNarrationTarget(target),
+    });
+    this.narration = new MediaOverlayNarration({
+      pkg, loader: contentLoader,
+      onTarget: (target, follow) => this.narrationReading.update(target, follow),
+      notify: () => this.notify(),
+    });
     this.inspectionSession = new EpubInspectionSession(contentLoader, pkg, rootFilePath);
     this.inspectionReading = new InspectorReadingBridge(contentLoader, locatorResolver, pkg, {
       documents: () => this.contentDocumentViews(),
@@ -365,6 +386,7 @@ export class ReaderController {
         }
       },
       navigate: async (spineIndex, cfi) => {
+        this.suspendNarrationFollowing();
         await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
         if (this.error) throw new Error(this.error);
         if (this.operations.disposed ||
@@ -612,6 +634,7 @@ export class ReaderController {
       const requestedLayout = this.pendingLayout?.configuration ?? this.currentLayout();
 
       this.cachedSnapshot = {
+        narration: this.narration.snapshot,
         title: this.pkg.metadata.title,
         toc: this.navigation.toc.items,
         spineIndex: this.spineIndex,
@@ -685,6 +708,7 @@ export class ReaderController {
 
   private notify(): void {
     if (this.operations.disposed) return;
+    this.narrationReading.setPlaying(this.narration.snapshot.status === "playing");
     this.cachedSnapshot = undefined;
     for (const listener of this.listeners) {
       listener();
@@ -1005,8 +1029,86 @@ export class ReaderController {
     }
   }
 
+  public async performNarrationAction(action: NarrationAction): Promise<void> {
+    const command = ++this.narrationCommand;
+    this.cancelNarrationNavigation();
+    try {
+      if (action === "close" || (action === "toggle" &&
+        (this.narration.snapshot.status === "playing" || this.narration.snapshot.status === "loading"))) {
+        this.narration.pause();
+        if (action === "close") this.narrationReading.clear();
+      } else if (action === "here" || ((action === "start" || action === "toggle") && !this.narration.target)) {
+        const position = await this.narrationReading.readingPosition();
+        if (command !== this.narrationCommand || this.operations.disposed) return;
+        await this.narration.playFrom(position.spineIndex, position.element);
+      } else if (action === "start" || action === "toggle") {
+        await this.narration.resume();
+      } else if (action === "next") {
+        await this.narration.next();
+      } else if (action === "previous") {
+        await this.narration.previous();
+      } else if (action === "return") {
+        await this.narration.returnToNarration();
+      }
+    } catch (error) {
+      if (command !== this.narrationCommand || this.operations.disposed) return;
+      const detail = error instanceof Error ? error.message : String(error);
+      this.diagnostics.record(`Narration ${action} failed: ${detail}`);
+      if (!this.narration.snapshot.error) {
+        this.setNotification(this.translate("narration.error"), "transient");
+        this.errorDetail = detail;
+        this.notify();
+      }
+    }
+  }
+
+  public setNarrationRate(rate: number): void {
+    this.narration.setRate(rate);
+  }
+
+  private cancelNarrationNavigation(): void {
+    this.narrationReading.invalidateNavigation();
+    const operation = this.narrationOperation;
+    if (operation && this.operations.current === operation) {
+      this.operations.finish(operation);
+      this.isLoading = false;
+      this.isLoadInFlight = false;
+      this.notify();
+      this.applyPendingLayout();
+    }
+    this.narrationOperation = undefined;
+  }
+
+  private suspendNarrationFollowing(): void {
+    this.narrationCommand++;
+    this.cancelNarrationNavigation();
+    this.narration.suspendFollowing();
+  }
+
+  private async navigateNarrationTarget(target: NarrationTarget): Promise<void> {
+    const view = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex);
+    if (view && (this.host instanceof PaginatedContentHost || this.host instanceof ScrollContentHost)) {
+      const element = target.fragment ? view.document.getElementById(target.fragment) : view.document.body;
+      if (!element) throw new Error(`The narrated passage ${target.path}#${target.fragment ?? ""} was not found.`);
+      if (this.host instanceof PaginatedContentHost) this.host.goToPosition(element, 0);
+      else this.host.restorePosition(element, 0);
+      this.highlightInteraction.updateNoteMarkers();
+      this.notify();
+      await this.saveProgress();
+      return;
+    }
+    await this.openSpineItem(target.spineIndex, { fragment: target.fragment, automatic: true });
+    if (this.operations.disposed || !this.narration.snapshot.following) return;
+    if (this.error) throw new Error(this.error);
+    const document = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex)?.document;
+    if (!document || (target.fragment && !document.getElementById(target.fragment))) {
+      throw new Error(`The narrated passage ${target.path}#${target.fragment ?? ""} was not found.`);
+    }
+  }
+
   /** Navigates to a search result's position — see `SearchCoordinator.goToResult`. */
   public async goToSearchResult(cfi: string): Promise<void> {
+    this.suspendNarrationFollowing();
     await this.searchCoordinator.goToResult(cfi);
   }
 
@@ -1288,14 +1390,15 @@ export class ReaderController {
     const topDocument = this.containerEl?.ownerDocument;
     const menuOpen =
       topDocument?.querySelector('[role="menu"], [role="dialog"], [role="listbox"]') != null;
-    if (iframeDocument && topDocument && !menuOpen) {
+    if (iframeDocument && topDocument && !menuOpen &&
+      !topDocument.activeElement?.closest("[data-narration-controls]")) {
       this.accessibility.focusContent(iframeDocument);
     }
   }
 
   /** Reattaches accessibility handlers and moves focus into the current
    * content document. */
-  private setUpAccessibility(focusTarget?: Element): void {
+  private setUpAccessibility(focusTarget?: Element, moveFocus = true): void {
     this.updateContentTitle();
     this.reattachKeyboardNav();
 
@@ -1303,7 +1406,7 @@ export class ReaderController {
     if (!iframeDocument) {
       return;
     }
-    this.accessibility.focusContent(iframeDocument, focusTarget);
+    if (moveFocus) this.accessibility.focusContent(iframeDocument, focusTarget);
   }
 
   /** Intercepts in-content links for reader navigation, opens external
@@ -1399,6 +1502,7 @@ export class ReaderController {
           }
         }
 
+        this.suspendNarrationFollowing();
         if (targetSpineIndex === own.spineIndex && !(this.host instanceof SpreadPaginatedHost)) {
           if (fragment) {
             const focusTarget = this.goToFragment(fragment);
@@ -1467,6 +1571,23 @@ export class ReaderController {
       };
       iframeDocument.addEventListener("pointerdown", pointerDownHandler);
       cleanups.push(() => iframeDocument.removeEventListener("pointerdown", pointerDownHandler));
+      const scrollIntent = (): void => {
+        if (this.host instanceof ScrollContentHost) this.suspendNarrationFollowing();
+      };
+      const scrollKeyIntent = (event: KeyboardEvent): void => {
+        if (!event.defaultPrevented && [" ", "PageDown", "PageUp", "Home", "End", "ArrowDown", "ArrowUp"].includes(event.key)
+          && !(event.target as Element | null)?.closest?.("input, textarea, select, button, [contenteditable]")) {
+          scrollIntent();
+        }
+      };
+      iframeDocument.addEventListener("wheel", scrollIntent, { passive: true });
+      iframeDocument.addEventListener("touchmove", scrollIntent, { passive: true });
+      iframeDocument.addEventListener("keydown", scrollKeyIntent);
+      cleanups.push(() => {
+        iframeDocument.removeEventListener("wheel", scrollIntent);
+        iframeDocument.removeEventListener("touchmove", scrollIntent);
+        iframeDocument.removeEventListener("keydown", scrollKeyIntent);
+      });
     }
 
     this.contentInteractionCleanup = () => {
@@ -1727,7 +1848,8 @@ export class ReaderController {
     const bridgeCfi = position
       ? this.locatorResolver.generate(spineIndex, position.node, position.offset).cfi
       : undefined;
-    await this.openSpineItem(spineIndex, { bridgeCfi });
+    const preserveFocus = Boolean(this.containerEl?.ownerDocument.activeElement?.closest("[data-narration-controls]"));
+    await this.openSpineItem(spineIndex, { bridgeCfi, preserveFocus });
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
@@ -1927,6 +2049,7 @@ export class ReaderController {
 
   /** Clears the search highlight on ordinary navigation unless it is pinned. */
   private clearNavigationHighlights(): void {
+    this.suspendNarrationFollowing();
     this.navigationSpotlight.clear();
     this.searchCoordinator.clearHighlightUnlessPinned();
   }
@@ -3041,6 +3164,7 @@ export class ReaderController {
         }
         const lockedDirection = this.physicalDirection(deltaX < 0 ? 1 : -1);
         direction = lockedDirection;
+        this.suspendNarrationFollowing();
         this.isTurningPage = true;
         const turn = this.operations.begin();
         operation = turn;
@@ -3867,6 +3991,9 @@ export class ReaderController {
       /** Used by chapter-boundary page turns to animate this load as a
        * directional turn instead of an instant jump. */
       animateDirection?: 1 | -1;
+      /** Narration follows without moving keyboard focus or announcing every chapter. */
+      automatic?: boolean;
+      preserveFocus?: boolean;
     } = {},
   ): Promise<void> {
     if (this.operations.disposed || !this.containerEl) {
@@ -3878,6 +4005,7 @@ export class ReaderController {
     this.gestureCleanup?.();
     if (this.operations.current) this.spreadCounts.clear();
     const operation = this.operations.begin();
+    if (options.automatic) this.narrationOperation = operation;
     this.isTurningPage = false;
     this.error = undefined;
     this.errorSeverity = undefined;
@@ -4040,13 +4168,14 @@ export class ReaderController {
                 .map((doc) => doc.getElementById(options.fragment!))
                 .find((el) => el !== null)
             : undefined,
+          !options.automatic && !options.preserveFocus,
         );
       } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, requestedSpineIndex);
-        this.setUpAccessibility();
+        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus);
       } else if (options.fragment) {
         const focusTarget = this.goToFragment(options.fragment);
-        this.setUpAccessibility(focusTarget);
+        this.setUpAccessibility(focusTarget, !options.automatic && !options.preserveFocus);
       } else {
         if (
           options.landOnLastPage &&
@@ -4070,13 +4199,13 @@ export class ReaderController {
           );
           this.host.goToPageIndex(targetIndex);
         }
-        this.setUpAccessibility();
+        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus);
       }
       // Highlights and search ranges are page-independent, but note
       // markers snapshot pixel positions on the current page, so
       // recompute them after the final landing page is set.
       this.highlightInteraction.updateNoteMarkers();
-      this.announce(this.chapterLabel(spineIndex));
+      if (!options.automatic && !options.preserveFocus) this.announce(this.chapterLabel(spineIndex));
       await this.saveProgress();
       // properties="remote-resources" (EPUB3) is the book's own
       // declaration that this item may need network access this reader's
@@ -4109,6 +4238,7 @@ export class ReaderController {
       // already replaced this one.
     } finally {
       finished = true;
+      if (this.narrationOperation === operation) this.narrationOperation = undefined;
       clearTimeout(loadingTimeout);
       if (this.operations.owns(operation)) {
         this.operations.finish(operation);
@@ -4155,6 +4285,8 @@ export class ReaderController {
   }
 
   public dispose(): void {
+    this.narration.dispose();
+    this.narrationReading.clear();
     this.navigationSpotlight.clear();
     this.preferencesCleanup?.();
     if (this.operations.disposed) return;

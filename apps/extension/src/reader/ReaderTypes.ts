@@ -11,6 +11,7 @@ import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { SearchResultItem } from "./SearchCoordinator.js";
 import type { ViewMode } from "./ViewMode.js";
+import type { NarrationState } from "./MediaOverlayNarration.js";
 
 /** Plain data types describing `ReaderController`'s state and public
  * shapes, kept separate so consumers don't need to import the
@@ -19,6 +20,8 @@ import type { ViewMode } from "./ViewMode.js";
 export type PreviewPosition =
   | { readonly kind: "page"; readonly current: number; readonly total: number }
   | { readonly kind: "chapter"; readonly current: number; readonly total: number };
+
+export type NarrationAction = "start" | "toggle" | "previous" | "next" | "return" | "here" | "close";
 
 /** What the Book Details panel shows. */
 export interface BookDetails {
@@ -112,6 +115,7 @@ export interface InspectorReaderBridge {
 }
 
 export interface ReaderSnapshot {
+  narration?: NarrationState;
   title: string;
   toc: readonly NavPoint[];
   spineIndex: number;
