@@ -46,6 +46,8 @@ export const LibraryFlyout: FC<LibraryFlyoutProps> = ({
         style={{
           display: "flex",
           alignItems: "center",
+          width: "100%",
+          boxSizing: "border-box",
           gap: 4,
           padding: "10px 8px 10px 14px",
           borderBottom: `1px solid ${CHROME_BORDER}`,
