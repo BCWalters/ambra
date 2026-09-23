@@ -27,6 +27,7 @@ function makeHost(): MediaOverlayAudioHost & {
   pauseCalls: number;
   sources: string[];
   seeks: number[];
+  advanceTo(seconds: number): void;
 } {
   let currentSource: string | undefined;
   let currentTime = 0;
@@ -49,6 +50,9 @@ function makeHost(): MediaOverlayAudioHost & {
       currentTime = seconds;
       host.seeks.push(seconds);
     }),
+    advanceTo(seconds: number) {
+      currentTime = seconds;
+    },
     get currentSource() {
       return currentSource;
     },
@@ -89,6 +93,112 @@ describe("MediaOverlayPlayer", () => {
     player.pause();
     expect(host.pauseCalls).toBe(1);
     expect(player.isPlaying).toBe(false);
+  });
+
+  it("resumes the same par at its paused position without seeking back to clipBegin", () => {
+    const { player, host } = makePlayer();
+    player.play();
+    host.advanceTo(4);
+    player.pause();
+
+    expect(host.currentTime).toBe(4);
+    player.play();
+
+    expect(host.currentTime).toBe(4);
+    expect(host.seeks).toEqual([0]);
+    expect(host.sources).toEqual(["OEBPS/audio/c01.mp3"]);
+    expect(host.playCalls).toBe(2);
+    expect(player.currentClip?.par.id).toBe("p1");
+    expect(player.isPlaying).toBe(true);
+  });
+
+  it.each([5, 8, 11.999])("preserves an in-range position %s for a nonzero clipBegin", (seconds) => {
+    const { player, host } = makePlayer();
+    player.goToParId("p2");
+    player.play();
+    host.advanceTo(seconds);
+    player.pause();
+
+    player.play();
+
+    expect(host.currentTime).toBe(seconds);
+    expect(host.seeks).toEqual([5]);
+  });
+
+  it.each([4.999, 12, 20])("re-cues an out-of-range position %s to clipBegin", (seconds) => {
+    const { player, host } = makePlayer();
+    player.goToParId("p2");
+    player.play();
+    host.advanceTo(seconds);
+    player.pause();
+
+    player.play();
+
+    expect(host.currentTime).toBe(5);
+    expect(host.seeks).toEqual([5, 5]);
+  });
+
+  it("restores the correct source even if the replacement source's time is in range", () => {
+    const { player, host } = makePlayer();
+    player.play();
+    player.pause();
+    host.setSource("OEBPS/audio/c02.mp3");
+    host.advanceTo(4);
+
+    player.play();
+
+    expect(host.currentSource).toBe("OEBPS/audio/c01.mp3");
+    expect(host.currentTime).toBe(0);
+    expect(host.seeks).toEqual([0, 0]);
+  });
+
+  it("does not rewind when an already playing par is selected again", () => {
+    const { player, host } = makePlayer();
+    player.play();
+    host.advanceTo(4);
+
+    player.goToParId("p1");
+
+    expect(host.currentTime).toBe(4);
+    expect(host.seeks).toEqual([0]);
+  });
+
+  it("cues a different par selected while paused before resuming", () => {
+    const { player, host } = makePlayer();
+    player.play();
+    host.advanceTo(4);
+    player.pause();
+    player.next();
+
+    expect(host.currentTime).toBe(4);
+    player.play();
+
+    expect(player.currentClip?.par.id).toBe("p2");
+    expect(host.currentTime).toBe(5);
+    expect(host.seeks).toEqual([0, 5]);
+  });
+
+  it("preserves a finite position in an open-ended clip, but re-cues invalid times", () => {
+    const doc = SmilDocument.parse(
+      THREE_CLIP_SMIL.replace(' clipEnd="0:00:05.000"', ""),
+      "OEBPS/chapter1_overlay.smil",
+    );
+    const host = makeHost();
+    const player = new MediaOverlayPlayer(doc, host);
+    player.play();
+    host.advanceTo(40);
+    player.pause();
+
+    player.play();
+    expect(host.currentTime).toBe(40);
+    expect(host.seeks).toEqual([0]);
+
+    player.pause();
+    host.advanceTo(Number.NaN);
+    player.play();
+    expect(host.currentTime).toBe(0);
+    expect(host.seeks).toEqual([0, 0]);
+    expect(player.clipForHostPosition("OEBPS/audio/c01.mp3", Number.POSITIVE_INFINITY)).toBeUndefined();
   });
 
   it("next() advances to the next clip and re-cues the host when already playing", () => {

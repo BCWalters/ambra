@@ -186,6 +186,12 @@ export class MediaOverlayPlayer {
     if (!par.audio) {
       return;
     }
+    if (
+      this.host.currentSource === par.audio.path &&
+      isWithinClip(par.audio, this.host.currentTime)
+    ) {
+      return;
+    }
     if (this.host.currentSource !== par.audio.path) {
       this.host.setSource(par.audio.path);
     }
@@ -194,7 +200,7 @@ export class MediaOverlayPlayer {
 }
 
 function isWithinClip(audio: SmilAudioClip, seconds: number): boolean {
-  if (seconds < audio.clipBeginSeconds) {
+  if (!Number.isFinite(seconds) || seconds < audio.clipBeginSeconds) {
     return false;
   }
   return audio.clipEndSeconds === undefined || seconds < audio.clipEndSeconds;
