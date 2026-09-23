@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FC } from "react";
-import { Body1, Body1Strong, Button, Caption1, Link } from "@fluentui/react-components";
-import { CopyRegular } from "@fluentui/react-icons";
+import { Body1, Button, Caption1, Link, Subtitle1 } from "@fluentui/react-components";
+import { CopyRegular, MailRegular } from "@fluentui/react-icons";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
+import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 
 const GITHUB_REPO_URL = "https://github.com/BCWalters/ambra";
 const PRIVACY_POLICY_URL =
@@ -12,12 +13,7 @@ const EPUB_SPEC_URL = "https://www.w3.org/TR/epub-34/";
 const PUBLISHING_WG_URL = "https://www.w3.org/publishing/groups/publ-wg/";
 const REPORT_EMAIL = "AmbraEPUB@outlook.com";
 
-/** Third-party runtime dependencies actually shipped in the built
- * extension bundle (see `apps/extension/package.json`'s own
- * `dependencies`, not `devDependencies` — nothing build/test-only needs
- * crediting here) — issue #123's "any open source references we need
- * to call out." `@ambra/engine`/`@ambra/shell` aren't listed: they're
- * this project's own workspace packages, not third-party. */
+/** Third-party runtime dependencies shipped in the extension. */
 const OPEN_SOURCE_CREDITS: ReadonlyArray<{ name: string; url: string }> = [
   { name: "React", url: "https://react.dev" },
   { name: "Fluent UI React Components", url: "https://react.fluentui.dev" },
@@ -25,22 +21,7 @@ const OPEN_SOURCE_CREDITS: ReadonlyArray<{ name: string; url: string }> = [
   { name: "xml-formatter", url: "https://github.com/chrisbottin/xml-formatter" },
 ];
 
-const SectionHeading: FC<{ children: string }> = ({ children }) => (
-  <Caption1
-    as="p"
-    block
-    style={{ margin: "0 0 6px", opacity: 0.6, fontWeight: 600, textTransform: "uppercase" }}
-  >
-    {children}
-  </Caption1>
-);
-
-/** Plain environment info worth including in a bug report — issue
- * #123's "copy diagnostics" button. Unlike the reader's own
- * `DiagnosticsLog` (a trail of recent in-session reading events), the
- * Library has no book open and no reading session to trail — just the
- * extension version and basic browser/platform info, still useful
- * context for a report filed from here. */
+/** Environment information only: no book content or reading history. */
 function collectEnvironmentInfo(): string {
   const manifest = chrome.runtime.getManifest();
   return [
@@ -57,26 +38,30 @@ export interface AboutFlyoutProps {
   open: boolean;
   onRequestClose: () => void;
   backgroundSolid: string;
+  accentForeground: string;
 }
 
-/**
- * The About Ambra flyout (issue #123) — a static panel packaged with
- * the extension itself (not a separate page/tab requiring its own
- * build entry point), matching `BookDetailsFlyout`'s own slide-in
- * layout/interaction so the Library's chrome stays visually
- * consistent. Covers credits, licensing/privacy links, and a way to
- * report an issue, ahead of this repository going public. Entirely
- * static: no book, no library data, and no reading session state to
- * depend on.
- */
-export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgroundSolid }) => {
-  const [copied, setCopied] = useState(false);
+/** An in-place About pane packaged with the extension, not a separate website. */
+export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgroundSolid, accentForeground }) => {
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied">("idle");
+  const [copyError, setCopyError] = useState<string>();
 
-  const copyDiagnostics = (): void => {
-    void navigator.clipboard.writeText(collectEnvironmentInfo()).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+  useEffect(() => {
+    if (copyState !== "copied") return;
+    const timeout = setTimeout(() => setCopyState("idle"), 2000);
+    return () => clearTimeout(timeout);
+  }, [copyState]);
+
+  const copyDiagnostics = async (): Promise<void> => {
+    setCopyState("copying");
+    setCopyError(undefined);
+    try {
+      await navigator.clipboard.writeText(collectEnvironmentInfo());
+      setCopyState("copied");
+    } catch (error) {
+      setCopyState("idle");
+      setCopyError(`Could not copy diagnostics. ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   const version = chrome.runtime.getManifest().version;
@@ -88,75 +73,86 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
       onRequestClose={onRequestClose}
       backgroundSolid={backgroundSolid}
     >
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-          <AmbraMarkIcon size={40} />
+      <div style={{ flex: 1, overflowY: "auto", padding: 20, overflowWrap: "anywhere" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
+          <AmbraMarkIcon size={48} />
           <div>
-            <Body1Strong as="p" block style={{ margin: 0 }}>
+            <Subtitle1 as="p" block style={{ margin: 0 }}>
               Ambra
-            </Body1Strong>
-            <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
+            </Subtitle1>
+            <Caption1 as="p" block style={{ margin: "2px 0 0", opacity: 0.75 }}>
               Version {version}
             </Caption1>
           </div>
         </div>
 
-        <Body1 as="p" block style={{ margin: "0 0 20px" }}>
-          A polished, accessible EPUB3 reader for Chrome — reflowable and fixed-layout books,
-          annotations, and more, built to comply closely with the EPUB 3 spec.
+        <Body1 as="p" block style={{ margin: "0 0 8px" }}>
+          An EPUB reader designed for comfortable, beautiful reading.
         </Body1>
+        <Caption1 as="p" block style={{ margin: "0 0 24px", opacity: 0.75 }}>
+          Created by <span>Ben Walters</span>
+        </Caption1>
 
-        <div style={{ marginBottom: 20 }}>
-          <SectionHeading>Created by</SectionHeading>
-          <Body1 as="p" block style={{ margin: 0 }}>
-            Ben Walters
-          </Body1>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <SectionHeading>Links</SectionHeading>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Link href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">
-              Source code on GitHub
-            </Link>
-            <Link href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">
-              Privacy policy
-            </Link>
-            <Link href={EPUB_SPEC_URL} target="_blank" rel="noreferrer">
-              EPUB 3.4 specification
-            </Link>
-            <Link href={PUBLISHING_WG_URL} target="_blank" rel="noreferrer">
-              W3C Publishing Working Group
-            </Link>
-            <Link href={`mailto:${REPORT_EMAIL}`}>Report an issue or request a feature</Link>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <SectionHeading>Open source</SectionHeading>
-          <Body1 as="p" block style={{ margin: "0 0 8px" }}>
-            Ambra is built with the help of these open-source projects:
-          </Body1>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {OPEN_SOURCE_CREDITS.map((credit) => (
-              <Link key={credit.name} href={credit.url} target="_blank" rel="noreferrer">
-                {credit.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <SectionHeading>Troubleshooting</SectionHeading>
+        <PaneCard title="Help shape Ambra">
+          <Button
+            as="a"
+            href={`mailto:${REPORT_EMAIL}`}
+            appearance="primary"
+            icon={<MailRegular />}
+            style={{
+              width: "100%",
+              minHeight: 44,
+              padding: "10px 12px",
+              textAlign: "left",
+              background: accentForeground,
+              borderColor: accentForeground,
+              color: "#fff",
+            }}
+          >
+            Report an issue or request a feature
+          </Button>
+          <Caption1 as="p" block style={{ margin: "8px 0 16px", opacity: 0.75 }}>
+            {REPORT_EMAIL}
+          </Caption1>
           <Button
             appearance="secondary"
             size="small"
             icon={<CopyRegular />}
-            onClick={copyDiagnostics}
+            disabled={copyState === "copying"}
+            onClick={() => void copyDiagnostics()}
+            style={{
+              background: backgroundSolid,
+              borderColor: "rgba(15, 23, 42, 0.22)",
+              boxShadow: "0 1px 3px rgba(15, 23, 42, 0.16)",
+              color: "inherit",
+            }}
           >
-            {copied ? "Copied!" : "Copy diagnostics"}
+            {copyState === "copied" ? "Copied!" : copyState === "copying" ? "Copying..." : "Copy diagnostics"}
           </Button>
+          <Caption1 as="p" block style={{ margin: "8px 0 0", opacity: 0.75 }}>
+            Include diagnostics when reporting a problem. They contain version and browser information, not your books.
+          </Caption1>
+          {copyError && <Body1 as="p" block role="alert" style={{ margin: "12px 0 0" }}>{copyError}</Body1>}
+        </PaneCard>
+
+        <div style={{ margin: "20px 0" }}>
+          <Body1 as="p" block style={{ margin: "0 0 8px" }}>Your library stays on this device.</Body1>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+            <Link href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">Privacy policy</Link>
+            <Link href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">Source code on GitHub</Link>
+          </div>
         </div>
+
+        <PaneDisclosure title="Standards and open source">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Link href={EPUB_SPEC_URL} target="_blank" rel="noreferrer">EPUB 3.4 specification</Link>
+            <Link href={PUBLISHING_WG_URL} target="_blank" rel="noreferrer">W3C Publishing Working Group</Link>
+            <Caption1 as="p" block style={{ margin: "8px 0 0" }}>Built with these open-source projects:</Caption1>
+            {OPEN_SOURCE_CREDITS.map((credit) => (
+              <Link key={credit.name} href={credit.url} target="_blank" rel="noreferrer">{credit.name}</Link>
+            ))}
+          </div>
+        </PaneDisclosure>
       </div>
     </LibraryFlyout>
   );

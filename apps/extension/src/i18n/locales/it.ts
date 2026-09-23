@@ -106,6 +106,8 @@ export const it: StringCatalog = {
   "bookDetails.identifier": "Identificatore",
   "bookDetails.isbn": "ISBN",
   "bookDetails.publisher": "Editore",
+  "bookDetails.readingTools": "Strumenti di lettura",
+  "bookDetails.publicationDetails": "Dettagli della pubblicazione",
   "chromeTheme.blue": "Blu",
   "chromeTheme.green": "Verde",
   "chromeTheme.purple": "Viola",

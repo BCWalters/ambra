@@ -98,6 +98,8 @@ export const zh: StringCatalog = {
   "bookDetails.identifier": "标识符",
   "bookDetails.isbn": "ISBN",
   "bookDetails.publisher": "出版社",
+  "bookDetails.readingTools": "阅读工具",
+  "bookDetails.publicationDetails": "出版信息",
   "chromeTheme.blue": "蓝色",
   "chromeTheme.green": "绿色",
   "chromeTheme.purple": "紫色",

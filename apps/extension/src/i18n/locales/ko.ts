@@ -178,6 +178,8 @@ export const ko: StringCatalog = {
   "bookDetails.copyright": "저작권",
   "bookDetails.closePanel": "책 세부정보 패널 닫기",
   "bookDetails.publisher": "출판사",
+  "bookDetails.readingTools": "독서 도구",
+  "bookDetails.publicationDetails": "출판 정보",
   "bookDetails.descriptionSourcePrefix": "출처",
   "bookDetails.isbn": "ISBN",
   "bookDetails.identifier": "식별자",

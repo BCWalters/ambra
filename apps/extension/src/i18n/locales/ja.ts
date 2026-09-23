@@ -102,6 +102,8 @@ export const ja: StringCatalog = {
   "bookDetails.identifier": "識別子",
   "bookDetails.isbn": "ISBN",
   "bookDetails.publisher": "出版社",
+  "bookDetails.readingTools": "読書ツール",
+  "bookDetails.publicationDetails": "出版情報",
   "chromeTheme.blue": "青",
   "chromeTheme.green": "緑",
   "chromeTheme.purple": "紫",

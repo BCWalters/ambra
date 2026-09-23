@@ -4,6 +4,8 @@ import { CodeCircleRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
+import { BookDetailRow as DetailRow, BookRightsRow } from "../components/BookMetadataRows.js";
+import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -16,26 +18,6 @@ function isGenericDefaultIdentifier(value: string): boolean {
   const lower = value.toLowerCase();
   return GENERIC_DEFAULT_IDENTIFIER_SUBSTRINGS.some((needle) => lower.includes(needle));
 }
-
-const DetailRow: FC<{ label: string; value: string | undefined; compact?: boolean }> = ({
-  label,
-  value,
-  compact,
-}) => {
-  if (!value) {
-    return null;
-  }
-  return (
-    <div style={{ marginBottom: compact ? 4 : 10, marginTop: compact ? 6 : 0 }}>
-      <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
-        {label}
-      </Caption1>
-      <Body1 as="p" block style={{ margin: 0 }}>
-        {value}
-      </Body1>
-    </div>
-  );
-};
 
 export interface BookDetailsFlyoutProps {
   /** `undefined` closes the flyout — a single optional prop rather than
@@ -95,8 +77,8 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
       backgroundSolid={backgroundSolid}
     >
       {book && (
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-          <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 16 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: 20, overflowWrap: "anywhere" }}>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 24 }}>
             {book.coverUrl && (
               <img
                 src={book.coverUrl}
@@ -106,7 +88,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                   width: 84,
                   height: 126,
                   flexShrink: 0,
-                  objectFit: "cover",
+                  objectFit: "contain",
                   borderRadius: 4,
                   boxShadow: "0 2px 10px rgba(15, 23, 42, 0.18)",
                 }}
@@ -122,35 +104,38 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 </Body1>
               )}
               <DetailRow label="Publisher" value={book.publisher} compact />
-              <DetailRow label="Copyright" value={book.rights} compact />
+              <BookRightsRow label="Copyright" value={book.rights} />
             </div>
           </div>
 
           {progressPercent !== undefined && (
-            <div style={{ marginBottom: 10 }}>
-              <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
-                Progress
-              </Caption1>
-              <div
-                style={{
-                  marginTop: 4,
-                  height: 4,
-                  borderRadius: 2,
-                  background: "rgba(0, 0, 0, 0.12)",
-                  overflow: "hidden",
-                }}
-              >
-                <div style={{ width: `${progressPercent}%`, height: "100%", background: accent }} />
-              </div>
-              <Body1 as="p" block style={{ margin: "4px 0 0" }}>
-                {progressPercent}% read
-              </Body1>
+            <div style={{ marginBottom: 20 }}>
+              <PaneCard title="Progress">
+                <div
+                  role="progressbar"
+                  aria-label="Reading progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressPercent}
+                  style={{
+                    height: 4,
+                    borderRadius: 2,
+                    background: "rgba(0, 0, 0, 0.12)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ width: `${progressPercent}%`, height: "100%", background: accent }} />
+                </div>
+                <Body1 as="p" block style={{ margin: "4px 0 0" }}>
+                  {progressPercent}% read
+                </Body1>
+              </PaneCard>
             </div>
           )}
 
           {description && (
             <>
-              <Caption1
+              <Body1
                 as="p"
                 block
                 style={{
@@ -159,9 +144,9 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 }}
               >
                 {description}
-              </Caption1>
+              </Body1>
               {descriptionSourceName && (
-                <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.6 }}>
+                <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
                   via{" "}
                   <a href={descriptionSourceUrl} target="_blank" rel="noreferrer">
                     {descriptionSourceName}
@@ -170,11 +155,6 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               )}
             </>
           )}
-
-          <DetailRow label="ISBN" value={isbn?.value} />
-          {otherIdentifiers.map((id, index) => (
-            <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
-          ))}
 
           <DetailRow
             label="Accessibility summary"
@@ -188,8 +168,14 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 : undefined
             }
           />
-          <DetailRow label="File name" value={book.fileName} />
-          <DetailRow label="Added" value={new Date(book.addedAt).toLocaleDateString()} />
+          <PaneDisclosure title="Publication details">
+            <DetailRow label="ISBN" value={isbn?.value} />
+            {otherIdentifiers.map((id, index) => (
+              <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
+            ))}
+            <DetailRow label="File name" value={book.fileName} />
+            <DetailRow label="Added" value={new Date(book.addedAt).toLocaleDateString()} />
+          </PaneDisclosure>
 
           {inspectionError && <LibraryImportError {...inspectionError} />}
           {onOpenInspector && (

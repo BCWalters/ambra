@@ -9,6 +9,8 @@ import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { GoToDialog } from "./GoToDialog.js";
+import { BookDetailRow as DetailRow, BookRightsRow } from "../../components/BookMetadataRows.js";
+import { PaneCard, PaneDisclosure } from "../../components/PaneSections.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -79,61 +81,6 @@ function goToButtonStyle(themeBackgroundSolid: string): CSSProperties {
     boxShadow: "0 1px 3px rgba(15, 23, 42, 0.16)",
   };
 }
-
-/** A single label/value row in the details list — skipped entirely
- * (renders nothing) when `value` is `undefined`, so a book missing some
- * piece of metadata (most books have no `dc:publisher`, for instance)
- * doesn't leave a blank, awkward-looking row. `compact` tightens the
- * bottom margin for use inside the cover/title/author identity block
- * (Publisher, Copyright), which reads as one dense unit rather than the
- * more loosely-spaced list of facts further down (ISBN, other
- * identifiers). */
-const DetailRow: FC<{ label: string; value: string | undefined; compact?: boolean }> = ({
-  label,
-  value,
-  compact,
-}) => {
-  if (!value) {
-    return null;
-  }
-  return (
-    <div style={{ marginBottom: compact ? 4 : 10, marginTop: compact ? 6 : 0 }}>
-      <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
-        {label}
-      </Caption1>
-      <Body1 as="p" block style={{ margin: 0 }}>
-        {value}
-      </Body1>
-    </div>
-  );
-};
-
-/** `dc:rights` shown as "Copyright" — except most books' rights
- * statements already start with the word "Copyright" themselves (e.g.
- * "Copyright © 2020 Jane Doe"), in which case stacking a redundant
- * "Copyright" caption directly above it just repeats the same word
- * twice in a row. Detected as a simple case-insensitive prefix check,
- * not a full parse — good enough for the overwhelmingly common phrasing
- * without trying to understand every possible `dc:rights` value. */
-const RightsRow: FC<{ value: string | undefined }> = ({ value }) => {
-  const t = useTranslation();
-  if (!value) {
-    return null;
-  }
-  const startsWithCopyright = /^copyright\b/i.test(value.trim());
-  return (
-    <div style={{ marginBottom: 4, marginTop: 6 }}>
-      {!startsWithCopyright && (
-        <Caption1 as="p" block style={{ margin: 0, opacity: 0.6 }}>
-          {t("bookDetails.copyright")}
-        </Caption1>
-      )}
-      <Body1 as="p" block style={{ margin: 0 }}>
-        {value}
-      </Body1>
-    </div>
-  );
-};
 
 /**
  * A right-side flyout panel showing whatever metadata is available for
@@ -229,7 +176,9 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
           right: 0,
           bottom: scrubberVisible ? SCRUBBER_HEIGHT : 8,
           zIndex: 8,
-          width: 340,
+          width: 360,
+          maxWidth: "90%",
+          boxSizing: "border-box",
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
@@ -264,12 +213,12 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
           </Tooltip>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: 20, overflowWrap: "anywhere" }}>
           {!details ? (
             <Spinner label={t("reader.loading")} />
           ) : (
             <>
-              <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 24 }}>
                 {details.coverUrl && (
                   <img
                     src={details.coverUrl}
@@ -279,7 +228,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       width: 84,
                       height: 126,
                       flexShrink: 0,
-                      objectFit: "cover",
+                      objectFit: "contain",
                       borderRadius: 4,
                       boxShadow: "0 2px 10px rgba(15, 23, 42, 0.18)",
                     }}
@@ -311,25 +260,25 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       identity block than mixed in with the longer-form
                       description/identifiers further down. */}
                   <DetailRow label={t("bookDetails.publisher")} value={details.publisher} compact />
-                  <RightsRow value={details.rights} />
+                  <BookRightsRow label={t("bookDetails.copyright")} value={details.rights} />
                 </div>
               </div>
 
               {details.description && (
                 <>
-                  <Caption1
+                  <Body1
                     as="p"
                     block
-                    style={{ margin: details.descriptionSourceName ? "0 0 4px" : "0 0 16px", whiteSpace: "pre-wrap" }}
+                    style={{ margin: details.descriptionSourceName ? "0 0 4px" : "0 0 16px", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
                   >
                     {details.description}
-                  </Caption1>
+                  </Body1>
                   {/* Attribution for a fetched fallback description
                       (issue follow-up: books with no dc:description of
                       their own) — required by both free sources' terms,
                       and a useful "read more" link either way. */}
                   {details.descriptionSourceName && (
-                    <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.6 }}>
+                    <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
                       {t("bookDetails.descriptionSourcePrefix")}{" "}
                       <a href={details.descriptionSourceUrl} target="_blank" rel="noreferrer">
                         {details.descriptionSourceName}
@@ -338,11 +287,6 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   )}
                 </>
               )}
-
-              <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
-              {otherIdentifiers.map((id, index) => (
-                <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
-              ))}
 
               <DetailRow
                 label={t("bookDetails.accessibilitySummary")}
@@ -378,30 +322,43 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   background — which it always does, since both draw
                   from the same `chromeTheme.backgroundSolid`. */}
               {!isFixedLayout && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                  {isPaginated && (
-                    <Button
-                      appearance="secondary"
-                      size="small"
-                      icon={<DocumentPageNumberRegular style={{ color: chromeTheme.accent }} />}
+                <div style={{ marginTop: 20 }}>
+                  <PaneCard title={t("bookDetails.readingTools")}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {isPaginated && (
+                        <Button
+                          appearance="secondary"
+                          size="small"
+                          icon={<DocumentPageNumberRegular style={{ color: chromeTheme.accent }} />}
+                          {...restoreGoToFocus}
+                          onClick={() => setGoToDialogMode("page")}
+                          style={goToButtonStyle(chromeTheme.backgroundSolid)}
+                        >
+                          {t("bookDetails.goToPage")}
+                        </Button>
+                      )}
+                      <Button
+                        appearance="secondary"
+                        size="small"
+                        icon={<TextPercentRegular style={{ color: chromeTheme.accent }} />}
                         {...restoreGoToFocus}
-                      onClick={() => setGoToDialogMode("page")}
-                      style={goToButtonStyle(chromeTheme.backgroundSolid)}
-                    >
-                      {t("bookDetails.goToPage")}
-                    </Button>
-                  )}
-                  <Button
-                    appearance="secondary"
-                    size="small"
-                    icon={<TextPercentRegular style={{ color: chromeTheme.accent }} />}
-                    {...restoreGoToFocus}
-                    onClick={() => setGoToDialogMode("percentage")}
-                    style={goToButtonStyle(chromeTheme.backgroundSolid)}
-                  >
-                    {t("bookDetails.goToPercentage")}
-                  </Button>
+                        onClick={() => setGoToDialogMode("percentage")}
+                        style={goToButtonStyle(chromeTheme.backgroundSolid)}
+                      >
+                        {t("bookDetails.goToPercentage")}
+                      </Button>
+                    </div>
+                  </PaneCard>
                 </div>
+              )}
+
+              {knownIdentifiers.length > 0 && (
+                <PaneDisclosure title={t("bookDetails.publicationDetails")}>
+                  <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
+                  {otherIdentifiers.map((id, index) => (
+                    <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
+                  ))}
+                </PaneDisclosure>
               )}
 
               {/* An EPUB-author-facing tool, deliberately tucked away

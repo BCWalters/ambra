@@ -235,6 +235,8 @@ export interface StringCatalog {
   "bookDetails.copyright": string;
   "bookDetails.closePanel": string;
   "bookDetails.publisher": string;
+  "bookDetails.readingTools": string;
+  "bookDetails.publicationDetails": string;
   "bookDetails.descriptionSourcePrefix": string;
   "bookDetails.isbn": string;
   "bookDetails.identifier": string;
@@ -427,6 +429,8 @@ export const en: StringCatalog = {
   "bookDetails.copyright": "Copyright",
   "bookDetails.closePanel": "Close book details panel",
   "bookDetails.publisher": "Publisher",
+  "bookDetails.readingTools": "Reading tools",
+  "bookDetails.publicationDetails": "Publication details",
   "bookDetails.descriptionSourcePrefix": "via",
   "bookDetails.isbn": "ISBN",
   "bookDetails.identifier": "Identifier",

@@ -441,6 +441,7 @@ export const LibraryApp: FC = () => {
         open={isAboutOpen}
         onRequestClose={() => setIsAboutOpen(false)}
         backgroundSolid={palette.backgroundSolid}
+        accentForeground={palette.accentForeground}
       />
 
       <ChromeThemeProvider theme={chromeTheme}>

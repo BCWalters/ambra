@@ -151,6 +151,8 @@ export const es: StringCatalog = {
   "bookDetails.copyright": "Derechos de autor",
   "bookDetails.closePanel": "Cerrar panel de detalles del libro",
   "bookDetails.publisher": "Editorial",
+  "bookDetails.readingTools": "Herramientas de lectura",
+  "bookDetails.publicationDetails": "Detalles de la publicación",
   "bookDetails.descriptionSourcePrefix": "vía",
   "bookDetails.isbn": "ISBN",
   "bookDetails.identifier": "Identificador",
