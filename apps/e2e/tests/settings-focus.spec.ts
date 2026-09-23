@@ -15,10 +15,12 @@ async function settled(page: Page) {
 async function rememberPosition(page: Page) {
   await page.evaluate(() => {
     const c = Reflect.get(window, "__readerController");
-    const position = c.host.currentPosition();
+    const native = c.nativeReading.current();
+    const spineIndex = native?.spineIndex ?? c.spineIndex;
+    const position = native ?? c.host.currentPosition();
     Reflect.set(window, "__settingsPosition", {
-      spineIndex: c.spineIndex,
-      locator: c.locatorResolver.generate(c.spineIndex, position.node, position.offset),
+      spineIndex,
+      locator: c.locatorResolver.generate(spineIndex, position.node, position.offset),
     });
   });
 }
@@ -27,14 +29,15 @@ async function observeLayoutPositions(page: Page) {
   await page.evaluate(() => {
     const c = Reflect.get(window, "__readerController");
     const reopen = c.reopenForCurrentSize.bind(c);
-    // Each queued reflow bridges the preceding layout's page start, which
-    // can move as page boundaries change. Check the actual incoming CFI of
-    // the final reflow, without replacing or bypassing any host behavior.
+    // Reflow preserves an observable native point ahead of the visual page start.
+    // Check that incoming position without replacing or bypassing host behavior.
     c.reopenForCurrentSize = (...args: unknown[]) => {
-      const position = c.host.currentPosition();
+      const native = c.nativeReading.current();
+      const spineIndex = native?.spineIndex ?? c.spineIndex;
+      const position = native ?? c.host.currentPosition();
       Reflect.set(window, "__settingsPosition", {
-        spineIndex: c.spineIndex,
-        locator: c.locatorResolver.generate(c.spineIndex, position.node, position.offset),
+        spineIndex,
+        locator: c.locatorResolver.generate(spineIndex, position.node, position.offset),
       });
       return reopen(...args);
     };

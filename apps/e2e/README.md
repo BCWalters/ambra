@@ -88,6 +88,14 @@ The #129 spread regression additionally compares every painted character in
 entire book in both directions, and repeats turns after seeking to the start.
 Optional Alice and Frankenstein checks cover fitted cover images and nondefault
 fonts (`real-books/frankenstein.epub`: Gutenberg ebook 84).
+Navigation checks wait for the scrubber's committed position before sampling
+painted characters, not a fixed animation delay. The paired/unpaired chapter
+regressions generate original reflowable SVG fixtures under the test output
+directory: each 600px atomic page makes the required page-count parity independent
+of the operating system's default serif font. The short-chapter #103 regression
+runs with this local fixture even when the optional Accessible EPUB 3 corpus
+check is skipped. Keyboard/click equivalence traverses the measured page count,
+not a font-dependent fixed number of turns.
 `tests/reflowable-rtl.spec.ts` derives local RTL fixtures and verifies keyboard,
 chapter shortcuts, logical Space, taps, swipes, scrubber direction, page numbers,
 and cross-chapter note placement in both single-page and spread layouts.
