@@ -43,6 +43,7 @@ import {
   classifyImportOutcome,
   classifyReadOnlyAnnotationKind,
   importAnnotations,
+  parseSelectorCfi,
 } from "../library/AnnotationInterop.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { describeStorageError } from "../StorageErrors.js";
@@ -846,10 +847,11 @@ export class ReaderController {
         continue;
       }
       let cfi: string;
-      const isRange = selector.value.includes(",");
+      let isRange: boolean;
       try {
-        cfi = isRange ? EpubCfi.parseRange(selector.value).start.toString() : selector.value;
-        EpubCfi.parse(cfi);
+        const selection = parseSelectorCfi(selector.value);
+        cfi = selection.start.toString();
+        isRange = selection.end !== undefined;
       } catch {
         continue;
       }

@@ -6,6 +6,27 @@ import { exposeReaderController } from "../reader-controller.js";
 
 const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/two-chapter.epub");
 
+test("embedded annotation classification treats escaped commas as assertion data", async () => {
+  const { context, readerPage: page } = await launchReader(book);
+  try {
+    await exposeReaderController(page);
+    const annotations = await page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      controller.embeddedAnnotations = [{
+        id: "escaped-id",
+        target: {
+          source: controller.pkg.spine[0].manifestItem.path,
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/4!/4/2[id^,comma]/1:0)" }],
+        },
+      }];
+      return controller.listEmbeddedAnnotations();
+    });
+    expect(annotations).toMatchObject([{ id: "escaped-id", kind: "bookmark", cfi: "epubcfi(/6/4!/4/2[id^,comma]/1:0)" }]);
+  } finally {
+    await context.close();
+  }
+});
+
 test("failed bookmark deletion preserves the panel, page marker, and stored record", async () => {
   const { context, readerPage: page } = await launchReader(book, { viewport: { width: 900, height: 900 } });
   try {

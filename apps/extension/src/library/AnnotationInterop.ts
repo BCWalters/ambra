@@ -199,8 +199,8 @@ function normalizeForComparison(text: string): string {
 
 /** A highlight is a duplicate of one already known (either already saved
  * in this book, or imported earlier in this same file) if it's an exact
- * CFI match — the common case: re-importing a file this reader itself
- * already exported — or, short of that, it highlights the same-looking
+ * CFI match with the same note — the common case: re-importing this
+ * reader's own export — or, short of that, it highlights the same-looking
  * text in the same spine item with the same note — the "almost
  * identical" case: a slightly different CFI encoding (e.g. from another
  * reading system) landing on what reads as the same passage. Two
@@ -208,14 +208,15 @@ function normalizeForComparison(text: string): string {
  * kept distinct — a differing note is meaningful content, not noise. */
 function isDuplicateHighlight(
   known: readonly Pick<Highlight, "spineIndex" | "startCfi" | "endCfi" | "text" | "note">[],
-  candidate: { spineIndex: number; startCfi: string; endCfi: string; text: string; note: string | undefined },
+  candidate: { spineIndex: number; startCfi: string; endCfi: string; text?: string; note: string | undefined },
 ): boolean {
   return known.some(
     (existing) =>
       existing.spineIndex === candidate.spineIndex &&
+      normalizeForComparison(existing.note ?? "") === normalizeForComparison(candidate.note ?? "") &&
       ((existing.startCfi === candidate.startCfi && existing.endCfi === candidate.endCfi) ||
-        (normalizeForComparison(existing.text) === normalizeForComparison(candidate.text) &&
-          normalizeForComparison(existing.note ?? "") === normalizeForComparison(candidate.note ?? ""))),
+        (candidate.text !== undefined &&
+          normalizeForComparison(existing.text) === normalizeForComparison(candidate.text))),
   );
 }
 
@@ -251,6 +252,16 @@ function resolveSpineIndex(pkg: PackageDocument, source: string, cfi: EpubCfi): 
 function withSpineIndex(pkg: PackageDocument, cfi: EpubCfi, spineIndex: number): EpubCfi {
   const packageCfiSteps = pkg.spine[spineIndex]?.packageCfiSteps ?? cfi.packageSteps;
   return new EpubCfi(packageCfiSteps, cfi.contentSteps, cfi.characterOffset);
+}
+
+/** Commas inside ID assertions do not make a point CFI a range. */
+export function parseSelectorCfi(value: string): { start: EpubCfi; end?: EpubCfi } {
+  try {
+    return { start: EpubCfi.parse(value) };
+  } catch (error) {
+    if (!(error instanceof EpubCfiParseError)) throw error;
+    return EpubCfi.parseRange(value);
+  }
 }
 
 /** Extracts the live text a resolved CFI range currently selects — the
@@ -323,10 +334,9 @@ export async function importAnnotations(
       continue;
     }
 
-    const isRange = selector.value.includes(",");
     try {
-      if (isRange) {
-        const { start, end } = EpubCfi.parseRange(selector.value);
+      const { start, end } = parseSelectorCfi(selector.value);
+      if (end) {
         const spineIndex = resolveSpineIndex(pkg, annotation.target.source, start);
         if (spineIndex === undefined) {
           result.skipped++;
@@ -340,7 +350,7 @@ export async function importAnnotations(
         // (re-extracted, so comparatively expensive) text yet — check it
         // first and skip the extraction entirely for the common re-
         // import-the-same-file case.
-        if (isDuplicateHighlight(knownHighlights, { spineIndex, startCfi, endCfi, text: "", note })) {
+        if (isDuplicateHighlight(knownHighlights, { spineIndex, startCfi, endCfi, note })) {
           result.duplicateHighlights++;
           continue;
         }
@@ -361,13 +371,14 @@ export async function importAnnotations(
         knownHighlights.push(highlight);
         result.importedHighlights++;
       } else {
-        const point = EpubCfi.parse(selector.value);
+        const point = start;
         const spineIndex = resolveSpineIndex(pkg, annotation.target.source, point);
         if (spineIndex === undefined) {
           result.skipped++;
           continue;
         }
         const cfi = withSpineIndex(pkg, point, spineIndex).toString();
+        await locatorResolver.resolve(new Locator(cfi));
         if (isDuplicateBookmark(knownBookmarks, cfi)) {
           result.duplicateBookmarks++;
           continue;

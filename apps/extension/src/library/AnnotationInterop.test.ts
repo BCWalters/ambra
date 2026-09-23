@@ -3,7 +3,9 @@ import {
   PackageDocument,
   Locator,
   LocatorResolutionError,
-  type LocatorResolver,
+  LocatorResolver,
+  parseAnnotationCollection,
+  type ContentLoader,
   type ResolvedLocator,
 } from "@ambra/engine";
 import type { Bookmark, Highlight, LibraryDatabase } from "./LibraryDatabase.js";
@@ -128,6 +130,9 @@ describe("importAnnotations", () => {
   function makeResolver(text = "Imported text"): LocatorResolver {
     const doc = { createRange: () => fakeRange(text) } as unknown as Document;
     return {
+      resolve: vi.fn().mockResolvedValue({
+        spineIndex: 0, node: { ownerDocument: doc }, characterOffset: 0,
+      }),
       resolvePair: vi
         .fn()
         .mockImplementation(
@@ -264,6 +269,63 @@ describe("importAnnotations", () => {
     expect(addedBookmarks).toEqual([
       { bookId: "book-1", cfi: "epubcfi(/6/4!/4/2/1:0)", label: "My bookmark" },
     ]);
+    expect(resolver.resolve).toHaveBeenCalledWith(new Locator("epubcfi(/6/4!/4/2/1:0)"));
+  });
+
+  it("validates bookmark content paths and offsets with the real resolver, preserving valid element and escaped-ID points", async () => {
+    const pkg = makePackage();
+    const document = new DOMParser().parseFromString(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p id="p,one">Imported text.</p></body></html>',
+      "application/xhtml+xml",
+    );
+    const loader = {
+      loadContentDocument: vi.fn().mockResolvedValue({ document }),
+    } as unknown as ContentLoader;
+    const resolver = new LocatorResolver(pkg, loader);
+    const { library, addedBookmarks } = makeLibrary();
+    const selectors = [
+      "epubcfi(/6/2!/4000/9999:9999)",
+      "epubcfi(/6/2!/4/2/1:9999)",
+      "epubcfi(/6/2!/4/2/1:0)",
+      "epubcfi(/6/2!/4/2)",
+      "epubcfi(/6/2!/4/2[p^,one]/1:2)",
+    ];
+    const result = await importAnnotations(pkg, resolver, library, "book-1",
+      selectors.map((value, index) => ({
+        id: `bookmark-${index}`, type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+        motivation: "bookmarking",
+        target: { source: "OEBPS/chapter1.xhtml", selector: [{ type: "FragmentSelector", value }] },
+      })),
+    );
+    expect(result).toEqual({
+      importedHighlights: 0, importedBookmarks: 3,
+      duplicateHighlights: 0, duplicateBookmarks: 0, skipped: 2,
+    });
+    expect(addedBookmarks).toEqual(selectors.slice(2).map((cfi) => ({
+      bookId: "book-1", cfi, label: "",
+    })));
+  });
+
+  it("does not turn malformed or unknown selectors into whole-resource bookmarks", async () => {
+    const { library, addedBookmarks, addedHighlights } = makeLibrary();
+    const resolver = makeResolver();
+    const annotations = parseAnnotationCollection(JSON.stringify(
+      [
+        [{ type: "FragmentSelector", value: 42 }],
+        [{ type: "UnknownSelector", value: "elsewhere" }],
+        { type: "FragmentSelector", value: "epubcfi(/6/2!/4/2)" },
+        [{ type: "CssSelector", value: "#p" }],
+      ].map((selector, index) => ({
+        id: `unsupported-${index}`, type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+        target: { source: "OEBPS/chapter1.xhtml", selector },
+      })),
+    ));
+    const result = await importAnnotations(makePackage(), resolver, library, "book-1", annotations);
+    expect(result.importedBookmarks).toBe(0);
+    expect(result.importedHighlights).toBe(0);
+    expect(addedBookmarks).toEqual([]);
+    expect(addedHighlights).toEqual([]);
+    expect(resolver.resolve).not.toHaveBeenCalled();
   });
 
   it("skips an annotation with no FragmentSelector (only a CssSelector) rather than importing it", async () => {
@@ -463,6 +525,68 @@ describe("importAnnotations", () => {
     expect(result.duplicateHighlights).toBe(0);
     expect(result.importedHighlights).toBe(1);
     expect(addedHighlights).toHaveLength(1);
+  });
+
+  it.each([
+    { existingNote: undefined, importedNote: "A new note" },
+    { existingNote: "Original note", importedNote: "Another note" },
+    { existingNote: "Original note", importedNote: undefined },
+  ])("preserves an exact-range import with a different note: $existingNote → $importedNote", async ({
+    existingNote, importedNote,
+  }) => {
+    const { library, addedHighlights } = makeLibrary({
+      highlights: [makeHighlight({ note: existingNote })],
+    });
+    const resolver = makeResolver("The recovered text");
+    const result = await importAnnotations(makePackage(), resolver, library, "book-1", [{
+      id: "different-note", type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+      target: {
+        source: "OEBPS/chapter1.xhtml",
+        selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+      },
+      body: importedNote === undefined ? undefined : { type: "TextualBody", value: importedNote },
+    }]);
+    expect(result.importedHighlights).toBe(1);
+    expect(result.duplicateHighlights).toBe(0);
+    expect(addedHighlights[0]).toMatchObject({ note: importedNote });
+    expect(resolver.resolvePair).toHaveBeenCalledOnce();
+  });
+
+  it("retains different notes in one batch while deduping a repeated exact-range note", async () => {
+    const { library, addedHighlights } = makeLibrary();
+    const resolver = makeResolver();
+    const result = await importAnnotations(makePackage(), resolver, library, "book-1",
+      ["First note", "Second note", "First note"].map((note, index) => ({
+        id: `note-${index}`, type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+        target: {
+          source: "OEBPS/chapter1.xhtml",
+          selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+        },
+        body: { type: "TextualBody", value: note },
+      })),
+    );
+    expect(result.importedHighlights).toBe(2);
+    expect(result.duplicateHighlights).toBe(1);
+    expect(addedHighlights).toHaveLength(2);
+    expect(resolver.resolvePair).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not treat an unresolved text sentinel as a match for a different empty-text highlight", async () => {
+    const { library, addedHighlights } = makeLibrary({
+      highlights: [makeHighlight({ text: "", endCfi: "epubcfi(/6/2!/4/2/1:11)" })],
+    });
+    const resolver = makeResolver("The recovered text");
+    const result = await importAnnotations(makePackage(), resolver, library, "book-1", [{
+      id: "nonempty", type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+      target: {
+        source: "OEBPS/chapter1.xhtml",
+        selector: [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" }],
+      },
+    }]);
+    expect(result.importedHighlights).toBe(1);
+    expect(result.duplicateHighlights).toBe(0);
+    expect(addedHighlights).toHaveLength(1);
+    expect(resolver.resolvePair).toHaveBeenCalledOnce();
   });
 
   it("dedupes two identical highlights within the same imported file, not just against what's already saved", async () => {
