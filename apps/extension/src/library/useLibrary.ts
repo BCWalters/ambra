@@ -8,7 +8,17 @@ import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARA
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS, type GlobalReadingSettings } from "./ReadingSettings.js";
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
-import { describeStorageError } from "../StorageErrors.js";
+import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
+import type { StringCatalog } from "../i18n/locales/en.js";
+
+type LibraryError = string | { key: keyof StringCatalog; params?: Record<string, string | number> };
+
+function describeLibraryStorageError(error: unknown, fileName?: string): LibraryError {
+  if (error instanceof DOMException && error.name === "QuotaExceededError") {
+    return fileName ? { key: "library.importStorageFull", params: { fileName } } : { key: "library.storageFull" };
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
 export type { LibraryBookViewModel } from "./LibrarySession.js";
 
@@ -63,10 +73,14 @@ export interface UseLibraryResult {
  * for cover images as the list changes so `<img>` tags can display them
  * directly, and keeps app-global settings in sync with open readers. */
 export function useLibrary(): UseLibraryResult {
+  const t = useTranslation();
+  const { locale } = useLocale();
+  const translateRef = useRef(t);
+  translateRef.current = t;
   const [db, setDb] = useState<LibraryDatabase | null>(null);
   const [rawBooks, setRawBooks] = useState<LibraryBookViewModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<LibraryError | undefined>(undefined);
   const [settings, setSettingsState] = useState<GlobalReadingSettings>(DEFAULT_GLOBAL_READING_SETTINGS);
   const settingsRevision = useRef(0);
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
@@ -116,7 +130,7 @@ export function useLibrary(): UseLibraryResult {
         refreshStorageUsage();
         unsubscribe = database.subscribePreferences(() => {
           void refreshSettings(database).catch((err) => {
-            if (!cancelled) setError(describeStorageError(err, "open", "app settings"));
+            if (!cancelled) setError(describeLibraryStorageError(err));
           });
         });
         const [, savedSort] = await Promise.all([
@@ -148,7 +162,7 @@ export function useLibrary(): UseLibraryResult {
     void db.patchGlobalReadingSettings(patch).then(() => {
       if (ownsDatabase(db)) return refreshSettings(db);
     }).catch((err) => {
-      if (ownsDatabase(db)) setError(describeStorageError(err, "save", "app settings"));
+      if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
     });
   }, [db, isLoading, ownsDatabase, refreshSettings]);
 
@@ -156,8 +170,7 @@ export function useLibrary(): UseLibraryResult {
     async (files: readonly File[]): Promise<void> => {
       if (db && !ownsDatabase(db)) return;
       if (!db || !canImport) {
-        setError((current) => current ??
-          "The library isn't ready to import books. Wait for loading to finish, or reload this page if it failed.");
+        setError((current) => current ?? { key: "library.importNotReady" });
         return;
       }
       setError(undefined);
@@ -166,14 +179,14 @@ export function useLibrary(): UseLibraryResult {
         try {
           await importBook(db, file);
         } catch (err) {
-          if (ownsDatabase(db)) setError(describeImportError(err, file.name));
+          if (ownsDatabase(db)) setError(describeLibraryStorageError(err, file.name));
         }
       }
       try {
         await refresh(db);
         if (ownsDatabase(db)) refreshStorageUsage();
       } catch (err) {
-        if (ownsDatabase(db)) setError(describeStorageError(err, "refresh", "your library"));
+        if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
       }
     },
     [db, canImport, ownsDatabase, refresh, refreshStorageUsage],
@@ -188,14 +201,14 @@ export function useLibrary(): UseLibraryResult {
       try {
         await db.deleteBook(id);
       } catch (err) {
-        if (ownsDatabase(db)) setError(describeStorageError(err, "remove", "that book"));
+        if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
         return;
       }
       try {
         await refresh(db);
         if (ownsDatabase(db)) refreshStorageUsage();
       } catch (err) {
-        if (ownsDatabase(db)) setError(describeStorageError(err, "refresh", "your library"));
+        if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
       }
     },
     [db, ownsDatabase, refresh, refreshStorageUsage],
@@ -214,7 +227,7 @@ export function useLibrary(): UseLibraryResult {
       setSortState(next);
       if (db && ownsDatabase(db)) {
         void db.setDefaultLibrarySort(next).catch((err) => {
-          if (ownsDatabase(db)) setError(describeStorageError(err, "save", "your library sort"));
+          if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
         });
       }
     },
@@ -228,11 +241,11 @@ export function useLibrary(): UseLibraryResult {
   const openInspectionSession = useCallback(
     async (id: string): Promise<EpubInspectionSession> => {
       if (!db || !ownsDatabase(db)) {
-        throw new Error("The library isn't ready yet.");
+        throw new Error(translateRef.current("library.notReady"));
       }
       const blob = await db.getBookFile(id);
       if (!blob) {
-        throw new Error("This book's file couldn't be found.");
+        throw new Error(translateRef.current("library.fileMissing"));
       }
       return EpubInspectionSession.openStandalone(await blob.arrayBuffer());
     },
@@ -272,7 +285,10 @@ export function useLibrary(): UseLibraryResult {
       try {
         const response = await fetch(importUrl, { signal: abort.signal });
         if (!response.ok) {
-          throw new Error(`That download couldn't be fetched (HTTP ${response.status}).`);
+          if (!abort.signal.aborted && ownsDatabase(db)) {
+            setError({ key: "library.downloadFailed", params: { status: response.status } });
+          }
+          return;
         }
         const blob = await response.blob();
         if (abort.signal.aborted || !ownsDatabase(db)) return;
@@ -287,13 +303,13 @@ export function useLibrary(): UseLibraryResult {
     return () => abort.abort();
   }, [db, canImport, importFiles, ownsDatabase]);
 
-  const books = useMemo(() => sortBooks(rawBooks, sort), [rawBooks, sort]);
+  const books = useMemo(() => sortBooks(rawBooks, sort, locale), [rawBooks, sort, locale]);
 
   return {
     books,
     isLoading,
     canImport,
-    error,
+    error: typeof error === "string" || error === undefined ? error : t(error.key, error.params),
     dismissError,
     importFiles,
     removeBook,
@@ -316,9 +332,8 @@ export function useLibrary(): UseLibraryResult {
  * ones in code-point order), which reads as broken to anyone actually
  * looking for a book alphabetically. Date-based sorts don't need this,
  * since `addedAt` is already a plain numeric timestamp. */
-const collator = new Intl.Collator(undefined, { sensitivity: "base" });
-
-function sortBooks(books: readonly LibraryBookViewModel[], sort: LibrarySortOption): LibraryBookViewModel[] {
+function sortBooks(books: readonly LibraryBookViewModel[], sort: LibrarySortOption, locale: string): LibraryBookViewModel[] {
+  const collator = new Intl.Collator(locale, { sensitivity: "base" });
   const sorted = [...books];
   switch (sort) {
     case "dateAddedAsc":
@@ -351,13 +366,6 @@ function sortBooks(books: readonly LibraryBookViewModel[], sort: LibrarySortOpti
       break;
   }
   return sorted;
-}
-
-/** A friendlier message for an import failure — see
- * `describeStorageError`'s doc comment for the one case this
- * specifically improves on the raw error. */
-function describeImportError(err: unknown, fileName: string): string {
-  return describeStorageError(err, "import", `"${fileName}"`);
 }
 
 /** A reasonable filename for a book fetched from `url` (issue #122) —

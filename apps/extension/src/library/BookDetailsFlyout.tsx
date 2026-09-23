@@ -6,6 +6,8 @@ import { LibraryFlyout } from "./LibraryFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
 import { BookDetailRow as DetailRow, BookRightsRow } from "../components/BookMetadataRows.js";
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
+import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
+import { formatLibraryProgress } from "./LibraryFormatting.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -55,6 +57,8 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   onOpenInspector,
   inspectionError,
 }) => {
+  const t = useTranslation();
+  const { locale } = useLocale();
   const open = book !== undefined;
   const restoreInspectorFocus = useRestoreFocusTarget();
 
@@ -72,7 +76,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   return (
     <LibraryFlyout
       open={open}
-      title="Book details"
+      title={t("toolbar.bookDetails")}
       onRequestClose={onRequestClose}
       backgroundSolid={backgroundSolid}
     >
@@ -103,17 +107,17 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                   {book.creator}
                 </Body1>
               )}
-              <DetailRow label="Publisher" value={book.publisher} compact />
-              <BookRightsRow label="Copyright" value={book.rights} />
+              <DetailRow label={t("bookDetails.publisher")} value={book.publisher} compact />
+              <BookRightsRow label={t("bookDetails.copyright")} value={book.rights} />
             </div>
           </div>
 
           {progressPercent !== undefined && (
             <div style={{ marginBottom: 20 }}>
-              <PaneCard title="Progress">
+              <PaneCard title={t("library.progress")}>
                 <div
                   role="progressbar"
-                  aria-label="Reading progress"
+                  aria-label={t("library.readingProgress")}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={progressPercent}
@@ -127,7 +131,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                   <div style={{ width: `${progressPercent}%`, height: "100%", background: accent }} />
                 </div>
                 <Body1 as="p" block style={{ margin: "4px 0 0" }}>
-                  {progressPercent}% read
+                  {t("library.percentRead", { progress: formatLibraryProgress(progressPercent / 100, locale) })}
                 </Body1>
               </PaneCard>
             </div>
@@ -147,7 +151,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               </Body1>
               {descriptionSourceName && (
                 <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
-                  via{" "}
+                  {t("bookDetails.descriptionSourcePrefix")}{" "}
                   <a href={descriptionSourceUrl} target="_blank" rel="noreferrer">
                     {descriptionSourceName}
                   </a>
@@ -157,24 +161,24 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
           )}
 
           <DetailRow
-            label="Accessibility summary"
+            label={t("bookDetails.accessibilitySummary")}
             value={book.accessibility?.accessibilitySummary}
           />
           <DetailRow
-            label="Accessibility features"
+            label={t("bookDetails.accessibilityFeatures")}
             value={
               book.accessibility && book.accessibility.accessibilityFeatures.length > 0
                 ? book.accessibility.accessibilityFeatures.join(", ")
                 : undefined
             }
           />
-          <PaneDisclosure title="Publication details">
-            <DetailRow label="ISBN" value={isbn?.value} />
+          <PaneDisclosure title={t("bookDetails.publicationDetails")}>
+            <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
             {otherIdentifiers.map((id, index) => (
-              <DetailRow key={index} label={id.scheme ?? "Identifier"} value={id.value} />
+              <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
             ))}
-            <DetailRow label="File name" value={book.fileName} />
-            <DetailRow label="Added" value={new Date(book.addedAt).toLocaleDateString()} />
+            <DetailRow label={t("inspector.fileName")} value={book.fileName} />
+            <DetailRow label={t("library.added")} value={new Date(book.addedAt).toLocaleDateString(locale)} />
           </PaneDisclosure>
 
           {inspectionError && <LibraryImportError {...inspectionError} />}
@@ -193,7 +197,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                     "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
                 }}
               >
-                EPUB Inspector
+                {t("bookDetails.epubInspector")}
               </Button>
             </div>
           )}

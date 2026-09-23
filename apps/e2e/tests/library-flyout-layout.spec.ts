@@ -83,7 +83,14 @@ for (const width of [1000, 360]) {
       const brand = libraryPage.getByText("Ambra", { exact: true });
       const libraryHeader = brand.locator("..");
       const readerSettings = readerPage.getByRole("button", { name: "Settings", exact: true });
-      await expect(libraryHeader).toHaveCSS("height", "56px");
+      await expect(libraryHeader).toHaveCSS("min-height", "56px");
+      if (width === 1000) await expect(libraryHeader).toHaveCSS("height", "56px");
+      expect(await libraryHeader.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        return Array.from(element.querySelectorAll("button")).every(button =>
+          button.getBoundingClientRect().bottom <= bounds.bottom,
+        );
+      })).toBe(true);
       await expect(readerSettings.locator("..")).toHaveCSS("height", "56px");
       await expect(libraryPage.getByRole("button", { name: "Settings", exact: true }).locator("svg")).toHaveCSS("width", "20px");
       await expect(readerSettings.locator("svg")).toHaveCSS("width", "20px");

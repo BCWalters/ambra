@@ -5,6 +5,7 @@ import { CopyRegular, MailRegular } from "@fluentui/react-icons";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
+import { useTranslation } from "../i18n/LocaleContext.js";
 
 const GITHUB_REPO_URL = "https://github.com/BCWalters/ambra";
 const PRIVACY_POLICY_URL =
@@ -43,6 +44,7 @@ export interface AboutFlyoutProps {
 
 /** An in-place About pane packaged with the extension, not a separate website. */
 export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgroundSolid, accentForeground }) => {
+  const t = useTranslation();
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied">("idle");
   const [copyError, setCopyError] = useState<string>();
 
@@ -60,7 +62,7 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
       setCopyState("copied");
     } catch (error) {
       setCopyState("idle");
-      setCopyError(`Could not copy diagnostics. ${error instanceof Error ? error.message : String(error)}`);
+      setCopyError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -69,7 +71,7 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
   return (
     <LibraryFlyout
       open={open}
-      title="About Ambra"
+      title={t("about.title")}
       onRequestClose={onRequestClose}
       backgroundSolid={backgroundSolid}
     >
@@ -81,19 +83,19 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
               Ambra
             </Subtitle1>
             <Caption1 as="p" block style={{ margin: "2px 0 0", opacity: 0.75 }}>
-              Version {version}
+              {t("about.version", { version })}
             </Caption1>
           </div>
         </div>
 
         <Body1 as="p" block style={{ margin: "0 0 8px" }}>
-          An EPUB reader designed for comfortable, beautiful reading.
+          {t("about.description")}
         </Body1>
         <Caption1 as="p" block style={{ margin: "0 0 24px", opacity: 0.75 }}>
-          Created by <span>Ben Walters</span>
+          {t("about.createdBy")} <span>Ben Walters</span>
         </Caption1>
 
-        <PaneCard title="Help shape Ambra">
+        <PaneCard title={t("about.helpShape")}>
           <Button
             as="a"
             href={`mailto:${REPORT_EMAIL}`}
@@ -111,7 +113,7 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
               color: "#fff",
             }}
           >
-            Report an issue or request a feature
+            {t("about.feedback")}
           </Button>
           <Caption1 as="p" block style={{ margin: "8px 0 16px", opacity: 0.75 }}>
             {REPORT_EMAIL}
@@ -129,27 +131,27 @@ export const AboutFlyout: FC<AboutFlyoutProps> = ({ open, onRequestClose, backgr
               color: "inherit",
             }}
           >
-            {copyState === "copied" ? "Copied!" : copyState === "copying" ? "Copying..." : "Copy diagnostics"}
+            {copyState === "copied" ? t("about.copied") : copyState === "copying" ? t("about.copying") : t("about.copyDiagnostics")}
           </Button>
           <Caption1 as="p" block style={{ margin: "8px 0 0", opacity: 0.75 }}>
-            Include diagnostics when reporting a problem. They contain version and browser information, not your books.
+            {t("about.diagnosticsHint")}
           </Caption1>
-          {copyError && <Body1 as="p" block role="alert" style={{ margin: "12px 0 0" }}>{copyError}</Body1>}
+          {copyError && <Body1 as="p" block role="alert" style={{ margin: "12px 0 0" }}>{t("about.copyError")} {copyError}</Body1>}
         </PaneCard>
 
         <div style={{ margin: "20px 0" }}>
-          <Body1 as="p" block style={{ margin: "0 0 8px" }}>Your library stays on this device.</Body1>
+          <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("about.localLibrary")}</Body1>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
-            <Link href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">Privacy policy</Link>
-            <Link href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">Source code on GitHub</Link>
+            <Link href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">{t("about.privacy")}</Link>
+            <Link href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">{t("about.sourceCode")}</Link>
           </div>
         </div>
 
-        <PaneDisclosure title="Standards and open source">
+        <PaneDisclosure title={t("about.standards")}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Link href={EPUB_SPEC_URL} target="_blank" rel="noreferrer">EPUB 3.4 specification</Link>
-            <Link href={PUBLISHING_WG_URL} target="_blank" rel="noreferrer">W3C Publishing Working Group</Link>
-            <Caption1 as="p" block style={{ margin: "8px 0 0" }}>Built with these open-source projects:</Caption1>
+            <Link href={EPUB_SPEC_URL} target="_blank" rel="noreferrer">{t("about.epubSpec")}</Link>
+            <Link href={PUBLISHING_WG_URL} target="_blank" rel="noreferrer">{t("about.publishingGroup")}</Link>
+            <Caption1 as="p" block style={{ margin: "8px 0 0" }}>{t("about.openSourceCredits")}</Caption1>
             {OPEN_SOURCE_CREDITS.map((credit) => (
               <Link key={credit.name} href={credit.url} target="_blank" rel="noreferrer">{credit.name}</Link>
             ))}

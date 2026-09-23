@@ -6,6 +6,7 @@ import { importBook } from "./BookImporter.js";
 import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { LibraryApp } from "./LibraryApp.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
+import { LocaleProvider, useLocale } from "../i18n/LocaleContext.js";
 
 vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue("book") }));
 
@@ -27,6 +28,8 @@ function makeDatabase() {
     getDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
     deleteBook: vi.fn().mockResolvedValue(undefined),
     setDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
+    getLocalePreference: vi.fn().mockResolvedValue("en"),
+    setLocalePreference: vi.fn().mockResolvedValue(undefined),
   };
   return { methods, value: methods as unknown as LibraryDatabase };
 }
@@ -244,5 +247,32 @@ describe("useLibrary ownership and failures", () => {
     mounted = false;
     latest.setSettings({ brightness: 0.5 });
     expect(db.methods.patchGlobalReadingSettings).toHaveBeenCalledOnce();
+  });
+
+  it("retranslates app-owned errors without reopening the database or restarting an import on language change", async () => {
+    let changeLocale!: ReturnType<typeof useLocale>["setPreference"];
+    function LocalizedHarness() {
+      changeLocale = useLocale().setPreference;
+      return <Harness />;
+    }
+    const downloading = deferred<Response>();
+    const fetch = vi.fn().mockReturnValue(downloading.promise);
+    vi.stubGlobal("fetch", fetch);
+    window.history.replaceState(null, "", "/?importUrl=https%3A%2F%2Fexample.com%2Fbook.epub");
+    await act(async () => root.render(<LocaleProvider><LocalizedHarness /></LocaleProvider>));
+    const opens = vi.mocked(LibraryDatabase.open).mock.calls.length;
+    const importFiles = latest.importFiles;
+    const openInspector = latest.openInspectionSession;
+    vi.mocked(importBook).mockRejectedValueOnce(new DOMException("Raw quota detail", "QuotaExceededError"));
+    await act(async () => latest.importFiles([new File(["book"], "original-name.epub")]));
+    expect(latest.error).toContain("your device appears to be out of storage space");
+    await act(async () => changeLocale("fr"));
+    expect(latest.error).toContain("votre appareil semble manquer d’espace");
+    expect(latest.error).toContain("original-name.epub");
+    expect(LibraryDatabase.open).toHaveBeenCalledTimes(opens);
+    expect(latest.importFiles).toBe(importFiles);
+    expect(latest.openInspectionSession).toBe(openInspector);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect((fetch.mock.calls[0]![1].signal as AbortSignal).aborted).toBe(false);
   });
 });

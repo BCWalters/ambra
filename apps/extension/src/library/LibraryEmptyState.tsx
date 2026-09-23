@@ -3,6 +3,7 @@ import { Body1, Button, Title2 } from "@fluentui/react-components";
 import { DocumentAddRegular } from "@fluentui/react-icons";
 import { LibraryEmptyIllustration } from "./LibraryEmptyIllustration.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
+import { useTranslation } from "../i18n/LocaleContext.js";
 
 export interface LibraryEmptyStateProps {
   accent: string;
@@ -18,7 +19,9 @@ export interface LibraryEmptyStateProps {
  * inviting way to get started right where they're looking, rather than
  * only in the toolbar above.
  */
-export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport }) => (
+export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport }) => {
+  const t = useTranslation();
+  return (
   <div
     style={{
       display: "flex",
@@ -32,16 +35,17 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImpor
   >
     <LibraryEmptyIllustration size={140} />
     <Title2 as="h1" style={{ color: accent, margin: "8px 0 0" }}>
-      Your library is empty
+      {t("library.emptyTitle")}
     </Title2>
     <Body1 as="p" style={{ margin: "4px 0 20px", color: "var(--colorNeutralForeground3, #666)" }}>
-      Import your first EPUB to start reading.
+      {t("library.emptyDescription")}
     </Body1>
     <Button appearance="primary" icon={<DocumentAddRegular />} disabled={!canImport} onClick={onImport}>
-      Import your first book
+      {t("library.importFirst")}
     </Button>
     <div style={{ width: "100%", marginTop: 28 }}>
       <LibraryDiscovery />
     </div>
   </div>
-);
+  );
+};

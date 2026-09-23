@@ -2,6 +2,7 @@ import type { FC } from "react";
 import { Body1, Button, Caption1 } from "@fluentui/react-components";
 import { BookTroubleIllustration } from "../reader/components/BookTroubleIllustration.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../reader/chromeTheme.js";
+import { useTranslation } from "../i18n/LocaleContext.js";
 
 export interface LibraryImportErrorProps {
   message: string;
@@ -18,7 +19,9 @@ export interface LibraryImportErrorProps {
  * already in the library, so there's no reason to hide the rest of the
  * page behind it the way the reader's own "blocking" severity does.
  */
-export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDismiss }) => (
+export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDismiss }) => {
+  const t = useTranslation();
+  return (
   <div
     role="alert"
     style={{
@@ -36,14 +39,15 @@ export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDis
     <BookTroubleIllustration size={48} />
     <div style={{ flex: 1, minWidth: 0 }}>
       <Body1 as="p" block style={{ margin: 0, fontWeight: 600 }}>
-        Oh snickerdoodles, something went wrong.
+        {t("error.somethingWentWrongHeadline")}
       </Body1>
       <Caption1 as="p" block style={{ margin: "2px 0 0", opacity: 0.75 }}>
         {message}
       </Caption1>
     </div>
     <Button appearance="subtle" size="small" onClick={onDismiss}>
-      Dismiss
+      {t("library.dismiss")}
     </Button>
   </div>
-);
+  );
+};

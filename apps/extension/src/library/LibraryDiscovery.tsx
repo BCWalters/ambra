@@ -3,22 +3,24 @@ import type { FC } from "react";
 import { Button, Link } from "@fluentui/react-components";
 import { SearchRegular } from "@fluentui/react-icons";
 import { CHROME_BORDER } from "../reader/chromeTheme.js";
+import { useTranslation } from "../i18n/LocaleContext.js";
 
 const SOURCES = [
   {
     name: "Project Gutenberg",
     href: "https://www.gutenberg.org/ebooks/",
-    description: "Explore classic literature and discover your next favorite.",
+    description: "library.gutenbergDescription" as const,
   },
   {
     name: "Standard Ebooks",
     href: "https://standardebooks.org/ebooks",
-    description: "Carefully edited classics with beautiful typography.",
+    description: "library.standardEbooksDescription" as const,
   },
 ];
 
 /** Discovery is always visible before the first import, then available on demand at any library size. */
 export const LibraryDiscovery: FC<{ expandable?: boolean }> = ({ expandable = false }) => {
+  const t = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const id = useId();
 
@@ -33,7 +35,7 @@ export const LibraryDiscovery: FC<{ expandable?: boolean }> = ({ expandable = fa
           aria-controls={`${id}-panel`}
           onClick={() => setExpanded(!expanded)}
         >
-          Find books
+          {t("library.findBooks")}
         </Button>
       )}
       <section
@@ -50,10 +52,10 @@ export const LibraryDiscovery: FC<{ expandable?: boolean }> = ({ expandable = fa
         }}
       >
         <h2 id={`${id}-heading`} style={{ fontSize: 18, lineHeight: "24px", margin: "0 0 4px" }}>
-          Find your next read
+          {t("library.discoveryTitle")}
         </h2>
         <p style={{ margin: "0 0 16px", color: "var(--colorNeutralForeground2, #555)" }}>
-          Start with these free EPUB collections. Links open in a new tab.
+          {t("library.discoveryDescription")}
         </p>
         <div
           style={{
@@ -73,17 +75,16 @@ export const LibraryDiscovery: FC<{ expandable?: boolean }> = ({ expandable = fa
                 {source.name}
               </Link>
               <p style={{ margin: "4px 0 0", color: "var(--colorNeutralForeground2, #555)" }}>
-                {source.description}
+                {t(source.description)}
               </p>
             </div>
           ))}
         </div>
-        <h3 style={{ fontSize: 14, margin: "20px 0 8px" }}>From discovery to your library</h3>
+        <h3 style={{ fontSize: 14, margin: "20px 0 8px" }}>{t("library.discoverySteps")}</h3>
         <ol style={{ paddingLeft: 22, margin: 0, display: "grid", gap: 6 }}>
-          <li>Choose a book, then choose its EPUB download (not Kindle or PDF).</li>
+          <li>{t("library.discoveryDownload")}</li>
           <li>
-            Ambra may open a direct EPUB link for you. If it downloads instead, return here, select{" "}
-            <strong>Import EPUB</strong>, and choose the saved <strong>.epub</strong> file.
+            {t("library.discoveryImport", { importLabel: t("library.importEpub"), extension: ".epub" })}
           </li>
         </ol>
         <p
@@ -94,8 +95,7 @@ export const LibraryDiscovery: FC<{ expandable?: boolean }> = ({ expandable = fa
             color: "var(--colorNeutralForeground3, #666)",
           }}
         >
-          These collections focus on works in the U.S. public domain. Check copyright rules where
-          you live. Your library stays on this device; Ambra does not browse these sites for you.
+          {t("library.discoveryNotice")}
         </p>
       </section>
     </div>

@@ -3,6 +3,7 @@ import type { FC, ReactNode } from "react";
 import { Body1Strong, Button, OverlayDrawer, Tooltip, useRestoreFocusSource } from "@fluentui/react-components";
 import { DismissRegular } from "@fluentui/react-icons";
 import { CHROME_BORDER, CHROME_SHADOW } from "../reader/chromeTheme.js";
+import { useTranslation } from "../i18n/LocaleContext.js";
 
 interface LibraryFlyoutProps {
   open: boolean;
@@ -20,6 +21,7 @@ export const LibraryFlyout: FC<LibraryFlyoutProps> = ({
   backgroundSolid,
   children,
 }) => {
+  const t = useTranslation();
   const titleId = useId();
   const restoreFocusSource = useRestoreFocusSource();
   return (
@@ -56,7 +58,7 @@ export const LibraryFlyout: FC<LibraryFlyoutProps> = ({
         <Body1Strong as="h2" id={titleId} style={{ flex: 1, margin: 0 }}>
           {title}
         </Body1Strong>
-        <Tooltip content="Close" relationship="label">
+        <Tooltip content={t("highlight.close")} relationship="label">
           <Button
             appearance="subtle"
             size="small"

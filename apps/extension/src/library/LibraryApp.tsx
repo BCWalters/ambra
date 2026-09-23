@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FC } from "react";
 import {
   Body1,
@@ -37,8 +37,11 @@ import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
 import { AboutFlyout } from "./AboutFlyout.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
-import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
+import { CHROME_TOOLBAR_HEIGHT, useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.js";
+import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
+import type { StringCatalog } from "../i18n/locales/en.js";
+import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 
 const SORT_GROUP_NAME = "librarySort";
 
@@ -54,30 +57,12 @@ const useBookCardStyles = makeStyles({
   },
 });
 
-const SORT_LABELS: Readonly<Record<LibrarySortOption, string>> = {
-  dateAddedDesc: "Date added (newest first)",
-  dateAddedAsc: "Date added (oldest first)",
-  titleAsc: "Title (A–Z)",
-  authorAsc: "Author (A–Z)",
+const SORT_LABELS: Readonly<Record<LibrarySortOption, keyof StringCatalog>> = {
+  dateAddedDesc: "library.sortNewest",
+  dateAddedAsc: "library.sortOldest",
+  titleAsc: "library.sortTitle",
+  authorAsc: "library.sortAuthor",
 };
-
-/** Formats a byte count as a short human-readable string (`"128 MB"`,
- * `"1.4 GB"`) for the storage-usage footer — plain binary (1024-based)
- * units, matching what Chrome's own `chrome://settings/storage`/dev
- * tools already show, rather than SI (1000-based) ones, which would
- * disagree with those by a confusing few percent for the same byte
- * count. */
-function formatBytes(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-  const precision = unitIndex === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
-  return `${value.toFixed(precision)} ${units[unitIndex]}`;
-}
 
 const BookCard: FC<{
   book: LibraryBookViewModel;
@@ -86,6 +71,8 @@ const BookCard: FC<{
   onDelete: () => void;
   onShowDetails: () => void;
 }> = ({ book, accent, onOpen, onDelete, onShowDetails }) => {
+  const t = useTranslation();
+  const { locale } = useLocale();
   const styles = useBookCardStyles();
   const restoreFocusTarget = useRestoreFocusTarget();
   // Hovering/focusing a cover picks up the reader's own accent color
@@ -141,7 +128,9 @@ const BookCard: FC<{
           onClick={onOpen}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          aria-label={progressPercent !== undefined ? `Open ${book.title}, ${progressPercent}% read` : `Open ${book.title}`}
+          aria-label={progressPercent !== undefined
+            ? t("library.openBookProgress", { title: book.title, progress: formatLibraryProgress(progressPercent / 100, locale) })
+            : t("library.openBook", { title: book.title })}
           style={{
             width: 140,
             height: 200,
@@ -196,7 +185,7 @@ const BookCard: FC<{
             idiom as the trash can, mirrored to the opposite (top-left)
             corner so the two never compete for the same spot. Opens the
             read-only Book Details flyout (`BookDetailsFlyout`). */}
-        <Tooltip content={`${book.title} details`} relationship="label">
+        <Tooltip content={t("library.bookDetails", { title: book.title })} relationship="label">
           <Button
             {...restoreFocusTarget}
             appearance="secondary"
@@ -205,7 +194,7 @@ const BookCard: FC<{
             onClick={onShowDetails}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            aria-label={`${book.title} details`}
+            aria-label={t("library.bookDetails", { title: book.title })}
             style={{
               position: "absolute",
               top: 6,
@@ -231,7 +220,7 @@ const BookCard: FC<{
             sibling of the cover button in the DOM, not nested inside it
             (buttons can't nest), so a click here never reaches `onOpen`
             at all. */}
-        <Tooltip content={`Remove ${book.title} from library`} relationship="label">
+        <Tooltip content={t("library.removeBook", { title: book.title })} relationship="label">
           <Button
             appearance="secondary"
             size="small"
@@ -239,7 +228,7 @@ const BookCard: FC<{
             onClick={onDelete}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            aria-label={`Remove ${book.title} from library`}
+            aria-label={t("library.removeBook", { title: book.title })}
             style={{
               position: "absolute",
               top: 6,
@@ -298,6 +287,9 @@ const BookCard: FC<{
  * a whole-app identity without needing to fight Fluent's own default
  * component styling. */
 export const LibraryApp: FC = () => {
+  const t = useTranslation();
+  const { locale } = useLocale();
+  useEffect(() => { document.title = t("library.pageTitle"); }, [t]);
   const restoreAboutFocus = useRestoreFocusTarget();
   const {
     books,
@@ -339,11 +331,16 @@ export const LibraryApp: FC = () => {
     <div style={{ minHeight: "100vh", background: palette.backgroundSolid, display: "flex", flexDirection: "column" }}>
       <div
         className={toolbarStyles.root}
+        role="toolbar"
+        aria-label={t("library.toolbar")}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 4,
-          padding: "10px",
+          flexWrap: "wrap",
+          height: "auto",
+          minHeight: CHROME_TOOLBAR_HEIGHT,
+          padding: "8px 10px",
           borderBottom: `1px solid ${CHROME_BORDER}`,
           boxShadow: CHROME_SHADOW,
         }}
@@ -353,16 +350,15 @@ export const LibraryApp: FC = () => {
           Ambra
         </Title2>
         <div style={{ flex: 1 }} />
-        <ReaderSettingsMenu
-          {...settings}
-          disabled={isLoading || !canImport}
-          isFixedLayout={false}
-          onSetViewMode={(viewMode) => setSettings({ viewMode })}
-          onSetBrightness={(brightness) => setSettings({ brightness })}
-          onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
-          onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
-        />
-
+        <Button
+          appearance="primary"
+          size="small"
+          icon={<DocumentAddRegular />}
+          disabled={!canImport}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {t("library.importEpub")}
+        </Button>
         <Menu
           checkedValues={{ [SORT_GROUP_NAME]: [sort] }}
           onCheckedValueChange={(_event, data) => {
@@ -372,17 +368,17 @@ export const LibraryApp: FC = () => {
           }}
         >
           <MenuTrigger disableButtonEnhancement>
-            <Tooltip content="Sort library" relationship="label">
-              <Button appearance="subtle" size="small" icon={<ArrowSortRegular />} aria-label="Sort library" />
+            <Tooltip content={t("library.sort")} relationship="label">
+              <Button appearance="subtle" size="small" icon={<ArrowSortRegular />} aria-label={t("library.sort")} />
             </Tooltip>
           </MenuTrigger>
           <MenuPopover>
             <MenuList>
               <MenuGroup>
-                <MenuGroupHeader>Sort by</MenuGroupHeader>
+                <MenuGroupHeader>{t("library.sortBy")}</MenuGroupHeader>
                 {(Object.keys(SORT_LABELS) as LibrarySortOption[]).map((option) => (
                   <MenuItemRadio key={option} name={SORT_GROUP_NAME} value={option}>
-                    {SORT_LABELS[option]}
+                    {t(SORT_LABELS[option])}
                   </MenuItemRadio>
                 ))}
               </MenuGroup>
@@ -390,38 +386,33 @@ export const LibraryApp: FC = () => {
           </MenuPopover>
         </Menu>
 
-        {!isFullTab && (
-          <Tooltip content="Expand library into a full browser tab" relationship="label">
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<WindowNewRegular />}
-              onClick={openInFullTab}
-              aria-label="Expand library into a full browser tab"
-            />
-          </Tooltip>
-        )}
-
-        <Tooltip content="About Ambra" relationship="label">
+        <span role="separator" aria-orientation="vertical" style={{ height: 20, borderLeft: `1px solid ${CHROME_BORDER}`, margin: "0 4px" }} />
+        <ReaderSettingsMenu
+          {...settings}
+          disabled={isLoading || !canImport}
+          isFixedLayout={false}
+          onSetViewMode={(viewMode) => setSettings({ viewMode })}
+          onSetBrightness={(brightness) => setSettings({ brightness })}
+          onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
+          onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
+        />
+        <Tooltip content={t("about.title")} relationship="label">
           <Button
             {...restoreAboutFocus}
             appearance="subtle"
             size="small"
             icon={<InfoRegular />}
             onClick={() => setIsAboutOpen(true)}
-            aria-label="About Ambra"
+            aria-label={t("about.title")}
           />
         </Tooltip>
 
-        <Button
-          appearance="primary"
-          size="small"
-          icon={<DocumentAddRegular />}
-          disabled={!canImport}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          Import EPUB
-        </Button>
+        {!isFullTab && (
+          <Tooltip content={t("library.expand")} relationship="label">
+            <Button appearance="subtle" size="small" icon={<WindowNewRegular />} onClick={openInFullTab}
+              aria-label={t("library.expand")} />
+          </Tooltip>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -437,7 +428,7 @@ export const LibraryApp: FC = () => {
         {error && <LibraryImportError message={error} onDismiss={dismissError} />}
 
         {isLoading ? (
-          <Spinner label="Loading your library…" style={{ marginTop: 16 }} />
+          <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
           <LibraryEmptyState accent={palette.accent} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
         ) : (
@@ -485,19 +476,19 @@ export const LibraryApp: FC = () => {
           fileName={detailsBook?.fileName}
           onFindReferences={(path) => {
             if (!inspector.session) {
-              return Promise.reject(new Error("The Inspector isn't ready yet."));
+              return Promise.reject(new Error(t("library.inspectorNotReady")));
             }
             return inspector.session.findReferences(path);
           }}
           onReadFile={(path) => {
             if (!inspector.session) {
-              return Promise.reject(new Error("The Inspector isn't ready yet."));
+              return Promise.reject(new Error(t("library.inspectorNotReady")));
             }
             return inspector.session.readInspectionFileText(path);
           }}
           onGetPreviewUrl={(path, mediaType) => {
             if (!inspector.session) {
-              return Promise.reject(new Error("The Inspector isn't ready yet."));
+              return Promise.reject(new Error(t("library.inspectorNotReady")));
             }
             return inspector.session.getInspectionFilePreviewUrl(path, mediaType);
           }}
@@ -523,8 +514,11 @@ export const LibraryApp: FC = () => {
         >
           <StorageRegular fontSize={14} />
           <span>
-            {books.length} {books.length === 1 ? "book" : "books"} · {formatBytes(storageUsage.usageBytes)} used
-            {storageUsage.quotaBytes !== undefined ? ` of ${formatBytes(storageUsage.quotaBytes)} available` : ""}
+            {t("library.bookCount", { count: new Intl.NumberFormat(locale).format(books.length) })} ·{" "}
+            {storageUsage.quotaBytes !== undefined
+              ? t("library.storageUsedOf", { used: formatLibraryBytes(storageUsage.usageBytes, locale),
+                available: formatLibraryBytes(storageUsage.quotaBytes, locale) })
+              : t("library.storageUsed", { used: formatLibraryBytes(storageUsage.usageBytes, locale) })}
           </span>
         </div>
       )}

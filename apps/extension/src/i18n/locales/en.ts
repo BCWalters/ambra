@@ -32,6 +32,66 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "library.pageTitle": string;
+  "library.toolbar": string;
+  "library.sortNewest": string;
+  "library.sortOldest": string;
+  "library.sortTitle": string;
+  "library.sortAuthor": string;
+  "library.openBookProgress": string;
+  "library.openBook": string;
+  "library.bookDetails": string;
+  "library.removeBook": string;
+  "library.importEpub": string;
+  "library.sort": string;
+  "library.sortBy": string;
+  "library.expand": string;
+  "library.loading": string;
+  "library.inspectorNotReady": string;
+  "library.bookCount": string;
+  "library.storageUsedOf": string;
+  "library.storageUsed": string;
+  "library.progress": string;
+  "library.readingProgress": string;
+  "library.percentRead": string;
+  "library.added": string;
+  "library.emptyTitle": string;
+  "library.emptyDescription": string;
+  "library.importFirst": string;
+  "library.dismiss": string;
+  "library.findBooks": string;
+  "library.discoveryTitle": string;
+  "library.discoveryDescription": string;
+  "library.gutenbergDescription": string;
+  "library.standardEbooksDescription": string;
+  "library.discoverySteps": string;
+  "library.discoveryDownload": string;
+  "library.discoveryImport": string;
+  "library.discoveryNotice": string;
+  "library.importStorageFull": string;
+  "library.storageFull": string;
+  "library.importNotReady": string;
+  "library.notReady": string;
+  "library.fileMissing": string;
+  "library.downloadFailed": string;
+  "about.title": string;
+  "about.version": string;
+  "about.description": string;
+  "about.createdBy": string;
+  "about.helpShape": string;
+  "about.feedback": string;
+  "about.copied": string;
+  "about.copying": string;
+  "about.copyDiagnostics": string;
+  "about.diagnosticsHint": string;
+  "about.copyError": string;
+  "about.localLibrary": string;
+  "about.privacy": string;
+  "about.sourceCode": string;
+  "about.standards": string;
+  "about.epubSpec": string;
+  "about.publishingGroup": string;
+  "about.openSourceCredits": string;
   "toolbar.showContents": string;
   "toolbar.hideContents": string;
   "toolbar.bookmarksAndHighlights": string;
@@ -283,6 +343,66 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "library.pageTitle": "Ambra — Library",
+  "library.toolbar": "Library actions",
+  "library.sortNewest": "Date added (newest first)",
+  "library.sortOldest": "Date added (oldest first)",
+  "library.sortTitle": "Title (A–Z)",
+  "library.sortAuthor": "Author (A–Z)",
+  "library.openBookProgress": "Open {title}, {progress} read",
+  "library.openBook": "Open {title}",
+  "library.bookDetails": "{title} details",
+  "library.removeBook": "Remove {title} from library",
+  "library.importEpub": "Import EPUB",
+  "library.sort": "Sort library",
+  "library.sortBy": "Sort by",
+  "library.expand": "Expand library into a full browser tab",
+  "library.loading": "Loading your library…",
+  "library.inspectorNotReady": "The Inspector isn't ready yet.",
+  "library.bookCount": "Books: {count}",
+  "library.storageUsedOf": "{used} used of {available} available",
+  "library.storageUsed": "{used} used",
+  "library.progress": "Progress",
+  "library.readingProgress": "Reading progress",
+  "library.percentRead": "{progress} read",
+  "library.added": "Added",
+  "library.emptyTitle": "Your library is empty",
+  "library.emptyDescription": "Import your first EPUB to start reading.",
+  "library.importFirst": "Import your first book",
+  "library.dismiss": "Dismiss",
+  "library.findBooks": "Find books",
+  "library.discoveryTitle": "Find your next read",
+  "library.discoveryDescription": "Start with these free EPUB collections. Links open in a new tab.",
+  "library.gutenbergDescription": "Explore classic literature and discover your next favorite.",
+  "library.standardEbooksDescription": "Carefully edited classics with beautiful typography.",
+  "library.discoverySteps": "From discovery to your library",
+  "library.discoveryDownload": "Choose a book, then choose its EPUB download (not Kindle or PDF).",
+  "library.discoveryImport": "Ambra may open a direct EPUB link for you. If it downloads instead, return here, select {importLabel}, and choose the saved {extension} file.",
+  "library.discoveryNotice": "These collections focus on works in the U.S. public domain. Check copyright rules where you live. Your library stays on this device; Ambra does not browse these sites for you.",
+  "library.importStorageFull": "Couldn't import \"{fileName}\" — your device appears to be out of storage space. Free up some disk space and try again.",
+  "library.storageFull": "Your device appears to be out of storage space. Free up some disk space and try again.",
+  "library.importNotReady": "The library isn't ready to import books. Wait for loading to finish, or reload this page if it failed.",
+  "library.notReady": "The library isn't ready yet.",
+  "library.fileMissing": "This book's file couldn't be found.",
+  "library.downloadFailed": "That download couldn't be fetched (HTTP {status}).",
+  "about.title": "About Ambra",
+  "about.version": "Version {version}",
+  "about.description": "An EPUB reader designed for comfortable, beautiful reading.",
+  "about.createdBy": "Created by",
+  "about.helpShape": "Help shape Ambra",
+  "about.feedback": "Report an issue or request a feature",
+  "about.copied": "Copied!",
+  "about.copying": "Copying...",
+  "about.copyDiagnostics": "Copy diagnostics",
+  "about.diagnosticsHint": "Include diagnostics when reporting a problem. They contain version and browser information, not your books.",
+  "about.copyError": "Could not copy diagnostics.",
+  "about.localLibrary": "Your library stays on this device.",
+  "about.privacy": "Privacy policy",
+  "about.sourceCode": "Source code on GitHub",
+  "about.standards": "Standards and open source",
+  "about.epubSpec": "EPUB 3.4 specification",
+  "about.publishingGroup": "W3C Publishing Working Group",
+  "about.openSourceCredits": "Built with these open-source projects:",
   "inspector.help": "Inspector help",
   "inspector.referencesHelp": "For images and CSS, Find references lists uses in this archive. Open a result to view its source and highlight the reference when available. Line numbers refer to the original source, before formatting. Use Tab and Enter to open results; Back returns to the list.",
   "inspector.referenceSelected": "Source reference selected.",
