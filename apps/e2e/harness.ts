@@ -1,8 +1,7 @@
-import { chromium, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, expect, type BrowserContext, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
-import os from "node:os";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,10 +30,9 @@ export interface LaunchedReader {
  * hand, not a shortcut around it, so this suite exercises the actual
  * library/import code path too, not just the reader in isolation.
  *
- * Each call gets its own fresh, disposable profile directory under the
- * OS temp dir (not `apps/e2e/`, which would otherwise slowly accumulate
- * stale Chrome profile data across every test run) — call
- * `context.close()` when done; nothing else needs manual cleanup. */
+ * Each call owns a unique profile under this package's ignored test-results
+ * directory. Closing the context removes that profile; failed setup closes
+ * the context and removes it before rethrowing the original failure. */
 export async function launchReader(
   bookPath: string,
   options: { viewport?: { width: number; height: number } } = {},
@@ -44,47 +42,74 @@ export async function launchReader(
       `Built extension not found at ${EXTENSION_PATH} — run "pnpm --filter @ambra/e2e run build:extension" first (the "test" script does this automatically).`,
     );
   }
-  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "ambra-e2e-"));
-  const context = await chromium.launchPersistentContext(profileDir, {
-    headless: false,
-    args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
-    viewport: options.viewport ?? { width: 900, height: 900 },
-  });
-
-  let [serviceWorker] = context.serviceWorkers();
-  if (!serviceWorker) {
-    serviceWorker = await context.waitForEvent("serviceworker", { timeout: 15_000 });
-  }
-  const extensionId = serviceWorker.url().split("/")[2]!;
-
-  const libraryPage = await context.newPage();
-  await libraryPage.goto(`chrome-extension://${extensionId}/src/library/index.html`);
-  await libraryPage.locator('input[type="file"]').waitFor({ state: "attached", timeout: 15_000 });
-  await libraryPage.locator('input[type="file"]').setInputFiles(bookPath);
-
-  const openButton = libraryPage.getByRole("button", { name: /^Open /i }).first();
-  await openButton.waitFor({ timeout: 20_000 });
-  await openButton.click({ force: true });
-
-  await libraryPage.waitForTimeout(500);
-  let readerPage: Page | undefined;
-  for (let attempt = 0; attempt < 40 && !readerPage; attempt++) {
-    readerPage = context.pages().find((page) => page.url().includes("/reader/"));
-    if (!readerPage) {
-      await libraryPage.waitForTimeout(250);
+  const profileRoot = path.join(here, "test-results", "reader-profiles");
+  fs.mkdirSync(profileRoot, { recursive: true });
+  const profileDir = fs.mkdtempSync(path.join(profileRoot, "ambra-e2e-"));
+  let profileRemoved = false;
+  const removeOwnedProfile = () => {
+    if (profileRemoved) return;
+    try {
+      fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      profileRemoved = true;
+    } catch (error) {
+      console.warn("Could not remove the owned reader test profile.", error);
     }
-  }
-  if (!readerPage) {
-    throw new Error("Reader page never opened after clicking Open.");
-  }
-  await readerPage.waitForLoadState("domcontentloaded");
-  // A fixed settle window rather than waiting on a specific readiness
-  // signal — deliberately simple, since every test that uses this then
-  // does its own explicit waiting (for text, for a page-number label,
-  // etc.) before asserting anything.
-  await readerPage.waitForTimeout(1500);
+  };
+  let context: BrowserContext | undefined;
+  try {
+    context = await chromium.launchPersistentContext(profileDir, {
+      headless: false,
+      args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+      viewport: options.viewport ?? { width: 900, height: 900 },
+    });
+    context.once("close", removeOwnedProfile);
 
-  return { context, libraryPage, readerPage, extensionId };
+    let [serviceWorker] = context.serviceWorkers();
+    if (!serviceWorker) {
+      serviceWorker = await context.waitForEvent("serviceworker", { timeout: 15_000 });
+    }
+    const extensionId = serviceWorker.url().split("/")[2]!;
+
+    const libraryPage = await context.newPage();
+    await libraryPage.goto(`chrome-extension://${extensionId}/src/library/index.html`);
+    const fileInput = libraryPage.locator('input[type="file"]');
+    // setInputFiles can dispatch a change on a disabled input; wait for the
+    // same readiness gate a person using the Import button must pass.
+    await expect(fileInput).toBeEnabled({ timeout: 15_000 });
+    await fileInput.setInputFiles(bookPath);
+
+    const openButton = libraryPage.getByRole("button", { name: /^Open /i }).first();
+    await openButton.waitFor({ timeout: 20_000 });
+    await openButton.click({ force: true });
+
+    await libraryPage.waitForTimeout(500);
+    let readerPage: Page | undefined;
+    for (let attempt = 0; attempt < 40 && !readerPage; attempt++) {
+      readerPage = context.pages().find((page) => page.url().includes("/reader/"));
+      if (!readerPage) {
+        await libraryPage.waitForTimeout(250);
+      }
+    }
+    if (!readerPage) {
+      throw new Error("Reader page never opened after clicking Open.");
+    }
+    await readerPage.waitForLoadState("domcontentloaded");
+    // A fixed settle window rather than waiting on a specific readiness
+    // signal — deliberately simple, since every test that uses this then
+    // does its own explicit waiting (for text, for a page-number label,
+    // etc.) before asserting anything.
+    await readerPage.waitForTimeout(1500);
+
+    return { context, libraryPage, readerPage, extensionId };
+  } catch (error) {
+    try {
+      await context?.close();
+    } catch (closeError) {
+      console.warn("Could not close the failed reader test context.", closeError);
+    }
+    removeOwnedProfile();
+    throw error;
+  }
 }
 
 /** The current per-chapter page label ("Page N of M"), or `null` if not

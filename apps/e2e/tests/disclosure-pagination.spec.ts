@@ -105,7 +105,7 @@ for (const width of [760, 1400]) {
           `chrome-extension://${worker.url().split("/")[2]}/src/library/index.html`,
         );
         await library
-          .locator('input[type="file"]')
+          .locator('input[type="file"]:enabled')
           .setInputFiles(
             path.join(fixtures, `${authoredOpen ? "authored-open" : "initially-closed"}.epub`),
           );

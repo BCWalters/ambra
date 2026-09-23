@@ -13,6 +13,7 @@ const test = base.extend<{ library: Page }>({
       worker ??= await context.waitForEvent("serviceworker");
       const page = await context.newPage();
       await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
+      await expect(page.locator('input[type="file"]')).toBeEnabled();
       await page.locator('input[type="file"]').setInputFiles(
         fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url)),
       );
@@ -82,4 +83,58 @@ test("inspector open failures return to details with a visible error and support
   await expect(details).toBeVisible();
   await expect(openInspector).toBeFocused();
   await expect(details.getByRole("alert")).toHaveCount(0);
+});
+
+base("import controls wait for a withheld database open before accepting the first book", async ({ playwright }, testInfo) => {
+  const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
+    headless: false,
+    args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+  });
+  try {
+    let [worker] = context.serviceWorkers();
+    worker ??= await context.waitForEvent("serviceworker");
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      const open = indexedDB.open;
+      const pending: Array<() => void> = [];
+      let released = false;
+      indexedDB.open = function (...args) {
+        const request = open.apply(this, args);
+        if (args[0] !== "ambra-library" || released) return request;
+        Object.defineProperty(request, "onsuccess", {
+          configurable: true,
+          set(callback: IDBRequest["onsuccess"]) {
+            request.addEventListener("success", (event) => {
+              const deliver = () => callback?.call(request, event);
+              if (released) deliver();
+              else {
+                pending.push(deliver);
+                Reflect.set(window, "__heldLibraryOpens", pending.length);
+              }
+            }, { once: true });
+          },
+        });
+        return request;
+      };
+      Reflect.set(window, "__releaseLibraryOpen", () => {
+        released = true;
+        indexedDB.open = open;
+        for (const deliver of pending.splice(0)) deliver();
+      });
+    });
+    await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, "__heldLibraryOpens") ?? 0)).toBeGreaterThan(0);
+    const input = page.locator('input[type="file"]');
+    const button = page.getByRole("button", { name: "Import EPUB", exact: true });
+    await expect(input).toBeDisabled();
+    await expect(button).toBeDisabled();
+    await page.evaluate(() => Reflect.get(window, "__releaseLibraryOpen")());
+    await expect(input).toBeEnabled();
+    await expect(button).toBeEnabled();
+    await input.setInputFiles(fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url)));
+    await expect(page.getByRole("button", { name: /^Open Ambra Long Content/ })).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
 });

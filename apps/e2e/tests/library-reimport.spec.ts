@@ -164,7 +164,7 @@ test("renamed manual re-import preserves all stored data; changed archive bytes 
   await watchImports(page);
   await page.goto(url);
   const buffer = await fs.readFile(fixture);
-  const input = page.locator('input[type="file"]');
+  const input = page.locator('input[type="file"]:enabled');
   await input.setInputFiles({ name: "original.epub", mimeType: "application/epub+zip", buffer });
   await imported(page, 1);
   const original = (await snapshot(page))[0]!.rows[0]!;
@@ -214,7 +214,7 @@ test("direct web imports from changed URLs and names reuse the manual import, in
     const address = server.address() as { port: number };
     await watchImports(page);
     await page.goto(url);
-    await page.locator('input[type="file"]').setInputFiles(fixture);
+    await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
     await imported(page, 1);
     const id = (await snapshot(page))[0]!.rows[0]!.id as string;
     await addUserData(page, id);
@@ -249,7 +249,7 @@ test("simultaneous first imports in separate tabs create only one book", async (
   );
   await Promise.all(
     [page, second].map(async (tab) => {
-      await tab.locator('input[type="file"]').setInputFiles(fixture);
+      await tab.locator('input[type="file"]:enabled').setInputFiles(fixture);
       await imported(tab, 1);
     }),
   );
@@ -314,7 +314,7 @@ test("v5 migration retains existing IDs, duplicate records, and annotations", as
   const before = await snapshot(page);
   await watchImports(page);
   await page.goto(url);
-  await page.locator('input[type="file"]').setInputFiles(fixture);
+  await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
   await imported(page, 1);
   const after = await snapshot(page);
   expect(after[0]!.rows).toHaveLength(2);
@@ -324,7 +324,7 @@ test("v5 migration retains existing IDs, duplicate records, and annotations", as
   expect(after[0]!.rows.map(({ contentHash: _hash, ...book }) => book)).toEqual(before[0]!.rows);
   expect(after.slice(1)).toEqual(before.slice(1));
   await page.reload();
-  await page.locator('input[type="file"]').setInputFiles(fixture);
+  await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
   await imported(page, 1);
   expect(await snapshot(page)).toEqual(after);
 });
@@ -365,7 +365,7 @@ test("a blocked v5 upgrade reports recovery steps, closes its late connection, a
   expect(await snapshot(page)).toEqual(before);
   await watchImports(page);
   await page.reload();
-  await page.locator('input[type="file"]').setInputFiles(fixture);
+  await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
   await imported(page, 1);
   const after = await snapshot(page);
   expect(after[0]!.rows).toHaveLength(2);
@@ -379,7 +379,7 @@ test("legacy identity failures are reported, never silently imported as a new bo
   await seedLegacy(page, true);
   const before = await snapshot(page);
   await page.goto(url);
-  await page.locator('input[type="file"]').setInputFiles(fixture);
+  await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
   await expect(page.getByRole("alert")).toContainText("stored EPUB file is missing");
   expect(await snapshot(page)).toEqual(before);
 });
@@ -392,7 +392,7 @@ test("hashing failure is reported without falling back to a new identity", async
     };
   });
   await page.goto(url);
-  await page.locator('input[type="file"]').setInputFiles(fixture);
+  await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
   await expect(page.getByRole("alert")).toContainText("Content hashing unavailable");
   expect((await snapshot(page))[0]!.rows).toHaveLength(0);
 });

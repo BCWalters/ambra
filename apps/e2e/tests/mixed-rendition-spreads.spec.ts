@@ -98,6 +98,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
       const library = await context.newPage();
       await library.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html`);
+      await expect(library.locator('input[type="file"]')).toBeEnabled();
       await library.locator('input[type="file"]').setInputFiles(book);
       const opening = context.waitForEvent("page");
       await library.getByRole("button", { name: /^Open / }).click({ force: true });

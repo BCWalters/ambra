@@ -24,6 +24,8 @@ export interface StorageUsageEstimate {
 export interface UseLibraryResult {
   books: readonly LibraryBookViewModel[];
   isLoading: boolean;
+  /** Import requires a live database and completed initial library loading. */
+  canImport: boolean;
   error: string | undefined;
   /** Dismisses the current import-failure message (see
    * `LibraryImportError`) without otherwise affecting the library. */
@@ -75,6 +77,7 @@ export function useLibrary(): UseLibraryResult {
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
   const [storageUsage, setStorageUsage] = useState<StorageUsageEstimate | undefined>(undefined);
   const sessionRef = useRef<LibrarySession | undefined>(undefined);
+  const canImport = db !== null && !isLoading;
 
   const ownsDatabase = useCallback((database: LibraryDatabase): boolean =>
     sessionRef.current?.database === database, []);
@@ -135,7 +138,10 @@ export function useLibrary(): UseLibraryResult {
 
   const importFiles = useCallback(
     async (files: readonly File[]): Promise<void> => {
-      if (!db || !ownsDatabase(db)) {
+      if (db && !ownsDatabase(db)) return;
+      if (!db || !canImport) {
+        setError((current) => current ??
+          "The library isn't ready to import books. Wait for loading to finish, or reload this page if it failed.");
         return;
       }
       setError(undefined);
@@ -154,7 +160,7 @@ export function useLibrary(): UseLibraryResult {
         if (ownsDatabase(db)) setError(describeStorageError(err, "refresh", "your library"));
       }
     },
-    [db, ownsDatabase, refresh, refreshStorageUsage],
+    [db, canImport, ownsDatabase, refresh, refreshStorageUsage],
   );
 
   const removeBook = useCallback(
@@ -230,7 +236,7 @@ export function useLibrary(): UseLibraryResult {
   // the same book twice.
   const importUrlHandledRef = useRef(false);
   useEffect(() => {
-    if (!db || importUrlHandledRef.current) {
+    if (!db || !canImport || importUrlHandledRef.current) {
       return;
     }
     const params = new URLSearchParams(window.location.search);
@@ -263,13 +269,14 @@ export function useLibrary(): UseLibraryResult {
       }
     })();
     return () => abort.abort();
-  }, [db, importFiles, ownsDatabase]);
+  }, [db, canImport, importFiles, ownsDatabase]);
 
   const books = useMemo(() => sortBooks(rawBooks, sort), [rawBooks, sort]);
 
   return {
     books,
     isLoading,
+    canImport,
     error,
     dismissError,
     importFiles,

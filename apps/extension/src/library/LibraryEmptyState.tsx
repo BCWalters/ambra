@@ -6,6 +6,7 @@ import { LibraryDiscovery } from "./LibraryDiscovery.js";
 
 export interface LibraryEmptyStateProps {
   accent: string;
+  canImport: boolean;
   onImport: () => void;
 }
 
@@ -17,7 +18,7 @@ export interface LibraryEmptyStateProps {
  * inviting way to get started right where they're looking, rather than
  * only in the toolbar above.
  */
-export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, onImport }) => (
+export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport }) => (
   <div
     style={{
       display: "flex",
@@ -36,7 +37,7 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, onImport
     <Body1 as="p" style={{ margin: "4px 0 20px", color: "var(--colorNeutralForeground3, #666)" }}>
       Import your first EPUB to start reading.
     </Body1>
-    <Button appearance="primary" icon={<DocumentAddRegular />} onClick={onImport}>
+    <Button appearance="primary" icon={<DocumentAddRegular />} disabled={!canImport} onClick={onImport}>
       Import your first book
     </Button>
     <div style={{ width: "100%", marginTop: 28 }}>

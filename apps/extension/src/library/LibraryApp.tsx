@@ -285,6 +285,7 @@ export const LibraryApp: FC = () => {
   const {
     books,
     isLoading,
+    canImport,
     error,
     dismissError,
     importFiles,
@@ -383,6 +384,7 @@ export const LibraryApp: FC = () => {
           appearance="primary"
           size="small"
           icon={<DocumentAddRegular />}
+          disabled={!canImport}
           onClick={() => fileInputRef.current?.click()}
         >
           Import EPUB
@@ -392,6 +394,7 @@ export const LibraryApp: FC = () => {
           type="file"
           accept=".epub"
           multiple
+          disabled={!canImport}
           style={{ display: "none" }}
           onChange={handleFileChange}
         />
@@ -403,7 +406,7 @@ export const LibraryApp: FC = () => {
         {isLoading ? (
           <Spinner label="Loading your library…" style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
-          <LibraryEmptyState accent={palette.accent} onImport={() => fileInputRef.current?.click()} />
+          <LibraryEmptyState accent={palette.accent} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
         ) : (
           <>
             <div style={{ marginBottom: 16 }}>

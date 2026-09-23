@@ -35,6 +35,7 @@ async function launch(book: string) {
     const id = worker.url().split("/")[2]!;
     const library = await context.newPage();
     await library.goto(`chrome-extension://${id}/src/library/index.html`);
+    await expect(library.locator('input[type="file"]')).toBeEnabled();
     const started = Date.now();
     await library.locator('input[type="file"]').setInputFiles(path.join(root, `${book}.epub`));
     const open = library.getByRole("button", { name: /^Open / }).first();
