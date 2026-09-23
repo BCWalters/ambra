@@ -196,10 +196,6 @@ export class ReaderController {
    * `openSpineItem` already laid the fresh host out at). */
   private appliedWidth = 0;
   private appliedHeight = 0;
-  /** Whether the currently-open `FixedSpreadHost` was last built with
-   * spread mode eligible — `undefined` when the current host isn't a
-   * `FixedSpreadHost`. See `shouldSwitchSpreadMode`. */
-  private fixedLayoutSpreadEligible: boolean | undefined;
   /** Drives the `Spinner` overlay — deliberately delayed from when a
    * spine-item load actually starts (issue #88), since most loads
    * resolve near-instantly and a flash of spinner reads as more
@@ -1594,17 +1590,35 @@ export class ReaderController {
   /** Whether the new width changes spread eligibility for the open host. */
   private shouldSwitchSpreadMode(width: number): boolean {
     if (this.host instanceof FixedSpreadHost) {
-      const eligible = FixedLayoutSpreadPlanner.isSpreadModeEligible(
-        this.pkg.metadata.renditionSpread,
-        width,
-        this.height,
+      const planned = FixedLayoutSpreadPlanner.spreadContaining(
+        this.pkg.spine,
+        this.pkg.metadata.renditionLayout,
+        this.pkg.pageProgressionDirection,
+        this.fixedSpreadViewport(width),
+        this.spineIndex,
       );
-      return eligible !== this.fixedLayoutSpreadEligible;
+      const current = this.host.spread;
+      if (planned.kind === "single") {
+        return current?.kind !== "single" || current.spineIndex !== planned.spineIndex;
+      }
+      return (
+        current?.kind !== "pair" ||
+        current.leftSpineIndex !== planned.leftSpineIndex ||
+        current.rightSpineIndex !== planned.rightSpineIndex
+      );
     }
     if (this.viewMode !== "paginated" || this.isFixedLayoutHost(this.host)) {
       return false;
     }
     return SpreadPaginatedHost.isEligible(width) !== this.host instanceof SpreadPaginatedHost;
+  }
+
+  private fixedSpreadViewport(width = this.width) {
+    return {
+      width,
+      height: this.height,
+      packageRenditionSpread: this.pkg.metadata.renditionSpread,
+    };
   }
 
   /** Reopens the current spine item at the current size, bridging
@@ -2077,21 +2091,21 @@ export class ReaderController {
       return;
     }
 
-    const spreadEligible = this.fixedLayoutSpreadEligible ?? false;
+    const viewport = this.fixedSpreadViewport();
     const nextSpread =
       direction === 1
         ? FixedLayoutSpreadPlanner.nextSpread(
             this.pkg.spine,
             this.pkg.metadata.renditionLayout,
             this.pkg.pageProgressionDirection,
-            spreadEligible,
+            viewport,
             currentSpread,
           )
         : FixedLayoutSpreadPlanner.previousSpread(
             this.pkg.spine,
             this.pkg.metadata.renditionLayout,
             this.pkg.pageProgressionDirection,
-            spreadEligible,
+            viewport,
             currentSpread,
           );
     const nextPrimaryIndex =
@@ -3545,31 +3559,23 @@ export class ReaderController {
           // Fixed-layout content always uses `FixedSpreadHost`;
           // normalize `spineIndex` to the opened spread's first item
           // afterwards.
-          const spreadEligible = FixedLayoutSpreadPlanner.isSpreadModeEligible(
-            this.pkg.metadata.renditionSpread,
-            this.width,
-            this.height,
-          );
           const spread = FixedLayoutSpreadPlanner.spreadContaining(
             this.pkg.spine,
             this.pkg.metadata.renditionLayout,
             this.pkg.pageProgressionDirection,
-            spreadEligible,
+            this.fixedSpreadViewport(),
             spineIndex,
           );
           const fixedHost = new FixedSpreadHost(this.width, this.height);
           createdHost = fixedHost;
           stagingEl = this.stageHiddenHostElement(fixedHost.element);
           await fixedHost.open(this.contentLoader, this.resolver, spread, this.pkg.metadata.renditionViewport);
-          this.fixedLayoutSpreadEligible = spreadEligible;
           spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
-          this.fixedLayoutSpreadEligible = undefined;
           const host = await this.prepareSpreadForOpen(spineIndex, options);
           createdHost = host;
           spineIndex = host.primarySpineIndex;
         } else {
-          this.fixedLayoutSpreadEligible = undefined;
           const host =
             this.viewMode === "paginated"
               ? new PaginatedContentHost(this.width, this.height)
