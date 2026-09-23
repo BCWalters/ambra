@@ -5,6 +5,7 @@ import {
   type PackageDocument,
 } from "@ambra/engine";
 import type { EpubInspectionData, EpubInspectionFile } from "./ReaderTypes.js";
+import { collectInspectorReferences, type InspectorReference } from "./InspectorReferences.js";
 
 /**
  * Builds and serves EPUB Inspector data (issue #46) from an already-open
@@ -20,6 +21,8 @@ import type { EpubInspectionData, EpubInspectionFile } from "./ReaderTypes.js";
 export class EpubInspectionSession {
   private readonly previewUrlCache = new Map<string, string>();
   private readonly pendingPreviews = new Map<string, Promise<string>>();
+  private referenceIndex: Promise<ReadonlyMap<string, readonly InspectorReference[]>> | undefined;
+  private readonly referenceRequests = new Map<string, Promise<readonly InspectorReference[]>>();
   private disposed = false;
 
   public constructor(
@@ -138,6 +141,54 @@ export class EpubInspectionSession {
     return this.contentLoader.readArchiveFileText(path);
   }
 
+  /** Lazily indexes local XHTML/SVG/CSS usages once for this inspection session. */
+  public findReferences(targetPath: string): Promise<readonly InspectorReference[]> {
+    if (this.disposed) return Promise.reject(new Error("The EPUB inspection session has been closed."));
+    const cached = this.referenceRequests.get(targetPath);
+    if (cached) return cached;
+    if (!this.referenceIndex) {
+      this.referenceIndex = this.buildReferenceIndex().catch(error => {
+        this.referenceIndex = undefined;
+        throw error;
+      });
+    }
+    const request = this.referenceIndex.then(index => {
+      if (this.disposed) throw new Error("The EPUB inspection session has been closed.");
+      return index.get(targetPath) ?? [];
+    }).catch(error => {
+      this.referenceRequests.delete(targetPath);
+      throw error;
+    });
+    this.referenceRequests.set(targetPath, request);
+    return request;
+  }
+
+  private async buildReferenceIndex(): Promise<ReadonlyMap<string, readonly InspectorReference[]>> {
+    const index = new Map<string, InspectorReference[]>();
+    const mediaTypes = new Map(this.pkg.manifest.map(item => [item.path, item.mediaType]));
+    for (const entry of this.contentLoader.archiveEntries) {
+      if (this.disposed) throw new Error("The EPUB inspection session has been closed.");
+      if (entry.isDirectory) continue;
+      const mediaType = mediaTypes.get(entry.fileName);
+      const kind = mediaType === "text/css" || /\.css$/i.test(entry.fileName) ? "css"
+        : mediaType === "application/xhtml+xml" || mediaType === "image/svg+xml" || /\.(?:xhtml|html|htm|svg)$/i.test(entry.fileName) ? "markup"
+          : undefined;
+      if (!kind) continue;
+      try {
+        const text = await this.contentLoader.readArchiveFileText(entry.fileName);
+        if (this.disposed) throw new Error("The EPUB inspection session has been closed.");
+        for (const { targetPath, reference } of collectInspectorReferences(entry.fileName, text, kind)) {
+          const references = index.get(targetPath) ?? [];
+          references.push(reference);
+          index.set(targetPath, references);
+        }
+      } catch (error) {
+        throw new Error(`Reference lookup failed in ${entry.fileName}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      }
+    }
+    return index;
+  }
+
   /** Builds and caches an object URL for an Inspector media preview.
    * The caller supplies the resolved `mediaType` so the preview element
    * gets a correctly typed `Blob`. */
@@ -176,5 +227,7 @@ export class EpubInspectionSession {
     }
     this.previewUrlCache.clear();
     this.pendingPreviews.clear();
+    this.referenceRequests.clear();
+    this.referenceIndex = undefined;
   }
 }
