@@ -3,6 +3,7 @@ import { Body1, Body1Strong, Button, Caption1, useRestoreFocusTarget } from "@fl
 import { CodeCircleRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
+import { LibraryImportError } from "./LibraryImportError.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -51,6 +52,7 @@ export interface BookDetailsFlyoutProps {
    * own full browser tab (`isFullTab`), matching how the reader itself
    * tucks this author-facing tool away from ordinary use. */
   onOpenInspector: (() => void) | undefined;
+  inspectionError?: { message: string; onDismiss: () => void } | undefined;
 }
 
 /**
@@ -69,6 +71,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   accent,
   backgroundSolid,
   onOpenInspector,
+  inspectionError,
 }) => {
   const open = book !== undefined;
   const restoreInspectorFocus = useRestoreFocusTarget();
@@ -188,6 +191,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
           <DetailRow label="File name" value={book.fileName} />
           <DetailRow label="Added" value={new Date(book.addedAt).toLocaleDateString()} />
 
+          {inspectionError && <LibraryImportError {...inspectionError} />}
           {onOpenInspector && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
               <Button

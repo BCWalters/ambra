@@ -19,6 +19,8 @@ import type { EpubInspectionData, EpubInspectionFile } from "./ReaderTypes.js";
  */
 export class EpubInspectionSession {
   private readonly previewUrlCache = new Map<string, string>();
+  private readonly pendingPreviews = new Map<string, Promise<string>>();
+  private disposed = false;
 
   public constructor(
     private readonly contentLoader: ContentLoader,
@@ -139,12 +141,24 @@ export class EpubInspectionSession {
   /** Builds and caches an object URL for an Inspector media preview.
    * The caller supplies the resolved `mediaType` so the preview element
    * gets a correctly typed `Blob`. */
-  public async getInspectionFilePreviewUrl(path: string, mediaType: string): Promise<string> {
+  public getInspectionFilePreviewUrl(path: string, mediaType: string): Promise<string> {
+    if (this.disposed) return Promise.reject(new Error("The EPUB inspection session has been closed."));
     const cached = this.previewUrlCache.get(path);
     if (cached !== undefined) {
-      return cached;
+      return Promise.resolve(cached);
     }
+    const pending = this.pendingPreviews.get(path);
+    if (pending) return pending;
+    const request = this.createPreviewUrl(path, mediaType).finally(() => {
+      this.pendingPreviews.delete(path);
+    });
+    this.pendingPreviews.set(path, request);
+    return request;
+  }
+
+  private async createPreviewUrl(path: string, mediaType: string): Promise<string> {
     const bytes = await this.contentLoader.readArchiveFileBytes(path);
+    if (this.disposed) throw new Error("The EPUB inspection session has been closed.");
     const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mediaType }));
     this.previewUrlCache.set(path, url);
     return url;
@@ -155,9 +169,12 @@ export class EpubInspectionSession {
    * covers this via its existing `dispose`; a standalone session opened
    * just to inspect a library book must call this itself). */
   public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     for (const url of this.previewUrlCache.values()) {
       URL.revokeObjectURL(url);
     }
     this.previewUrlCache.clear();
+    this.pendingPreviews.clear();
   }
 }

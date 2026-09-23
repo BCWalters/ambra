@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent, FC } from "react";
 import {
   Body1,
@@ -25,6 +25,7 @@ import {
 } from "@fluentui/react-icons";
 import { useLibrary } from "./useLibrary.js";
 import type { LibraryBookViewModel } from "./useLibrary.js";
+import { useLibraryInspector } from "./useLibraryInspector.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
@@ -33,8 +34,6 @@ import { LibraryDiscovery } from "./LibraryDiscovery.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
-import type { EpubInspectionData } from "../reader/ReaderTypes.js";
-import type { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { AboutFlyout } from "./AboutFlyout.js";
 
 const SORT_GROUP_NAME = "librarySort";
@@ -303,37 +302,8 @@ export const LibraryApp: FC = () => {
   const palette = CHROME_THEMES[chromeTheme];
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
   const detailsBook = books.find((book) => book.id === detailsBookId);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
-  const [inspectionSession, setInspectionSession] = useState<EpubInspectionSession | undefined>(undefined);
-  const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
+  const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
-
-  // Issue #111: the Library has no live `ReaderController` to ask for
-  // Inspector data — instead opens a standalone `EpubInspectionSession`
-  // directly from the book's stored bytes, disposed (revoking its
-  // preview object URLs) once the panel closes or a different book's
-  // details are opened.
-  const handleOpenInspector = (bookId: string): void => {
-    inspectionSession?.dispose();
-    setInspectionSession(undefined);
-    setInspectionData(undefined);
-    setIsInspectorOpen(true);
-    void openInspectionSession(bookId).then((session) => {
-      setInspectionSession(session);
-      setInspectionData(session.getEpubInspectionData());
-    });
-  };
-
-  // Revokes the standalone session's cached preview object URLs once
-  // it's replaced or the page unmounts — a live `ReaderController`
-  // handles this itself via its own `dispose`, but a standalone
-  // session opened just for the Library's Inspector button has no
-  // other owner.
-  useEffect(() => {
-    return () => {
-      inspectionSession?.dispose();
-    };
-  }, [inspectionSession]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = event.target.files;
@@ -460,15 +430,8 @@ export const LibraryApp: FC = () => {
         onRequestClose={() => setDetailsBookId(undefined)}
         accent={palette.accent}
         backgroundSolid={palette.backgroundSolid}
-        onOpenInspector={
-          isFullTab
-            ? () => {
-                if (detailsBook) {
-                  handleOpenInspector(detailsBook.id);
-                }
-              }
-            : undefined
-        }
+        onOpenInspector={isFullTab ? inspector.open : undefined}
+        inspectionError={inspector.error ? { message: inspector.error, onDismiss: inspector.close } : undefined}
       />
 
       <AboutFlyout
@@ -479,21 +442,21 @@ export const LibraryApp: FC = () => {
 
       <ChromeThemeProvider theme={chromeTheme}>
         <EpubInspectorPanel
-          open={isInspectorOpen}
-          onOpenChange={setIsInspectorOpen}
-          data={inspectionData}
+          open={inspector.isOpen}
+          onOpenChange={(open) => { if (!open) inspector.close(); }}
+          data={inspector.data}
           fileName={detailsBook?.fileName}
           onReadFile={(path) => {
-            if (!inspectionSession) {
+            if (!inspector.session) {
               return Promise.reject(new Error("The Inspector isn't ready yet."));
             }
-            return inspectionSession.readInspectionFileText(path);
+            return inspector.session.readInspectionFileText(path);
           }}
           onGetPreviewUrl={(path, mediaType) => {
-            if (!inspectionSession) {
+            if (!inspector.session) {
               return Promise.reject(new Error("The Inspector isn't ready yet."));
             }
-            return inspectionSession.getInspectionFilePreviewUrl(path, mediaType);
+            return inspector.session.getInspectionFilePreviewUrl(path, mediaType);
           }}
         />
       </ChromeThemeProvider>

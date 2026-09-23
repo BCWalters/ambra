@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { importBook } from "./BookImporter.js";
-import type { BookMetadata } from "./LibraryDatabase.js";
 import { LibraryDatabase } from "./LibraryDatabase.js";
+import { LibrarySession, type LibraryBookViewModel } from "./LibrarySession.js";
 import { DEFAULT_LIBRARY_SORT } from "./LibrarySortOption.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, openLibraryTab, openReaderTab } from "../navigation.js";
@@ -10,13 +10,7 @@ import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { describeStorageError } from "../StorageErrors.js";
 
-export interface LibraryBookViewModel extends BookMetadata {
-  readonly coverUrl: string | undefined;
-  /** Whole-book completion, 0–1 — see `ReadingProgress.fractionComplete`.
-   * `undefined` for a book that's never been opened, or whose saved
-   * progress predates this field / was saved in scroll mode. */
-  readonly progressFraction: number | undefined;
-}
+export type { LibraryBookViewModel } from "./LibrarySession.js";
 
 /** A rough, purely-informational read on this origin's on-disk usage —
  * see `LibraryDatabase.estimateStorageUsage`. `undefined` until the
@@ -80,36 +74,29 @@ export function useLibrary(): UseLibraryResult {
   const [chromeTheme, setChromeTheme] = useState<ChromeThemeChoice>(DEFAULT_CHROME_THEME);
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
   const [storageUsage, setStorageUsage] = useState<StorageUsageEstimate | undefined>(undefined);
-  const coverUrlsRef = useRef(new Map<string, string>());
+  const sessionRef = useRef<LibrarySession | undefined>(undefined);
+
+  const ownsDatabase = useCallback((database: LibraryDatabase): boolean =>
+    sessionRef.current?.database === database, []);
 
   const refreshStorageUsage = useCallback((): void => {
-    void LibraryDatabase.estimateStorageUsage().then(setStorageUsage);
+    const session = sessionRef.current;
+    if (!session) return;
+    void LibraryDatabase.estimateStorageUsage().then((estimate) => {
+      if (sessionRef.current === session) setStorageUsage(estimate);
+    });
   }, []);
 
   const refresh = useCallback(async (database: LibraryDatabase): Promise<void> => {
-    const metadataList = await database.listBooks();
-    const progressByBookId = await database.getAllProgress();
-
-    const withCovers = await Promise.all(
-      metadataList.map(async (metadata): Promise<LibraryBookViewModel> => {
-        let coverUrl = coverUrlsRef.current.get(metadata.id);
-        if (!coverUrl) {
-          const blob = await database.getCoverBlob(metadata.id);
-          if (blob) {
-            coverUrl = URL.createObjectURL(blob);
-            coverUrlsRef.current.set(metadata.id, coverUrl);
-          }
-        }
-        return { ...metadata, coverUrl, progressFraction: progressByBookId.get(metadata.id)?.fractionComplete };
-      }),
-    );
-
-    setRawBooks(withCovers);
+    const session = sessionRef.current;
+    if (!session || session.database !== database) return;
+    const books = await session.refresh();
+    if (books && sessionRef.current === session) setRawBooks(books);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    const coverUrls = coverUrlsRef.current;
+    let session: LibrarySession | undefined;
 
     void (async () => {
       try {
@@ -118,15 +105,16 @@ export function useLibrary(): UseLibraryResult {
           database.close();
           return;
         }
+        session = new LibrarySession(database);
+        sessionRef.current = session;
         setDb(database);
-        const savedTheme = await database.getDefaultChromeTheme();
-        if (!cancelled && savedTheme) {
-          setChromeTheme(savedTheme);
-        }
-        const savedSort = await database.getDefaultLibrarySort();
-        if (!cancelled && savedSort) {
-          setSortState(savedSort);
-        }
+        refreshStorageUsage();
+        const [savedTheme, savedSort] = await Promise.all([
+          database.getDefaultChromeTheme(), database.getDefaultLibrarySort(),
+        ]);
+        if (cancelled) return;
+        if (savedTheme) setChromeTheme(savedTheme);
+        if (savedSort) setSortState(savedSort);
         await refresh(database);
       } catch (err) {
         if (!cancelled) {
@@ -138,51 +126,57 @@ export function useLibrary(): UseLibraryResult {
         }
       }
     })();
-    refreshStorageUsage();
-
     return () => {
       cancelled = true;
-      for (const url of coverUrls.values()) {
-        URL.revokeObjectURL(url);
-      }
-      coverUrls.clear();
+      if (sessionRef.current === session) sessionRef.current = undefined;
+      session?.dispose();
     };
   }, [refresh, refreshStorageUsage]);
 
   const importFiles = useCallback(
     async (files: readonly File[]): Promise<void> => {
-      if (!db) {
+      if (!db || !ownsDatabase(db)) {
         return;
       }
       setError(undefined);
       for (const file of files) {
+        if (!ownsDatabase(db)) return;
         try {
           await importBook(db, file);
         } catch (err) {
-          setError(describeImportError(err, file.name));
+          if (ownsDatabase(db)) setError(describeImportError(err, file.name));
         }
       }
-      await refresh(db);
-      refreshStorageUsage();
+      try {
+        await refresh(db);
+        if (ownsDatabase(db)) refreshStorageUsage();
+      } catch (err) {
+        if (ownsDatabase(db)) setError(describeStorageError(err, "refresh", "your library"));
+      }
     },
-    [db, refresh, refreshStorageUsage],
+    [db, ownsDatabase, refresh, refreshStorageUsage],
   );
 
   const removeBook = useCallback(
     async (id: string): Promise<void> => {
-      if (!db) {
+      if (!db || !ownsDatabase(db)) {
         return;
       }
-      await db.deleteBook(id);
-      const coverUrl = coverUrlsRef.current.get(id);
-      if (coverUrl) {
-        URL.revokeObjectURL(coverUrl);
-        coverUrlsRef.current.delete(id);
+      setError(undefined);
+      try {
+        await db.deleteBook(id);
+      } catch (err) {
+        if (ownsDatabase(db)) setError(describeStorageError(err, "remove", "that book"));
+        return;
       }
-      await refresh(db);
-      refreshStorageUsage();
+      try {
+        await refresh(db);
+        if (ownsDatabase(db)) refreshStorageUsage();
+      } catch (err) {
+        if (ownsDatabase(db)) setError(describeStorageError(err, "refresh", "your library"));
+      }
     },
-    [db, refresh, refreshStorageUsage],
+    [db, ownsDatabase, refresh, refreshStorageUsage],
   );
 
   const openBook = useCallback((id: string): void => {
@@ -196,9 +190,13 @@ export function useLibrary(): UseLibraryResult {
   const setSort = useCallback(
     (next: LibrarySortOption): void => {
       setSortState(next);
-      void db?.setDefaultLibrarySort(next);
+      if (db && ownsDatabase(db)) {
+        void db.setDefaultLibrarySort(next).catch((err) => {
+          if (ownsDatabase(db)) setError(describeStorageError(err, "save", "your library sort"));
+        });
+      }
     },
-    [db],
+    [db, ownsDatabase],
   );
 
   const openInFullTab = useCallback((): void => {
@@ -207,7 +205,7 @@ export function useLibrary(): UseLibraryResult {
 
   const openInspectionSession = useCallback(
     async (id: string): Promise<EpubInspectionSession> => {
-      if (!db) {
+      if (!db || !ownsDatabase(db)) {
         throw new Error("The library isn't ready yet.");
       }
       const blob = await db.getBookFile(id);
@@ -216,7 +214,7 @@ export function useLibrary(): UseLibraryResult {
       }
       return EpubInspectionSession.openStandalone(await blob.arrayBuffer());
     },
-    [db],
+    [db, ownsDatabase],
   );
 
   const isFullTab = useMemo(
@@ -247,20 +245,25 @@ export function useLibrary(): UseLibraryResult {
     const nextSearch = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}`);
 
+    const abort = new AbortController();
     void (async () => {
       try {
-        const response = await fetch(importUrl);
+        const response = await fetch(importUrl, { signal: abort.signal });
         if (!response.ok) {
           throw new Error(`That download couldn't be fetched (HTTP ${response.status}).`);
         }
         const blob = await response.blob();
+        if (abort.signal.aborted || !ownsDatabase(db)) return;
         const file = new File([blob], suggestedFileNameFor(importUrl), { type: "application/epub+zip" });
         await importFiles([file]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (!abort.signal.aborted && ownsDatabase(db)) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       }
     })();
-  }, [db, importFiles]);
+    return () => abort.abort();
+  }, [db, importFiles, ownsDatabase]);
 
   const books = useMemo(() => sortBooks(rawBooks, sort), [rawBooks, sort]);
 
