@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FC, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
-import { Caption1 } from "@fluentui/react-components";
+import type {
+  FC,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
+import { Caption1, makeStyles } from "@fluentui/react-components";
 import type { PreviewPosition, ReaderSnapshot } from "../ReaderTypes.js";
 import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -11,6 +15,24 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
  * window's left/right edges — purely cosmetic breathing room, not a
  * layout necessity. */
 const POPUP_EDGE_MARGIN = 8;
+
+const useStyles = makeStyles({
+  track: {
+    outlineStyle: "none",
+    ":focus-visible": {
+      outline: "2px solid var(--colorNeutralForeground1, #242424)",
+      outlineOffset: "-2px",
+    },
+  },
+  positionRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    "@media (max-width: 600px)": {
+      gridTemplateColumns: "auto minmax(0, 1fr)",
+      "& > :first-child": { display: "none" },
+    },
+  },
+});
 
 export interface ProgressScrubberProps {
   snapshot: ReaderSnapshot;
@@ -28,8 +50,8 @@ export interface ProgressScrubberProps {
    * would land — see `ReaderController.previewSeek`. */
   onPreview: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
   /** Resolves after navigation publishes its final snapshot, not when
-  * loading starts. Both pointer and keyboard seeks retain their
-  * optimistic destination until this promise settles. */
+   * loading starts. Both pointer and keyboard seeks retain their
+   * optimistic destination until this promise settles. */
   onSeek: (fraction: number) => Promise<void>;
   onSeekError: (error: unknown) => void;
 }
@@ -97,6 +119,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const chromeTheme = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
+  const styles = useStyles();
   const rtl = snapshot.pageProgressionDirection === "rtl";
   const barRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -128,8 +151,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const preview = dragFraction !== undefined ? onPreview(dragFraction) : pendingSeek?.preview;
   const previewLabel = preview
     ? preview.position.kind === "page"
-      ? t("scrubber.pageOfTotal", { current: preview.position.current, total: preview.position.total })
-      : t("scrubber.chapterOfTotal", { current: preview.position.current, total: preview.position.total })
+      ? t("scrubber.pageOfTotal", {
+          current: preview.position.current,
+          total: preview.position.total,
+        })
+      : t("scrubber.chapterOfTotal", {
+          current: preview.position.current,
+          total: preview.position.total,
+        })
     : undefined;
 
   useLayoutEffect(() => {
@@ -139,18 +168,25 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     if (!bar || !track || !popup || optimisticFraction === undefined) {
       return;
     }
-    const barRect = bar.getBoundingClientRect();
-    const trackRect = track.getBoundingClientRect();
-    const popupWidth = popup.getBoundingClientRect().width;
-    const desiredCenterInViewport = trackRect.left + (rtl ? 1 - optimisticFraction : optimisticFraction) * trackRect.width;
-    const halfWidth = popupWidth / 2;
-    const minCenter = POPUP_EDGE_MARGIN + halfWidth;
-    const maxCenter = window.innerWidth - POPUP_EDGE_MARGIN - halfWidth;
-    const clampedCenterInViewport = Math.min(
-      maxCenter,
-      Math.max(minCenter, desiredCenterInViewport),
-    );
-    setPopupCenterPx(clampedCenterInViewport - barRect.left);
+    const updateCenter = () => {
+      const barRect = bar.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      const halfWidth = popup.getBoundingClientRect().width / 2;
+      const desiredCenter =
+        trackRect.left + (rtl ? 1 - optimisticFraction : optimisticFraction) * trackRect.width;
+      const minCenter = POPUP_EDGE_MARGIN + halfWidth;
+      const maxCenter = window.innerWidth - POPUP_EDGE_MARGIN - halfWidth;
+      setPopupCenterPx(Math.min(maxCenter, Math.max(minCenter, desiredCenter)) - barRect.left);
+    };
+    updateCenter();
+    const observer = new ResizeObserver(updateCenter);
+    observer.observe(bar);
+    observer.observe(popup);
+    window.addEventListener("resize", updateCenter);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateCenter);
+    };
     // `previewLabel`/`preview.chapterLabel` deliberately included: the
     // popup's rendered width changes as its text does (e.g. "Page 9 of
     // 12" vs "Page 100 of 120"), which can itself push it back into (or
@@ -171,7 +207,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (activePointerIdRef.current !== undefined || (event.pointerType === "mouse" && event.button !== 0)) {
+    if (
+      activePointerIdRef.current !== undefined ||
+      (event.pointerType === "mouse" && event.button !== 0)
+    ) {
       return;
     }
     // Pointer capture is still required here, not just a nicety: without
@@ -184,6 +223,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     // release (pointerup/pointercancel) not reliably arriving back here
     // — see the effect below.
     event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
     activePointerIdRef.current = event.pointerId;
     setDragFraction(fractionAt(event.clientX));
   };
@@ -202,7 +243,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       // The controller publishes its final external-store snapshot before
       // settling. React reads that store in the same render that clears this
       // overlay; no frame-count or timeout can stand in for seek completion.
-      setPendingSeek(current => current?.id === id ? undefined : current);
+      setPendingSeek((current) => (current?.id === id ? undefined : current));
     }
   };
 
@@ -240,6 +281,9 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     const cancelFromEvent = (event: PointerEvent): void => {
       if (event.pointerId === activePointerIdRef.current) releaseDrag();
     };
+    const cancelWhenHidden = (): void => {
+      if (document.hidden) releaseDrag();
+    };
 
     const handlePointerMove = (event: PointerEvent): void => {
       if (event.pointerId !== activePointerIdRef.current) return;
@@ -259,7 +303,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       // the stuck state — this is also why these are `window` listeners
       // rather than handlers on the track element itself: a native event
       // bubbles to `window` from wherever it actually landed in this
-      // document, not just from the narrow 16px track strip, so the
+      // document, not just from the track's hit target, so the
       // self-heal doesn't need the pointer to specifically re-hover the
       // track to recover.
       if (event.buttons === 0) {
@@ -272,10 +316,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", finalizeFromEvent);
     window.addEventListener("pointercancel", cancelFromEvent);
+    document.addEventListener("visibilitychange", cancelWhenHidden);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", finalizeFromEvent);
       window.removeEventListener("pointercancel", cancelFromEvent);
+      document.removeEventListener("visibilitychange", cancelWhenHidden);
     };
     // `fractionAt`/`finishDrag` close over refs and stable props only —
     // deliberately excluded so this effect doesn't tear down and
@@ -310,12 +356,20 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const pagesLeftLabel =
     pagesLeftInChapter === undefined
       ? undefined
-      : t(pagesLeftInChapter === 1 ? "scrubber.pagesLeftInChapterOne" : "scrubber.pagesLeftInChapterOther", {
-          count: pagesLeftInChapter,
-        });
+      : t(
+          pagesLeftInChapter === 1
+            ? "scrubber.pagesLeftInChapterOne"
+            : "scrubber.pagesLeftInChapterOther",
+          {
+            count: pagesLeftInChapter,
+          },
+        );
   const bookPageLabel =
     snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined
-      ? t("scrubber.pageOfTotal", { current: snapshot.bookPageIndex, total: snapshot.bookPageCount })
+      ? t("scrubber.pageOfTotal", {
+          current: snapshot.bookPageIndex,
+          total: snapshot.bookPageCount,
+        })
       : undefined;
   // Still exposed as one combined string for the slider's own
   // `aria-valuetext` (see below) — a screen reader doesn't care how the
@@ -342,6 +396,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // than staging a drag — there's no "release" gesture for a keyboard
   // interaction to wait for.
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === "Escape" && activePointerIdRef.current !== undefined) {
+      event.preventDefault();
+      event.stopPropagation();
+      releaseDrag();
+      return;
+    }
     const smallStep =
       snapshot.bookPageCount !== undefined && snapshot.bookPageCount > 0
         ? 1 / snapshot.bookPageCount
@@ -397,6 +457,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     return null;
   }
 
+  const shown = visible || optimisticFraction !== undefined;
+  const previewStateLabel =
+    dragFraction !== undefined ? t("scrubber.preview") : t("scrubber.seeking");
+
   return (
     <div
       ref={barRef}
@@ -410,15 +474,15 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         left: 0,
         right: 0,
         zIndex: 10,
-        padding: "6px 14px",
+        padding: "0 20px 7px",
         background: chromeTheme.background,
         backdropFilter: CHROME_BACKDROP_FILTER,
         WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
         borderTop: `1px solid ${CHROME_BORDER}`,
-        boxShadow: visible ? CHROME_SHADOW : "none",
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(8px)",
-        pointerEvents: visible ? "auto" : "none",
+        boxShadow: shown ? CHROME_SHADOW : "none",
+        opacity: shown ? 1 : 0,
+        transform: shown ? "translateY(0)" : "translateY(8px)",
+        pointerEvents: shown ? "auto" : "none",
         transition: reduceMotion
           ? "none"
           : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
@@ -427,19 +491,44 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       {(bookPageLabel || pagesLeftLabel) && (
         <div
           aria-hidden="true"
+          className={styles.positionRow}
           style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
+            position: "absolute",
+            top: 5,
+            left: 20,
+            right: 20,
             alignItems: "baseline",
-            margin: "0 0 6px",
+            columnGap: 12,
             pointerEvents: "none",
+            fontVariantNumeric: "tabular-nums",
           }}
         >
           <span />
-          <Caption1 as="p" block style={{ margin: 0, textAlign: "center", opacity: 0.55 }}>
+          <Caption1
+            as="p"
+            block
+            style={{
+              margin: 0,
+              textAlign: "center",
+              fontWeight: 600,
+              color: "var(--colorNeutralForeground1, #242424)",
+            }}
+          >
             {bookPageLabel}
           </Caption1>
-          <Caption1 as="p" block style={{ margin: 0, textAlign: "right", opacity: 0.55 }}>
+          <Caption1
+            as="p"
+            block
+            title={pagesLeftLabel}
+            style={{
+              margin: 0,
+              textAlign: "right",
+              color: "var(--colorNeutralForeground2, #444)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {pagesLeftLabel}
           </Caption1>
         </div>
@@ -458,7 +547,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             // inaccurate only at the extreme edges, on the first frame
             // of a drag, never visibly clipped since the layout effect
             // runs before the browser actually paints.
-            left: popupCenterPx ?? `${(rtl ? 1 - optimisticFraction! : optimisticFraction!) * 100}%`,
+            left:
+              popupCenterPx ?? `${(rtl ? 1 - optimisticFraction! : optimisticFraction!) * 100}%`,
             // Without an explicit width, an absolutely positioned box
             // with only `left` set (no `right`) shrink-to-fits within
             // the space *remaining* to the containing block's edge —
@@ -468,57 +558,113 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             // squeezed narrower than its own text and wrapped, even
             // though its clamped position had plenty of room to its
             // *other* side. `max-content` sizes it to its content's own
-            // preferred width unconditionally, matching what
-            // `white-space: nowrap` below already assumes.
+            // preferred width, capped below so long titles wrap within
+            // the viewport rather than overflowing either edge.
             width: "max-content",
+            maxWidth: `min(320px, calc(100vw - ${POPUP_EDGE_MARGIN * 2}px))`,
+            boxSizing: "border-box",
             transform: "translate(-50%, -8px)",
-            background: chromeTheme.background,
+            background: chromeTheme.backgroundSolid,
             backdropFilter: CHROME_BACKDROP_FILTER,
             WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
             border: `1px solid ${CHROME_BORDER}`,
-            borderRadius: 8,
+            borderRadius: 12,
             boxShadow: CHROME_SHADOW,
-            padding: "6px 12px",
-            whiteSpace: "nowrap",
+            padding: "10px 14px",
+            pointerEvents: "none",
+            overflowWrap: "anywhere",
             textAlign: "center",
           }}
         >
           {/* Fluent's Caption1 sets its own `text-align: start`, which
               wins over the popup div's inherited `center` above — so
               each line needs `textAlign: "center"` set directly on it. */}
-          <Caption1 as="span" block style={{ fontWeight: 600, textAlign: "center" }}>
+          <Caption1
+            as="span"
+            block
+            style={{
+              color: chromeTheme.accentForeground,
+              fontWeight: 600,
+              textAlign: "center",
+              marginBottom: 4,
+            }}
+          >
+            {previewStateLabel}
+          </Caption1>
+          <Caption1
+            as="span"
+            block
+            style={{
+              fontSize: 14,
+              lineHeight: "20px",
+              fontWeight: 600,
+              textAlign: "center",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
             {previewLabel}
           </Caption1>
           <Caption1
             as="span"
             block
-            style={{ color: "var(--colorNeutralForeground2, #444)", textAlign: "center" }}
+            title={preview.chapterLabel}
+            style={{
+              color: "var(--colorNeutralForeground2, #444)",
+              textAlign: "center",
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 3,
+              overflow: "hidden",
+              marginTop: 2,
+            }}
           >
             {preview.chapterLabel}
           </Caption1>
+          {dragFraction !== undefined && (
+            <Caption1
+              as="span"
+              block
+              style={{
+                color: "var(--colorNeutralForeground2, #444)",
+                textAlign: "center",
+                marginTop: 8,
+              }}
+            >
+              {t("scrubber.releaseToSeek")}
+            </Caption1>
+          )}
         </div>
       )}
 
       <div
         ref={trackRef}
         onPointerDown={beginDrag}
+        onLostPointerCapture={(event) => {
+          if (event.pointerId === activePointerIdRef.current) releaseDrag();
+        }}
         onKeyDown={handleKeyDown}
+        className={styles.track}
         role="slider"
         tabIndex={0}
         aria-label={t("scrubber.positionInBook")}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-orientation="horizontal"
         aria-valuenow={Math.round(displayFraction * 100)}
-        aria-valuetext={previewLabel
-          ? `${previewLabel} - ${preview!.chapterLabel}`
-          : currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`}
+        aria-valuetext={
+          previewLabel
+            ? `${previewStateLabel}: ${previewLabel} - ${preview!.chapterLabel}`
+            : (currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`)
+        }
         style={{
           position: "relative",
-          height: 16,
+          height: 44,
+          borderRadius: 8,
           display: "flex",
           alignItems: "center",
           cursor: "pointer",
           touchAction: "none",
+          userSelect: "none",
         }}
       >
         <div
@@ -527,6 +673,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             left: 0,
             right: 0,
             height: 4,
+            top: 32,
             borderRadius: 2,
             background: "var(--colorNeutralStroke2, rgba(0, 0, 0, 0.12))",
           }}
@@ -538,16 +685,20 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             right: rtl ? 0 : "auto",
             width: `${displayFraction * 100}%`,
             height: 4,
+            top: 32,
             borderRadius: 2,
-            background: chromeTheme.accent,
+            background: chromeTheme.accentForeground,
           }}
         />
         <div
           style={{
             position: "absolute",
             left: `${(rtl ? 1 - displayFraction : displayFraction) * 100}%`,
-            width: 12,
-            height: 12,
+            top: 26,
+            width: 16,
+            height: 16,
+            boxSizing: "border-box",
+            border: `2px solid ${chromeTheme.accentForeground}`,
             borderRadius: "50%",
             transform: "translateX(-50%)",
             background: chromeTheme.accent,

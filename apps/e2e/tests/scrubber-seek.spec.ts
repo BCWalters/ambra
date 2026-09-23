@@ -73,7 +73,7 @@ async function instrument(page: Page): Promise<void> {
       // Hold the first chapter load of each seek; subsequent spread columns
       // still load normally once that navigation is explicitly released.
       const request = state.calls.length - 1;
-      if (!gatedSeeks.has(request)) {
+      if (request >= 0 && !gatedSeeks.has(request)) {
         gatedSeeks.add(request);
         await new Promise<void>((resolve, reject) =>
           state.gates.push({
@@ -347,6 +347,111 @@ test("failed chapter loads and rejected seeks restore actual position with a vis
   }
 });
 
+test("preview is readable at narrow widths and Escape leaves the book in place", async ({
+  browserName,
+}, info) => {
+  const { context, readerPage: page } = await launchReader(book, {
+    viewport: { width: 760, height: 900 },
+  });
+  try {
+    await instrument(page);
+    const slider = page.getByRole("slider", { name: "Position in book" });
+    await slider.focus();
+    const before = await slider.getAttribute("aria-valuenow");
+    await expect(slider).toHaveCSS("outline-style", "solid");
+    await expect(slider).toHaveCSS("outline-width", "2px");
+    const track = (await slider.boundingBox())!;
+    expect(track.height).toBeGreaterThanOrEqual(44);
+    await page.mouse.move(track.x + track.width * 0.5, track.y + track.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(track.x + track.width * 0.8, track.y + track.height / 2);
+    await expect(slider).toHaveAttribute("aria-valuetext", /^Preview:/);
+    await expect(page.getByText("Release to go here", { exact: true })).toBeVisible();
+    const popup = page.getByText("Preview", { exact: true }).locator("..");
+    await slider.press("Escape");
+    await page.mouse.up();
+    await expect(slider).toHaveAttribute("aria-valuenow", before!);
+
+    await page.evaluate(() => {
+      const controller = Reflect.get(window, "__scrubberController");
+      const preview = controller.previewSeek.bind(controller);
+      controller.previewSeek = (fraction: number) => ({
+        ...preview(fraction),
+        chapterLabel: "A very long chapter title — " + "AWordWithoutAnyBreaks".repeat(12),
+      });
+    });
+    const widePageCount = await page.evaluate(
+      () => Reflect.get(window, "__scrubberController").snapshot().bookPageCount,
+    );
+    await page.setViewportSize({ width: 320, height: 900 });
+    await page.waitForFunction((previous) => {
+      const total = Reflect.get(window, "__scrubberController").snapshot().bookPageCount;
+      return total !== undefined && total !== previous;
+    }, widePageCount);
+    const narrowBefore = await slider.getAttribute("aria-valuenow");
+    const narrowTrack = (await slider.boundingBox())!;
+    await page.mouse.move(narrowTrack.x, narrowTrack.y + narrowTrack.height / 2);
+    await page.mouse.down();
+    for (const fraction of [0, 1]) {
+      const box = (await slider.boundingBox())!;
+      await page.mouse.move(box.x + box.width * fraction, box.y + box.height / 2);
+      await expect
+        .poll(async () => {
+          const bounds = (await popup.boundingBox())!;
+          return bounds.x >= 7.5 && bounds.x + bounds.width <= 312.5;
+        })
+        .toBe(true);
+      expect(await popup.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+    const labels = await slider.evaluate((el) => {
+      const row = el.parentElement!.firstElementChild!;
+      return [...row.querySelectorAll("p")].map((label) => {
+        const bounds = label.getBoundingClientRect();
+        return { left: bounds.left, right: bounds.right };
+      });
+    });
+    expect(labels[0]!.right).toBeLessThan(labels[1]!.left);
+    await page.screenshot({ path: info.outputPath(`${browserName}-scrubber-narrow-preview.png`) });
+    await slider.press("Escape");
+    await page.mouse.up();
+    await expect(popup).toHaveCount(0);
+    await expect(slider).toHaveAttribute("aria-valuenow", narrowBefore!);
+    expect(await page.evaluate(() => Reflect.get(window, "__scrubberState").calls)).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test("touch preview cancels cleanly and release announces pending navigation", async () => {
+  const { context, readerPage: page } = await launchReader(book, {
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    await instrument(page);
+    const slider = page.getByRole("slider", { name: "Position in book" });
+    await slider.focus();
+    const before = await slider.getAttribute("aria-valuenow");
+    const box = (await slider.boundingBox())!;
+    const client = await context.newCDPSession(page);
+    const touchPoints = [{ x: box.x + box.width * 0.8, y: box.y + box.height / 2 }];
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+    await expect(slider).toHaveAttribute("aria-valuetext", /^Preview:/);
+    await client.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+    await expect(slider).toHaveAttribute("aria-valuenow", before!);
+    expect(await page.evaluate(() => Reflect.get(window, "__scrubberState").calls)).toEqual([]);
+    await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints });
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await waitForGates(page, 1);
+    await expect(slider).toHaveAttribute("aria-valuetext", /^Going to position…:/);
+    await expect(page.getByText("Release to go here", { exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, "__scrubberState").calls.length)).toBe(1);
+    await release(page);
+    await settled(page);
+    await expect(slider).not.toHaveAttribute("aria-valuetext", /^Going to position…:/);
+  } finally {
+    await context.close();
+  }
+});
 test("pointer cancellation drops only its preview and never seeks (#134)", async () => {
   const { context, readerPage: page } = await launchReader(book, {
     viewport: { width: 760, height: 900 },
