@@ -44,7 +44,7 @@ export const NoteMarkers: FC<NoteMarkersProps> = ({ markers, onSelect }) => {
               left: marker.left,
               top: marker.top,
               transform: "translate(-50%, -50%)",
-              zIndex: 15,
+              zIndex: 6,
               width: 18,
               height: 18,
               borderRadius: "50%",

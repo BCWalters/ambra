@@ -108,7 +108,7 @@ const OpenHighlightActionPopup: FC<HighlightActionPopupProps & { state: ActiveHi
         left: state.left,
         top: state.top,
         transform: `translate(calc(-50% + ${clampOffset.x}px), calc(-100% - 10px + ${clampOffset.y}px))`,
-        zIndex: 20,
+        zIndex: 6,
         display: "flex",
         flexDirection: "column",
         gap: 8,

@@ -84,7 +84,8 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
         left: state.left,
         top: state.top,
         transform: `translate(calc(-50% + ${clampOffset.x}px), calc(-100% - 10px + ${clampOffset.y}px))`,
-        zIndex: 20,
+        // Above page furniture, below panel backdrops and reader chrome.
+        zIndex: 6,
         display: "flex",
         flexWrap: "wrap",
         justifyContent: "center",
