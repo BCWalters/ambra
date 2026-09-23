@@ -14,34 +14,24 @@ const LONG_CONTENT_EPUB = path.resolve(here, "..", "fixtures", "long-content.epu
  * in place over the Library exactly like `BookDetailsFlyout` does.
  */
 test.describe("About Ambra flyout", () => {
-  test("feedback leaves the actual extension popup in a separate browsing context", async () => {
-    const { context, libraryPage, extensionId } = await launchReader(LONG_CONTENT_EPUB);
+  test("mini Library feedback opens a separate browsing context", async () => {
+    // Use the popup document without depending on the OS foreground window,
+    // which Chrome's action.openPopup requires even when the page has focus.
+    const { context, libraryPage, extensionId } = await launchReader(LONG_CONTENT_EPUB, {
+      viewport: { width: 360, height: 600 },
+    });
     try {
-      await libraryPage.bringToFront();
-      await libraryPage.evaluate(() => chrome.action.openPopup());
-      // Chromium exposes action popups as "other" targets, not Playwright Pages.
-      await expect.poll(() => libraryPage.evaluate(() =>
-        !!chrome.extension.getViews({ type: "popup" })[0]?.document.querySelector('[aria-label="About Ambra"]'),
-      )).toBe(true);
-      await libraryPage.evaluate(() => {
-        chrome.extension.getViews({ type: "popup" })[0]!.document
-          .querySelector<HTMLButtonElement>('[aria-label="About Ambra"]')!.click();
-      });
-      await expect.poll(() => libraryPage.evaluate(() => {
-        const link = chrome.extension.getViews({ type: "popup" })[0]?.document
-          .querySelector<HTMLAnchorElement>('a[href^="mailto:"]');
-        return link && { href: link.href, target: link.target, rel: link.rel };
-      })).toEqual({ href: "mailto:AmbraEPUB@outlook.com", target: "_blank", rel: "noreferrer" });
+      await libraryPage.getByRole("button", { name: "About Ambra" }).click();
+      const feedback = libraryPage.getByRole("link", { name: "Report an issue or request a feature" });
+      await expect(feedback).toHaveAttribute("href", "mailto:AmbraEPUB@outlook.com");
+      await expect(feedback).toHaveAttribute("target", "_blank");
+      await expect(feedback).toHaveAttribute("rel", "noreferrer");
 
-      // Exercise the popup's real navigation without launching the host's mail application.
+      // Exercise native link navigation without launching the host's mail application.
       const destination = `chrome-extension://${extensionId}/src/library/index.html?fullTab=1`;
+      await feedback.evaluate((link, destination) => link.setAttribute("href", destination), destination);
       const openedTab = context.waitForEvent("page");
-      await libraryPage.evaluate(destination => {
-        const link = chrome.extension.getViews({ type: "popup" })[0]!.document
-          .querySelector<HTMLAnchorElement>('a[href^="mailto:"]')!;
-        link.href = destination;
-        link.click();
-      }, destination);
+      await feedback.click();
       const tab = await openedTab;
       await expect(tab).toHaveURL(destination);
       await expect(tab.getByRole("button", { name: "Import EPUB" })).toBeVisible();
