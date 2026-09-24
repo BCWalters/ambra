@@ -25,7 +25,7 @@ export interface DiagnosticSurfaceState {
 }
 export type DiagnosticSurfaces = Partial<Record<DiagnosticSurface, DiagnosticSurfaceState>>;
 export type DiagnosticNavigationSource = "toc" | "bookmark" | "highlight" | "embedded-annotation" |
-  "search" | "details" | "scrubber" | "inspector" | "chapter" | "content-link";
+  "search" | "details" | "go-to" | "scrubber" | "inspector" | "chapter" | "content-link";
 export type DiagnosticEvent = SettingEvent |
   { kind: "navigation"; source: DiagnosticNavigationSource; targetSpine?: number; fraction?: number } |
   { kind: "shortcut"; command: ReaderCommandId; scope: "shell" | "content" } |

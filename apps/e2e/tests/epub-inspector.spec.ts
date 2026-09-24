@@ -96,8 +96,8 @@ test.describe("EPUB Inspector (issue #95)", () => {
         await openInspector(readerPage);
         const dialog = readerPage.getByRole("dialog", { name: "EPUB Inspector", exact: true });
         const close = dialog.getByRole("button", { name: "Close EPUB Inspector", exact: true });
+        await dialog.getByRole("button", { name: "Full screen", exact: true }).click();
         await expect(dialog).toHaveAttribute("aria-modal", "true");
-        await expect(close).toBeFocused();
 
         await dialog.getByRole("tab", { name: /Spine/ }).click();
         await dialog.locator("tbody tr").first().getByRole("button").click();
@@ -113,19 +113,17 @@ test.describe("EPUB Inspector (issue #95)", () => {
 
         await dialog.getByRole("button").last().focus();
         await readerPage.keyboard.press("Tab");
-        await expect(close).toBeFocused();
+        await expect(dialog.getByRole("button", { name: "Popover view", exact: true })).toBeFocused();
         await readerPage.screenshot({
           path: testInfo.outputPath(`inspector-accessible-${reducedMotion}.png`),
         });
         await readerPage.keyboard.press("Escape");
         await expect(dialog).toBeHidden();
-        const trigger = readerPage.getByRole("button", { name: "EPUB Inspector", exact: true });
-        await expect(trigger).toBeFocused();
-        await trigger.press("Enter");
-        await expect(close).toBeFocused();
+        await expect.poll(() => readerPage.evaluate(() => document.activeElement?.tagName)).toBe("IFRAME");
+        await openInspector(readerPage);
         await close.click();
         await expect(dialog).toBeHidden();
-        await expect(trigger).toBeFocused();
+        await expect.poll(() => readerPage.evaluate(() => document.activeElement?.tagName)).toBe("IFRAME");
       } finally {
         await context.close();
       }
@@ -246,7 +244,7 @@ test.describe("EPUB Inspector (issue #95)", () => {
         .poll(() => readerPage.evaluate(() => document.querySelector('[role="dialog"]')?.clientWidth))
         .toBeGreaterThan(widthBefore ?? 0);
 
-      await readerPage.getByRole("button", { name: "Exit full screen" }).click();
+      await readerPage.getByRole("button", { name: "Popover view", exact: true }).click();
       await expect
         .poll(() => readerPage.evaluate(() => document.querySelector('[role="dialog"]')?.clientWidth))
         .toBe(widthBefore);

@@ -86,6 +86,7 @@ import type {
   InspectorReaderBridge,
   PreviewPosition,
   ReaderSnapshot,
+  ReaderShortcutActions,
   ReadOnlyAnnotationView,
   SelectionToolbarState,
 } from "./ReaderTypes.js";
@@ -94,11 +95,6 @@ import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
 import { DEFAULT_LOCALE } from "../i18n/Locale.js";
 import { getTranslate } from "../i18n/LocaleContext.js";
 import type { Translate } from "../i18n/LocaleContext.js";
-
-export interface ReaderShortcutActions {
-  searchBook: () => void;
-  showKeyboardShortcuts: () => void;
-}
 
 /** The smallest a rendered image is allowed to be (in both CSS px
  * dimensions) for a click/keypress on it to open the image viewer —
@@ -1444,12 +1440,14 @@ export class ReaderController {
           this.host instanceof ScrollContentHost),
     });
     if (!command) return;
-    if ((command === "searchBook" || command === "showKeyboardShortcuts") && !this.shortcutActions) return;
+    if (["searchBook", "showKeyboardShortcuts", "goToPage", "goToPercentage"].includes(command) && !this.shortcutActions) return;
     this.recordDiagnosticEvent({ kind: "shortcut", command, scope });
     event.preventDefault();
     switch (command) {
       case "searchBook": this.shortcutActions?.searchBook(); break;
       case "showKeyboardShortcuts": this.shortcutActions?.showKeyboardShortcuts(); break;
+      case "goToPage": this.shortcutActions?.goToPage(); break;
+      case "goToPercentage": this.shortcutActions?.goToPercentage(); break;
       case "toggleBookmark": void this.toggleBookmark().catch(error => this.reportActionFailure(error)); break;
       case "switchToScrolling":
       case "switchToPaginated":

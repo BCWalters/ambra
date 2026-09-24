@@ -56,6 +56,12 @@ export interface StringCatalog {
   "shortcuts.nextPage": string;
   "shortcuts.previousSection": string;
   "shortcuts.nextSection": string;
+  "shortcuts.goToPage": string;
+  "shortcuts.goToPercentage": string;
+  "shortcuts.goToHint": string;
+  "goTo.fixedLayoutUnavailable": string;
+  "goTo.scrollingUnavailable": string;
+  "goTo.seekFailed": string;
   "shortcuts.toggleBookmark": string;
   "shortcuts.searchBook": string;
   "shortcuts.showKeyboardShortcuts": string;
@@ -351,7 +357,9 @@ export interface StringCatalog {
   "inspector.binaryPreviewHint": string;
   "inspector.turnOffLineWrapping": string;
   "inspector.turnOnLineWrapping": string;
-  "inspector.exitFullScreen": string;
+  "inspector.popoverView": string;
+  "inspector.dockLeft": string;
+  "inspector.dockRight": string;
   "inspector.fullScreen": string;
   "inspector.selectFileToPreview": string;
   "inspector.fileName": string;
@@ -446,6 +454,12 @@ export const en: StringCatalog = {
   "shortcuts.nextPage": "Next page",
   "shortcuts.previousSection": "Previous section",
   "shortcuts.nextSection": "Next section",
+  "shortcuts.goToPage": "Go to page",
+  "shortcuts.goToPercentage": "Go to percentage",
+  "shortcuts.goToHint": "Go to requires reflowable pagination. Pages use the measured book-wide count; percentages accept whole numbers from 1 to 100. Enter submits; Escape dismisses. Focus the book or a reader toolbar button; editing, selections, widgets, and dialogs keep their own keys.",
+  "goTo.fixedLayoutUnavailable": "Go to is unavailable for fixed-layout content. Use the table of contents or page controls.",
+  "goTo.scrollingUnavailable": "Go to requires paginated mode. Switch to pagination first; your reading mode has not been changed.",
+  "goTo.seekFailed": "Could not go to that position. Please try again.",
   "shortcuts.toggleBookmark": "Toggle bookmark",
   "shortcuts.searchBook": "Search book",
   "shortcuts.showKeyboardShortcuts": "Show keyboard shortcuts",
@@ -711,7 +725,9 @@ export const en: StringCatalog = {
   "inspector.binaryPreviewHint": "Not shown as text; use it as intended (font/embedded media).",
   "inspector.turnOffLineWrapping": "Turn off line wrapping",
   "inspector.turnOnLineWrapping": "Turn on line wrapping",
-  "inspector.exitFullScreen": "Exit full screen",
+  "inspector.popoverView": "Popover view",
+  "inspector.dockLeft": "Dock left",
+  "inspector.dockRight": "Dock right",
   "inspector.fullScreen": "Full screen",
   "inspector.selectFileToPreview": "Select a file to view its contents.",
   "inspector.fileName": "File name",

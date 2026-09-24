@@ -1,21 +1,40 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation } from "../ReaderTypes.js";
 import type { InspectorReference } from "../InspectorReferences.js";
 import { CHROME_THEMES, DEFAULT_CHROME_THEME } from "../chromeTheme.js";
-import { EpubInspectorPanel } from "./EpubInspectorPanel.js";
+import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH } from "./EpubInspectorPanel.js";
+import type { EpubInspectorPanelProps, InspectorViewMode } from "./EpubInspectorPanel.js";
 import { sourceSelectionOffset, sourceTextRange } from "./inspectorSourceSelection.js";
+
+const dialogMock = vi.hoisted(() => ({ props: vi.fn(), surface: vi.fn(), real: false }));
 
 vi.mock("@fluentui/react-components", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@fluentui/react-components")>();
   return {
     ...actual,
-    Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? <div>{children}</div> : null,
-    DialogSurface: ({ children, onKeyDown }: React.HTMLAttributes<HTMLDivElement>) => <div onKeyDown={onKeyDown}>{children}</div>,
+    Dialog: (props: React.ComponentProps<typeof actual.Dialog>) => {
+      dialogMock.props(props);
+      return dialogMock.real ? <actual.Dialog {...props} /> : props.open ? <div>{props.children}</div> : null;
+    },
+    DialogSurface: (props: React.ComponentProps<typeof actual.DialogSurface>) => {
+      dialogMock.surface(props);
+      return dialogMock.real ? <actual.DialogSurface {...props} /> : <div {...props} />;
+    },
   };
 });
+
+function ControlledInspector({ initialViewMode = "popover", onModeChange, ...props }:
+  Omit<EpubInspectorPanelProps, "viewMode" | "onViewModeChange">
+  & { initialViewMode?: InspectorViewMode; onModeChange?: (mode: InspectorViewMode) => void }) {
+  const [viewMode, setViewMode] = useState(initialViewMode);
+  return <EpubInspectorPanel {...props} viewMode={viewMode} onViewModeChange={(mode) => {
+    onModeChange?.(mode);
+    setViewMode(mode);
+  }} />;
+}
 
 const data: EpubInspectionData = {
   files: ["one.xhtml", "two.xhtml", "style.css", "picture.png", "diagram.svg"].map((path) => ({
@@ -35,6 +54,8 @@ describe("Inspector reader linking", () => {
   let container: HTMLDivElement;
   let reader: InspectorReaderBridge;
   const onOpenChange = vi.fn();
+  const onShowInBook = vi.fn();
+  const onViewModeChange = vi.fn();
   const onReadFile = vi.fn();
   const onGetPreviewUrl = vi.fn();
   const onFindReferences = vi.fn<(path: string) => Promise<readonly InspectorReference[]>>();
@@ -53,6 +74,11 @@ describe("Inspector reader linking", () => {
       return animation;
     });
     onOpenChange.mockReset();
+    onShowInBook.mockReset();
+    onViewModeChange.mockReset();
+    dialogMock.props.mockClear();
+    dialogMock.surface.mockClear();
+    dialogMock.real = false;
     onReadFile.mockReset().mockResolvedValue(markup);
     onGetPreviewUrl.mockReset().mockResolvedValue("blob:preview");
     onFindReferences.mockReset().mockResolvedValue([]);
@@ -62,6 +88,7 @@ describe("Inspector reader linking", () => {
       locateCurrentPassage: vi.fn().mockResolvedValue({ path: "one.xhtml", elementPath: [1, 1] }),
       canShowInBook: (path) => path.endsWith(".xhtml"),
       showInBook: vi.fn().mockResolvedValue(undefined),
+      restoreFocus: vi.fn(),
     };
     container = document.createElement("div");
     document.body.append(container);
@@ -77,9 +104,10 @@ describe("Inspector reader linking", () => {
     vi.unstubAllGlobals();
   });
 
-  async function render(open = true, bridge: InspectorReaderBridge | null = reader) {
+  async function render(open = true, bridge: InspectorReaderBridge | null = reader, initialViewMode: InspectorViewMode = "popover") {
     await act(async () => root.render(
-      <EpubInspectorPanel open={open} onOpenChange={onOpenChange} data={data} fileName="book.epub"
+      <ControlledInspector open={open} onOpenChange={onOpenChange} data={data} fileName="book.epub"
+        initialViewMode={initialViewMode} onModeChange={onViewModeChange} onShowInBook={onShowInBook}
         onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} onFindReferences={onFindReferences}
         {...(bridge ? { reader: bridge } : {})} />,
     ));
@@ -109,6 +137,295 @@ describe("Inspector reader linking", () => {
       ? onReadFile.mock.calls.at(-1)?.[0] : undefined;
   }
 
+  const views = [
+    ["popover", "Popover view"],
+    ["fullscreen", "Full screen"],
+    ["dock-left", "Dock left"],
+    ["dock-right", "Dock right"],
+  ] as const;
+
+  it("offers all four pressed-state view controls in the header on every tab", async () => {
+    await render();
+    for (const tab of container.querySelectorAll<HTMLButtonElement>('[role="tab"]')) {
+      await act(async () => tab.click());
+      for (const [mode, label] of views) {
+        await click(label);
+        expect(container.querySelector("[data-inspector-view]")?.getAttribute("data-inspector-view")).toBe(mode);
+        expect(button(label).getAttribute("aria-pressed")).toBe("true");
+        expect(container.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);
+        expect(container.querySelector('[role="tabpanel"]')?.contains(button(label))).toBe(false);
+        expect(tab.getAttribute("aria-selected")).toBe("true");
+        expect(dialogMock.props.mock.lastCall?.[0].modalType).toBe(mode === "fullscreen" ? "modal" : "non-modal");
+        if (mode.startsWith("dock")) {
+          const surface = container.querySelector<HTMLElement>("[data-inspector-view]")!;
+          // happy-dom does not parse CSS min() lengths.
+          expect(dialogMock.surface.mock.lastCall?.[0].style.width).toBe(INSPECTOR_DOCK_WIDTH);
+          expect(surface.style.margin).toBe("0px");
+          expect(surface.style.borderRadius).toBe("0px");
+          expect(dialogMock.surface.mock.lastCall?.[0].style.minWidth).toBe(0);
+          expect(surface.style[mode === "dock-left" ? "left" : "right"]).toBe("0px");
+        }
+      }
+    }
+    expect(onOpenChange).not.toHaveBeenCalled();
+    await click("Close EPUB Inspector");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it.each(views)("keeps Show in book open from %s and commits its visible mode before navigation", async (mode) => {
+    await render(true, reader, mode);
+    const pre = container.querySelector("pre")!;
+    const expectedMode = mode === "fullscreen" ? "popover" : mode;
+    vi.mocked(reader.showInBook).mockImplementation(async () => {
+      expect(container.querySelector("[data-inspector-view]")?.getAttribute("data-inspector-view")).toBe(expectedMode);
+      expect(onShowInBook).toHaveBeenCalledOnce();
+      expect(container.querySelector("pre")).toBe(pre);
+    });
+    await click("Show in book");
+    expect(reader.showInBook).toHaveBeenCalledWith({ path: "one.xhtml" });
+    expect(reader.restoreFocus).toHaveBeenCalledOnce();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-inspector-view]")?.getAttribute("data-inspector-view")).toBe(expectedMode);
+    if (mode === "fullscreen") expect(onViewModeChange).toHaveBeenCalledWith("popover");
+    else expect(onViewModeChange).not.toHaveBeenCalled();
+  });
+
+  it("preserves mounted source, text selection, wrapping and Back history across modes", async () => {
+    await render();
+    await click("Locate current passage");
+    await act(async () => container.querySelector<HTMLElement>("[data-nav-path]")!.click());
+    await click("Turn on line wrapping");
+    const pre = container.querySelector("pre")!;
+    const offset = pre.textContent!.indexOf("Two");
+    await act(async () => {
+      pre.focus();
+      document.getSelection()!.addRange(sourceTextRange(pre, offset, offset + 3)!);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    const reads = onReadFile.mock.calls.length;
+    for (const [, label] of views) {
+      await click(label);
+      expect(container.querySelector("pre")).toBe(pre);
+      expect(pre.style.whiteSpace).toBe("pre-wrap");
+      expect(document.getSelection()?.toString()).toBe("Two");
+      expect(selectedPath()).toBe("two.xhtml");
+      expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe("<p>");
+    }
+    expect(onReadFile).toHaveBeenCalledTimes(reads);
+    await click("Show in book");
+    expect(reader.showInBook).toHaveBeenCalledWith({ path: "two.xhtml", elementPath: [1, 1] });
+    await click("Back");
+    expect(selectedPath()).toBe("one.xhtml");
+    expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe("<p>");
+  });
+
+  it("preserves a media preview and reference results across mode changes", async () => {
+    onFindReferences.mockResolvedValue([
+      { sourcePath: "one.xhtml", kind: "markup", line: 9, snippet: "<img src='picture.png'/>", elementPath: [1, 1] },
+    ]);
+    await render();
+    await selectFile("picture.png");
+    await click("Find references");
+    const image = container.querySelector("img");
+    for (const [, label] of views) {
+      await click(label);
+      expect(container.querySelector("img")).toBe(image);
+      expect(container.textContent).toContain("References (1)");
+    }
+    expect(onGetPreviewUrl).toHaveBeenCalledOnce();
+    expect(onFindReferences).toHaveBeenCalledOnce();
+    await openReference("one.xhtml");
+    await click("Full screen");
+    await click("Show in book");
+    expect(onOpenChange).not.toHaveBeenCalled();
+    await click("Back");
+    expect(container.textContent).toContain("References (1)");
+  });
+
+  it("retains the actual Fluent portal, focus and source when modality changes, and permits outside interaction", async () => {
+    dialogMock.real = true;
+    await render();
+    const surface = document.querySelector<HTMLElement>("[data-inspector-view]")!;
+    const pre = surface.querySelector("pre")!;
+    const outside = document.createElement("button");
+    outside.textContent = "Book control";
+    container.append(outside);
+    const outsideClick = vi.fn();
+    outside.addEventListener("click", outsideClick);
+    for (const [mode, label] of [...views.slice(1), views[0]]) {
+      await act(async () => {
+        pre.focus();
+        surface.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click();
+      });
+      expect(document.querySelector("[data-inspector-view]")).toBe(surface);
+      expect(surface.querySelector("pre")).toBe(pre);
+      expect(document.activeElement).toBe(pre);
+      expect(surface.getAttribute("aria-modal")).toBe(mode === "fullscreen" ? "true" : "false");
+      if (mode !== "fullscreen") {
+        expect(document.querySelector(".fui-DialogSurface__backdrop")).toBeNull();
+        await act(async () => { outside.focus(); outside.click(); });
+        expect(document.activeElement).toBe(outside);
+        expect(onOpenChange).not.toHaveBeenCalled();
+      }
+    }
+    expect(outsideClick).toHaveBeenCalledTimes(3);
+    await act(async () => surface.querySelector<HTMLButtonElement>('[aria-label="Inspector help"]')!.click());
+    const help = document.querySelector<HTMLElement>('.fui-PopoverSurface')!;
+    expect(help).not.toBeNull();
+    await act(async () => help.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    const bubbledEscape = vi.fn();
+    container.addEventListener("keydown", bubbledEscape);
+    await act(async () => pre.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+    expect(bubbledEscape).not.toHaveBeenCalled();
+  });
+
+  it("ignores backdrop dismissal and stale navigation failures after switching files", async () => {
+    let reject!: (error: Error) => void;
+    vi.mocked(reader.showInBook).mockReturnValue(new Promise<void>((_resolve, fail) => { reject = fail; }));
+    await render(true, reader, "fullscreen");
+    await act(async () => dialogMock.props.mock.lastCall?.[0].onOpenChange(
+      new MouseEvent("click"), { type: "backdropClick", open: false },
+    ));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    await click("Show in book");
+    expect(button("Opening passage…").getAttribute("aria-disabled")).toBe("true");
+    expect(reader.restoreFocus).not.toHaveBeenCalled();
+    await selectFile("two.xhtml");
+    await act(async () => reject(new Error("stale failure")));
+    expect(selectedPath()).toBe("two.xhtml");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(reader.restoreFocus).not.toHaveBeenCalled();
+  });
+
+  it("reports failed fullscreen navigation in the still-open popover without claiming success", async () => {
+    vi.mocked(reader.showInBook).mockRejectedValue(new Error("missing"));
+    await render(true, reader, "fullscreen");
+    await click("Show in book");
+    expect(container.querySelector("[data-inspector-view]")?.getAttribute("data-inspector-view")).toBe("popover");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("missing");
+    expect(button("Show in book").disabled).toBe(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(reader.restoreFocus).not.toHaveBeenCalled();
+  });
+
+  it("hands focus to the book only after navigation succeeds while keeping Inspector open", async () => {
+    let resolve!: () => void;
+    vi.mocked(reader.showInBook).mockReturnValue(new Promise<void>((done) => { resolve = done; }));
+    await render(true, reader, "fullscreen");
+    const book = document.createElement("button");
+    book.textContent = "Book passage";
+    container.append(book);
+    vi.mocked(reader.restoreFocus!).mockImplementation(() => book.focus());
+    await act(async () => button("Show in book").focus());
+    await click("Show in book");
+    expect(reader.restoreFocus).not.toHaveBeenCalled();
+    await act(async () => resolve());
+    expect(reader.restoreFocus).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(book);
+    expect(container.querySelector("[data-inspector-view]")?.getAttribute("data-inspector-view")).toBe("popover");
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("does not restore book focus for a pending Show after Inspector closes", async () => {
+    let resolve!: () => void;
+    vi.mocked(reader.showInBook).mockReturnValue(new Promise<void>((done) => { resolve = done; }));
+    await render();
+    await click("Show in book");
+    await render(false);
+    await act(async () => resolve());
+    expect(reader.restoreFocus).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it.each(["same", "different"] as const)("handles a %s-element native selectionchange during pending Show", async (selectionChange) => {
+    let resolve!: () => void;
+    vi.mocked(reader.showInBook).mockReturnValue(new Promise<void>((done) => { resolve = done; }));
+    await render();
+    const pre = container.querySelector("pre")!;
+    const select = (text: string) => {
+      const offset = pre.textContent!.indexOf(text);
+      document.getSelection()!.removeAllRanges();
+      document.getSelection()!.addRange(sourceTextRange(pre, offset, offset + text.length)!);
+      document.dispatchEvent(new Event("selectionchange"));
+    };
+    await act(async () => select("Two"));
+    await click("Show in book");
+    expect(reader.showInBook).toHaveBeenCalledWith({ path: "one.xhtml", elementPath: [1, 1] });
+    await act(async () => select(selectionChange === "same" ? "three" : "One"));
+    await act(async () => resolve());
+    expect(reader.restoreFocus).toHaveBeenCalledTimes(selectionChange === "same" ? 1 : 0);
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it.each(["forward", "backward"] as const)("shows the paragraph, not its parent, after a whole-element %s selection", async (direction) => {
+    await render();
+    const pre = container.querySelector("pre")!;
+    const paragraph = "<p>Two &amp; three</p>";
+    const start = pre.textContent!.indexOf(paragraph);
+    expect(start).toBeGreaterThan(0);
+    const range = sourceTextRange(pre, start, start + paragraph.length)!;
+    const selection = document.getSelection()!;
+    await act(async () => {
+      if (direction === "forward") selection.addRange(range);
+      else selection.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    await click("Show in book");
+    expect(reader.showInBook).toHaveBeenCalledWith({ path: "one.xhtml", elementPath: [1, 1] });
+    expect(reader.restoreFocus).toHaveBeenCalledOnce();
+    expect(highlights.get("ambra-inspector-source")?.ranges[0]?.toString()).toBe("<p>");
+  });
+
+  it("keeps a busy Locate focusable and handles Escape after it finishes", async () => {
+    dialogMock.real = true;
+    let resolve!: (location: InspectorReadingLocation) => void;
+    vi.mocked(reader.locateCurrentPassage).mockReturnValue(new Promise((done) => { resolve = done; }));
+    await render();
+    const locate = [...document.querySelectorAll<HTMLButtonElement>("button")]
+      .find((entry) => entry.textContent === "Locate current passage")!;
+    await act(async () => { locate.focus(); locate.click(); });
+    expect(locate.getAttribute("aria-disabled")).toBe("true");
+    expect(locate.disabled).toBe(false);
+    expect(document.activeElement).toBe(locate);
+    await act(async () => locate.click());
+    expect(reader.locateCurrentPassage).toHaveBeenCalledOnce();
+    await act(async () => resolve({ path: "one.xhtml", elementPath: [1, 1] }));
+    expect(document.activeElement).toBe(locate);
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true,
+    })));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it.each(["Show in book", "Find references"] as const)("retains %s focus while busy and after an error", async (label) => {
+    dialogMock.real = true;
+    let reject!: (error: Error) => void;
+    const request = label === "Show in book" ? vi.mocked(reader.showInBook) : onFindReferences;
+    request.mockReturnValue(new Promise<never>((_resolve, fail) => { reject = fail; }));
+    await render();
+    if (label === "Find references") {
+      await act(async () => document.querySelector<HTMLButtonElement>('[data-file-path="picture.png"]')!.click());
+    }
+    const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find((entry) => entry.textContent === label)!;
+    await act(async () => { control.focus(); control.click(); });
+    expect(control.getAttribute("aria-disabled")).toBe("true");
+    expect(control.disabled).toBe(false);
+    expect(document.activeElement).toBe(control);
+    await act(async () => control.click());
+    expect(request).toHaveBeenCalledOnce();
+    await act(async () => reject(new Error("failed")));
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("failed");
+    expect(document.activeElement).toBe(control);
+    expect(control.getAttribute("aria-disabled")).not.toBe("true");
+    await act(async () => control.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true,
+    })));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
   it.each([0, 1])("keeps path tooltip %i bounded without an overflowing decorative arrow (#181)", async (index) => {
     await render();
     const trigger = container.querySelectorAll<HTMLElement>('[aria-label="one.xhtml"]')[index]!;
@@ -131,7 +448,7 @@ describe("Inspector reader linking", () => {
     await render();
     expect(selectedPath()).toBe("one.xhtml");
     await render(false);
-    await act(async () => root.render(<EpubInspectorPanel open onOpenChange={onOpenChange} data={data}
+    await act(async () => root.render(<ControlledInspector open onOpenChange={onOpenChange} data={data}
       fileName="book.epub" onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} />));
     expect(container.textContent).not.toContain("Locate current passage");
     expect(container.textContent).not.toContain("Show in book");
@@ -165,7 +482,7 @@ describe("Inspector reader linking", () => {
       spine: [{ path, linear: true, mediaType: longValue, properties: [longValue] }],
     };
     await act(async () => root.render(
-      <EpubInspectorPanel open onOpenChange={onOpenChange} data={inspection} fileName={`${longValue}.epub`}
+      <ControlledInspector open onOpenChange={onOpenChange} data={inspection} fileName={`${longValue}.epub`}
         onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} reader={reader} />,
     ));
     expect(container.querySelector("pre")?.style.whiteSpace).toBe("pre");
@@ -228,7 +545,8 @@ describe("Inspector reader linking", () => {
     expect(container.textContent).toContain("Source element selected");
     await click("Show in book");
     expect(reader.showInBook).toHaveBeenCalledWith({ path: "one.xhtml", elementPath: [1, 1] });
-    expect(onOpenChange).toHaveBeenCalledWith(false, "show-in-book");
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onShowInBook).toHaveBeenCalledOnce();
   });
 
   it("preserves a text-selected element across button focus and clears it on another file", async () => {
@@ -351,7 +669,7 @@ describe("Inspector reader linking", () => {
     expect(highlights.has("ambra-inspector-source")).toBe(false);
   });
 
-  it.each(["browse", "reopen"] as const)("does not emit the successful Show close reason after %s invalidates the request", async (action) => {
+  it.each(["browse", "reopen"] as const)("ignores a late Show completion after %s invalidates the request", async (action) => {
     let resolve!: () => void;
     vi.mocked(reader.showInBook).mockReturnValue(new Promise<void>((done) => { resolve = done; }));
     await render();
@@ -365,6 +683,7 @@ describe("Inspector reader linking", () => {
     await act(async () => resolve());
     expect(selectedPath()).toBe("two.xhtml");
     expect(onOpenChange).not.toHaveBeenCalled();
+    expect(reader.restoreFocus).not.toHaveBeenCalled();
   });
 
   it("reports navigation failures without closing and source mapping failures without a wrong highlight", async () => {
@@ -544,7 +863,7 @@ describe("Inspector reader linking", () => {
     await selectFile("picture.png");
     await click("Find references");
     expect(container.textContent).toContain("Finding references");
-    expect(button("Find references").disabled).toBe(true);
+    expect(button("Find references").getAttribute("aria-disabled")).toBe("true");
     if (action === "browse") await selectFile("style.css");
     else {
       await render(false);

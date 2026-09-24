@@ -20,6 +20,8 @@ describe("reader command registry", () => {
       nextPage: [{ key: "ArrowRight" }, { key: "PageDown" }, { key: " " }],
       previousSection: [{ key: "PageUp", alt: true }],
       nextSection: [{ key: "PageDown", alt: true }],
+      goToPage: [{ key: "g", mod: true }],
+      goToPercentage: [{ key: "g", mod: true, shift: true }],
       toggleBookmark: [{ key: "b", mod: true }],
       searchBook: [{ key: "f", mod: true }],
       showKeyboardShortcuts: [{ key: "/", mod: true }],
@@ -27,6 +29,53 @@ describe("reader command registry", () => {
       switchToPaginated: [{ key: "PageUp", alt: true, shift: true }],
     });
   });
+    it.each(["mac", "other"] as const)("matches and labels Go to without stealing native ownership on %s", platform => {
+      const mod = platform === "mac" ? { metaKey: true } : { ctrlKey: true };
+      for (const [command, shiftKey] of [["goToPage", false], ["goToPercentage", true]] as const) {
+        const init = { ...mod, shiftKey };
+        expect(match(shiftKey ? "G" : "g", init, { platform, scope: "content" })).toBe(command);
+        expect(match("g", init, { platform, scope: "shell" })).toBe(command);
+        expect(match("g", init, { platform, preferences: { enabled: false } })).toBeUndefined();
+        expect(match("g", init, { platform, modalOpen: true })).toBeUndefined();
+        expect(match("g", { ...init, repeat: true }, { platform })).toBeUndefined();
+        expect(match("g", { ...init, isComposing: true }, { platform })).toBeUndefined();
+        expect(match("g", init, { platform, commands: ["showKeyboardShortcuts"] })).toBeUndefined();
+        const binding = getCommandBindings(command, platform)[0]!;
+        expect(formatShortcut(binding, platform)).toBe(platform === "mac"
+          ? `⌘${shiftKey ? "⇧" : ""}G` : `Ctrl+${shiftKey ? "Shift+" : ""}G`);
+        expect(ariaShortcut(binding, platform)).toBe(`${platform === "mac" ? "Meta" : "Control"}+${shiftKey ? "Shift+" : ""}G`);
+        for (const tag of ["input", "textarea", "select", "button", "dialog"]) {
+          const element = document.createElement(tag);
+          document.body.append(element);
+          expect(match("g", init, { platform }, element)).toBeUndefined();
+          if (tag !== "button") expect(match("g", init, { platform, scope: "shell" }, element)).toBeUndefined();
+          element.remove();
+        }
+        for (const role of ["slider", "menu", "dialog", "grid", "tablist", "textbox", "combobox", "switch"]) {
+          const element = document.createElement("div");
+          element.setAttribute("role", role);
+          document.body.append(element);
+          expect(match("g", init, { platform }, element)).toBeUndefined();
+          expect(match("g", init, { platform, scope: "shell" }, element)).toBeUndefined();
+          element.remove();
+        }
+        const editor = document.createElement("div");
+        editor.contentEditable = "true";
+        document.body.append(editor);
+        expect(match("g", init, { platform }, editor)).toBeUndefined();
+        expect(match("g", init, { platform, scope: "shell" }, editor)).toBeUndefined();
+        editor.remove();
+        const text = document.createTextNode("Selected text");
+        document.body.append(text);
+        document.getSelection()!.setBaseAndExtent(text, 0, text, 2);
+        expect(match("g", init, { platform })).toBeUndefined();
+        expect(match("g", init, { platform, scope: "shell" })).toBeUndefined();
+        document.getSelection()!.removeAllRanges();
+        text.remove();
+      }
+      expect(match("g", {}, { platform })).toBeUndefined();
+      expect(match("g", platform === "mac" ? { ctrlKey: true } : { metaKey: true }, { platform })).toBeUndefined();
+    });
   it("uses only the platform primary modifier and removes modifier-arrow navigation", () => {
     expect(match("b", { ctrlKey: true })).toBe("toggleBookmark");
     expect(match("b", { metaKey: true })).toBeUndefined();
@@ -94,8 +143,15 @@ describe("reader command registry", () => {
     expect(match("f", { ctrlKey: true }, { scope: "shell" }, button)).toBe("searchBook");
     expect(match("b", { ctrlKey: true }, { scope: "shell" }, button)).toBe("toggleBookmark");
     expect(match("/", { ctrlKey: true }, { scope: "shell" }, button)).toBe("showKeyboardShortcuts");
+    expect(match("g", { ctrlKey: true }, { scope: "shell" }, button)).toBe("goToPage");
+    expect(match("g", { ctrlKey: true, shiftKey: true }, { scope: "shell" }, button)).toBe("goToPercentage");
+    expect(match("g", { metaKey: true }, { scope: "shell", platform: "mac" }, button)).toBe("goToPage");
+    expect(match("g", { metaKey: true, shiftKey: true }, { scope: "shell", platform: "mac" }, button)).toBe("goToPercentage");
+    expect(match("g", { ctrlKey: true }, { scope: "content" }, button)).toBeUndefined();
     nav.setAttribute("role", "menu");
     expect(match("f", { ctrlKey: true }, { scope: "shell" }, button)).toBeUndefined();
+    expect(match("g", { ctrlKey: true }, { scope: "shell" }, button)).toBeUndefined();
+    expect(match("g", { ctrlKey: true, shiftKey: true }, { scope: "shell" }, button)).toBeUndefined();
   });
   it("keeps navigation moving from reader zoom images while preserving activation and authored controls", () => {
     const image = document.createElement("img");

@@ -12,7 +12,8 @@ import { TocPanel } from "./components/TocPanel.js";
 import { SearchPanel } from "./components/SearchPanel.js";
 import { AnnotationsPanel } from "./components/AnnotationsPanel.js";
 import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
-import { EpubInspectorPanel } from "./components/EpubInspectorPanel.js";
+import { GoToDialog } from "./components/GoToDialog.js";
+import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH, type InspectorViewMode } from "./components/EpubInspectorPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
 import { NarrationControls } from "./components/NarrationControls.js";
@@ -118,6 +119,7 @@ const ReaderAppInner: FC = () => {
   const shortcutSettings = useShortcutPreferences();
   const help = useHelpDialogs(restoreContentFocus);
   const [toolbarMenu, setToolbarMenu] = useState<ReaderToolbarMenu>();
+  const [goToMode, setGoToMode] = useState<"page" | "percentage">();
   const toolbarMenuRef = useRef<ReaderToolbarMenu | undefined>(undefined);
   const changeToolbarMenu = useCallback((menu: ReaderToolbarMenu | undefined) => {
     toolbarMenuRef.current = menu;
@@ -182,7 +184,12 @@ const ReaderAppInner: FC = () => {
   }, [shortcutSettings.preferences, shortcutSettings.platform, shortcutSettings.ready, setShortcutPreferences]);
 
   useEffect(() => {
-    setShortcutActions({ searchBook: openSearch, showKeyboardShortcuts: help.openShortcuts });
+    setShortcutActions({
+      searchBook: openSearch,
+      showKeyboardShortcuts: help.openShortcuts,
+      goToPage: () => setGoToMode("page"),
+      goToPercentage: () => setGoToMode("percentage"),
+    });
   }, [openSearch, help.openShortcuts, setShortcutActions]);
 
   // Issue #100: keeps the controller's own view of the Search panel's
@@ -213,6 +220,7 @@ const ReaderAppInner: FC = () => {
   };
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectorView, setInspectorView] = useState<InspectorViewMode>("popover");
   const [inspectorReader, setInspectorReader] = useState<InspectorReaderBridge>();
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
@@ -250,8 +258,9 @@ const ReaderAppInner: FC = () => {
   }, [snapshot, locale.ready, locale.preference, shortcutSettings.ready,
     shortcutSettings.preferences.enabled, recordDiagnosticEvent]);
   useEffect(() => {
-    setShortcutModalOpen(isInspectorOpen || help.view !== undefined || snapshot?.imageViewer !== undefined);
-  }, [isInspectorOpen, help.view, snapshot?.imageViewer, setShortcutModalOpen]);
+    setShortcutModalOpen((isInspectorOpen && inspectorView === "fullscreen") ||
+      goToMode !== undefined || help.view !== undefined || snapshot?.imageViewer !== undefined);
+  }, [isInspectorOpen, inspectorView, goToMode, help.view, snapshot?.imageViewer, setShortcutModalOpen]);
   // Shared between the toolbar and the progress scrubber (see
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
@@ -358,6 +367,8 @@ const ReaderAppInner: FC = () => {
 
   const openInspector = (): void => {
     setInspectorReader(getInspectorReaderBridge());
+    inspectionFocusReturn.current = restoreContentFocus;
+    setRightPanel(undefined);
     setIsInspectorOpen(true);
   };
 
@@ -530,7 +541,11 @@ const ReaderAppInner: FC = () => {
               ever changing this row's size (which would otherwise trigger a
               pointless relayout via the `ResizeObserver` below on every
               fade). */}
-        <div style={{ position: "absolute", inset: 0, display: "flex" }}>
+        <div style={{
+          position: "absolute", inset: 0, display: "flex",
+          left: isInspectorOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
+          right: isInspectorOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
+        }}>
           <TocPanel
             items={snapshot.toc}
             currentPath={snapshot.highlightedTocPath}
@@ -749,12 +764,23 @@ const ReaderAppInner: FC = () => {
               onOpenInspector={openInspector}
               onOpenHelp={help.openHelp}
               scrubberVisible={scrubberVisible}
+            />
+
+            <GoToDialog
+              open={goToMode !== undefined}
+              mode={goToMode ?? "page"}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setGoToMode(undefined);
+                  restoreContentFocus();
+                }
+              }}
               isPaginated={snapshot.viewMode === "paginated"}
               isFixedLayout={snapshot.isFixedLayout}
               bookPageCount={snapshot.bookPageCount}
-              onSeekToFraction={(fraction) => {
-                recordDiagnosticEvent({ kind: "navigation", source: "details", fraction });
-                void seekToFraction(fraction);
+              onGo={async (fraction) => {
+                recordDiagnosticEvent({ kind: "navigation", source: "go-to", fraction });
+                await seekToFraction(fraction);
               }}
             />
 
@@ -762,12 +788,11 @@ const ReaderAppInner: FC = () => {
               onFindReferences={findInspectionReferences}
               reader={inspectorReader}
               open={isInspectorOpen}
-              onOpenChange={(open, reason) => {
-                if (reason === "show-in-book") {
-                  inspectionFocusReturn.current = inspectorReader?.restoreFocus ?? restoreContentFocus;
-                  setRightPanel(undefined);
-                }
-                setIsInspectorOpen(open);
+              viewMode={inspectorView}
+              onViewModeChange={setInspectorView}
+              onOpenChange={setIsInspectorOpen}
+              onShowInBook={() => {
+                setRightPanel(undefined);
               }}
               data={inspectionData}
               fileName={bookDetails?.fileName}

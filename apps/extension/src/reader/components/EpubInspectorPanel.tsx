@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FC, ReactNode } from "react";
+import { flushSync } from "react-dom";
 import {
   Body1,
   Button,
@@ -27,15 +28,17 @@ import {
   DocumentRegular,
   DocumentSettingsRegular,
   FullScreenMaximizeRegular,
-  FullScreenMinimizeRegular,
   ImageRegular,
   MusicNote2Regular,
+  PanelLeftRegular,
+  PanelRightRegular,
   QuestionCircleRegular,
   TextBulletListRegular,
   TextFontRegular,
   TextWrapOffRegular,
   TextWrapRegular,
   VideoRegular,
+  WindowRegular,
 } from "@fluentui/react-icons";
 import type { FluentIcon } from "@fluentui/react-icons";
 import hljs from "highlight.js/lib/core";
@@ -62,9 +65,16 @@ hljs.registerLanguage("css", cssLanguage);
 hljs.registerLanguage("javascript", javascriptLanguage);
 hljs.registerLanguage("json", jsonLanguage);
 
+export type InspectorViewMode = "popover" | "fullscreen" | "dock-left" | "dock-right";
+
+export const INSPECTOR_DOCK_WIDTH = "min(560px, 45vw)";
+
 export interface EpubInspectorPanelProps {
   open: boolean;
-  onOpenChange: (open: boolean, reason?: "show-in-book") => void;
+  onOpenChange: (open: boolean) => void;
+  viewMode: InspectorViewMode;
+  onViewModeChange: (mode: InspectorViewMode) => void;
+  onShowInBook?: () => void;
   /** `undefined` until `ReaderApp` fetches it the first time this opens
    * (see `ReaderController.getEpubInspectionData`) — cheap/synchronous
    * once loaded, so unlike `BookDetails` this never needs to be
@@ -523,8 +533,6 @@ const FilesTab: FC<{
   selectedPath: string | undefined;
   onSelectPath: (path: string) => void;
   onNavigateToFile: (path: string) => void;
-  isFullScreen: boolean;
-  onToggleFullScreen: () => void;
   onReadFile: (path: string) => Promise<string>;
   onGetPreviewUrl: (path: string, mediaType: string) => Promise<string>;
   reader: InspectorReaderBridge | undefined;
@@ -541,8 +549,6 @@ const FilesTab: FC<{
   selectedPath,
   onSelectPath,
   onNavigateToFile,
-  isFullScreen,
-  onToggleFullScreen,
   onReadFile,
   onGetPreviewUrl,
   reader,
@@ -591,11 +597,11 @@ const FilesTab: FC<{
   }, [selectedPath]);
 
   return (
-    <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+    <div className="ambra-inspector-files" style={{ display: "flex", height: "100%", minHeight: 0 }}>
       <div
         ref={sidebarRef}
+        className="ambra-inspector-file-list"
         style={{
-          width: 300,
           flexShrink: 0,
           overflowY: "auto",
           borderRight: `1px solid ${CHROME_BORDER}`,
@@ -652,7 +658,7 @@ const FilesTab: FC<{
           );
         })}
       </div>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <div
           style={{
             display: "flex",
@@ -691,13 +697,15 @@ const FilesTab: FC<{
               style={{ background: chromeTheme.accentForeground, borderColor: chromeTheme.accentForeground, color: "#fff",
                 opacity: showInBookDisabled ? 0.5 : 1 }}
               disabled={showInBookDisabled}
+              disabledFocusable={showingInBook}
               onClick={onShowInBook}
             >
               {showingInBook ? t("inspector.showingInBook") : t("inspector.showInBook")}
             </Button>
           )}
           {canFindReferences && (selectedClassification?.category === "image" || selectedClassification?.category === "css") && (
-            <Button size="small" appearance="subtle" onClick={onFindReferences} disabled={referenceSearch?.status === "loading"}>
+            <Button size="small" appearance="subtle" onClick={onFindReferences}
+              disabled={referenceSearch?.status === "loading"} disabledFocusable={referenceSearch?.status === "loading"}>
               {t("inspector.findReferences")}
             </Button>
           )}
@@ -712,19 +720,6 @@ const FilesTab: FC<{
               />
             </Tooltip>
           )}
-          {/* Issue #95: not on by default — a reader browsing a couple of
-              small files never needs it, but an author poking through a
-              large minified script or a long chapter benefits from
-              every extra pixel of width/height this can free up. */}
-          <Tooltip content={isFullScreen ? t("inspector.exitFullScreen") : t("inspector.fullScreen")} relationship="label">
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={isFullScreen ? <FullScreenMinimizeRegular /> : <FullScreenMaximizeRegular />}
-              aria-label={isFullScreen ? t("inspector.exitFullScreen") : t("inspector.fullScreen")}
-              onClick={onToggleFullScreen}
-            />
-          </Tooltip>
           {(reader || canFindReferences) && (
             <Popover positioning="below-end" trapFocus>
               <PopoverTrigger disableButtonEnhancement>
@@ -1152,6 +1147,9 @@ interface InspectorHistoryEntry {
 export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   open,
   onOpenChange,
+  viewMode,
+  onViewModeChange,
+  onShowInBook,
   data,
   fileName,
   onReadFile,
@@ -1165,7 +1163,6 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const tabsId = useId();
   const [selectedFilePath, setSelectedFilePath] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<readonly InspectorHistoryEntry[]>([]);
-  const [isFullScreen, setIsFullScreen] = useState(false);
   const [sourceTarget, setSourceTarget] = useState<SourceTarget | undefined>();
   const [locatedFile, setLocatedFile] = useState<Omit<InspectorReadingLocation, "elementPath"> | undefined>();
   const [operation, setOperation] = useState<"locate" | "show" | undefined>();
@@ -1179,6 +1176,19 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const wasOpen = useRef(false);
   const isOpen = useRef(open);
   isOpen.current = open;
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const modeFocus = useRef<HTMLElement | undefined>(undefined);
+
+  useEffect(() => {
+    // Fluent re-focuses the first control when modalType changes. Restore
+    // the existing focus instead, without remounting source or media.
+    modeFocus.current?.focus({ preventScroll: true });
+    modeFocus.current = undefined;
+    return () => {
+      const active = surfaceRef.current?.ownerDocument.activeElement;
+      if (active instanceof HTMLElement && surfaceRef.current?.contains(active)) modeFocus.current = active;
+    };
+  }, [viewMode]);
 
   useEffect(() => {
     const path = fileFocusRequest.current;
@@ -1224,16 +1234,18 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   }, []);
 
   const selectSourceTarget = useCallback((target: SourceTarget) => {
-    cancelLinkRequest();
+    // Native selectionchange can repeat when a toolbar button gains focus.
+    // Only a different source destination invalidates an in-flight Show.
+    if (!sourceTarget?.elementPath || !target.elementPath
+      || !sameElementPath(sourceTarget.elementPath, target.elementPath)) cancelLinkRequest();
     setSourceTarget((previous) =>
       previous?.elementPath && target.elementPath && sameElementPath(previous.elementPath, target.elementPath) && !previous.scroll
         ? previous : { ...target, ...(previous?.reference ? { reference: true } : {}) });
-  }, [cancelLinkRequest]);
+  }, [cancelLinkRequest, sourceTarget]);
 
-  function changeOpen(nextOpen: boolean, reason?: "show-in-book"): void {
+  function changeOpen(nextOpen: boolean): void {
     cancelLinkRequest();
-    if (reason) onOpenChange(nextOpen, reason);
-    else onOpenChange(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   async function locateCurrentPassage(): Promise<void> {
@@ -1273,8 +1285,14 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       ...(sourceTarget?.elementPath ? { elementPath: sourceTarget.elementPath } : {}),
     };
     try {
+      // Commit the visible book layout before the reader measures/navigates.
+      flushSync(() => {
+        if (viewMode === "fullscreen") onViewModeChange("popover");
+        onShowInBook?.();
+      });
+      if (id !== requestId.current || !isOpen.current) return;
       await reader.showInBook(location);
-      if (id === requestId.current && isOpen.current) changeOpen(false, "show-in-book");
+      if (id === requestId.current && isOpen.current) reader.restoreFocus?.();
     } catch (error) {
       if (id === requestId.current && isOpen.current) setLinkError(describeLinkError(t("inspector.showInBookError"), error));
     } finally {
@@ -1344,26 +1362,47 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(_event, dialogData) => changeOpen(dialogData.open)}>
+    <Dialog open={open} modalType={viewMode === "fullscreen" ? "modal" : "non-modal"}
+      onOpenChange={(_event, dialogData) => {
+        if (dialogData.type === "backdropClick") return;
+        changeOpen(dialogData.open);
+      }}>
       <DialogSurface
+        ref={surfaceRef}
+        data-inspector-view={viewMode}
         onKeyDown={(event) => {
-          // Escape dismisses this modal, not the underlying reader flyout.
+          // Nested popovers handle Escape first; never close a reader flyout.
           if (event.key === "Escape") event.stopPropagation();
         }}
-        style={
-          isFullScreen
-            ? { maxWidth: "100vw", width: "100vw", height: "100vh", borderRadius: 0, background: chromeTheme.backgroundSolid }
-            : { maxWidth: 900, width: "90vw", height: "80vh", background: chromeTheme.backgroundSolid }
-        }
+        style={{
+          background: chromeTheme.backgroundSolid, containerType: "inline-size", minWidth: 0,
+          ...(viewMode === "fullscreen"
+            ? { maxWidth: "100vw", width: "100vw", height: "100vh", maxHeight: "100vh", margin: 0, borderRadius: 0 }
+            : viewMode === "dock-left" || viewMode === "dock-right"
+              ? { position: "fixed", top: 0, bottom: 0, left: viewMode === "dock-left" ? 0 : "auto",
+                right: viewMode === "dock-right" ? 0 : "auto", width: INSPECTOR_DOCK_WIDTH,
+                maxWidth: INSPECTOR_DOCK_WIDTH, height: "100vh", maxHeight: "100vh", margin: 0, borderRadius: 0 }
+              : { maxWidth: 900, width: "90vw", height: "80vh" }),
+        }}
       >
-        <DialogBody style={{ height: "100%", minWidth: 0 }}>
+        <style>{`
+          .ambra-inspector-file-list { width: 220px; }
+          @container (max-width: 620px) {
+            .ambra-inspector-files { flex-direction: column; }
+            .ambra-inspector-file-list { width: 100%; max-height: 30%; border-bottom: 1px solid ${CHROME_BORDER}; }
+          }
+        `}</style>
+        <DialogBody style={{ height: "100%", maxHeight: "100%", minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <DialogTitle
+            style={{ flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}
             action={
-              <div style={{ display: "flex", gap: 4 }}>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {history.length > 0 && (
                   <Tooltip content={t("inspector.back")} relationship="label">
                     <Button
                       appearance="subtle"
+                      size="small"
                       icon={<ArrowLeftRegular />}
                       aria-label={t("inspector.back")}
                       ref={backButtonRef}
@@ -1371,10 +1410,24 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                     />
                   </Tooltip>
                 )}
+                {([
+                  ["popover", "inspector.popoverView", WindowRegular],
+                  ["fullscreen", "inspector.fullScreen", FullScreenMaximizeRegular],
+                  ["dock-left", "inspector.dockLeft", PanelLeftRegular],
+                  ["dock-right", "inspector.dockRight", PanelRightRegular],
+                ] as const).map(([mode, label, Icon]) => (
+                  <Tooltip key={mode} content={t(label)} relationship="label">
+                    <Button appearance="subtle" size="small" icon={<Icon />}
+                      aria-label={t(label)} aria-pressed={viewMode === mode}
+                      onClick={() => onViewModeChange(mode)} />
+                  </Tooltip>
+                ))}
                 <Tooltip content={t("inspector.closeInspector")} relationship="label">
                   <Button
                     appearance="subtle"
+                    size="small"
                     icon={<DismissRegular />}
+                    aria-label={t("inspector.closeInspector")}
                     onClick={() => changeOpen(false)}
                   />
                 </Tooltip>
@@ -1383,10 +1436,12 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
           >
             {t("inspector.title")}
           </DialogTitle>
+          </div>
           <DialogContent style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
             {reader && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <Button disabled={!data || operation !== undefined} onClick={() => void locateCurrentPassage()}>
+                <Button disabled={!data || operation !== undefined} disabledFocusable={operation !== undefined}
+                  onClick={() => void locateCurrentPassage()}>
                   {t("inspector.locateCurrentPassage")}
                 </Button>
                 {operation === "locate" && <Spinner size="tiny" label={t("inspector.locatingPassage")} />}
@@ -1436,8 +1491,6 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                         setSelectedFilePath(path);
                       }}
                       onNavigateToFile={navigateToFile}
-                      isFullScreen={isFullScreen}
-                      onToggleFullScreen={() => setIsFullScreen((value) => !value)}
                       onReadFile={onReadFile}
                       onGetPreviewUrl={onGetPreviewUrl}
                       reader={reader}

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, FC } from "react";
+import { useEffect, useRef } from "react";
+import type { FC } from "react";
 import { Body1Strong, Button, Spinner, Tooltip, useRestoreFocusTarget } from "@fluentui/react-components";
-import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, QuestionCircleRegular, TextPercentRegular } from "@fluentui/react-icons";
+import { CodeCircleRegular, DismissRegular, QuestionCircleRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -9,9 +9,8 @@ import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { formatLibraryBytes } from "../../library/LibraryFormatting.js";
-import { GoToDialog } from "./GoToDialog.js";
 import { BookDescription, BookDetailRow as DetailRow, BookMetadataText, BookRightsRow } from "../../components/BookMetadataRows.js";
-import { PaneCard, PaneDisclosure } from "../../components/PaneSections.js";
+import { PaneDisclosure } from "../../components/PaneSections.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 export interface BookDetailsPanelProps {
@@ -40,21 +39,6 @@ export interface BookDetailsPanelProps {
    * `AnnotationsPanel` already got for issue #59 — `BookDetailsPanel`
    * predated that fix and was missed, which is what issue #72 caught. */
   scrubberVisible: boolean;
-  /** Whether the current view is paginated (vs. continuous scroll) —
-   * "Go to Page…" only makes sense in paginated mode, where a book-wide
-   * page number actually exists (see `bookPageCount`). Mirrors the old
-   * Navigate menu's identical condition, now relocated here (issue
-   * follow-up: the toolbar's "Navigate" button was removed for being
-   * redundant with the progress scrubber and the Table of Contents). */
-  isPaginated: boolean;
-  /** True for the current spine item's fixed-layout rendering, which has
-   * no book-wide page/percentage position to jump to at all — hides
-   * both "Go to" actions entirely, matching the old Navigate menu. */
-  isFixedLayout: boolean;
-  /** The book's total page count once known — see `GoToDialog`'s own
-   * doc comment; `undefined` disables "Go to Page…" until it's ready. */
-  bookPageCount: number | undefined;
-  onSeekToFraction: (fraction: number) => void;
 }
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
@@ -73,19 +57,6 @@ function isGenericDefaultIdentifier(value: string): boolean {
   return GENERIC_DEFAULT_IDENTIFIER_SUBSTRINGS.some((needle) => lower.includes(needle));
 }
 
-/** The "Go to Page…"/"Go to Percentage…" buttons' shared style (issue
- * #75) — filled with the reader's current chrome theme gradient, same
- * as this panel's own background, but with its own visible border and
- * a small drop shadow so it still reads as a distinct, raised button
- * rather than dissolving into the identically-colored panel behind it. */
-function goToButtonStyle(themeBackgroundSolid: string): CSSProperties {
-  return {
-    background: themeBackgroundSolid,
-    borderColor: "rgba(15, 23, 42, 0.22)",
-    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.16)",
-  };
-}
-
 /**
  * A right-side flyout panel showing whatever metadata is available for
  * the currently-open book — cover, title, author, description,
@@ -95,13 +66,6 @@ function goToButtonStyle(themeBackgroundSolid: string): CSSProperties {
  * `isGenericDefaultIdentifier`). Deliberately shows only what the EPUB
  * itself provides beyond that; no internet lookup for missing fields (a
  * possible future enhancement, not this one's scope).
- *
- * Also hosts "Go to Page…"/"Go to Percentage…" (via `GoToDialog`) —
- * relocated here from the toolbar's old compass "Navigate" menu, which
- * was removed for being redundant with the progress scrubber (drag-to-
- * seek) and the Table of Contents (chapter jumps); chapter navigation
- * itself is now a standard keyboard shortcut instead (see
- * `AccessibilityController`'s `onNextChapter`/`onPreviousChapter`).
  *
  * Mirrors `TocPanel`'s flyout mechanics (always rendered so it can
  * animate closed, a click-outside backdrop, Escape to dismiss) but on
@@ -118,19 +82,13 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   onOpenInspector,
   onOpenHelp,
   scrubberVisible,
-  isPaginated,
-  isFixedLayout,
-  bookPageCount,
-  onSeekToFraction,
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const restoreInspectorFocus = useRestoreFocusTarget();
-  const restoreGoToFocus = useRestoreFocusTarget();
   const reduceMotion = usePrefersReducedMotion();
-  const [goToDialogMode, setGoToDialogMode] = useState<"page" | "percentage" | undefined>(undefined);
 
   useEffect(() => {
     if (!open) {
@@ -264,57 +222,6 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 <BookDescription value={details.description} sourceName={details.descriptionSourceName} sourceUrl={details.descriptionSourceUrl} />
               )}
 
-              {/* "Go to Page…"/"Go to Percentage…" — relocated from the
-                  toolbar's old Navigate menu (see this component's doc
-                  comment). Hidden entirely for fixed-layout content,
-                  which has no book-wide page/percentage position; "Go to
-                  Page" is further limited to paginated mode, where a
-                  page number actually means something (continuous
-                  scroll has no discrete pages to land on).
-                  
-                  Styled with the reader's own *current* chrome theme
-                  (issue #75) — the same gradient the toolbar/scrubber/
-                  this very panel already wear — rather than a plain,
-                  theme-agnostic gray "secondary" button, so these two
-                  actions read as native to whichever accent color the
-                  reader has picked instead of looking pasted-in from a
-                  generic component library. A visible border/shadow on
-                  top of that gradient (rather than the gradient alone)
-                  keeps the button legible as a *button* even when the
-                  surrounding panel happens to share the exact same
-                  background — which it always does, since both draw
-                  from the same `chromeTheme.backgroundSolid`. */}
-              {!isFixedLayout && (
-                <div style={{ marginTop: 20 }}>
-                  <PaneCard title={t("bookDetails.readingTools")}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {isPaginated && (
-                        <Button
-                          appearance="secondary"
-                          size="small"
-                          icon={<DocumentPageNumberRegular style={{ color: chromeTheme.accent }} />}
-                          {...restoreGoToFocus}
-                          onClick={() => setGoToDialogMode("page")}
-                          style={goToButtonStyle(chromeTheme.backgroundSolid)}
-                        >
-                          {t("bookDetails.goToPage")}
-                        </Button>
-                      )}
-                      <Button
-                        appearance="secondary"
-                        size="small"
-                        icon={<TextPercentRegular style={{ color: chromeTheme.accent }} />}
-                        {...restoreGoToFocus}
-                        onClick={() => setGoToDialogMode("percentage")}
-                        style={goToButtonStyle(chromeTheme.backgroundSolid)}
-                      >
-                        {t("bookDetails.goToPercentage")}
-                      </Button>
-                    </div>
-                  </PaneCard>
-                </div>
-              )}
-
               {(knownIdentifiers.length > 0 || details.fileSizeBytes !== undefined || details.rights ||
                 details.accessibility.accessibilitySummary || details.accessibility.accessibilityFeatures.length > 0) && (
                 <PaneDisclosure title={t("bookDetails.publicationDetails")}>
@@ -380,19 +287,6 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
         </div>
       </aside>
 
-      {goToDialogMode && (
-        <GoToDialog
-          mode={goToDialogMode}
-          open={goToDialogMode !== undefined}
-          onOpenChange={(dialogOpen) => {
-            if (!dialogOpen) {
-              setGoToDialogMode(undefined);
-            }
-          }}
-          bookPageCount={bookPageCount}
-          onGo={onSeekToFraction}
-        />
-      )}
     </>
   );
 };

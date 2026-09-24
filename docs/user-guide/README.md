@@ -49,6 +49,7 @@ Open **Settings → Help & About** or the **Help & About** footer in **Book deta
 Some useful defaults:
 
 - **Mod+F:** search the book. **Mod+B:** toggle a bookmark.
+- **Mod+G:** go to a page. **Mod+Shift+G:** go to a percentage.
 - **Page Down / Page Up:** next / previous page in pagination.
 - **Space / Shift+Space:** next / previous page in pagination. In scrolling mode, Page keys and Space retain native scrolling.
 - **Left / Right:** navigate in the physical direction, following the book’s reading direction, including right-to-left books; in scrolling mode, move between sections.
@@ -56,6 +57,8 @@ Some useful defaults:
 - **Escape:** dismiss a dialog and return focus to its opening control.
 
 The shortcut popup is a quick reference showing the default shortcuts for your current platform. A single **Enable keyboard shortcuts** checkbox lets you turn Ambra’s shortcuts on or off globally. This preference stays local and is shared across Ambra tabs in the same browser profile. Browser or assistive-technology shortcuts may take priority; visible controls remain available.
+
+**Go to** opens a small numeric dialog, not a toolbar menu or a Book details control. Focus the book or a reader toolbar button before using the shortcut. Enter submits a valid whole number; Escape dismisses and returns to reading. Pages range from 1 to the measured book-wide page count, and remain unavailable while that count is being measured. Percentages range from 1 to 100 and use the progress bar’s existing seek behavior (coarse section-based positioning until pagination is ready). Both require reflowable pagination: scrolling and fixed-layout content show an explanation instead of silently doing nothing or changing reading mode. Editing, text selections, widgets, and other dialogs keep their own keyboard ownership.
 
 ## Reading tips
 

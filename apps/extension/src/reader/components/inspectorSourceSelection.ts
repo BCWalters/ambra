@@ -6,11 +6,14 @@ export function normalizeInspectorSourceText(text: string): string {
 
 /** Offsets refer to displayed text, not highlight.js's escaped HTML. */
 export function sourceSelectionOffset(container: HTMLElement, selection: Selection | null): number | undefined {
-  const node = selection?.focusNode;
-  if (!node || !container.contains(node)) return undefined;
+  if (!selection?.rangeCount) return undefined;
+  const range = selection.getRangeAt(0);
+  if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) return undefined;
   const prefix = container.ownerDocument.createRange();
   prefix.selectNodeContents(container);
-  prefix.setEnd(node, selection.focusOffset);
+  // Range.start is inclusive and independent of selection direction. The
+  // focus of a forward selection can sit just outside the selected element.
+  prefix.setEnd(range.startContainer, range.startOffset);
   return prefix.toString().length;
 }
 

@@ -78,14 +78,17 @@ test("a keyboard-focused scrubber stays visible after the chrome inactivity dela
   }
 });
 
-test("Go To rejects numeric prefixes and Escape leaves Book Details open", async () => {
+test("Go To shortcuts replace Book Details controls and retain native numeric validation", async () => {
   const { context, readerPage } = await launchReader(book);
   try {
     await readerPage.getByRole("button", { name: "Book details", exact: true }).click();
-    const trigger = readerPage.getByRole("button", { name: "Go to Percentage…" });
-    await trigger.click();
+    await expect(readerPage.getByRole("button", { name: /^Go to (Page|Percentage)/ })).toHaveCount(0);
+    await readerPage.keyboard.press("Escape");
+    const mod = await readerPage.evaluate(() => /Mac|iPhone|iPad|iPod/i.test(navigator.platform) ? "Meta" : "Control");
+    await readerPage.keyboard.press(`${mod}+Shift+g`);
     const dialog = readerPage.getByRole("dialog", { name: "Go to Percentage", exact: true });
     const input = dialog.getByRole("spinbutton");
+    await expect(input).toBeFocused();
     for (const value of ["1e2", "9.9", "0", "101"]) {
       await input.fill(value);
       await expect(dialog.getByRole("button", { name: "Go", exact: true })).toBeDisabled();
@@ -94,8 +97,7 @@ test("Go To rejects numeric prefixes and Escape leaves Book Details open", async
     await expect(dialog.getByRole("button", { name: "Go", exact: true })).toBeEnabled();
     await input.press("Escape");
     await expect(dialog).toBeHidden();
-    await expect(trigger).toBeVisible();
-    await expect(trigger).toBeFocused();
+    await expect.poll(() => readerPage.evaluate(() => document.activeElement instanceof HTMLIFrameElement)).toBe(true);
   } finally {
     await context.close();
   }

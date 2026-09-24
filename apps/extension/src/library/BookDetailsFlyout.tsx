@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useEffect, useRef, type FC } from "react";
 import { Body1, Button, useRestoreFocusTarget } from "@fluentui/react-components";
 import { CodeCircleRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
@@ -37,15 +37,15 @@ export interface BookDetailsFlyoutProps {
    * tucks this author-facing tool away from ordinary use. */
   onOpenInspector: (() => void) | undefined;
   inspectionError?: { message: string; onDismiss: () => void } | undefined;
+  inspectorOpen?: boolean;
 }
 
 /**
  * A read-only "Book details" flyout for the Library page (issue #105) —
  * shares its informational layout (cover, title, author, publisher,
  * description, identifiers, accessibility metadata) with the reader's
- * `BookDetailsPanel`, but omits that panel's "Go to Page…"/"Go to
- * Percentage…" actions, which only make sense once a book is actually
- * open. The EPUB Inspector button (issue #111) is included, gated behind
+ * `BookDetailsPanel`. Navigation lives in the reader's shortcuts, not
+ * either metadata panel. The EPUB Inspector button (issue #111) is included, gated behind
  * `onOpenInspector` being defined — the Library only opens a standalone
  * inspection session when running in its own full browser tab.
  */
@@ -56,11 +56,17 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   backgroundSolid,
   onOpenInspector,
   inspectionError,
+  inspectorOpen = false,
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const open = book !== undefined;
   const restoreInspectorFocus = useRestoreFocusTarget();
+  const inspectorButtonRef = useRef<HTMLButtonElement>(null);
+  const inspectorReturnBook = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (inspectorOpen) inspectorReturnBook.current = book?.id;
+  }, [inspectorOpen, book?.id]);
 
   const knownIdentifiers = (book?.identifiers ?? []).filter(
     (id) => !isGenericDefaultIdentifier(id.value),
@@ -75,10 +81,16 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
 
   return (
     <LibraryFlyout
-      open={open}
+      open={open && !inspectorOpen}
       title={t("toolbar.bookDetails")}
       onRequestClose={onRequestClose}
       backgroundSolid={backgroundSolid}
+      onAfterOpen={() => {
+        if (book && inspectorReturnBook.current === book.id) {
+          inspectorReturnBook.current = undefined;
+          inspectorButtonRef.current?.focus();
+        }
+      }}
     >
       {book && (
         <div style={{ flex: 1, overflowY: "auto", padding: 20, overflowWrap: "anywhere" }}>
@@ -155,6 +167,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 appearance="secondary"
                 icon={<CodeCircleRegular />}
                 {...restoreInspectorFocus}
+                ref={inspectorButtonRef}
                 onClick={onOpenInspector}
                 style={{
                   background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",

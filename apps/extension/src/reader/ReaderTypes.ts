@@ -265,3 +265,10 @@ export interface FootnotePopupState {
   readonly left: number;
   readonly top: number;
 }
+
+export interface ReaderShortcutActions {
+  searchBook: () => void;
+  showKeyboardShortcuts: () => void;
+  goToPage: () => void;
+  goToPercentage: () => void;
+}

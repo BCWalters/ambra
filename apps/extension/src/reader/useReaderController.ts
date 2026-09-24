@@ -7,7 +7,6 @@ import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
 import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
-import type { ReaderShortcutActions } from "./ReaderController.js";
 import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
@@ -19,6 +18,7 @@ import type {
   NarrationAction,
   PreviewPosition,
   ReaderSnapshot,
+  ReaderShortcutActions,
   ReadOnlyAnnotationView,
 } from "./ReaderTypes.js";
 import type { ViewMode } from "./ViewMode.js";
