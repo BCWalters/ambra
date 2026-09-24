@@ -595,6 +595,45 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
   }
 });
 
+for (const viewport of [{ width: 900, height: 900 }, { width: 320, height: 256 }]) {
+  test(`${viewport.width}px: Book Details opens Help without leaving the book and restores its footer focus`, async () => {
+    const { context, readerPage: page } = await launchReader(proseBook, { viewport });
+    try {
+      await ready(page);
+      const initialPosition = await position(page);
+      const url = page.url();
+      await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Book details", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      const details = page.getByRole("complementary", { name: "Book details", exact: true });
+      await expect(details).toBeFocused();
+      const entry = details.getByRole("button", { name: "Help & About", exact: true });
+      await expect(entry).toBeInViewport({ ratio: 1 });
+      for (let index = 0; index < 20 && !await entry.evaluate(node => node === document.activeElement); index++) {
+        await page.keyboard.press("Tab");
+      }
+      await expect(entry).toBeFocused();
+      await page.keyboard.press("Enter");
+      const help = page.getByRole("dialog", { name: "Help & About", exact: true });
+      await expect(help).toBeVisible();
+      await expect(help.getByRole("button", { name: "Copy diagnostics", exact: true })).toBeAttached();
+      await expect(page).toHaveURL(url);
+      await page.keyboard.press("Escape");
+      await expect(help).toBeHidden();
+      await expect(details).toBeVisible();
+      await expect(entry).toBeFocused();
+      await expect(entry).toBeInViewport({ ratio: 1 });
+      await page.keyboard.press("Escape");
+      await expect(details).toBeHidden();
+      await expectReadingFocus(page);
+      await expect.poll(() => position(page)).toEqual(initialPosition);
+      await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 test("global disable persists and updates live across tabs; visible Help re-enables default routes and hints", async () => {
   test.setTimeout(90_000);
   const { context, readerPage: page, libraryPage } = await launchReader(proseBook);
