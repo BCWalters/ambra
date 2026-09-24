@@ -106,6 +106,9 @@ async function checkDisclosure(
 
 async function checkDefaultDetails(page: Page, panel: Locator) {
   await expect(panel).toBeVisible();
+  // Entering drawers are already visible; wait for stable, unobstructed bounds
+  // without clicking the panel or changing keyboard focus.
+  await panel.click({ trial: true });
   await expect(panel.getByRole("heading", { name: "Description", exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "Publication details", exact: true })).toHaveAttribute("aria-expanded", "false");
   await expect(panel.getByRole("button", { name: "Show more: Rights", exact: true })).toBeHidden();
