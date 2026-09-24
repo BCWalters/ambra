@@ -1,15 +1,41 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
-const alice = fileURLToPath(new URL("../real-books/alice-in-wonderland.epub", import.meta.url));
+const sourceBook = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 const fixed = fileURLToPath(new URL("../fixtures/fxl-spread-ltr.epub", import.meta.url));
 const palettes = {
   White: ["rgb(255, 255, 255)", "rgb(26, 26, 26)", "rgb(11, 87, 164)"],
   Sepia: ["rgb(250, 247, 241)", "rgb(35, 32, 25)", "rgb(42, 93, 176)"],
   Dark: ["rgb(35, 35, 35)", "rgb(232, 230, 225)", "rgb(138, 180, 248)"],
 } as const;
+
+function publisherThemeBook(info: TestInfo): string {
+  if (process.env.AMBRA_E2E_ALICE_EPUB) return process.env.AMBRA_E2E_ALICE_EPUB;
+  const source = info.outputPath("publisher-theme-source");
+  fs.mkdirSync(source, { recursive: true });
+  execFileSync("unzip", ["-q", sourceBook, "-d", source]);
+  for (const chapter of ["ch1.xhtml", "ch2.xhtml"]) {
+    const file = path.join(source, "OEBPS", chapter);
+    const content = fs.readFileSync(file, "utf8");
+    expect(content).toContain("<body>");
+    expect(content).toContain("</head>");
+    fs.writeFileSync(file, content
+      .replace("<body>", '<body class="tei tei-text">')
+      .replace("</head>", `<style>
+        body.tei.tei-text { color: black; background-color: white; }
+        a:link, a:visited { color: blue; }
+      </style></head>`));
+  }
+  const book = info.outputPath("publisher-theme.epub");
+  execFileSync("zip", ["-q", "-X", "-0", book, "mimetype"], { cwd: source });
+  execFileSync("zip", ["-q", "-X", "-r", book, "META-INF", "OEBPS"], { cwd: source });
+  return book;
+}
 
 async function canvasColors(page: Page) {
   return page.evaluate(() => {
@@ -22,17 +48,17 @@ async function canvasColors(page: Page) {
 }
 
 for (const mode of ["single", "spread", "scroll"] as const) {
-  test(`#185 Alice page palettes override publisher resets in ${mode} mode`, async () => {
-    const { context, readerPage: page } = await launchReader(alice, {
+  test(`#185 page palettes override publisher resets in ${mode} mode`, async () => {
+    const { context, readerPage: page } = await launchReader(publisherThemeBook(test.info()), {
       viewport: { width: mode === "spread" ? 1400 : 900, height: 900 },
     });
     try {
       await exposeReaderController(page);
-      await page.evaluate(async mode => {
+      await page.evaluate(async ({ mode, initialSpine }) => {
         const controller = Reflect.get(window, "__readerController");
         if (mode === "scroll") await controller.setViewMode("scroll");
-        await controller.openSpineItem(3);
-      }, mode);
+        await controller.openSpineItem(initialSpine);
+      }, { mode, initialSpine: process.env.AMBRA_E2E_ALICE_EPUB ? 3 : 0 });
       const frameCount = mode === "spread" ? 2 : 1;
       await expect.poll(async () => (await canvasColors(page)).length).toBe(frameCount);
       await page.evaluate(() => {
