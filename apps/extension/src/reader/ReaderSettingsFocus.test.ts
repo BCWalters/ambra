@@ -62,4 +62,24 @@ describe("ReaderController layout-only focus", () => {
       bridgeCfi: "saved-position", preserveFocus: false,
     });
   });
+
+  it("enters the requested chapter rather than the visual primary of a cross-chapter spread", () => {
+    const controller = Object.create(ReaderController.prototype);
+    const first = document.implementation.createHTMLDocument();
+    const second = document.implementation.createHTMLDocument();
+    Object.assign(controller, {
+      updateContentTitle: vi.fn(),
+      reattachKeyboardNav: vi.fn(),
+      primaryContentDocument: () => second,
+      contentDocumentViews: () => [{ document: first, spineIndex: 0 }, { document: second, spineIndex: 1 }],
+      focusReadingContent: vi.fn(),
+    });
+    controller.setUpAccessibility(undefined, true, 0);
+    expect(controller.focusReadingContent).toHaveBeenCalledWith(first, undefined);
+    controller.focusReadingContent.mockClear();
+    controller.setUpAccessibility(undefined, false, 0);
+    expect(controller.focusReadingContent).not.toHaveBeenCalled();
+    controller.setUpAccessibility(undefined, true, 1);
+    expect(controller.focusReadingContent).toHaveBeenCalledWith(second, undefined);
+  });
 });

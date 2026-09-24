@@ -165,8 +165,9 @@ guarantee resuming at the last spoken word.
 ### Optional native macOS accessibility regression
 
 `content-boundary-native-focus.spec.ts` invokes the native macOS **AXPress**
-action on a reading-boundary button and checks destination iframe focus and the
-DOM selection/caret. This is **not**
+action from the source chapter and checks macOS's focused element and selected
+text-marker ownership in the destination WebArea, alongside DOM focus/caret.
+It also checks a restored nonzero caret offset. This is **not**
 proof of VoiceOver speech, virtual-cursor position, or continuous reading.
 
 Run only on an **unlocked macOS desktop**, with the existing Swift command-line

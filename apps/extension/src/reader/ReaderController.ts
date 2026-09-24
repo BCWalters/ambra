@@ -1461,11 +1461,16 @@ export class ReaderController {
 
   /** Reattaches accessibility handlers and moves focus into the current
    * content document. */
-  private setUpAccessibility(focusTarget?: Element, moveFocus = true): void {
+  private setUpAccessibility(focusTarget?: Element, moveFocus = true, readingSpineIndex?: number): void {
     this.updateContentTitle();
     this.reattachKeyboardNav();
 
-    const iframeDocument = this.primaryContentDocument();
+    // A cross-chapter spread's visual primary is its second chapter, not
+    // necessarily the chapter explicitly opened (including a book's first entry).
+    const iframeDocument = readingSpineIndex === undefined
+      ? this.primaryContentDocument()
+      : this.contentDocumentViews().find(view => view.spineIndex === readingSpineIndex)?.document
+        ?? this.primaryContentDocument();
     if (!iframeDocument) {
       return;
     }
@@ -4287,6 +4292,7 @@ export class ReaderController {
                 .find((el) => el !== null)
             : undefined,
           !options.automatic && !options.preserveFocus,
+          requestedSpineIndex,
         );
       } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, requestedSpineIndex);

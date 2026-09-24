@@ -6,6 +6,37 @@ import { exposeReaderController } from "../reader-controller.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
 
+test("a fresh cross-chapter spread enters and saves its requested first chapter before and after reflow", async () => {
+  const { context, readerPage: page } = await launchReader(path.join(fixtures, "reading-boundaries.epub"), {
+    viewport: { width: 1400, height: 900 },
+  });
+  try {
+    await exposeReaderController(page);
+    const state = () => page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const view = c.contentDocumentViews().find((view: { document: Document }) =>
+        view.document.defaultView?.frameElement === document.activeElement);
+      const first = c.contentDocumentViews().find((view: { spineIndex: number }) => view.spineIndex === 0);
+      const node = first.document.querySelector("p").firstChild;
+      await c.flushProgress();
+      return {
+        focusedSpine: view?.spineIndex,
+        savedCfi: (await c.library.getProgress(c.bookId)).cfi,
+        firstCfi: c.locatorResolver.generate(0, node, 0).cfi,
+      };
+    });
+    const initial = await state();
+    expect(initial.focusedSpine).toBe(0);
+    expect(initial.savedCfi).toBe(initial.firstCfi);
+    await page.evaluate(() => Reflect.get(window, "__readerController").setFontScale(1.1));
+    const reflowed = await state();
+    expect(reflowed.focusedSpine).toBe(0);
+    expect(reflowed.savedCfi).toBe(initial.firstCfi);
+  } finally {
+    await context.close();
+  }
+});
+
 async function frameFor(page: Page, spineIndex: number) {
   const index = await page.evaluate(spineIndex => {
     const controller = Reflect.get(window, "__readerController");
