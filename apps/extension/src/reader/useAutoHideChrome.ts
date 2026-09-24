@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefCallback } from "react";
 
 /** How long the toolbar stays visible after the most recent activity
  * before fading away. */
@@ -26,6 +26,7 @@ export interface AutoHideChrome {
    * pointer is over it or it (or something inside it) has focus, and
    * schedules a fade once neither is true anymore. */
   handlers: {
+    ref?: RefCallback<HTMLDivElement>;
     onPointerEnter: () => void;
     onPointerLeave: () => void;
     onFocus: () => void;
@@ -71,10 +72,18 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
-  useLayoutEffect(() => { pinnedRef.current = pinned; }, [pinned]);
+  const elementsRef = useRef(new Set<HTMLDivElement>());
+  const registerElement = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+    elementsRef.current.add(element);
+    return () => { elementsRef.current.delete(element); };
+  }, []);
+  useLayoutEffect(() => {
+    pinnedRef.current = pinned;
+    visibleRef.current = visible;
+  }, [pinned, visible]);
 
   const show = useCallback((): void => {
-    visibleRef.current = true;
     setVisible(true);
   }, []);
   const hide = useCallback((): void => {
@@ -85,11 +94,20 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     setVisible(false);
   }, []);
   const dismissForContent = useCallback((): boolean => {
-    if (pinnedRef.current || !visibleRef.current) return false;
+    if (pinnedRef.current) return false;
+    // A reveal can commit between pointermove and pointerdown while its
+    // opacity transition is still at zero. That chrome is not yet visible.
+    const dismissed = visibleRef.current && [...elementsRef.current].some(element => {
+      const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+      return element.isConnected && style && style.display !== "none" &&
+        style.visibility !== "hidden" && Number(style.opacity || "1") > 0;
+    });
     // Focus may still be in a toolbar menu until the native pointerdown
     // focuses the book. That old focus must not veto deliberate dismissal.
+    // Cancel a queued edge-move reveal too, but only charge a dismissal
+    // click for chrome whose visible state has actually reached the DOM.
     hide();
-    return true;
+    return dismissed;
   }, [hide]);
 
   const scheduleHide = (): void => {
@@ -167,6 +185,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     dismissForContent,
     hide,
     handlers: {
+      ref: registerElement,
       onPointerEnter: () => {
         hoveredRef.current = true;
         show();

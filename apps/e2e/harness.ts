@@ -178,6 +178,7 @@ export async function clickReadingPage(
     // Rearm the idle timer so chrome cannot auto-hide between the probe and tap.
     await readerPage.mouse.move(10, 10);
     await expect(toolbar).toHaveCSS("pointer-events", "auto");
+    await expect(toolbar).toHaveCSS("opacity", "1");
     const position = () =>
       readerPage.evaluate(() => {
         const s = Reflect.get(window, "__readerController").snapshot();

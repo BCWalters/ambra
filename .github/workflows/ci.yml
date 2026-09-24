@@ -63,6 +63,7 @@ jobs:
           reader-ui-dismissal.spec.ts
           margin-selection.spec.ts
           page-turn-margin.spec.ts
+          page-turn-viewport.spec.ts
           toolbar-startup.spec.ts
           reader-diagnostics.spec.ts
           keyboard-ownership.spec.ts

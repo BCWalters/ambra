@@ -23,7 +23,8 @@ vi.mock("../library/LibraryDatabase.js", () => ({
 }));
 vi.mock("./components/Toolbar.js", () => ({
   Toolbar: (props: ToolbarProps) => (
-    <div data-testid="toolbar" data-visible={props.visible} data-open-menu={props.openMenu}
+    <div ref={props.handlers.ref} style={{ opacity: props.visible ? 1 : 0 }}
+      data-testid="toolbar" data-visible={props.visible} data-open-menu={props.openMenu}
       onFocus={realMenu.enabled ? props.handlers.onFocus : undefined}
       onBlur={realMenu.enabled ? props.handlers.onBlur : undefined}>
       <button onClick={props.onToggleToc}>toc</button>

@@ -128,6 +128,7 @@ for (const { width, margin, frameIndex, edge } of [
       const toolbar = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ }).locator("..");
       await page.mouse.move(10, 2);
       await expect(toolbar).toHaveCSS("pointer-events", "auto");
+      await expect(toolbar).toHaveCSS("opacity", "1");
       const frame = (await page.locator("iframe").nth(frameIndex).boundingBox())!;
       const point = {
         x: edge === "left" ? frame.x + 10 : frame.x + frame.width - 10,

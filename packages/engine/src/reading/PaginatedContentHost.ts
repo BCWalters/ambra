@@ -25,9 +25,9 @@ import type { DisclosureState } from "./DisclosureState.js";
  * item's flow, not on every individual paginated page (there's only one
  * underlying `<body>` box; pages are just a clipped window over it). The
  * pagination budget passed to `PaginationEngine` is shrunk by both insets
- * so no page's text ever grows into that reserved space, and the display
- * transform/height both shift by the same amount — see `pageContentHeight`
- * and `showCurrentPage`.
+ * so no page's text ever grows into that reserved space. The display
+ * translation and paint clip account for these insets without resizing
+ * the layout viewport — see `pageContentHeight` and `showCurrentPage`.
  *
  * Scoped to a single spine item at a time: turning past the first/last
  * page returns `false` from `previousPage`/`nextPage` rather than
@@ -42,6 +42,7 @@ export class PaginatedContentHost {
   private pageIndex = 0;
   private disclosureCleanup: (() => void) | undefined;
   private readerOverlay: { body: HTMLElement; clipPath: string; priority: string } | undefined;
+  private animationClip: { body: HTMLElement; clipPath: string; priority: string } | undefined;
   // Grown past `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM`'s own
   // fixed floor by `refreshInsets` whenever the current font scale/
   // line-spacing demands more room — see `ReadingTheme.insetsForLineHeight`'s
@@ -330,10 +331,10 @@ export class PaginatedContentHost {
       // the iframe's top edge instead of flush against it.
       body.style.transform = `translateY(${page.displayTranslateY + this.insetTop}px)`;
     }
-    // The iframe's own height reserves both insets around the page's
-    // actual content height, so the bottom inset is real blank space
-    // rather than clipped-away overflow.
-    this.sandboxedHost.element.style.height = `${page.height + this.insetTop + this.insetBottom}px`;
+    // Keep the layout viewport identical to the one used for pagination.
+    // Changing iframe height reflows viewport-relative publication styles
+    // (for example Ulysses's 20vh chapter margin), even on later pages.
+    this.sandboxedHost.element.style.height = `${this.height}px`;
     // The inset bands are only reliably blank *by convention* (nothing
     // actually stops adjacent content from painting there) — the
     // previous page's last line is usually only one line-height above
@@ -346,8 +347,9 @@ export class PaginatedContentHost {
     // its painted output to exactly the page-content band regardless of
     // what the transform happens to place above/below it, independent of
     // how much natural gap the surrounding content has.
-    this.sandboxedHost.element.style.clipPath = `inset(${this.insetTop}px 0 ${this.insetBottom}px 0)`;
-    if (this.readerOverlay) this.applyReaderOverlay();
+    const bottom = Math.max(0, this.height - this.insetTop - page.height);
+    this.sandboxedHost.element.style.clipPath = `inset(${this.insetTop}px 0 ${bottom}px 0)`;
+    if (this.readerOverlay || this.animationClip) this.applyInternalClip();
   }
 
   /** Top-layer UI escapes body clipping, but not the iframe's own clip. Give it
@@ -357,22 +359,24 @@ export class PaginatedContentHost {
     if (!body) return () => {};
     const overlay = this.readerOverlay ?? {
       body,
-      clipPath: body.style.getPropertyValue("clip-path"),
-      priority: body.style.getPropertyPriority("clip-path"),
+      clipPath: this.animationClip?.clipPath ?? body.style.getPropertyValue("clip-path"),
+      priority: this.animationClip?.priority ?? body.style.getPropertyPriority("clip-path"),
     };
     this.readerOverlay = overlay;
-    this.applyReaderOverlay();
+    this.applyInternalClip();
     return () => {
       if (this.readerOverlay !== overlay) return;
       this.readerOverlay = undefined;
-      body.style.setProperty("clip-path", overlay.clipPath, overlay.priority);
+      if (!this.animationClip) {
+        body.style.setProperty("clip-path", overlay.clipPath, overlay.priority);
+      }
       this.showCurrentPage();
     };
   }
 
-  private applyReaderOverlay(): void {
+  private applyInternalClip(): void {
     const page = this.pages[this.pageIndex];
-    const body = this.readerOverlay?.body;
+    const body = (this.readerOverlay ?? this.animationClip)?.body;
     if (!page || !body) return;
     this.element.style.height = `${this.height}px`;
     this.element.style.clipPath = "";
@@ -384,85 +388,29 @@ export class PaginatedContentHost {
       `polygon(0 ${top}px, 100% ${top}px, 100% ${bottom}px, 0 ${bottom}px)`, "important");
   }
 
-  /** Temporarily grows this host's iframe to `fullHeight` (the reader
-   * pane's own full height) for the duration of a page-turn animation,
-   * and drops its `clip-path` entirely (see `suppressClipPathForAnimation`,
-   * which this calls — read that doc comment for why `clip-path` can't
-   * simply be widened to match, the way this method used to handle it).
-   *
-   * The height grow specifically fixes its own, separate bug:
-   * `showCurrentPage` only ever sizes the iframe to *this specific
-   * page's* own content height — often noticeably shorter than a full
-   * page (most pages don't end exactly at the page boundary) — and a
-   * page-turn animation's box-shadow traces the iframe's *real* box
-   * exactly, so a short page's animated edge visibly sat higher than a
-   * full page's would ("the bottom of the page in the animation starts
-   * a few lines above the actual bottom of the page"). A no-op (for the
-   * height part only — `clip-path` is still dropped) if this page is
-   * already at least `fullHeight` tall. Call `restoreNaturalHeight` once
-   * the animation finishes (whether it committed or reverted) to undo
-   * both. */
-  public growToFullHeight(fullHeight: number): void {
+  /** The iframe now always has the full layout height, so its rotating
+   * edge/shadow needs no viewport resize. Retained for animation callers. */
+  public growToFullHeight(_fullHeight: number): void {
     this.suppressClipPathForAnimation();
-    const page = this.pages[this.pageIndex];
-    if (!page) {
-      return;
-    }
-    const naturalHeight = page.height + this.insetTop + this.insetBottom;
-    if (fullHeight <= naturalHeight) {
-      return;
-    }
-    this.sandboxedHost.element.style.height = `${fullHeight}px`;
   }
 
-  /** Drops this host's iframe `clip-path` entirely, and shrinks its
-   * height to exactly its real visible content (no reserved-but-empty
-   * bottom inset band at all) for the duration of a page-turn animation
-   * — call on *every* host/column involved in an animated "rotate" or
-   * "slide" turn, not just whichever one is actually moving
-   * (`growToFullHeight` additionally *grows* height past this for
-   * "rotate" specifically, once its own box-shadow-position need is
-   * met — see its doc comment for why the two can't be combined into
-   * one always-grow-never-shrink method).
-   *
-   * The `clip-path` removal exists because of a real, confirmed
-   * Chromium rendering defect found via direct testing (issue #81):
-   * *any* two iframes overlapping on screen, where *either* one has a
-   * `clip-path` set — even one that doesn't visually exclude anything —
-   * fail to composite opaquely against each other, blending both pages'
-   * text together. Confirmed with a plain `translateX` and no
-   * rotation/perspective involved at all, so this isn't specific to a
-   * 3D transform or to whichever side is actually moving; every
-   * overlapping host/column needs this for the animation's duration,
-   * full stop.
-   *
-   * But `clip-path` was *also* the only thing hiding the reserved (by
-   * convention, not by any actual layout stop — see `showCurrentPage`'s
-   * doc comment) blank band below this page's real content, where the
-   * *next* page's own text continues in the underlying linear flow with
-   * nothing else in its way. Dropping `clip-path` without also
-   * addressing that reopened exactly the bug `clip-path` was introduced
-   * to fix in the first place, just for the animation's duration
-   * instead of permanently — a real, reported regression ("content
-   * above and below the visible page that should be clipped during the
-   * animation"). Shrinking the iframe's own *height* to end precisely
-   * where this page's real content does (rather than relying on any
-   * form of CSS clipping, which is exactly what triggers the
-   * compositing bug) sidesteps this: an iframe never paints anything
-   * beyond its own box regardless of `clip-path`, so there is no longer
-   * any reserved space left for the next page's continuation to bleed
-   * into. Call `restoreNaturalHeight` once the turn finishes to restore
-   * both. */
+  /** Overlapping clipped iframe layers blend incorrectly in Chromium (#81).
+   * Clip publication paint inside the document instead during animation,
+   * without changing its viewport or exposing adjacent-page text (#84).
+   * The iframe's full-height opaque paper and existing backdrops remain. */
   public suppressClipPathForAnimation(): void {
-    this.sandboxedHost.element.style.clipPath = "";
-    const page = this.pages[this.pageIndex];
-    if (page) {
-      this.sandboxedHost.element.style.height = `${this.insetTop + page.height}px`;
-    }
+    const body = this.element.contentDocument?.body;
+    if (!body) return;
+    this.animationClip ??= {
+      body,
+      clipPath: this.readerOverlay?.clipPath ?? body.style.getPropertyValue("clip-path"),
+      priority: this.readerOverlay?.priority ?? body.style.getPropertyPriority("clip-path"),
+    };
+    this.applyInternalClip();
   }
 
   /** Undoes `growToFullHeight`/`suppressClipPathForAnimation`, restoring
-   * this host's natural per-page height and `clip-path` — call once a
+   * this host's per-page paint clip without resizing its viewport — call once a
    * page-turn animation involving this host has finished *and it wasn't
    * disposed* (a reverted drag, not a committed turn, which disposes
    * the old host outright and so has no need to restore anything). Just
@@ -470,11 +418,17 @@ export class PaginatedContentHost {
    * current page, so it's safe to call even if neither of those was
    * ever actually called. */
   public restoreNaturalHeight(): void {
+    if (this.animationClip) {
+      const { body, clipPath, priority } = this.animationClip;
+      if (!this.readerOverlay) body.style.setProperty("clip-path", clipPath, priority);
+      this.animationClip = undefined;
+    }
     this.showCurrentPage();
   }
 
   public dispose(): void {
     this.readerOverlay = undefined;
+    this.animationClip = undefined;
     this.disclosureCleanup?.();
     this.disclosureCleanup = undefined;
     this.sandboxedHost.dispose();
