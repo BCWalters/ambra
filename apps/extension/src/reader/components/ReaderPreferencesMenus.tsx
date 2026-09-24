@@ -446,6 +446,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
                 <MenuItemRadio
                   name="viewMode"
                   value="paginated"
+                  aria-label={t("settings.paginated")}
                   icon={<BookOpenRegular />}
                   secondaryContent={showReadingModeShortcuts ? paginatedShortcut.shortcutLabel : undefined}
                   aria-keyshortcuts={showReadingModeShortcuts ? paginatedShortcut.ariaKeyShortcuts : undefined}
@@ -455,6 +456,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
                 <MenuItemRadio
                   name="viewMode"
                   value="scroll"
+                  aria-label={t("settings.scroll")}
                   icon={<TextColumnOneRegular />}
                   secondaryContent={showReadingModeShortcuts ? scrollingShortcut.shortcutLabel : undefined}
                   aria-keyshortcuts={showReadingModeShortcuts ? scrollingShortcut.ariaKeyShortcuts : undefined}
