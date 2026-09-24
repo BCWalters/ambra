@@ -102,7 +102,7 @@ export const ja: StringCatalog = {
   "library.findNextBook": "次に読む本を探す",
   "library.findNextBookDescription": "信頼できる無料書籍サイトを探索",
   "library.exploreFreeBooks": "無料の本を探す",
-  "library.standardEbooksDownload": "本のページで「Compatible epub」を選びます。",
+  "library.standardEbooksDownload": "本のページで「Advanced epub」を選びます。",
   "library.gutenbergDownload": "本のページで EPUB または EPUB3 のダウンロードを選びます。",
   "library.readBeyondDownload": "音声付き EPUB は「Read+Listen」ではなく「Download」を選びます。",
   "library.dismiss": "閉じる",

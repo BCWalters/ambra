@@ -102,7 +102,7 @@ export const es: StringCatalog = {
   "library.findNextBook": "Encuentra tu próximo libro",
   "library.findNextBookDescription": "Explora fuentes de confianza de libros gratuitos",
   "library.exploreFreeBooks": "Explorar libros gratuitos",
-  "library.standardEbooksDownload": "En la página del libro, elige «Compatible epub».",
+  "library.standardEbooksDownload": "En la página del libro, elige «Advanced epub».",
   "library.gutenbergDownload": "En la página del libro, elige una descarga EPUB o EPUB3.",
   "library.readBeyondDownload": "Elige «Download» para un EPUB con audio, no «Read+Listen».",
   "library.dismiss": "Cerrar",

@@ -644,7 +644,7 @@ const FilesTab: FC<{
                   below with no way to read the rest short of widening the
                   whole panel; a tooltip surfaces the full path on hover
                   without needing that. */}
-              <Tooltip content={{ children: file.path, style: EPUB_TOOLTIP_STYLE }} relationship="label">
+              <Tooltip content={{ children: file.path, style: EPUB_TOOLTIP_STYLE }} relationship="label" positioning="above-start">
                 <span
                   style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >

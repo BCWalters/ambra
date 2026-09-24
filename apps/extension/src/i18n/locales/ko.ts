@@ -102,7 +102,7 @@ export const ko: StringCatalog = {
   "library.findNextBook": "다음에 읽을 책 찾기",
   "library.findNextBookDescription": "믿을 수 있는 무료 도서 사이트 둘러보기",
   "library.exploreFreeBooks": "무료 도서 둘러보기",
-  "library.standardEbooksDownload": "책 페이지에서 “Compatible epub”을 선택하세요.",
+  "library.standardEbooksDownload": "책 페이지에서 “Advanced epub”을 선택하세요.",
   "library.gutenbergDownload": "책 페이지에서 EPUB 또는 EPUB3 다운로드를 선택하세요.",
   "library.readBeyondDownload": "오디오가 포함된 EPUB은 “Read+Listen”이 아닌 “Download”를 선택하세요.",
   "library.dismiss": "닫기",

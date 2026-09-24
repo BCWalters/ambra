@@ -36,7 +36,7 @@ The **Export** button uses a downward download arrow; **Import** uses an upward 
 
 An empty library offers two choices: **Bring a book → Choose EPUB files...** opens the file picker for EPUBs on your device; **Find your next book → Explore free books** reveals trusted sources below the choices. The cards stack in a narrow popup. Settings, Help, and the popup’s expand control remain in the header; **Import EPUB** and **Sort** appear after your first book is added. You can still explore sources through **Find books** in a populated library.
 
-For beautifully formatted classics, try **Standard Ebooks** and choose **Compatible epub** on a book’s page. **Project Gutenberg** offers a vast collection; choose an **EPUB** or **EPUB3** download. For read-along audio, **ReadBeyond** offers EPUBs with recorded narration; choose **Download**, not the browser-based **Read+Listen**. Source links open in a new tab. Check the book’s license and your local copyright rules.
+For beautifully formatted classics, try **Standard Ebooks** and choose **Advanced epub** on a book’s page. **Project Gutenberg** offers a vast collection; choose an **EPUB** or **EPUB3** download. For read-along audio, **ReadBeyond** offers EPUBs with recorded narration; choose **Download**, not the browser-based **Read+Listen**. Source links open in a new tab. Check the book’s license and your local copyright rules.
 
 When a supported EPUB download opens Ambra, keep that library tab open while the book downloads, is prepared for reading, and is added to your library. The status changes to a checkmark and the EPUB’s title after the book has been saved and the library refreshed. Choose **Read now** to open it, or **Dismiss** to clear finished messages without interrupting other imports.
 

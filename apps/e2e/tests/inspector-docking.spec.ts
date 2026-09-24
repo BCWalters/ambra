@@ -11,6 +11,34 @@ const modes = [
   ["popover", "Popover view"],
 ] as const;
 
+test("#193 filename tooltips stay beside the text in both docks", async () => {
+  const { context, readerPage: page } = await launchReader(book, {
+    viewport: { width: 1400, height: 900 },
+  });
+  try {
+    await page.getByRole("button", { name: "Book details", exact: true }).click();
+    await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
+    const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+    for (const side of ["left", "right"]) {
+      await inspector.getByRole("button", { name: `Dock ${side}`, exact: true }).click();
+      const name = inspector.locator('button[data-file-path="mimetype"]').getByText("mimetype", { exact: true });
+      await name.hover({ position: { x: 12, y: 6 } });
+      const tooltip = page.getByRole("tooltip", { name: "mimetype", exact: true });
+      await expect(tooltip).toBeVisible();
+      await expect.poll(async () => {
+        const target = await name.boundingBox();
+        const hint = await tooltip.boundingBox();
+        return target && hint ? Math.abs(hint.x - target.x) : Infinity;
+      }).toBeLessThan(8);
+      await page.screenshot({ path: test.info().outputPath(`filename-tooltip-${side}.png`) });
+      await inspector.getByRole("tab", { name: "Metadata", exact: true }).hover();
+      await expect(tooltip).toBeHidden();
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 async function settle(page: Page) {
   await expect.poll(() => page.evaluate(() => {
     const c = Reflect.get(window, "__readerController");

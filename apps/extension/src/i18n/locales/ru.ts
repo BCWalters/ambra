@@ -102,7 +102,7 @@ export const ru: StringCatalog = {
   "library.findNextBook": "Найти следующую книгу",
   "library.findNextBookDescription": "Откройте проверенные источники бесплатных книг",
   "library.exploreFreeBooks": "Найти бесплатные книги",
-  "library.standardEbooksDownload": "На странице книги выберите «Compatible epub».",
+  "library.standardEbooksDownload": "На странице книги выберите «Advanced epub».",
   "library.gutenbergDownload": "На странице книги выберите загрузку EPUB или EPUB3.",
   "library.readBeyondDownload": "Для EPUB с аудио выберите «Download», а не «Read+Listen».",
   "library.dismiss": "Закрыть",

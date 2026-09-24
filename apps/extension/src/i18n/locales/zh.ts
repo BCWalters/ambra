@@ -102,7 +102,7 @@ export const zh: StringCatalog = {
   "library.findNextBook": "寻找下一本好书",
   "library.findNextBookDescription": "探索值得信赖的免费图书来源",
   "library.exploreFreeBooks": "探索免费图书",
-  "library.standardEbooksDownload": "在图书页面选择“Compatible epub”。",
+  "library.standardEbooksDownload": "在图书页面选择“Advanced epub”。",
   "library.gutenbergDownload": "在图书页面选择 EPUB 或 EPUB3 下载。",
   "library.readBeyondDownload": "选择“Download”下载带音频的 EPUB，而不是“Read+Listen”。",
   "library.dismiss": "关闭",
