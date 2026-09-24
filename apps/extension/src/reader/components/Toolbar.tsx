@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { FC } from "react";
+import type { FC, RefCallback } from "react";
 import {
   Body1,
   Button,
@@ -79,6 +79,7 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
    * as one unit of chrome instead of drifting out of sync. */
   visible: boolean;
   handlers: {
+    ref?: RefCallback<HTMLDivElement>;
     onPointerEnter: () => void;
     onPointerLeave: () => void;
     onFocus: () => void;
@@ -210,6 +211,7 @@ export const Toolbar: FC<ToolbarProps> = ({
       />
 
       <div
+        ref={handlers.ref}
         className={mergeClasses(toolbarStyles.root, readerStyles.root)}
         onPointerEnter={handlers.onPointerEnter}
         onPointerLeave={handlers.onPointerLeave}

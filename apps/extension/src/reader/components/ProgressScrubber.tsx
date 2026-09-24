@@ -1,6 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type {
   FC,
+  RefCallback,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
@@ -50,6 +51,7 @@ export interface ProgressScrubberProps {
    * two fade in and out together as one unit of chrome. */
   visible: boolean;
   handlers: {
+    ref?: RefCallback<HTMLDivElement>;
     onPointerEnter: () => void;
     onPointerLeave: () => void;
     onFocus: () => void;
@@ -132,6 +134,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const bookmarkCountId = useId();
   const rtl = snapshot.pageProgressionDirection === "rtl";
   const barRef = useRef<HTMLDivElement | null>(null);
+  const registerBar = useCallback((element: HTMLDivElement | null) => {
+    barRef.current = element;
+    const cleanup = handlers.ref?.(element);
+    return () => {
+      barRef.current = null;
+      if (typeof cleanup === "function") cleanup();
+    };
+  }, [handlers.ref]);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const [dragFraction, setDragFraction] = useState<number | undefined>(undefined);
@@ -465,7 +475,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
 
   return (
     <div
-      ref={barRef}
+      ref={registerBar}
       onPointerEnter={handlers.onPointerEnter}
       onPointerLeave={handlers.onPointerLeave}
       onFocus={handlers.onFocus}

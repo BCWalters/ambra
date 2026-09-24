@@ -65,6 +65,7 @@ for (const style of ["slide", "scroll"] as const) {
       // margin drag. Such an invisible range must not eat the next click.
       await page.mouse.move(10, 2);
       await expect(toolbar(page)).toHaveCSS("pointer-events", "auto");
+      await expect(toolbar(page)).toHaveCSS("opacity", "1");
       const before = await position(page);
       await page.mouse.move(point.x, point.y);
       await page.mouse.down();
