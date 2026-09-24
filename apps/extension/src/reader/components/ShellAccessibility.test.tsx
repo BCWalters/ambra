@@ -1,6 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ArrowDownloadRegular, ArrowUploadRegular } from "@fluentui/react-icons";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnnotationsPanel } from "./AnnotationsPanel.js";
 import { SearchPanel } from "./SearchPanel.js";
@@ -56,6 +57,31 @@ describe("Shell accessibility semantics", () => {
     expect(container.querySelector('[role="status"] p')?.getAttribute("style")).not.toContain("opacity");
     await render(false, "older query");
     expect(container.querySelector('[role="status"]')?.textContent).toBe("");
+  });
+
+  it("uses download/export and upload/import glyphs with unchanged annotation actions (#184)", async () => {
+    const onExport = vi.fn();
+    await act(async () => root.render(
+      <AnnotationsPanel bookmarks={[]} highlights={[]} readOnlyAnnotations={[]}
+        onSelectBookmark={vi.fn()} onRemoveBookmark={vi.fn()} onSelectHighlight={vi.fn()}
+        onRemoveHighlight={vi.fn()} onSetHighlightNote={vi.fn()} onSelectReadOnlyAnnotation={vi.fn()}
+        onExport={onExport} onImportFile={vi.fn()} open pinned
+        onTogglePin={vi.fn()} onRequestClose={vi.fn()} scrubberVisible={false} />,
+    ));
+    const exporting = [...container.querySelectorAll("button")].find(button => button.textContent === "Export")!;
+    const importing = [...container.querySelectorAll("button")].find(button => button.textContent === "Import")!;
+    const icons = document.createElement("div");
+    icons.innerHTML = renderToStaticMarkup(<><ArrowDownloadRegular /><ArrowUploadRegular /></>);
+    expect(exporting.querySelector("path")?.getAttribute("d")).toBe(icons.querySelectorAll("path")[0]?.getAttribute("d"));
+    expect(importing.querySelector("path")?.getAttribute("d")).toBe(icons.querySelectorAll("path")[1]?.getAttribute("d"));
+    expect(exporting.getAttribute("aria-label")).toContain("Export");
+    expect(importing.getAttribute("aria-label")).toContain("Import");
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const click = vi.spyOn(input, "click").mockImplementation(() => {});
+    await act(async () => { exporting.click(); importing.click(); });
+    expect(onExport).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
+    click.mockRestore();
   });
 
   it("clamps long search chapter labels without shortening result text or navigation targets", async () => {

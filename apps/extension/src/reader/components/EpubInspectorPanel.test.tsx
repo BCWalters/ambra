@@ -109,6 +109,20 @@ describe("Inspector reader linking", () => {
       ? onReadFile.mock.calls.at(-1)?.[0] : undefined;
   }
 
+  it.each([0, 1])("keeps path tooltip %i bounded without an overflowing decorative arrow (#181)", async (index) => {
+    await render();
+    const trigger = container.querySelectorAll<HTMLElement>('[aria-label="one.xhtml"]')[index]!;
+    expect(trigger).toBeDefined();
+    await act(async () => trigger.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(tooltip.textContent).toBe("one.xhtml");
+    expect(tooltip.children).toHaveLength(0);
+    expect(tooltip.style.overflowWrap).toBe("anywhere");
+    expect(tooltip.style.maxWidth).toContain("360px");
+    expect(trigger.getAttribute("aria-label")).toBe("one.xhtml");
+  });
+
   it("defaults to the current chapter on every reader open, without Library linking controls", async () => {
     await render();
     expect(selectedPath()).toBe("one.xhtml");

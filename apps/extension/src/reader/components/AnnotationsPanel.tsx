@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Tab, TabList, Tooltip } from "@fluentui/react-components";
 import {
-  ArrowExportRegular,
-  ArrowImportRegular,
+  ArrowDownloadRegular,
+  ArrowUploadRegular,
   BookmarkFilled,
   DeleteRegular,
   DismissRegular,
@@ -651,7 +651,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             <Button
               appearance="subtle"
               size="small"
-              icon={<ArrowExportRegular />}
+              icon={<ArrowDownloadRegular />}
               style={{ flex: 1 }}
               onClick={() => void onExport()}
             >
@@ -662,7 +662,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             <Button
               appearance="subtle"
               size="small"
-              icon={<ArrowImportRegular />}
+              icon={<ArrowUploadRegular />}
               style={{ flex: 1 }}
               onClick={() => importInputRef.current?.click()}
             >

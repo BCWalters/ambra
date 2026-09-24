@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type {
   FC,
   RefCallback,
@@ -6,8 +6,9 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import { Caption1, makeStyles } from "@fluentui/react-components";
+import { BookmarkFilled } from "@fluentui/react-icons";
 import type { PreviewPosition, ReaderSnapshot } from "../ReaderTypes.js";
-import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { BOOKMARK_COLOR, CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
@@ -18,6 +19,10 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
 const POPUP_EDGE_MARGIN = 8;
 
 const useStyles = makeStyles({
+  bookmark: {
+    color: BOOKMARK_COLOR,
+    "@media (forced-colors: active)": { color: "CanvasText" },
+  },
   track: {
     outlineStyle: "none",
     ":focus-visible": {
@@ -36,7 +41,11 @@ const useStyles = makeStyles({
 });
 
 export interface ProgressScrubberProps {
-  snapshot: ReaderSnapshot;
+  snapshot: Pick<ReaderSnapshot,
+    "isFixedLayout" | "viewMode" | "pageIndex" | "pageCount" |
+    "bookPageIndex" | "bookPageCount" | "spineIndex" | "spineLength" |
+    "pageProgressionDirection" | "bookmarks" | "bookmarkProgress"
+  >;
   /** Whether the scrubber should currently be shown — tied to the same
    * `useAutoHideChrome` state the toolbar uses (see `ReaderApp`), so the
    * two fade in and out together as one unit of chrome. */
@@ -66,7 +75,7 @@ export interface ProgressScrubberProps {
  * consistent with `ReaderController.previewSeek`/`seekToFraction`'s own
  * preference order, so the scrubber's resting position and a drag's
  * preview always agree on what a given fraction means. */
-function currentFraction(snapshot: ReaderSnapshot): number {
+function currentFraction(snapshot: ProgressScrubberProps["snapshot"]): number {
   if (
     snapshot.bookPageIndex !== undefined &&
     snapshot.bookPageCount !== undefined &&
@@ -122,6 +131,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
   const styles = useStyles();
+  const bookmarkCountId = useId();
   const rtl = snapshot.pageProgressionDirection === "rtl";
   const barRef = useRef<HTMLDivElement | null>(null);
   const registerBar = useCallback((element: HTMLDivElement | null) => {
@@ -613,6 +623,9 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         </div>
       )}
 
+      <span id={bookmarkCountId} hidden>
+        {t("annotations.bookmarksTab")}: {snapshot.bookmarks.length}
+      </span>
       <div
         ref={trackRef}
         onPointerDown={beginDrag}
@@ -631,6 +644,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         role="slider"
         tabIndex={0}
         aria-label={t("scrubber.positionInBook")}
+        aria-describedby={snapshot.bookmarks.length ? bookmarkCountId : undefined}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-orientation="horizontal"
@@ -674,6 +688,23 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             background: chromeTheme.accentForeground,
           }}
         />
+        {Array.from(new Set(snapshot.bookmarkProgress?.map(marker => marker.fraction))).map(fraction => (
+          <BookmarkFilled
+            key={fraction}
+            aria-hidden="true"
+            data-bookmark-marker=""
+            className={styles.bookmark}
+            style={{
+              position: "absolute",
+              left: `${(rtl ? 1 - fraction : fraction) * 100}%`,
+              top: 22,
+              width: 10,
+              height: 12,
+              transform: "translateX(-50%)",
+              pointerEvents: "none",
+            }}
+          />
+        ))}
         <div
           style={{
             position: "absolute",

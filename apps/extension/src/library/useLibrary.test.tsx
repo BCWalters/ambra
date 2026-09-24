@@ -212,7 +212,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.canImport).toBe(true);
     expect(fetch).toHaveBeenCalledOnce();
     expect(importBook).toHaveBeenCalledOnce();
-    expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "complete" }]);
+    expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "complete", bookId: "book" }]);
     expect((fetch.mock.calls[0]?.[1].signal as AbortSignal).aborted).toBe(false);
     expect(discarded.methods.close).toHaveBeenCalledOnce();
   });
@@ -258,6 +258,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.importActivities[0]?.phase).toBe("processing");
     act(() => vi.mocked(importBook).mock.calls[0]?.[2]?.("saving"));
     expect(latest.importActivities[0]?.phase).toBe("saving");
+    expect(latest.importActivities[0]?.bookId).toBeUndefined();
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
     db.methods.listBooks.mockReturnValueOnce(refreshing.promise);
     await act(async () => saving.resolve("book"));
@@ -265,6 +266,7 @@ describe("useLibrary ownership and failures", () => {
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
     await act(async () => refreshing.resolve([{ id: "book", title: "Saved" } as BookMetadata]));
     expect(latest.importActivities[0]?.phase).toBe("complete");
+    expect(latest.importActivities[0]?.bookId).toBe("book");
     expect(latest.books[0]?.title).toBe("Saved");
     expect(latest.error).toBeUndefined();
     act(() => latest.dismissCompletedImports());
@@ -322,14 +324,14 @@ describe("useLibrary ownership and failures", () => {
     button.focus();
     const status = container.querySelector('[role="status"]')!;
     expect(status.textContent).toContain("Downloading book.epub");
-    expect(status.textContent).toContain("Keep this library open");
+    expect(status.textContent).toContain("Keep your library open");
     expect(status.getAttribute("aria-live")).toBe("polite");
     expect(status.hasAttribute("aria-busy")).toBe(false);
     expect(container.textContent).not.toContain("Your library is empty");
     expect(button.disabled).toBe(false);
     await act(async () => response.resolve(new Response("epub")));
     expect(status.textContent).toContain("Added book.epub to your library");
-    expect(status.textContent).not.toContain("Keep this library open");
+    expect(status.textContent).not.toContain("Keep your library open");
     expect(document.activeElement).toBe(button);
   });
 

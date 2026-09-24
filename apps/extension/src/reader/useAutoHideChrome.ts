@@ -71,6 +71,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
   const pinnedRef = useRef(pinned);
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
+  const suppressEdgeRevealRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const elementsRef = useRef(new Set<HTMLDivElement>());
   const registerElement = useCallback((element: HTMLDivElement | null) => {
@@ -84,6 +85,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
   }, [pinned, visible]);
 
   const show = useCallback((): void => {
+    suppressEdgeRevealRef.current = false;
     setVisible(true);
   }, []);
   const hide = useCallback((): void => {
@@ -107,6 +109,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     // Cancel a queued edge-move reveal too, but only charge a dismissal
     // click for chrome whose visible state has actually reached the DOM.
     hide();
+    suppressEdgeRevealRef.current = true;
     return dismissed;
   }, [hide]);
 
@@ -136,9 +139,19 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     const handlePointerMove = (event: PointerEvent): void => {
       const nearTop = event.clientY <= EDGE_REVEAL_ZONE_PX;
       const nearBottom = event.clientY >= window.innerHeight - EDGE_REVEAL_ZONE_PX;
-      if (nearTop || nearBottom) {
-        reveal();
+      if (!nearTop && !nearBottom) {
+        suppressEdgeRevealRef.current = false;
+        return;
       }
+      // Repeated margin taps must not undo an explicit dismissal during its
+      // fade. Moving onto the actual controls still reveals them immediately.
+      if (suppressEdgeRevealRef.current && ![...elementsRef.current].some(element => {
+        const rect = element.getBoundingClientRect();
+        return element.isConnected && rect.width > 0 && rect.height > 0 &&
+          event.clientX >= rect.left && event.clientX < rect.right &&
+          event.clientY >= rect.top && event.clientY < rect.bottom;
+      })) return;
+      reveal();
     };
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("keydown", reveal);

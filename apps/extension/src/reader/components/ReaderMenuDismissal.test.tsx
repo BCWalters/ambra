@@ -1,7 +1,9 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js";
+import { ModalFlyout } from "../../components/ModalFlyout.js";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -42,8 +44,44 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it("dismisses the Settings tooltip before handing Escape ownership to its menu and Help", async () => {
+  vi.useFakeTimers();
+  const closeHelp = vi.fn();
+  function HelpHarness() {
+    const [helpOpen, setHelpOpen] = useState(false);
+    return <FluentProvider theme={webLightTheme}>
+      <ReaderSettingsMenu isFixedLayout={false} viewMode="paginated"
+        brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide"
+        onSetViewMode={noop} onSetBrightness={noop} onSetChromeTheme={noop}
+        onSetPageTurnAnimationStyle={noop} onOpenHelp={() => setHelpOpen(true)} />
+      <ModalFlyout open={helpOpen} title="Help" backgroundSolid="#fff" onRequestClose={closeHelp}>
+        <button>Help content</button>
+      </ModalFlyout>
+    </FluentProvider>;
+  }
+  await act(async () => root.render(<HelpHarness />));
+  const settings = container.querySelector<HTMLButtonElement>("button")!;
+  await act(async () => {
+    settings.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+    await vi.advanceTimersByTimeAsync(300);
+  });
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("Settings");
+  await act(async () => settings.click());
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  const helpItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+    .find(item => item.textContent === "Help & About")!;
+  await act(async () => helpItem.click());
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  const helpButton = document.querySelector<HTMLButtonElement>('[role="dialog"] button')!;
+  await act(async () => helpButton.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "Escape", bubbles: true, cancelable: true,
+  })));
+  expect(closeHelp).toHaveBeenCalledOnce();
 });
 
 it.each([false, true])("lets the reading shell close a real Fluent menu (typography=%s)", async typography => {

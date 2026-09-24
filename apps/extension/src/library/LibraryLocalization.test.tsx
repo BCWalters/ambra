@@ -143,17 +143,22 @@ describe("Library localization and action order", () => {
       { id: 2, fileName: "narrated.epub", phase: "downloading" },
       { id: 3, fileName: "processing.epub", phase: "processing" },
       { id: 4, fileName: "saving.epub", phase: "saving" },
-      { id: 5, fileName: "complete.epub", phase: "complete" },
+      { id: 5, fileName: "complete.epub", phase: "complete", bookId: "complete" },
     ];
+    const title = "Original EPUB title";
+    state.books = [{ id: "complete", title, identifiers: [] } as unknown as LibraryBookViewModel];
     await render();
     const status = container.querySelector('[role="status"]')!;
     expect(status.textContent).toContain(t("library.importQueued", { fileName: "queued.epub" }));
     expect(status.textContent).toContain(t("library.importDownloading", { fileName: "narrated.epub" }));
     expect(status.textContent).toContain(t("library.importProcessing", { fileName: "processing.epub" }));
     expect(status.textContent).toContain(t("library.importSaving", { fileName: "saving.epub" }));
-    expect(status.textContent).toContain(t("library.importComplete", { fileName: "complete.epub" }));
+    expect(status.textContent).toContain(t("library.importComplete", { fileName: title }));
+    expect(status.textContent).not.toContain("complete.epub");
     expect(status.textContent).toContain(t("library.importKeepOpen"));
     expect(status.querySelector('[aria-valuenow]')).toBeNull();
+    await act(async () => button(t("library.readNowBook", { title })).click());
+    expect(state.openBook).toHaveBeenCalledExactlyOnceWith("complete");
     await act(async () => button(t("library.dismiss")).click());
     expect(state.dismissCompletedImports).toHaveBeenCalledOnce();
   });

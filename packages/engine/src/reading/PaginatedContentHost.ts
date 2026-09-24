@@ -192,6 +192,10 @@ export class PaginatedContentHost {
     return this.pages[this.pageIndex]?.startBreak;
   }
 
+  public pageStartPosition(index: number): DomBreakPoint | undefined {
+    return this.pages[index]?.startBreak;
+  }
+
   /** The currently-displayed `Page` (its `[startBreak, endBreak)` range —
    * see `Page.containsPosition`) paired with the live content document it
    * describes — for callers that need to test whether some other DOM
@@ -218,6 +222,7 @@ export class PaginatedContentHost {
     }
 
     this.sandboxedHost.element.style.width = `${width}px`;
+    this.sandboxedHost.element.style.height = `${height}px`;
     // Reset any transform left over from the previously-displayed page —
     // measureChunks/getClientRects must see the content in its natural,
     // untranslated layout position to measure correctly.

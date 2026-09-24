@@ -445,7 +445,8 @@ export const LibraryApp: FC = () => {
       </div>
 
       <main aria-label={t("library.pageTitle")} style={{ padding: 16, flex: 1 }}>
-        <LibraryImportStatus activities={importActivities} onDismissCompleted={dismissCompletedImports} />
+        <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
+          onDismissCompleted={dismissCompletedImports} />
         {error && <LibraryImportError message={error} onDismiss={dismissError} />}
 
         {isLoading ? (

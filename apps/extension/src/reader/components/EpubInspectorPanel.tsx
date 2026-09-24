@@ -638,7 +638,7 @@ const FilesTab: FC<{
                   below with no way to read the rest short of widening the
                   whole panel; a tooltip surfaces the full path on hover
                   without needing that. */}
-              <Tooltip content={{ children: file.path, style: EPUB_TOOLTIP_STYLE }} relationship="label" withArrow>
+              <Tooltip content={{ children: file.path, style: EPUB_TOOLTIP_STYLE }} relationship="label">
                 <span
                   style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >
@@ -670,7 +670,7 @@ const FilesTab: FC<{
               name of whatever's actually on screen right above it means
               a reader never has to go looking for confirmation of what
               they're looking at. */}
-          <Tooltip content={{ children: selectedFile?.path ?? "", style: EPUB_TOOLTIP_STYLE }} relationship="label" withArrow>
+          <Tooltip content={{ children: selectedFile?.path ?? "", style: EPUB_TOOLTIP_STYLE }} relationship="label">
             <Body1
               style={{
                 minWidth: 0,

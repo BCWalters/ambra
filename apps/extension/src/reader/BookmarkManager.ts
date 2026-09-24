@@ -1,5 +1,5 @@
-import { EpubCfi, Locator } from "@ambra/engine";
-import type { DomBreakPoint, LocatorResolver, Page } from "@ambra/engine";
+import { EpubCfi, EpubCfiParseError, Locator } from "@ambra/engine";
+import type { BookPaginationEstimator, DomBreakPoint, LocatorResolver, Page } from "@ambra/engine";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
@@ -13,10 +13,16 @@ export interface BookmarkManagerContext {
   /** Current page/column index, for the bookmark's saved label. */
   currentPageIndex(): number | undefined;
   spineIndex(): number;
+  spineIndexForCfi(cfi: EpubCfi): number | undefined;
   chapterLabel(spineIndex: number): string;
   announce(translationKey: keyof StringCatalog): void;
   reportError(err: unknown): void;
   notify(): void;
+}
+
+export interface BookmarkProgressMarker {
+  readonly id: string;
+  readonly fraction: number;
 }
 
 /** Owns the current book's bookmarks: the in-memory cache mirroring
@@ -24,6 +30,7 @@ export interface BookmarkManagerContext {
  * reader UI needs. */
 export class BookmarkManager {
   private cache: Bookmark[] = [];
+  private readonly progressSpines = new WeakMap<Bookmark, number | null>();
 
   constructor(
     private readonly library: LibraryDatabase,
@@ -62,6 +69,38 @@ export class BookmarkManager {
         return a.createdAt - b.createdAt;
       }
     });
+  }
+
+  public progressMarkers(
+    pagination: Pick<BookPaginationEstimator, "positionFor" | "pageIndexForCfi">,
+  ): BookmarkProgressMarker[] {
+    const total = pagination.positionFor(0, 0).totalPages;
+    if (!total) return [];
+    const markers: BookmarkProgressMarker[] = [];
+    for (const bookmark of this.cache) {
+      if (!this.progressSpines.has(bookmark)) {
+        try {
+          const spineIndex = this.ctx.spineIndexForCfi(EpubCfi.parse(bookmark.cfi));
+          if (spineIndex === undefined) {
+            console.warn(`Cannot place bookmark ${bookmark.id}: its chapter is not in this book.`);
+          }
+          this.progressSpines.set(bookmark, spineIndex ?? null);
+        } catch (error) {
+          if (!(error instanceof EpubCfiParseError)) throw error;
+          console.warn(`Cannot place bookmark ${bookmark.id} on the progress bar.`, error);
+          this.progressSpines.set(bookmark, null);
+        }
+      }
+      const spineIndex = this.progressSpines.get(bookmark);
+      if (spineIndex === null || spineIndex === undefined) continue;
+      const pageIndex = pagination.pageIndexForCfi(spineIndex, bookmark.cfi);
+      if (pageIndex === undefined) continue;
+      const position = pagination.positionFor(spineIndex, pageIndex);
+      if (position.currentPage !== undefined) {
+        markers.push({ id: bookmark.id, fraction: position.currentPage / total });
+      }
+    }
+    return markers;
   }
 
   public async refresh(): Promise<void> {

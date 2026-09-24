@@ -57,6 +57,7 @@ function makeContext(overrides: Partial<BookmarkManagerContext> = {}): BookmarkM
     currentPagesAndDocuments: () => [{ page: makePage(true), document: {} as Document, spineIndex: 2 }],
     currentPageIndex: () => 4,
     spineIndex: () => 2,
+    spineIndexForCfi: () => 2,
     chapterLabel: () => "Chapter 3",
     announce: vi.fn(),
     reportError: vi.fn(),
@@ -66,6 +67,55 @@ function makeContext(overrides: Partial<BookmarkManagerContext> = {}): BookmarkM
 }
 
 describe("BookmarkManager", () => {
+  it("maps CFIs to the current measured layout and updates after deletion", async () => {
+    const library = makeLibrary([makeBookmark()]);
+    const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), makeContext());
+    await manager.load();
+    const pagination = {
+      positionFor: vi.fn(() => ({ currentPage: 25, totalPages: 100 })),
+      pageIndexForCfi: vi.fn(() => 4),
+    };
+    expect(manager.progressMarkers(pagination)).toEqual([{ id: "bm-1", fraction: 0.25 }]);
+    expect(pagination.pageIndexForCfi).toHaveBeenCalledWith(2, "epubcfi(/6/4!/4/2/2/1:0)");
+    pagination.positionFor.mockReturnValue({ currentPage: 40, totalPages: 200 });
+    expect(manager.progressMarkers(pagination)).toEqual([{ id: "bm-1", fraction: 0.2 }]);
+    await manager.remove("bm-1");
+    expect(manager.progressMarkers(pagination)).toEqual([]);
+  });
+
+  it("waits for complete measurements rather than inventing bookmark positions", async () => {
+    const manager = new BookmarkManager(
+      makeLibrary([makeBookmark()]), "book-1", makeLocatorResolver(true), makeContext(),
+    );
+    await manager.load();
+    const pagination = {
+      positionFor: () => ({ currentPage: undefined, totalPages: undefined }),
+      pageIndexForCfi: vi.fn(),
+    };
+    expect(manager.progressMarkers(pagination)).toEqual([]);
+    expect(pagination.pageIndexForCfi).not.toHaveBeenCalled();
+  });
+
+  it("warns once for a malformed saved position without hiding other bookmarks", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const manager = new BookmarkManager(
+        makeLibrary([makeBookmark(), makeBookmark({ id: "bad", cfi: "invalid" })]),
+        "book-1", makeLocatorResolver(true), makeContext(),
+      );
+      await manager.load();
+      const pagination = {
+        positionFor: () => ({ currentPage: 25, totalPages: 100 }),
+        pageIndexForCfi: () => 4,
+      };
+      expect(manager.progressMarkers(pagination)).toEqual([{ id: "bm-1", fraction: 0.25 }]);
+      manager.progressMarkers(pagination);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("loads bookmarks from the library", async () => {
     const library = makeLibrary([makeBookmark()]);
     const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), makeContext());

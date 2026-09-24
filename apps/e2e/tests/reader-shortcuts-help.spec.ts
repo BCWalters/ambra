@@ -474,6 +474,37 @@ test("editing, selection, widgets, menus and dialogs keep ownership; removed his
   }
 });
 
+test("a visible Settings tooltip cannot consume the first Escape in its menu or Help", async () => {
+  const { context, readerPage: page } = await launchReader(proseBook);
+  try {
+    await ready(page);
+    const settings = page.getByRole("button", { name: "Settings", exact: true });
+    const tooltip = page.getByRole("tooltip", { name: "Settings", exact: true });
+    for (const target of ["menu", "help"] as const) {
+      await settings.hover();
+      await expect(tooltip).toBeVisible();
+      await settings.focus();
+      await page.keyboard.press("Enter");
+      const menu = page.getByRole("menu");
+      await expect(menu).toBeVisible();
+      // Sample once: waiting for the tooltip's hide timer would conceal the bug.
+      expect(await tooltip.count()).toBe(0);
+      if (target === "help") {
+        await page.getByRole("menuitem", { name: "Help & About", exact: true }).focus();
+        await page.keyboard.press("Enter");
+        await expect(page.getByRole("dialog", { name: "Help & About", exact: true })).toBeVisible();
+        expect(await tooltip.count()).toBe(0);
+      }
+      await page.keyboard.press("Escape");
+      await expect(target === "menu" ? menu : page.getByRole("dialog", { name: "Help & About", exact: true })).toBeHidden();
+      await expect(settings).toBeFocused();
+      await page.mouse.move(450, 450);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("Help & About has shared keyboard entry, correct Escape focus and a readable 320px shortcut guide", async () => {
   const { context, readerPage: page, libraryPage } = await launchReader(proseBook);
   try {

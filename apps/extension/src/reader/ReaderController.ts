@@ -428,6 +428,7 @@ export class ReaderController {
         return undefined;
       },
       spineIndex: () => this.spineIndex,
+      spineIndexForCfi: (cfi) => this.pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
       announce: (translationKey) => this.announce(this.translate(translationKey)),
       reportError: (err) => this.reportTransientError(err, "save", "that bookmark"),
@@ -708,6 +709,9 @@ export class ReaderController {
         isBookmarked: this.bookmarks.onCurrentPage().length > 0,
         bookmarkedPages: this.bookmarks.flagsForCurrentPages(),
         bookmarks: this.bookmarks.allSorted(),
+        bookmarkProgress: this.bookPagination
+          ? this.bookmarks.progressMarkers(this.bookPagination)
+          : undefined,
         fontScale: this.isFixedLayoutHost(this.host) ? 1 : requestedLayout.fontScale,
         lineSpacing: this.isFixedLayoutHost(this.host) ? ReadingTheme.DEFAULT_LINE_SPACING : requestedLayout.lineSpacing,
         letterSpacing: this.isFixedLayoutHost(this.host)
@@ -837,6 +841,7 @@ export class ReaderController {
       this.pkg.metadata.renditionLayout,
       container,
       this.disclosures,
+      this.locatorResolver,
     );
   }
 
@@ -1924,9 +1929,14 @@ export class ReaderController {
       previous.contentWidthEm !== next.contentWidthEm;
     if (!resized && !modeChanged && !typographyChanged && !needsReflow) return;
 
+    const native = this.nativeReading.current();
     Object.assign(this, next);
-    if (modeChanged || needsReflow || this.shouldSwitchSpreadMode(next.width) ||
-      this.host instanceof SpreadPaginatedHost) {
+    const switchingSpread = this.shouldSwitchSpreadMode(next.width);
+    const resizedSpread = resized && !modeChanged && !typographyChanged && !needsReflow &&
+      !switchingSpread && this.host instanceof SpreadPaginatedHost &&
+      this.host.relayoutForResize(next.width, next.height, native);
+    if (modeChanged || needsReflow || switchingSpread ||
+      (this.host instanceof SpreadPaginatedHost && !resizedSpread)) {
       const previousHost = this.host;
       await this.reopenForCurrentSize(pending.disclosureFocus);
       // A direct navigation may supersede this rebuild while retaining the
@@ -1938,8 +1948,10 @@ export class ReaderController {
         throw new Error(this.error ?? "The updated reading layout could not be loaded.");
       }
     } else {
-      const native = this.nativeReading.current();
-      if (typographyChanged) {
+      if (resizedSpread) {
+        // These listeners capture each column's width for its tap zones.
+        this.setUpDragPageTurn();
+      } else if (typographyChanged) {
         this.applyDisplaySettingsToHost({ relayout: true });
       } else if (this.host instanceof PaginatedContentHost) {
         this.host.relayout(next.width, next.height);
