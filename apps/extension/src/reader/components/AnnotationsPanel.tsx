@@ -18,6 +18,7 @@ import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { EPUB_TOOLTIP_STYLE } from "../../components/EpubTextStyles.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 import type { ReadOnlyAnnotationView } from "../ReaderTypes.js";
 import { HighlightNoteEditor } from "./HighlightNoteEditor.js";
@@ -89,7 +90,7 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, embedded, onSelect, on
               {bookmark.label}
             </span>
           </button>
-          <Tooltip content={t("annotations.removeBookmark", { label: bookmark.label })} relationship="label">
+          <Tooltip content={{ children: t("annotations.removeBookmark", { label: bookmark.label }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
             <Button
               appearance="subtle"
               size="small"
@@ -274,11 +275,12 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
         }}
       >
         <Tooltip
-          content={
-            highlight.note
+          content={{
+            children: highlight.note
               ? t("annotations.editNote", { text: highlight.text })
-              : t("annotations.addNote", { text: highlight.text })
-          }
+              : t("annotations.addNote", { text: highlight.text }),
+            style: EPUB_TOOLTIP_STYLE,
+          }}
           relationship="label"
         >
           <Button
@@ -301,7 +303,7 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
           </Button>
         </Tooltip>
         <Tooltip
-          content={t("annotations.removeHighlight", { text: highlight.text })}
+          content={{ children: t("annotations.removeHighlight", { text: highlight.text }), style: EPUB_TOOLTIP_STYLE }}
           relationship="label"
         >
           <Button
@@ -392,6 +394,7 @@ const ReadOnlyRow: FC<ReadOnlyRowProps> = ({ annotation, onSelect, clampLines })
                     WebkitBoxOrient: "vertical" as const,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
+                    overflowWrap: "anywhere",
                   }
             }
           >

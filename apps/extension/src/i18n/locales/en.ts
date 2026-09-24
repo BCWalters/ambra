@@ -378,6 +378,9 @@ export interface StringCatalog {
   "inspector.spineTab": string;
   "inspector.manifestTab": string;
   "bookDetails.copyright": string;
+  "bookDetails.rights": string;
+  "bookDetails.showMore": string;
+  "bookDetails.showLess": string;
   "bookDetails.closePanel": string;
   "bookDetails.publisher": string;
   "bookDetails.readingTools": string;
@@ -723,6 +726,9 @@ export const en: StringCatalog = {
   "inspector.spineTab": "Spine",
   "inspector.manifestTab": "Manifest",
   "bookDetails.copyright": "Copyright",
+  "bookDetails.rights": "Rights",
+  "bookDetails.showMore": "Show more",
+  "bookDetails.showLess": "Show less",
   "bookDetails.closePanel": "Close book details panel",
   "bookDetails.publisher": "Publisher",
   "bookDetails.readingTools": "Reading tools",

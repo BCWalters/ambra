@@ -54,6 +54,7 @@ import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { InspectorFileCategory, SpecialFileKind } from "./inspectorFileKind.js";
 import { classifyInspectionFile, guessMediaType, identifySpecialFiles } from "./inspectorFileKind.js";
 import { isNavigableLinkAttribute, resolveNavigableLinkTarget } from "./inspectorContentLinks.js";
+import { EPUB_TOOLTIP_STYLE } from "../../components/EpubTextStyles.js";
 
 
 hljs.registerLanguage("xml", xmlLanguage);
@@ -637,7 +638,7 @@ const FilesTab: FC<{
                   below with no way to read the rest short of widening the
                   whole panel; a tooltip surfaces the full path on hover
                   without needing that. */}
-              <Tooltip content={file.path} relationship="label" withArrow>
+              <Tooltip content={{ children: file.path, style: EPUB_TOOLTIP_STYLE }} relationship="label" withArrow>
                 <span
                   style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                 >
@@ -669,7 +670,7 @@ const FilesTab: FC<{
               name of whatever's actually on screen right above it means
               a reader never has to go looking for confirmation of what
               they're looking at. */}
-          <Tooltip content={selectedFile?.path ?? ""} relationship="label" withArrow>
+          <Tooltip content={{ children: selectedFile?.path ?? "", style: EPUB_TOOLTIP_STYLE }} relationship="label" withArrow>
             <Body1
               style={{
                 minWidth: 0,
@@ -814,10 +815,21 @@ const metadataRowStyle = {
   verticalAlign: "top", fontWeight: 400, textAlign: "left",
 } as const;
 
+const inspectionTableStyle = {
+  borderCollapse: "collapse", width: "100%", tableLayout: "fixed",
+} as const;
+
+const inspectionTabStyle = {
+  overflowY: "auto", minWidth: 0, height: "100%", boxSizing: "border-box",
+  padding: 16, fontSize: 13, overflowWrap: "anywhere",
+} as const;
+
 const Pill: FC<{ children: ReactNode }> = ({ children }) => (
   <span
     style={{
       display: "inline-block",
+      boxSizing: "border-box",
+      maxWidth: "calc(100% - 4px)",
       padding: "2px 8px",
       margin: "0 4px 4px 0",
       borderRadius: 999,
@@ -841,8 +853,9 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
   const creators = data.creators.length > 0 ? data.creators : data.creator ? [data.creator] : [];
 
   return (
-    <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
-      <table style={{ borderCollapse: "collapse", marginBottom: 20 }}>
+    <div style={inspectionTabStyle}>
+      <table style={{ ...inspectionTableStyle, marginBottom: 20 }}>
+        <colgroup><col style={{ width: "30%" }} /><col /></colgroup>
         <tbody>
           {fileName && (
             <tr>
@@ -938,7 +951,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
           <Body1 as="p" block style={{ fontWeight: 600, margin: "0 0 4px" }}>
             {t("inspector.allOpfMetaEntries", { count: data.metaEntries.length })}
           </Body1>
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table style={inspectionTableStyle}>
             <thead>
               <tr style={{ textAlign: "left", color: "var(--colorNeutralForeground2, #333)" }}>
                 <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.propertyOrName")}</th>
@@ -950,7 +963,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
               {data.metaEntries.map((entry, index) => (
                 <tr key={index}>
                   <td style={{ padding: "2px 12px 2px 0" }}>{entry.key}</td>
-                  <td style={{ padding: "2px 12px 2px 0", wordBreak: "break-word" }}>{entry.value}</td>
+                  <td style={{ padding: "2px 12px 2px 0" }}>{entry.value}</td>
                   <td>{entry.refines ?? ""}</td>
                 </tr>
               ))}
@@ -979,6 +992,9 @@ const FileLink: FC<{ path: string; onNavigateToFile: (path: string) => void; chi
       padding: 0,
       margin: 0,
       font: "inherit",
+      maxWidth: "100%",
+      overflowWrap: "anywhere",
+      textAlign: "left",
       color: "#134e4a",
       textDecoration: "underline",
       textDecorationStyle: "dotted",
@@ -1017,11 +1033,15 @@ const SpineTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: string) 
   const t = useTranslation();
 
   return (
-    <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
+    <div style={inspectionTabStyle}>
       <Caption1 as="p" style={{ margin: "0 0 12px" }}>
         {renderPathTemplate(t("inspector.spineDescription"), data.rootFilePath, onNavigateToFile)}
       </Caption1>
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+      <table style={inspectionTableStyle}>
+        <colgroup>
+          <col style={{ width: "6%" }} /><col style={{ width: "40%" }} />
+          <col style={{ width: "10%" }} /><col style={{ width: "24%" }} /><col style={{ width: "20%" }} />
+        </colgroup>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--colorNeutralForeground2, #333)" }}>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>#</th>
@@ -1058,11 +1078,15 @@ const ManifestTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: strin
   const t = useTranslation();
 
   return (
-    <div style={{ overflowY: "auto", padding: 16, fontSize: 13 }}>
+    <div style={inspectionTabStyle}>
       <Caption1 as="p" style={{ margin: "0 0 12px" }}>
         {renderPathTemplate(t("inspector.manifestDescription"), data.rootFilePath, onNavigateToFile)}
       </Caption1>
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+      <table style={inspectionTableStyle}>
+        <colgroup>
+          <col style={{ width: "20%" }} /><col style={{ width: "40%" }} />
+          <col style={{ width: "25%" }} /><col style={{ width: "15%" }} />
+        </colgroup>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--colorNeutralForeground2, #333)" }}>
             <th style={{ fontWeight: 400, padding: "2px 12px 2px 0" }}>{t("inspector.id")}</th>
@@ -1332,7 +1356,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
             : { maxWidth: 900, width: "90vw", height: "80vh", background: chromeTheme.backgroundSolid }
         }
       >
-        <DialogBody style={{ height: "100%" }}>
+        <DialogBody style={{ height: "100%", minWidth: 0 }}>
           <DialogTitle
             action={
               <div style={{ display: "flex", gap: 4 }}>
@@ -1359,7 +1383,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
           >
             {t("inspector.title")}
           </DialogTitle>
-          <DialogContent style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <DialogContent style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
             {reader && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                 <Button disabled={!data || operation !== undefined} onClick={() => void locateCurrentPassage()}>
@@ -1397,7 +1421,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                   </Tab>
                 </TabList>
                 <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${activeTab}`}
-                  tabIndex={0} style={{ flex: 1, minHeight: 0, marginTop: 8 }}>
+                  tabIndex={0} style={{ flex: 1, minHeight: 0, minWidth: 0, marginTop: 8 }}>
                   {activeTab === "files" && (
                     <FilesTab
                       data={data}

@@ -145,6 +145,27 @@ beforeEach(() => {
 });
 
 describe("HighlightInteraction", () => {
+  describe("hasVisibleSelection()", () => {
+    it("does not treat a missing, collapsed, or empty selection as visible", () => {
+      const { doc } = makeFakeDoc();
+      const interaction = new HighlightInteraction(makeLocatorResolver(), makeContext());
+      expect(interaction.hasVisibleSelection(doc)).toBe(false);
+      vi.mocked(doc.getSelection).mockReturnValue({ isCollapsed: true, rangeCount: 1 } as Selection);
+      expect(interaction.hasVisibleSelection(doc)).toBe(false);
+      vi.mocked(doc.getSelection).mockReturnValue({ isCollapsed: false, rangeCount: 0 } as Selection);
+      expect(interaction.hasVisibleSelection(doc)).toBe(false);
+    });
+
+    it("preserves fixed-layout selection guards without applying unscaled page geometry", () => {
+      const { doc } = makeFakeDoc();
+      selectRange(doc, makeFakeRange([{ top: 1000, bottom: 1020 }]));
+      const interaction = new HighlightInteraction(makeLocatorResolver(), makeContext({
+        isFixedLayoutHost: () => true,
+      }));
+      expect(interaction.hasVisibleSelection(doc)).toBe(true);
+    });
+  });
+
   describe("applyHighlightsToCurrentHost()", () => {
     it("is a no-op for fixed-layout content", () => {
       const ctx = makeContext({ isFixedLayoutHost: () => true, contentDocuments: vi.fn() });
@@ -360,6 +381,7 @@ describe("HighlightInteraction", () => {
         expect(ctx.activeHighlight).toBeUndefined();
         expect(caretRangeFromPoint).not.toHaveBeenCalled();
         expect(selection.removeAllRanges).not.toHaveBeenCalled();
+        expect(interaction.hasVisibleSelection(doc)).toBe(false);
       });
     }
 
@@ -381,6 +403,7 @@ describe("HighlightInteraction", () => {
       expect(ctx.selectionToolbar).toEqual({ left: 260, top: 70 });
       expect(ctx.pendingSelectionRange).toBe(range);
       expect(selection.removeAllRanges).not.toHaveBeenCalled();
+      expect(interaction.hasVisibleSelection(doc)).toBe(true);
     });
 
     it("clips scroll-mode selection anchors to the iframe and the shell viewport", () => {

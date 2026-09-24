@@ -175,6 +175,9 @@ describe("ProgressScrubber", () => {
     pointer(slider, "pointerup", { pointerType: "touch", buttons: 0 });
     expect(seek).toHaveBeenCalledExactlyOnceWith(0.8);
     expect(slider.getAttribute("aria-valuetext")).toContain("Going to position…:");
+    expect(container.textContent).not.toContain("Going to position…");
+    expect(container.querySelector('[title="A long chapter title"]')!.parentElement!.textContent)
+      .toBe("Page 80 of 100A long chapter title");
     expect(container.textContent).not.toContain("Release to go here");
     pointer(slider, "pointerup", { buttons: 0 });
     expect(seek).toHaveBeenCalledTimes(1);
@@ -254,11 +257,14 @@ describe("ProgressScrubber", () => {
     const { slider, onSeek } = renderScrubber();
     act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     expect(slider.getAttribute("aria-valuenow")).toBe("100");
+    expect(slider.getAttribute("aria-valuetext")).toContain("Going to position…:");
+    expect(container.textContent).not.toContain("Going to position…");
     pointer(slider, "pointerdown");
     expect(slider.getAttribute("aria-valuenow")).toBe("80");
     act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     pointer(slider, "pointerup", { buttons: 0 });
     expect(slider.getAttribute("aria-valuenow")).toBe("100");
+    expect(container.textContent).not.toContain("Going to position…");
     expect(onSeek).toHaveBeenCalledExactlyOnceWith(1);
   });
 

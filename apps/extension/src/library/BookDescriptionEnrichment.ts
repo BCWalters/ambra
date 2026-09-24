@@ -30,43 +30,17 @@
  * Book Details panel shows as a "via ..." link back to the source.
  */
 
+import { abbreviateMetadata, METADATA_TEXT_LIMITS } from "../MetadataText.js";
+
 export interface DescriptionEnrichmentResult {
   readonly description: string;
   readonly sourceName: "Open Library" | "Wikipedia";
   readonly sourceUrl: string;
 }
 
-/** Long enough for a real back-cover-blurb-style paragraph, short
- * enough that the Book Details panel (a narrow side flyout, not a full
- * page) doesn't turn into a wall of text — consistent with the user's
- * ask for "a short paragraph description". */
-const MAX_DESCRIPTION_LENGTH = 700;
-
 function truncate(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.length <= MAX_DESCRIPTION_LENGTH) {
-    return trimmed;
-  }
-  const hardCut = trimmed.slice(0, MAX_DESCRIPTION_LENGTH);
-  // Prefers breaking at the end of a whole sentence within the budget
-  // (reads as a complete thought, not a fragment) — issue #71: "try to
-  // make these descriptions break cleanly when possible". Only takes
-  // that shorter cut when the nearest sentence end is reasonably close
-  // to the limit already, so a description whose first sentence ends
-  // very early doesn't get needlessly truncated far short of the actual
-  // budget just to land on a period.
-  const sentenceEnds = [". ", ".\n", "? ", "! "].map((needle) => hardCut.lastIndexOf(needle));
-  const lastSentenceEnd = Math.max(...sentenceEnds);
-  if (lastSentenceEnd > MAX_DESCRIPTION_LENGTH * 0.6) {
-    return hardCut.slice(0, lastSentenceEnd + 1).trimEnd();
-  }
-  // No sentence end close enough — fall back to the last whole word
-  // instead of `truncate`'s old behavior of cutting wherever the
-  // character budget happened to land, which could sever a word (or, as
-  // in issue #71, a Markdown link) mid-way through.
-  const lastSpace = hardCut.lastIndexOf(" ");
-  const wordBoundaryCut = lastSpace > 0 ? hardCut.slice(0, lastSpace) : hardCut;
-  return `${wordBoundaryCut.trimEnd()}…`;
+  const limits = METADATA_TEXT_LIMITS.description;
+  return abbreviateMetadata(text.trim(), limits.preview, limits.paragraphs);
 }
 
 /** Open Library descriptions conventionally end with their own

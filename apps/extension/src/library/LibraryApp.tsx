@@ -47,6 +47,7 @@ import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
+import { EPUB_TOOLTIP_STYLE } from "../components/EpubTextStyles.js";
 
 const SORT_GROUP_NAME = "librarySort";
 
@@ -80,32 +81,13 @@ const BookCard: FC<{
   const { locale } = useLocale();
   const styles = useBookCardStyles();
   const restoreFocusTarget = useRestoreFocusTarget();
-  // Hovering/focusing a cover picks up the reader's own accent color
-  // (issue #86 follow-up — the same idea as the TOC's current-chapter
-  // border and the scrubber fill, extended here) instead of a plain
-  // generic neutral highlight, so the library page reads as the same
-  // themed app as the reader rather than a totally separate, undecorated
-  // one, and the same state also reveals the remove button (kept hidden
-  // the rest of the time, matching a reader's usual "hover to reveal a
-  // destructive action" expectation rather than a permanently-visible
-  // icon competing for attention on every single card).
-  //
-  // Hover and focus are tracked as two *separate* booleans (rather than
-  // one shared flag both write to directly) and combined via `||` — a
-  // real, confirmed bug with a single shared flag: clicking the remove
-  // button shifts keyboard focus away from the cover (to the remove
-  // button itself), firing the cover's own `onBlur` and flipping the
-  // shared flag straight back to `false` mid-click — which, since the
-  // remove button's visibility/`pointer-events` depend on that same
-  // flag, could make it disappear (and stop accepting the pointer
-  // event) between mousedown and mouseup, silently swallowing the very
-  // click that was supposed to remove the book. Tracking the remove
-  // button's own focus too (so focus moving *between* the cover and the
-  // remove button never dips through "neither" for the combined value)
-  // closes that gap.
+  // Opening a reader tab retains pointer focus on its cover. Only keyboard
+  // focus should keep its actions visible after the pointer leaves (#173).
+  // Track the whole card so moving focus between cover/actions keeps them
+  // available, independently of hover.
   const [isHovered, setIsHovered] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const isActive = isHovered || isFocused;
+  const [isFocusVisible, setIsFocusVisible] = useState(false);
+  const isActive = isHovered || isFocusVisible;
 
   // Rounds to whole percent and only ever shows up once a book has
   // *some* recorded progress — an untouched book (or one whose progress
@@ -125,14 +107,20 @@ const BookCard: FC<{
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={(event) => setIsFocusVisible(event.target.matches(":focus-visible"))}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setIsFocusVisible(false);
+      }}
+      onPointerDownCapture={() => setIsFocusVisible(false)}
+      onKeyDownCapture={(event) => {
+        if (!event.altKey && !event.ctrlKey && !event.metaKey) setIsFocusVisible(true);
+      }}
     >
       <div style={{ position: "relative", width: 140, height: 200 }}>
         <button
           className={styles.cover}
           type="button"
           onClick={onOpen}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
           aria-label={progressPercent !== undefined
             ? t("library.openBookProgress", { title: book.title, progress: formatLibraryProgress(progressPercent / 100, locale) })
             : t("library.openBook", { title: book.title })}
@@ -154,7 +142,14 @@ const BookCard: FC<{
             boxShadow: isActive ? `0 2px 10px ${accent}66` : "none",
           }}
         >
-          {!book.coverUrl && <Body1 style={{ padding: 8 }}>{book.title}</Body1>}
+          {!book.coverUrl && (
+            <Body1 style={{
+              margin: 8, minWidth: 0, display: "-webkit-box", WebkitLineClamp: 6,
+              WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere",
+            }}>
+              {book.title}
+            </Body1>
+          )}
         </button>
         {/* A thin reading-progress bar along the cover's bottom edge,
             Apple-Books-style — deliberately not a text overlay on the
@@ -190,15 +185,13 @@ const BookCard: FC<{
             idiom as the trash can, mirrored to the opposite (top-left)
             corner so the two never compete for the same spot. Opens the
             read-only Book Details flyout (`BookDetailsFlyout`). */}
-        <Tooltip content={t("library.bookDetails", { title: book.title })} relationship="label">
+        <Tooltip content={{ children: t("library.bookDetails", { title: book.title }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
           <Button
             {...restoreFocusTarget}
             appearance="secondary"
             size="small"
             icon={<InfoRegular />}
             onClick={onShowDetails}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
             aria-label={t("library.bookDetails", { title: book.title })}
             style={{
               position: "absolute",
@@ -225,14 +218,12 @@ const BookCard: FC<{
             sibling of the cover button in the DOM, not nested inside it
             (buttons can't nest), so a click here never reaches `onOpen`
             at all. */}
-        <Tooltip content={t("library.removeBook", { title: book.title })} relationship="label">
+        <Tooltip content={{ children: t("library.removeBook", { title: book.title }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
           <Button
             appearance="secondary"
             size="small"
             icon={<DeleteRegular />}
             onClick={onDelete}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
             aria-label={t("library.removeBook", { title: book.title })}
             style={{
               position: "absolute",
@@ -259,7 +250,11 @@ const BookCard: FC<{
         {book.title}
       </Body1>
       {book.creator && (
-        <Body1 as="p" style={{ margin: 0, color: "var(--colorNeutralForeground2, #333)" }}>
+        <Body1 as="p" style={{
+          margin: 0, color: "var(--colorNeutralForeground2, #333)", minWidth: 0,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+          overflow: "hidden", overflowWrap: "anywhere",
+        }}>
           {book.creator}
         </Body1>
       )}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, FC } from "react";
-import { Body1, Body1Strong, Button, Caption1, Spinner, Tooltip, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Body1Strong, Button, Spinner, Tooltip, useRestoreFocusTarget } from "@fluentui/react-components";
 import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, QuestionCircleRegular, TextPercentRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
@@ -10,7 +10,7 @@ import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { formatLibraryBytes } from "../../library/LibraryFormatting.js";
 import { GoToDialog } from "./GoToDialog.js";
-import { BookDetailRow as DetailRow, BookRightsRow } from "../../components/BookMetadataRows.js";
+import { BookDescription, BookDetailRow as DetailRow, BookMetadataText, BookRightsRow } from "../../components/BookMetadataRows.js";
 import { PaneCard, PaneDisclosure } from "../../components/PaneSections.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
@@ -252,61 +252,17 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       shorthand Fluent's own typography presets already
                       set — mixing the two triggers a React dev-mode
                       warning about conflicting style updates. */}
-                  <Body1Strong as="h2" block style={{ margin: "0 0 4px" }}>
-                    {details.title}
-                  </Body1Strong>
+                  <BookMetadataText value={details.title} name={t("inspector.titleLabel")} kind="identity" heading style={{ margin: "0 0 4px" }} />
                   {details.creator && (
-                    <Body1 as="p" block style={{ margin: 0, opacity: 0.75 }}>
-                      {details.creator}
-                    </Body1>
+                    <BookMetadataText value={details.creator} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
                   )}
-                  {/* Publisher/Copyright moved up here, directly under
-                      the author, rather than below the description —
-                      both are short, byline-like facts about the book
-                      itself, so they read more naturally as part of this
-                      identity block than mixed in with the longer-form
-                      description/identifiers further down. */}
                   <DetailRow label={t("bookDetails.publisher")} value={details.publisher} compact />
-                  <BookRightsRow label={t("bookDetails.copyright")} value={details.rights} />
                 </div>
               </div>
 
               {details.description && (
-                <>
-                  <Caption1
-                    as="p"
-                    block
-                    style={{ margin: details.descriptionSourceName ? "0 0 4px" : "0 0 16px", lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
-                  >
-                    {details.description}
-                  </Caption1>
-                  {/* Attribution for a fetched fallback description
-                      (issue follow-up: books with no dc:description of
-                      their own) — required by both free sources' terms,
-                      and a useful "read more" link either way. */}
-                  {details.descriptionSourceName && (
-                    <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
-                      {t("bookDetails.descriptionSourcePrefix")}{" "}
-                      <a href={details.descriptionSourceUrl} target="_blank" rel="noreferrer">
-                        {details.descriptionSourceName}
-                      </a>
-                    </Caption1>
-                  )}
-                </>
+                <BookDescription value={details.description} sourceName={details.descriptionSourceName} sourceUrl={details.descriptionSourceUrl} />
               )}
-
-              <DetailRow
-                label={t("bookDetails.accessibilitySummary")}
-                value={details.accessibility.accessibilitySummary}
-              />
-              <DetailRow
-                label={t("bookDetails.accessibilityFeatures")}
-                value={
-                  details.accessibility.accessibilityFeatures.length > 0
-                    ? details.accessibility.accessibilityFeatures.join(", ")
-                    : undefined
-                }
-              />
 
               {/* "Go to Page…"/"Go to Percentage…" — relocated from the
                   toolbar's old Navigate menu (see this component's doc
@@ -359,15 +315,20 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 </div>
               )}
 
-              {(knownIdentifiers.length > 0 || details.fileSizeBytes !== undefined) && (
+              {(knownIdentifiers.length > 0 || details.fileSizeBytes !== undefined || details.rights ||
+                details.accessibility.accessibilitySummary || details.accessibility.accessibilityFeatures.length > 0) && (
                 <PaneDisclosure title={t("bookDetails.publicationDetails")}>
+                  <BookRightsRow label={t("bookDetails.rights")} value={details.rights} />
+                  <DetailRow small label={t("bookDetails.accessibilitySummary")} value={details.accessibility.accessibilitySummary} />
+                  <DetailRow small label={t("bookDetails.accessibilityFeatures")} value={details.accessibility.accessibilityFeatures.join(", ")} />
                   <DetailRow
+                    small
                     label={t("bookDetails.fileSize")}
                     value={details.fileSizeBytes === undefined ? undefined : formatLibraryBytes(details.fileSizeBytes, locale)}
                   />
-                  <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
+                  <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} />
                   {otherIdentifiers.map((id, index) => (
-                    <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
+                    <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
                   ))}
                 </PaneDisclosure>
               )}

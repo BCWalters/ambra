@@ -1,5 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { NavPoint } from "@ambra/engine";
 import { TocPanel } from "./TocPanel.js";
@@ -11,10 +12,13 @@ describe("Contents presentation", () => {
     document.body.append(container);
     const root = createRoot(container);
     const label = "A long chapter title that should remain readable beyond a single line";
+    const heading = "Unlinked".repeat(100);
     try {
-      act(() => root.render(
+      const content = (
         <TocPanel
-          items={[new NavPoint(label, "chapter.xhtml", undefined, [])]}
+          items={[new NavPoint(heading, undefined, undefined, [
+            new NavPoint(label, "chapter.xhtml", undefined, []),
+          ])]}
           currentPath="chapter.xhtml"
           firstSpinePath="cover.xhtml"
           pageNumbers={new Map([["chapter.xhtml", 2]])}
@@ -24,13 +28,19 @@ describe("Contents presentation", () => {
           onTogglePin={vi.fn()}
           onRequestClose={vi.fn()}
           scrubberVisible={false}
-        />,
-      ));
+        />
+      );
+      expect(renderToStaticMarkup(content).match(/-webkit-line-clamp:2/g)).toHaveLength(2);
+      act(() => root.render(content));
       const chapter = container.querySelector<HTMLButtonElement>('[aria-current="location"]')!;
       expect(chapter.style.fontWeight).toBe("600");
       expect(chapter.textContent).toContain(label);
       expect(chapter.querySelector("span")?.style.overflowWrap).toBe("anywhere");
       expect(chapter.querySelector("span")?.style.whiteSpace).not.toBe("nowrap");
+      const groupLabel = [...container.querySelectorAll("span")].find((entry) =>
+        entry.textContent === heading && entry.style.overflow === "hidden")!;
+      expect(groupLabel.style.overflow).toBe("hidden");
+      expect(groupLabel.style.overflowWrap).toBe("anywhere");
     } finally {
       act(() => root.unmount());
       container.remove();

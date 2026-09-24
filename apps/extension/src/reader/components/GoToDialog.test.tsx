@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GoToDialog } from "./GoToDialog.js";
+import { ReaderDiagnosticContext } from "../ReaderDiagnosticContext.js";
 
 vi.mock("@fluentui/react-components", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@fluentui/react-components")>();
@@ -75,6 +76,26 @@ describe("GoToDialog input", () => {
     act(() => root.render(<GoToDialog mode="page" open bookPageCount={undefined} onGo={onGo} onOpenChange={onOpenChange} />));
     expect(container.querySelector("input")!.disabled).toBe(true);
     expect(container.querySelectorAll("button")[1]!.disabled).toBe(true);
+  });
+
+  it.each(["page", "percentage"] as const)("records %s opening and closing without logging typed input", mode => {
+    const record = vi.fn();
+    const draw = (open: boolean) => act(() => root.render(
+      <ReaderDiagnosticContext.Provider value={record}>
+        <GoToDialog mode={mode} open={open} bookPageCount={200} onGo={onGo} onOpenChange={onOpenChange} />
+      </ReaderDiagnosticContext.Provider>,
+    ));
+    draw(false);
+    expect(record).not.toHaveBeenCalled();
+    draw(true);
+    enter("42");
+    expect(record).toHaveBeenCalledExactlyOnceWith({ "go-to": { open: true, mode } });
+    draw(false);
+    expect(record).toHaveBeenLastCalledWith({ "go-to": { open: false, mode } });
+    draw(true);
+    act(() => root.render(null));
+    expect(record).toHaveBeenLastCalledWith({ "go-to": { open: false, mode } });
+    expect(record).toHaveBeenCalledTimes(4);
   });
 
   it("does not propagate Escape to the parent flyout", () => {

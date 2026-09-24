@@ -113,7 +113,9 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   letterSpacing: "0.02em",
                 }}
               >
-                {item.label}
+                <span style={{ minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>
+                  {item.label}
+                </span>
               </Caption1>
             )}
             <NavTree

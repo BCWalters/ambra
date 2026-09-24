@@ -44,6 +44,8 @@ function controller(title: string) {
     setShortcutPreferences: vi.fn(),
     setShortcutModalOpen: vi.fn(),
     setContentUiDismissal: vi.fn(),
+    recordDiagnosticEvent: vi.fn(),
+    recordDiagnosticSurfaces: vi.fn(),
     dispose: vi.fn(),
     flushProgress: vi.fn().mockResolvedValue(undefined),
     mount: vi.fn().mockResolvedValue(undefined),
@@ -110,6 +112,23 @@ it("applies shortcut configuration supplied before opening, and updates the live
     expect(opened.methods.setShortcutModalOpen).toHaveBeenCalledWith(true);
     latest.setShortcutModalOpen(false);
     expect(opened.methods.setShortcutModalOpen).toHaveBeenLastCalledWith(false);
+});
+
+it("routes diagnostics only to the currently owned reader", async () => {
+  latest.recordDiagnosticEvent({ kind: "navigation", source: "details", fraction: 0.5 });
+  const opened = controller("diagnostics");
+  vi.mocked(ReaderController.open).mockResolvedValue(opened.value);
+  await act(async () => latest.openBook(new ArrayBuffer(0), "diagnostics", library().value));
+  latest.recordDiagnosticEvent({ kind: "navigation", source: "details", fraction: 0.5 });
+  latest.recordDiagnosticSurfaces({ details: { open: true } });
+  expect(opened.methods.recordDiagnosticEvent).toHaveBeenCalledExactlyOnceWith({
+    kind: "navigation", source: "details", fraction: 0.5,
+  });
+  expect(opened.methods.recordDiagnosticSurfaces).toHaveBeenCalledWith({ details: { open: true } });
+  act(() => root.unmount());
+  mounted = false;
+  latest.recordDiagnosticEvent({ kind: "navigation", source: "scrubber", fraction: 0.2 });
+  expect(opened.methods.recordDiagnosticEvent).toHaveBeenCalledTimes(1);
 });
 
 it("disposes a controller that finishes opening after unmount", async () => {

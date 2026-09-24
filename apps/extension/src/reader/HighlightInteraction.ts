@@ -216,6 +216,17 @@ export class HighlightInteraction {
     return visible;
   }
 
+  /** Off-page native ranges are retained for accessibility, but aren't
+   * visible UI that a page-turning click needs to dismiss. */
+  public hasVisibleSelection(doc: Document): boolean {
+    const selection = doc.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+    // Fixed-layout frames have their own scaled coordinate space.
+    if (this.ctx.isFixedLayoutHost()) return true;
+    const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
+    return !frame || !!HighlightInteraction.visibleSelectionRect(selection.getRangeAt(0), frame);
+  }
+
   private resolveHighlightRange(highlight: Highlight, spineIndex: number, doc: Document): Range | undefined {
     try {
       const start = this.locatorResolver.resolveInDocument(new Locator(highlight.startCfi), spineIndex, doc);

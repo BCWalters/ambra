@@ -89,6 +89,7 @@ import type {
   SelectionToolbarState,
 } from "./ReaderTypes.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
+import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
 import { DEFAULT_LOCALE } from "../i18n/Locale.js";
 import { getTranslate } from "../i18n/LocaleContext.js";
 import type { Translate } from "../i18n/LocaleContext.js";
@@ -581,6 +582,14 @@ export class ReaderController {
     const chromeChanged = this.brightness !== settings.brightness ||
       this.chromeTheme !== settings.chromeTheme ||
       this.pageTurnAnimationStyle !== settings.pageTurnAnimationStyle;
+    this.recordDiagnosticEvent({ kind: "setting", name: "viewMode",
+      before: this.viewMode, after: viewMode, source: "preferences" });
+    this.recordDiagnosticEvent({ kind: "setting", name: "brightness",
+      before: this.brightness, after: settings.brightness, source: "preferences" });
+    this.recordDiagnosticEvent({ kind: "setting", name: "chromeTheme",
+      before: this.chromeTheme, after: settings.chromeTheme, source: "preferences" });
+    this.recordDiagnosticEvent({ kind: "setting", name: "pageTurnAnimationStyle",
+      before: this.pageTurnAnimationStyle, after: settings.pageTurnAnimationStyle, source: "preferences" });
     Object.assign(this, settings);
     if (!this.containerEl) {
       this.viewMode = viewMode;
@@ -667,7 +676,9 @@ export class ReaderController {
         firstSpinePath: this.pkg.spine[0]?.manifestItem.path,
         highlightedTocPath: this.tocHighlightPath(),
         tocPageNumbers: this.computeTocPageNumbers(),
-        currentChapterLabel: this.chapterLabel(this.spineIndex),
+        // The default spine index is provisional until initial/resume loading
+        // commits a host. Do not announce or display that placeholder chapter.
+        currentChapterLabel: this.host ? this.chapterLabel(this.spineIndex) : "",
         viewMode: this.host instanceof ScrollContentHost ? "scroll"
           : this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ? "paginated"
             : this.viewMode,
@@ -759,6 +770,7 @@ export class ReaderController {
     if (previous !== undefined) return previous;
     if (!this.dismissReaderUi || (event.pointerType === "mouse" && event.button !== 0)) return false;
     const dismissed = this.dismissReaderUi();
+    this.recordDiagnosticEvent({ kind: "ui-dismissal", consumed: dismissed });
     (this.contentPointerDismissals ??= new WeakMap()).set(event, dismissed);
     return dismissed;
   }
@@ -949,6 +961,7 @@ export class ReaderController {
 
   /** Navigates to a saved bookmark's CFI — see `goToCfi`. */
   public async goToBookmark(cfi: string): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "navigation", source: "bookmark" });
     this.clearNavigationHighlights();
     await this.goToCfi(cfi, "that bookmark");
   }
@@ -956,6 +969,7 @@ export class ReaderController {
   /** Navigates to a highlight's starting position — see `goToBookmark`'s
    * doc comment. */
   public async goToHighlight(cfi: string): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "navigation", source: "highlight" });
     this.clearNavigationHighlights();
     await this.goToCfi(cfi, "that highlight");
   }
@@ -1005,6 +1019,7 @@ export class ReaderController {
   /** Navigates to a read-only embedded annotation's position — see
    * `goToBookmark`'s doc comment. */
   public async goToReadOnlyAnnotation(cfi: string): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "navigation", source: "embedded-annotation" });
     this.clearNavigationHighlights();
     await this.goToCfi(cfi, "that note");
   }
@@ -1086,6 +1101,7 @@ export class ReaderController {
   }
 
   public async performNarrationAction(action: NarrationAction): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "narration", action });
     if (action === "start") this.dismissNarrationNotice();
     const command = ++this.narrationCommand;
     this.cancelNarrationNavigation();
@@ -1120,7 +1136,10 @@ export class ReaderController {
   }
 
   public setNarrationRate(rate: number): void {
+    const before = this.narration.snapshot.rate;
     this.narration.setRate(rate);
+    this.recordDiagnosticEvent({ kind: "setting", name: "narrationRate",
+      before, after: this.narration.snapshot.rate, source: "reader-control" });
   }
 
   public dismissNarrationNotice(): void {
@@ -1174,12 +1193,14 @@ export class ReaderController {
 
   /** Navigates to a search result's position — see `SearchCoordinator.goToResult`. */
   public async goToSearchResult(cfi: string): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "navigation", source: "search" });
     this.suspendNarrationFollowing();
     await this.searchCoordinator.goToResult(cfi);
   }
 
   /** (Re-)starts a book-wide search — see `SearchCoordinator.search`. */
   public search(query: string): void {
+    this.recordDiagnosticEvent({ kind: "search", queryLength: query.length });
     this.searchCoordinator.search(query);
   }
 
@@ -1418,6 +1439,7 @@ export class ReaderController {
     });
     if (!command) return;
     if ((command === "searchBook" || command === "showKeyboardShortcuts") && !this.shortcutActions) return;
+    this.recordDiagnosticEvent({ kind: "shortcut", command, scope });
     event.preventDefault();
     switch (command) {
       case "searchBook": this.shortcutActions?.searchBook(); break;
@@ -1658,6 +1680,7 @@ export class ReaderController {
           }
         }
 
+        this.recordDiagnosticEvent({ kind: "navigation", source: "content-link", targetSpine: targetSpineIndex });
         this.suspendNarrationFollowing();
         if (targetSpineIndex === own.spineIndex && !(this.host instanceof SpreadPaginatedHost)) {
           if (fragment) {
@@ -1940,6 +1963,7 @@ export class ReaderController {
       });
     }
     if (this.operations.disposed) return;
+    this.diagnostics.record(`layout applied ${JSON.stringify(next)}`);
     if (modeChanged) {
       this.announce(
         next.viewMode === "paginated"
@@ -2067,6 +2091,8 @@ export class ReaderController {
 
   public async setViewMode(mode: ViewMode): Promise<void> {
     if (!this.containerEl || this.operations.disposed || this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "viewMode",
+      before: this.pendingLayout?.configuration.viewMode ?? this.viewMode, after: mode, source: "reader-control" });
     await this.library.patchGlobalReadingSettings({ viewMode: mode });
     await Promise.all([this.requestLayout({ viewMode: mode }), this.refreshGlobalSettings()]);
   }
@@ -2079,6 +2105,8 @@ export class ReaderController {
       Math.max(ReadingTheme.MIN_FONT_SCALE, scale),
     );
     if (this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "fontScale",
+      before: this.pendingLayout?.configuration.fontScale ?? this.fontScale, after: clamped, source: "reader-control" });
     await this.requestLayout({ fontScale: clamped });
   }
 
@@ -2086,6 +2114,8 @@ export class ReaderController {
    * pagination. No-op for fixed-layout content. */
   public async setFontFamily(family: FontFamilyChoice): Promise<void> {
     if (this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "fontFamily",
+      before: this.pendingLayout?.configuration.fontFamily ?? this.fontFamily, after: family, source: "reader-control" });
     await this.requestLayout({ fontFamily: family });
   }
 
@@ -2097,6 +2127,8 @@ export class ReaderController {
       Math.max(ReadingTheme.MIN_LINE_SPACING, spacing),
     );
     if (this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "lineSpacing",
+      before: this.pendingLayout?.configuration.lineSpacing ?? this.lineSpacing, after: clamped, source: "reader-control" });
     await this.requestLayout({ lineSpacing: clamped });
   }
 
@@ -2108,6 +2140,8 @@ export class ReaderController {
       Math.max(ReadingTheme.MIN_LETTER_SPACING, spacing),
     );
     if (this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "letterSpacing",
+      before: this.pendingLayout?.configuration.letterSpacing ?? this.letterSpacing, after: clamped, source: "reader-control" });
     await this.requestLayout({ letterSpacing: clamped });
   }
 
@@ -2119,6 +2153,8 @@ export class ReaderController {
       Math.max(ReadingTheme.MIN_CONTENT_WIDTH_EM, widthEm),
     );
     if (this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "contentWidthEm",
+      before: this.pendingLayout?.configuration.contentWidthEm ?? this.contentWidthEm, after: clamped, source: "reader-control" });
     await this.requestLayout({ contentWidthEm: clamped });
   }
 
@@ -2127,9 +2163,12 @@ export class ReaderController {
     if (this.operations.disposed || this.isFixedLayoutHost(this.host)) {
       return;
     }
+    this.recordDiagnosticEvent({ kind: "setting", name: "pageTheme",
+      before: this.pageTheme, after: theme, source: "reader-control" });
     await this.library.patchBookReadingSettings(this.bookId, { pageTheme: theme });
     if (this.operations.disposed) return;
     this.pageTheme = theme;
+    this.diagnostics.record(`pageTheme applied value=${theme}`);
     this.applyDisplaySettingsToHost({ relayout: false });
     this.notify();
   }
@@ -2141,6 +2180,8 @@ export class ReaderController {
     if (this.operations.disposed) {
       return;
     }
+    this.recordDiagnosticEvent({ kind: "setting", name: "brightness",
+      before: this.brightness, after: clamped, source: "reader-control" });
     await this.library.patchGlobalReadingSettings({ brightness: clamped });
     await this.refreshGlobalSettings();
   }
@@ -2150,6 +2191,8 @@ export class ReaderController {
     if (this.operations.disposed) {
       return;
     }
+    this.recordDiagnosticEvent({ kind: "setting", name: "chromeTheme",
+      before: this.chromeTheme, after: theme, source: "reader-control" });
     await this.library.patchGlobalReadingSettings({ chromeTheme: theme });
     await this.refreshGlobalSettings();
   }
@@ -2159,6 +2202,8 @@ export class ReaderController {
     if (this.operations.disposed) {
       return;
     }
+    this.recordDiagnosticEvent({ kind: "setting", name: "pageTurnAnimationStyle",
+      before: this.pageTurnAnimationStyle, after: style, source: "reader-control" });
     await this.library.patchGlobalReadingSettings({ pageTurnAnimationStyle: style });
     await this.refreshGlobalSettings();
   }
@@ -3295,7 +3340,7 @@ export class ReaderController {
 
   private dismissContentSelection(): boolean {
     const selected = this.contentDocumentViews().some(
-      ({ document }) => document.getSelection()?.isCollapsed === false,
+      ({ document }) => this.highlightInteraction.hasVisibleSelection(document),
     );
     if (selected) this.highlightInteraction.dismissSelectionToolbar();
     return selected;
@@ -3569,8 +3614,7 @@ export class ReaderController {
     // The caller passes `doc` directly because iframe events come from a
     // different `Node` realm, so `upEvent.target instanceof Node` would
     // fail and break the selection guard.
-    const selection = doc.getSelection();
-    if (selection && !selection.isCollapsed) {
+    if (this.highlightInteraction.hasVisibleSelection(doc)) {
       return;
     }
 
@@ -3784,7 +3828,14 @@ export class ReaderController {
   }
 
   public getInspectorReaderBridge(): InspectorReaderBridge {
-    return this.inspectionReading.create();
+    const bridge = this.inspectionReading.create();
+    return {
+      ...bridge,
+      showInBook: async location => {
+        this.recordDiagnosticEvent({ kind: "navigation", source: "inspector", targetSpine: location.spineIndex });
+        await bridge.showInBook(location);
+      },
+    };
   }
 
   public findInspectionReferences(path: string): Promise<readonly InspectorReference[]> {
@@ -3813,6 +3864,11 @@ export class ReaderController {
       viewMode: this.viewMode,
       paneSize: `${this.width}x${this.height}`,
       isSpread: String(this.host instanceof SpreadPaginatedHost),
+      pageIndex: String(this.host instanceof SpreadPaginatedHost ? this.host.pageIndex :
+        this.host instanceof PaginatedContentHost ? this.host.currentPageIndex : 0),
+      settings: JSON.stringify({ ...this.currentLayout(), pageTheme: this.pageTheme,
+        brightness: this.brightness, chromeTheme: this.chromeTheme, pageTurnAnimationStyle: this.pageTurnAnimationStyle }),
+      busy: JSON.stringify({ loading: this.isLoadInFlight, turning: this.isTurningPage, layout: this.isApplyingLayout }),
     };
   }
 
@@ -3821,8 +3877,24 @@ export class ReaderController {
     return this.diagnostics.format(this.diagnosticsContext());
   }
 
+  public recordDiagnosticEvent(event: DiagnosticEvent): void {
+    if (event.kind === "setting" && event.before === event.after) return;
+    this.diagnostics.recordEvent(event);
+    if (event.kind === "navigation") {
+      this.diagnostics.record(`navigation from spine=${this.spineIndex} page=${
+        this.host instanceof SpreadPaginatedHost ? this.host.pageIndex :
+          this.host instanceof PaginatedContentHost ? this.host.currentPageIndex : 0
+      } busy=${!!(this.isLoadInFlight || this.isTurningPage || this.isApplyingLayout)}`);
+    }
+  }
+
+  public recordDiagnosticSurfaces(surfaces: DiagnosticSurfaces): void {
+    this.diagnostics.recordSurfaces(surfaces);
+  }
+
   /** Adjacent spine item, relative to actual reading focus, not a spread's visual primary. */
   public async goToChapter(direction: 1 | -1, sourceDocument?: Document): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "navigation", source: "chapter" });
     if (this.operations.disposed || this.isLoadInFlight || this.isTurningPage || this.isApplyingLayout) return;
     const views = this.contentDocumentViews();
     const source = views.find(view => view.document === sourceDocument)
@@ -3911,6 +3983,8 @@ export class ReaderController {
   /** Navigates to a Table of Contents entry: loads its target spine item
    * (if not already open) and jumps to its fragment, if any. */
   public async goToNavPoint(navPoint: NavPoint): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "navigation", source: "toc",
+      targetSpine: this.pkg.spine.findIndex(ref => ref.manifestItem.path === navPoint.path) });
     if (!navPoint.path) {
       return;
     }

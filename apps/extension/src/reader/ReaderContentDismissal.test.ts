@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FixedSpreadHost, PaginatedContentHost, SpreadPaginatedHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
+import { DiagnosticsLog } from "./DiagnosticsLog.js";
 
 type Mode = "single" | "spread" | "fixed";
 const cleanups: Array<() => void> = [];
@@ -24,6 +25,7 @@ function setUp(mode: Mode, commonFirst = true) {
   const controller = Object.create(ReaderController.prototype);
   const operation = { own: vi.fn(), check: vi.fn() };
   Object.assign(controller, {
+    diagnostics: new DiagnosticsLog(),
     host,
     containerEl: container,
     width: 900,
@@ -37,7 +39,11 @@ function setUp(mode: Mode, commonFirst = true) {
     setUpContentBoundaries: vi.fn(),
     nativeReading: { attach: () => () => {} },
     narration: { snapshot: { available: false } },
-    highlightInteraction: { findHighlightAtPoint: vi.fn(), dismissSelectionToolbar: vi.fn() },
+    highlightInteraction: {
+      findHighlightAtPoint: vi.fn(),
+      dismissSelectionToolbar: vi.fn(),
+      hasVisibleSelection: vi.fn((doc: Document) => doc.getSelection()?.isCollapsed === false),
+    },
     notify: vi.fn(),
     turnPage: vi.fn(),
     suspendNarrationFollowing: vi.fn(),
@@ -174,6 +180,44 @@ describe("content clicks dismiss chrome before navigating", () => {
     tap(doc.body, 850);
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(-1);
   });
+
+  it.each(["single", "spread"] as const)(
+    "%s ignores retained off-page selection before and during a margin tap",
+    mode => {
+      const { controller, doc } = setUp(mode);
+      const x = mode === "spread" ? 400 : 850;
+      const selection = { isCollapsed: false, removeAllRanges: vi.fn() } as unknown as Selection;
+      const getSelection = vi.spyOn(doc, "getSelection").mockReturnValue(selection);
+      controller.highlightInteraction.hasVisibleSelection.mockReturnValue(false);
+      tap(doc.body, x);
+      expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+      expect(controller.highlightInteraction.dismissSelectionToolbar).not.toHaveBeenCalled();
+      expect(selection.removeAllRanges).not.toHaveBeenCalled();
+
+      getSelection.mockReturnValue(null);
+      pointer(doc.body, "pointerdown", x);
+      getSelection.mockReturnValue(selection);
+      pointer(doc.body, "pointerup", x, "mouse", 1, 308);
+      expect(controller.turnPage).toHaveBeenCalledTimes(2);
+
+      controller.setContentUiDismissal(() => true);
+      tap(doc.body, x);
+      expect(controller.turnPage).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(["single", "spread", "fixed"] as const)(
+    "%s preserves a visible selection created during a tap",
+    mode => {
+      const { controller, doc } = setUp(mode);
+      const x = mode === "spread" ? 400 : 850;
+      pointer(doc.body, "pointerdown", x);
+      vi.spyOn(doc, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
+      pointer(doc.body, "pointerup", x);
+      expect(controller.turnPage).not.toHaveBeenCalled();
+      expect(controller.highlightInteraction.dismissSelectionToolbar).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not cancel native book control activation or image zoom while dismissing chrome", () => {
     const { controller, doc } = setUp("single");
