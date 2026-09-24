@@ -38,8 +38,7 @@ export class PageTurnAnimator {
   }
 
   /** An opaque backdrop behind the animating side of a "slide" turn,
-   * sized to the pane's full height. "slide" leaves the animating host
-   * at its own natural (often short) height with `clip-path` dropped
+   * sized to the pane's full height. Hosts may have `clip-path` dropped
    * for the turn's duration, so without this the static host behind it
    * shows through the gap below a short page (issue #84). */
   public buildTurnBackdrop(matchEl: HTMLElement): HTMLDivElement | undefined {

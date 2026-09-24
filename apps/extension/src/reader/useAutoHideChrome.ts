@@ -71,10 +71,12 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
-  useLayoutEffect(() => { pinnedRef.current = pinned; }, [pinned]);
+  useLayoutEffect(() => {
+    pinnedRef.current = pinned;
+    visibleRef.current = visible;
+  }, [pinned, visible]);
 
   const show = useCallback((): void => {
-    visibleRef.current = true;
     setVisible(true);
   }, []);
   const hide = useCallback((): void => {
@@ -85,11 +87,14 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     setVisible(false);
   }, []);
   const dismissForContent = useCallback((): boolean => {
-    if (pinnedRef.current || !visibleRef.current) return false;
+    if (pinnedRef.current) return false;
+    const dismissed = visibleRef.current;
     // Focus may still be in a toolbar menu until the native pointerdown
     // focuses the book. That old focus must not veto deliberate dismissal.
+    // Cancel a queued edge-move reveal too, but only charge a dismissal
+    // click for chrome whose visible state has actually reached the DOM.
     hide();
-    return true;
+    return dismissed;
   }, [hide]);
 
   const scheduleHide = (): void => {

@@ -90,11 +90,9 @@ export class PageTurnOrchestrator {
     }
   }
 
-  /** "rotate": suppresses clip-path on both hosts (overlapping clipped
-   * iframes do not composite correctly in Chromium), grows the animating
-   * host to full height (measured before suppression drops its own
-   * clip), and turns a real 3D page so it lands visibly instead of
-   * freezing edge-on. */
+  /** "rotate": moves clipping inside both full-height iframe viewports
+   * (overlapping clipped iframes do not composite correctly in Chromium)
+   * and turns a real 3D page so it lands visibly instead of freezing edge-on. */
   private async rotatePageTurn(
     oldHost: PaginatedContentHost,
     newHost: PaginatedContentHost,
@@ -153,10 +151,8 @@ export class PageTurnOrchestrator {
     }
   }
 
-  /** "slide": drops clip-path from both hosts the same way "rotate"
-   * does, plus an opaque backdrop behind the animating side — "slide"
-   * leaves a short page at its own natural height, so without a
-   * backdrop the static host underneath shows through the gap. */
+  /** "slide": moves clipping inside both hosts as "rotate" does,
+   * retaining an opaque backdrop behind the animating paper. */
   private async slidePageTurn(
     oldHost: PaginatedContentHost,
     newHost: PaginatedContentHost,
@@ -359,8 +355,7 @@ export class PageTurnOrchestrator {
     }
   }
 
-  /** "rotate" only turns the spine-side (right) column, growing just
-   * that column to full height and adding a back face so it lands
+  /** "rotate" only turns the spine-side (right) column, adding a back face so it lands
    * visibly past 90° instead of vanishing edge-on — the left column
    * stays put but still needs clip-path suppressed on both hosts (see
    * `animatePageTurn`'s own rotate case) and its own furniture overlay,

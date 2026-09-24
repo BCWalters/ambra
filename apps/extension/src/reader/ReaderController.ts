@@ -3469,9 +3469,8 @@ export class ReaderController {
               // previews; the Chromium compositing bug this avoids is not
               // specific to committed turns.
               //
-              // Only "rotate" grows `oldHost` to full height; "slide" must
-              // not, or a short page would reveal extra document flow once
-              // its clip-path is gone.
+              // Both styles keep the full layout viewport and clip document
+              // paint internally, so short pages cannot expose adjacent flow.
               //
               // "slide" and "rotate" also need their usual bleed-masking in
               // the interactive preview path.

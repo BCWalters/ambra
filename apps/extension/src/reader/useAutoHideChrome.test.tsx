@@ -51,6 +51,18 @@ it("does not reveal chrome for ordinary reading-area movement", () => {
   act(() => { expect(chrome.dismissForContent()).toBe(false); });
 });
 
+it("does not charge a click for an edge reveal queued in the same input turn", () => {
+  act(() => { chrome.hide(); });
+  act(() => {
+    window.dispatchEvent(new PointerEvent("pointermove", { clientY: window.innerHeight - 75 }));
+    expect(chrome.dismissForContent()).toBe(false);
+  });
+  expect(chrome.visible).toBe(false);
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientY: 5 })));
+  expect(chrome.visible).toBe(true);
+  act(() => { expect(chrome.dismissForContent()).toBe(true); });
+});
+
 it("does not consume clicks for held chrome, including after its hold changes", () => {
   act(() => root.render(<Harness held />));
   act(() => { expect(chrome.dismissForContent()).toBe(false); });
