@@ -140,6 +140,49 @@ describe("Inspector reader linking", () => {
     }
   });
 
+  it("wraps complete metadata, identifiers and archive table values without touching raw source", async () => {
+    const longValue = "LongUnbroken".repeat(100);
+    const path = `${longValue}.xhtml`;
+    const inspection: EpubInspectionData = {
+      ...data, title: longValue, description: longValue, subjects: [longValue],
+      identifiers: [{ scheme: longValue, value: longValue }],
+      metaEntries: [{ key: longValue, value: longValue, refines: longValue }],
+      manifest: [{ id: longValue, path, mediaType: longValue, properties: [longValue] }],
+      spine: [{ path, linear: true, mediaType: longValue, properties: [longValue] }],
+    };
+    await act(async () => root.render(
+      <EpubInspectorPanel open onOpenChange={onOpenChange} data={inspection} fileName={`${longValue}.epub`}
+        onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} reader={reader} />,
+    ));
+    expect(container.querySelector("pre")?.style.whiteSpace).toBe("pre");
+    for (const name of ["Metadata", "Spine", "Manifest"]) {
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+        .find((tab) => tab.textContent?.startsWith(name))!.click());
+      const panel = container.querySelector<HTMLElement>('[role="tabpanel"] > div')!;
+      expect(panel.style.overflowWrap).toBe("anywhere");
+      expect(panel.style.height).toBe("100%");
+      expect(panel.style.overflowY).toBe("auto");
+      expect(panel.textContent).toContain(longValue);
+      for (const table of panel.querySelectorAll("table")) {
+        expect(table.style.tableLayout).toBe("fixed");
+        expect(table.style.width).toBe("100%");
+      }
+      const cells = [...panel.querySelectorAll("td")];
+      expect(cells.some((cell) => cell.textContent === longValue)).toBe(true);
+      expect(cells.every((cell) => cell.style.overflow !== "hidden")).toBe(true);
+      if (name === "Metadata") {
+        const subject = [...panel.querySelectorAll("span")].find((entry) =>
+          entry.textContent === longValue && entry.style.display === "inline-block")!;
+        expect(subject.style.maxWidth).toBe("calc(100% - 4px)");
+      }
+      if (name !== "Metadata") {
+        const link = [...panel.querySelectorAll("button")].find((entry) => entry.textContent === path)!;
+        expect(link.style.overflowWrap).toBe("anywhere");
+        expect(link.textContent).toBe(path);
+      }
+    }
+  });
+
   it("exposes the current file and prevents Space activation from also scrolling source", async () => {
     await render();
     expect(container.querySelector('[data-file-path][aria-current="true"]')?.getAttribute("data-file-path")).toBe("one.xhtml");

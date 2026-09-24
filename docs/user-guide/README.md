@@ -18,6 +18,8 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 - **Keep your thinking alongside the text.** Highlight passages, add notes, and revisit them with your bookmarks.
 - **Listen when the book includes narration.** Play embedded recorded narration with synchronized text highlighting; this depends on the EPUB’s supplied narration, not automatic text-to-speech.
 
+**Book details** gives the description its own section, with rights and accessibility information under **Publication details**. **Show more** reveals a longer, still bounded excerpt; an ellipsis means text was omitted. Descriptions retain at most two paragraphs (700 characters initially, 1,400 expanded); rights statements are capped at 140 characters initially and 600 expanded. These are excerpts, not interpretations of legal terms. EPUB Inspector retains the original metadata.
+
 ## Take your annotations with you
 
 **EPUB annotation export and import** let you back up or share your reading work separately from the book. Ambra exports your highlights, text notes, bookmarks, and bookmark labels as an **EPUB Annotations 1.0 JSON file** (`… - annotations.json`), and imports compatible JSON into the open book.
@@ -51,5 +53,7 @@ The shortcut popup is a quick reference showing the default shortcuts for your c
 Book handling and library storage stay in your browser profile, without a cloud library or automatic cross-device library sync. Keep original EPUBs and annotation exports as backups: storage has limits, and removing the extension, clearing its data, or losing the profile can remove local books and reading data.
 
 Feedback is welcome through [GitHub issues](https://github.com/BCWalters/ambra/issues) or [AmbraEPUB@outlook.com](mailto:AmbraEPUB@outlook.com)—email needs no GitHub account. Reader diagnostics may include book details, paths, reading positions, and recent actions. Review them before sharing; nothing is sent automatically. GitHub issues are public.
+
+Diagnostics keep the latest 500 events in memory and reset when the reader reloads. They include panel/menu opening, closing and pinning, navigation sources, and setting changes with before/after values. Requested actions are distinguished from completed layout/load events. Entries are capped at 512 characters, and copied context is bounded too. New interaction events omit search queries, annotation text, and link URLs; existing error details can still contain book paths, so review the copied report before sending it.
 
 Ambra is in beta; its planned unlisted extension-store release is not yet published. Visit the [public, MIT-licensed repository](https://github.com/BCWalters/ambra) for source and beta context, and the canonical [privacy policy](https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md) for privacy details.

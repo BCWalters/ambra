@@ -26,7 +26,8 @@ import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
 import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
-import { LocaleProvider, useTranslation } from "../i18n/LocaleContext.js";
+import { ReaderDiagnosticContext } from "./ReaderDiagnosticContext.js";
+import { LocaleProvider, useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { BookDetails, EpubInspectionData, InspectorReaderBridge } from "./ReaderTypes.js";
 import { CHROME_THEMES } from "./chromeTheme.js";
 import { ShortcutPreferencesProvider, useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
@@ -57,7 +58,10 @@ export const ReaderApp: FC = () => (
 
 const ReaderAppInner: FC = () => {
   const t = useTranslation();
+  const locale = useLocale();
   const {
+    recordDiagnosticEvent,
+    recordDiagnosticSurfaces,
     snapshot,
     contentHostRef,
     openBook,
@@ -213,6 +217,38 @@ const ReaderAppInner: FC = () => {
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!snapshot) return;
+    recordDiagnosticSurfaces({
+      toc: { open: isTocOpen, pinned: isTocPinned },
+      annotations: { open: isAnnotationsOpen, pinned: isAnnotationsPinned },
+      search: { open: isSearchOpen, pinned: isSearchPinned },
+      details: { open: isDetailsOpen }, inspector: { open: isInspectorOpen },
+      settings: { open: toolbarMenu === "settings" }, typography: { open: toolbarMenu === "typography" },
+      help: { open: help.view === "about" }, shortcuts: { open: help.view === "shortcuts" },
+      narration: { open: isNarrationOpen },
+      image: { open: snapshot.imageViewer !== undefined },
+      selection: { open: snapshot.selectionToolbar !== undefined },
+      highlight: { open: snapshot.activeHighlight !== undefined },
+      footnote: { open: snapshot.footnotePopup !== undefined },
+    });
+  }, [snapshot, isTocOpen, isTocPinned, isAnnotationsOpen, isAnnotationsPinned,
+    isSearchOpen, isSearchPinned, isDetailsOpen, isInspectorOpen, toolbarMenu, help.view,
+    isNarrationOpen, recordDiagnosticSurfaces]);
+  const previousPreferences = useRef<{ locale: typeof locale.preference; shortcutsEnabled: boolean } | undefined>(undefined);
+  useEffect(() => {
+    if (!snapshot || !locale.ready || !shortcutSettings.ready) return;
+    const next = { locale: locale.preference, shortcutsEnabled: shortcutSettings.preferences.enabled };
+    const previous = previousPreferences.current;
+    if (previous) {
+      recordDiagnosticEvent({ kind: "setting", name: "locale", before: previous.locale,
+        after: next.locale, source: "preferences" });
+      recordDiagnosticEvent({ kind: "setting", name: "shortcutsEnabled", before: previous.shortcutsEnabled,
+        after: next.shortcutsEnabled, source: "preferences" });
+    }
+    previousPreferences.current = next;
+  }, [snapshot, locale.ready, locale.preference, shortcutSettings.ready,
+    shortcutSettings.preferences.enabled, recordDiagnosticEvent]);
   useEffect(() => {
     setShortcutModalOpen(isInspectorOpen || help.view !== undefined || snapshot?.imageViewer !== undefined);
   }, [isInspectorOpen, help.view, snapshot?.imageViewer, setShortcutModalOpen]);
@@ -483,8 +519,11 @@ const ReaderAppInner: FC = () => {
   };
 
   return (
+    <ReaderDiagnosticContext.Provider value={recordDiagnosticSurfaces}>
     <ChromeThemeProvider theme={snapshot.chromeTheme}>
-      <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
+      {/* Unlike hidden, clip cannot pan the shell when focus/scrollIntoView
+          reaches a control in an entering or off-screen panel. */}
+      <div style={{ position: "relative", height: "100vh", overflow: "clip" }}>
         {/* The content row fills the entire viewport — the toolbar is an
               absolutely-positioned overlay (see `Toolbar`), not a normal-flow
               element pushing this row down, so it can fade in/out without
@@ -713,7 +752,10 @@ const ReaderAppInner: FC = () => {
               isPaginated={snapshot.viewMode === "paginated"}
               isFixedLayout={snapshot.isFixedLayout}
               bookPageCount={snapshot.bookPageCount}
-              onSeekToFraction={(fraction) => void seekToFraction(fraction)}
+              onSeekToFraction={(fraction) => {
+                recordDiagnosticEvent({ kind: "navigation", source: "details", fraction });
+                void seekToFraction(fraction);
+              }}
             />
 
             <EpubInspectorPanel
@@ -765,6 +807,7 @@ const ReaderAppInner: FC = () => {
               handlers={chromeHandlers}
               onPreview={previewSeek}
               onSeek={async (fraction) => {
+                recordDiagnosticEvent({ kind: "navigation", source: "scrubber", fraction });
                 setSeekError(undefined);
                 await seekToFraction(fraction);
               }}
@@ -821,5 +864,6 @@ const ReaderAppInner: FC = () => {
         <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
       </div>
     </ChromeThemeProvider>
+    </ReaderDiagnosticContext.Provider>
   );
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import type { FC } from "react";
 import {
   Button,
@@ -13,6 +13,7 @@ import {
 } from "@fluentui/react-components";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
+import { ReaderDiagnosticContext } from "../ReaderDiagnosticContext.js";
 
 export interface GoToDialogProps {
   /** Which flavor of "go to" this dialog is currently showing — a
@@ -52,6 +53,12 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const [value, setValue] = useState("");
+  const recordSurfaces = useContext(ReaderDiagnosticContext);
+  useEffect(() => {
+    if (!open || !recordSurfaces) return;
+    recordSurfaces({ "go-to": { open: true, mode } });
+    return () => recordSurfaces({ "go-to": { open: false, mode } });
+  }, [open, mode, recordSurfaces]);
 
   // A fresh, empty input every time the dialog opens — never pre-filled
   // with whatever was last typed (in this mode or the other one), which

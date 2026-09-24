@@ -1,10 +1,10 @@
 import type { FC } from "react";
-import { Body1, Body1Strong, Button, Caption1, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Body1, Button, useRestoreFocusTarget } from "@fluentui/react-components";
 import { CodeCircleRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
-import { BookDetailRow as DetailRow, BookRightsRow } from "../components/BookMetadataRows.js";
+import { BookDescription, BookDetailRow as DetailRow, BookMetadataText, BookRightsRow } from "../components/BookMetadataRows.js";
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryProgress } from "./LibraryFormatting.js";
@@ -99,16 +99,11 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               />
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
-              <Body1Strong as="h2" block style={{ margin: "0 0 4px" }}>
-                {book.title}
-              </Body1Strong>
+              <BookMetadataText value={book.title} name={t("inspector.titleLabel")} kind="identity" heading style={{ margin: "0 0 4px" }} />
               {book.creator && (
-                <Body1 as="p" block style={{ margin: 0, opacity: 0.75 }}>
-                  {book.creator}
-                </Body1>
+                <BookMetadataText value={book.creator} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
               )}
               <DetailRow label={t("bookDetails.publisher")} value={book.publisher} compact />
-              <BookRightsRow label={t("bookDetails.copyright")} value={book.rights} />
             </div>
           </div>
 
@@ -138,48 +133,19 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
           )}
 
           {description && (
-            <>
-              <Caption1
-                as="p"
-                block
-                style={{
-                  margin: descriptionSourceName ? "0 0 4px" : "0 0 16px",
-                  lineHeight: 1.5,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {description}
-              </Caption1>
-              {descriptionSourceName && (
-                <Caption1 as="p" block style={{ margin: "0 0 16px", opacity: 0.75 }}>
-                  {t("bookDetails.descriptionSourcePrefix")}{" "}
-                  <a href={descriptionSourceUrl} target="_blank" rel="noreferrer">
-                    {descriptionSourceName}
-                  </a>
-                </Caption1>
-              )}
-            </>
+            <BookDescription value={description} sourceName={descriptionSourceName} sourceUrl={descriptionSourceUrl} />
           )}
 
-          <DetailRow
-            label={t("bookDetails.accessibilitySummary")}
-            value={book.accessibility?.accessibilitySummary}
-          />
-          <DetailRow
-            label={t("bookDetails.accessibilityFeatures")}
-            value={
-              book.accessibility && book.accessibility.accessibilityFeatures.length > 0
-                ? book.accessibility.accessibilityFeatures.join(", ")
-                : undefined
-            }
-          />
           <PaneDisclosure title={t("bookDetails.publicationDetails")}>
-            <DetailRow label={t("bookDetails.isbn")} value={isbn?.value} />
+            <BookRightsRow label={t("bookDetails.rights")} value={book.rights} />
+            <DetailRow small label={t("bookDetails.accessibilitySummary")} value={book.accessibility?.accessibilitySummary} />
+            <DetailRow small label={t("bookDetails.accessibilityFeatures")} value={book.accessibility?.accessibilityFeatures.join(", ")} />
+            <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} />
             {otherIdentifiers.map((id, index) => (
-              <DetailRow key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
+              <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
             ))}
-            <DetailRow label={t("inspector.fileName")} value={book.fileName} />
-            <DetailRow label={t("library.added")} value={new Date(book.addedAt).toLocaleDateString(locale)} />
+            <DetailRow small label={t("inspector.fileName")} value={book.fileName} />
+            <DetailRow small label={t("library.added")} value={new Date(book.addedAt).toLocaleDateString(locale)} />
           </PaneDisclosure>
 
           {inspectionError && <LibraryImportError {...inspectionError} />}

@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { AccessibilityController, FixedContentHost, PaginatedContentHost, ScrollContentHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
+import { DiagnosticsLog } from "./DiagnosticsLog.js";
 
 afterEach(() => document.body.replaceChildren());
 function setup() {
@@ -8,6 +9,7 @@ function setup() {
   const second = document.implementation.createHTMLDocument();
   const controller = Object.create(ReaderController.prototype);
   Object.assign(controller, {
+    diagnostics: new DiagnosticsLog(),
     spineIndex: 1,
     pkg: { spine: [{}, {}, {}], pageProgressionDirection: "ltr" },
     operations: { disposed: false },

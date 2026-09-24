@@ -571,20 +571,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           {/* Fluent's Caption1 sets its own `text-align: start`, which
               wins over the popup div's inherited `center` above — so
               each line needs `textAlign: "center"` set directly on it. */}
-          {previewStateLabel && (
-            <Caption1
-              as="span"
-              block
-              style={{
-                color: chromeTheme.accentForeground,
-                fontWeight: 600,
-                textAlign: "center",
-                marginBottom: 4,
-              }}
-            >
-              {previewStateLabel}
-            </Caption1>
-          )}
           <Caption1
             as="span"
             block

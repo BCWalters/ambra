@@ -6,6 +6,7 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
+import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
 import type { ReaderShortcutActions } from "./ReaderController.js";
 import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
@@ -26,6 +27,8 @@ import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
 export interface UseReaderControllerResult {
+  recordDiagnosticEvent: (event: DiagnosticEvent) => void;
+  recordDiagnosticSurfaces: (surfaces: DiagnosticSurfaces) => void;
   setContentUiDismissal: (dismiss: (() => boolean) | undefined) => void;
   setShortcutActions: (actions: ReaderShortcutActions) => void;
   setShortcutPreferences: (preferences: ShortcutPreferences, platform: ShortcutPlatform) => void;
@@ -103,6 +106,12 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   const shortcutPreferences = useRef<{ preferences: ShortcutPreferences; platform: ShortcutPlatform } | undefined>(undefined);
   const shortcutModalOpen = useRef(false);
   const contentUiDismissal = useRef<(() => boolean) | undefined>(undefined);
+  const recordDiagnosticEvent = useCallback((event: DiagnosticEvent) => {
+    ownedController.current?.recordDiagnosticEvent(event);
+  }, []);
+  const recordDiagnosticSurfaces = useCallback((surfaces: DiagnosticSurfaces) => {
+    ownedController.current?.recordDiagnosticSurfaces(surfaces);
+  }, []);
   const setContentUiDismissal = useCallback((dismiss: (() => boolean) | undefined) => {
     contentUiDismissal.current = dismiss;
     ownedController.current?.setContentUiDismissal(dismiss);
@@ -527,6 +536,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   }, [controller]);
 
   return {
+    recordDiagnosticEvent,
+    recordDiagnosticSurfaces,
     setContentUiDismissal,
     setShortcutActions,
     setShortcutPreferences,

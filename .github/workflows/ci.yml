@@ -50,6 +50,8 @@ jobs:
         run: >-
           pnpm --filter @ambra/e2e exec playwright test
           book-opening.spec.ts
+          book-metadata-display.spec.ts
+          library-card-focus.spec.ts
           navigation-correctness.spec.ts
           settings-focus.spec.ts
           reader-viewport-stability.spec.ts
@@ -60,6 +62,9 @@ jobs:
           reader-shortcuts-help.spec.ts
           reader-ui-dismissal.spec.ts
           margin-selection.spec.ts
+          page-turn-margin.spec.ts
+          toolbar-startup.spec.ts
+          reader-diagnostics.spec.ts
           keyboard-ownership.spec.ts
           --workers=1
       - name: Keep verified package

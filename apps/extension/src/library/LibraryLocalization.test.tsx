@@ -1,5 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryApp } from "./LibraryApp.js";
 import { useLibrary, type UseLibraryResult, type LibraryBookViewModel } from "./useLibrary.js";
@@ -94,6 +95,34 @@ describe("Library localization and action order", () => {
     state.isFullTab = true;
     await render();
     expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About"]);
+  });
+
+  it("contains coverless titles, creators and action tooltips without shortening book data or action names", async () => {
+    const title = `Title ${"unbroken".repeat(100)}`;
+    const creator = `Creator ${"作者".repeat(100)}`;
+    state.books = [{ id: "long-book", title, creator, identifiers: [] } as unknown as LibraryBookViewModel];
+    const markup = renderToStaticMarkup(<LibraryApp />);
+    expect(markup).toContain("-webkit-line-clamp:6");
+    expect(markup).toContain("-webkit-line-clamp:2");
+    await render();
+    const cover = button(`Open ${title}`);
+    const coverTitle = cover.querySelector<HTMLElement>("span")!;
+    expect(coverTitle.textContent).toBe(title);
+    expect(coverTitle.style.overflow).toBe("hidden");
+    expect(coverTitle.style.overflowWrap).toBe("anywhere");
+    const author = [...container.querySelectorAll("p")].find((entry) => entry.textContent === creator)!;
+    expect(author.style.overflow).toBe("hidden");
+    expect(author.style.overflowWrap).toBe("anywhere");
+    const details = button(`${title} details`);
+    await act(async () => details.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(tooltip.textContent).toBe(`${title} details`);
+    expect(tooltip.style.overflowWrap).toBe("anywhere");
+    expect(tooltip.style.maxHeight).toContain("240px");
+    expect(details.getAttribute("aria-label")).toBe(`${title} details`);
+    expect(state.books[0]?.title).toBe(title);
+    expect(state.books[0]?.creator).toBe(creator);
   });
 
   it("exposes a Library main landmark and a readable top-level heading", async () => {

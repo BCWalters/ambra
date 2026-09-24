@@ -240,7 +240,11 @@ export const SearchPanel: FC<SearchPanelProps> = ({
                 e.currentTarget.style.background = "none";
               }}
             >
-              <Caption1 as="p" block style={{ margin: "0 0 2px", color: "var(--colorNeutralForeground2, #333)" }}>
+              <Caption1 as="p" block style={{
+                margin: "0 0 2px", color: "var(--colorNeutralForeground2, #333)",
+                minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere",
+              }}>
                 {result.chapterLabel}
               </Caption1>
               {/* Trims `before` down to a short prefix right at render

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import {
   Body1,
@@ -175,7 +175,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   const middleWrapperRef = useRef<HTMLDivElement | null>(null);
   const [canCenterTitle, setCanCenterTitle] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const middleEl = middleWrapperRef.current;
     const measureEl = measureRef.current;
     if (!middleEl || !measureEl) {
@@ -333,37 +333,27 @@ export const Toolbar: FC<ToolbarProps> = ({
             <Body1 as="span" style={{ fontWeight: 600 }}>
               {snapshot.title}
             </Body1>
-            <Caption1 as="span">— {snapshot.currentChapterLabel}</Caption1>
+            {snapshot.currentChapterLabel && <Caption1 as="span">— {snapshot.currentChapterLabel}</Caption1>}
           </div>
 
           <div
             ref={titleGroupRef}
+            data-ambra-toolbar-title
             style={{
               display: "flex",
               alignItems: "baseline",
               gap: 6,
               minWidth: 0,
               overflow: "hidden",
-              // Always absolutely positioned now (in both layout modes)
-              // so a flip between them — triggered by a chapter change
-              // that crosses the "does it fit centered?" threshold, most
-              // commonly right as a page turn lands on a new chapter —
-              // animates smoothly via the `transition` below instead of
-              // an instant snap between two incompatible layout systems
-              // (a plain flex child can't be transitioned into an
-              // absolutely-centered one; `left`/`top`/`transform` on the
-              // other hand animate perfectly well). `right: 0` in the
-              // non-centered case gives this the same full-width-minus-
-              // nothing box the old `flex: 1` flex-child version had, so
-              // the chapter label still has room to truncate with an
-              // ellipsis exactly as before.
+              // Measure before paint and position without a transition:
+              // startup/resume must not slide provisional labels across
+              // the toolbar. `right: 0` keeps the narrow layout bounded.
               position: "absolute",
               top: "50%",
               left: canCenterTitle ? "50%" : 0,
               right: canCenterTitle ? undefined : 0,
               transform: canCenterTitle ? "translate(-50%, -50%)" : "translateY(-50%)",
               whiteSpace: canCenterTitle ? "nowrap" : undefined,
-              transition: reduceMotion ? "none" : "left 220ms ease, right 220ms ease, transform 220ms ease",
             }}
           >
             <Tooltip content={t("toolbar.bookDetails")} relationship="description">
@@ -417,7 +407,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                 When centered, it never needs to shrink at all — that's
                 exactly the case `canCenterTitle` already confirmed has
                 enough room. */}
-            <Caption1
+            {snapshot.currentChapterLabel && <Caption1
               as="span"
               style={{
                 minWidth: 0,
@@ -429,7 +419,7 @@ export const Toolbar: FC<ToolbarProps> = ({
               }}
             >
               — {snapshot.currentChapterLabel}
-            </Caption1>
+            </Caption1>}
           </div>
         </div>
 
