@@ -12,6 +12,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // image, several stylesheets, and every other chapter in the book —
 // exactly the cross-referencing surface issue #95 added.
 const EPUB = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
+// Tooltip layout needs archive paths, not Alice's particular cross-references.
+const TOOLTIP_EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
 
 async function openInspector(readerPage: import("@playwright/test").Page): Promise<void> {
   await readerPage.getByRole("button", { name: "Book details" }).click();
@@ -28,7 +30,7 @@ function selectedFilePath(readerPage: import("@playwright/test").Page): Promise<
 
 test.describe("EPUB Inspector (issue #95)", () => {
   test("ordinary Files and selected-path tooltips have no artificial scrollbar (#181)", async () => {
-    const { context, readerPage } = await launchReader(EPUB, { viewport: { width: 1000, height: 800 } });
+    const { context, readerPage } = await launchReader(TOOLTIP_EPUB, { viewport: { width: 1000, height: 800 } });
     try {
       await readerPage.mouse.move(350, 2);
       await openInspector(readerPage);
