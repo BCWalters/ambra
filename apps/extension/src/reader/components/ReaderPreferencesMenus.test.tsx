@@ -101,6 +101,18 @@ describe("reader preference menu contracts", () => {
     )!;
   }
 
+  it("opens Help with the Settings trigger as the focus-return target", () => {
+    const onOpenHelp = vi.fn();
+    act(() => root.render(<ReaderSettingsMenu {...settings} onOpenHelp={onOpenHelp} />));
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');
+    expect(trigger).not.toBeNull();
+    const item = [...container.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .find(element => element.textContent === "Help & About");
+    expect(item).toBeDefined();
+    act(() => item!.click());
+    expect(onOpenHelp).toHaveBeenCalledWith(trigger);
+  });
+
   it("routes font and page choices independently and reflects controlled values", () => {
     act(() => root.render(<TypographyMenu {...typography} />));
     expect(radio("Book default").getAttribute("aria-checked")).toBe("true");

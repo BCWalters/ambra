@@ -1,4 +1,4 @@
-import { useId, type FC } from "react";
+import { useId, useRef, useState, type FocusEvent, type FC } from "react";
 import {
   Button,
   Menu,
@@ -16,6 +16,7 @@ import type { MenuProps } from "@fluentui/react-components";
 import {
   BookOpenRegular,
   DocumentOnePageColumnsRegular,
+  QuestionCircleRegular,
   LocalLanguageRegular,
   SettingsRegular,
   TextColumnOneRegular,
@@ -33,12 +34,28 @@ import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
 import type { ViewMode } from "../ViewMode.js";
 import { DefaultableSlider } from "./DefaultableSlider.js";
 import type { DefaultableSliderProps } from "./DefaultableSlider.js";
+import { useCommandPresentation } from "../../shortcuts/useCommandPresentation.js";
+import { scrollMenuFocusIntoView } from "./MenuFocusVisibility.js";
+
+// Leave room for fractional-position rounding and visible focus outlines.
+const MENU_POSITIONING = {
+  autoSize: true,
+  overflowBoundaryPadding: 4,
+} satisfies MenuProps["positioning"];
 
 // Allow submenus to overlap their parent rather than leave the viewport at high zoom.
 const SUBMENU_POSITIONING: MenuProps["positioning"] = {
-  autoSize: true,
+  ...MENU_POSITIONING,
   shiftToCoverTarget: true,
 };
+function revealMenuFocus({ currentTarget, target }: FocusEvent<HTMLDivElement>): void {
+  requestAnimationFrame(() => {
+    if (currentTarget.isConnected && currentTarget.contains(target) &&
+      currentTarget.ownerDocument.activeElement === target) {
+      scrollMenuFocusIntoView(currentTarget, target);
+    }
+  });
+}
 
 export interface TypographyMenuActions {
   onSetFontScale: (scale: number) => void;
@@ -63,10 +80,12 @@ export interface ReaderSettingsMenuActions {
   onSetBrightness: (brightness: number) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
   onSetPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
+  onOpenHelp?: (returnFocusTo: HTMLElement | null) => void;
 }
 
 export interface ReaderSettingsMenuProps extends ReaderSettingsMenuActions {
   disabled?: boolean;
+  showReadingModeShortcuts?: boolean;
   isFixedLayout: boolean;
   viewMode: ViewMode;
   brightness: number;
@@ -185,7 +204,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
   const t = useTranslation();
   const scopeId = useId();
   return (
-    <Menu positioning={{ autoSize: true }}>
+    <Menu positioning={MENU_POSITIONING}>
       <MenuTrigger disableButtonEnhancement>
         <Tooltip content={t("toolbar.textOptions")} relationship="label">
           <Button
@@ -196,7 +215,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
           />
         </Tooltip>
       </MenuTrigger>
-      <MenuPopover>
+      <MenuPopover onFocusCapture={revealMenuFocus}>
         <MenuList aria-describedby={scopeId}>
           <MenuGroupHeader id={scopeId}>{t("text.bookScope")}</MenuGroupHeader>
           <Menu
@@ -211,7 +230,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
             <MenuTrigger disableButtonEnhancement>
               <MenuItem icon={<TextFontRegular />}>{t("text.textMenuLabel")}</MenuItem>
             </MenuTrigger>
-            <MenuPopover>
+            <MenuPopover onFocusCapture={revealMenuFocus}>
               <MenuList>
                 <PreferenceSlider
                   label={t("text.size")}
@@ -285,7 +304,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
                 {t("text.pageMenuLabel")}
               </MenuItem>
             </MenuTrigger>
-            <MenuPopover>
+            <MenuPopover onFocusCapture={revealMenuFocus}>
               <MenuList>
                 <PreferenceSlider
                   label={t("text.columnWidth")}
@@ -346,7 +365,7 @@ const LanguageMenu: FC = () => {
             {t("settings.language")}
           </MenuItem>
         </MenuTrigger>
-        <MenuPopover>
+        <MenuPopover onFocusCapture={revealMenuFocus}>
           <MenuList>
             <MenuItemRadio name="locale" value="system">
               {t("settings.languageSystemDefault")}
@@ -366,6 +385,7 @@ const LanguageMenu: FC = () => {
 
 export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   disabled,
+  showReadingModeShortcuts = false,
   isFixedLayout,
   viewMode,
   brightness,
@@ -375,12 +395,19 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   onSetBrightness,
   onSetChromeTheme,
   onSetPageTurnAnimationStyle,
+  onOpenHelp,
 }) => {
   const t = useTranslation();
   const scopeId = useId();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const scrollingShortcut = useCommandPresentation("switchToScrolling");
+  const paginatedShortcut = useCommandPresentation("switchToPaginated");
   return (
     <Menu
-      positioning={{ autoSize: true }}
+      open={open}
+      onOpenChange={(_event, data) => setOpen(data.open)}
+      positioning={MENU_POSITIONING}
       persistOnItemClick
       checkedValues={{
         viewMode: [viewMode],
@@ -398,6 +425,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
       <MenuTrigger disableButtonEnhancement>
         <Tooltip content={t("toolbar.settings")} relationship="label">
           <Button
+            ref={triggerRef}
             appearance="subtle"
             size="small"
             icon={<SettingsRegular />}
@@ -406,7 +434,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
           />
         </Tooltip>
       </MenuTrigger>
-      <MenuPopover>
+      <MenuPopover onFocusCapture={revealMenuFocus}>
         <MenuList aria-describedby={scopeId}>
           <MenuGroupHeader id={scopeId}>{t("settings.globalScope")}</MenuGroupHeader>
           <LanguageMenu />
@@ -415,10 +443,24 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
             <>
               <MenuGroup>
                 <MenuGroupHeader>{t("settings.readingMode")}</MenuGroupHeader>
-                <MenuItemRadio name="viewMode" value="paginated" icon={<BookOpenRegular />}>
+                <MenuItemRadio
+                  name="viewMode"
+                  value="paginated"
+                  aria-label={t("settings.paginated")}
+                  icon={<BookOpenRegular />}
+                  secondaryContent={showReadingModeShortcuts ? paginatedShortcut.shortcutLabel : undefined}
+                  aria-keyshortcuts={showReadingModeShortcuts ? paginatedShortcut.ariaKeyShortcuts : undefined}
+                >
                   {t("settings.paginated")}
                 </MenuItemRadio>
-                <MenuItemRadio name="viewMode" value="scroll" icon={<TextColumnOneRegular />}>
+                <MenuItemRadio
+                  name="viewMode"
+                  value="scroll"
+                  aria-label={t("settings.scroll")}
+                  icon={<TextColumnOneRegular />}
+                  secondaryContent={showReadingModeShortcuts ? scrollingShortcut.shortcutLabel : undefined}
+                  aria-keyshortcuts={showReadingModeShortcuts ? scrollingShortcut.ariaKeyShortcuts : undefined}
+                >
                   {t("settings.scroll")}
                 </MenuItemRadio>
               </MenuGroup>
@@ -471,6 +513,20 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
             defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
             onChange={onSetBrightness}
           />
+          {onOpenHelp && (
+            <>
+              <MenuDivider />
+              <MenuItem
+                icon={<QuestionCircleRegular />}
+                onClick={() => {
+                  setOpen(false);
+                  onOpenHelp(triggerRef.current);
+                }}
+              >
+                {t("settings.helpAbout")}
+              </MenuItem>
+            </>
+          )}
         </MenuList>
       </MenuPopover>
     </Menu>

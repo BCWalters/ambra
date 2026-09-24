@@ -4,6 +4,8 @@ import type { LocalePreference } from "../i18n/Locale.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { DEFAULT_BOOK_READING_SETTINGS, DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import type { BookReadingSettings, GlobalReadingSettings } from "./ReadingSettings.js";
+import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
+import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 
 /** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
  * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
@@ -193,6 +195,7 @@ const CHROME_THEME_PREFERENCE_KEY = "defaultChromeTheme";
 const PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY = "defaultPageTurnAnimationStyle";
 const LOCALE_PREFERENCE_KEY = "localePreference";
 const LIBRARY_SORT_PREFERENCE_KEY = "defaultLibrarySort";
+const SHORTCUT_PREFERENCES_KEY = "readerKeyboardShortcuts";
 const LEGACY_BOOK_SETTING_KEYS = {
   fontScale: FONT_SCALE_PREFERENCE_KEY,
   fontFamily: FONT_FAMILY_PREFERENCE_KEY,
@@ -490,6 +493,16 @@ export class LibraryDatabase {
   public async setLocalePreference(preference: LocalePreference): Promise<void> {
     const record: PreferenceRecord = { key: LOCALE_PREFERENCE_KEY, value: preference };
     await this.put(PREFERENCES_STORE, record);
+  }
+
+  public async getShortcutPreferences(): Promise<ShortcutPreferences | undefined> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, SHORTCUT_PREFERENCES_KEY);
+    return record ? parseShortcutPreferences(record.value) : undefined;
+  }
+
+  public async setShortcutPreferences(preferences: ShortcutPreferences): Promise<void> {
+    const value = parseShortcutPreferences(preferences);
+    await this.put(PREFERENCES_STORE, { key: SHORTCUT_PREFERENCES_KEY, value });
   }
 
   /** How the Library page's own book grid is ordered (see

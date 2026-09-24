@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Spinner, Title2 } from "@fluentui/react-components";
 import { FixedContentHost, ReadingTheme } from "@ambra/engine";
@@ -27,6 +27,11 @@ import { useAutoHideChrome } from "./useAutoHideChrome.js";
 import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import { LocaleProvider, useTranslation } from "../i18n/LocaleContext.js";
 import type { BookDetails, EpubInspectionData, InspectorReaderBridge } from "./ReaderTypes.js";
+import { CHROME_THEMES } from "./chromeTheme.js";
+import { ShortcutPreferencesProvider, useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
+import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
+import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.js";
+import { captureFocusReturn, useHelpDialogs } from "../components/useHelpDialogs.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -43,7 +48,9 @@ import type { BookDetails, EpubInspectionData, InspectorReaderBridge } from "./R
  */
 export const ReaderApp: FC = () => (
   <LocaleProvider>
-    <ReaderAppInner />
+    <ShortcutPreferencesProvider>
+      <ReaderAppInner />
+    </ShortcutPreferencesProvider>
   </LocaleProvider>
 );
 
@@ -98,7 +105,14 @@ const ReaderAppInner: FC = () => {
     goToSearchResult,
     setSearchPanelState,
     dismissError,
+    setShortcutPreferences,
+    setShortcutActions,
+    setShortcutModalOpen,
   } = useReaderController(t);
+  const shortcutSettings = useShortcutPreferences();
+  const help = useHelpDialogs(restoreContentFocus);
+  const searchFocusReturn = useRef<(() => void) | undefined>(undefined);
+  const [searchInputFocusRequest, setSearchInputFocusRequest] = useState(0);
   // Exactly one of these two "left panels" (Contents/Bookmarks & Highlights)
   // can be shown at a time — see `activePanel`'s doc comment (issue #65).
   // Search and Book Details are their own separate, mutually-exclusive
@@ -135,6 +149,29 @@ const ReaderAppInner: FC = () => {
   const isSearchOpen = rightPanel === "search";
   const isDetailsOpen = rightPanel === "details";
   const isSearchPinned = isSearchOpen && isSearchPinnedToggle;
+  const openSearch = useCallback(() => {
+    if (!document.activeElement?.closest("[data-ambra-search-panel]")) {
+      searchFocusReturn.current = captureFocusReturn(restoreContentFocus);
+    }
+    setRightPanel("search");
+    setSearchInputFocusRequest(request => request + 1);
+  }, [restoreContentFocus]);
+  const closeSearch = useCallback(() => {
+    setRightPanel(undefined);
+    (searchFocusReturn.current ?? restoreContentFocus)();
+    searchFocusReturn.current = undefined;
+  }, [restoreContentFocus]);
+
+  useEffect(() => {
+    setShortcutPreferences({
+      ...shortcutSettings.preferences,
+      enabled: shortcutSettings.ready && shortcutSettings.preferences.enabled,
+    }, shortcutSettings.platform);
+  }, [shortcutSettings.preferences, shortcutSettings.platform, shortcutSettings.ready, setShortcutPreferences]);
+
+  useEffect(() => {
+    setShortcutActions({ searchBook: openSearch, showKeyboardShortcuts: help.openShortcuts });
+  }, [openSearch, help.openShortcuts, setShortcutActions]);
 
   // Issue #100: keeps the controller's own view of the Search panel's
   // open/pinned state in sync — it drives whether/how long the live
@@ -168,6 +205,9 @@ const ReaderAppInner: FC = () => {
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
   const [openError, setOpenError] = useState<string | null>(null);
+  useEffect(() => {
+    setShortcutModalOpen(isInspectorOpen || help.view !== undefined || snapshot?.imageViewer !== undefined);
+  }, [isInspectorOpen, help.view, snapshot?.imageViewer, setShortcutModalOpen]);
   // Shared between the toolbar and the progress scrubber (see
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
@@ -176,7 +216,7 @@ const ReaderAppInner: FC = () => {
   // reasons to keep the chrome from auto-hiding out from under an open
   // panel.
   const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
-    activePanel !== undefined || rightPanel !== undefined || snapshot?.narrationNoticeVisible === true,
+    activePanel !== undefined || rightPanel !== undefined || help.view !== undefined || snapshot?.narrationNoticeVisible === true,
     snapshot?.contentPointerActivityId,
   );
 
@@ -556,9 +596,10 @@ const ReaderAppInner: FC = () => {
               isSearchOpen={isSearchOpen}
               onToggleSearch={() => {
                 if (isSearchOpen) {
-                  restoreContentFocus();
+                  closeSearch();
+                } else {
+                  openSearch();
                 }
-                toggleRightPanel("search");
               }}
               isAnnotationsOpen={isAnnotationsOpen}
               onToggleAnnotations={() => {
@@ -585,8 +626,26 @@ const ReaderAppInner: FC = () => {
               onSetBrightness={setBrightness}
               onSetChromeTheme={setChromeTheme}
               onSetPageTurnAnimationStyle={setPageTurnAnimationStyle}
+              onOpenHelp={help.openHelp}
               visible={chromeVisible}
               handlers={chromeHandlers}
+            />
+
+            <HelpAboutFlyout
+              open={help.view === "about"}
+              focusShortcutsOnOpen={help.focusShortcutsOnOpen}
+              onRequestClose={help.close}
+              onAfterClose={help.afterClose}
+              backgroundSolid={CHROME_THEMES[snapshot.chromeTheme].backgroundSolid}
+              accentForeground={CHROME_THEMES[snapshot.chromeTheme].accentForeground}
+              onOpenKeyboardShortcuts={help.openShortcutsFromHelp}
+              getReaderDiagnostics={getDiagnosticsText}
+            />
+            <KeyboardShortcutsDialog
+              open={help.view === "shortcuts"}
+              onRequestClose={help.close}
+              onAfterClose={help.afterClose}
+              pageProgressionDirection={snapshot.pageProgressionDirection}
             />
 
             <BookDetailsPanel
@@ -699,10 +758,8 @@ const ReaderAppInner: FC = () => {
             open={isSearchOpen}
             pinned={isSearchPinned}
             onTogglePin={() => setIsSearchPinnedToggle((pinned) => !pinned)}
-            onRequestClose={() => {
-              setRightPanel(undefined);
-              restoreContentFocus();
-            }}
+            onRequestClose={closeSearch}
+            inputFocusRequest={searchInputFocusRequest}
             scrubberVisible={scrubberVisible}
           />
         </div>

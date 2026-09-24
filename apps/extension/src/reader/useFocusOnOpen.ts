@@ -27,7 +27,7 @@ const FALLBACK_FOCUS_DELAY_MS = 350;
  * focus succeeds or moves elsewhere: a late retry can otherwise steal
  * focus from a newly-opened modal and deactivate its accessibility scope.
  */
-export function useFocusOnOpen(ref: RefObject<HTMLElement | null>, open: boolean): void {
+export function useFocusOnOpen(ref: RefObject<HTMLElement | null>, open: boolean, requestId = 0): void {
   useEffect(() => {
     if (!open) {
       return;
@@ -59,5 +59,5 @@ export function useFocusOnOpen(ref: RefObject<HTMLElement | null>, open: boolean
       cancelRetries();
     }, FALLBACK_FOCUS_DELAY_MS);
     return cancelRetries;
-  }, [open, ref]);
+  }, [open, ref, requestId]);
 }

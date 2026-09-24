@@ -4,6 +4,7 @@ import { FixedSpreadHost, NavPoint } from "@ambra/engine";
 import type { ContentDocumentView } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
 import { getTranslate } from "../i18n/translate.js";
+import { DEFAULT_SHORTCUT_PREFERENCES } from "../shortcuts/ReaderCommands.js";
 
 describe("ReaderController content boundaries", () => {
   const documents: Document[] = [];
@@ -25,6 +26,8 @@ describe("ReaderController content boundaries", () => {
       host: fixed ? Object.create(FixedSpreadHost.prototype) : {},
       operations: { disposed: false },
       translate: getTranslate("en"),
+      shortcutPreferences: DEFAULT_SHORTCUT_PREFERENCES,
+      shortcutPlatform: "other",
       pkg: { spine: [0, 1, 2, 3].map(index => ({ manifestItem: { path: `${index}.xhtml` } })) },
       navigation: { toc: { items: [new NavPoint("Third", "3.xhtml", undefined, [])] } },
       contentDocumentViews: () => views,
@@ -91,6 +94,17 @@ describe("ReaderController content boundaries", () => {
     expect(nav.lang).toBe("fr");
     expect(nav.textContent).toBe("Chapitre suivant : Third");
     expect(views[1]!.document.documentElement.lang).toBe("en");
+    controller.boundaryCleanup();
+  });
+
+  it("keeps existing boundary shortcut hints synchronized with enabled settings", () => {
+    const { controller, buttons, views } = setUp();
+    expect(buttons[0]!.getAttribute("aria-keyshortcuts")).toBe("Alt+PageDown");
+    controller.setShortcutPreferences({ enabled: false }, "other");
+    expect(buttons[0]!.hasAttribute("aria-keyshortcuts")).toBe(false);
+    controller.setShortcutPreferences({ enabled: true }, "mac");
+    expect(buttons[0]!.getAttribute("aria-keyshortcuts")).toBe("Alt+PageDown");
+    expect(views[0]!.document.body.lastElementChild!.shadowRoot!.querySelector("button")).toBe(buttons[0]);
     controller.boundaryCleanup();
   });
 });

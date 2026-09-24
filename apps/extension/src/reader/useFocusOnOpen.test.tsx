@@ -4,9 +4,9 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useFocusOnOpen } from "./useFocusOnOpen.js";
 
-function Panel({ open }: { open: boolean }) {
+function Panel({ open, requestId = 0 }: { open: boolean; requestId?: number }) {
   const ref = useRef<HTMLElement | null>(null);
-  useFocusOnOpen(ref, open);
+  useFocusOnOpen(ref, open, requestId);
   return (
     <aside ref={ref} tabIndex={-1}>
       <button>Open modal</button>
@@ -91,5 +91,15 @@ describe("useFocusOnOpen", () => {
     panel.dispatchEvent(new Event("transitionend"));
     vi.advanceTimersByTime(400);
     expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a new focus request while the panel is already open", () => {
+    const panel = open();
+    outside.focus();
+    act(() => root.render(<Panel open requestId={1} />));
+    expect(document.activeElement).toBe(panel);
+    outside.focus();
+    vi.advanceTimersByTime(400);
+    expect(document.activeElement).toBe(outside);
   });
 });

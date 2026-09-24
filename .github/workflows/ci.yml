@@ -57,6 +57,8 @@ jobs:
           native-reading-resume.spec.ts
           shell-accessibility-audit.spec.ts
           shell-reflow-accessibility.spec.ts
+          reader-shortcuts-help.spec.ts
+          keyboard-ownership.spec.ts
           --workers=1
       - name: Keep verified package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
