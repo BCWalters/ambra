@@ -400,7 +400,10 @@ export function useLibrary(): UseLibraryResult {
     canImport,
     importActivities,
     dismissCompletedImports,
-    error: typeof error === "string" || error === undefined ? error : t(error.key, error.params),
+    error: typeof error === "string" || error === undefined ? error : t(error.key, {
+      importLabel: t(books.length ? "library.importEpub" : "library.chooseEpubFiles"),
+      ...error.params,
+    }),
     dismissError,
     importFiles,
     removeBook,

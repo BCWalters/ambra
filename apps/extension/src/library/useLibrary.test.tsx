@@ -91,23 +91,24 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.error).toBeUndefined();
   });
 
-  it("disables the toolbar import and file input until initialization finishes", async () => {
+  it("hides import choices and disables the file input until initialization finishes", async () => {
     const opening = deferred<LibraryDatabase>();
     const preference = deferred<undefined>();
     vi.mocked(LibraryDatabase.open).mockReturnValue(opening.promise);
     db.methods.getDefaultLibrarySort.mockReturnValue(preference.promise);
     await act(async () => root.render(<LibraryApp />));
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "Import EPUB")!;
+    const importButton = () => [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent === "Import EPUB");
     expect(input.disabled).toBe(true);
-    expect(button.disabled).toBe(true);
+    expect(importButton()).toBeUndefined();
+    expect(container.textContent).not.toContain("What will you read first?");
     await act(async () => { opening.resolve(db.value); });
     expect(input.disabled).toBe(true);
-    expect(button.disabled).toBe(true);
+    expect(importButton()).toBeUndefined();
     await act(async () => { preference.resolve(undefined); });
     expect(input.disabled).toBe(false);
-    expect(button.disabled).toBe(false);
+    expect(importButton()?.disabled).toBe(false);
   });
 
   it("preserves initialization failure details and keeps every import entry disabled until remount recovery", async () => {
@@ -116,8 +117,8 @@ describe("useLibrary ownership and failures", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Close other Ambra tabs");
     expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
     const buttons = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .filter((button) => button.textContent?.startsWith("Import"));
-    expect(buttons).toHaveLength(2);
+      .filter((button) => button.textContent?.includes("Choose EPUB files..."));
+    expect(buttons).toHaveLength(1);
     expect(buttons.every((button) => button.disabled)).toBe(true);
     act(() => root.unmount());
     root = createRoot(container);
@@ -320,19 +321,30 @@ describe("useLibrary ownership and failures", () => {
     setDirectImportUrl();
     await act(async () => root.render(<LibraryApp />));
     const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((entry) => entry.textContent === "Import EPUB")!;
+      .find((entry) => entry.textContent?.includes("Choose EPUB files..."))!;
     button.focus();
     const status = container.querySelector('[role="status"]')!;
     expect(status.textContent).toContain("Downloading book.epub");
     expect(status.textContent).toContain("Keep your library open");
     expect(status.getAttribute("aria-live")).toBe("polite");
     expect(status.hasAttribute("aria-busy")).toBe(false);
-    expect(container.textContent).not.toContain("Your library is empty");
+    expect(container.textContent).toContain("What will you read first?");
     expect(button.disabled).toBe(false);
     await act(async () => response.resolve(new Response("epub")));
     expect(status.textContent).toContain("Added book.epub to your library");
     expect(status.textContent).not.toContain("Keep your library open");
     expect(document.activeElement).toBe(button);
+  });
+
+  it("names the available first-run import action in download errors", async () => {
+    db.methods.listBooks.mockResolvedValue([]);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    setDirectImportUrl();
+    await render();
+    expect(latest.error).toContain("Choose EPUB files...");
+    expect(latest.error).not.toContain("Import EPUB");
+    expect(latest.importActivities).toEqual([]);
+    expect(latest.canImport).toBe(true);
   });
 
   it.each(["network", "http", "body", "parse", "quota"])(

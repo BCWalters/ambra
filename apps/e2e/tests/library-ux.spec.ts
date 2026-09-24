@@ -66,15 +66,16 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
   test("the remove (trash) button removes a book from the grid", async () => {
     const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
     try {
-      await expect(libraryPage.getByText("Alice's Adventures", { exact: false })).toBeVisible();
+      const cover = libraryPage.getByRole("button", { name: /^Open Alice's Adventures in Wonderland/ });
+      await expect(cover).toBeVisible();
       // The trash button is only interactive while its card is
       // hovered/focused (see `BookCard`'s `isActive` — `pointer-events:
       // none` otherwise), matching real usage.
-      await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
+      await cover.hover();
       await libraryPage.getByRole("button", { name: /^Remove .* from library$/ }).click();
       await libraryPage.waitForTimeout(500);
-      await expect(libraryPage.getByText("Alice's Adventures", { exact: false })).toHaveCount(0);
-      await expect(libraryPage.getByText("Your library is empty", { exact: false })).toBeVisible();
+      await expect(cover).toHaveCount(0);
+      await expect(libraryPage.getByText("What will you read first?", { exact: false })).toBeVisible();
     } finally {
       await context.close();
     }
@@ -88,7 +89,7 @@ test.describe("Library UX: book details flyout", () => {
   test("opens from the card's info button, shows metadata, and closes via Escape", async () => {
     const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
     try {
-      await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
+      await libraryPage.getByRole("button", { name: /^Open Alice's Adventures in Wonderland/ }).hover();
       const detailsButton = libraryPage.getByRole("button", { name: /details$/ });
       await detailsButton.focus();
       await libraryPage.keyboard.press("Enter");

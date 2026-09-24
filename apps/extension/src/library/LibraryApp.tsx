@@ -313,6 +313,7 @@ export const LibraryApp: FC = () => {
     openInspectionSession,
   } = useLibrary();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const toolbarImportRef = useRef<HTMLButtonElement | null>(null);
   const palette = CHROME_THEMES[chromeTheme];
   const toolbarStyles = useChromeToolbarStyles();
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
@@ -370,7 +371,9 @@ export const LibraryApp: FC = () => {
           Ambra
         </Title2>
         <div style={{ flex: 1 }} />
+        {books.length > 0 && <>
         <Button
+          ref={toolbarImportRef}
           appearance="primary"
           size="small"
           icon={<DocumentAddRegular />}
@@ -407,6 +410,7 @@ export const LibraryApp: FC = () => {
         </Menu>
 
         <span role="separator" aria-orientation="vertical" style={{ height: 20, borderLeft: `1px solid ${CHROME_BORDER}`, margin: "0 4px" }} />
+        </>}
         <ReaderSettingsMenu
           {...settings}
           disabled={isLoading || !canImport}
@@ -452,8 +456,8 @@ export const LibraryApp: FC = () => {
         {isLoading ? (
           <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
-          importActivities.some(({ phase }) => phase !== "complete") ? null :
-            <LibraryEmptyState accent={palette.accentForeground} canImport={canImport} onImport={() => fileInputRef.current?.click()} />
+          <LibraryEmptyState accent={palette.accentForeground} canImport={canImport}
+            focusFallbackRef={toolbarImportRef} onImport={() => fileInputRef.current?.click()} />
         ) : (
           <>
             <div style={{ marginBottom: 16 }}>

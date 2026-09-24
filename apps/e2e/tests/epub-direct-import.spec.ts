@@ -133,7 +133,7 @@ for (const outcome of ["success", "http-error"] as const) {
       await expect.poll(server.importRequests).toBe(1);
       const nativeRecords = () => worker.evaluate((url) => chrome.downloads.search({ url }), server.url);
       const status = library.getByRole("status");
-      const importButton = library.getByRole("button", { name: "Import EPUB", exact: true });
+      const importButton = library.getByRole("button", { name: "Bring a book Choose EPUB files...", exact: true });
       const openBook = library.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true });
       await expect(status).toContainText("Downloading test-book.epub");
       await expect(status).toContainText("Keep your library open");
@@ -160,7 +160,7 @@ for (const outcome of ["success", "http-error"] as const) {
       } else {
         server.rejectImport();
         await expect(library.getByRole("alert")).toContainText("403");
-        await expect(library.getByRole("alert")).toContainText("Import EPUB");
+        await expect(library.getByRole("alert")).toContainText("Choose EPUB files...");
         await expect(status).toBeEmpty();
         await expect(openBook).toHaveCount(0);
         expect((await nativeRecords())[0]?.state).toBe("in_progress");
@@ -170,7 +170,9 @@ for (const outcome of ["success", "http-error"] as const) {
       }
       await expect(status).not.toContainText("Keep your library open");
       await expect(status.locator(".fui-Spinner")).toHaveCount(0);
-      await expect(importButton).toBeFocused();
+      await expect(outcome === "success"
+        ? library.getByRole("button", { name: "Import EPUB", exact: true })
+        : importButton).toBeFocused();
       if (outcome === "success") {
         const [reader] = await Promise.all([
           context.waitForEvent("page"),
@@ -278,7 +280,7 @@ for (const scenario of [
             expect((await nativeRecords())[0]?.state).toBe("complete");
           }
         } else {
-          await expect(library.getByRole("alert")).toContainText("Import EPUB");
+          await expect(library.getByRole("alert")).toContainText("Choose EPUB files...");
           await expect(library.getByRole("alert")).not.toContainText("Failed to fetch");
           if (scenario === "http") await expect(library.getByRole("alert")).toContainText("403");
           expect((await nativeRecords())[0]?.state).toBe("in_progress");
