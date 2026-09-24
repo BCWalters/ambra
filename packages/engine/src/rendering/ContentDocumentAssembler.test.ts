@@ -99,6 +99,7 @@ describe("ContentDocumentAssembler", () => {
     const assembled = ContentDocumentAssembler.assemble(doc, new Map(), { applyReadingTheme: false });
 
     expect(assembled).not.toContain("--ambra-font-scale");
+    expect(assembled).not.toContain("data-ambra-page-theme");
     // The reset itself is unaffected by the option.
     expect(assembled).toContain("box-sizing: border-box");
   });

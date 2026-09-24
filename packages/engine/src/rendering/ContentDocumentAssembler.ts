@@ -111,7 +111,8 @@ function injectCssReset(doc: Document): void {
  * reset — later in source order, so it can layer typography on top of the
  * reset's box-model rules for the same selectors (e.g. both declare rules
  * for `html, body`) — but still before anything from the book's own
- * `<head>`, so the book's own CSS keeps final say. */
+ * `<head>`, so publisher typography keeps final say. Explicit page-color
+ * themes use narrowly scoped overrides in `ReadingTheme.CSS`. */
 function injectReadingTheme(doc: Document): void {
   const head = doc.getElementsByTagName("head")[0];
   if (!head) {

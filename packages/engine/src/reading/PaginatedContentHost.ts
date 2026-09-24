@@ -222,6 +222,7 @@ export class PaginatedContentHost {
     }
 
     this.sandboxedHost.element.style.width = `${width}px`;
+    this.sandboxedHost.element.style.height = `${height}px`;
     // Reset any transform left over from the previously-displayed page —
     // measureChunks/getClientRects must see the content in its natural,
     // untranslated layout position to measure correctly.

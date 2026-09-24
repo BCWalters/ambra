@@ -12,9 +12,9 @@
  * Injected as a second `<style>` element immediately after the CSS reset
  * (same cascade position/reasoning: after the CSP `<meta>`, before the
  * book's own `<head>` content), so a book's own typography choices still
- * win the cascade wherever it makes deliberate ones — this is a set of
- * good defaults to read *unstyled* reflowable content beautifully, not a
- * forced override.
+ * win the cascade wherever it makes deliberate ones. Selected page
+ * colors are the exception: they override the document canvas and
+ * base text/link colors, not the colors of every element or illustration.
  *
  * Font size, font family, and page color theme are all expressed as CSS
  * custom properties rather than fixed values, so reader-controlled
@@ -115,6 +115,7 @@ export class ReadingTheme {
   public static readonly PAGE_BACKGROUND_PROPERTY = "--ambra-page-bg";
   public static readonly PAGE_FOREGROUND_PROPERTY = "--ambra-page-fg";
   public static readonly LINK_COLOR_PROPERTY = "--ambra-link-color";
+  public static readonly PAGE_THEME_ATTRIBUTE = "data-ambra-page-theme";
   /** The vertical budget (in CSS px) available for one paginated page's
    * content — see `EPUB_CSS_RESET`'s `img, svg` rule, which caps images
    * to this height (falling back to `none` when unset, e.g. in scroll or
@@ -400,6 +401,7 @@ export class ReadingTheme {
     style.setProperty(ReadingTheme.PAGE_BACKGROUND_PROPERTY, colors.background);
     style.setProperty(ReadingTheme.PAGE_FOREGROUND_PROPERTY, colors.foreground);
     style.setProperty(ReadingTheme.LINK_COLOR_PROPERTY, colors.linkColor);
+    doc.documentElement.setAttribute(ReadingTheme.PAGE_THEME_ATTRIBUTE, theme);
   }
 
   /** Clamps a candidate brightness value to `[MIN_BRIGHTNESS,
@@ -449,7 +451,7 @@ export class ReadingTheme {
    * Most of this is easily overridden by a book's own CSS (later in
    * source order), so a book that supplies deliberate typography of its
    * own is respected. The content measure (`max-width`/`margin`/
-   * `padding` on `body`) is the one exception, forced with `!important`:
+   * `padding` on `body`) is forced with `!important`:
    * it's the page's own horizontal envelope, not book typography, and
    * countless real EPUBs ship a generic reset (Eric Meyer's classic
    * `html, body, div, span, ... { margin: 0; padding: 0 }`, or similar,
@@ -477,6 +479,16 @@ html {
 html, body {
   background: var(${ReadingTheme.PAGE_BACKGROUND_PROPERTY});
   color: var(${ReadingTheme.PAGE_FOREGROUND_PROPERTY});
+}
+
+html[${ReadingTheme.PAGE_THEME_ATTRIBUTE}],
+html[${ReadingTheme.PAGE_THEME_ATTRIBUTE}] body {
+  background-color: var(${ReadingTheme.PAGE_BACKGROUND_PROPERTY}) !important;
+  color: var(${ReadingTheme.PAGE_FOREGROUND_PROPERTY}) !important;
+}
+
+html[${ReadingTheme.PAGE_THEME_ATTRIBUTE}] body a:any-link:not(svg *) {
+  color: var(${ReadingTheme.LINK_COLOR_PROPERTY}) !important;
 }
 
 body {

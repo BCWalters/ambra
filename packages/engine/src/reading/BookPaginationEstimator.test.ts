@@ -16,6 +16,7 @@ describe("book-wide CFI page index", () => {
   let container: HTMLDivElement;
   let locators: LocatorResolver;
   let resources: ResourceUrlResolver;
+  let loader: ContentLoader;
   let offsets: number[];
   let nodes: Map<number, Text>;
 
@@ -23,7 +24,7 @@ describe("book-wide CFI page index", () => {
     const bytes = await readFile(fileURLToPath(
       new NodeURL("../../test/fixtures/content-loader.epub", import.meta.url),
     ));
-    const loader = await ContentLoader.create(await EpubContainer.open(new Uint8Array(bytes)));
+    loader = await ContentLoader.create(await EpubContainer.open(new Uint8Array(bytes)));
     resources = new ResourceUrlResolver(loader);
     locators = new LocatorResolver(loader.packageDocument, loader);
     container = document.createElement("div");
@@ -103,6 +104,20 @@ describe("book-wide CFI page index", () => {
     expect(estimator.pageIndexForCfi(0, saved)).toBeUndefined();
     await run();
     expect(estimator.pageIndexForCfi(0, saved)).toBe(1);
+  });
+
+  it("maps a fixed-layout spine item to its sole page without measuring a DOM", async () => {
+    estimator.dispose();
+    estimator = new BookPaginationEstimator(
+      loader, resources, loader.packageDocument.spine, "pre-paginated",
+      container, undefined, locators,
+    );
+    const content = document.implementation.createHTMLDocument();
+    const saved = locators.generate(0, content.documentElement).cfi;
+    expect(estimator.pageIndexForCfi(0, saved)).toBeUndefined();
+    await run();
+    expect(estimator.pageIndexForCfi(0, saved)).toBe(0);
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
   });
 
   it("does not publish page boundaries from a superseded measurement", async () => {

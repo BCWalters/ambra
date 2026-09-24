@@ -182,6 +182,45 @@ export class SpreadPaginatedHost {
     this.primary.goToPosition(node, offset, false);
     this.goToPageIndex(this.primary.currentPageIndex);
   }
+  /** Reuses the current documents when reflow still leaves an adjacent pair.
+   * A changed chapter pairing requires the controller's normal owned load.
+   * Roll back before returning false so that load failures retain a valid host. */
+  public relayoutForResize(width: number, height: number, anchor?: DomBreakPoint): boolean {
+    const previous = { width: this.width, height: this.height, spread: this.spread };
+    const firstDocument = this.first.element.contentDocument;
+    const secondDocument = this.second.element.contentDocument;
+    this.width = width;
+    this.height = height;
+    this.containerEl.style.height = `${height}px`;
+    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(width);
+    this.first.relayout(columnWidth, height,
+      anchor?.node.ownerDocument === firstDocument ? anchor : undefined, false);
+    if (this.spread.second) {
+      this.second.relayout(columnWidth, height,
+        anchor?.node.ownerDocument === secondDocument ? anchor : undefined, false);
+    }
+    const anchorInSecond = !!anchor && anchor.node.ownerDocument === secondDocument;
+    const firstIndex = !this.isShowingMergedTail && anchorInSecond
+      ? this.second.currentPageIndex - 1 : this.first.currentPageIndex;
+    const adjacent = this.isShowingMergedTail
+      ? this.first.currentPageIndex === this.first.pageCount - 1 && this.second.currentPageIndex === 0
+      : this.spread.second
+        ? firstIndex >= 0 && firstIndex + 1 < this.first.pageCount
+        : firstIndex === this.first.pageCount - 1;
+    if (!adjacent) {
+      this.relayout(previous.width, previous.height);
+      this.first.goToPageIndex(previous.spread.first.pageIndex);
+      if (previous.spread.second) this.second.goToPageIndex(previous.spread.second.pageIndex);
+      this.spread = previous.spread;
+      return false;
+    }
+    if (!this.isShowingMergedTail && this.spread.second) {
+      this.first.goToPageIndex(firstIndex);
+      this.second.goToPageIndex(firstIndex + 1);
+    }
+    this.capturePositions();
+    return true;
+  }
   public goToPageIndex(index: number): void {
     if (this.isShowingMergedTail) return;
     this.first.goToPageIndex(index);

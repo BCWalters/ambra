@@ -253,6 +253,10 @@ export class BookPaginationEstimator {
 
   /** Resolves a saved position without reloading a chapter or retaining its DOM. */
   public pageIndexForCfi(spineIndex: number, cfi: string): number | undefined {
+    if (this.pageCounts[spineIndex] === 1 &&
+      this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
+      return 0;
+    }
     const starts = this.pageStarts[spineIndex];
     if (!starts?.length) return undefined;
     let low = 0;

@@ -65,6 +65,9 @@ jobs:
           page-turn-margin.spec.ts
           page-turn-viewport.spec.ts
           scrubber-bookmarks.spec.ts
+          page-theme.spec.ts
+          spread-gutter-navigation.spec.ts
+          spread-resize-stability.spec.ts
           toolbar-startup.spec.ts
           reader-diagnostics.spec.ts
           keyboard-ownership.spec.ts

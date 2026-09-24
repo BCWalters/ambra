@@ -20,6 +20,8 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 **Book details** gives the description its own section, with rights and accessibility information under **Publication details**. **Show more** reveals a longer, still bounded excerpt; an ellipsis means text was omitted. Descriptions retain at most two paragraphs (700 characters initially, 1,400 expanded); rights statements are capped at 140 characters initially and 600 expanded. These are excerpts, not interpretations of legal terms. EPUB Inspector retains the original metadata.
 
+For reflowable books, **White**, **Sepia**, and **Dark** control the page background and base text/link colors, even when a publisher specifies its own page colors. Deliberately colored passages and illustrations retain their own styling. The **Book default** font choice still preserves publisher typography, and fixed-layout artwork is never recolored.
+
 **Bookmarks on the progress bar** appear as small blue ribbons once book-wide pagination is ready. They update when text size or window size changes, and mirror for right-to-left books. The bar keeps its usual click, drag, and keyboard controls; use **Bookmarks and highlights** to browse saved bookmarks by name.
 
 ## Take your annotations with you

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Page } from "../layout/Page.js";
+import { PaginationEngine } from "../layout/PaginationEngine.js";
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
 
 function fixture() {
@@ -22,6 +23,23 @@ function fixture() {
 }
 
 describe("paginated viewport and animation paint clipping", () => {
+  it("sets the new iframe height before measuring viewport-relative publication styles", () => {
+    const { host } = fixture();
+    const pages = Reflect.get(host, "pages") as Page[];
+    const paginate = vi.spyOn(PaginationEngine, "paginate").mockImplementation(() => {
+      expect(host.element.style.width).toBe("580px");
+      expect(host.element.style.height).toBe("1000px");
+      return pages;
+    });
+    try {
+      host.relayout(580, 1000);
+      expect(paginate).toHaveBeenCalledOnce();
+    } finally {
+      paginate.mockRestore();
+      host.dispose();
+    }
+  });
+
   it("keeps the pagination viewport while clipping short and later pages exactly", () => {
     const { host, body } = fixture();
     expect(host.element.style.height).toBe("900px");

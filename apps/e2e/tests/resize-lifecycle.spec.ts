@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
 
 const book = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -41,6 +42,9 @@ async function verifyNavigation(page: Page, width: number): Promise<void> {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await expect.poll(() => columns(page)).toEqual([width, width]);
+  // Pagination probes can overlap the viewport inside a zero-size clipped
+  // container. Capture only after they and any outgoing spread are released.
+  await expect.poll(() => page.locator("iframe").count()).toBe(2);
   const before = await position(page);
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => position(page)).not.toEqual(before);
@@ -60,6 +64,10 @@ for (const failLoad of [false, true]) {
     });
     try {
       await expect.poll(() => columns(page)).toEqual([680, 680]);
+      // Same-mode spread resizes reuse their documents. Cross the threshold
+      // so this race still exercises a genuine second-document load.
+      await page.setViewportSize({ width: 800, height: 900 });
+      await expect.poll(() => columns(page)).toEqual([800]);
       // Hold precisely the new spread's second document load, not a guessed
       // timeout or the unrelated background pagination probe.
       await page.evaluate(() => {
@@ -122,13 +130,12 @@ for (const style of ["slide", "rotate", "scroll"] as const) {
           .click();
         await page.keyboard.press("Escape");
       }
+      await exposeReaderController(page);
+      // Closing Settings returns focus to its button; arrow keys there must
+      // not navigate the book. Enter reading before starting the actual turn.
+      await page.evaluate(() => Reflect.get(window, "__readerController").restoreContentFocus());
       await page.keyboard.press("ArrowRight");
-      await page.waitForFunction(() =>
-        Array.from(document.querySelectorAll<HTMLElement>("iframe, div")).some(
-          (element) =>
-            element.style.transition.includes("transform") && element.style.transform !== "",
-        ),
-      );
+      await page.waitForFunction(() => Reflect.get(window, "__readerController").isAnimatingPageTurn);
       await page.setViewportSize({ width: 1300, height: 900 });
       await verifyNavigation(page, 630);
       await expect.poll(() => page.locator("iframe").count()).toBe(2);
