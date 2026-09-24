@@ -21,6 +21,7 @@ describe("Book Details publication metadata", () => {
   let root: Root;
   let container: HTMLDivElement;
   let details: BookDetails;
+  const onOpenHelp = vi.fn();
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const animate = Element.prototype.animate;
@@ -30,6 +31,7 @@ describe("Book Details publication metadata", () => {
       return animation;
     });
     language.locale = "en";
+    onOpenHelp.mockClear();
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -58,10 +60,11 @@ describe("Book Details publication metadata", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
-  async function render() {
+  async function render({ loading = false, fixedLayout = false }: { loading?: boolean; fixedLayout?: boolean } = {}) {
     await act(async () => root.render(
-      <BookDetailsPanel open details={details} onRequestClose={vi.fn()} onOpenInspector={vi.fn()}
-        scrubberVisible={false} isPaginated isFixedLayout={false} bookPageCount={10} onSeekToFraction={vi.fn()} />,
+      <BookDetailsPanel open details={loading ? undefined : details} onRequestClose={vi.fn()} onOpenInspector={vi.fn()}
+        onOpenHelp={onOpenHelp}
+        scrubberVisible={false} isPaginated isFixedLayout={fixedLayout} bookPageCount={10} onSeekToFraction={vi.fn()} />,
     ));
   }
 
@@ -75,6 +78,18 @@ describe("Book Details publication metadata", () => {
     await act(async () => disclosure.click());
     expect(container.textContent).toContain(t("bookDetails.fileSize"));
     expect(container.textContent).toContain(formatLibraryBytes(1536, locale));
+    const help = [...container.querySelectorAll("button")].find(button => button.textContent === t("about.title"))!;
+    expect(help).toBeDefined();
+    await act(async () => help.click());
+    expect(onOpenHelp).toHaveBeenCalledWith(help);
+  });
+
+  it.each([{ loading: true }, { fixedLayout: true }])("keeps Help available with %j", async options => {
+    await render(options);
+    const help = [...container.querySelectorAll("button")].find(button => button.textContent === "Help & About")!;
+    expect(help).toBeDefined();
+    await act(async () => help.click());
+    expect(onOpenHelp).toHaveBeenCalledWith(help);
   });
 
   it("does not invent a file size when none is available", async () => {

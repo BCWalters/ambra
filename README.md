@@ -133,7 +133,8 @@ See the [user guide](docs/user-guide/README.md) for a feature overview and
 [EPUB Inspector](docs/user-guide/epub-inspector.md) for integrated publication
 inspection and debugging.
 
-Open **Settings → Help & About** while reading, or **Help & About** in the
+Open **Settings → Help & About** or the **Help & About** footer in **Book details**
+while reading, or **Help & About** in the
 Library. It includes the user guide, keyboard shortcuts, diagnostics, and feedback
 by email or GitHub. No GitHub account is needed to send email.
 

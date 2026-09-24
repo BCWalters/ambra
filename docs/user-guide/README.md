@@ -26,7 +26,7 @@ Use the same book or edition for best results. Ambra skips unsupported locations
 
 ## Keyboard shortcuts and help, close at hand
 
-Open **Settings → Help & About** in the reader, or **Help & About** in the library, for help and shortcut settings. **Mod+/** opens the shortcut popup; **Mod** means Command on Mac and Control elsewhere.
+Open **Settings → Help & About** or the **Help & About** footer in **Book details** without leaving your book. The library also has **Help & About**. **Mod+/** opens the shortcut popup; **Mod** means Command on Mac and Control elsewhere.
 
 Some useful defaults:
 

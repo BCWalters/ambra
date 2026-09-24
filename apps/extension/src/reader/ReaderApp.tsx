@@ -656,6 +656,7 @@ const ReaderAppInner: FC = () => {
               }}
               details={bookDetails}
               onOpenInspector={openInspector}
+              onOpenHelp={help.openHelp}
               scrubberVisible={scrubberVisible}
               isPaginated={snapshot.viewMode === "paginated"}
               isFixedLayout={snapshot.isFixedLayout}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, FC } from "react";
 import { Body1, Body1Strong, Button, Caption1, Spinner, Tooltip, useRestoreFocusTarget } from "@fluentui/react-components";
-import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, TextPercentRegular } from "@fluentui/react-icons";
+import { CodeCircleRegular, DismissRegular, DocumentPageNumberRegular, QuestionCircleRegular, TextPercentRegular } from "@fluentui/react-icons";
 import type { BookDetails } from "../ReaderTypes.js";
 import { CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -30,6 +30,7 @@ export interface BookDetailsPanelProps {
    * tool (file structure + parsed metadata) reachable only from here,
    * so an ordinary reader never stumbles into it. */
   onOpenInspector: () => void;
+  onOpenHelp: (returnFocusTo: HTMLElement) => void;
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
    * condition) — this panel needs to stop *above* it rather than
@@ -113,6 +114,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   onRequestClose,
   details,
   onOpenInspector,
+  onOpenHelp,
   scrubberVisible,
   isPaginated,
   isFixedLayout,
@@ -401,6 +403,17 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
               </div>
             </>
           )}
+        </div>
+        <div style={{ flexShrink: 0, padding: "4px 8px", borderTop: `1px solid ${CHROME_BORDER}` }}>
+          <Button
+            appearance="subtle"
+            size="small"
+            icon={<QuestionCircleRegular />}
+            onClick={(event) => onOpenHelp(event.currentTarget)}
+            style={{ width: "100%", minHeight: 32 }}
+          >
+            {t("about.title")}
+          </Button>
         </div>
       </aside>
 
