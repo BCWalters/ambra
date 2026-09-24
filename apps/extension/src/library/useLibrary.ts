@@ -103,9 +103,9 @@ export function useLibrary(): UseLibraryResult {
     return activities;
   }, []);
 
-  const updateImport = useCallback((id: number, phase?: LibraryImportActivity["phase"]) => {
+  const updateImport = useCallback((id: number, phase?: LibraryImportActivity["phase"], bookId?: string) => {
     setImportActivities((current) => phase
-      ? current.map((entry) => entry.id === id ? { ...entry, phase } : entry)
+      ? current.map((entry) => entry.id === id ? { ...entry, phase, ...(bookId ? { bookId } : {}) } : entry)
       : current.filter((entry) => entry.id !== id));
   }, []);
 
@@ -198,17 +198,17 @@ export function useLibrary(): UseLibraryResult {
       if (!files.length) return;
       setError(undefined);
       const activities = startImports(files, "queued");
-      const saved: number[] = [];
+      const saved: { activityId: number; bookId: string }[] = [];
       for (const [index, file] of files.entries()) {
         if (!ownsDatabase(db)) return;
         const activity = activities[index]!;
         updateImport(activity.id, "processing");
         try {
-          await importBook(db, file, (phase) => {
+          const bookId = await importBook(db, file, (phase) => {
             if (ownsDatabase(db)) updateImport(activity.id, phase);
           });
           if (!ownsDatabase(db)) return;
-          saved.push(activity.id);
+          saved.push({ activityId: activity.id, bookId });
         } catch (err) {
           if (ownsDatabase(db)) {
             updateImport(activity.id);
@@ -223,7 +223,7 @@ export function useLibrary(): UseLibraryResult {
         if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
       } finally {
         if (ownsDatabase(db)) {
-          for (const id of saved) updateImport(id, "complete");
+          for (const { activityId, bookId } of saved) updateImport(activityId, "complete", bookId);
         }
       }
     },
@@ -321,6 +321,7 @@ export function useLibrary(): UseLibraryResult {
     void (async () => {
       let importing = false;
       let imported = false;
+      let bookId: string | undefined;
       try {
         if (!httpImportOrigins([importUrl])) {
           setError({ key: "library.downloadUnsupported" });
@@ -347,7 +348,7 @@ export function useLibrary(): UseLibraryResult {
         updateImport(activity.id, "processing");
         // importFiles reports errors without rejecting; only importBook's
         // persistence result can safely acknowledge this download handoff.
-        await importBook(db, file, (phase) => {
+        bookId = await importBook(db, file, (phase) => {
           if (!abort.signal.aborted && ownsDatabase(db)) updateImport(activity.id, phase);
         });
         if (abort.signal.aborted || !ownsDatabase(db)) return;
@@ -369,7 +370,7 @@ export function useLibrary(): UseLibraryResult {
         }
       } finally {
         if (!abort.signal.aborted && ownsDatabase(db)) {
-          updateImport(activity.id, imported ? "complete" : undefined);
+          updateImport(activity.id, imported ? "complete" : undefined, imported ? bookId : undefined);
         }
         if (token) {
           try {

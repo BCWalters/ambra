@@ -428,6 +428,7 @@ export class ReaderController {
         return undefined;
       },
       spineIndex: () => this.spineIndex,
+      spineIndexForCfi: (cfi) => this.pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
       announce: (translationKey) => this.announce(this.translate(translationKey)),
       reportError: (err) => this.reportTransientError(err, "save", "that bookmark"),
@@ -708,6 +709,9 @@ export class ReaderController {
         isBookmarked: this.bookmarks.onCurrentPage().length > 0,
         bookmarkedPages: this.bookmarks.flagsForCurrentPages(),
         bookmarks: this.bookmarks.allSorted(),
+        bookmarkProgress: this.bookPagination
+          ? this.bookmarks.progressMarkers(this.bookPagination)
+          : undefined,
         fontScale: this.isFixedLayoutHost(this.host) ? 1 : requestedLayout.fontScale,
         lineSpacing: this.isFixedLayoutHost(this.host) ? ReadingTheme.DEFAULT_LINE_SPACING : requestedLayout.lineSpacing,
         letterSpacing: this.isFixedLayoutHost(this.host)
@@ -837,6 +841,7 @@ export class ReaderController {
       this.pkg.metadata.renditionLayout,
       container,
       this.disclosures,
+      this.locatorResolver,
     );
   }
 

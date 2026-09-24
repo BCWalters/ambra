@@ -2,7 +2,6 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReaderSnapshot } from "../ReaderTypes.js";
 import { useAutoHideChrome } from "../useAutoHideChrome.js";
 import { ProgressScrubber, type ProgressScrubberProps } from "./ProgressScrubber.js";
 
@@ -15,7 +14,9 @@ const snapshot = {
   bookPageCount: 100,
   spineIndex: 0,
   spineLength: 10,
-} as ReaderSnapshot;
+  pageProgressionDirection: "ltr",
+  bookmarks: [],
+} satisfies ProgressScrubberProps["snapshot"];
 
 function Harness() {
   const chrome = useAutoHideChrome(false);
@@ -104,6 +105,38 @@ describe("ProgressScrubber", () => {
       );
     });
   }
+
+  it.each(["ltr", "rtl"] as const)("shows deduplicated %s bookmark marks without adding focus stops", direction => {
+    const bookmark = { id: "a", bookId: "book", cfi: "", label: "Chapter", createdAt: 0 };
+    const { slider } = renderScrubber({
+      snapshot: {
+        ...snapshot,
+        pageProgressionDirection: direction,
+        bookmarks: [bookmark, { ...bookmark, id: "b" }],
+        bookmarkProgress: [
+          { id: "a", fraction: 0.25 },
+          { id: "b", fraction: 0.25 },
+        ],
+      },
+    });
+    const markers = container.querySelectorAll<SVGElement>("[data-bookmark-marker]");
+    expect(markers).toHaveLength(1);
+    expect(markers[0]!.style.left).toBe(direction === "rtl" ? "75%" : "25%");
+    expect(markers[0]!.style.pointerEvents).toBe("none");
+    expect(markers[0]!.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    expect(document.getElementById(slider.getAttribute("aria-describedby")!)?.textContent)
+      .toBe("Bookmarks: 2");
+  });
+
+  it("removes stale marks while layout is being measured and after deletion", () => {
+    renderScrubber({ snapshot: { ...snapshot, bookmarkProgress: [{ id: "a", fraction: 0.5 }] } });
+    expect(container.querySelector("[data-bookmark-marker]")).not.toBeNull();
+    renderScrubber({ snapshot: { ...snapshot, bookmarkProgress: undefined } });
+    expect(container.querySelector("[data-bookmark-marker]")).toBeNull();
+    const { slider } = renderScrubber({ snapshot: { ...snapshot, bookmarkProgress: [] } });
+    expect(slider.hasAttribute("aria-describedby")).toBe(false);
+  });
 
   it("reveals on focus, stays visible during keyboard inactivity, and hides after blur", () => {
     act(() => root.render(<Harness />));

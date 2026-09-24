@@ -20,11 +20,21 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 **Book details** gives the description its own section, with rights and accessibility information under **Publication details**. **Show more** reveals a longer, still bounded excerpt; an ellipsis means text was omitted. Descriptions retain at most two paragraphs (700 characters initially, 1,400 expanded); rights statements are capped at 140 characters initially and 600 expanded. These are excerpts, not interpretations of legal terms. EPUB Inspector retains the original metadata.
 
+**Bookmarks on the progress bar** appear as small blue ribbons once book-wide pagination is ready. They update when text size or window size changes, and mirror for right-to-left books. The bar keeps its usual click, drag, and keyboard controls; use **Bookmarks and highlights** to browse saved bookmarks by name.
+
 ## Take your annotations with you
 
 **EPUB annotation export and import** let you back up or share your reading work separately from the book. Ambra exports your highlights, text notes, bookmarks, and bookmark labels as an **EPUB Annotations 1.0 JSON file** (`… - annotations.json`), and imports compatible JSON into the open book.
 
 Use the same book or edition for best results. Ambra skips unsupported locations and detected duplicates. Imported highlights use yellow, and compatibility varies between annotation tools.
+
+The **Export** button uses a downward download arrow; **Import** uses an upward upload arrow.
+
+## Adding a downloaded book
+
+When a supported EPUB download opens Ambra, keep that library tab open while the book downloads, is prepared for reading, and is added to your library. The status changes to a checkmark and the EPUB’s title after the book has been saved and the library refreshed. Choose **Read now** to open it, or **Dismiss** to clear finished messages without interrupting other imports.
+
+If automatic import fails, follow the error message and use **Import EPUB** to select the downloaded file. Ambra leaves the original browser download available unless a successful import has been confirmed.
 
 ## Keyboard shortcuts and help, close at hand
 

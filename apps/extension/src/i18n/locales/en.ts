@@ -105,6 +105,8 @@ export interface StringCatalog {
   "library.importSaving": string;
   "library.importComplete": string;
   "library.importKeepOpen": string;
+  "library.readNow": string;
+  "library.readNowBook": string;
   "library.inspectorNotReady": string;
   "library.bookCount": string;
   "library.storageUsedOf": string;
@@ -479,10 +481,12 @@ export const en: StringCatalog = {
   "library.loading": "Loading your library…",
   "library.importQueued": "Waiting to import {fileName}…",
   "library.importDownloading": "Downloading {fileName}…",
-  "library.importProcessing": "Processing {fileName}…",
-  "library.importSaving": "Saving {fileName} to your library…",
+  "library.importProcessing": "Preparing {fileName} for reading…",
+  "library.importSaving": "Adding {fileName} to your library…",
   "library.importComplete": "Added {fileName} to your library.",
-  "library.importKeepOpen": "Keep this library open until the import finishes. Large books with narration may take longer.",
+  "library.importKeepOpen": "Keep your library open. Your book will appear here when it’s ready.",
+  "library.readNow": "Read now",
+  "library.readNowBook": "Read now: {title}",
   "library.inspectorNotReady": "The Inspector isn't ready yet.",
   "library.bookCount": "Books: {count}",
   "library.storageUsedOf": "{used} used of {available} available",

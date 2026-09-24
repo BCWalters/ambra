@@ -192,6 +192,10 @@ export class PaginatedContentHost {
     return this.pages[this.pageIndex]?.startBreak;
   }
 
+  public pageStartPosition(index: number): DomBreakPoint | undefined {
+    return this.pages[index]?.startBreak;
+  }
+
   /** The currently-displayed `Page` (its `[startBreak, endBreak)` range —
    * see `Page.containsPosition`) paired with the live content document it
    * describes — for callers that need to test whether some other DOM

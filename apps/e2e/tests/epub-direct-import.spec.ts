@@ -136,10 +136,11 @@ for (const outcome of ["success", "http-error"] as const) {
       const importButton = library.getByRole("button", { name: "Import EPUB", exact: true });
       const openBook = library.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true });
       await expect(status).toContainText("Downloading test-book.epub");
-      await expect(status).toContainText("Keep this library open");
+      await expect(status).toContainText("Keep your library open");
       await expect(status).toHaveAttribute("aria-live", "polite");
       await expect(status.locator(".fui-Spinner")).toBeVisible();
       await expect(openBook).toHaveCount(0);
+      await expect(library.getByRole("button", { name: /^Read now:/ })).toHaveCount(0);
       await expect(importButton).toBeEnabled();
       await importButton.focus();
       expect((await nativeRecords())[0]?.state).toBe("in_progress");
@@ -150,7 +151,8 @@ for (const outcome of ["success", "http-error"] as const) {
         await expect(status).toContainText("Downloading test-book.epub");
         await expect(importButton).toBeFocused();
         server.releaseImport();
-        await expect(status).toContainText("Added test-book.epub to your library.");
+        await expect(status).toContainText("Added Ambra Long Content Test Fixture to your library.");
+        await expect(status).not.toContainText("test-book.epub");
         await expect(openBook).toBeVisible();
         await expect(library.getByRole("alert")).toHaveCount(0);
         await expect.poll(async () => (await nativeRecords()).length).toBe(0);
@@ -166,9 +168,17 @@ for (const outcome of ["success", "http-error"] as const) {
         await expect.poll(async () => (await nativeRecords())[0]?.state).toBe("complete");
         expect(await download.failure()).toBeNull();
       }
-      await expect(status).not.toContainText("Keep this library open");
+      await expect(status).not.toContainText("Keep your library open");
       await expect(status.locator(".fui-Spinner")).toHaveCount(0);
       await expect(importButton).toBeFocused();
+      if (outcome === "success") {
+        const [reader] = await Promise.all([
+          context.waitForEvent("page"),
+          library.getByRole("button", { name: "Read now: Ambra Long Content Test Fixture", exact: true }).click(),
+        ]);
+        await reader.waitForURL(/\/reader\//);
+        await reader.close();
+      }
       if (outcome === "http-error") {
         // The native file remains usable via the existing manual-import picker.
         const downloadedFile = await download.path();

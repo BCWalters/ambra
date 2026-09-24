@@ -27,6 +27,34 @@ function selectedFilePath(readerPage: import("@playwright/test").Page): Promise<
 }
 
 test.describe("EPUB Inspector (issue #95)", () => {
+  test("ordinary Files and selected-path tooltips have no artificial scrollbar (#181)", async () => {
+    const { context, readerPage } = await launchReader(EPUB, { viewport: { width: 1000, height: 800 } });
+    try {
+      await readerPage.mouse.move(350, 2);
+      await openInspector(readerPage);
+      const dialog = readerPage.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+      const file = dialog.locator("[data-file-path]").first();
+      const path = (await file.getAttribute("data-file-path"))!;
+      await file.click();
+      const labels = dialog.getByLabel(path, { exact: true });
+      await expect(labels).toHaveCount(2);
+      for (const label of await labels.all()) {
+        await readerPage.mouse.move(0, 0);
+        await label.hover();
+        const tooltip = readerPage.getByRole("tooltip").filter({ hasText: path });
+        await expect(tooltip).toBeVisible();
+        await expect(tooltip).toHaveText(path);
+        expect(await tooltip.evaluate(element => ({
+          horizontal: element.scrollWidth - element.clientWidth,
+          vertical: element.scrollHeight - element.clientHeight,
+          childCount: element.children.length,
+        }))).toEqual({ horizontal: 0, vertical: 0, childCount: 0 });
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   test("the Spine and Manifest tabs link to the OPF, and each Spine row links to its own file", async () => {
     const { context, readerPage } = await launchReader(EPUB, { viewport: { width: 1400, height: 900 } });
     try {

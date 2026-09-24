@@ -11,6 +11,13 @@ import {
 } from "./BookPagination.js";
 import type { BookPosition } from "./BookPagination.js";
 import type { DisclosureState } from "./DisclosureState.js";
+import type { LocatorResolver } from "../locator/Locator.js";
+import { EpubCfi } from "../locator/EpubCfi.js";
+
+interface MeasuredSpineItem {
+  pageCount: number;
+  pageStarts?: readonly string[];
+}
 
 export type { BookPosition } from "./BookPagination.js";
 
@@ -51,6 +58,7 @@ function yieldToEventLoop(): Promise<void> {
  */
 export class BookPaginationEstimator {
   private pageCounts: (number | undefined)[];
+  private pageStarts: (readonly string[] | undefined)[];
   private generation = 0;
   private lastWidth: number | undefined;
   private lastHeight: number | undefined;
@@ -67,8 +75,10 @@ export class BookPaginationEstimator {
     private readonly packageDefaultLayout: RenditionLayout,
     private readonly hiddenContainer: HTMLElement,
     private readonly disclosures?: DisclosureState,
+    private readonly locatorResolver?: LocatorResolver,
   ) {
     this.pageCounts = new Array(spine.length).fill(undefined);
+    this.pageStarts = new Array(spine.length).fill(undefined);
   }
 
   /** (Re-)starts measuring spine items' page counts at `width`/`height`
@@ -118,6 +128,7 @@ export class BookPaginationEstimator {
       contentWidthEm !== this.lastContentWidthEm
     ) {
       this.pageCounts = new Array(this.spine.length).fill(undefined);
+      this.pageStarts = new Array(this.spine.length).fill(undefined);
       this.lastWidth = width;
       this.lastHeight = height;
       this.lastFontScale = fontScale;
@@ -152,7 +163,7 @@ export class BookPaginationEstimator {
       // never directly waits on, so pacing it more considerately costs
       // nothing but wall-clock time to finish scanning the whole book.
       await yieldToEventLoop();
-      const count = await this.measureSpineItem(
+      const measured = await this.measureSpineItem(
         spineItem,
         spineIndex,
         width,
@@ -169,7 +180,8 @@ export class BookPaginationEstimator {
         // resources measuring further items nobody wants anymore).
         return;
       }
-      this.pageCounts[spineIndex] = count;
+      this.pageCounts[spineIndex] = measured.pageCount;
+      this.pageStarts[spineIndex] = measured.pageStarts;
       onProgress();
     }
   }
@@ -184,11 +196,11 @@ export class BookPaginationEstimator {
     lineSpacing: number,
     letterSpacing: number,
     contentWidthEm: number,
-  ): Promise<number> {
+  ): Promise<MeasuredSpineItem> {
     if (spineItem.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
       // Fixed-layout content is never reflowed/paginated — it's always
       // exactly one page.
-      return 1;
+      return { pageCount: 1 };
     }
 
     const host = new PaginatedContentHost(
@@ -216,7 +228,16 @@ export class BookPaginationEstimator {
           host.relayout(width, height);
         }
       }
-      return host.pageCount;
+      // Retain only CFIs, never the measured document or its DOM ranges.
+      const locatorResolver = this.locatorResolver;
+      const pageStarts = locatorResolver
+        ? Array.from({ length: host.pageCount }, (_, index) => {
+            const start = host.pageStartPosition(index);
+            if (!start) throw new Error(`Missing page ${index} in spine item ${spineIndex}.`);
+            return locatorResolver.generate(spineIndex, start.node, start.offset).cfi;
+          })
+        : undefined;
+      return { pageCount: host.pageCount, pageStarts };
     } finally {
       host.dispose();
       host.element.remove();
@@ -228,6 +249,20 @@ export class BookPaginationEstimator {
    * `aggregateBookPosition` for exactly when each field becomes defined. */
   public positionFor(currentSpineIndex: number, pageIndexInItem: number): BookPosition {
     return aggregateBookPosition(this.pageCounts, currentSpineIndex, pageIndexInItem);
+  }
+
+  /** Resolves a saved position without reloading a chapter or retaining its DOM. */
+  public pageIndexForCfi(spineIndex: number, cfi: string): number | undefined {
+    const starts = this.pageStarts[spineIndex];
+    if (!starts?.length) return undefined;
+    let low = 0;
+    let high = starts.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (EpubCfi.compare(starts[middle]!, cfi) <= 0) low = middle + 1;
+      else high = middle;
+    }
+    return Math.max(0, low - 1);
   }
 
   /** The inverse of `positionFor`: given a target book-wide page number
@@ -247,6 +282,7 @@ export class BookPaginationEstimator {
   public invalidateSpineItem(spineIndex: number): void {
     this.generation++;
     this.pageCounts[spineIndex] = undefined;
+    this.pageStarts[spineIndex] = undefined;
   }
 
   /** Invalidates any in-flight `run` (its remaining work will finish but
