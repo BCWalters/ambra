@@ -6,6 +6,8 @@ import {
   Caption1,
   ToggleButton,
   Tooltip,
+  makeStyles,
+  mergeClasses,
 } from "@fluentui/react-components";
 import {
   BookInformationRegular,
@@ -30,6 +32,23 @@ import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js"
 import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
 import { AmbraMarkIcon } from "./AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
+
+const useReaderToolbarStyles = makeStyles({
+  root: {
+    "--ambra-toolbar-gap": "10px",
+    "--ambra-toolbar-cluster-gap": "8px",
+    "@media (max-width: 480px)": {
+      "--ambra-toolbar-gap": "2px",
+      "--ambra-toolbar-cluster-gap": "0px",
+    },
+  },
+  titleButton: {
+    ":focus-visible": {
+      outline: "2px solid var(--colorNeutralForeground1, #242424)",
+      outlineOffset: "-2px",
+    },
+  },
+});
 
 export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuActions {
   snapshot: ReaderSnapshot;
@@ -161,6 +180,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   }, [snapshot.title, snapshot.currentChapterLabel]);
 
   const toolbarStyles = useChromeToolbarStyles();
+  const readerStyles = useReaderToolbarStyles();
 
   return (
     <>
@@ -179,7 +199,7 @@ export const Toolbar: FC<ToolbarProps> = ({
       />
 
       <div
-        className={toolbarStyles.root}
+        className={mergeClasses(toolbarStyles.root, readerStyles.root)}
         onPointerEnter={handlers.onPointerEnter}
         onPointerLeave={handlers.onPointerLeave}
         onFocus={handlers.onFocus}
@@ -192,7 +212,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           zIndex: 10,
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: "var(--ambra-toolbar-gap)",
           // A little taller than a bare-minimum button bar (12px, not
           // 8px, of vertical padding) so the toolbar fully covers the
           // running header's own title/chapter text underneath it (see
@@ -338,6 +358,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             <Tooltip content={t("toolbar.bookDetails")} relationship="description">
               <button
                 type="button"
+                className={readerStyles.titleButton}
                 onClick={onToggleDetails}
                 style={{
                   flexShrink: 0,
@@ -347,7 +368,7 @@ export const Toolbar: FC<ToolbarProps> = ({
                   background: "none",
                   border: "none",
                   padding: "2px 4px",
-                  margin: "-2px -4px",
+                  margin: 0,
                   borderRadius: 4,
                   color: "inherit",
                   font: "inherit",
@@ -434,7 +455,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             checked={isSearchOpen}
             icon={<SearchRegular />}
             onClick={onToggleSearch}
-            style={{ marginLeft: 8 }}
+            style={{ marginLeft: "var(--ambra-toolbar-cluster-gap)" }}
           />
         </Tooltip>
 
@@ -488,7 +509,7 @@ export const Toolbar: FC<ToolbarProps> = ({
               icon={<HeadphonesRegular />}
               aria-label={t("narration.listen")}
               onClick={onListen}
-              style={{ marginLeft: 8 }}
+              style={{ marginLeft: "var(--ambra-toolbar-cluster-gap)" }}
             />
           </Tooltip>
         )}
@@ -530,7 +551,7 @@ export const Toolbar: FC<ToolbarProps> = ({
               // Pointer activation must not pin chrome; keyboard/AT keeps focus.
               if (event.detail > 0) event.currentTarget.blur();
             }}
-            style={{ marginLeft: 8 }}
+            style={{ marginLeft: "var(--ambra-toolbar-cluster-gap)" }}
           />
         </Tooltip>
       </div>

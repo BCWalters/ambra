@@ -12,6 +12,7 @@ import {
   MenuTrigger,
   Tooltip,
 } from "@fluentui/react-components";
+import type { MenuProps } from "@fluentui/react-components";
 import {
   BookOpenRegular,
   DocumentOnePageColumnsRegular,
@@ -32,6 +33,12 @@ import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
 import type { ViewMode } from "../ViewMode.js";
 import { DefaultableSlider } from "./DefaultableSlider.js";
 import type { DefaultableSliderProps } from "./DefaultableSlider.js";
+
+// Allow submenus to overlap their parent rather than leave the viewport at high zoom.
+const SUBMENU_POSITIONING: MenuProps["positioning"] = {
+  autoSize: true,
+  shiftToCoverTarget: true,
+};
 
 export interface TypographyMenuActions {
   onSetFontScale: (scale: number) => void;
@@ -178,14 +185,14 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
   const t = useTranslation();
   const scopeId = useId();
   return (
-    <Menu>
+    <Menu positioning={{ autoSize: true }}>
       <MenuTrigger disableButtonEnhancement>
         <Tooltip content={t("toolbar.textOptions")} relationship="label">
           <Button
             appearance="subtle"
             size="small"
             icon={<TextFontRegular />}
-            style={{ marginLeft: 8 }}
+            style={{ marginLeft: "var(--ambra-toolbar-cluster-gap, 8px)" }}
           />
         </Tooltip>
       </MenuTrigger>
@@ -193,6 +200,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
         <MenuList aria-describedby={scopeId}>
           <MenuGroupHeader id={scopeId}>{t("text.bookScope")}</MenuGroupHeader>
           <Menu
+            positioning={SUBMENU_POSITIONING}
             persistOnItemClick
             checkedValues={{ fontFamily: [fontFamily] }}
             onCheckedValueChange={(_event, data) => {
@@ -265,6 +273,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
             </MenuPopover>
           </Menu>
           <Menu
+            positioning={SUBMENU_POSITIONING}
             persistOnItemClick
             checkedValues={{ pageTheme: [pageTheme] }}
             onCheckedValueChange={(_event, data) => {
@@ -317,6 +326,7 @@ const LanguageMenu: FC = () => {
   return (
     <>
       <Menu
+        positioning={SUBMENU_POSITIONING}
         persistOnItemClick
         checkedValues={{ locale: [preference] }}
         onCheckedValueChange={(_event, data) => {
@@ -370,6 +380,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   const scopeId = useId();
   return (
     <Menu
+      positioning={{ autoSize: true }}
       persistOnItemClick
       checkedValues={{
         viewMode: [viewMode],
@@ -391,7 +402,7 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
             size="small"
             icon={<SettingsRegular />}
             disabled={disabled}
-            style={isFixedLayout ? { marginLeft: 8 } : undefined}
+            style={isFixedLayout ? { marginLeft: "var(--ambra-toolbar-cluster-gap, 8px)" } : undefined}
           />
         </Tooltip>
       </MenuTrigger>
