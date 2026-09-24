@@ -1,172 +1,346 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { createRequire } from 'node:module';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { loadVerifiedArtifact } from "../../.github/scripts/upload-draft.mjs";
 
-const root = process.cwd();
-const storeAssetsDir = path.join(root, 'store-assets');
-const extensionPath = path.join(root, 'apps', 'e2e', '.extension-build');
-const profileDir = path.join(storeAssetsDir, '.playwright-profile');
-const realBooks = [
-  path.join(root, 'apps', 'e2e', 'real-books', 'alice-in-wonderland.epub'),
-  path.join(root, 'apps', 'e2e', 'real-books', 'childrens-literature.epub'),
-  path.join(root, 'apps', 'e2e', 'real-books', 'accessible-epub-3.epub'),
-  path.join(root, 'apps', 'e2e', 'real-books', 'internal-links.epub'),
-  path.join(root, 'apps', 'e2e', 'real-books', 'israel-sailing.epub'),
-];
-const iconPath = path.join(root, 'apps', 'extension', 'public', 'icons', 'icon128.png');
-const require = createRequire(path.join(root, 'apps', 'e2e', 'package.json'));
-const { chromium } = require('@playwright/test');
+const root = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
+const assets = path.join(root, "store-assets");
+const generated = path.join(assets, ".generated");
+const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-function ensureExists(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Missing required file: ${filePath}`);
+async function candidateFiles(directory) {
+  const files = [];
+  async function walk(relative = "") {
+    for (const entry of (
+      await fs.readdir(path.join(directory, relative), { withFileTypes: true })
+    ).sort((a, b) => a.name.localeCompare(b.name))) {
+      const file = path.join(relative, entry.name);
+      if (entry.isSymbolicLink()) throw new Error("Candidate cannot contain symlinks.");
+      if (entry.isDirectory()) await walk(file);
+      else files.push(file);
+    }
   }
+  await walk();
+  return files;
 }
 
-async function waitForPageLabel(page) {
-  await page.waitForFunction(() => /Page \d+ of \d+/.test(document.body.innerText), { timeout: 20000 });
+async function treeDigest(directory) {
+  const hash = createHash("sha256");
+  for (const file of await candidateFiles(directory)) {
+    hash.update(file).update(await fs.readFile(path.join(directory, file)));
+  }
+  return hash.digest("hex");
 }
 
-async function buildLibraryAndReaderScreenshots() {
-  fs.rmSync(profileDir, { recursive: true, force: true });
-  fs.mkdirSync(profileDir, { recursive: true });
+export async function captureOutputDirectory(releaseCapture, rootDirectory = root) {
+  const relative = releaseCapture ? "dist/beta-release/artifacts/store-assets" : "store-assets";
+  let current = rootDirectory;
+  for (const segment of relative.split("/")) {
+    current = path.join(current, segment);
+    try {
+      const stat = await fs.lstat(current);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error("Capture output must use real project-local directories, not symlinks.");
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      await fs.mkdir(current);
+    }
+  }
+  return current;
+}
 
-  const context = await chromium.launchPersistentContext(profileDir, {
-    channel: 'chromium',
-    headless: true,
-    viewport: { width: 1280, height: 800 },
-    args: [
-      `--disable-extensions-except=${extensionPath}`,
-      `--load-extension=${extensionPath}`,
-    ],
+export async function promoteCapture(capture, releaseCapture, rootDirectory = root) {
+  const names = await fs.readdir(capture);
+  const allowed =
+    /^(?:screenshot-(?:library|reader|annotations|inspector|shortcuts)-1280x800\.png|icon-store-128\.png|promo-tile-440x280\.png|asset-provenance\.json)$/;
+  for (const name of names) {
+    if (!allowed.test(name) || !(await fs.lstat(path.join(capture, name))).isFile()) {
+      throw new Error(
+        "Only store images and asset-provenance.json may be promoted; package metadata is protected.",
+      );
+    }
+  }
+  const output = await captureOutputDirectory(releaseCapture, rootDirectory);
+  for (const name of names) {
+    try {
+      const stat = await fs.lstat(path.join(output, name));
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new Error("Refusing a redirected capture output file.");
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  for (const name of names) {
+    await fs.rename(path.join(capture, name), path.join(output, name));
+  }
+  return output;
+}
+
+async function verifyPackagedCandidate(extension, sourceCommit) {
+  const { metadata } = await loadVerifiedArtifact(sourceCommit);
+  const archive = path.join(root, "dist/beta-release/artifacts", metadata.archive);
+  const names = execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" }).trim().split(/\r?\n/);
+  const files = await candidateFiles(extension);
+  if (JSON.stringify(names.toSorted()) !== JSON.stringify(files.toSorted())) {
+    throw new Error("Capture candidate files differ from the verified release ZIP.");
+  }
+  for (const name of names) {
+    const packaged = execFileSync("unzip", ["-p", archive, name], { maxBuffer: 16 * 1024 * 1024 });
+    if (!packaged.equals(await fs.readFile(path.join(extension, name)))) {
+      throw new Error("Capture candidate bytes differ from the verified release ZIP.");
+    }
+  }
+  return { archive: metadata.archive, sha256: metadata.sha256 };
+}
+
+async function main() {
+  if (process.env.AMBRA_STORE_ALLOW_BROWSER !== "1") {
+    throw new Error(
+      "Browser capture is gated. Obtain the browser slot, then set AMBRA_STORE_ALLOW_BROWSER=1.",
+    );
+  }
+  if (!process.env.AMBRA_STORE_EXTENSION_PATH) {
+    throw new Error(
+      "Set AMBRA_STORE_EXTENSION_PATH to the already-built isolated production candidate.",
+    );
+  }
+  const extension = await fs.realpath(path.resolve(process.env.AMBRA_STORE_EXTENSION_PATH));
+  const live = path.join(root, "apps/extension/dist");
+  if (
+    !extension.startsWith(`${root}${path.sep}`) ||
+    extension === live ||
+    extension.startsWith(`${live}${path.sep}`)
+  ) {
+    throw new Error("Use a project-local isolated candidate, never apps/extension/dist.");
+  }
+  const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  const sourceBranch = execFileSync("git", ["branch", "--show-current"], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  const sourceDirty =
+    execFileSync(
+      "git",
+      [
+        "status",
+        "--porcelain",
+        "--",
+        "apps/extension",
+        "packages",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "tsconfig.base.json",
+      ],
+      { cwd: root, encoding: "utf8" },
+    ).trim().length > 0;
+  const releaseCapture = process.env.AMBRA_STORE_RELEASE_CAPTURE === "1";
+  const worktreeDirty =
+    execFileSync("git", ["status", "--porcelain"], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim().length > 0;
+  if (
+    releaseCapture &&
+    (sourceDirty ||
+      worktreeDirty ||
+      sourceBranch !== "main" ||
+      process.env.AMBRA_STORE_SOURCE_SHA !== sourceCommit)
+  ) {
+    throw new Error(
+      "Release captures require main, a clean worktree, and AMBRA_STORE_SOURCE_SHA matching HEAD.",
+    );
+  }
+  const manifest = JSON.parse(await fs.readFile(path.join(extension, "manifest.json"), "utf8"));
+  if (manifest.manifest_version !== 3 || JSON.stringify(manifest).includes("localhost")) {
+    throw new Error("Candidate must be a self-contained MV3 production build.");
+  }
+  const before = await treeDigest(extension);
+  const releasePackage = releaseCapture
+    ? await verifyPackagedCandidate(extension, sourceCommit)
+    : null;
+  await captureOutputDirectory(releaseCapture);
+  const books = JSON.parse(await fs.readFile(path.join(generated, "books.json"), "utf8"));
+  const bookPaths = books.map((book) => {
+    if (!/^[a-z-]+\.epub$/.test(book.file)) throw new Error("Unexpected demonstration book path.");
+    return path.join(generated, book.file);
   });
-
-  try {
-    let [serviceWorker] = context.serviceWorkers();
-    if (!serviceWorker) {
-      serviceWorker = await context.waitForEvent('serviceworker', { timeout: 15000 });
-    }
-    const extensionId = serviceWorker.url().split('/')[2];
-
-    const libraryPage = await context.newPage();
-    await libraryPage.goto(`chrome-extension://${extensionId}/src/library/index.html?view=tab`);
-    await libraryPage.locator('input[type="file"]').waitFor({ state: 'attached', timeout: 15000 });
-    await libraryPage.locator('input[type="file"]').setInputFiles(realBooks);
-    await libraryPage.getByRole('button', { name: /^Open Alice/i }).waitFor({ timeout: 20000 });
-    await libraryPage.locator('button[aria-label^="Open "]').nth(4).waitFor({ timeout: 20000 });
-    await libraryPage.getByRole('button', { name: 'Sort library' }).click();
-    await libraryPage.getByRole('menuitemradio', { name: 'Title (A–Z)' }).click();
-    await libraryPage.waitForTimeout(500);
-    await libraryPage.screenshot({ path: path.join(storeAssetsDir, 'screenshot-library-1280x800.png'), animations: 'disabled' });
-
-    const [readerPage] = await Promise.all([
-      context.waitForEvent('page'),
-      libraryPage.getByRole('button', { name: /^Open Alice/i }).click({ force: true }),
-    ]);
-    await readerPage.setViewportSize({ width: 1280, height: 800 });
-    await readerPage.waitForLoadState('domcontentloaded');
-    await waitForPageLabel(readerPage);
-    await readerPage.waitForTimeout(1000);
-    for (let i = 0; i < 2; i += 1) {
-      await readerPage.mouse.click(1180, 400);
-      await readerPage.waitForTimeout(700);
-    }
-    await readerPage.waitForTimeout(800);
-    await readerPage.screenshot({ path: path.join(storeAssetsDir, 'screenshot-reader-1280x800.png'), animations: 'disabled' });
-  } finally {
-    await context.close();
-    fs.rmSync(profileDir, { recursive: true, force: true });
+  const require = createRequire(path.join(root, "apps/e2e/package.json"));
+  const { chromium, expect } = require("@playwright/test");
+  const profile = path.join(generated, `profile-${process.pid}`);
+  const capture = path.join(generated, `capture-${process.pid}`);
+  await fs.mkdir(profile);
+  await fs.mkdir(capture);
+  const screenshots = [];
+  let context;
+  let captured = false;
+  async function screenshot(page, name) {
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: path.join(capture, name), animations: "disabled" });
+    screenshots.push(name);
   }
-}
-
-async function buildPromoTile() {
-  const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 440, height: 280 } });
-    const iconBase64 = fs.readFileSync(iconPath).toString('base64');
-    await page.setContent(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: radial-gradient(circle at top left, #fff4de 0%, #f4e7d7 36%, #eadbca 100%);
-      }
-      .tile {
-        width: 440px;
-        height: 280px;
-        box-sizing: border-box;
-        padding: 28px 30px;
-        display: grid;
-        grid-template-columns: 124px 1fr;
-        gap: 22px;
-        align-items: center;
-      }
-      .icon-wrap {
-        width: 124px;
-        height: 124px;
-        border-radius: 28px;
-        background: rgba(255, 255, 255, 0.72);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 16px 30px rgba(69, 35, 8, 0.12);
-      }
-      .icon-wrap img {
-        width: 96px;
-        height: 96px;
-      }
-      h1 {
-        margin: 0 0 8px;
-        font-size: 38px;
-        line-height: 1;
-        color: #2e1b10;
-        letter-spacing: -0.04em;
-      }
-      p {
-        margin: 0;
-        color: #6a4d37;
-      }
-      .tagline {
-        font-size: 17px;
-        line-height: 1.3;
-        max-width: 230px;
-        margin-bottom: 16px;
-      }
-      .sub {
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        color: #a46a21;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="tile">
-      <div class="icon-wrap">
-        <img src="data:image/png;base64,${iconBase64}" alt="Ambra icon" />
-      </div>
-      <div>
-        <h1>Ambra</h1>
-        <p class="tagline">A polished, accessible EPUB3 reader for Chrome.</p>
-        <p class="sub">Local library • Offline reading • Built for real books</p>
-      </div>
-    </div>
-  </body>
-</html>`);
-    await page.screenshot({ path: path.join(storeAssetsDir, 'promo-tile-440x280.png') });
+    context = await chromium.launchPersistentContext(profile, {
+      channel: "chromium",
+      headless: true,
+      viewport: { width: 1280, height: 800 },
+      colorScheme: "light",
+      reducedMotion: "reduce",
+      locale: "en-US",
+      args: [
+        `--disable-extensions-except=${extension}`,
+        `--load-extension=${extension}`,
+        "--disable-background-networking",
+      ],
+    });
+    await context.setOffline(true);
+    let [worker] = context.serviceWorkers();
+    if (!worker) worker = await context.waitForEvent("serviceworker", { timeout: 15_000 });
+    const id = new URL(worker.url()).host;
+    const library = await context.newPage();
+    await library.goto(`chrome-extension://${id}/src/library/index.html?view=tab`);
+    const input = library.locator('input[type="file"]').first();
+    await expect(input).toBeEnabled();
+    await input.setInputFiles(bookPaths);
+    await expect(library.getByRole("button", { name: /^Open / })).toHaveCount(3, {
+      timeout: 20_000,
+    });
+    await library.getByRole("button", { name: "Sort library" }).click();
+    await library.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
+    const dismissImport = library.getByRole("button", { name: "Dismiss", exact: true });
+    if (await dismissImport.isVisible()) await dismissImport.click();
+    await screenshot(library, "screenshot-library-1280x800.png");
+
+    const opened = context.waitForEvent("page");
+    await library.getByRole("button", { name: /^Open The Quiet Observatory/ }).click();
+    const reader = await opened;
+    await reader.waitForLoadState("domcontentloaded");
+    const position = reader.getByRole("slider", { name: "Position in book" });
+    await expect(position).toHaveAttribute("aria-valuetext", /^Page \d+ of \d+/, {
+      timeout: 20_000,
+    });
+    await reader.mouse.move(640, 20);
+    await screenshot(reader, "screenshot-reader-1280x800.png");
+
+    // Select only original demo text, then use the genuine annotation controls.
+    await reader.evaluate(() => {
+      const frames = [...document.querySelectorAll("iframe")];
+      const doc = frames
+        .map((frame) => frame.contentDocument)
+        .find((doc) => doc?.getElementById("passage-1"));
+      const text = doc?.getElementById("passage-1")?.firstChild;
+      if (!text) throw new Error("Original sample paragraph is not visible.");
+      const range = doc.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, Math.min(91, text.textContent.length));
+      const selection = doc.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      doc.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    });
+    await reader.getByRole("button", { name: "Yellow", exact: true }).click();
+    await reader.mouse.move(640, 20);
+    await reader.getByRole("button", { name: "Bookmark this page", exact: true }).click();
+    await reader.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
+    await reader.getByRole("tab", { name: /Highlights/ }).click();
+    await expect(reader.getByRole("button", { name: /^Export/ })).toBeVisible();
+    await screenshot(reader, "screenshot-annotations-1280x800.png");
+    await reader.keyboard.press("Escape");
+
+    await reader.mouse.move(640, 20);
+    await reader.getByRole("button", { name: "Book details", exact: true }).click();
+    await reader.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
+    const inspector = reader.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+    await expect(inspector).toBeVisible();
+    await inspector.locator('button[data-file-path="EPUB/chapter.xhtml"]').click();
+    await screenshot(reader, "screenshot-inspector-1280x800.png");
+    await inspector.getByRole("button", { name: "Close EPUB Inspector", exact: true }).click();
+    await reader.keyboard.press("Escape");
+
+    await reader.mouse.move(640, 20);
+    await reader.getByRole("button", { name: "Settings", exact: true }).click();
+    await reader.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+    await reader.getByRole("button", { name: "Show keyboard shortcuts", exact: true }).click();
+    await expect(
+      reader.getByRole("dialog", { name: "Keyboard shortcuts", exact: true }),
+    ).toBeVisible();
+    await screenshot(reader, "screenshot-shortcuts-1280x800.png");
+    captured = true;
   } finally {
-    await browser.close();
+    await context?.close();
+    await fs.rm(profile, { recursive: true, force: true });
+    if (!captured) await fs.rm(capture, { recursive: true, force: true });
   }
+  if ((await treeDigest(extension)) !== before)
+    throw new Error("Candidate changed during capture; do not use these images.");
+  if (
+    releaseCapture &&
+    JSON.stringify(await verifyPackagedCandidate(extension, sourceCommit)) !==
+      JSON.stringify(releasePackage)
+  ) {
+    throw new Error("Release package changed during capture; do not use these images.");
+  }
+  const hashes = {};
+  for (const name of screenshots) {
+    const bytes = await fs.readFile(path.join(capture, name));
+    if (bytes.readUInt32BE(16) !== 1280 || bytes.readUInt32BE(20) !== 800) {
+      throw new Error("Unexpected screenshot dimensions.");
+    }
+    hashes[name] = digest(bytes);
+  }
+  for (const name of ["icon-store-128.png", "promo-tile-440x280.png"]) {
+    const bytes = await fs.readFile(path.join(assets, name));
+    hashes[name] = digest(bytes);
+    await fs.writeFile(path.join(capture, name), bytes);
+  }
+  await fs.writeFile(
+    path.join(capture, "asset-provenance.json"),
+    `${JSON.stringify(
+      {
+        sourceCommit,
+        sourceBranch,
+        sourceDirty,
+        worktreeDirty,
+        capturePurpose: releaseCapture ? "release" : "preview",
+        releaseReadiness: releaseCapture
+          ? "Clean-main capture; final owner review still required."
+          : "Pre-release preview only; rebuild and recapture clean main before submission.",
+        candidatePath: path.relative(root, extension),
+        candidateTreeSha256: before,
+        releasePackage,
+        version: manifest.version,
+        capturedAt: new Date().toISOString(),
+        browser: "Playwright Chromium",
+        viewport: { width: 1280, height: 800 },
+        publicationContent:
+          "Original MIT-licensed Ambra synthetic demonstration books; no personal library or remote books.",
+        sourceAttestation: releaseCapture
+          ? "Captured candidate matched every file in the clean-commit, checksum-verified release ZIP."
+          : "Preview tree hash records captured bytes; not an independent build attestation.",
+        files: hashes,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  const output = await promoteCapture(capture, releaseCapture);
+  await fs.rm(capture, { recursive: true, force: true });
+  console.log(
+    `Captured ${screenshots.length} original-book screenshots (${releaseCapture ? "release" : "preview"}) in ${path.relative(root, output)}. No package/upload/publication performed.`,
+  );
 }
 
-ensureExists(extensionPath);
-for (const bookPath of realBooks) {
-  ensureExists(bookPath);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
 }
-ensureExists(iconPath);
-await buildLibraryAndReaderScreenshots();
-await buildPromoTile();
-console.log('Store images generated in store-assets/.');

@@ -7,6 +7,10 @@ import { root, sha256, validVersion, validateBundle } from "./package-extension.
 import { dependencyNotices } from "./package-notices.mjs";
 import { publishUnlisted } from "./publish-unlisted.mjs";
 import { checkStatus, configuration, uploadDraft, verifyArtifact } from "./upload-draft.mjs";
+import {
+  captureOutputDirectory,
+  promoteCapture,
+} from "../../store-assets/scripts/generate-images.mjs";
 
 const name = `publishers/example/items/${"a".repeat(32)}`;
 const config = {
@@ -59,6 +63,74 @@ test("dependency notices include installed texts and pinned overrides, failing c
       dependencyNotices(directory, { GPL: [{ ...inventory.MIT[0], license: "GPL-3.0" }] }, {}),
       /Review the new/,
     );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("release screenshots stay separate from tracked previews and package metadata", async () => {
+  const directory = path.join(root, "dist", `store-capture-tests-${process.pid}`);
+  const capture = path.join(directory, "capture");
+  const image = "screenshot-reader-1280x800.png";
+  await mkdir(capture, { recursive: true });
+  try {
+    const preview = await captureOutputDirectory(false, directory);
+    const output = await captureOutputDirectory(true, directory);
+    assert.equal(output, path.join(directory, "dist/beta-release/artifacts/store-assets"));
+    await writeFile(path.join(preview, image), "tracked preview");
+    for (const name of ["ambra-0.0.1.zip", "SHA256SUMS", "release.json"]) {
+      await writeFile(path.join(path.dirname(output), name), `original ${name}`);
+    }
+    await writeFile(path.join(capture, image), "verified release image");
+    assert.equal(await promoteCapture(capture, true, directory), output);
+    assert.equal(await readFile(path.join(output, image), "utf8"), "verified release image");
+    assert.equal(await readFile(path.join(preview, image), "utf8"), "tracked preview");
+    for (const name of ["ambra-0.0.1.zip", "SHA256SUMS", "release.json"]) {
+      assert.equal(
+        await readFile(path.join(path.dirname(output), name), "utf8"),
+        `original ${name}`,
+      );
+      await writeFile(path.join(capture, name), "must not be promoted");
+      await assert.rejects(
+        promoteCapture(capture, true, directory),
+        /package metadata is protected/,
+      );
+      await rm(path.join(capture, name));
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("store capture rejects redirected output and requires explicit browser permission", async () => {
+  const directory = path.join(root, "dist", `store-capture-guards-${process.pid}`);
+  const capture = path.join(directory, "capture");
+  const image = "screenshot-reader-1280x800.png";
+  await mkdir(capture, { recursive: true });
+  try {
+    const output = await captureOutputDirectory(true, directory);
+    const original = path.join(directory, "original");
+    await writeFile(original, "untouched");
+    await writeFile(path.join(capture, image), "new image");
+    await symlink(original, path.join(output, image));
+    await assert.rejects(
+      promoteCapture(capture, true, directory),
+      /redirected capture output file/,
+    );
+    assert.equal(await readFile(original, "utf8"), "untouched");
+    await rm(path.join(directory, "dist"), { recursive: true });
+    const external = path.join(directory, "external");
+    await mkdir(external);
+    await symlink(external, path.join(directory, "dist"), "dir");
+    await assert.rejects(captureOutputDirectory(true, directory), /not symlinks/);
+
+    const denied = spawnSync(process.execPath, ["store-assets/scripts/generate-images.mjs"], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, AMBRA_STORE_ALLOW_BROWSER: "0" },
+    });
+    assert.equal(denied.status, 1);
+    assert.match(denied.stderr, /Browser capture is gated/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

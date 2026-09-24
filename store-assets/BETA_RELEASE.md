@@ -40,6 +40,9 @@ listed launch. Unlisted is not an access-control boundary; links can be forwarde
 - [ ] Check the archive has a production manifest at its root, no development
   server references, no private EPUBs/profiles/logs/source maps, and the required
   original and third-party license/NOTICE texts.
+- [ ] Approve the minimal source-controlled 128px icon update described in
+  [ASSETS.md](ASSETS.md) so ordinary packaging includes the prepared padded
+  store icon. Keep 16px/48px icons unchanged; do not rely on a manual ZIP overlay.
 - [ ] Smoke-test the exact candidate in a separate Chrome profile: file import,
   automatic download import and denied-site-access fallback, library persistence,
   reading/resume, settings, navigation, annotations, and recorded narration.
@@ -52,13 +55,27 @@ listed launch. Unlisted is not an access-control boundary; links can be forwarde
   does not prove the VoiceOver cursor/speech hand-off. That manual check remains
   a release gate.
   See the [optional native regression command](../README.md#optional-native-macos-accessibility-regression).
-- [ ] Use screenshots of the actual candidate, preferably with original synthetic
-  books. If using the retained third-party sample screenshots, include
-  [their attributions and licenses](ATTRIBUTIONS.md) with the listing. The existing
-  generator is not an attribution-free asset pipeline.
+- [ ] Capture screenshots of the actual clean merged candidate using the original
+  synthetic books in [ASSETS.md](ASSETS.md). Verify
+  `dist/beta-release/artifacts/store-assets/asset-provenance.json` says `release`,
+  matches the clean source commit and package ZIP checksum, and records the captured
+  candidate's hash. Final capture writes only that ignored handoff folder; it does
+  not update the checked-in previews or require another commit. Preview captures
+  from an uncommitted bugfix are not release-ready.
+  Retained historical third-party images keep [their attributions](ATTRIBUTIONS.md).
+- [ ] Review listing copy against the actual candidate: reading modes, notes and
+  annotation JSON exchange, read-only Inspector/source linking/reference finding,
+  and shared Help/platform shortcuts. Do not claim complete EPUB conformance,
+  an EPUB editor, automatic speech synthesis, or live AT acceptance.
 
 ## Dashboard and friends rollout
 
+- [ ] Owner signs into the intended Google publishing account; verify registration,
+  any fee/terms/account-verification prompts, publisher name, and verified contact
+  email. Account readiness is not implied by the public GitHub repository.
+- [ ] Confirm the first accepted store version. `0.0.1` is suitable only if it
+  does not conflict with an existing item/version; otherwise approve an increasing
+  version through the source-release process.
 - [ ] Set the privacy policy URL to the [canonical GitHub policy](https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md).
   Confirm it is readable without signing in. This Markdown file is the single
   source of truth; changes become live after an Ambra PR merges to `main`, with
@@ -79,6 +96,9 @@ listed launch. Unlisted is not an access-control boundary; links can be forwarde
   either in the dashboard or through the explicit unlisted-submission opt-in below.
   If creating a separate testing listing alongside production, follow Chrome's
   beta naming/description requirements.
+  For the initial release, decide explicitly whether to defer publication until
+  review passes (recommended for a final owner check) or publish automatically
+  after approval. A submitted/reviewed item is not evidence of a completed rollout.
 - [ ] Confirm a fresh Chrome profile/account not on any tester list can install
   using the listing URL, and that the item is not publicly listed in search.
   Share the installation URL with friends after this check.
@@ -93,6 +113,21 @@ Builds must not change repository visibility. Store review submission requires
 the separate explicit owner-approved submission action described below.
 
 ## Packaging and optional store automation
+
+### Decisions still requiring the owner
+
+1. Confirm the publishing account/contact details and any account prompts.
+2. Approve the final candidate/version, listing, icon, and clean-candidate screenshots.
+3. Complete live VoiceOver acceptance or explicitly decide how the pending beta
+   limitation affects release timing. The existing manual acceptance gate remains
+   pending; automated tests and promotional edits do not waive it.
+4. Choose deferred versus automatic publication after the first review.
+
+The minimum first-release path is dashboard-assisted: create/upload the item,
+complete disclosures, save Unlisted, and manually submit/publish. OAuth automation
+is useful for later updates but is not a prerequisite for this first manual
+submission. Owner approval and account access are still required; no credentials
+belong in a repository file or chat transcript.
 
 From the repository root with the CI Node/pnpm versions:
 
@@ -111,6 +146,14 @@ The ZIP includes `LICENSE`, `THIRD_PARTY_NOTICES.md`, and generated
 `THIRD_PARTY_LICENSES.txt` with the installed production dependencies' license
 texts. Version-pinned fallbacks are documented in [licenses/README.md](licenses/README.md);
 missing notices fail packaging rather than silently omitting attribution.
+
+After final packaging, capture the five store views into
+`dist/beta-release/artifacts/store-assets/` using [ASSETS.md](ASSETS.md).
+That handoff folder also contains the icon, promo, and source/package-bound
+provenance; these store graphics are not added to the extension ZIP.
+The capture validates the candidate against the existing ZIP and never rewrites
+the ZIP/checksum/release metadata. Do not rerun packaging afterward without also
+recapturing: packaging clears the artifact directory.
 
 CI exercises the isolated production bundle, including navigation, settings,
 reading boundaries, native-position resume, and shell accessibility. Optional

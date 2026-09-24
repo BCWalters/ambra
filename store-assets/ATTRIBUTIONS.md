@@ -1,13 +1,25 @@
-# Screenshot attributions and reuse
+# Current and historical screenshot attributions
 
-These notices accompany the retained store screenshots, including copies of the
-same images in repository history. They do **not** change the MIT license of
+## Current original demonstration screenshots
+
+The current five `screenshot-*-1280x800.png` images use only original Ambra
+demonstration publications: *The Quiet Observatory*, *Small Wonders*, and
+*The Floating Garden*. Text, covers, and screenshots are Ambra project material
+under the repository's MIT license. They contain no personal library or imported
+third-party books. See [ASSETS.md](ASSETS.md), the checked-in generators, and
+`asset-provenance.json` for capture source and preview/release status.
+
+## Historical sample screenshots
+
+The notices below accompany the older `screenshot-library-1280x800.png` and
+`screenshot-reader-1280x800.png` images retained in Git history, before replacement
+with original demonstration captures. They do **not** change the MIT license of
 Ambra's original source code. No book publisher, author, sample contributor,
 Project Gutenberg, IDPF, or W3C endorses Ambra.
 
-## Screenshot license
+### Historical screenshot license
 
-`screenshot-library-1280x800.png` and `screenshot-reader-1280x800.png` are
+The historical library and reader images are
 screenshots/compositions by Ambra contributors. Their original screenshot
 contributions are also offered under
 [Creative Commons Attribution-ShareAlike 3.0 Unported](https://creativecommons.org/licenses/by-sa/3.0/).
@@ -21,7 +33,7 @@ covers/title pages alongside Ambra's interface; the reader screenshot displays a
 short excerpt of *Alice's Adventures in Wonderland* laid out by Ambra. No
 endorsement or rights in third-party trademarks are granted.
 
-## Source-specific credits
+### Historical source-specific credits
 
 | Visible material | Attribution and primary source | Rights basis |
 | --- | --- | --- |
@@ -31,7 +43,7 @@ endorsement or rights in third-party trademarks are granted.
 | *IDに漢字などを使用したサンプル* (Internal Links) cover | [IDPF/W3C EPUB 3 Samples: Internal Links](https://github.com/IDPF/epub3-samples/tree/20230704/30/internallinks/OEBPS); the package supplies no personal creator name | CC BY-SA 3.0 under the collection's default license; no sample-table exception. Publisher marks visible on the cover remain their owners' trademarks. |
 | *מפליגים בישראל* (*Israel Sailing*) title/cover | אורי עידן (Uri Idan), Helicon Books, 2012; [official sample](https://github.com/IDPF/epub3-samples/tree/20230704/30/israelsailing/OEBPS); [required author/publisher link](http://read.heliconbooks.com) | The [embedded copyright page](https://github.com/IDPF/epub3-samples/blob/20230704/30/israelsailing/OEBPS/copyright.xhtml) explicitly permits copying with author credit and that link under [CC BY-SA 2.5](https://creativecommons.org/licenses/by-sa/2.5/). Retain this original notice; section 4(b) permits adaptations under a later license with the same elements, including CC BY-SA 3.0. |
 
-## Verification and limits
+### Historical verification and limits
 
 Reviewed on 2026-09-23 using primary sources:
 

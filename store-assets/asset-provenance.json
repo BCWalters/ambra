@@ -1,0 +1,27 @@
+{
+  "sourceCommit": "0ab8ad3b4fe0dfaf79bf06d00a2ffd31066bdde7",
+  "sourceBranch": "fix/dismiss-reader-ui-first-click",
+  "sourceDirty": false,
+  "capturePurpose": "preview",
+  "releaseReadiness": "Pre-release preview only; rebuild and recapture clean main before submission.",
+  "candidatePath": "dist/reader-ui-dismissal",
+  "candidateTreeSha256": "52bac7c403d18ee8b1912966d65fc3fb99106aace7510a2c99fad158bc912205",
+  "version": "0.0.1",
+  "capturedAt": "2026-09-24T10:12:29.601Z",
+  "browser": "Playwright Chromium",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "publicationContent": "Original MIT-licensed Ambra synthetic demonstration books; no personal library or remote books.",
+  "sourceAttestation": "Operator must build the isolated candidate from sourceCommit; the tree hash records captured bytes, not an independent build attestation.",
+  "files": {
+    "screenshot-library-1280x800.png": "16ac612751aa6a54da8c7f309f2ac085d293ef9aac768b74fcdb25e73ea38576",
+    "screenshot-reader-1280x800.png": "d9af85f1655cc6fa10a327a97c63da8e2cc4676ebfcbf5b011ce79b263cba9c9",
+    "screenshot-annotations-1280x800.png": "dfa65756f50cd4e85b07e717dd5dc3516e570cbf2d060c1873461bffc9fff00e",
+    "screenshot-inspector-1280x800.png": "0cdd1e42a26e4cf7779ad6c7b5c3531bbe0b8c35c0bc6711cb9397256d987a1e",
+    "screenshot-shortcuts-1280x800.png": "6a0b03b73f2302df56c7215e95d1e2520818b9216c8876b3cd6f1657cfbb7c12",
+    "icon-store-128.png": "85fdfd69b264c8127aaa270130457ad7d0990fe4e566680dd3b0f4486528610d",
+    "promo-tile-440x280.png": "92153feb1506254c022139d997e6f8fceeb017b0fdb14f1fe1022c059c7f4994"
+  }
+}
