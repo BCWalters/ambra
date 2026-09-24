@@ -1,5 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
+import { LibraryRegular } from "@fluentui/react-icons";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toolbar, type ToolbarProps } from "./Toolbar.js";
 import type { ReaderSnapshot } from "../ReaderTypes.js";
@@ -15,6 +17,7 @@ describe("Toolbar startup positioning (#175)", () => {
   let measuredWidth: number;
   let resize: ResizeObserverCallback;
   const toggleDetails = vi.fn();
+  const backToLibrary = vi.fn();
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -27,6 +30,7 @@ describe("Toolbar startup positioning (#175)", () => {
       disconnect() {}
     });
     toggleDetails.mockClear();
+    backToLibrary.mockClear();
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -43,7 +47,7 @@ describe("Toolbar startup positioning (#175)", () => {
     const noop = () => {};
     const props: ToolbarProps = {
       snapshot: { title: "Short book", currentChapterLabel: chapter } as ReaderSnapshot,
-      openMenu: undefined, onOpenMenuChange: noop, onBackToLibrary: noop,
+      openMenu: undefined, onOpenMenuChange: noop, onBackToLibrary: backToLibrary,
       isTocOpen: false, onToggleToc: noop, isSearchOpen: false, onToggleSearch: noop,
       isAnnotationsOpen: false, onToggleAnnotations: noop, isDetailsOpen: false,
       onToggleDetails: toggleDetails, onToggleBookmark: noop, onSetViewMode: noop,
@@ -66,6 +70,18 @@ describe("Toolbar startup positioning (#175)", () => {
     expect(container.querySelector('[aria-hidden="true"][style*="max-content"]')?.textContent).toBe("Short book");
     act(() => title.click());
     expect(toggleDetails).toHaveBeenCalledOnce();
+  });
+
+  it("uses a bookshelf icon for Library without changing its name or action (#190)", () => {
+    render("");
+    const button = container.querySelector<HTMLButtonElement>('button[aria-label="Library"]')!;
+    const icon = document.createElement("div");
+    icon.innerHTML = renderToStaticMarkup(<LibraryRegular />);
+    expect(button.querySelector("path")?.getAttribute("d"))
+      .toBe(icon.querySelector("path")?.getAttribute("d"));
+    expect(button.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    act(() => button.click());
+    expect(backToLibrary).toHaveBeenCalledOnce();
   });
 
   it("adds the resolved resume chapter without a slide and retains narrow-width ellipsis", () => {
