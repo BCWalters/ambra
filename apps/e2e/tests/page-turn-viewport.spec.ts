@@ -143,16 +143,33 @@ for (const spread of [true, false]) {
         expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().isSpread))
           .toBe(spread);
         await measureTurns(page, spread);
+        const scrubber = page.getByRole("slider", { name: "Position in book", exact: true }).locator("..");
 
         for (let turn = 0; turn < 4; turn++) {
           await page.mouse.move(width - 20, 350);
           await expect(toolbar(page)).toHaveCSS("pointer-events", "none");
+          await expect(toolbar(page)).toHaveCSS("opacity", "0");
+          await expect(scrubber).toHaveCSS("opacity", "0");
+          // Widen the real commit-before-fade window without touching reader
+          // state or page animations. Both chrome surfaces remain unpainted,
+          // whether React commits before or after the trusted pointerdown.
+          for (const surface of [toolbar(page), scrubber]) {
+            await surface.evaluate(element => { element.style.transitionDelay = "10s"; });
+          }
           const before = await position(page);
           const count = await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().pageCount);
           expect(before.page + (spread ? 2 : 1), "a later page must exist").toBeLessThan(count);
-          // mouse.click sends trusted pointermove + down/up. A queued edge
-          // reveal must not consume this click as if chrome were already shown.
-          await page.mouse.click(width - 20, 825);
+          if (turn % 2 === 0) {
+            await page.mouse.move(width - 20, 825);
+            await expect(toolbar(page)).toHaveCSS("pointer-events", "auto");
+            await expect(toolbar(page)).toHaveCSS("opacity", "0");
+            await expect(scrubber).toHaveCSS("opacity", "0");
+            await page.mouse.down();
+            await page.mouse.up();
+          } else {
+            // Keep the combined pointermove + down/up path too.
+            await page.mouse.click(width - 20, 825);
+          }
           await expect.poll(() => position(page)).toEqual({
             spine: before.spine, page: before.page + (spread ? 2 : 1),
           });
@@ -160,8 +177,12 @@ for (const spread of [true, false]) {
         }
 
         // Actually rendered unpinned chrome still consumes the first tap (#164).
+        for (const surface of [toolbar(page), scrubber]) {
+          await surface.evaluate(element => { element.style.transitionDelay = ""; });
+        }
         await page.mouse.move(10, 2);
         await expect(toolbar(page)).toHaveCSS("pointer-events", "auto");
+        await expect(toolbar(page)).toHaveCSS("opacity", "1");
         const beforeDismissal = await position(page);
         await page.mouse.click(width - 20, 825);
         await expect(toolbar(page)).toHaveCSS("pointer-events", "none");

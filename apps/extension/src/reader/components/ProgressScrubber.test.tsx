@@ -123,6 +123,35 @@ describe("ProgressScrubber", () => {
     expect(bar.style.opacity).toBe("0");
   });
 
+  it("registers each painted bar and cleans up across reading-mode changes", () => {
+    const cleanup = vi.fn();
+    const register = vi.fn(() => cleanup);
+    const handlers = {
+      ref: register, onPointerEnter() {}, onPointerLeave() {}, onFocus() {}, onBlur() {},
+    };
+    const render = (viewMode: "scroll" | "paginated") => act(() => root.render(
+      <ProgressScrubber
+        snapshot={{ ...snapshot, viewMode }}
+        visible
+        handlers={handlers}
+        onPreview={() => ({ position: { kind: "page", current: 1, total: 10 }, chapterLabel: "" })}
+        onSeek={async () => {}}
+        onSeekError={() => {}}
+      />,
+    ));
+    render("scroll");
+    expect(register).not.toHaveBeenCalled();
+    render("paginated");
+    const firstBar = container.firstElementChild;
+    expect(register).toHaveBeenLastCalledWith(firstBar);
+    render("scroll");
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    render("paginated");
+    expect(register).toHaveBeenCalledTimes(2);
+    expect(register).toHaveBeenLastCalledWith(container.firstElementChild);
+    expect(container.firstElementChild).not.toBe(firstBar);
+  });
+
   it("shows only the destination while dragging, keeps the actual position, and focuses the larger target", () => {
     const { slider, onSeek } = renderScrubber({ visible: false });
     pointer(slider, "pointerdown");
