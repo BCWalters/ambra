@@ -53,45 +53,54 @@ async function recordGeometry(page: Page, label: string, extra = {}) {
   return geometry;
 }
 
-async function selectRange(page: Page, shape: "hidden" | "spanning" | "visible" | "keyboard", frameIndex: number) {
+async function selectRange(page: Page, shape: "hidden" | "spanning" | "visible" | "keyboard", frameIndex?: number) {
   return page.evaluate(({ shape, frameIndex }) => {
-    const frame = document.querySelectorAll("iframe")[frameIndex]!;
-    const doc = frame.contentDocument!;
-    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-    const frameBox = frame.getBoundingClientRect();
-    const clipTop = Number(frame.style.clipPath.match(/inset\(([\d.]+)px/)?.[1] ?? 0);
-    let first: Text | undefined;
-    let visible: { node: Text; offset: number } | undefined;
-    for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
-      if (!node.textContent?.trim()) continue;
-      first ??= node;
-      for (let offset = 0; offset < node.length - 10; offset++) {
-        const probe = doc.createRange();
-        probe.setStart(node, offset);
-        probe.setEnd(node, offset + 10);
-        const rect = probe.getBoundingClientRect();
-        if (rect.width > 0 && rect.top >= Math.max(150 - frameBox.top, clipTop) &&
-          rect.bottom + frameBox.top < Math.min(frameBox.bottom - 100, innerHeight - 100)) {
-          visible = { node, offset };
-          break;
+    const frames = Array.from(document.querySelectorAll("iframe"));
+    const diagnostics = [];
+    for (const [index, frame] of frames.entries()) {
+      if (frameIndex !== undefined && index !== frameIndex) continue;
+      const doc = frame.contentDocument!;
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+      const frameBox = frame.getBoundingClientRect();
+      const clipTop = Number(frame.style.clipPath.match(/inset\(([\d.]+)px/)?.[1] ?? 0);
+      let first: Text | undefined;
+      let visible: { node: Text; offset: number } | undefined;
+      for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+        if (!node.textContent?.trim()) continue;
+        first ??= node;
+        for (let offset = 0; offset <= node.length - 10; offset++) {
+          const probe = doc.createRange();
+          probe.setStart(node, offset);
+          probe.setEnd(node, offset + 10);
+          const rect = probe.getBoundingClientRect();
+          if (rect.width > 0 && rect.top >= Math.max(150 - frameBox.top, clipTop) &&
+            rect.bottom + frameBox.top < Math.min(frameBox.bottom - 100, innerHeight - 100)) {
+            visible = { node, offset };
+            break;
+          }
         }
+        if (visible) break;
       }
-      if (visible) break;
+      if (!first || !visible) {
+        diagnostics.push({
+          index, frame: frameBox.toJSON(), clip: frame.style.clipPath,
+          body: doc.body.getBoundingClientRect().toJSON(),
+        });
+        continue;
+      }
+      const range = doc.createRange();
+      if (shape === "hidden" || shape === "spanning") range.setStart(first, 0);
+      else range.setStart(visible.node, visible.offset);
+      if (shape === "hidden") range.setEnd(first, Math.min(10, first.length));
+      else range.setEnd(visible.node, visible.offset + 10);
+      if (shape === "keyboard") doc.defaultView!.focus();
+      const selection = doc.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      if (shape !== "keyboard") doc.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+      return { text: selection.toString(), frameIndex: index };
     }
-    if (!first || !visible) throw new Error(`Fixture has no suitable visible text: ${JSON.stringify({
-      frame: frameBox.toJSON(), clip: frame.style.clipPath, body: doc.body.getBoundingClientRect().toJSON(),
-    })}`);
-    const range = doc.createRange();
-    if (shape === "hidden" || shape === "spanning") range.setStart(first, 0);
-    else range.setStart(visible.node, visible.offset);
-    if (shape === "hidden") range.setEnd(first, Math.min(10, first.length));
-    else range.setEnd(visible.node, visible.offset + 10);
-    if (shape === "keyboard") doc.defaultView!.focus();
-    const selection = doc.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-    if (shape !== "keyboard") doc.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-    return selection.toString();
+    throw new Error(`Fixture has no suitable visible text: ${JSON.stringify(diagnostics)}`);
   }, { shape, frameIndex });
 }
 
@@ -154,10 +163,14 @@ for (const { width, margin, frameIndex, edge } of [
   });
 }
 
-for (const width of [760, 1400]) {
-  test(`${width}px: hidden and page-start-spanning DOM ranges retain their native selection (#169)`, async () => {
+for (const { width, height } of [
+  { width: 760, height: 900 },
+  { width: 1400, height: 900 },
+  { width: 1400, height: 1000 },
+]) {
+  test(`${width}x${height}px: hidden and page-start-spanning DOM ranges retain their native selection (#169)`, async () => {
     const { context, readerPage: page } = await launchReader(fixture, {
-      viewport: { width, height: 900 },
+      viewport: { width, height },
     });
     try {
       await exposeReaderController(page);
@@ -165,9 +178,13 @@ for (const width of [760, 1400]) {
       await settled(page);
       await page.keyboard.press("ArrowRight");
       await settled(page);
-      const index = 0;
+      // Platform font metrics can place the fixture's image-only page in either
+      // half of this spread. Find painted text, then keep all three ranges in
+      // that same content document.
+      let selectedFrame: number | undefined;
       for (const shape of ["visible", "spanning", "hidden"] as const) {
-        const text = await selectRange(page, shape, index);
+        const { text, frameIndex: index } = await selectRange(page, shape, selectedFrame);
+        selectedFrame = index;
         const geometry = (await recordGeometry(page, `dom-range-${shape}`))[index]!;
         expect(text.length).toBeGreaterThan(0);
         if (shape === "hidden") {
@@ -209,7 +226,7 @@ test("keyboard completion preserves a visible DOM range in paginated and scroll 
           Reflect.get(window, "__readerController").snapshot().viewMode)).toBe("scroll");
         await settled(page);
       }
-      const text = await selectRange(page, "keyboard", 0);
+      const { text } = await selectRange(page, "keyboard", 0);
       await page.keyboard.press("Shift");
       await expect(addNote(page)).toBeVisible();
       const geometry = (await recordGeometry(page, `keyboard-${mode}`))[0]!;
