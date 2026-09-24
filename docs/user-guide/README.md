@@ -41,6 +41,7 @@ The shortcut popup is a quick reference showing the default shortcuts for your c
 
 ## Reading tips
 
+- **Settle back into the book.** When reader controls are showing, a page-turning click or tap first dismisses them without turning the page. The next click turns normally. Pinned panels stay open; links, images, and deliberate swipes retain their own behavior.
 - **Choose your rhythm.** Pagination turns pages; scrolling keeps Page Up, Page Down, and Space available for native scrolling. For continuous screen-reader reading, consider scrolling using the shortcut above. Mode selection is reflowable-only; choosing the current mode leaves it unchanged.
 - **Keep keys in context.** Reading navigation belongs to the book content; modified commands such as search, bookmark, and the shortcut popup can also work from toolbar buttons. Text fields, selections, interactive widgets, and dialogs retain their own keys. Ambra does not require a screen reader’s application mode.
 - **On a Mac laptop.** Page Up/Down may need **Fn+Up/Down**. Section navigation then uses **Option+Fn+Up/Down**; add **Shift** to select pagination or scrolling respectively. A section is a spine item, not necessarily a named chapter, and the default Left/Right navigation follows the book’s reading direction.

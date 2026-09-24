@@ -39,6 +39,7 @@ export interface SearchPanelProps {
   pinned: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
+  onOutsideClick?: () => void;
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
    * condition) — this panel needs to stop *above* it rather than
@@ -79,6 +80,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   pinned,
   onTogglePin,
   onRequestClose,
+  onOutsideClick,
   scrubberVisible,
   inputFocusRequest = 0,
 }) => {
@@ -120,7 +122,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
       {!pinned && (
         <div
           aria-hidden="true"
-          onClick={onRequestClose}
+          onClick={onOutsideClick ?? onRequestClose}
           style={{
             position: "absolute",
             inset: 0,

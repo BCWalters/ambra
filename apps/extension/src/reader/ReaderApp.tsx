@@ -7,6 +7,7 @@ import { LibraryDatabase } from "../library/LibraryDatabase.js";
 import { libraryFullTabUrl } from "../navigation.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
+import type { ReaderToolbarMenu } from "./components/Toolbar.js";
 import { TocPanel } from "./components/TocPanel.js";
 import { SearchPanel } from "./components/SearchPanel.js";
 import { AnnotationsPanel } from "./components/AnnotationsPanel.js";
@@ -108,9 +109,16 @@ const ReaderAppInner: FC = () => {
     setShortcutPreferences,
     setShortcutActions,
     setShortcutModalOpen,
+    setContentUiDismissal,
   } = useReaderController(t);
   const shortcutSettings = useShortcutPreferences();
   const help = useHelpDialogs(restoreContentFocus);
+  const [toolbarMenu, setToolbarMenu] = useState<ReaderToolbarMenu>();
+  const toolbarMenuRef = useRef<ReaderToolbarMenu | undefined>(undefined);
+  const changeToolbarMenu = useCallback((menu: ReaderToolbarMenu | undefined) => {
+    toolbarMenuRef.current = menu;
+    setToolbarMenu(menu);
+  }, []);
   const searchFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [searchInputFocusRequest, setSearchInputFocusRequest] = useState(0);
   // Exactly one of these two "left panels" (Contents/Bookmarks & Highlights)
@@ -215,10 +223,47 @@ const ReaderAppInner: FC = () => {
   // whenever any flyout panel (either side) is open — all are "pinned"
   // reasons to keep the chrome from auto-hiding out from under an open
   // panel.
-  const { visible: chromeVisible, handlers: chromeHandlers } = useAutoHideChrome(
+  const { visible: chromeVisible, handlers: chromeHandlers, dismissForContent, hide: hideChrome } = useAutoHideChrome(
     activePanel !== undefined || rightPanel !== undefined || help.view !== undefined || snapshot?.narrationNoticeVisible === true,
     snapshot?.contentPointerActivityId,
   );
+
+  useEffect(() => {
+    setContentUiDismissal(() => {
+      const dismissedChrome = dismissForContent();
+      const dismissedMenu = toolbarMenuRef.current !== undefined;
+      if (dismissedMenu) {
+        // Fluent restores a closing menu's focus to its trigger if focus is
+        // still inside the popup. Transfer it first, or that restoration
+        // reveals chrome again during this same content pointerdown.
+        restoreContentFocus();
+        changeToolbarMenu(undefined);
+      }
+      const dismissedPopup = snapshot?.activeHighlight !== undefined || snapshot?.footnotePopup !== undefined;
+      if (snapshot?.activeHighlight) dismissActiveHighlight();
+      if (snapshot?.footnotePopup) dismissFootnotePopup();
+      return dismissedChrome || dismissedMenu || dismissedPopup;
+    });
+    return () => setContentUiDismissal(undefined);
+  }, [dismissForContent, setContentUiDismissal, snapshot?.activeHighlight, snapshot?.footnotePopup,
+    dismissActiveHighlight, dismissFootnotePopup, changeToolbarMenu, restoreContentFocus]);
+
+  const dismissPanelToContent = (side: "left" | "right"): void => {
+    if (side === "left") setActivePanel(undefined);
+    else {
+      setRightPanel(undefined);
+      searchFocusReturn.current = undefined;
+    }
+    restoreContentFocus();
+    // The backdrop already consumed the reading-area click. Hide its chrome
+    // too, unless another open surface still needs it.
+    const otherPanelOpen = side === "left" ? rightPanel !== undefined : activePanel !== undefined;
+    if (!otherPanelOpen && help.view === undefined && !snapshot?.narrationNoticeVisible) hideChrome();
+  };
+  const dismissHelpToContent = (): void => {
+    help.closeToContent();
+    if (activePanel === undefined && rightPanel === undefined && !snapshot?.narrationNoticeVisible) hideChrome();
+  };
 
   // Names the browser tab after the book itself, rather than leaving it
   // on the reader page's own generic title — the tab strip is often the
@@ -459,6 +504,7 @@ const ReaderAppInner: FC = () => {
               setActivePanel(undefined);
               restoreContentFocus();
             }}
+            onOutsideClick={() => dismissPanelToContent("left")}
             onSelect={(navPoint) => {
               goToNavPoint(navPoint);
               if (!isTocPinned) {
@@ -487,6 +533,7 @@ const ReaderAppInner: FC = () => {
               setActivePanel(undefined);
               restoreContentFocus();
             }}
+            onOutsideClick={() => dismissPanelToContent("left")}
             scrubberVisible={scrubberVisible}
           />
 
@@ -581,6 +628,8 @@ const ReaderAppInner: FC = () => {
                 overlaps the TOC panel's own clickable area when both are
                 open at once. */}
             <Toolbar
+              openMenu={toolbarMenu}
+              onOpenMenuChange={changeToolbarMenu}
               onListen={snapshot.narration?.available ? startNarration : undefined}
               snapshot={snapshot}
               onBackToLibrary={() => {
@@ -635,6 +684,7 @@ const ReaderAppInner: FC = () => {
               open={help.view === "about"}
               focusShortcutsOnOpen={help.focusShortcutsOnOpen}
               onRequestClose={help.close}
+              onOutsideClick={dismissHelpToContent}
               onAfterClose={help.afterClose}
               backgroundSolid={CHROME_THEMES[snapshot.chromeTheme].backgroundSolid}
               accentForeground={CHROME_THEMES[snapshot.chromeTheme].accentForeground}
@@ -644,6 +694,7 @@ const ReaderAppInner: FC = () => {
             <KeyboardShortcutsDialog
               open={help.view === "shortcuts"}
               onRequestClose={help.close}
+              onOutsideClick={dismissHelpToContent}
               onAfterClose={help.afterClose}
               pageProgressionDirection={snapshot.pageProgressionDirection}
             />
@@ -654,6 +705,7 @@ const ReaderAppInner: FC = () => {
                 setRightPanel(undefined);
                 restoreContentFocus();
               }}
+              onOutsideClick={() => dismissPanelToContent("right")}
               details={bookDetails}
               onOpenInspector={openInspector}
               onOpenHelp={help.openHelp}
@@ -760,6 +812,7 @@ const ReaderAppInner: FC = () => {
             pinned={isSearchPinned}
             onTogglePin={() => setIsSearchPinnedToggle((pinned) => !pinned)}
             onRequestClose={closeSearch}
+            onOutsideClick={() => dismissPanelToContent("right")}
             inputFocusRequest={searchInputFocusRequest}
             scrubberVisible={scrubberVisible}
           />

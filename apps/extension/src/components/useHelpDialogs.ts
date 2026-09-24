@@ -76,6 +76,14 @@ export function useHelpDialogs(restoreReadingFocus?: () => void) {
     }
   }, [view]);
 
+  const closeToContent = useCallback(() => {
+    returnToAbout.current = false;
+    focusReturn.current = restoreReadingFocus;
+    restorePending.current = true;
+    setFocusShortcutsOnOpen(false);
+    setView(undefined);
+  }, [restoreReadingFocus]);
+
   const afterClose = useCallback(() => {
     if (!restorePending.current) return;
     restorePending.current = false;
@@ -87,5 +95,5 @@ export function useHelpDialogs(restoreReadingFocus?: () => void) {
     });
   }, []);
 
-  return { view, focusShortcutsOnOpen, openHelp, openShortcuts, openShortcutsFromHelp, close, afterClose };
+  return { view, focusShortcutsOnOpen, openHelp, openShortcuts, openShortcutsFromHelp, close, closeToContent, afterClose };
 }

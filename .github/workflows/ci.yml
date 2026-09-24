@@ -58,6 +58,7 @@ jobs:
           shell-accessibility-audit.spec.ts
           shell-reflow-accessibility.spec.ts
           reader-shortcuts-help.spec.ts
+          reader-ui-dismissal.spec.ts
           keyboard-ownership.spec.ts
           --workers=1
       - name: Keep verified package

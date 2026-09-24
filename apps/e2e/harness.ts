@@ -2,6 +2,7 @@ import { chromium, expect, type BrowserContext, type Page } from "@playwright/te
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
+import { exposeReaderController } from "./reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +40,7 @@ export async function launchReader(
     viewport?: { width: number; height: number } | null;
     showScrollbars?: boolean;
     forceAccessibility?: boolean;
+    hasTouch?: boolean;
   } = {},
 ): Promise<LaunchedReader> {
   if (!fs.existsSync(EXTENSION_PATH)) {
@@ -66,10 +68,13 @@ export async function launchReader(
       ignoreDefaultArgs: options.showScrollbars ? ["--hide-scrollbars"] : [],
       ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [
-        `--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`,
+        `--disable-extensions-except=${EXTENSION_PATH}`,
+        `--load-extension=${EXTENSION_PATH}`,
         ...(options.forceAccessibility ? ["--force-renderer-accessibility"] : []),
       ],
-      viewport: options.viewport === null ? null : options.viewport ?? { width: 900, height: 900 },
+      viewport:
+        options.viewport === null ? null : (options.viewport ?? { width: 900, height: 900 }),
+      ...(options.hasTouch ? { hasTouch: true } : {}),
     });
     context.once("close", removeOwnedProfile);
 
@@ -146,7 +151,7 @@ export async function clickForwardAndWait(
   timeoutMs = 3000,
 ): Promise<{ changed: boolean; before: string | null; after: string | null }> {
   const before = await currentPageLabel(readerPage);
-  await readerPage.mouse.click(point.x, point.y);
+  await clickReadingPage(readerPage, point);
   const start = Date.now();
   let after = before;
   while (Date.now() - start < timeoutMs) {
@@ -157,6 +162,37 @@ export async function clickForwardAndWait(
     }
   }
   return { changed: after !== before, before, after };
+}
+
+/** A page-turning click, including the separate UI-dismissal tap when needed.
+ * Navigation tests use this only with unpinned chrome and no open panels. */
+export async function clickReadingPage(
+  readerPage: Page,
+  point: { x: number; y: number },
+): Promise<void> {
+  const toolbar = readerPage
+    .getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
+    .locator("..");
+  if (await toolbar.evaluate((element) => getComputedStyle(element).pointerEvents !== "none")) {
+    await exposeReaderController(readerPage);
+    // Rearm the idle timer so chrome cannot auto-hide between the probe and tap.
+    await readerPage.mouse.move(10, 10);
+    await expect(toolbar).toHaveCSS("pointer-events", "auto");
+    const position = () =>
+      readerPage.evaluate(() => {
+        const s = Reflect.get(window, "__readerController").snapshot();
+        return { spine: s.spineIndex, page: s.pageIndex };
+      });
+    const before = await position();
+    await readerPage.mouse.click(point.x, point.y);
+    await expect(toolbar).toHaveCSS("pointer-events", "none");
+    await readerPage.waitForFunction(() => {
+      const c = Reflect.get(window, "__readerController");
+      return !c.isTurningPage && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout;
+    });
+    expect(await position(), "dismissing chrome is not a page turn").toEqual(before);
+  }
+  await readerPage.mouse.click(point.x, point.y);
 }
 
 /** All the reflowable text content currently painted on screen for the

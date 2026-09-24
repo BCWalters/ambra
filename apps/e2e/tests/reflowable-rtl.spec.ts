@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { launchReader } from "../harness.js";
+import { clickReadingPage, launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let rtlBook: string;
@@ -142,10 +142,10 @@ for (const width of [760, 1400]) {
         expect(await signature(page)).toEqual(next);
         await key("Shift+Space");
         expect(await signature(page)).toEqual(initial);
-        await page.mouse.click(40, 450);
+        await clickReadingPage(page, { x: 40, y: 450 });
         await page.waitForTimeout(550);
         expect(await signature(page)).toEqual(next);
-        await page.mouse.click(width - 40, 450);
+        await clickReadingPage(page, { x: width - 40, y: 450 });
         await page.waitForTimeout(550);
         expect(await signature(page)).toEqual(initial);
 

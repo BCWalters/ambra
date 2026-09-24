@@ -315,7 +315,7 @@ test("image viewer blocks reader page and chapter shortcuts in both documents (#
       expect(await currentPageLabel(readerPage)).toBe(position);
 
       for (const scope of ["shell", "iframe"]) {
-        for (const modifier of ["plain", "ctrl", "meta", "space"]) {
+        for (const modifier of ["plain", "ctrl", "meta", "space", "alt"]) {
           // Simulate stale focus outside React's dialog boundary. These events
           // reach the real AccessibilityControllers in each document.
           await readerPage.evaluate(
@@ -324,7 +324,15 @@ test("image viewer blocks reader page and chapter shortcuts in both documents (#
                 scope === "shell" ? document : document.querySelector("iframe")!.contentDocument!;
               doc.body.dispatchEvent(
                 new KeyboardEvent("keydown", {
-                  key: modifier === "space" ? " " : direction,
+                  key:
+                    modifier === "space"
+                      ? " "
+                      : modifier === "alt"
+                        ? direction === "ArrowRight"
+                          ? "PageDown"
+                          : "PageUp"
+                        : direction,
+                  altKey: modifier === "alt",
                   ctrlKey: modifier === "ctrl",
                   metaKey: modifier === "meta",
                   shiftKey: modifier === "space" && direction === "ArrowLeft",
@@ -360,9 +368,7 @@ test("image viewer blocks reader page and chapter shortcuts in both documents (#
       });
       await expect.poll(() => currentPageLabel(readerPage)).not.toBe(resumed);
       // Modified shortcuts also resume, in both directions across a real spine boundary.
-      await readerPage.keyboard.press(
-        direction === "ArrowRight" ? "Control+ArrowRight" : "Meta+ArrowLeft",
-      );
+      await readerPage.keyboard.press(direction === "ArrowRight" ? "Alt+PageDown" : "Alt+PageUp");
       await expect.poll(chapter).not.toBe(title);
       if (direction === "ArrowLeft") expect(await chapter()).toBe(firstChapter);
     }

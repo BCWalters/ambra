@@ -9,6 +9,7 @@ export interface ModalFlyoutProps {
   open: boolean;
   title: string;
   onRequestClose: () => void;
+  onOutsideClick?: () => void;
   backgroundSolid: string;
   children: ReactNode;
   onAfterClose?: () => void;
@@ -21,6 +22,7 @@ export const ModalFlyout: FC<ModalFlyoutProps> = ({
   open,
   title,
   onRequestClose,
+  onOutsideClick,
   backgroundSolid,
   children,
   onAfterClose,
@@ -37,7 +39,10 @@ export const ModalFlyout: FC<ModalFlyoutProps> = ({
       position="end"
       aria-labelledby={titleId}
       onOpenChange={(_event, data) => {
-        if (!data.open) onRequestClose();
+        if (!data.open) {
+          if (data.type === "backdropClick" && onOutsideClick) onOutsideClick();
+          else onRequestClose();
+        }
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape") event.stopPropagation();

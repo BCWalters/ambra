@@ -26,6 +26,7 @@ import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
 export interface UseReaderControllerResult {
+  setContentUiDismissal: (dismiss: (() => boolean) | undefined) => void;
   setShortcutActions: (actions: ReaderShortcutActions) => void;
   setShortcutPreferences: (preferences: ShortcutPreferences, platform: ShortcutPlatform) => void;
   setShortcutModalOpen: (open: boolean) => void;
@@ -101,6 +102,11 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   const shortcutActions = useRef<ReaderShortcutActions | undefined>(undefined);
   const shortcutPreferences = useRef<{ preferences: ShortcutPreferences; platform: ShortcutPlatform } | undefined>(undefined);
   const shortcutModalOpen = useRef(false);
+  const contentUiDismissal = useRef<(() => boolean) | undefined>(undefined);
+  const setContentUiDismissal = useCallback((dismiss: (() => boolean) | undefined) => {
+    contentUiDismissal.current = dismiss;
+    ownedController.current?.setContentUiDismissal(dismiss);
+  }, []);
   const setShortcutActions = useCallback((actions: ReaderShortcutActions) => {
     shortcutActions.current = actions;
     ownedController.current?.setShortcutActions(actions);
@@ -221,6 +227,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
       void ownedController.current?.flushProgress();
       ownedController.current?.dispose();
       ownedController.current = opened;
+      opened.setContentUiDismissal(contentUiDismissal.current);
       if (shortcutActions.current) opened.setShortcutActions(shortcutActions.current);
       if (shortcutPreferences.current) {
         opened.setShortcutPreferences(shortcutPreferences.current.preferences, shortcutPreferences.current.platform);
@@ -520,6 +527,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   }, [controller]);
 
   return {
+    setContentUiDismissal,
     setShortcutActions,
     setShortcutPreferences,
     setShortcutModalOpen,

@@ -85,6 +85,7 @@ describe("ModalFlyout with real Fluent focus and Escape handling", () => {
       closeButton.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
       await new Promise((resolve) => setTimeout(resolve, 400));
     });
+
     expect(closeButton.getAttribute("aria-label")).toBe("Close");
     expect(closeButton.title).toBe("Close");
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
@@ -92,6 +93,28 @@ describe("ModalFlyout with real Fluent focus and Escape handling", () => {
       key: "Escape", bubbles: true, cancelable: true,
     })));
     expect(closeModal).toHaveBeenCalledOnce();
+  });
+
+  it("distinguishes a backdrop dismissal from keyboard dismissal", async () => {
+    const close = vi.fn();
+    const outside = vi.fn();
+    await act(async () => root.render(<FluentProvider theme={webLightTheme}>
+      <ModalFlyout open title="Reading help" backgroundSolid="#fff"
+        onRequestClose={close} onOutsideClick={outside}>
+        <button>Content</button>
+      </ModalFlyout>
+    </FluentProvider>));
+    const backdrop = document.querySelector<HTMLElement>(".fui-OverlayDrawer__backdrop")!;
+    expect(backdrop).not.toBeNull();
+    await act(async () => backdrop.click());
+    expect(outside).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    const button = document.querySelector<HTMLButtonElement>('[role="dialog"] button')!;
+    await act(async () => button.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true,
+    })));
+    expect(close).toHaveBeenCalledOnce();
+    expect(outside).toHaveBeenCalledOnce();
   });
 
   it.each([false, true])("retains Fluent modal focus trapping with explicit close ownership (%s)", async (manualRestoration) => {

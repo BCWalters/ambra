@@ -21,6 +21,7 @@ export interface BookDetailsPanelProps {
    * the opposite side of the reader pane. */
   open: boolean;
   onRequestClose: () => void;
+  onOutsideClick?: () => void;
   /** `undefined` while `ReaderApp` is still fetching it (the cover image
    * and file name need an async `LibraryDatabase` read the first time —
    * see `ReaderController.getBookDetails`) — shows a spinner instead of
@@ -112,6 +113,7 @@ function goToButtonStyle(themeBackgroundSolid: string): CSSProperties {
 export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   open,
   onRequestClose,
+  onOutsideClick,
   details,
   onOpenInspector,
   onOpenHelp,
@@ -158,7 +160,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
     <>
       <div
         aria-hidden="true"
-        onClick={onRequestClose}
+        onClick={onOutsideClick ?? onRequestClose}
         style={{
           position: "absolute",
           inset: 0,

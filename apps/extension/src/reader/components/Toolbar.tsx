@@ -51,7 +51,11 @@ const useReaderToolbarStyles = makeStyles({
   },
 });
 
+export type ReaderToolbarMenu = "typography" | "settings";
+
 export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuActions {
+  openMenu: ReaderToolbarMenu | undefined;
+  onOpenMenuChange: (menu: ReaderToolbarMenu | undefined) => void;
   snapshot: ReaderSnapshot;
   /** Navigates away from the reader back to the library page (issue
    * #112) — plain navigation of the reader's own tab, not opening a
@@ -110,6 +114,8 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
  * Persisting every chosen setting is `ReaderController`'s job, not this
  * component's — it just reflects/changes current state. */
 export const Toolbar: FC<ToolbarProps> = ({
+  openMenu,
+  onOpenMenuChange,
   snapshot,
   onBackToLibrary,
   isTocOpen,
@@ -471,6 +477,8 @@ export const Toolbar: FC<ToolbarProps> = ({
 
         {!snapshot.isFixedLayout && (
           <TypographyMenu
+            open={openMenu === "typography"}
+            onOpenChange={open => onOpenMenuChange(open ? "typography" : undefined)}
             fontScale={snapshot.fontScale}
             lineSpacing={snapshot.lineSpacing}
             letterSpacing={snapshot.letterSpacing}
@@ -487,6 +495,8 @@ export const Toolbar: FC<ToolbarProps> = ({
         )}
 
         <ReaderSettingsMenu
+          open={openMenu === "settings"}
+          onOpenChange={open => onOpenMenuChange(open ? "settings" : undefined)}
           showReadingModeShortcuts
           isFixedLayout={snapshot.isFixedLayout}
           viewMode={snapshot.viewMode}

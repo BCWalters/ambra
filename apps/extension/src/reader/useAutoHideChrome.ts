@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /** How long the toolbar stays visible after the most recent activity
  * before fading away. */
@@ -17,6 +17,11 @@ const EDGE_REVEAL_ZONE_PX = 96;
 export interface AutoHideChrome {
   /** Whether the toolbar should currently be shown. */
   visible: boolean;
+  /** Synchronously hides transient chrome before a content gesture starts.
+   * Returns true only when that gesture dismissed visible chrome. */
+  dismissForContent: () => boolean;
+  /** Hides chrome together with an outside-click dismissal of its open panel. */
+  hide: () => void;
   /** Spread onto the toolbar's root element — keeps it visible while the
    * pointer is over it or it (or something inside it) has focus, and
    * schedules a fade once neither is true anymore. */
@@ -61,9 +66,31 @@ export interface AutoHideChrome {
  */
 export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): AutoHideChrome {
   const [visible, setVisible] = useState(true);
+  const visibleRef = useRef(true);
+  const pinnedRef = useRef(pinned);
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => { pinnedRef.current = pinned; }, [pinned]);
+
+  const show = useCallback((): void => {
+    visibleRef.current = true;
+    setVisible(true);
+  }, []);
+  const hide = useCallback((): void => {
+    window.clearTimeout(timerRef.current);
+    visibleRef.current = false;
+    hoveredRef.current = false;
+    focusedRef.current = false;
+    setVisible(false);
+  }, []);
+  const dismissForContent = useCallback((): boolean => {
+    if (pinnedRef.current || !visibleRef.current) return false;
+    // Focus may still be in a toolbar menu until the native pointerdown
+    // focuses the book. That old focus must not veto deliberate dismissal.
+    hide();
+    return true;
+  }, [hide]);
 
   const scheduleHide = (): void => {
     window.clearTimeout(timerRef.current);
@@ -72,20 +99,20 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     }
     timerRef.current = window.setTimeout(() => {
       if (!hoveredRef.current && !focusedRef.current) {
-        setVisible(false);
+        hide();
       }
     }, HIDE_DELAY_MS);
   };
 
   useEffect(() => {
     if (pinned) {
-      setVisible(true);
+      show();
       window.clearTimeout(timerRef.current);
       return;
     }
 
     const reveal = (): void => {
-      setVisible(true);
+      show();
       scheduleHide();
     };
     const handlePointerMove = (event: PointerEvent): void => {
@@ -132,15 +159,17 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
       return;
     }
     window.clearTimeout(timerRef.current);
-    setVisible(false);
+    hide();
   }, [contentActivityId]);
 
   return {
     visible,
+    dismissForContent,
+    hide,
     handlers: {
       onPointerEnter: () => {
         hoveredRef.current = true;
-        setVisible(true);
+        show();
         window.clearTimeout(timerRef.current);
       },
       onPointerLeave: () => {
@@ -149,7 +178,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
       },
       onFocus: () => {
         focusedRef.current = true;
-        setVisible(true);
+        show();
         window.clearTimeout(timerRef.current);
       },
       onBlur: () => {
