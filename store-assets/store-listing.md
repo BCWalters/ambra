@@ -3,7 +3,7 @@
 ## Product
 
 - **Name**: Ambra EPUB Reader
-- **Category**: Productivity
+- **Category**: Productivity > Tools (the saved dashboard category).
 - **Distribution**: Unlisted. Anyone with the installation URL can install;
   the listing does not appear in store search or browsing. Share the URL with
   friends for the initial beta; no trusted-tester allowlist is required.
@@ -11,9 +11,11 @@
 
 ## Short description
 
-Import, organize, and read EPUB3 books locally in Chrome with offline storage, resume reading, bookmarks, and highlights.
+A polished, accessible EPUB3 reader for Chrome.
 
-Character count: 121
+Character count: 47. This read-only dashboard summary comes from the uploaded
+package's manifest `description`; it is not separately editable listing copy.
+The beta assistive-technology limitations below still apply.
 
 ## Single purpose
 

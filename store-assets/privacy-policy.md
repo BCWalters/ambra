@@ -1,6 +1,6 @@
 # Ambra Privacy Policy
 
-Effective date: 2026-09-23
+Effective date: 2026-09-24
 
 Ambra is a local-first EPUB3 reader for Chrome. It lets users import, store, and read EPUB books in the browser without creating an account and without sending reading activity to Ambra-operated servers.
 
@@ -59,6 +59,15 @@ Library discovery links, description attribution links, and external links you
 choose to open navigate to third-party websites. Those websites have their own
 privacy policies. Reading an imported book does not require an Ambra account or
 an Ambra-operated server.
+
+## Chrome Web Store User Data Policy and Limited Use
+
+Ambra's use of user data complies with the
+[Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/policies#protecting-user-privacy),
+including the Limited Use requirements. Ambra uses and transfers user data only
+as necessary for its disclosed single purpose of reading and working with your
+EPUB library, as described in this policy. Ambra does not sell user data or use
+or transfer it for advertising, determining creditworthiness, or lending.
 
 ## What Ambra does not do
 
