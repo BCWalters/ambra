@@ -184,6 +184,38 @@ export class HighlightInteraction {
     return { top, bottom: iframeHeight - bottom };
   }
 
+  private static visibleSelectionRect(range: Range, iframeEl: HTMLIFrameElement): {
+    left: number; right: number; top: number; bottom: number;
+  } | undefined {
+    const frame = iframeEl.getBoundingClientRect();
+    const viewport = iframeEl.ownerDocument.defaultView;
+    if (!viewport) return undefined;
+    const page = HighlightInteraction.visiblePageBounds(iframeEl, frame.height);
+    const bounds = {
+      left: Math.max(0, -frame.left),
+      right: Math.min(frame.width, viewport.innerWidth - frame.left),
+      top: Math.max(page.top, -frame.top),
+      bottom: Math.min(page.bottom, viewport.innerHeight - frame.top),
+    };
+    let visible: { left: number; right: number; top: number; bottom: number } | undefined;
+    // The body contains the whole chapter, including text translated outside
+    // this page. Its selection's bounding box can span entirely hidden lines.
+    for (const rect of Array.from(range.getClientRects())) {
+      const left = Math.max(rect.left, bounds.left);
+      const right = Math.min(rect.right, bounds.right);
+      const top = Math.max(rect.top, bounds.top);
+      const bottom = Math.min(rect.bottom, bounds.bottom);
+      if (right <= left || bottom <= top) continue;
+      visible = visible
+        ? {
+          left: Math.min(visible.left, left), right: Math.max(visible.right, right),
+          top: Math.min(visible.top, top), bottom: Math.max(visible.bottom, bottom),
+        }
+        : { left, right, top, bottom };
+    }
+    return visible;
+  }
+
   private resolveHighlightRange(highlight: Highlight, spineIndex: number, doc: Document): Range | undefined {
     try {
       const start = this.locatorResolver.resolveInDocument(new Locator(highlight.startCfi), spineIndex, doc);
@@ -227,8 +259,9 @@ export class HighlightInteraction {
     }
 
     const cleanups: Array<() => void> = [];
+    let selectionDocument: Document | undefined;
     for (const doc of documents) {
-      const iframeEl = doc.defaultView?.frameElement;
+      const iframeEl = doc.defaultView?.frameElement as HTMLIFrameElement | null | undefined;
       if (!iframeEl) {
         continue;
       }
@@ -236,33 +269,36 @@ export class HighlightInteraction {
       const updateFromSelection = (): boolean => {
         const selection = doc.getSelection();
         if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+          selectionDocument = undefined;
           this.ctx.setPendingSelectionRange(undefined);
           this.ctx.setSelectionToolbar(undefined);
           return false;
         }
         const range = selection.getRangeAt(0);
-        const rangeRect = range.getBoundingClientRect();
-        if (rangeRect.width === 0 && rangeRect.height === 0) {
-          // A selection can momentarily report a zero-size rect (e.g.
-          // right as it's being cleared) — treat like "no selection".
+        const rangeRect = HighlightInteraction.visibleSelectionRect(range, iframeEl);
+        if (!rangeRect) {
+          // Preserve native/assistive-technology selections, but never offer
+          // annotation actions for text the reader cannot see.
+          selectionDocument = undefined;
           this.ctx.setPendingSelectionRange(undefined);
           this.ctx.setSelectionToolbar(undefined);
-          return false;
+          return true;
         }
         const iframeRect = iframeEl.getBoundingClientRect();
+        selectionDocument = doc;
         this.ctx.setPendingSelectionRange(range.cloneRange());
         this.ctx.setSelectionToolbar({
-          left: iframeRect.left + rangeRect.left + rangeRect.width / 2,
+          left: iframeRect.left + (rangeRect.left + rangeRect.right) / 2,
           top: iframeRect.top + rangeRect.top,
         });
         return true;
       };
 
       const onPointerUp = (event: PointerEvent): void => {
-        const madeOrKeptSelection = updateFromSelection();
-        if (!madeOrKeptSelection) {
-          // No selection to show a toolbar for — check if the click
-          // landed on an existing highlight instead (issue #48).
+        const hasSelection = updateFromSelection();
+        if (!hasSelection) {
+          // Only a caret click, not a hidden selection, can open an
+          // existing highlight's popup (issue #48).
           this.checkExistingHighlightClick(doc, iframeEl, event.clientX, event.clientY);
         } else {
           this.ctx.setActiveHighlight(undefined);
@@ -274,8 +310,8 @@ export class HighlightInteraction {
         this.ctx.notify();
       };
 
-      // Continuous-scroll mode only — keeps note markers from staying
-      // pinned to a stale position as the reader scrolls past them.
+      // Reposition existing UI without opening a toolbar during native
+      // selection autoscroll.
       let scrollAnimationFrame: number | undefined;
       const onScroll = (): void => {
         if (scrollAnimationFrame !== undefined) {
@@ -283,6 +319,7 @@ export class HighlightInteraction {
         }
         scrollAnimationFrame = requestAnimationFrame(() => {
           scrollAnimationFrame = undefined;
+          if (selectionDocument === doc) updateFromSelection();
           this.updateNoteMarkers();
           this.ctx.notify();
         });
