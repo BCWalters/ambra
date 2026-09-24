@@ -78,6 +78,15 @@ button:focus-visible, p:focus-visible { outline: 2px solid Highlight; outline-of
 p { margin: 0; }
 `;
 
+const boundaryControls = new WeakMap<Document, HTMLElement>();
+
+/** Update shortcut metadata without replacing a focused native boundary control. */
+export function setContentBoundaryShortcut(document: Document, shortcut: string | undefined): void {
+  const control = boundaryControls.get(document);
+  if (shortcut) control?.setAttribute("aria-keyshortcuts", shortcut);
+  else control?.removeAttribute("aria-keyshortcuts");
+}
+
 /**
  * Native navigation at the actual document end, not a sibling of the iframe.
  * Shadow DOM isolates reader strings/styles from publication text and selectors.
@@ -112,6 +121,7 @@ export function attachContentBoundary(
   control.textContent = boundary.label;
   if (control.localName === "button") (control as HTMLButtonElement).type = "button";
   else control.tabIndex = 0;
+  if (control.localName === "button") boundaryControls.set(doc, control);
   nav.append(control);
   shadow.append(style, nav);
   doc.body.append(root);
@@ -149,6 +159,7 @@ export function attachContentBoundary(
   control.addEventListener("click", click);
   return () => {
     disposed = true;
+    if (boundaryControls.get(doc) === control) boundaryControls.delete(doc);
     restoreSurface?.();
     nav.removeEventListener("focusin", focusIn);
     nav.removeEventListener("focusout", focusOut);

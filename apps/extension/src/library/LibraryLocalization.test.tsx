@@ -90,10 +90,10 @@ describe("Library localization and action order", () => {
     await render();
     const labels = () => [...container.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button')].map((entry) =>
       entry.getAttribute("aria-label") ?? (entry.textContent || document.getElementById(entry.getAttribute("aria-labelledby") ?? "")?.textContent));
-    expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "About Ambra", "Expand library into a full browser tab"]);
+    expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About", "Expand library into a full browser tab"]);
     state.isFullTab = true;
     await render();
-    expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "About Ambra"]);
+    expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About"]);
   });
 
   it("exposes a Library main landmark and a readable top-level heading", async () => {
@@ -174,7 +174,7 @@ describe("Library localization and action order", () => {
 
 describe("Library catalog and number formatting", () => {
   it.each(SUPPORTED_LOCALES)("preserves translation placeholders for every Library/About key in %s", (locale) => {
-    for (const key of Object.keys(CATALOGS.en).filter((key) => key.startsWith("library.") || key.startsWith("about."))) {
+    for (const key of Object.keys(CATALOGS.en).filter((key) => key.startsWith("library.") || key.startsWith("about.") || key.startsWith("shortcuts.") || key === "settings.helpAbout")) {
       const catalogKey = key as keyof typeof CATALOGS.en;
       const placeholders = (value: string) => value.match(/\{\w+\}/g)?.sort() ?? [];
       expect(placeholders(CATALOGS[locale][catalogKey]), catalogKey).toEqual(placeholders(CATALOGS.en[catalogKey]));

@@ -40,6 +40,9 @@ function controller(title: string) {
     snapshot: () => snapshot,
     subscribe: () => () => {},
     setTranslate: vi.fn(),
+    setShortcutActions: vi.fn(),
+    setShortcutPreferences: vi.fn(),
+    setShortcutModalOpen: vi.fn(),
     dispose: vi.fn(),
     flushProgress: vi.fn().mockResolvedValue(undefined),
     mount: vi.fn().mockResolvedValue(undefined),
@@ -86,9 +89,26 @@ it("only adopts the latest requested book, disposing a slow obsolete open", asyn
     slow.resolve(first.value);
     await pending;
   });
+
   expect(first.methods.dispose).toHaveBeenCalledOnce();
   expect(second.methods.dispose).not.toHaveBeenCalled();
   expect(latest.snapshot).toBe(second.snapshot);
+});
+
+it("applies shortcut configuration supplied before opening, and updates the live controller", async () => {
+    const opened = controller("configured");
+    const actions = { searchBook: vi.fn(), showKeyboardShortcuts: vi.fn() };
+    const preferences = { enabled: false };
+    latest.setShortcutActions(actions);
+    latest.setShortcutPreferences(preferences, "mac");
+    latest.setShortcutModalOpen(true);
+    vi.mocked(ReaderController.open).mockResolvedValue(opened.value);
+    await act(async () => latest.openBook(new ArrayBuffer(0), "configured", library().value));
+    expect(opened.methods.setShortcutActions).toHaveBeenCalledWith(actions);
+    expect(opened.methods.setShortcutPreferences).toHaveBeenCalledWith(preferences, "mac");
+    expect(opened.methods.setShortcutModalOpen).toHaveBeenCalledWith(true);
+    latest.setShortcutModalOpen(false);
+    expect(opened.methods.setShortcutModalOpen).toHaveBeenLastCalledWith(false);
 });
 
 it("disposes a controller that finishes opening after unmount", async () => {

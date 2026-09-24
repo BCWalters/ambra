@@ -20,6 +20,10 @@ export class AccessibilityController {
   ): void {
     this.detach(document);
     const keydownHandler = (event: KeyboardEvent): void => {
+      if (options.keyboardHandler) {
+        options.keyboardHandler(event, document);
+        return;
+      }
       const command = navigationCommand(event, document, options);
       if (!command) return;
       const handler = command.kind === "chapter"

@@ -38,6 +38,8 @@ import type {
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
+import { ariaShortcut, DEFAULT_SHORTCUT_PREFERENCES, getCommandBindings, getShortcutPlatform, matchReaderCommand, parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
+import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
 import {
   buildAnnotationCollection,
@@ -56,7 +58,7 @@ import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
 import { readerDocumentViews } from "./ReaderDocuments.js";
-import { attachContentBoundary, contentBoundary } from "./ContentBoundaryNavigation.js";
+import { attachContentBoundary, contentBoundary, setContentBoundaryShortcut } from "./ContentBoundaryNavigation.js";
 import type { ReadingHost } from "./ReaderDocuments.js";
 import type { PageTurnFurnitureInfo, SpreadPageTurnFurnitureInfo } from "./PageTurnOrchestrator.js";
 import { SearchCoordinator } from "./SearchCoordinator.js";
@@ -90,6 +92,11 @@ import { DiagnosticsLog } from "./DiagnosticsLog.js";
 import { DEFAULT_LOCALE } from "../i18n/Locale.js";
 import { getTranslate } from "../i18n/LocaleContext.js";
 import type { Translate } from "../i18n/LocaleContext.js";
+
+export interface ReaderShortcutActions {
+  searchBook: () => void;
+  showKeyboardShortcuts: () => void;
+}
 
 /** The smallest a rendered image is allowed to be (in both CSS px
  * dimensions) for a click/keypress on it to open the image viewer —
@@ -1345,12 +1352,72 @@ export class ReaderController {
         {
           interceptSpace: !(this.host instanceof ScrollContentHost),
           pageProgressionDirection: this.pkg.pageProgressionDirection,
+          keyboardHandler: (event, document) => this.handleShortcut(event, document, "content"),
         },
       );
     }
   }
 
-  /** Shared by the shell and every current content document. */
+  private shortcutPreferences: ShortcutPreferences = DEFAULT_SHORTCUT_PREFERENCES;
+  private shortcutPlatform: ShortcutPlatform = getShortcutPlatform();
+  private shortcutActions: ReaderShortcutActions | undefined;
+  private shortcutModalOpen = false;
+
+  public setShortcutPreferences(preferences: ShortcutPreferences, platform: ShortcutPlatform): void {
+    this.shortcutPreferences = parseShortcutPreferences(preferences);
+    this.shortcutPlatform = platform;
+    this.updateBoundaryShortcutHints();
+  }
+
+  public setShortcutActions(actions: ReaderShortcutActions): void {
+    this.shortcutActions = actions;
+  }
+
+  public setShortcutModalOpen(open: boolean): void {
+    this.shortcutModalOpen = open;
+  }
+
+  private updateBoundaryShortcutHints(): void {
+    const shortcut = this.shortcutPreferences.enabled
+      ? getCommandBindings("nextSection", this.shortcutPlatform,
+        this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr")
+        .map(binding => ariaShortcut(binding, this.shortcutPlatform)).join(" ")
+      : undefined;
+    for (const view of this.contentDocumentViews()) setContentBoundaryShortcut(view.document, shortcut);
+  }
+
+  private handleShortcut(event: KeyboardEvent, document: Document, scope: "shell" | "content"): void {
+    const command = matchReaderCommand(event, document, {
+      preferences: this.shortcutPreferences,
+      platform: this.shortcutPlatform,
+      direction: this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr",
+      viewMode: this.host instanceof ScrollContentHost ? "scroll" : "paginated",
+      scope,
+      modalOpen: this.shortcutModalOpen || !!this.imageViewer,
+      canSwitchViewMode: !!this.containerEl && !this.operations.disposed &&
+        (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ||
+          this.host instanceof ScrollContentHost),
+    });
+    if (!command) return;
+    if ((command === "searchBook" || command === "showKeyboardShortcuts") && !this.shortcutActions) return;
+    event.preventDefault();
+    switch (command) {
+      case "searchBook": this.shortcutActions?.searchBook(); break;
+      case "showKeyboardShortcuts": this.shortcutActions?.showKeyboardShortcuts(); break;
+      case "toggleBookmark": void this.toggleBookmark().catch(error => this.reportActionFailure(error)); break;
+      case "switchToScrolling":
+      case "switchToPaginated":
+        void this.setViewMode(command === "switchToScrolling" ? "scroll" : "paginated")
+          .catch(error => this.reportActionFailure(error));
+        break;
+      case "previousSection": void this.goToChapter(-1, document); break;
+      case "nextSection": void this.goToChapter(1, document); break;
+      case "previousPage": this.dispatchArrowNavigation(-1, false, document); break;
+      case "nextPage": this.dispatchArrowNavigation(1, false, document); break;
+    }
+  }
+
+  /** Engine fallback callbacks are replaced by the registry on every app attachment. */
   private readonly keyboardNavigationHandlers = {
     onNext: () => this.dispatchArrowNavigation(1),
     onPrevious: () => this.dispatchArrowNavigation(-1),
@@ -1358,8 +1425,8 @@ export class ReaderController {
     onPreviousChapter: () => this.dispatchArrowNavigation(-1, true),
   };
 
-  /** Plain arrows turn pages/spreads when paginated; Ctrl/Cmd always jumps chapters. */
-  private dispatchArrowNavigation(direction: 1 | -1, chapter = false): void {
+  /** Plain arrows retain section navigation in continuous-scroll mode. */
+  private dispatchArrowNavigation(direction: 1 | -1, chapter = false, document?: Document): void {
     // Focus may still belong to an iframe or the shell when the modal opens.
     // Guard at dispatch, not only at the dialog's React event boundary.
     if (this.imageViewer) return;
@@ -1367,7 +1434,7 @@ export class ReaderController {
       this.host instanceof PaginatedContentHost ||
       this.host instanceof SpreadPaginatedHost ||
       this.host instanceof FixedSpreadHost;
-    void (isPaginated && !chapter ? this.turnPage(direction) : this.goToChapter(direction));
+    void (isPaginated && !chapter ? this.turnPage(direction) : this.goToChapter(direction, document));
   }
 
   private physicalDirection(direction: 1 | -1): 1 | -1 {
@@ -1390,6 +1457,7 @@ export class ReaderController {
           return interceptSpace();
         },
         pageProgressionDirection: this.pkg.pageProgressionDirection,
+        keyboardHandler: (event, document) => this.handleShortcut(event, document, "shell"),
       },
     );
     this.globalArrowKeyCleanup = () => keyboard.detach();
@@ -1615,6 +1683,9 @@ export class ReaderController {
         if (!isZoomableImage(img)) {
           return;
         }
+        if (!img.hasAttribute("role") || img.getAttribute("role") === "img") {
+          img.setAttribute("data-ambra-image-zoom", "");
+        }
         img.tabIndex = 0;
         img.setAttribute("role", "button");
         img.setAttribute("aria-label", img.alt ? `Zoom image: ${img.alt}` : "Zoom image");
@@ -1706,6 +1777,7 @@ export class ReaderController {
       this.translate.locale ?? DEFAULT_LOCALE,
     ));
     this.boundaryCleanup = () => cleanups.forEach(cleanup => cleanup());
+    this.updateBoundaryShortcutHints();
   }
 
   /** Resizes the current host while preserving position; a spread-mode
@@ -3722,13 +3794,29 @@ export class ReaderController {
     return this.diagnostics.format(this.diagnosticsContext());
   }
 
-  /** Loads the adjacent chapter directly, unlike page-by-page `turnPage`. */
-  public async goToChapter(direction: 1 | -1): Promise<void> {
-    const nextSpineIndex = this.spineIndex + direction;
+  /** Adjacent spine item, relative to actual reading focus, not a spread's visual primary. */
+  public async goToChapter(direction: 1 | -1, sourceDocument?: Document): Promise<void> {
+    if (this.operations.disposed || this.isLoadInFlight || this.isTurningPage || this.isApplyingLayout) return;
+    const views = this.contentDocumentViews();
+    const source = views.find(view => view.document === sourceDocument)
+      ?? views.find(view => {
+        const frame = view.document.defaultView?.frameElement;
+        return frame && frame.ownerDocument.activeElement === frame;
+      });
+    const native = this.nativeReading.current();
+    const nextSpineIndex = (source?.spineIndex ?? native?.spineIndex ?? this.spineIndex) + direction;
     if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
       return;
     }
     this.clearNavigationHighlights();
+    const destination = views.find(view => view.spineIndex === nextSpineIndex &&
+      (this.isFixedLayoutHost(this.host) || view.page?.index === 0));
+    if (destination) {
+      const point = { spineIndex: nextSpineIndex, node: destination.document.body, offset: 0 };
+      this.accessibility.focusReadingPosition(destination.document, point);
+      this.nativeReading.retain(point);
+      return;
+    }
     await this.openSpineItem(nextSpineIndex);
   }
 
@@ -4296,7 +4384,7 @@ export class ReaderController {
         );
       } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, requestedSpineIndex);
-        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus);
+        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
       } else if (options.fragment) {
         const focusTarget = this.goToFragment(options.fragment);
         this.setUpAccessibility(focusTarget, !options.automatic && !options.preserveFocus);
@@ -4323,7 +4411,7 @@ export class ReaderController {
           );
           this.host.goToPageIndex(targetIndex);
         }
-        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus);
+        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
       }
       if (options.bridgeCfi) {
         const view = this.contentDocumentViews().find(view => view.spineIndex === requestedSpineIndex);

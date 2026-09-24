@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isReaderOwnedContent, NavPoint } from "@ambra/engine";
 import type { PackageDocument } from "@ambra/engine";
 import { getTranslate } from "../i18n/translate.js";
-import { attachContentBoundary, contentBoundary } from "./ContentBoundaryNavigation.js";
+import { attachContentBoundary, contentBoundary, setContentBoundaryShortcut } from "./ContentBoundaryNavigation.js";
 
 const pkg = {
   spine: [
@@ -77,6 +77,21 @@ describe("attachContentBoundary", () => {
     expect(activate).not.toHaveBeenCalled();
     dispose();
     expect(document.body.children).toHaveLength(1);
+  });
+
+  it("updates and clears ARIA shortcut hints without replacing the boundary button", () => {
+    const { nav, dispose } = attach();
+    const button = nav.querySelector("button")!;
+    setContentBoundaryShortcut(document, "Alt+PageDown");
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Alt+PageDown");
+    setContentBoundaryShortcut(document, "Control+B");
+    expect(nav.querySelector("button")).toBe(button);
+    expect(button.getAttribute("aria-keyshortcuts")).toBe("Control+B");
+    setContentBoundaryShortcut(document, undefined);
+    expect(button.hasAttribute("aria-keyshortcuts")).toBe(false);
+    dispose();
+    setContentBoundaryShortcut(document, "Alt+PageDown");
+    expect(button.hasAttribute("aria-keyshortcuts")).toBe(false);
   });
 
   it("ignores repeated activation while pending and detached stale callbacks", async () => {

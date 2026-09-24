@@ -32,6 +32,35 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "settings.helpAbout": string;
+  "library.about": string;
+  "about.userGuide": string;
+  "about.issues": string;
+  "about.readerDiagnosticsWarning": string;
+  "about.readerDiagnosticsUnavailable": string;
+  "shortcuts.title": string;
+  "shortcuts.enabled": string;
+  "shortcuts.scope": string;
+  "shortcuts.layoutNote": string;
+  "shortcuts.disabledHint": string;
+  "shortcuts.saving": string;
+  "shortcuts.saved": string;
+  "shortcuts.saveError": string;
+  "shortcuts.loading": string;
+  "shortcuts.loadError": string;
+  "shortcuts.navigation": string;
+  "shortcuts.reading": string;
+  "shortcuts.help": string;
+  "shortcuts.dismiss": string;
+  "shortcuts.previousPage": string;
+  "shortcuts.nextPage": string;
+  "shortcuts.previousSection": string;
+  "shortcuts.nextSection": string;
+  "shortcuts.toggleBookmark": string;
+  "shortcuts.searchBook": string;
+  "shortcuts.showKeyboardShortcuts": string;
+  "shortcuts.switchToScrolling": string;
+  "shortcuts.switchToPaginated": string;
   "readingBoundary.navigation": string;
   "readingBoundary.nextChapter": string;
   "readingBoundary.nextSection": string;
@@ -378,6 +407,35 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "settings.helpAbout": "Help & About",
+  "library.about": "Help & About",
+  "about.userGuide": "User guide",
+  "about.issues": "GitHub issues (optional)",
+  "about.readerDiagnosticsWarning": "Reader reports may include book details (such as title and file paths), reading locations and recent diagnostic events. Nothing is sent automatically. Review the copied report before sharing.",
+  "about.readerDiagnosticsUnavailable": "The reader report is not available yet. Try again when the book is ready.",
+  "shortcuts.title": "Keyboard shortcuts",
+  "shortcuts.enabled": "Enable keyboard shortcuts",
+  "shortcuts.scope": "Reader commands apply while reading. This popup’s shortcut also works in the library. Settings are shared across books.",
+  "shortcuts.layoutNote": "PageUp, PageDown and Space turn pages in paginated mode and scroll natively in scrolling mode. Mode switches apply only to reflowable books.",
+  "shortcuts.disabledHint": "Shortcuts are off. You can still open this panel from Help & About. Native browser and screen-reader keys are unchanged.",
+  "shortcuts.saving": "Saving…",
+  "shortcuts.saved": "Shortcut settings saved.",
+  "shortcuts.saveError": "Could not save shortcut settings. Your previous settings are unchanged. Try again.",
+  "shortcuts.loading": "Loading shortcut settings…",
+  "shortcuts.loadError": "Shortcut settings could not be loaded. Reopen Ambra to try again.",
+  "shortcuts.navigation": "Navigation",
+  "shortcuts.reading": "Reading",
+  "shortcuts.help": "Help",
+  "shortcuts.dismiss": "Close the current popup",
+  "shortcuts.previousPage": "Previous page",
+  "shortcuts.nextPage": "Next page",
+  "shortcuts.previousSection": "Previous section",
+  "shortcuts.nextSection": "Next section",
+  "shortcuts.toggleBookmark": "Toggle bookmark",
+  "shortcuts.searchBook": "Search book",
+  "shortcuts.showKeyboardShortcuts": "Show keyboard shortcuts",
+  "shortcuts.switchToScrolling": "Switch to scrolling",
+  "shortcuts.switchToPaginated": "Switch to paginated",
   "readingBoundary.navigation": "Continue reading",
   "readingBoundary.nextChapter": "Next chapter: {title}",
   "readingBoundary.nextSection": "Next section",
@@ -454,7 +512,7 @@ export const en: StringCatalog = {
   "library.downloadAccessDenied": "Ambra doesn't have access to fetch this book here. Check its site access in Chrome's extension settings, or choose Import EPUB to open a downloaded copy.",
   "library.downloadUnsupported": "This link can't be imported directly. Download the EPUB from the site, then choose Import EPUB.",
   "library.downloadImportFailed": "This file couldn't be added to the library. Check Chrome's Downloads and make sure the file is an EPUB, then choose Import EPUB to try again. Error details: {detail}",
-  "about.title": "About Ambra",
+  "about.title": "Help & About",
   "about.version": "Version {version}",
   "about.description": "An EPUB reader designed for comfortable, beautiful reading.",
   "about.createdBy": "Created by",

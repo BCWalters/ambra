@@ -6,6 +6,9 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
+import type { ReaderShortcutActions } from "./ReaderController.js";
+import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
+import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
 import type { InspectorReference } from "./InspectorReferences.js";
 import type {
@@ -23,6 +26,9 @@ import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
 export interface UseReaderControllerResult {
+  setShortcutActions: (actions: ReaderShortcutActions) => void;
+  setShortcutPreferences: (preferences: ShortcutPreferences, platform: ShortcutPlatform) => void;
+  setShortcutModalOpen: (open: boolean) => void;
   snapshot: ReaderSnapshot | undefined;
   contentHostRef: RefObject<HTMLDivElement | null>;
   openBook: (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase) => Promise<void>;
@@ -92,6 +98,21 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   const openGeneration = useRef(0);
   const mounted = useRef(true);
   const ownedController = useRef<ReaderController | null>(null);
+  const shortcutActions = useRef<ReaderShortcutActions | undefined>(undefined);
+  const shortcutPreferences = useRef<{ preferences: ShortcutPreferences; platform: ShortcutPlatform } | undefined>(undefined);
+  const shortcutModalOpen = useRef(false);
+  const setShortcutActions = useCallback((actions: ReaderShortcutActions) => {
+    shortcutActions.current = actions;
+    ownedController.current?.setShortcutActions(actions);
+  }, []);
+  const setShortcutPreferences = useCallback((preferences: ShortcutPreferences, platform: ShortcutPlatform) => {
+    shortcutPreferences.current = { preferences: parseShortcutPreferences(preferences), platform };
+    ownedController.current?.setShortcutPreferences(preferences, platform);
+  }, []);
+  const setShortcutModalOpen = useCallback((open: boolean) => {
+    shortcutModalOpen.current = open;
+    ownedController.current?.setShortcutModalOpen(open);
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -200,6 +221,11 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
       void ownedController.current?.flushProgress();
       ownedController.current?.dispose();
       ownedController.current = opened;
+      if (shortcutActions.current) opened.setShortcutActions(shortcutActions.current);
+      if (shortcutPreferences.current) {
+        opened.setShortcutPreferences(shortcutPreferences.current.preferences, shortcutPreferences.current.platform);
+      }
+      opened.setShortcutModalOpen(shortcutModalOpen.current);
       setController(opened);
     },
     [],
@@ -494,6 +520,9 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   }, [controller]);
 
   return {
+    setShortcutActions,
+    setShortcutPreferences,
+    setShortcutModalOpen,
     narrationAction,
     setNarrationRate,
     dismissNarrationNotice,

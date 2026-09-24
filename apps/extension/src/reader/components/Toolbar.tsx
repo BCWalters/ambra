@@ -32,6 +32,7 @@ import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js"
 import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
 import { AmbraMarkIcon } from "./AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
+import { useCommandPresentation } from "../../shortcuts/useCommandPresentation.js";
 
 const useReaderToolbarStyles = makeStyles({
   root: {
@@ -90,8 +91,7 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
  * than growing a button per feature. Chapter/page navigation has no
  * toolbar button at all: it's a keyboard-arrow/click/drag affair (see
  * `ReaderController.turnPage`/`beginDragPageTurn`) for pages, a standard
- * Ctrl/Cmd+ArrowRight/Left shortcut for chapters (see
- * `AccessibilityController`'s `onNextChapter`/`onPreviousChapter`), the
+ * Alt+PageUp/PageDown shortcut for sections, the
  * Table of Contents for jumping to a specific one by name, and the
  * progress scrubber for drag-to-seek — a dedicated "Navigate" menu
  * (compass icon) used to duplicate all four of those in one place and
@@ -132,12 +132,17 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetBrightness,
   onSetChromeTheme,
   onSetPageTurnAnimationStyle,
+  onOpenHelp,
   visible,
   handlers,
 }) => {
   const chromePalette = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
+  const searchShortcut = useCommandPresentation("searchBook");
+  const bookmarkShortcut = useCommandPresentation("toggleBookmark");
+  const searchLabel = isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search");
+  const bookmarkLabel = snapshot.isBookmarked ? t("toolbar.removeBookmark") : t("toolbar.bookmarkThisPage");
 
   // Centers the title/chapter group within the space left over between
   // the TOC toggle and the menu buttons whenever it comfortably fits
@@ -448,8 +453,13 @@ export const Toolbar: FC<ToolbarProps> = ({
             book isn't a settings/configuration action at all. Text
             options, Settings, and Book Details stay grouped closely
             together immediately after, per the same explicit direction. */}
-        <Tooltip content={isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search")} relationship="label">
+        <Tooltip
+          content={searchShortcut.shortcutLabel ? `${searchLabel} (${searchShortcut.shortcutLabel})` : searchLabel}
+          relationship="description"
+        >
           <ToggleButton
+            aria-label={searchLabel}
+            aria-keyshortcuts={searchShortcut.ariaKeyShortcuts}
             appearance="subtle"
             size="small"
             checked={isSearchOpen}
@@ -477,6 +487,7 @@ export const Toolbar: FC<ToolbarProps> = ({
         )}
 
         <ReaderSettingsMenu
+          showReadingModeShortcuts
           isFixedLayout={snapshot.isFixedLayout}
           viewMode={snapshot.viewMode}
           brightness={snapshot.brightness}
@@ -486,6 +497,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           onSetBrightness={onSetBrightness}
           onSetChromeTheme={onSetChromeTheme}
           onSetPageTurnAnimationStyle={onSetPageTurnAnimationStyle}
+          onOpenHelp={onOpenHelp}
         />
 
         <Tooltip
@@ -538,10 +550,12 @@ export const Toolbar: FC<ToolbarProps> = ({
             current page(s), whichever the pressed state says is about
             to happen. */}
         <Tooltip
-          content={snapshot.isBookmarked ? t("toolbar.removeBookmark") : t("toolbar.bookmarkThisPage")}
-          relationship="label"
+          content={bookmarkShortcut.shortcutLabel ? `${bookmarkLabel} (${bookmarkShortcut.shortcutLabel})` : bookmarkLabel}
+          relationship="description"
         >
           <ToggleButton
+            aria-label={bookmarkLabel}
+            aria-keyshortcuts={bookmarkShortcut.ariaKeyShortcuts}
             appearance="subtle"
             size="small"
             checked={snapshot.isBookmarked}

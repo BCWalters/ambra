@@ -18,14 +18,28 @@ test("shell chapter shortcuts dispatch once and leave editing and dialogs alone"
       document.body.tabIndex = -1;
       document.body.focus();
     });
-    await page.keyboard.press("Control+ArrowRight");
-    expect(await page.evaluate(() => Reflect.get(window, "__chapterCalls"))).toEqual([1]);
+    // Untrusted events test ownership without triggering native browser history.
+    expect(await page.evaluate(() => {
+      return [document, document.querySelector("iframe")!.contentDocument!].flatMap(doc =>
+        [{ ctrlKey: true }, { metaKey: true }].flatMap(modifier =>
+          ["ArrowLeft", "ArrowRight"].map(key => {
+            const event = new KeyboardEvent("keydown", {
+              key, ...modifier, bubbles: true, cancelable: true,
+            });
+            doc.body.dispatchEvent(event);
+            return event.defaultPrevented;
+          })));
+    })).toEqual(Array(8).fill(false));
+    expect(await page.evaluate(() => Reflect.get(window, "__chapterCalls"))).toEqual([]);
+    await page.keyboard.press("Alt+PageDown");
+    await page.keyboard.press("Alt+PageUp");
+    expect(await page.evaluate(() => Reflect.get(window, "__chapterCalls"))).toEqual([1, -1]);
     await page.evaluate(() => {
       const editor = document.createElement("textarea");
       document.body.append(editor);
       editor.focus();
     });
-    await page.keyboard.press("Control+ArrowRight");
+    await page.keyboard.press("Alt+PageDown");
     await page.evaluate(() => {
       const dialog = document.createElement("div");
       dialog.setAttribute("role", "dialog");
@@ -33,8 +47,8 @@ test("shell chapter shortcuts dispatch once and leave editing and dialogs alone"
       document.body.append(dialog);
       dialog.focus();
     });
-    await page.keyboard.press("Control+ArrowLeft");
-    expect(await page.evaluate(() => Reflect.get(window, "__chapterCalls"))).toEqual([1]);
+    await page.keyboard.press("Alt+PageUp");
+    expect(await page.evaluate(() => Reflect.get(window, "__chapterCalls"))).toEqual([1, -1]);
   } finally {
     await context.close();
   }

@@ -45,6 +45,7 @@ export interface SearchPanelProps {
    * running the full pane height, or the scrubber bar ends up covering
    * its last few rows (issue #59). */
   scrubberVisible: boolean;
+  inputFocusRequest?: number;
 }
 
 /**
@@ -79,10 +80,12 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   onTogglePin,
   onRequestClose,
   scrubberVisible,
+  inputFocusRequest = 0,
 }) => {
   const [input, setInput] = useState(query);
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
 
@@ -110,7 +113,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   // it, a keyboard user pressing Tab right after opening this panel (via
   // the toolbar's toggle button) has no guarantee of landing inside it
   // next.
-  useFocusOnOpen(navRef, open && !pinned);
+  useFocusOnOpen(inputRef, open, inputFocusRequest);
 
   return (
     <>
@@ -131,6 +134,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
       )}
 
       <nav
+        data-ambra-search-panel
         ref={navRef}
         tabIndex={-1}
         aria-label={t("search.title")}
@@ -195,6 +199,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
 
         <div style={{ padding: "8px 10px 0" }}>
           <SearchBox
+            input={{ ref: inputRef }}
             value={input}
             onChange={(_event, data) => setInput(data.value)}
             placeholder={t("search.placeholder")}

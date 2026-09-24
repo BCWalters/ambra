@@ -16,6 +16,26 @@ afterEach(() => {
 });
 
 describe("AccessibilityController", () => {
+  it("lets an app handler replace legacy navigation and cleans up reattachments for every document", () => {
+    const controller = new AccessibilityController();
+    const onNext = vi.fn();
+    const onPrevious = vi.fn();
+    const keyboardHandler = vi.fn();
+    const second = document.implementation.createHTMLDocument();
+    for (const doc of [document, second]) {
+      controller.attach(doc, { onNext, onPrevious }, { keyboardHandler });
+      controller.attach(doc, { onNext, onPrevious }, { keyboardHandler });
+      doc.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    }
+    expect(keyboardHandler).toHaveBeenCalledTimes(2);
+    expect(onNext).not.toHaveBeenCalled();
+    controller.detach(second);
+    second.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(keyboardHandler).toHaveBeenCalledTimes(2);
+    controller.detach();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(keyboardHandler).toHaveBeenCalledTimes(2);
+  });
   it("mirrors RTL arrows and chapter arrows, but keeps Space logical", () => {
     const controller = new AccessibilityController();
     const onNext = vi.fn();

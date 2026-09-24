@@ -173,9 +173,10 @@ for (const width of [760, 1400]) {
         await key("ArrowRight");
         expect(await signature(page)).toEqual(initial);
 
-        await key("Control+ArrowLeft");
+        // Section commands are logical, regardless of RTL page progression.
+        await key("Alt+PageDown");
         expect((await signature(page)).join(" ")).not.toEqual(initial.join(" "));
-        await key("Control+ArrowRight");
+        await key("Alt+PageUp");
         expect(await signature(page)).toEqual(initial);
 
         const slider = page.getByRole("slider", { name: "Position in book" });

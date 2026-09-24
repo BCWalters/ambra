@@ -36,7 +36,11 @@ import { LibraryDiscovery } from "./LibraryDiscovery.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
-import { AboutFlyout } from "./AboutFlyout.js";
+import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
+import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.js";
+import { useHelpDialogs } from "../components/useHelpDialogs.js";
+import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
+import { matchReaderCommand } from "../shortcuts/ReaderCommands.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { CHROME_TOOLBAR_HEIGHT, useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.js";
@@ -319,7 +323,25 @@ export const LibraryApp: FC = () => {
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
   const detailsBook = books.find((book) => book.id === detailsBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
-  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const help = useHelpDialogs();
+  const shortcuts = useShortcutPreferences();
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen) return;
+      const command = matchReaderCommand(event, document, {
+        preferences: shortcuts.preferences,
+        platform: shortcuts.platform,
+        commands: ["showKeyboardShortcuts"],
+        scope: "shell",
+      });
+      if (command === "showKeyboardShortcuts") {
+        event.preventDefault();
+        help.openShortcuts();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [shortcuts.ready, shortcuts.preferences, shortcuts.platform, help.view, help.openShortcuts, detailsBookId, inspector.isOpen]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = event.target.files;
@@ -405,7 +427,7 @@ export const LibraryApp: FC = () => {
             appearance="subtle"
             size="small"
             icon={<InfoRegular />}
-            onClick={() => setIsAboutOpen(true)}
+            onClick={(event) => help.openHelp(event.currentTarget)}
             aria-label={t("about.title")}
           />
         </Tooltip>
@@ -466,14 +488,21 @@ export const LibraryApp: FC = () => {
         inspectionError={inspector.error ? { message: inspector.error, onDismiss: inspector.close } : undefined}
       />
 
-      <AboutFlyout
-        open={isAboutOpen}
-        onRequestClose={() => setIsAboutOpen(false)}
-        backgroundSolid={palette.backgroundSolid}
-        accentForeground={palette.accentForeground}
-      />
-
       <ChromeThemeProvider theme={chromeTheme}>
+        <HelpAboutFlyout
+          open={help.view === "about"}
+          focusShortcutsOnOpen={help.focusShortcutsOnOpen}
+          onRequestClose={help.close}
+          onAfterClose={help.afterClose}
+          backgroundSolid={palette.backgroundSolid}
+          accentForeground={palette.accentForeground}
+          onOpenKeyboardShortcuts={help.openShortcutsFromHelp}
+        />
+        <KeyboardShortcutsDialog
+          open={help.view === "shortcuts"}
+          onRequestClose={help.close}
+          onAfterClose={help.afterClose}
+        />
         <EpubInspectorPanel
           open={inspector.isOpen}
           onOpenChange={(open) => { if (!open) inspector.close(); }}

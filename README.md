@@ -127,6 +127,49 @@ of the original fixture. Each layout performs 24 long drags and verifies actual
 navigation, exactly one seek per release, and the native capture-loss ordering.
 Without the native-input flag, the same test uses ordinary Playwright mouse input.
 
+## Keyboard shortcuts and help
+
+See the [user guide](docs/user-guide/README.md) for a feature overview and
+[EPUB Inspector](docs/user-guide/epub-inspector.md) for integrated publication
+inspection and debugging.
+
+Open **Settings → Help & About** while reading, or **Help & About** in the
+Library. It includes the user guide, keyboard shortcuts, diagnostics, and feedback
+by email or GitHub. No GitHub account is needed to send email.
+
+**Mod** means Command on macOS and Control on Windows/Linux.
+
+| Action | Default shortcut |
+| --- | --- |
+| Previous / next page or spread | Left / Right (reversed for RTL books) |
+| Previous / next page | Page Up / Page Down |
+| Next / previous page | Space / Shift+Space |
+| Previous / next section | Alt+Page Up / Alt+Page Down |
+| Switch to scrolling / paginated mode | Alt+Shift+Page Down / Alt+Shift+Page Up |
+| Add / remove bookmark | Mod+B |
+| Search this book | Mod+F |
+| Keyboard shortcuts | Mod+/ |
+| Dismiss a menu or dialog | Escape |
+
+A section is an EPUB spine item, not necessarily a named TOC chapter. In scrolling
+mode, Page Up, Page Down, and Space retain native scrolling; Left/Right navigate
+sections. Mac laptops may need Fn+Up/Down to produce Page Up/Down.
+For continuous reading with a screen reader, consider **scrolling mode**
+(Alt+Shift+Page Down). These explicit mode commands apply only to reflowable books
+and preserve the reading location; repeating a command does not toggle the mode.
+
+The shortcuts popup is a quick reference for the fixed, platform-specific
+bindings, with one option to enable or disable Ambra shortcuts. That preference is
+local and shared across open Ambra pages. Browser history and zoom shortcuts remain
+available; outside the reader, Mod+F still belongs to Chrome. Commands do not
+interfere with text editing, selections, menus, sliders, or modal dialogs. Ambra
+does not require an ARIA application mode or bare-letter shortcuts.
+
+**Copy diagnostics** in the Library copies environment information. In the reader
+it also includes the current book's diagnostic report, which can contain book
+details, reading locations, and recent events. Review it before sharing; copying
+does not send anything automatically.
+
 ## Reading boundaries with a keyboard or screen reader
 
 Each content document ends with native **Continue reading** navigation inside the
@@ -169,6 +212,9 @@ action from the source chapter and checks macOS's focused element and selected
 text-marker ownership in the destination WebArea, alongside DOM focus/caret.
 It also checks a restored nonzero caret offset. This is **not**
 proof of VoiceOver speech, virtual-cursor position, or continuous reading.
+`native-reader-shortcuts.spec.ts` also delivers native macOS keyboard events to
+the owned browser, checking mode switches, section navigation, bookmark/search/
+help commands, and reading-focus restoration.
 
 Run only on an **unlocked macOS desktop**, with the existing Swift command-line
 tools and accessibility/automation permissions already granted. The test brings
@@ -182,7 +228,7 @@ AMBRA_E2E_EXTENSION_PATH="$PWD/dist/native-accessibility-build" \
 env -u AMBRA_E2E_HEADLESS \
   AMBRA_E2E_EXTENSION_PATH="$PWD/dist/native-accessibility-build" \
   AMBRA_NATIVE_ACCESSIBILITY=1 \
-  pnpm --filter @ambra/e2e exec playwright test content-boundary-native-focus.spec.ts \
+  pnpm --filter @ambra/e2e exec playwright test content-boundary-native-focus.spec.ts native-reader-shortcuts.spec.ts \
   --workers=1 --output test-results/native-accessibility
 ```
 

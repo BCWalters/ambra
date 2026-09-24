@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { AmbraThemeProvider } from "@ambra/shell";
 import { LibraryApp } from "./LibraryApp.js";
 import { LocaleProvider } from "../i18n/LocaleContext.js";
+import { ShortcutPreferencesProvider } from "../shortcuts/ShortcutPreferencesContext.js";
 
 const container = document.getElementById("root");
 if (!container) {
@@ -13,7 +14,9 @@ createRoot(container).render(
   <StrictMode>
     <AmbraThemeProvider>
       <LocaleProvider>
-        <LibraryApp />
+        <ShortcutPreferencesProvider>
+          <LibraryApp />
+        </ShortcutPreferencesProvider>
       </LocaleProvider>
     </AmbraThemeProvider>
   </StrictMode>,
