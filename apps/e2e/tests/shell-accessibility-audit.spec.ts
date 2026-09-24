@@ -104,6 +104,11 @@ test("root overflow containment preserves native book and long flyout scrolling"
   });
   try {
     await exposeReaderController(readerPage);
+    const shell = readerPage.locator('div[style*="height: 100vh"]').first();
+    expect(await shell.evaluate(element => {
+      element.scrollTo(301, 88);
+      return { x: element.scrollLeft, y: element.scrollTop };
+    })).toEqual({ x: 0, y: 0 });
     await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
     const scroll = readerPage.getByRole("menuitemradio", { name: "Scroll", exact: true });
     await scroll.click();
@@ -160,6 +165,7 @@ test("root overflow containment preserves native book and long flyout scrolling"
     await expect(panel.getByText("Publication identifier 30.", { exact: true })).toBeInViewport();
     await expect(help).toBeInViewport({ ratio: 1 });
     expect(await readerPage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))).toEqual({ x: 0, y: 0 });
+    expect(await shell.evaluate(element => ({ x: element.scrollLeft, y: element.scrollTop }))).toEqual({ x: 0, y: 0 });
   } finally {
     await context.close();
   }

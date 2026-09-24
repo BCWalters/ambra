@@ -521,7 +521,9 @@ const ReaderAppInner: FC = () => {
   return (
     <ReaderDiagnosticContext.Provider value={recordDiagnosticSurfaces}>
     <ChromeThemeProvider theme={snapshot.chromeTheme}>
-      <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
+      {/* Unlike hidden, clip cannot pan the shell when focus/scrollIntoView
+          reaches a control in an entering or off-screen panel. */}
+      <div style={{ position: "relative", height: "100vh", overflow: "clip" }}>
         {/* The content row fills the entire viewport — the toolbar is an
               absolutely-positioned overlay (see `Toolbar`), not a normal-flow
               element pushing this row down, so it can fade in/out without

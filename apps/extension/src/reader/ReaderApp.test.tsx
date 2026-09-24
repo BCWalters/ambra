@@ -117,6 +117,10 @@ async function openPanel(name: string) {
   await act(async () => button.click());
 }
 
+it("clips the shell without creating a programmatically scrollable container", () => {
+  expect(container.querySelector<HTMLElement>('div[style*="height: 100vh"]')?.style.overflow).toBe("clip");
+});
+
 it("wires synchronous dismissal before content activity and clears the contract on unmount", () => {
   expect(chromeVisible()).toBe(true);
   act(() => { expect(dismiss?.()).toBe(true); });
