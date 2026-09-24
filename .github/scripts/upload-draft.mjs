@@ -14,9 +14,9 @@ function requireValue(env, name) {
 }
 
 export function configuration(env) {
-  if (env.CWS_PRIVATE_VISIBILITY_CONFIRMED !== "true") {
+  if (env.CWS_UNLISTED_VISIBILITY_CONFIRMED !== "true") {
     throw new Error(
-      "Confirm PRIVATE visibility and trusted testers in the dashboard before uploading.",
+      "Confirm saved UNLISTED visibility in the dashboard before uploading. The API cannot verify this owner acknowledgment.",
     );
   }
   const publisher = requireValue(env, "CWS_PUBLISHER_ID");
@@ -26,6 +26,7 @@ export function configuration(env) {
   }
   return {
     name: `publishers/${publisher}/items/${item}`,
+    unlistedVisibilityConfirmed: true,
     clientId: requireValue(env, "CWS_CLIENT_ID"),
     clientSecret: requireValue(env, "CWS_CLIENT_SECRET"),
     refreshToken: requireValue(env, "CWS_REFRESH_TOKEN"),
@@ -39,7 +40,7 @@ export function verifyArtifact(metadata, bytes, sums, expectedCommit) {
     !/^[a-f0-9]{64}$/.test(metadata.sha256) ||
     metadata.sha256 !== sha256(bytes) ||
     sums !== `${metadata.sha256}  ${metadata.archive}\n` ||
-    metadata.publication !== "TRUSTED_TESTERS_ONLY" ||
+    metadata.publication !== "UNLISTED" ||
     metadata.dirty !== false ||
     !/^[a-f0-9]{40}$/.test(metadata.commit) ||
     metadata.commit !== expectedCommit ||
@@ -73,9 +74,12 @@ export function checkStatus(status, version, expectedName) {
   }
   const published = status.publishedItemRevisionStatus;
   const submitted = status.submittedItemRevisionStatus;
-  // The API does not expose draft visibility. Never infer PRIVATE from a draft.
-  if (published && published.state !== "PUBLISHED_TO_TESTERS") {
-    throw new Error("Refusing to upload to an item not published exclusively to testers.");
+  // PUBLISHED covers unlisted as well as public items; it is not visibility proof.
+  // A tester-only item must first migrate to UNLISTED manually in the dashboard.
+  if (published && published.state !== "PUBLISHED") {
+    throw new Error(
+      "Unexpected published item state; establish UNLISTED visibility in the dashboard.",
+    );
   }
   if (submitted && !["REJECTED", "CANCELLED"].includes(submitted.state)) {
     throw new Error("An existing submission needs manual resolution before another upload.");
@@ -139,7 +143,7 @@ export async function createStoreClient(config, fetchImpl = fetch) {
     request(url, { ...options, headers: { ...options?.headers, ...headers } }, stage);
 }
 
-export async function uploadPrivateDraft({
+export async function uploadDraft({
   config,
   metadata,
   bytes,
@@ -180,7 +184,7 @@ export async function uploadPrivateDraft({
     `Draft upload succeeded for version ${metadata.version}. Nothing was submitted or published.`,
   );
   log(
-    "In the Developer Dashboard, verify PRIVATE visibility and trusted testers before manually submitting for review.",
+    "Verify saved UNLISTED visibility in the Developer Dashboard before submitting for review; API state does not prove visibility.",
   );
 }
 
@@ -203,7 +207,7 @@ async function main() {
   }
   const config = configuration(process.env);
   const { metadata, bytes } = await loadVerifiedArtifact(process.env.GITHUB_SHA);
-  await uploadPrivateDraft({ config, metadata, bytes });
+  await uploadDraft({ config, metadata, bytes });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

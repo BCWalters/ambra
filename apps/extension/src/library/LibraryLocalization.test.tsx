@@ -78,6 +78,10 @@ describe("Library localization and action order", () => {
     expect(container.textContent).toContain(t("about.version", { version: "1.2.3" }));
     expect(container.textContent).toContain("Ben Walters");
     expect(container.querySelector('a[href="mailto:AmbraEPUB@outlook.com"]')?.textContent).toBe(t("about.feedback"));
+    const privacy = container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md"]');
+    expect(privacy?.textContent).toBe(t("about.privacy"));
+    expect(privacy?.target).toBe("_blank");
+    expect(privacy?.rel).toBe("noreferrer");
     expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra"]')?.style.color).toBe("#7a3e00");
     expect(button(t("about.copyDiagnostics"))).toBeDefined();
   });

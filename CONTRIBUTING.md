@@ -66,5 +66,6 @@ Keyboard and Chromium accessibility-tree tests do not establish exact VoiceOver
 or NVDA virtual-cursor behavior. Live assistive-technology testing remains
 pending; report the exact browser/OS/AT combination tested.
 
-Store releases follow the [private-beta checklist](store-assets/PRIVATE_BETA.md).
-A public MIT source repository does not make a Chrome Web Store listing public.
+Store releases follow the [beta checklist](store-assets/BETA_RELEASE.md).
+The MIT repository is public; the initial Chrome Web Store listing is unlisted
+and installable by anyone with its URL.
