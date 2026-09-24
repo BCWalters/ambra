@@ -35,8 +35,16 @@ for (const style of ["slide", "scroll"] as const) {
       }, style);
       await page.keyboard.press("ArrowRight");
       await settled(page);
-      await page.keyboard.press("ArrowRight");
-      await settled(page);
+      // Font metrics give this short fixture six pages on Linux and more on
+      // macOS. A second setup turn can already land on the final spread.
+      const initialSpread = await page.evaluate(() => {
+        const s = Reflect.get(window, "__readerController").snapshot();
+        return { page: s.pageIndex, count: s.pageCount, spread: s.isSpread };
+      });
+      expect(initialSpread.spread).toBe(true);
+      expect(initialSpread.page).toBeGreaterThan(0);
+      expect(initialSpread.page + 2, "the margin click must have another spread to turn to")
+        .toBeLessThan(initialSpread.count);
       const box = (await page.locator("iframe").nth(1).boundingBox())!;
       const point = { x: box.x + box.width - 10, y: 200 };
       await page.mouse.move(point.x, point.y);
