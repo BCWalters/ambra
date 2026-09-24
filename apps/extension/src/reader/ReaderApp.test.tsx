@@ -76,6 +76,7 @@ beforeEach(async () => {
     setShortcutPreferences: vi.fn(),
     setShortcutModalOpen: vi.fn(),
     setSearchPanelState: vi.fn(),
+    search: vi.fn(),
     restoreContentFocus: vi.fn(() => {
       const content = bridge.contentHostRef.current!;
       content.tabIndex = -1;
@@ -141,6 +142,14 @@ it("moves focus out of a closing Fluent menu before it can restore and reveal th
   expect(document.activeElement).toBe(bridge.contentHostRef.current);
   expect(chromeVisible()).toBe(false);
   expect(dismiss?.()).toBe(false);
+});
+
+it("provides the search callback when the panel's debounced query runs", async () => {
+  await openPanel("search");
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+  });
+  expect(bridge.search).toHaveBeenCalledWith("");
 });
 
 it.each(["toc", "annotations", "search", "details"])(
