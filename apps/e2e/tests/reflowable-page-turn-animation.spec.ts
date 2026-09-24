@@ -1,7 +1,7 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader, currentPageLabel } from "../harness.js";
+import { launchReader, currentPageLabel, clickReadingPage } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ALICE_EPUB = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
@@ -107,13 +107,8 @@ async function pagePositions(readerPage: Page): Promise<string> {
  * back, and leaves no stray inline styles behind, for every style this
  * reader offers.
  *
- * Clicks land at y=150 deliberately: y=450 (the "physical middle of the
- * pane" convention used elsewhere) actually clips *below* a genuinely
- * short reflowable page's own content, silently falling through to the
- * pane's own default-forward pointer handler regardless of which side
- * was clicked (confirmed by hand while writing this suite) — y=150 stays
- * clear of both the header chrome above it and any short page's own
- * bottom edge.
+ * Semantic page-turn clicks use the actual outer margins and dismiss
+ * visible chrome separately, including after changing animation settings.
  */
 test.describe("reflowable page-turn animation", () => {
   test.describe("single column", () => {
@@ -130,14 +125,14 @@ test.describe("reflowable page-turn animation", () => {
           const startText = await pagePositions(readerPage);
           expect(startLabel, `${style}: has an initial page label`).not.toBeNull();
 
-          await readerPage.mouse.click(650, 150);
+          await clickReadingPage(readerPage, "right");
           await readerPage.waitForTimeout(700);
           expect(await currentPageLabel(readerPage), `${style}: forward turn changes the page label`).not.toBe(
             startLabel,
           );
           expect(await pagePositions(readerPage), `${style}: forward turn paints new content`).not.toBe(startText);
 
-          await readerPage.mouse.click(80, 150);
+          await clickReadingPage(readerPage, "left");
           await readerPage.waitForTimeout(700);
           expect(await currentPageLabel(readerPage), `${style}: backward turn returns to the start label`).toBe(
             startLabel,
@@ -171,23 +166,23 @@ test.describe("reflowable page-turn animation", () => {
           // merge boundary (see `navigation-correctness.spec.ts`'s "book's
           // very first spread merges forward immediately"), unrelated to
           // the animation mechanics this test actually covers.
-          await readerPage.mouse.click(1400, 150);
+          await clickReadingPage(readerPage, "right");
           await readerPage.waitForTimeout(1000);
-          await readerPage.mouse.click(1400, 150);
+          await clickReadingPage(readerPage, "right");
           await readerPage.waitForTimeout(1000);
 
           const startLabel = await currentPageLabel(readerPage);
           const startText = await pagePositions(readerPage);
           expect(startLabel, `${style}: has an initial page label`).not.toBeNull();
 
-          await readerPage.mouse.click(1400, 150);
+          await clickReadingPage(readerPage, "right");
           await readerPage.waitForTimeout(1000);
           expect(await currentPageLabel(readerPage), `${style}: forward turn changes the spread label`).not.toBe(
             startLabel,
           );
           expect(await pagePositions(readerPage), `${style}: forward turn paints new content`).not.toBe(startText);
 
-          await readerPage.mouse.click(150, 150);
+          await clickReadingPage(readerPage, "left");
           await readerPage.waitForTimeout(1000);
           expect(await currentPageLabel(readerPage), `${style}: backward turn returns to the start label`).toBe(
             startLabel,

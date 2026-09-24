@@ -54,6 +54,7 @@ import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
+import { frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
@@ -1949,7 +1950,7 @@ export class ReaderController {
       }
     } else {
       if (resizedSpread) {
-        // These listeners capture each column's width for its tap zones.
+        // Reattach gesture listeners after relayout.
         this.setUpDragPageTurn();
       } else if (typographyChanged) {
         this.applyDisplaySettingsToHost({ relayout: true });
@@ -3135,219 +3136,75 @@ export class ReaderController {
     };
   }
 
-  /** Container-level click fallback for single-page paginated mode.
-   * `PaginatedContentHost` can be shorter than the pane, so clicks in the
-   * uncovered lower gap must still use whole-pane third-based navigation. */
+  /** Clipped top/bottom bands hit the container, but only their outer
+   * horizontal margins are navigation targets. */
   private setUpBelowPageClickFallback(): () => void {
     const containerEl = this.containerEl;
-    if (!containerEl) {
-      return () => {};
-    }
-    // Keep `pointerup` gesture-scoped instead of sharing mutable start
-    // state: this listener can be rebuilt mid-gesture, and the in-flight
-    // release must still use the original coordinates.
-    const onContainerPointerDown = (event: PointerEvent): void => {
-      if (event.pointerType === "mouse" && event.button !== 0) {
-        return;
-      }
-      this.dismissUiForPointer(event);
-      this.bumpContentActivity();
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const onPointerUp = (upEvent: PointerEvent): void => {
-        containerEl.removeEventListener("pointerup", onPointerUp);
-        const deltaX = Math.abs(upEvent.clientX - startX);
-        const deltaY = Math.abs(upEvent.clientY - startY);
-        if (
-          deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
-          deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
-        ) {
-          return;
-        }
-        const thirdWidth = this.width / 3;
-        if (startX < thirdWidth) {
-          void this.turnPage(this.physicalDirection(-1));
-        } else if (startX > this.width - thirdWidth) {
-          void this.turnPage(this.physicalDirection(1));
-        }
-        // Middle third: no-op, exactly like `handleContentClick`.
-      };
-      this.onGestureRelease(containerEl, event, onPointerUp);
-    };
-    containerEl.addEventListener("pointerdown", onContainerPointerDown);
-    return () => containerEl.removeEventListener("pointerdown", onContainerPointerDown);
+    return containerEl
+      ? this.setUpMarginClicks(containerEl, containerEl.ownerDocument)
+      : () => {};
   }
 
-  /** Click-to-navigate for spread mode, using each column's own width for
-   * its third-based tap zones. A container listener handles taps on the
-   * blank companion page or gutter because a `visibility: hidden` iframe
-   * is not hit-tested. Each gesture keeps its own one-shot `pointerup`
-   * because these listeners may be rebuilt mid-gesture. */
+  /** Both chapter documents and the blank companion share the same
+   * physical outer edges. Iframe pointer events do not bubble out. */
   private setUpSpreadClickToNavigate(host: SpreadPaginatedHost): () => void {
-    const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(this.width);
-    const cleanups: Array<() => void> = [];
-
-    this.contentDocumentViews(host).forEach(({ document: doc, physicalSide }) => {
-      // The right column's left edge is the gutter, so that zone still
-      // means "forward" rather than "back."
-      const rtl = this.pkg.pageProgressionDirection === "rtl";
-      const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(
-        physicalSide,
-        rtl,
-      );
-      const onPointerDown = (event: PointerEvent): void => {
-        if (event.pointerType === "mouse" && event.button !== 0) {
-          return;
-        }
-        const startX = event.clientX;
-        const startY = event.clientY;
-        const onPointerUp = (upEvent: PointerEvent): void => {
-          doc.removeEventListener("pointerup", onPointerUp);
-          if (Math.abs(upEvent.clientX - startX) > 60 && Math.abs(upEvent.clientY - startY) < 50 &&
-            doc.getSelection()?.isCollapsed !== false) {
-            void this.turnPage(this.physicalDirection(upEvent.clientX < startX ? 1 : -1));
-            return;
-          }
-          this.handleContentClick(
-            upEvent,
-            startX,
-            startY,
-            columnWidth,
-            doc,
-            leftThirdAction,
-            rightThirdAction,
-          );
-        };
-        this.onGestureRelease(doc, event, onPointerUp);
-      };
-      doc.addEventListener("pointerdown", onPointerDown);
-      cleanups.push(() => doc.removeEventListener("pointerdown", onPointerDown));
-    });
-
-    const containerEl = host.element;
-    const onContainerPointerDown = (event: PointerEvent): void => {
-      this.dismissUiForPointer(event);
-      this.bumpContentActivity();
-      if (event.pointerType === "mouse" && event.button !== 0) {
-        return;
-      }
-      const containerStartX = event.clientX;
-      const containerStartY = event.clientY;
-      const onContainerPointerUp = (event: PointerEvent): void => {
-        containerEl.removeEventListener("pointerup", onContainerPointerUp);
-        const deltaX = Math.abs(event.clientX - containerStartX);
-        const deltaY = Math.abs(event.clientY - containerStartY);
-        if (
-          deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
-          deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
-        ) {
-          return;
-        }
-        void this.turnPage(1);
-      };
-      this.onGestureRelease(containerEl, event, onContainerPointerUp);
-    };
-    containerEl.addEventListener("pointerdown", onContainerPointerDown);
-    cleanups.push(() => containerEl.removeEventListener("pointerdown", onContainerPointerDown));
-
-    return () => {
-      for (const cleanup of cleanups) {
-        cleanup();
-      }
-    };
+    const cleanups = this.contentDocumentViews(host).map(({ document: doc }) =>
+      this.setUpMarginClicks(doc, doc, true));
+    cleanups.push(this.setUpMarginClicks(host.element, host.element.ownerDocument));
+    return () => cleanups.forEach(cleanup => cleanup());
   }
 
-  /** Fixed-layout click-to-navigate. Pointer coordinates stay in each
-   * document's intrinsic space even when the iframe is scaled, so this
-   * path reads that document's live `innerWidth` instead of reusing a
-   * spread-wide width. The container fallback buckets by whole-pane
-   * thirds because fixed pages can be letterboxed on either side. */
+  /** FXL has no reader-owned content inset: only letterboxing outside
+   * the scaled pages navigates, never a guessed zone inside the artwork. */
   private setUpFixedSpreadClickToNavigate(host: FixedSpreadHost): () => void {
-    const cleanups: Array<() => void> = [];
-    const rtl = this.pkg.pageProgressionDirection === "rtl";
-
-    this.contentDocumentViews(host).forEach(({ document: doc, physicalSide }) => {
-      const { left: leftThirdAction, right: rightThirdAction } = this.fixedSpreadThirdActions(
-        physicalSide,
-        rtl,
-      );
-      const onPointerDown = (event: PointerEvent): void => {
-        if (event.pointerType === "mouse" && event.button !== 0) {
-          return;
-        }
-        const startX = event.clientX;
-        const startY = event.clientY;
-        const containerWidth = doc.defaultView?.innerWidth ?? this.width;
-        const onPointerUp = (upEvent: PointerEvent): void => {
-          doc.removeEventListener("pointerup", onPointerUp);
-          this.handleContentClick(
-            upEvent,
-            startX,
-            startY,
-            containerWidth,
-            doc,
-            leftThirdAction,
-            rightThirdAction,
-          );
-        };
-        this.onGestureRelease(doc, event, onPointerUp);
-      };
-      doc.addEventListener("pointerdown", onPointerDown);
-      cleanups.push(() => doc.removeEventListener("pointerdown", onPointerDown));
-    });
-
-    const containerEl = host.element;
-    // Margin clicks belong to no specific page, so treat them as
-    // `"single"` and use the outer-edge convention.
-    const { left: containerLeftAction, right: containerRightAction } = this.fixedSpreadThirdActions(
-      "single",
-      rtl,
-    );
-    const onContainerPointerDown = (event: PointerEvent): void => {
-      this.dismissUiForPointer(event);
-      this.bumpContentActivity();
-      if (event.pointerType === "mouse" && event.button !== 0) {
-        return;
-      }
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const onContainerPointerUp = (upEvent: PointerEvent): void => {
-        containerEl.removeEventListener("pointerup", onContainerPointerUp);
-        // This click missed every page, so container coordinates are the
-        // right frame of reference here.
-        this.handleContentClick(
-          upEvent,
-          startX,
-          startY,
-          this.width,
-          containerEl.ownerDocument,
-          containerLeftAction,
-          containerRightAction,
-        );
-      };
-      this.onGestureRelease(containerEl, event, onContainerPointerUp);
-    };
-    containerEl.addEventListener("pointerdown", onContainerPointerDown);
-    cleanups.push(() => containerEl.removeEventListener("pointerdown", onContainerPointerDown));
-
-    return () => {
-      for (const cleanup of cleanups) {
-        cleanup();
-      }
-    };
+    const cleanups = this.contentDocumentViews(host).map(({ document: doc }) =>
+      this.setUpMarginClicks(doc, doc));
+    cleanups.push(this.setUpMarginClicks(host.element, host.element.ownerDocument));
+    return () => cleanups.forEach(cleanup => cleanup());
   }
 
-  /** Returns the fixed-spread third actions for one column. Only the
-   * spread's true outer edge means "back"; the gutter-side third always
-   * means "forward", mirrored in RTL. */
-  private fixedSpreadThirdActions(
-    columnRole: "single" | "left" | "right",
-    rtl: boolean,
-  ): { left: 1 | -1; right: 1 | -1 } {
-    if (!rtl) {
-      return columnRole === "right" ? { left: 1, right: 1 } : { left: -1, right: 1 };
-    }
-    return columnRole === "left" ? { left: 1, right: 1 } : { left: 1, right: -1 };
+  private setUpMarginClicks(target: Document | HTMLElement, doc: Document, swipe = false): () => void {
+    const down = (event: Event): void => {
+      const start = event as PointerEvent;
+      if (start.pointerType === "mouse" && start.button !== 0) return;
+      if (target !== doc) {
+        this.dismissUiForPointer(start);
+        this.bumpContentActivity();
+      }
+      this.onGestureRelease(target, start, up => {
+        if (swipe && Math.abs(up.clientX - start.clientX) > 60 &&
+          Math.abs(up.clientY - start.clientY) < 50 && doc.getSelection()?.isCollapsed !== false) {
+          void this.turnPage(this.physicalDirection(up.clientX < start.clientX ? 1 : -1));
+          return;
+        }
+        this.handleContentClick(up, start.clientX, start.clientY, doc);
+      });
+    };
+    target.addEventListener("pointerdown", down);
+    return () => target.removeEventListener("pointerdown", down);
+  }
+
+  private marginSide(doc: Document, x: number): -1 | 1 | undefined {
+    const host = this.host;
+    if (!host) return undefined;
+    const views = this.contentDocumentViews(host);
+    const frames = host instanceof PaginatedContentHost ? [host.element]
+      : host instanceof SpreadPaginatedHost
+        ? [host.columnElement("left"), host.columnElement("right")]
+        : host instanceof FixedSpreadHost
+          ? views.map(view => view.document.defaultView!.frameElement as HTMLIFrameElement)
+          : [];
+    const bounds = frames.map(frame => {
+      if (host instanceof FixedSpreadHost) return frameContentBounds(frame);
+      // A blank companion keeps the same column measure as its loaded sibling.
+      const contentDoc = views.find(view => view.document === frame.contentDocument)?.document ??
+        views[0]?.document;
+      return frameContentBounds(frame, contentDoc ? reflowableContentBounds(contentDoc) : undefined);
+    });
+    const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null;
+    const parentX = frame ? frame.getBoundingClientRect().left +
+      x * frame.getBoundingClientRect().width / frame.clientWidth : x;
+    return outerMarginSide(parentX, bounds);
   }
 
   private dismissContentSelection(): boolean {
@@ -3569,7 +3426,7 @@ export class ReaderController {
         // Still a tap, not a drag; only a real release should trigger
         // click-to-navigate.
         if (upEvent.type === "pointerup" && !dismissedUi) {
-          this.handleContentClick(upEvent, startX, startY, containerWidth, doc);
+          this.handleContentClick(upEvent, startX, startY, doc);
         }
         return;
       }
@@ -3599,20 +3456,15 @@ export class ReaderController {
   /** Maximum movement for a gesture to still count as a tap. */
   private static readonly CLICK_MOVEMENT_TOLERANCE = 10;
 
-  /** Turns the page when a tap lands in the left or right third, with
-   * guards for drags, active selections, and link clicks. The explicit
-   * third actions matter because gutter-adjacent thirds still mean
-   * "forward", and fixed-layout RTL spreads mirror which outer edge means
-   * "back". */
+  /** Only a tap that starts and ends in the same outer page margin
+   * navigates. Native content interactions remain publication-owned. */
   private handleContentClick(
     upEvent: PointerEvent,
     startX: number,
     startY: number,
-    containerWidth: number,
     doc: Document,
-    leftThirdAction: 1 | -1 = this.physicalDirection(-1),
-    rightThirdAction: 1 | -1 = this.physicalDirection(1),
   ): void {
+    if (this.isTurningPage || this.isLoadInFlight || this.isApplyingLayout) return;
     const deltaX = Math.abs(upEvent.clientX - startX);
     const deltaY = Math.abs(upEvent.clientY - startY);
     if (
@@ -3622,6 +3474,9 @@ export class ReaderController {
       return;
     }
 
+    const side = this.marginSide(doc, startX);
+    if (side === undefined || this.marginSide(doc, upEvent.clientX) !== side) return;
+
     // The caller passes `doc` directly because iframe events come from a
     // different `Node` realm, so `upEvent.target instanceof Node` would
     // fail and break the selection guard.
@@ -3629,7 +3484,7 @@ export class ReaderController {
       return;
     }
 
-    if ((upEvent.target as Element | null)?.closest?.("a[href], summary")) {
+    if ((upEvent.target as Element | null)?.closest?.("a[href], summary, img")) {
       return;
     }
 
@@ -3639,13 +3494,7 @@ export class ReaderController {
       return;
     }
 
-    const thirdWidth = containerWidth / 3;
-    if (startX < thirdWidth) {
-      void this.turnPage(leftThirdAction);
-    } else if (startX > containerWidth - thirdWidth) {
-      void this.turnPage(rightThirdAction);
-    }
-    // Middle third: no-op for now.
+    void this.turnPage(this.physicalDirection(side));
   }
 
   /** Settles a released drag gesture once the incoming page is ready.

@@ -138,8 +138,7 @@ export async function currentPageLabel(readerPage: Page): Promise<string | null>
   });
 }
 
-/** Clicks in the right third of the reader pane (the established
- * "turn forward" tap zone — see `ReaderController.handleContentClick`)
+/** Clicks the forward outer margin (left for RTL)
  * and waits (polling `currentPageLabel`) for the page label to actually
  * change, up to `timeoutMs`. Returns `false` (without throwing) if it
  * never changes — the caller decides whether that's a real failure
@@ -147,11 +146,13 @@ export async function currentPageLabel(readerPage: Page): Promise<string | null>
  * clicks" suite) or an expected end-of-book stop. */
 export async function clickForwardAndWait(
   readerPage: Page,
-  point: { x: number; y: number },
   timeoutMs = 3000,
 ): Promise<{ changed: boolean; before: string | null; after: string | null }> {
   const before = await currentPageLabel(readerPage);
-  await clickReadingPage(readerPage, point);
+  await exposeReaderController(readerPage);
+  const rtl = await readerPage.evaluate(() =>
+    Reflect.get(window, "__readerController").pkg.pageProgressionDirection === "rtl");
+  await clickReadingPage(readerPage, rtl ? "left" : "right");
   const start = Date.now();
   let after = before;
   while (Date.now() - start < timeoutMs) {
@@ -168,8 +169,9 @@ export async function clickForwardAndWait(
  * Navigation tests use this only with unpinned chrome and no open panels. */
 export async function clickReadingPage(
   readerPage: Page,
-  point: { x: number; y: number },
+  side: "left" | "right",
 ): Promise<void> {
+  const point = await outerMarginPoint(readerPage, side);
   const toolbar = readerPage
     .getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
     .locator("..");
@@ -194,6 +196,40 @@ export async function clickReadingPage(
     expect(await position(), "dismissing chrome is not a page turn").toEqual(before);
   }
   await readerPage.mouse.click(point.x, point.y);
+}
+
+/** Uses rendered page bounds, never an arbitrary third of publication content.
+ * Throws for width-fitted FXL: those surfaces have no lateral click margin. */
+export async function outerMarginPoint(
+  page: Page,
+  side: "left" | "right" = "right",
+): Promise<{ x: number; y: number }> {
+  await exposeReaderController(page);
+  return page.evaluate(side => {
+    const c = Reflect.get(window, "__readerController");
+    const pane = c.containerEl.getBoundingClientRect();
+    const frames: HTMLIFrameElement[] = c.snapshot().isSpread && !c.snapshot().isFixedLayout
+      ? [c.host.columnElement("left"), c.host.columnElement("right")]
+      : c.contentDocumentViews().map((view: { document: Document }) => view.document.defaultView!.frameElement);
+    const reference = c.contentDocumentViews()[0].document as Document;
+    const edges = frames.map(frame => {
+      const rect = frame.getBoundingClientRect();
+      if (c.snapshot().isFixedLayout) return { left: rect.left, right: rect.right };
+      const doc = getComputedStyle(frame).visibility === "hidden" ? reference : frame.contentDocument!;
+      const body = doc.body.getBoundingClientRect();
+      const style = doc.defaultView!.getComputedStyle(doc.body);
+      const scale = rect.width / frame.clientWidth;
+      return {
+        left: rect.left + (body.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth)) * scale,
+        right: rect.left + (body.right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth)) * scale,
+      };
+    });
+    const edge = side === "left"
+      ? Math.min(...edges.map(edge => edge.left)) : Math.max(...edges.map(edge => edge.right));
+    const outside = side === "left" ? pane.left : pane.right;
+    if (Math.abs(outside - edge) < 2) throw new Error("No physical outer margin at this viewport size");
+    return { x: (outside + edge) / 2, y: pane.top + pane.height * 0.45 };
+  }, side);
 }
 
 /** All the reflowable text content currently painted on screen for the

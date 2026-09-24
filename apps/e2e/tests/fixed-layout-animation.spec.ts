@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, clickReadingPage } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -77,7 +77,7 @@ test.describe("fixed-layout (FXL) page-turn animation", () => {
   for (const style of ["rotate", "slide", "scroll"] as const) {
     test(`${style}: forward/backward turns complete and land on the correct spread`, async () => {
       const { context, readerPage } = await launchReader(FXL_SPREAD_LTR_EPUB, {
-        viewport: { width: 1200, height: 900 },
+        viewport: { width: 1600, height: 900 },
       });
       try {
         await exposeReaderController(readerPage);
@@ -85,17 +85,17 @@ test.describe("fixed-layout (FXL) page-turn animation", () => {
         await setPageTurnAnimationStyle(readerPage, style);
 
         // Cover (single, unpaired) -> first real pair.
-        await manualClick(readerPage, 1150, 450);
+        await clickReadingPage(readerPage, "right");
         await readerPage.waitForTimeout(700);
         expect(await visiblePageTexts(readerPage), `${style}: cover -> first pair`).toEqual(["P1", "P2"]);
 
         // Pair -> pair, forward.
-        await manualClick(readerPage, 1150, 450);
+        await clickReadingPage(readerPage, "right");
         await readerPage.waitForTimeout(700);
         expect(await visiblePageTexts(readerPage), `${style}: pair -> pair forward`).toEqual(["P3", "P4"]);
 
         // Pair -> pair, backward.
-        await manualClick(readerPage, 50, 450);
+        await clickReadingPage(readerPage, "left");
         await readerPage.waitForTimeout(700);
         expect(await visiblePageTexts(readerPage), `${style}: pair -> pair backward`).toEqual(["P1", "P2"]);
 
@@ -112,12 +112,12 @@ test.describe("fixed-layout (FXL) page-turn animation", () => {
 
   test("switching to \"none\" still turns pages instantly (no regression from the animation work)", async () => {
     const { context, readerPage } = await launchReader(FXL_SPREAD_LTR_EPUB, {
-      viewport: { width: 1200, height: 900 },
+      viewport: { width: 1600, height: 900 },
     });
     try {
       await readerPage.waitForTimeout(500);
       await setPageTurnAnimationStyle(readerPage, "none");
-      await manualClick(readerPage, 1150, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(300);
       expect(await visiblePageTexts(readerPage)).toEqual(["P1", "P2"]);
     } finally {

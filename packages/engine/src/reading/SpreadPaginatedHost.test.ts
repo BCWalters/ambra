@@ -76,10 +76,16 @@ describe("in-place spread resize", () => {
   );
 
   it("retains a genuinely unpaired final page without loading a hidden document", async () => {
-    const { host, reflow } = await resizeFixture(false, false);
+    const { host, second, reflow } = await resizeFixture(false, false);
     expect(host.relayoutForResize(1300, 950)).toBe(true);
     expect(reflow).toHaveBeenCalledTimes(1);
     expect(host.positions.second).toBeUndefined();
+    expect(second.element.style.width).toBe("630px");
+    expect(second.element.style.height).toBe("950px");
+    host.relayout(1500, 1000);
+    expect(second.element.style.width).toBe("730px");
+    expect(second.element.style.height).toBe("1000px");
+    expect(reflow).toHaveBeenCalledTimes(2);
     host.dispose();
   });
 });

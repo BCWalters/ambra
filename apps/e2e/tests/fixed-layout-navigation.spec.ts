@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, clickReadingPage } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FXL_SPREAD_LTR_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr.epub");
@@ -42,7 +42,7 @@ async function visiblePageTexts(readerPage: import("@playwright/test").Page): Pr
 test.describe("fixed-layout (FXL) navigation and spread pairing", () => {
   test("LTR: a lone leading page-spread-right cover shows alone, then pairs correctly, and click-to-turn actually works", async () => {
     const { context, readerPage } = await launchReader(FXL_SPREAD_LTR_EPUB, {
-      viewport: { width: 1200, height: 900 },
+      viewport: { width: 1600, height: 900 },
     });
     try {
       await readerPage.waitForTimeout(600);
@@ -60,24 +60,24 @@ test.describe("fixed-layout (FXL) navigation and spread pairing", () => {
       // already documented elsewhere in this codebase for the
       // reflowable merge feature. A short, bounded wait here is exactly
       // what would have caught that: the screen simply never changes.
-      await readerPage.mouse.click(1150, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(800);
       const afterFirstClick = await visiblePageTexts(readerPage);
       expect(
         afterFirstClick,
-        "clicking the cover's own right-third should turn the page into the first real pair",
+        "clicking outside the cover's right edge should turn to the first real pair",
       ).toEqual(["P1", "P2"]);
 
-      await readerPage.mouse.click(1150, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(800);
       const afterSecondClick = await visiblePageTexts(readerPage);
       expect(afterSecondClick, "a further forward click should reach the next pair").toEqual(["P3", "P4"]);
 
       // Backward navigation, symmetrically.
-      await readerPage.mouse.click(50, 450);
+      await clickReadingPage(readerPage, "left");
       await readerPage.waitForTimeout(800);
       const afterBack = await visiblePageTexts(readerPage);
-      expect(afterBack, "clicking the left third should turn back to the previous pair").toEqual(["P1", "P2"]);
+      expect(afterBack, "clicking the left outer margin should turn back to the previous pair").toEqual(["P1", "P2"]);
     } finally {
       await context.close();
     }
@@ -85,7 +85,7 @@ test.describe("fixed-layout (FXL) navigation and spread pairing", () => {
 
   test("RTL: page-progression-direction=rtl pairs (right=earlier, left=later) and reverses which screen side means forward", async () => {
     const { context, readerPage } = await launchReader(FXL_SPREAD_RTL_EPUB, {
-      viewport: { width: 1200, height: 900 },
+      viewport: { width: 1600, height: 900 },
     });
     try {
       await readerPage.waitForTimeout(600);
@@ -93,21 +93,19 @@ test.describe("fixed-layout (FXL) navigation and spread pairing", () => {
       expect(initial, "the book's lone leading page-spread-left item should open alone").toEqual(["P1"]);
 
       // For RTL, reading "forward" moves right-to-left across the
-      // screen — the *left* third of the pane is what advances, the
-      // exact opposite of every other case this reader handles (see
-      // `ReaderController.fixedSpreadThirdActions`'s own doc comment).
+      // screen — the left outer margin advances.
       // A right-side click here must be a no-op (there's nothing before
       // the book's own first page to go "back" to), confirming the
       // direction really is reversed, not merely a coincidence of which
       // side happened to be clicked first.
-      await readerPage.mouse.click(1150, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(800);
       expect(
         await visiblePageTexts(readerPage),
         "a right-side click at the very start of an RTL book must not be treated as 'forward' — it should stay put",
       ).toEqual(["P1"]);
 
-      await readerPage.mouse.click(50, 450);
+      await clickReadingPage(readerPage, "left");
       await readerPage.waitForTimeout(800);
       const afterLeftClick = await visiblePageTexts(readerPage);
       // DOM order is left-column-first, right-column-second (see
@@ -122,7 +120,7 @@ test.describe("fixed-layout (FXL) navigation and spread pairing", () => {
 
       // And the reverse check: from here, a *right*-side click (back,
       // for RTL) should return to the lone first page.
-      await readerPage.mouse.click(1150, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(800);
       expect(
         await visiblePageTexts(readerPage),
