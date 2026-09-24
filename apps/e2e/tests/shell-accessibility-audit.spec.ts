@@ -134,8 +134,11 @@ test("root overflow containment preserves native book and long flyout scrolling"
     await readerPage.mouse.move(400, 2);
     await readerPage.getByRole("button", { name: "Book details", exact: true }).click();
     const panel = readerPage.getByRole("complementary", { name: "Book details", exact: true });
-    const scroller = panel.locator(":scope > div").last();
+    const scroller = panel.locator(":scope > div").filter({ hasText: "Long description paragraph 80." });
+    await expect(scroller).toHaveCount(1);
     await expect(scroller).toContainText("Long description paragraph 80.");
+    const help = panel.getByRole("button", { name: "Help & About", exact: true });
+    await expect(help).toBeInViewport({ ratio: 1 });
     await expect.poll(() => panel.evaluate(element => Math.abs(element.getBoundingClientRect().right - window.innerWidth)))
       .toBeLessThan(1);
     const panelBounds = await scroller.boundingBox();
@@ -146,6 +149,7 @@ test("root overflow containment preserves native book and long flyout scrolling"
     await expect.poll(() => scroller.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop))
       .toBeLessThanOrEqual(1);
     await expect(panel.getByRole("button", { name: "Publication details", exact: true })).toBeInViewport();
+    await expect(help).toBeInViewport({ ratio: 1 });
     expect(await readerPage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))).toEqual({ x: 0, y: 0 });
   } finally {
     await context.close();
