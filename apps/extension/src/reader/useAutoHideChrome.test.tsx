@@ -19,6 +19,8 @@ beforeEach(() => {
   document.body.append(element);
   root = createRoot(element);
   act(() => root.render(<Harness />));
+  (element.firstElementChild as HTMLElement).getBoundingClientRect =
+    () => new DOMRect(0, 0, 800, 50);
 });
 
 afterEach(() => {
@@ -71,6 +73,28 @@ it("does not consume a committed reveal whose opacity is still zero", () => {
   (element.firstElementChild as HTMLElement).style.opacity = "0";
   act(() => { expect(chrome.dismissForContent()).toBe(false); });
   expect(chrome.visible).toBe(false);
+});
+
+it("does not re-reveal dismissed chrome for repeated edge taps while it fades", () => {
+  act(() => { expect(chrome.dismissForContent()).toBe(true); });
+  (element.firstElementChild as HTMLElement).style.opacity = "0.8";
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientY: window.innerHeight - 75 })));
+  expect(chrome.visible).toBe(false);
+  act(() => { expect(chrome.dismissForContent()).toBe(false); });
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientY: window.innerHeight / 2 })));
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientY: 5 })));
+  expect(chrome.visible).toBe(true);
+});
+
+it("reveals actual controls and keyboard focus immediately after a content dismissal", () => {
+  const surface = element.firstElementChild as HTMLElement;
+  surface.getBoundingClientRect = () => new DOMRect(0, 0, 800, 50);
+  act(() => { chrome.dismissForContent(); });
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 10, clientY: 20 })));
+  expect(chrome.visible).toBe(true);
+  act(() => { chrome.dismissForContent(); });
+  act(() => { chrome.handlers.onFocus(); });
+  expect(chrome.visible).toBe(true);
 });
 
 it("consumes even a partially visible reveal, including the other chrome surface", () => {

@@ -156,6 +156,9 @@ for (const spread of [true, false]) {
           for (const surface of [toolbar(page), scrubber]) {
             await surface.evaluate(element => { element.style.transitionDelay = "10s"; });
           }
+          // Explicitly approach the controls after a content dismissal;
+          // repeated taps in the edge strip alone must not re-open chrome.
+          await page.mouse.move(10, 20);
           const before = await position(page);
           const count = await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().pageCount);
           expect(before.page + (spread ? 2 : 1), "a later page must exist").toBeLessThan(count);
@@ -183,15 +186,32 @@ for (const spread of [true, false]) {
         await page.mouse.move(10, 2);
         await expect(toolbar(page)).toHaveCSS("pointer-events", "auto");
         await expect(toolbar(page)).toHaveCSS("opacity", "1");
+        for (const surface of [toolbar(page), scrubber]) {
+          await surface.evaluate(element => { element.style.transitionDuration = "10s"; });
+        }
+        // Use the exposed paper strip above the scrubber, not a font-dependent
+        // point that may fall inside the clipped iframe on another platform.
+        const dismissalY = (await scrubber.boundingBox())!.y - 8;
         const beforeDismissal = await position(page);
-        await page.mouse.click(width - 20, 825);
+        await page.mouse.click(width - 20, dismissalY);
         await expect(toolbar(page)).toHaveCSS("pointer-events", "none");
         await settled(page);
         expect(await position(page)).toEqual(beforeDismissal);
-        await page.mouse.click(width - 20, 825);
+        // A small pointer movement must not re-open controls between the two
+        // taps, even if React paints before the second pointerdown.
+        await page.mouse.move(width - 19, dismissalY);
+        await page.evaluate(() => new Promise<void>(resolve =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        // Do not retry until the ordinary idle timer hides an incorrect reveal.
+        expect(await toolbar(page).evaluate(element => getComputedStyle(element).pointerEvents))
+          .toBe("none");
+        await page.mouse.click(width - 19, dismissalY);
         await expect.poll(() => position(page)).toEqual({
           spine: beforeDismissal.spine, page: beforeDismissal.page + (spread ? 2 : 1),
         });
+        for (const surface of [toolbar(page), scrubber]) {
+          await surface.evaluate(element => { element.style.transitionDuration = ""; });
+        }
         await settled(page);
         await expect(toolbar(page)).toHaveCSS("pointer-events", "none");
         await page.keyboard.press("ArrowLeft");
