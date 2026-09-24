@@ -409,8 +409,11 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   const t = useTranslation();
   const scopeId = useId();
   const [internalOpen, setInternalOpen] = useState(false);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = (next: boolean): void => {
+    // A lingering trigger tooltip captures Escape before the menu or Help can.
+    setTooltipVisible(false);
     setInternalOpen(next);
     onOpenChange?.(next);
   };
@@ -437,7 +440,12 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
       }}
     >
       <MenuTrigger disableButtonEnhancement>
-        <Tooltip content={t("toolbar.settings")} relationship="label">
+        <Tooltip
+          content={t("toolbar.settings")}
+          relationship="label"
+          visible={tooltipVisible && !open}
+          onVisibleChange={(_event, data) => setTooltipVisible(data.visible && !open)}
+        >
           <Button
             ref={triggerRef}
             appearance="subtle"
