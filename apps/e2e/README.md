@@ -100,6 +100,16 @@ not a font-dependent fixed number of turns.
 chapter shortcuts, logical Space, taps, swipes, scrubber direction, page numbers,
 and cross-chapter note placement in both single-page and spread layouts.
 
+`outer-margin-navigation.spec.ts` and `spread-gutter-navigation.spec.ts` enforce
+outer-margin-only taps (#182): content whitespace, inner page margins, gutters,
+and blank companion interiors never navigate. Coverage includes LTR/RTL,
+cross-chapter spreads, all animation styles, and scaled fixed-layout artwork.
+Navigation fixtures use `outerMarginPoint` / `clickReadingPage` to derive targets
+from the rendered reading measure, not arbitrary content coordinates.
+Width-fitted fixed-layout pages have no lateral margin; keyboard/toolbar navigation
+remains available. The #169, #174, and #180 native pointer regressions retain their
+selection, single-tap, and zero-opacity intent on valid outer margins.
+
 `resize-lifecycle.spec.ts` and `settings-lifecycle.spec.ts` also bundle the
 controller directly into a real Chromium page. Controlled chapter-load gates
 exercise overlapping turns, resizes, typography, mode changes, and load failures

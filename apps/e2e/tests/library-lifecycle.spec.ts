@@ -5,7 +5,8 @@ import { EXTENSION_PATH } from "../harness.js";
 const test = base.extend<{ library: Page }>({
   library: async ({ playwright }, use, testInfo) => {
     const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
-      headless: false,
+      headless: process.env.AMBRA_E2E_HEADLESS === "1",
+      ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
     try {
@@ -46,7 +47,7 @@ test("failed deletion stays visible, preserves the stored book, and can be retri
   await expect(cover).toBeVisible();
   await cover.hover();
   await library.getByRole("button", { name: /^Remove .* from library$/ }).click();
-  await expect(library.getByText("Your library is empty", { exact: true })).toBeVisible();
+  await expect(library.getByText("What will you read first?", { exact: true })).toBeVisible();
   await expect(library.getByRole("alert")).toHaveCount(0);
 });
 
@@ -87,7 +88,8 @@ test("inspector open failures return to details with a visible error and support
 
 base("import controls wait for a withheld database open before accepting the first book", async ({ playwright }, testInfo) => {
   const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
-    headless: false,
+    headless: process.env.AMBRA_E2E_HEADLESS === "1",
+    ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
     args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
   });
   try {
@@ -125,9 +127,11 @@ base("import controls wait for a withheld database open before accepting the fir
     await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
     await expect.poll(() => page.evaluate(() => Reflect.get(window, "__heldLibraryOpens") ?? 0)).toBeGreaterThan(0);
     const input = page.locator('input[type="file"]');
-    const button = page.getByRole("button", { name: "Import EPUB", exact: true });
+    const button = page.getByRole("button", { name: "Bring a book Choose EPUB files...", exact: true });
     await expect(input).toBeDisabled();
-    await expect(button).toBeDisabled();
+    await expect(button).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "What will you read first?" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(0);
     await page.evaluate(() => Reflect.get(window, "__releaseLibraryOpen")());
     await expect(input).toBeEnabled();
     await expect(button).toBeEnabled();

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { currentPageLabel, launchReader } from "../harness.js";
+import { currentPageLabel, launchReader, outerMarginPoint } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,6 +16,7 @@ for (const width of [760, 1400]) {
       const position = async () => (await currentPageLabel(page))?.match(/^Page \d+/)?.[0];
       await expect.poll(position).toBeTruthy();
       const before = await position();
+      const margin = await outerMarginPoint(page);
       await page.evaluate(() => {
         const doc = document.querySelector("iframe")!.contentDocument!;
         const range = doc.createRange();
@@ -24,13 +25,13 @@ for (const width of [760, 1400]) {
         doc.getSelection()!.addRange(range);
       });
 
-      await page.mouse.click(width - 75, 350);
+      await page.mouse.click(margin.x, margin.y);
       await page.waitForTimeout(300);
       expect(await position()).toBe(before);
       expect(await page.evaluate(() => Array.from(document.querySelectorAll("iframe"))
         .every(frame => frame.contentDocument?.getSelection()?.isCollapsed !== false))).toBe(true);
 
-      await page.mouse.click(width - 75, 350);
+      await page.mouse.click(margin.x, margin.y);
       await expect.poll(position).not.toBe(before);
     } finally {
       await context.close();

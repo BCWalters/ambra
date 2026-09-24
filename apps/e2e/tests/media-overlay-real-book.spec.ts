@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, clickReadingPage } from "../harness.js";
 
 // W3C/IDPF sample: full text, recorded overlays for chapters 1-2.
 // Keep third-party binaries outside source control; see its CC BY-SA license.
@@ -35,7 +35,7 @@ for (const book of samples) {
         .map(element => element.textContent).join(" "));
       await expect.poll(activeText).toMatch(book.opening);
       await expect(page.getByRole("button", { name: "Pause narration", exact: true })).toBeFocused();
-      await page.mouse.click(870, 600);
+      await clickReadingPage(page, "right");
       await expect(page.getByRole("button", { name: "Return to narration", exact: true })).toBeVisible();
       expect(await audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
       await page.getByRole("button", { name: "Return to narration", exact: true }).click();

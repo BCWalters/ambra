@@ -54,7 +54,7 @@ for (const width of [900, 1400]) {
         const selection = view.document.getSelection();
         return controller.locatorResolver.generate(view.spineIndex, selection.anchorNode, selection.anchorOffset).cfi;
       })).toBe(expected.expected);
-      await clickReadingPage(page, { x: width - 120, y: 450 });
+      await clickReadingPage(page, "right");
       await expect.poll(() => page.evaluate(async () => {
         const controller = Reflect.get(window, "__readerController");
         return (await controller.library.getProgress(controller.bookId)).cfi;

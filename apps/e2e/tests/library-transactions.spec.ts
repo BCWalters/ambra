@@ -5,7 +5,8 @@ import { EXTENSION_PATH } from "../harness.js";
 const test = base.extend<{ library: Page }>({
   library: async ({ playwright }, use, testInfo) => {
     const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
-      headless: false,
+      headless: process.env.AMBRA_E2E_HEADLESS === "1",
+      ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
     try {
@@ -13,7 +14,7 @@ const test = base.extend<{ library: Page }>({
       worker ??= await context.waitForEvent("serviceworker");
       const page = await context.newPage();
       await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
-      await expect(page.getByText("Your library is empty", { exact: true })).toBeVisible();
+      await expect(page.getByText("What will you read first?", { exact: true })).toBeVisible();
       // Exercise the mounted production database without a test-only export.
       await page.evaluate(() => {
         for (const element of document.querySelectorAll("*")) {

@@ -14,6 +14,7 @@ import {
   BookmarkFilled,
   BookmarkRegular,
   HeadphonesRegular,
+  LibraryRegular,
   ReadingListRegular,
   SearchRegular,
   TextBulletListRegular,
@@ -30,7 +31,6 @@ import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js";
 import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
-import { AmbraMarkIcon } from "./AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
 import { useCommandPresentation } from "../../shortcuts/useCommandPresentation.js";
 
@@ -246,7 +246,7 @@ export const Toolbar: FC<ToolbarProps> = ({
         }}
       >
         <Tooltip content={t("toolbar.backToLibrary")} relationship="label">
-          <Button appearance="subtle" size="small" icon={<AmbraMarkIcon />} onClick={onBackToLibrary} />
+          <Button appearance="subtle" size="small" icon={<LibraryRegular />} onClick={onBackToLibrary} />
         </Tooltip>
 
         <Tooltip content={isTocOpen ? t("toolbar.hideContents") : t("toolbar.showContents")} relationship="label">

@@ -97,7 +97,6 @@ for (const book of BOOKS) {
       if (before) {
         const { changed } = await clickForwardAndWait(
           readerPage,
-          { x: book.direction === "rtl" ? 200 : 700, y: 450 },
           4000,
         );
         expect(changed, `first forward click never advanced past "${before}"`).toBe(true);

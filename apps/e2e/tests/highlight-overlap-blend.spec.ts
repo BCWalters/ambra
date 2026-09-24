@@ -152,7 +152,7 @@ test.describe("overlapping highlight blending and active-selection emphasis (iss
       // popup's own note textarea would otherwise just swallow as typed
       // input) — the same interaction `clickForwardAndWait` elsewhere
       // in this suite already uses for page turns.
-      await clickForwardAndWait(readerPage, { x: iframeBox!.x + iframeBox!.width - 40, y: iframeBox!.y + 300 });
+      await clickForwardAndWait(readerPage);
 
       expect(
         (await highlightRegistryState(readerPage)).names.some((name) => name.startsWith("ambra-highlight-active-")),

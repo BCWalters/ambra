@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, clickReadingPage } from "../harness.js";
 
 const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/two-chapter.epub");
 
@@ -314,8 +314,7 @@ for (const interaction of ["keyboard", "click", "selection"] as const) {
           position: JSON.stringify(Reflect.get(window, "__settingsController").host.positions),
           activity: Reflect.get(window, "__settingsController").snapshot().contentPointerActivityId,
         }));
-        const box = await page.locator("iframe").nth(1).boundingBox();
-        await page.mouse.click(box!.x + box!.width * 0.9, box!.y + box!.height / 2);
+        await clickReadingPage(page, "right");
         await expect.poll(() => page.evaluate(() =>
           JSON.stringify(Reflect.get(window, "__settingsController").host.positions))).not.toBe(before.position);
         expect(await page.evaluate(() =>

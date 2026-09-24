@@ -1,18 +1,10 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, clickReadingPage } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FXL_SPREAD_LTR_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr.epub");
-
-async function manualClick(page: import("@playwright/test").Page, x: number, y: number): Promise<void> {
-  await page.mouse.move(x, y);
-  await page.waitForTimeout(30);
-  await page.mouse.down();
-  await page.waitForTimeout(30);
-  await page.mouse.up();
-}
 
 /** Every visible fixed-layout iframe's own bounding rect, left-to-right
  * in DOM order (left column before right — same convention
@@ -56,7 +48,7 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
     try {
       await readerPage.waitForTimeout(500);
       // Cover (single) -> first real pair.
-      await manualClick(readerPage, 1900, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(700);
 
       const rects = await visiblePageRects(readerPage);
@@ -102,7 +94,7 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
     });
     try {
       await readerPage.waitForTimeout(500);
-      await manualClick(readerPage, 1150, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(700);
 
       await readerPage.setViewportSize({ width: 2200, height: 900 });
@@ -117,7 +109,7 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
       expect(right.left - left.right, "still tightly hugged after resizing").toBeLessThan(40);
 
       // Navigation still works after the resize.
-      await manualClick(readerPage, 2100, 450);
+      await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(700);
       const texts = await readerPage.evaluate(() =>
         Array.from(document.querySelectorAll("iframe"))

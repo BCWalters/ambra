@@ -142,10 +142,10 @@ for (const width of [760, 1400]) {
         expect(await signature(page)).toEqual(next);
         await key("Shift+Space");
         expect(await signature(page)).toEqual(initial);
-        await clickReadingPage(page, { x: 40, y: 450 });
+        await clickReadingPage(page, "left");
         await page.waitForTimeout(550);
         expect(await signature(page)).toEqual(next);
-        await clickReadingPage(page, { x: width - 40, y: 450 });
+        await clickReadingPage(page, "right");
         await page.waitForTimeout(550);
         expect(await signature(page)).toEqual(initial);
 

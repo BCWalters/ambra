@@ -67,6 +67,7 @@ jobs:
           scrubber-bookmarks.spec.ts
           page-theme.spec.ts
           spread-gutter-navigation.spec.ts
+          outer-margin-navigation.spec.ts
           spread-resize-stability.spec.ts
           toolbar-startup.spec.ts
           reader-diagnostics.spec.ts
@@ -80,6 +81,15 @@ jobs:
           pnpm --filter @ambra/e2e exec playwright test
           epub-inspector.spec.ts epub-direct-import.spec.ts
           --grep '#181|download import shows ongoing status'
+          --workers=1
+      - name: Verify Library first-run and import flows
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
+          AMBRA_E2E_HEADLESS: "1"
+        run: >-
+          pnpm --filter @ambra/e2e exec playwright test
+          library-discovery.spec.ts library-localization.spec.ts
+          library-lifecycle.spec.ts library-transactions.spec.ts library-ux.spec.ts
           --workers=1
       - name: Keep verified package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

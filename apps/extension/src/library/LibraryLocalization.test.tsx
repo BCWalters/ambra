@@ -60,7 +60,8 @@ describe("Library localization and action order", () => {
   async function render() { await act(async () => root.render(<LibraryApp />)); }
   function button(label: string) {
     return [...container.querySelectorAll<HTMLButtonElement>("button")].find((entry) =>
-      entry.textContent === label || entry.getAttribute("aria-label") === label)!;
+      entry.textContent === label || entry.getAttribute("aria-label") === label ||
+      entry.getAttribute("aria-labelledby")?.split(" ").map((id) => document.getElementById(id)?.textContent).join(" ") === label)!;
   }
 
   it.each(SUPPORTED_LOCALES)("localizes empty Library, discovery, About and storage in %s", async (locale) => {
@@ -69,11 +70,18 @@ describe("Library localization and action order", () => {
     await render();
     expect(document.title).toBe(t("library.pageTitle"));
     expect(container.textContent).toContain(t("library.emptyTitle"));
+    const explore = button(`${t("library.findNextBook")} ${t("library.exploreFreeBooks")}`);
+    expect(explore.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("main section")?.hasAttribute("hidden")).toBe(true);
+    await act(async () => explore.click());
     expect(container.textContent).toContain(t("library.discoveryTitle"));
-    expect(container.textContent).toContain(t("library.discoveryImport", { importLabel: t("library.importEpub"), extension: ".epub" }));
+    expect(container.textContent).toContain(t("library.discoveryImport", { importLabel: t("library.chooseEpubFiles"), extension: ".epub" }));
+    expect(container.textContent).toContain(t("library.standardEbooksDownload"));
+    expect(container.textContent).toContain(t("library.gutenbergDownload"));
+    expect(container.textContent).toContain(t("library.readBeyondDownload"));
     expect(container.textContent).toContain(t("library.bookCount", { count: "0" }));
     expect(container.textContent).toContain(formatLibraryBytes(1536, locale));
-    expect(container.querySelector('a[href="https://www.gutenberg.org/ebooks/"]')?.textContent).toBe("Project Gutenberg");
+    expect(container.querySelector('a[href="https://www.gutenberg.org/ebooks/"]')?.textContent?.trim()).toBe("Project Gutenberg");
     await act(async () => button(t("about.title")).click());
     expect(container.textContent).toContain(t("about.description"));
     expect(container.textContent).toContain(t("about.version", { version: "1.2.3" }));
@@ -91,10 +99,103 @@ describe("Library localization and action order", () => {
     await render();
     const labels = () => [...container.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button')].map((entry) =>
       entry.getAttribute("aria-label") ?? (entry.textContent || document.getElementById(entry.getAttribute("aria-labelledby") ?? "")?.textContent));
+    expect(labels()).toEqual(["Settings", "Help & About", "Expand library into a full browser tab"]);
+    state.books = [{ id: "book", title: "Book", identifiers: [] } as unknown as LibraryBookViewModel];
+    await render();
     expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About", "Expand library into a full browser tab"]);
     state.isFullTab = true;
     await render();
     expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About"]);
+  });
+
+  it("offers exactly two whole-card actions and toggles discovery without moving focus", async () => {
+    await render();
+    const actions = [...container.querySelectorAll<HTMLButtonElement>("main button")];
+    expect(actions).toHaveLength(2);
+    const [bring, explore] = actions;
+    expect(bring?.textContent).toContain("FROM YOUR DEVICE");
+    expect(bring?.textContent).toContain("Choose EPUB files...");
+    expect(explore?.textContent).toContain("ON THE WEB");
+    expect(bring?.querySelector("button, a")).toBeNull();
+    expect(explore?.querySelector("button, a")).toBeNull();
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const choose = vi.spyOn(input, "click");
+    await act(async () => bring!.click());
+    expect(choose).toHaveBeenCalledOnce();
+    explore!.focus();
+    await act(async () => explore!.click());
+    expect(document.activeElement).toBe(explore);
+    const panel = document.getElementById(explore!.getAttribute("aria-controls")!)!;
+    expect(panel.hidden).toBe(false);
+    expect(container.querySelectorAll("main button")).toHaveLength(2);
+    expect([...panel.querySelectorAll("a")].map((link) => link.textContent?.trim())).toEqual([
+      "Standard Ebooks", "Project Gutenberg", "ReadBeyond",
+    ]);
+    await act(async () => explore!.click());
+    expect(panel.hidden).toBe(true);
+    expect(document.activeElement).toBe(explore);
+  });
+
+  it("keeps onboarding out of loading, disables unavailable import, and preserves discovery", async () => {
+    state.isLoading = true;
+    state.canImport = false;
+    await render();
+    expect(container.textContent).not.toContain("What will you read first?");
+    expect(container.querySelector("main button")).toBeNull();
+    expect(button("Import EPUB")).toBeUndefined();
+    state.isLoading = false;
+    state.error = "Database unavailable";
+    await render();
+    expect(button("Bring a book Choose EPUB files...").disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
+    expect(button("Find your next book Explore free books").disabled).toBe(false);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Database unavailable");
+  });
+
+  it("keeps choices, errors and concurrent import progress until the first book appears", async () => {
+    await render();
+    const bring = button("Bring a book Choose EPUB files...");
+    bring.focus();
+    state.importActivities = [
+      { id: 1, fileName: "first.epub", phase: "processing" },
+      { id: 2, fileName: "second.epub", phase: "queued" },
+    ];
+    state.error = "Another file failed";
+    await render();
+    expect(button("Bring a book Choose EPUB files...")).toBe(bring);
+    expect(bring.disabled).toBe(false);
+    expect(document.activeElement).toBe(bring);
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("first.epub");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Another file failed");
+    state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
+    state.importActivities = [
+      { id: 1, fileName: "first.epub", phase: "complete", bookId: "first" },
+      { id: 2, fileName: "second.epub", phase: "processing" },
+    ];
+    await render();
+    expect(container.textContent).not.toContain("What will you read first?");
+    expect(document.activeElement).toBe(button("Import EPUB"));
+    expect(button("Read now: First book")).toBeDefined();
+    expect(button("Find books").getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("second.epub");
+  });
+
+  it.each(["Help & About", undefined])("does not steal focus from %s after the first import", async (focusLabel) => {
+    await render();
+    if (focusLabel) button(focusLabel).focus();
+    const focused = document.activeElement;
+    state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
+    await render();
+    expect(document.activeElement).toBe(focused);
+  });
+
+  it("restores focus when a focused discovery link disappears with onboarding", async () => {
+    await render();
+    await act(async () => button("Find your next book Explore free books").click());
+    container.querySelector<HTMLAnchorElement>('a[href="https://standardebooks.org/ebooks"]')!.focus();
+    state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
+    await render();
+    expect(document.activeElement).toBe(button("Import EPUB"));
   });
 
   it("contains coverless titles, creators and action tooltips without shortening book data or action names", async () => {

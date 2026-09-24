@@ -18,9 +18,27 @@ function setUp(mode: Mode, commonFirst = true) {
   document.body.append(container);
   const doc = frame.contentDocument!;
   doc.body.innerHTML = "<p>Book text</p><a href='#chapter'>Link</a><details><summary>More</summary></details>";
+  const frameRect = mode === "single" ? new DOMRect(0, 0, 900, 700)
+    : mode === "spread" ? new DOMRect(470, 0, 430, 700) : new DOMRect(100, 0, 700, 700);
+  const intrinsicWidth = mode === "fixed" ? 1400 : frameRect.width;
+  vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(frameRect);
+  Object.defineProperty(frame, "clientWidth", { value: intrinsicWidth });
+  vi.spyOn(doc.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, intrinsicWidth, 700));
+  doc.body.style.padding = mode === "single" ? "0 60px" : "0 30px";
+  vi.spyOn(container, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 900, 700));
+  // Happy DOM does not wire this browser-owned relationship itself.
+  Object.defineProperty(doc.defaultView!, "frameElement", { configurable: true, value: frame });
   const host = Object.create(mode === "single" ? PaginatedContentHost.prototype
     : mode === "spread" ? SpreadPaginatedHost.prototype : FixedSpreadHost.prototype);
   Object.defineProperty(host, "element", { value: mode === "single" ? frame : container });
+  if (mode === "spread") {
+    const companion = document.createElement("iframe");
+    container.prepend(companion);
+    companion.style.visibility = "hidden";
+    vi.spyOn(companion, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 430, 700));
+    Object.defineProperty(companion, "clientWidth", { value: 430 });
+    host.columnElement = (side: "left" | "right") => side === "left" ? companion : frame;
+  }
   const views = [{ document: doc, spineIndex: 0, physicalSide: "right" }];
   const controller = Object.create(ReaderController.prototype);
   const operation = { own: vi.fn(), check: vi.fn() };
@@ -60,7 +78,12 @@ function setUp(mode: Mode, commonFirst = true) {
     controller.dragCleanup?.();
     container.remove();
   });
-  return { controller, container, doc };
+  const margin = {
+    target: mode === "fixed" ? container : doc.body,
+    x: mode === "spread" ? 420 : 850,
+    document: mode === "fixed" ? document : doc,
+  };
+  return { controller, container, doc, margin };
 }
 
 function pointer(target: EventTarget, type: string, x: number, pointerType = "mouse", id = 1, y = 300) {
@@ -77,12 +100,48 @@ function tap(target: EventTarget, x: number, pointerType = "mouse") {
 }
 
 describe("content clicks dismiss chrome before navigating", () => {
+  it.each(["single", "spread", "fixed"] as const)(
+    "%s publication content dismisses chrome but never becomes a navigation target",
+    mode => {
+      const { controller, doc } = setUp(mode);
+      const dismiss = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+      controller.setContentUiDismissal(dismiss);
+      const x = mode === "spread" ? 200 : 500;
+      tap(doc.body, x);
+      tap(doc.body, x, "touch");
+      expect(dismiss).toHaveBeenCalledTimes(2);
+      expect(controller.turnPage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps a spread gutter and blank companion interior inert after chrome dismissal", () => {
+    const { controller, container } = setUp("spread");
+    controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
+    tap(container, 450);
+    tap(container, 450);
+    tap(container, 200);
+    expect(controller.turnPage).not.toHaveBeenCalled();
+    // The blank companion's physical outer margin still belongs to the spread.
+    tap(container, 10);
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(-1);
+  });
+
+  it("never treats a scaled fixed page's intrinsic edges as outer margins", () => {
+    const { controller, doc, margin } = setUp("fixed");
+    controller.setContentUiDismissal(() => false);
+    tap(doc.body, 1);
+    tap(doc.body, 1399);
+    expect(controller.turnPage).not.toHaveBeenCalled();
+    tap(margin.target, margin.x);
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
   it.each([
     ["single", false], ["single", true],
     ["spread", false], ["spread", true],
-    ["fixed", false], ["fixed", true],
+    ["fixed", true],
   ] as const)("%s container=%s consumes the first tap but not the next", (mode, inContainer) => {
-    const { controller, container, doc } = setUp(mode);
+    const { controller, container, doc, margin } = setUp(mode);
     let visible = true;
     const dismiss = vi.fn(() => {
       const dismissed = visible;
@@ -91,7 +150,7 @@ describe("content clicks dismiss chrome before navigating", () => {
     });
     controller.setContentUiDismissal(dismiss);
     const target = inContainer ? container : doc.body;
-    const x = mode === "spread" && !inContainer ? 400 : 850;
+    const x = inContainer ? 890 : margin.x;
     tap(target, x);
     expect(controller.turnPage).not.toHaveBeenCalled();
     expect(dismiss).toHaveBeenCalledTimes(1);
@@ -106,30 +165,28 @@ describe("content clicks dismiss chrome before navigating", () => {
   it.each(["single", "spread", "fixed"] as const)("deduplicates %s pointerdown regardless of listener order", mode => {
     const { controller, doc } = setUp(mode, false);
     controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
-    tap(doc.body, mode === "spread" ? 400 : 850);
+    tap(doc.body, mode === "spread" ? 420 : 850);
     expect(controller.dismissReaderUi).toHaveBeenCalledTimes(1);
     expect(controller.turnPage).not.toHaveBeenCalled();
   });
 
   it.each(["single", "spread", "fixed"] as const)("preserves %s behavior without a UI handler or with held chrome", mode => {
-    const { controller, doc } = setUp(mode);
-    const x = mode === "spread" ? 400 : 850;
-    tap(doc.body, x);
+    const { controller, margin } = setUp(mode);
+    tap(margin.target, margin.x);
     controller.setContentUiDismissal(() => false);
-    tap(doc.body, x);
+    tap(margin.target, margin.x);
     expect(controller.turnPage).toHaveBeenCalledTimes(2);
   });
 
   it.each(["single", "spread", "fixed"] as const)("keeps the %s dismissal snapshot across listener rebuilding", mode => {
-    const { controller, doc } = setUp(mode);
-    const x = mode === "spread" ? 400 : 850;
+    const { controller, margin } = setUp(mode);
     controller.setContentUiDismissal(() => true);
-    pointer(doc.body, "pointerdown", x);
+    pointer(margin.target, "pointerdown", margin.x);
     controller.setContentUiDismissal(() => false);
     controller.setUpDragPageTurn();
-    pointer(doc.body, "pointerup", x);
+    pointer(margin.target, "pointerup", margin.x);
     expect(controller.turnPage).not.toHaveBeenCalled();
-    tap(doc.body, x);
+    tap(margin.target, margin.x);
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
   });
 
@@ -156,28 +213,28 @@ describe("content clicks dismiss chrome before navigating", () => {
   });
 
   it.each(["single", "spread", "fixed"] as const)("preserves %s link, disclosure, selection, and highlight guards", mode => {
-    const { controller, doc } = setUp(mode);
+    const { controller, doc, margin } = setUp(mode);
     controller.setContentUiDismissal(() => false);
-    const x = mode === "spread" ? 400 : 850;
+    const x = margin.x;
     tap(doc.querySelector("a")!, x);
     tap(doc.querySelector("summary")!, x);
     vi.spyOn(doc, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
-    tap(doc.body, x);
+    tap(margin.target, x);
     expect(controller.highlightInteraction.dismissSelectionToolbar).toHaveBeenCalledOnce();
     vi.mocked(doc.getSelection).mockReturnValue(null);
     controller.highlightInteraction.findHighlightAtPoint.mockReturnValue({ id: "highlight" });
-    tap(doc.body, x);
+    tap(margin.target, x);
     expect(controller.turnPage).not.toHaveBeenCalled();
   });
 
   it("retains RTL navigation after consuming a fixed-layout tap", () => {
-    const { controller, doc } = setUp("fixed");
+    const { controller, margin } = setUp("fixed");
     controller.pkg.pageProgressionDirection = "rtl";
     controller.setUpDragPageTurn();
     controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
-    tap(doc.body, 850);
+    tap(margin.target, margin.x);
     expect(controller.turnPage).not.toHaveBeenCalled();
-    tap(doc.body, 850);
+    tap(margin.target, margin.x);
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(-1);
   });
 
@@ -185,7 +242,7 @@ describe("content clicks dismiss chrome before navigating", () => {
     "%s ignores retained off-page selection before and during a margin tap",
     mode => {
       const { controller, doc } = setUp(mode);
-      const x = mode === "spread" ? 400 : 850;
+      const x = mode === "spread" ? 420 : 850;
       const selection = { isCollapsed: false, removeAllRanges: vi.fn() } as unknown as Selection;
       const getSelection = vi.spyOn(doc, "getSelection").mockReturnValue(selection);
       controller.highlightInteraction.hasVisibleSelection.mockReturnValue(false);
@@ -209,11 +266,10 @@ describe("content clicks dismiss chrome before navigating", () => {
   it.each(["single", "spread", "fixed"] as const)(
     "%s preserves a visible selection created during a tap",
     mode => {
-      const { controller, doc } = setUp(mode);
-      const x = mode === "spread" ? 400 : 850;
-      pointer(doc.body, "pointerdown", x);
-      vi.spyOn(doc, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
-      pointer(doc.body, "pointerup", x);
+      const { controller, margin } = setUp(mode);
+      pointer(margin.target, "pointerdown", margin.x);
+      vi.spyOn(margin.document, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
+      pointer(margin.target, "pointerup", margin.x);
       expect(controller.turnPage).not.toHaveBeenCalled();
       expect(controller.highlightInteraction.dismissSelectionToolbar).not.toHaveBeenCalled();
     },

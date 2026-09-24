@@ -117,7 +117,17 @@ export interface StringCatalog {
   "library.added": string;
   "library.emptyTitle": string;
   "library.emptyDescription": string;
-  "library.importFirst": string;
+  "library.fromDevice": string;
+  "library.bringBook": string;
+  "library.bringBookDescription": string;
+  "library.chooseEpubFiles": string;
+  "library.onWeb": string;
+  "library.findNextBook": string;
+  "library.findNextBookDescription": string;
+  "library.exploreFreeBooks": string;
+  "library.standardEbooksDownload": string;
+  "library.gutenbergDownload": string;
+  "library.readBeyondDownload": string;
   "library.dismiss": string;
   "library.findBooks": string;
   "library.discoveryTitle": string;
@@ -495,14 +505,24 @@ export const en: StringCatalog = {
   "library.readingProgress": "Reading progress",
   "library.percentRead": "{progress} read",
   "library.added": "Added",
-  "library.emptyTitle": "Your library is empty",
-  "library.emptyDescription": "Import your first EPUB to start reading.",
-  "library.importFirst": "Import your first book",
+  "library.emptyTitle": "What will you read first?",
+  "library.emptyDescription": "Bring a book you have, or discover something new.",
+  "library.fromDevice": "FROM YOUR DEVICE",
+  "library.bringBook": "Bring a book",
+  "library.bringBookDescription": "Add an EPUB file to your library",
+  "library.chooseEpubFiles": "Choose EPUB files...",
+  "library.onWeb": "ON THE WEB",
+  "library.findNextBook": "Find your next book",
+  "library.findNextBookDescription": "Explore trusted sources of free books",
+  "library.exploreFreeBooks": "Explore free books",
+  "library.standardEbooksDownload": "On a book’s page, choose “Compatible epub”.",
+  "library.gutenbergDownload": "On a book’s page, choose an EPUB or EPUB3 download.",
+  "library.readBeyondDownload": "Choose “Download” for an EPUB with audio, not “Read+Listen”.",
   "library.dismiss": "Dismiss",
   "library.findBooks": "Find books",
   "library.discoveryTitle": "Find your next read",
   "library.discoveryDescription": "Start with these free EPUB collections. Links open in a new tab.",
-  "library.gutenbergDescription": "Explore classic literature and discover your next favorite.",
+  "library.gutenbergDescription": "A vast collection of free literature and classics.",
   "library.standardEbooksDescription": "Carefully edited classics with beautiful typography.",
   "library.readBeyondDescription": "Read along with recorded narration and synchronized text.",
   "library.discoverySteps": "From discovery to your library",
@@ -514,11 +534,11 @@ export const en: StringCatalog = {
   "library.importNotReady": "The library isn't ready to import books. Wait for loading to finish, or reload this page if it failed.",
   "library.notReady": "The library isn't ready yet.",
   "library.fileMissing": "This book's file couldn't be found.",
-  "library.downloadFailed": "The site couldn't provide this book (HTTP {status}). Check Chrome's Downloads, or download the EPUB from the site, then choose Import EPUB.",
-  "library.downloadNetworkFailed": "Ambra couldn't fetch this book. Check your connection and Ambra's site access in Chrome. Check Chrome's Downloads, or download the EPUB from the site, then choose Import EPUB.",
-  "library.downloadAccessDenied": "Ambra doesn't have access to fetch this book here. Check its site access in Chrome's extension settings, or choose Import EPUB to open a downloaded copy.",
-  "library.downloadUnsupported": "This link can't be imported directly. Download the EPUB from the site, then choose Import EPUB.",
-  "library.downloadImportFailed": "This file couldn't be added to the library. Check Chrome's Downloads and make sure the file is an EPUB, then choose Import EPUB to try again. Error details: {detail}",
+  "library.downloadFailed": "The site couldn't provide this book (HTTP {status}). Check Chrome's Downloads, or download the EPUB from the site, then choose {importLabel}.",
+  "library.downloadNetworkFailed": "Ambra couldn't fetch this book. Check your connection and Ambra's site access in Chrome. Check Chrome's Downloads, or download the EPUB from the site, then choose {importLabel}.",
+  "library.downloadAccessDenied": "Ambra doesn't have access to fetch this book here. Check its site access in Chrome's extension settings, or choose {importLabel} to open a downloaded copy.",
+  "library.downloadUnsupported": "This link can't be imported directly. Download the EPUB from the site, then choose {importLabel}.",
+  "library.downloadImportFailed": "This file couldn't be added to the library. Check Chrome's Downloads and make sure the file is an EPUB, then choose {importLabel} to try again. Error details: {detail}",
   "about.title": "Help & About",
   "about.version": "Version {version}",
   "about.description": "An EPUB reader designed for comfortable, beautiful reading.",

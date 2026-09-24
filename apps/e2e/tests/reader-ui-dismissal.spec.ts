@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, outerMarginPoint } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const fixture = (name: string) =>
@@ -30,9 +30,7 @@ async function position(page: Page) {
 }
 
 async function readingPoint(page: Page, rtl = false) {
-  const box = await page.locator("iframe").first().boundingBox();
-  if (!box) throw new Error("Reading frame has no visible bounds");
-  return { x: box.x + box.width * (rtl ? 0.2 : 0.8), y: box.y + box.height * 0.45 };
+  return outerMarginPoint(page, rtl ? "left" : "right");
 }
 
 async function reveal(page: Page, point: { x: number; y: number }) {
@@ -92,12 +90,13 @@ test("a below-page margin tap dismisses chrome before navigating", async () => {
   try {
     await exposeReaderController(page);
     await settled(page);
-    const point = await page.evaluate(() => {
+    const margin = await outerMarginPoint(page);
+    const point = await page.evaluate(margin => {
       const c = Reflect.get(window, "__readerController");
       const pane = c.containerEl.getBoundingClientRect();
       const frame = c.host.element.getBoundingClientRect();
-      return { x: pane.x + pane.width * 0.85, y: Math.min(pane.bottom - 150, frame.bottom + 60) };
-    });
+      return { x: margin.x, y: Math.min(pane.bottom - 150, frame.bottom + 60) };
+    }, margin);
     expect(
       await page.evaluate((point) => document.elementFromPoint(point.x, point.y)?.tagName, point),
     ).not.toBe("IFRAME");

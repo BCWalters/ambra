@@ -166,11 +166,19 @@ export class SpreadPaginatedHost {
     return this.documentViews().flatMap(({ page, document, spineIndex }) =>
       page ? [{ page, document, spineIndex }] : []);
   }
+  private resizeBlankCompanion(width: number, height: number): void {
+    if (this.spread.second) return;
+    // The hidden page still defines a physical column and its outer margin,
+    // but has no publication document to reflow.
+    this.second.element.style.width = `${width}px`;
+    this.second.element.style.height = `${height}px`;
+  }
   public relayout(width: number, height: number): void {
     this.width = width;
     this.height = height;
     this.containerEl.style.height = `${height}px`;
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(width);
+    this.resizeBlankCompanion(columnWidth, height);
     this.first.relayout(columnWidth, height, undefined, false);
     if (this.spread.second) this.second.relayout(columnWidth, height, undefined, false);
     if (!this.isShowingMergedTail && this.spread.second) {
@@ -193,6 +201,7 @@ export class SpreadPaginatedHost {
     this.height = height;
     this.containerEl.style.height = `${height}px`;
     const columnWidth = SpreadPaginatedHost.effectiveColumnWidth(width);
+    this.resizeBlankCompanion(columnWidth, height);
     this.first.relayout(columnWidth, height,
       anchor?.node.ownerDocument === firstDocument ? anchor : undefined, false);
     if (this.spread.second) {

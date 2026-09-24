@@ -302,10 +302,7 @@ test.describe("paginated reflowable navigation correctness", () => {
           break; // reached the last page of this (single-chapter) fixture
         }
 
-        const { changed, before, after } = await clickForwardAndWait(readerPage, {
-          x: 700,
-          y: 450,
-        });
+        const { changed, before, after } = await clickForwardAndWait(readerPage);
         expect(
           changed,
           `click ${click} never advanced past "${before}" (stuck/dead click — issue #82)`,
@@ -358,7 +355,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         if (total !== undefined && index !== undefined && index >= total - 1) {
           break;
         }
-        const { changed, before } = await clickForwardAndWait(readerPage, { x: 1200, y: 450 });
+        const { changed, before } = await clickForwardAndWait(readerPage);
         expect(
           changed,
           `spread click ${click} never advanced past "${before}" (stuck/dead click)`,
@@ -438,7 +435,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         bestC1 = Math.max(bestC1, c1);
         bestC2 = Math.max(bestC2, c2);
         if (bestC2 === 60) break;
-        await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1200, y: 450 }));
+        await turnAndWait(readerPage, () => clickReadingPage(readerPage, "right"));
       }
       expect(sawChapterTwo, "never reached chapter two's content").toBe(true);
       expect(bestC1, "never reached chapter one's actual last paragraph").toBe(120);
@@ -455,10 +452,10 @@ test.describe("paginated reflowable navigation correctness", () => {
     });
     try {
       expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
-      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1200, y: 450 }));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, "right"));
       expect(await visibleSpreadText(readerPage), "chapter one's fully paired last spread")
         .toEqual(["C1Para 3.", "C1Para 4."]);
-      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1200, y: 450 }));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, "right"));
       expect(await visibleSpreadText(readerPage), "chapter two opens left, without repeating chapter one")
         .toEqual(["C2Para 1.", "C2Para 2."]);
     } finally {
@@ -472,10 +469,10 @@ test.describe("paginated reflowable navigation correctness", () => {
     });
     try {
       expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
-      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1100, y: 450 }));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, "right"));
       expect(await visibleSpreadText(readerPage), "the first turn already merges the unpaired tail")
         .toEqual(["C1Para 3.", "C2Para 1."]);
-      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1100, y: 450 }));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, "right"));
       expect(await visibleSpreadText(readerPage), "the next turn never repeats either merged page")
         .toEqual(["C2Para 2.", "C2Para 3."]);
     } finally {
@@ -509,7 +506,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       let label = await currentPageLabel(readerPage);
       let hasChapterTwo = false;
       for (let click = 0; click < 8 && !hasChapterTwo; click++) {
-        const result = await clickForwardAndWait(readerPage, { x: 1300, y: 450 });
+        const result = await clickForwardAndWait(readerPage);
         label = result.after;
         hasChapterTwo = await readerPage.evaluate(() =>
           Array.from(document.querySelectorAll("iframe")).some((f) =>
@@ -629,7 +626,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         "a visible column on the book's very first spread was blank",
       ).toBe(true);
 
-      const result = await clickForwardAndWait(readerPage, { x: 1300, y: 450 });
+      const result = await clickForwardAndWait(readerPage);
       expect(
         result.changed,
         `clicking the book's very first (merged) spread did not turn the page (label stayed "${result.before}") — the merge's own listeners were likely attached to since-reloaded, no-longer-on-screen documents`,
@@ -665,7 +662,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         expect(await visibleSpreadText(readerPage)).toEqual(snapshots[page - 1]);
       }
       for (let page = 2; page <= pages; page++) {
-        await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 650, y: 450 }));
+        await turnAndWait(readerPage, () => clickReadingPage(readerPage, "right"));
         expect(await visibleSpreadText(readerPage), `click and ArrowRight agree on page ${page}`)
           .toEqual(snapshots[page - 1]);
       }
