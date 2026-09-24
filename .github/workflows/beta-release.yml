@@ -1,15 +1,15 @@
-name: Private Chrome Web Store release
+name: Unlisted Chrome Web Store beta release
 
 on:
   workflow_dispatch:
     inputs:
       upload_draft:
-        description: Upload validated package to the existing PRIVATE item's draft
+        description: Upload validated package to the existing UNLISTED item's draft
         type: boolean
         default: false
         required: true
-      publish_trusted_testers:
-        description: Also submit to trusted testers (requires upload_draft; disabled from 2026-10-15)
+      publish_unlisted:
+        description: Also publish using owner-confirmed saved UNLISTED visibility (requires upload_draft)
         type: boolean
         default: false
         required: true
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: chrome-web-store-private-release
+  group: chrome-web-store-beta-release
   cancel-in-progress: false
 
 jobs:
@@ -30,18 +30,14 @@ jobs:
       - name: Restrict credentialed uploads to main
         env:
           UPLOAD_DRAFT: ${{ inputs.upload_draft }}
-          PUBLISH_TRUSTED_TESTERS: ${{ inputs.publish_trusted_testers }}
+          PUBLISH_UNLISTED: ${{ inputs.publish_unlisted }}
         run: |
           if [ "$UPLOAD_DRAFT" = "true" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "::error::Draft uploads must use main after the release PR is merged."
             exit 1
           fi
-          if [ "$PUBLISH_TRUSTED_TESTERS" = "true" ] && [ "$UPLOAD_DRAFT" != "true" ]; then
-            echo "::error::Trusted-tester submission requires uploading the validated package in this run."
-            exit 1
-          fi
-          if [ "$PUBLISH_TRUSTED_TESTERS" = "true" ] && [ "$(date -u +%Y-%m-%d)" \> "2026-10-14" ]; then
-            echo "::error::The v1 trusted-testers API has sunset. Use the PRIVATE dashboard flow."
+          if [ "$PUBLISH_UNLISTED" = "true" ] && [ "$UPLOAD_DRAFT" != "true" ]; then
+            echo "::error::UNLISTED publication requires uploading the validated package in this run."
             exit 1
           fi
   validate:
@@ -51,7 +47,7 @@ jobs:
     permissions:
       contents: read
   upload:
-    name: Upload private candidate
+    name: Upload unlisted beta candidate
     if: inputs.upload_draft && github.ref == 'refs/heads/main'
     needs: validate
     runs-on: ubuntu-24.04
@@ -70,25 +66,25 @@ jobs:
           node-version: 24.18.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: private-release-${{ github.sha }}
-          path: dist/private-release/artifacts/
+          name: beta-release-${{ github.sha }}
+          path: dist/beta-release/artifacts/
       - name: Authenticate and upload verified draft
         env:
           CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
-          CWS_PRIVATE_VISIBILITY_CONFIRMED: ${{ vars.CWS_PRIVATE_VISIBILITY_CONFIRMED }}
+          CWS_UNLISTED_VISIBILITY_CONFIRMED: ${{ vars.CWS_UNLISTED_VISIBILITY_CONFIRMED }}
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: node .github/scripts/upload-private-draft.mjs
-      - name: Submit explicitly to trusted testers (v1, no public fallback)
-        if: inputs.publish_trusted_testers
+        run: node .github/scripts/upload-draft.mjs
+      - name: Publish using owner-confirmed saved UNLISTED visibility
+        if: inputs.publish_unlisted
         env:
-          CWS_PUBLISH_TRUSTED_TESTERS: "true"
+          CWS_PUBLISH_UNLISTED: "true"
           CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           CWS_EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
-          CWS_PRIVATE_VISIBILITY_CONFIRMED: ${{ vars.CWS_PRIVATE_VISIBILITY_CONFIRMED }}
+          CWS_UNLISTED_VISIBILITY_CONFIRMED: ${{ vars.CWS_UNLISTED_VISIBILITY_CONFIRMED }}
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: node .github/scripts/publish-trusted-testers.mjs
+        run: node .github/scripts/publish-unlisted.mjs

@@ -15,11 +15,13 @@ provided you retain the copyright and license notice. There is no
 non-commercial or friends-only restriction on the source code. Third-party
 materials retain their own licenses; see [notices and provenance](THIRD_PARTY_NOTICES.md).
 
-The first Chrome Web Store release is intended as a **private friends beta**, not
-a public store launch. Public source visibility, the store audience, and npm's
-`"private": true` (which prevents accidental package publication) are independent.
+The first Chrome Web Store release is an **unlisted beta**: anyone with the
+installation URL can install it, but it does not appear in store search or browsing.
+No trusted-tester allowlist is required. Public source visibility, store listing
+visibility, and npm's `"private": true` (which prevents accidental package
+publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [private-beta release checklist](store-assets/PRIVATE_BETA.md).
+and the [beta release checklist](store-assets/BETA_RELEASE.md).
 
 ## Structure
 

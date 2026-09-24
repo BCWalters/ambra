@@ -4,9 +4,10 @@
 
 - **Name**: Ambra EPUB Reader
 - **Category**: Productivity
-- **Distribution**: Private, limited to the explicitly configured friends/tester
-  audience. Do not select Public or Unlisted for this beta. Public source code
-  does not change this store setting.
+- **Distribution**: Unlisted. Anyone with the installation URL can install;
+  the listing does not appear in store search or browsing. Share the URL with
+  friends for the initial beta; no trusted-tester allowlist is required.
+  Change to Public in the dashboard when ready for a listed launch.
 
 ## Short description
 
@@ -26,7 +27,7 @@ Import EPUB books into an on-device library, reopen them later, and keep your pl
 
 Your library stays on your device. Ambra does not require an account or run analytics or ads. It can fetch EPUB downloads from websites for automatic import. When you open a book missing a description, it may send title, author, and ISBN to Open Library or Wikipedia for a summary. See the privacy policy for network activity and controls.
 
-This is an early private beta. Keyboard and accessibility-tree checks are automated;
+This is an early unlisted beta. Keyboard and accessibility-tree checks are automated;
 live VoiceOver/NVDA testing remains pending. Do not claim certified accessibility
 or exact virtual-cursor reading-position support.
 
@@ -80,20 +81,21 @@ reaching those services; there is currently no in-app lookup opt-out.
 
 ## Privacy policy URL
 
-The privacy policy is hosted on Ben's personal site (Azure Static Web Apps),
-deployed from the `ben-personal-site` repo's `legal/ambra/privacy-policy.html`.
-Paste this URL into the Chrome Web Store dashboard's privacy policy field:
+The public repository's rendered Markdown policy is the canonical policy.
+Paste this direct URL into the Chrome Web Store dashboard's privacy policy field:
 
-`https://victorious-forest-06eb42803.7.azurestaticapps.net/legal/ambra/privacy-policy.html`
+<https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md>
 
-Before submission, have the site owner deploy the reviewed HTML policy through
-that site's normal change process, then verify the public URL's text and effective
-date. Editing this repository does not deploy that copy. Do not push directly to
-the personal site's `main` or assume the existing hosted policy matches this one.
+Google's [privacy policy requirements](https://developer.chrome.com/docs/webstore/program-policies/privacy/)
+require an accessible policy link, not a separate website. Keep the repository
+public and the file at this stable path. Policy updates go through an Ambra PR
+and are visible at this URL after merge to `main`; no second deployment or HTML
+copy is required. Before submission, verify the rendered policy without signing
+in and check that its disclosures and effective date match the candidate.
 
 ## Release assets
 
-Follow [PRIVATE_BETA.md](PRIVATE_BETA.md). Existing official-sample screenshots
+Follow [BETA_RELEASE.md](BETA_RELEASE.md). Existing official-sample screenshots
 require [source attributions and CC license notices](ATTRIBUTIONS.md), not a
 blanket MIT claim. Include those notices with the listing if using these images;
 see the public-domain jurisdiction caveat. Prefer capturing the actual candidate

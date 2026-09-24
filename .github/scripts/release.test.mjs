@@ -1,23 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
 import { root, sha256, validVersion, validateBundle } from "./package-extension.mjs";
 import { dependencyNotices } from "./package-notices.mjs";
-import {
-  publishTrustedTesters,
-  requireSupportedPublication,
-  v1Sunset,
-} from "./publish-trusted-testers.mjs";
-import {
-  checkStatus,
-  configuration,
-  uploadPrivateDraft,
-  verifyArtifact,
-} from "./upload-private-draft.mjs";
+import { publishUnlisted } from "./publish-unlisted.mjs";
+import { checkStatus, configuration, uploadDraft, verifyArtifact } from "./upload-draft.mjs";
 
 const name = `publishers/example/items/${"a".repeat(32)}`;
-const config = { name, clientId: "client", clientSecret: "secret", refreshToken: "refresh" };
+const config = {
+  name,
+  unlistedVisibilityConfirmed: true,
+  clientId: "client",
+  clientSecret: "secret",
+  refreshToken: "refresh",
+};
 const metadata = { version: "0.0.2" };
 const token = { access_token: "sensitive-access-token" };
 const bytes = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -79,75 +77,75 @@ function mockFetch(responses) {
   };
 }
 
-test("trusted-tester submission hard-codes explicit v1 audience and never uses a public/v2 fallback", async () => {
+test("unlisted publication uses v2 saved visibility, review, and blocking warnings", async () => {
   const itemId = "a".repeat(32);
   const { fetchImpl, calls } = mockFetch([
     token,
     { name },
-    { kind: "chromewebstore#item", item_id: itemId, status: ["OK"] },
+    { name, itemId, state: "PENDING_REVIEW" },
   ]);
   const messages = [];
-  await publishTrustedTesters({
+  await publishUnlisted({
     config,
     metadata,
     fetchImpl,
-    now: () => v1Sunset - 1,
     log: (message) => messages.push(message),
   });
   assert.equal(calls.length, 3);
-  assert.equal(
-    calls[2].url,
-    `https://www.googleapis.com/chromewebstore/v1.1/items/${itemId}/publish?publishTarget=trustedTesters`,
-  );
+  assert.equal(calls[2].url, `https://chromewebstore.googleapis.com/v2/${name}:publish`);
   assert.deepEqual(JSON.parse(calls[2].options.body), {
-    target: "trustedTesters",
-    reviewExemption: false,
+    publishType: "DEFAULT_PUBLISH",
+    skipReview: false,
+    blockOnWarnings: true,
   });
   assert.equal(calls[2].options.method, "POST");
   assert.equal(calls[2].options.redirect, "error");
-  assert.ok(messages[0].includes("not a claim of completed publication"));
-  assert.ok(!messages[0].includes(token.access_token));
+  assert.ok(messages[0].includes("cannot verify UNLISTED"));
+  assert.ok(messages[1].includes("submitted for review"));
+  assert.ok(!messages.join("\n").includes(token.access_token));
 });
 
-test("sunset gate blocks publication before authentication and again immediately before submission", async () => {
-  requireSupportedPublication(v1Sunset - 1);
-  for (const now of [v1Sunset, v1Sunset + 1, NaN, Infinity]) {
-    assert.throws(() => requireSupportedPublication(now), /disabled/);
+test("unlisted acknowledgment is required before any authentication or publication", async () => {
+  for (const confirmation of [undefined, false, "true"]) {
     const { fetchImpl, calls } = mockFetch([]);
     await assert.rejects(
-      publishTrustedTesters({ config, metadata, fetchImpl, now: () => now }),
-      /disabled/,
+      publishUnlisted({
+        config: { ...config, unlistedVisibilityConfirmed: confirmation },
+        metadata,
+        fetchImpl,
+      }),
+      /owner acknowledgment/,
     );
     assert.equal(calls.length, 0);
   }
-  const { fetchImpl, calls } = mockFetch([token, { name }]);
-  const times = [v1Sunset - 1, v1Sunset];
-  await assert.rejects(
-    publishTrustedTesters({
-      config,
-      metadata,
-      fetchImpl,
-      now: () => times.shift(),
-    }),
-    /disabled/,
-  );
-  assert.equal(calls.length, 2);
 });
 
-test("publication rejects wrong identity, empty or mixed statuses and does not retry or fall back", async () => {
+test("publication rejects wrong identity, warnings, and unexpected states without retry or fallback", async () => {
   for (const published of [
-    { kind: "chromewebstore#item", item_id: "a".repeat(32), status: [] },
-    { kind: "chromewebstore#item", item_id: "a".repeat(32), status: ["OK", "NOT_AUTHORIZED"] },
-    { kind: "chromewebstore#item", item_id: "a".repeat(32), status: ["ITEM_PENDING_REVIEW"] },
-    { kind: "chromewebstore#item", item_id: "b".repeat(32), status: ["OK"] },
+    { name, itemId: "b".repeat(32), state: "PENDING_REVIEW" },
+    { name: "wrong", itemId: "a".repeat(32), state: "PENDING_REVIEW" },
+    {
+      name,
+      itemId: "a".repeat(32),
+      state: "PUBLISHED",
+      warningInfo: { warnings: [{ description: "warning" }] },
+    },
+    ...[
+      "REJECTED",
+      "CANCELLED",
+      "PUBLISHED_TO_TESTERS",
+      "ITEM_STATE_UNSPECIFIED",
+      "UNKNOWN",
+      undefined,
+    ].map((state) => ({ name, itemId: "a".repeat(32), state })),
   ]) {
     const { fetchImpl, calls } = mockFetch([token, { name }, published]);
     await assert.rejects(
-      publishTrustedTesters({
+      publishUnlisted({
         config,
         metadata,
         fetchImpl,
-        now: () => v1Sunset - 1,
+        log: () => {},
       }),
       /not confirmed/,
     );
@@ -155,21 +153,113 @@ test("publication rejects wrong identity, empty or mixed statuses and does not r
   }
 });
 
-test("publication refuses public items before the irreversible request", async () => {
-  const { fetchImpl, calls } = mockFetch([
-    token,
-    { name, publishedItemRevisionStatus: { state: "PUBLISHED" } },
-  ]);
+test("publication HTTP failures are redacted and never retried", async () => {
+  const setup = mockFetch([token, { name }]);
+  let attempts = 0;
   await assert.rejects(
-    publishTrustedTesters({
+    publishUnlisted({
+      config,
+      metadata,
+      log: () => {},
+      fetchImpl: async (url, options) => {
+        if (!url.endsWith(":publish")) return setup.fetchImpl(url, options);
+        attempts++;
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: token.access_token }),
+        };
+      },
+    }),
+    (error) => error.message.includes("HTTP 400") && !error.message.includes(token.access_token),
+  );
+  assert.equal(attempts, 1);
+  assert.equal(setup.calls.length, 2);
+});
+
+test("PUBLISHED is accepted for unlisted items but never presented as proof of visibility", async () => {
+  for (const state of ["PENDING_REVIEW", "STAGED", "PUBLISHED"]) {
+    const { fetchImpl, calls } = mockFetch([
+      token,
+      {
+        name,
+        publishedItemRevisionStatus: {
+          state: "PUBLISHED",
+          distributionChannels: [{ crxVersion: "0.0.1" }],
+        },
+      },
+      { name, itemId: "a".repeat(32), state },
+    ]);
+    const messages = [];
+    await publishUnlisted({
       config,
       metadata,
       fetchImpl,
-      now: () => v1Sunset - 1,
-    }),
-    /exclusively to testers/,
-  );
-  assert.equal(calls.length, 2);
+      log: (message) => messages.push(message),
+    });
+    assert.equal(calls.length, 3);
+    assert.ok(messages.at(-1).includes("API state does not prove visibility"));
+    if (state === "STAGED") assert.ok(messages.at(-1).includes("not yet available"));
+    if (state === "PUBLISHED") assert.ok(messages.at(-1).includes("reported PUBLISHED"));
+  }
+});
+
+test("active or tester-only revisions block submission before the irreversible request", async () => {
+  for (const status of [
+    { name, publishedItemRevisionStatus: { state: "PUBLISHED_TO_TESTERS" } },
+    { name, submittedItemRevisionStatus: { state: "PENDING_REVIEW" } },
+    { name, submittedItemRevisionStatus: { state: "STAGED" } },
+  ]) {
+    const { fetchImpl, calls } = mockFetch([token, status]);
+    await assert.rejects(publishUnlisted({ config, metadata, fetchImpl, log: () => {} }));
+    assert.equal(calls.length, 2);
+  }
+});
+
+test("workflow defaults are package-only and guard enforces main plus same-run upload", async () => {
+  const workflow = await readFile(path.join(root, ".github/workflows/beta-release.yml"), "utf8");
+  assert.equal((workflow.match(/default: false/g) ?? []).length, 2);
+  assert.ok(workflow.includes("environment: chrome-web-store"));
+  const guard = workflow.match(/ {8}run: \|\n((?: {10}.*\n)+)/)?.[1];
+  assert.ok(guard);
+  for (const [upload, publish, ref, expected] of [
+    ["false", "false", "refs/heads/topic", 0],
+    ["false", "true", "refs/heads/main", 1],
+    ["true", "false", "refs/heads/topic", 1],
+    ["true", "true", "refs/heads/topic", 1],
+    ["true", "false", "refs/heads/main", 0],
+    ["true", "true", "refs/heads/main", 0],
+  ]) {
+    const result = spawnSync("bash", ["-c", guard], {
+      env: { ...process.env, UPLOAD_DRAFT: upload, PUBLISH_UNLISTED: publish, GITHUB_REF: ref },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, expected, result.stdout + result.stderr);
+  }
+});
+
+test("publisher CLI refuses local or missing explicit publication opt-in without contacting the store", () => {
+  for (const [actions, ref, optIn] of [
+    ["false", "refs/heads/main", "true"],
+    ["true", "refs/heads/topic", "true"],
+    ["true", "refs/heads/main", "false"],
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [path.join(root, ".github/scripts/publish-unlisted.mjs")],
+      {
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: actions,
+          GITHUB_REF: ref,
+          CWS_PUBLISH_UNLISTED: optIn,
+        },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /explicit protected main-branch workflow opt-in/);
+  }
 });
 
 test("Chrome versions reject zero, leading zeroes, overflow, and nonnumeric versions", () => {
@@ -179,16 +269,17 @@ test("Chrome versions reject zero, leading zeroes, overflow, and nonnumeric vers
   }
 });
 
-test("configuration fails closed without PRIVATE confirmation or credentials", () => {
-  assert.throws(() => configuration({}), /PRIVATE/);
+test("configuration fails closed without UNLISTED confirmation or credentials", () => {
+  assert.throws(() => configuration({}), /UNLISTED/);
+  assert.throws(() => configuration({ CWS_PRIVATE_VISIBILITY_CONFIRMED: "true" }), /UNLISTED/);
   assert.throws(
-    () => configuration({ CWS_PRIVATE_VISIBILITY_CONFIRMED: "true" }),
+    () => configuration({ CWS_UNLISTED_VISIBILITY_CONFIRMED: "true" }),
     /CWS_PUBLISHER_ID/,
   );
   assert.throws(
     () =>
       configuration({
-        CWS_PRIVATE_VISIBILITY_CONFIRMED: "true",
+        CWS_UNLISTED_VISIBILITY_CONFIRMED: "true",
         CWS_PUBLISHER_ID: "../other",
         CWS_EXTENSION_ID: "a".repeat(32),
       }),
@@ -196,7 +287,7 @@ test("configuration fails closed without PRIVATE confirmation or credentials", (
   );
   assert.deepEqual(
     configuration({
-      CWS_PRIVATE_VISIBILITY_CONFIRMED: "true",
+      CWS_UNLISTED_VISIBILITY_CONFIRMED: "true",
       CWS_PUBLISHER_ID: "example",
       CWS_EXTENSION_ID: "a".repeat(32),
       CWS_CLIENT_ID: "client",
@@ -214,7 +305,7 @@ test("artifact validation binds hash, clean source commit, ZIP, and release meta
     sha256: sha256(bytes),
     commit: "a".repeat(40),
     dirty: false,
-    publication: "TRUSTED_TESTERS_ONLY",
+    publication: "UNLISTED",
   };
   const sums = `${release.sha256}  ${release.archive}\n`;
   verifyArtifact(release, bytes, sums, release.commit);
@@ -223,6 +314,7 @@ test("artifact validation binds hash, clean source commit, ZIP, and release meta
     { archive: "../secret.zip" },
     { commit: "b".repeat(40) },
     { publication: "PUBLIC" },
+    { publication: "TRUSTED_TESTERS_ONLY" },
     { sha256: "0".repeat(64) },
     { version: "0" },
   ]) {
@@ -238,13 +330,13 @@ test("artifact validation binds hash, clean source commit, ZIP, and release meta
   assert.throws(() => verifyArtifact(release, bytes, "wrong", release.commit), /integrity/);
 });
 
-test("store preflight rejects public, unknown, active submissions, and non-increasing versions", () => {
+test("store preflight allows PUBLISHED but rejects unknown, tester-only, active submissions, and old versions", () => {
   checkStatus({ name }, "0.0.2", name);
   checkStatus(
     {
       name,
       publishedItemRevisionStatus: {
-        state: "PUBLISHED_TO_TESTERS",
+        state: "PUBLISHED",
         distributionChannels: [{ crxVersion: "0.0.1" }],
       },
     },
@@ -256,21 +348,21 @@ test("store preflight rejects public, unknown, active submissions, and non-incre
     { name, takenDown: true },
     { name, warned: true },
     { name, lastAsyncUploadState: "IN_PROGRESS" },
-    { name, publishedItemRevisionStatus: { state: "PUBLISHED" } },
+    { name, publishedItemRevisionStatus: { state: "PUBLISHED_TO_TESTERS" } },
     { name, publishedItemRevisionStatus: { state: "UNKNOWN" } },
     { name, submittedItemRevisionStatus: { state: "PENDING_REVIEW" } },
     { name, submittedItemRevisionStatus: { state: "STAGED" } },
     {
       name,
       publishedItemRevisionStatus: {
-        state: "PUBLISHED_TO_TESTERS",
+        state: "PUBLISHED",
         distributionChannels: [{ crxVersion: "0.0.2.0" }],
       },
     },
     {
       name,
       publishedItemRevisionStatus: {
-        state: "PUBLISHED_TO_TESTERS",
+        state: "PUBLISHED",
         distributionChannels: [{ crxVersion: "1.0" }],
       },
     },
@@ -281,11 +373,11 @@ test("store preflight rejects public, unknown, active submissions, and non-incre
 test("upload makes only token, read-status, and draft-upload requests; never publishes", async () => {
   const { fetchImpl, calls } = mockFetch([
     token,
-    { name },
+    { name, publishedItemRevisionStatus: { state: "PUBLISHED" } },
     { name, uploadState: "SUCCEEDED", crxVersion: "0.0.2" },
   ]);
   const messages = [];
-  await uploadPrivateDraft({
+  await uploadDraft({
     config,
     metadata,
     bytes,
@@ -313,7 +405,7 @@ test("asynchronous upload polls until success", async () => {
     { name, lastAsyncUploadState: "SUCCEEDED" },
   ]);
   let waits = 0;
-  await uploadPrivateDraft({
+  await uploadDraft({
     config,
     metadata,
     bytes,
@@ -328,15 +420,12 @@ test("asynchronous upload polls until success", async () => {
   assert.equal(calls.filter((call) => call.url.endsWith(":upload")).length, 1);
 });
 
-test("public items are rejected before any upload", async () => {
+test("tester-only items require a manual visibility migration before any upload", async () => {
   const { fetchImpl, calls } = mockFetch([
     token,
-    { name, publishedItemRevisionStatus: { state: "PUBLISHED" } },
+    { name, publishedItemRevisionStatus: { state: "PUBLISHED_TO_TESTERS" } },
   ]);
-  await assert.rejects(
-    uploadPrivateDraft({ config, metadata, bytes, fetchImpl }),
-    /exclusively to testers/,
-  );
+  await assert.rejects(uploadDraft({ config, metadata, bytes, fetchImpl }), /establish UNLISTED/);
   assert.equal(calls.length, 2);
 });
 
@@ -348,7 +437,7 @@ test("unknown, failed, mismatched, and indefinitely pending uploads fail closed"
     { name, uploadState: "SUCCEEDED", crxVersion: "9" },
   ]) {
     const { fetchImpl } = mockFetch([token, { name }, uploaded]);
-    await assert.rejects(uploadPrivateDraft({ config, metadata, bytes, fetchImpl }));
+    await assert.rejects(uploadDraft({ config, metadata, bytes, fetchImpl }));
   }
   const { fetchImpl, calls } = mockFetch([
     token,
@@ -357,7 +446,7 @@ test("unknown, failed, mismatched, and indefinitely pending uploads fail closed"
     ...Array.from({ length: 30 }, () => ({ name, lastAsyncUploadState: "IN_PROGRESS" })),
   ]);
   await assert.rejects(
-    uploadPrivateDraft({ config, metadata, bytes, fetchImpl, wait: async () => {} }),
+    uploadDraft({ config, metadata, bytes, fetchImpl, wait: async () => {} }),
     /SUCCEEDED/,
   );
   assert.equal(calls.length, 33);
@@ -377,7 +466,7 @@ test("OAuth errors and network exceptions never disclose response bodies or secr
     }),
   ]) {
     await assert.rejects(
-      uploadPrivateDraft({ config, metadata, bytes, fetchImpl }),
+      uploadDraft({ config, metadata, bytes, fetchImpl }),
       (error) =>
         !error.message.includes(config.clientSecret) &&
         !error.message.includes(config.refreshToken) &&
