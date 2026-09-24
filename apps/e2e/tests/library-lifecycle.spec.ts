@@ -86,6 +86,33 @@ test("inspector open failures return to details with a visible error and support
   await expect(details.getByRole("alert")).toHaveCount(0);
 });
 
+test("standalone Inspector docks beside the Library without a hidden modal blocking it", async ({ library }) => {
+  await library.getByRole("button", { name: /^Open Ambra Long Content/ }).hover();
+  await library.getByRole("button", { name: /Test Fixture details$/ }).click();
+  const details = library.getByRole("dialog", { name: "Book details", exact: true });
+  await details.getByRole("button", { name: "EPUB Inspector" }).click();
+  const inspector = library.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+  await expect(details).toBeHidden();
+  await expect(inspector.getByRole("button", { name: "Show in book", exact: true })).toHaveCount(0);
+  for (const side of ["left", "right"] as const) {
+    await inspector.getByRole("button", { name: `Dock ${side}`, exact: true }).click();
+    await expect(inspector).toHaveAttribute("data-inspector-view", `dock-${side}`);
+    await expect.poll(async () => {
+      const main = await library.getByRole("main").boundingBox();
+      const dock = await inspector.boundingBox();
+      return !!main && !!dock && (side === "left"
+        ? main.x >= dock.x + dock.width - 1
+        : main.x + main.width <= dock.x + 1);
+    }).toBe(true);
+    const importButton = library.getByRole("button", { name: "Import EPUB", exact: true });
+    await importButton.focus();
+    await expect(importButton).toBeFocused();
+    await expect(inspector).toBeVisible();
+  }
+  await inspector.getByRole("button", { name: "Close EPUB Inspector", exact: true }).click();
+  await expect(details).toBeVisible();
+});
+
 base("import controls wait for a withheld database open before accepting the first book", async ({ playwright }, testInfo) => {
   const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
     headless: process.env.AMBRA_E2E_HEADLESS === "1",

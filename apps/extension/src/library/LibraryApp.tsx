@@ -35,7 +35,7 @@ import { LibraryEmptyState } from "./LibraryEmptyState.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
-import { EpubInspectorPanel } from "../reader/components/EpubInspectorPanel.js";
+import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH, type InspectorViewMode } from "../reader/components/EpubInspectorPanel.js";
 import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
 import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.js";
 import { useHelpDialogs } from "../components/useHelpDialogs.js";
@@ -319,6 +319,7 @@ export const LibraryApp: FC = () => {
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
   const detailsBook = books.find((book) => book.id === detailsBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
+  const [inspectorView, setInspectorView] = useState<InspectorViewMode>("popover");
   const help = useHelpDialogs();
   const shortcuts = useShortcutPreferences();
   useEffect(() => {
@@ -349,7 +350,11 @@ export const LibraryApp: FC = () => {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: palette.backgroundSolid, display: "flex", flexDirection: "column" }}>
+    <div style={{
+      minHeight: "100vh", background: palette.backgroundSolid, display: "flex", flexDirection: "column",
+      marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
+      marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
+    }}>
       <div
         className={toolbarStyles.root}
         role="toolbar"
@@ -481,6 +486,7 @@ export const LibraryApp: FC = () => {
 
       <BookDetailsFlyout
         book={detailsBook}
+        inspectorOpen={inspector.isOpen}
         onRequestClose={() => setDetailsBookId(undefined)}
         accent={palette.accent}
         backgroundSolid={palette.backgroundSolid}
@@ -505,6 +511,8 @@ export const LibraryApp: FC = () => {
         />
         <EpubInspectorPanel
           open={inspector.isOpen}
+          viewMode={inspectorView}
+          onViewModeChange={setInspectorView}
           onOpenChange={(open) => { if (!open) inspector.close(); }}
           data={inspector.data}
           fileName={detailsBook?.fileName}

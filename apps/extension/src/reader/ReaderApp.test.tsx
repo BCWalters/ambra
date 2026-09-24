@@ -170,7 +170,7 @@ it("provides the search callback when the panel's debounced query runs", async (
   expect(bridge.search).toHaveBeenCalledWith("");
 });
 
-it("distinguishes details Go-to navigation from scrubber navigation", async () => {
+it("opens Go to through shortcut actions and distinguishes it from scrubber navigation", async () => {
     vi.mocked(bridge.getBookDetails).mockResolvedValue({
       title: "Private title", creator: undefined, description: undefined,
       descriptionSourceName: undefined, descriptionSourceUrl: undefined,
@@ -178,24 +178,43 @@ it("distinguishes details Go-to navigation from scrubber navigation", async () =
       fileSizeBytes: 100, rights: undefined, coverUrl: undefined,
       accessibility: { accessModes: [], accessibilityFeatures: [], accessibilityHazards: [], accessibilitySummary: undefined },
     });
+
     await openPanel("details");
-    const goTo = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find(button => /go to percentage/i.test(button.textContent ?? ""))!;
-    await act(async () => goTo.click());
+    expect(container.textContent).not.toMatch(/go to percentage/i);
+    const actions = vi.mocked(bridge.setShortcutActions).mock.lastCall![0];
+    await act(async () => actions.goToPercentage());
+    expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(true);
     expect(bridge.recordDiagnosticSurfaces).toHaveBeenCalledWith({ "go-to": { open: true, mode: "percentage" } });
     const input = document.querySelector<HTMLInputElement>('[role="dialog"] input')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "25");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    expect(bridge.recordDiagnosticEvent).toHaveBeenCalledWith({ kind: "navigation", source: "details", fraction: 0.25 });
+    await act(async () => input.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(bridge.recordDiagnosticEvent).toHaveBeenCalledWith({ kind: "navigation", source: "go-to", fraction: 0.25 });
     expect(bridge.seekToFraction).toHaveBeenCalledWith(0.25);
+    expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(false);
+    expect(bridge.restoreContentFocus).toHaveBeenCalled();
     expect(bridge.recordDiagnosticSurfaces).toHaveBeenCalledWith({ "go-to": { open: false, mode: "percentage" } });
     await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="seek"]')!.click());
     expect(bridge.recordDiagnosticEvent).toHaveBeenCalledWith({ kind: "navigation", source: "scrubber", fraction: 0.3 });
     expect(bridge.seekToFraction).toHaveBeenCalledWith(0.3);
     expect(JSON.stringify(vi.mocked(bridge.recordDiagnosticEvent).mock.calls)).not.toContain("Private");
+});
+
+it.each([
+  { viewMode: "paginated", isFixedLayout: false, message: "Still measuring" },
+  { viewMode: "scroll", isFixedLayout: false, message: "requires paginated mode" },
+  { viewMode: "paginated", isFixedLayout: true, message: "unavailable for fixed-layout" },
+] as const)("wires page count and reading mode availability from the snapshot (%j)", async scenario => {
+  bridge.snapshot = { ...bridge.snapshot!, ...scenario, bookPageCount: undefined };
+  await act(async () => root.render(<ReaderApp />));
+  await act(async () => vi.mocked(bridge.setShortcutActions).mock.lastCall![0].goToPage());
+  const modal = document.querySelector('[role="dialog"]')!;
+  expect(modal.textContent).toContain(scenario.message);
+  expect(modal.querySelector("input")).toBeNull();
+  expect(bridge.seekToFraction).not.toHaveBeenCalled();
+  expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(true);
 });
 
 it.each(["toc", "annotations", "search", "details"])(

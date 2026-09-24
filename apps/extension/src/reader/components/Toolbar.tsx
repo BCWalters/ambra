@@ -101,8 +101,8 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
  * progress scrubber for drag-to-seek — a dedicated "Navigate" menu
  * (compass icon) used to duplicate all four of those in one place and
  * was removed for being pure screen-clutter; "Go to Page…"/"Go to
- * Percentage…" moved to the Book Details panel instead (see
- * `BookDetailsPanel`). Typography and page-layout settings (font size/
+ * Percentage…" are keyboard commands (see `ReaderCommands`).
+ * Typography and page-layout settings (font size/
  * family, line/character spacing, column width, page style) share
  * one "Aa" menu with two cascading submenus ("Text"/"Page") rather than
  * either a flat wall of every setting at once or two separate top-level
@@ -441,8 +441,8 @@ export const Toolbar: FC<ToolbarProps> = ({
             instead (Ctrl/Cmd+ArrowRight/Left — see
             `AccessibilityController`'s `onNextChapter`/`onPreviousChapter`
             and `ReaderApp`'s parent-document mirror of the same
-            shortcut), and "Go to Page…"/"Go to Percentage…" moved to the
-            Book Details panel (see `BookDetailsPanel`). */}
+            shortcut), and "Go to Page…"/"Go to Percentage…" are keyboard
+            commands rather than toolbar or Book Details controls. */}
 
         {/* Search now stands on its own, separated by a gap from the
             Text/Settings/Details cluster that follows (issue #78) —

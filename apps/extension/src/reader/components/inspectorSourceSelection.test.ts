@@ -37,15 +37,33 @@ describe("Inspector source DOM offsets", () => {
     expect(sourceTextRange(pre, pre.textContent!.length, pre.textContent!.length)?.collapsed).toBe(true);
   });
 
-  it("reads the selection caret without depending on button focus", () => {
+  it("reads an inclusive selection offset without depending on button focus", () => {
     const pre = source();
     const selection = document.getSelection()!;
     selection.addRange(sourceTextRange(pre, 12, 15)!);
-    expect(sourceSelectionOffset(pre, selection)).toBe(15);
+    expect(sourceSelectionOffset(pre, selection)).toBe(12);
     const button = document.createElement("button");
     document.body.append(button);
     button.focus();
-    expect(sourceSelectionOffset(pre, selection)).toBe(15);
+    expect(sourceSelectionOffset(pre, selection)).toBe(12);
+  });
+
+  it.each(["forward", "backward"] as const)("uses the same point inside a whole-element %s selection", (direction) => {
+    const pre = source();
+    const selection = document.getSelection()!;
+    const range = sourceTextRange(pre, 0, pre.textContent!.length)!;
+    if (direction === "forward") selection.addRange(range);
+    else selection.setBaseAndExtent(range.endContainer, range.endOffset, range.startContainer, range.startOffset);
+    expect(selection.toString()).toBe(pre.textContent);
+    expect(sourceSelectionOffset(pre, selection)).toBe(0);
+  });
+
+  it.each([0, 12, 23])("preserves a collapsed caret at offset %i, including an exclusive element end", (offset) => {
+    const pre = source();
+    const selection = document.getSelection()!;
+    selection.addRange(sourceTextRange(pre, offset, offset)!);
+    expect(selection.isCollapsed).toBe(true);
+    expect(sourceSelectionOffset(pre, selection)).toBe(offset);
   });
 
   it("ignores a selection outside the source", () => {
@@ -57,6 +75,19 @@ describe("Inspector source DOM offsets", () => {
     range.selectNodeContents(other);
     document.getSelection()!.addRange(range);
     expect(sourceSelectionOffset(pre, document.getSelection())).toBeUndefined();
+  });
+
+  it.each(["forward", "backward"] as const)("ignores a %s selection crossing the source boundary", (direction) => {
+    const pre = source();
+    const other = document.createElement("span");
+    other.textContent = "outside";
+    document.body.append(other);
+    const sourceNode = pre.querySelector("span")!.firstChild!;
+    const outsideNode = other.firstChild!;
+    const selection = document.getSelection()!;
+    if (direction === "forward") selection.setBaseAndExtent(sourceNode, 0, outsideNode, 3);
+    else selection.setBaseAndExtent(outsideNode, 3, sourceNode, 0);
+    expect(sourceSelectionOffset(pre, selection)).toBeUndefined();
   });
 
   it("moves or extends the native caret without intercepting copy and Tab", () => {

@@ -4,6 +4,39 @@ import { ReaderController } from "./ReaderController.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
 
 afterEach(() => document.body.replaceChildren());
+
+it.each(["shell", "content"] as const)("dispatches Go to through the action bridge from %s without changing reading mode", scope => {
+  const { controller, first } = setup();
+  const doc = scope === "content" ? first : document;
+  const goToPage = vi.fn();
+  const goToPercentage = vi.fn();
+  Object.assign(controller, {
+    shortcutPreferences: { enabled: true },
+    shortcutPlatform: "other",
+    setViewMode: vi.fn(),
+  });
+  const press = (shiftKey = false) => {
+    const event = new KeyboardEvent("keydown", { key: "g", ctrlKey: true, shiftKey, cancelable: true });
+    controller.handleShortcut(event, doc, scope);
+    return event;
+  };
+  expect(press().defaultPrevented).toBe(false);
+  controller.setShortcutActions({ searchBook: vi.fn(), showKeyboardShortcuts: vi.fn(), goToPage, goToPercentage });
+  for (const Host of [PaginatedContentHost, ScrollContentHost, FixedContentHost]) {
+    controller.host = Object.create(Host.prototype);
+    expect(press().defaultPrevented).toBe(true);
+    expect(press(true).defaultPrevented).toBe(true);
+  }
+  expect(goToPage).toHaveBeenCalledTimes(3);
+  expect(goToPercentage).toHaveBeenCalledTimes(3);
+  expect(controller.setViewMode).not.toHaveBeenCalled();
+  controller.setShortcutModalOpen(true);
+  expect(press().defaultPrevented).toBe(false);
+  controller.setShortcutModalOpen(false);
+  controller.setShortcutPreferences({ enabled: false }, "other");
+  expect(press(true).defaultPrevented).toBe(false);
+  expect(goToPercentage).toHaveBeenCalledTimes(3);
+});
 function setup() {
   const first = document.implementation.createHTMLDocument();
   const second = document.implementation.createHTMLDocument();

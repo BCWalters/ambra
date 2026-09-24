@@ -34,16 +34,15 @@ test("diagnostics identify panel/dialog modes and settings, and copy all 500 ret
       await expect.poll(() => report(page)).toContain(`surface ${surface} closed`);
     }
 
-    await reveal(page);
-    await page.getByRole("button", { name: "Book details", exact: true }).click();
+    const mod = await page.evaluate(() => /Mac|iPhone|iPad|iPod/i.test(navigator.platform) ? "Meta" : "Control");
     for (const [label, mode] of [["Page", "page"], ["Percentage", "percentage"]] as const) {
-      await page.getByRole("button", { name: `Go to ${label}…`, exact: true }).click();
+      await page.evaluate(() => Reflect.get(window, "__readerController").restoreContentFocus());
+      await page.keyboard.press(`${mod}+${mode === "percentage" ? "Shift+" : ""}g`);
       await expect(page.getByRole("dialog", { name: `Go to ${label}`, exact: true })).toBeVisible();
       await expect.poll(() => report(page)).toContain(`surface go-to opened mode=${mode}`);
       await page.keyboard.press("Escape");
       await expect.poll(() => report(page)).toContain(`surface go-to closed mode=${mode}`);
     }
-    await page.keyboard.press("Escape");
     await page.evaluate(async () => {
       await Reflect.get(window, "__readerController").setBrightness(0.8);
     });

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import {
   Button,
@@ -14,6 +14,8 @@ import {
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { ReaderDiagnosticContext } from "../ReaderDiagnosticContext.js";
+import { ariaShortcut, getCommandBindings } from "../../shortcuts/ReaderCommands.js";
+import { useShortcutPreferences } from "../../shortcuts/ShortcutPreferencesContext.js";
 
 export interface GoToDialogProps {
   /** Which flavor of "go to" this dialog is currently showing — a
@@ -28,14 +30,14 @@ export interface GoToDialogProps {
    * "not yet known," in which case the dialog explains that rather than
    * accepting a page number it can't actually resolve. */
   bookPageCount: number | undefined;
-  onGo: (fraction: number) => void;
+  isPaginated: boolean;
+  isFixedLayout: boolean;
+  onGo: (fraction: number) => void | Promise<void>;
 }
 
 /** A small dialog for jumping straight to a book-wide page number or a
  * percentage through the book — the "Go to Page…"/"Go to Percentage…"
- * actions in the Book Details panel (originally the toolbar's Navigate
- * menu — see issue #23 — relocated when that menu was removed as
- * redundant screen-clutter). Both reduce to
+ * keyboard commands. Both reduce to
  * the exact same underlying mechanism, `ReaderController.seekToFraction`
  * (already used by `ProgressScrubber`'s drag-to-seek) — this dialog's
  * only job is turning a page number or percentage into that 0-to-1
@@ -48,11 +50,19 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   open,
   onOpenChange,
   bookPageCount,
+  isPaginated,
+  isFixedLayout,
   onGo,
 }) => {
   const t = useTranslation();
   const chromeTheme = useChromeTheme();
   const [value, setValue] = useState("");
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
+  const opening = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { preferences, platform } = useShortcutPreferences();
   const recordSurfaces = useContext(ReaderDiagnosticContext);
   useEffect(() => {
     if (!open || !recordSurfaces) return;
@@ -64,23 +74,51 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   // with whatever was last typed (in this mode or the other one), which
   // would read as a stale, possibly-invalid suggestion.
   useEffect(() => {
+    opening.current++;
+    submitting.current = false;
+    setPending(false);
     if (open) {
       setValue("");
+      setFailed(false);
     }
+    return () => { opening.current++; };
   }, [open, mode]);
 
   const isPage = mode === "page";
-  const max = isPage ? bookPageCount : 100;
+  const knownPageCount = Number.isSafeInteger(bookPageCount) && bookPageCount! > 0 ? bookPageCount : undefined;
+  // openSpineItem only honors page/fraction landing in paginated hosts.
+  // Scroll mode must not masquerade as a successful percentage seek.
+  const unavailable = isFixedLayout ? t("goTo.fixedLayoutUnavailable")
+    : !isPaginated ? t("goTo.scrollingUnavailable")
+    : isPage && knownPageCount === undefined ? t("goTo.pageCountMeasuring") : undefined;
+  const max = isPage ? knownPageCount : 100;
   const parsed = Number(value);
   const isValid =
-    /^\d+$/.test(value.trim()) && Number.isSafeInteger(parsed) && parsed >= 1 && max !== undefined && parsed <= max;
+    !unavailable && /^\d+$/.test(value.trim()) && Number.isSafeInteger(parsed) && parsed >= 1 && max !== undefined && parsed <= max;
 
-  const submit = (): void => {
-    if (!isValid || max === undefined) {
+  useEffect(() => {
+    if (open && !unavailable) inputRef.current?.focus();
+  }, [open, mode, unavailable]);
+
+  const submit = async (): Promise<void> => {
+    if (!isValid || max === undefined || submitting.current) {
       return;
     }
-    onGo(parsed / max);
-    onOpenChange(false);
+    submitting.current = true;
+    setPending(true);
+    setFailed(false);
+    const currentOpening = opening.current;
+    try {
+      await onGo(parsed / max);
+      if (opening.current === currentOpening) onOpenChange(false);
+    } catch {
+      if (opening.current === currentOpening) setFailed(true);
+    } finally {
+      if (opening.current === currentOpening) {
+        submitting.current = false;
+        setPending(false);
+      }
+    }
   };
 
   return (
@@ -89,53 +127,54 @@ export const GoToDialog: FC<GoToDialogProps> = ({
         onKeyDown={(event) => {
           if (event.key === "Escape") event.stopPropagation();
         }}
-        style={{ background: chromeTheme.backgroundSolid }}
+        aria-keyshortcuts={preferences.enabled
+          ? getCommandBindings(isPage ? "goToPage" : "goToPercentage", platform).map(binding => ariaShortcut(binding, platform)).join(" ")
+          : undefined}
+        style={{ background: chromeTheme.backgroundSolid, width: 360, maxWidth: "90vw" }}
       >
+        <form noValidate onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <DialogBody>
           <DialogTitle>{isPage ? t("goTo.pageTitle") : t("goTo.percentageTitle")}</DialogTitle>
           <DialogContent>
-            {isPage && bookPageCount === undefined ? (
-              <Field validationMessage={t("goTo.pageCountMeasuring")}>
-                <Input disabled value="" />
-              </Field>
-            ) : (
+            {unavailable ? <p role="status">{unavailable}</p> : (
               <Field
                 label={
                   isPage
-                    ? t("goTo.pageInputLabel", { max: bookPageCount! })
+                    ? t("goTo.pageInputLabel", { max: knownPageCount! })
                     : t("goTo.percentageInputLabel")
                 }
                 validationMessage={
-                  value.trim() !== "" && !isValid
+                  value !== "" && !isValid
                     ? t("goTo.rangeValidation", { max: max! })
                     : undefined
                 }
               >
                 <Input
                   type="number"
+                  ref={inputRef}
                   min={1}
                   max={max}
+                  step={1}
                   value={value}
+                  disabled={pending}
+                  aria-invalid={value !== "" && !isValid}
                   onChange={(_event, data) => setValue(data.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      submit();
-                    }
-                  }}
                   autoFocus
                 />
               </Field>
             )}
+            {failed && <p role="alert">{t("goTo.seekFailed")}</p>}
           </DialogContent>
           <DialogActions>
-            <Button appearance="secondary" onClick={() => onOpenChange(false)}>
+            <Button type="button" appearance="secondary" onClick={() => onOpenChange(false)}>
               {t("annotations.cancelNote")}
             </Button>
-            <Button appearance="primary" disabled={!isValid} onClick={submit}>
+            <Button type="submit" appearance="primary" disabled={!isValid || pending}>
               {t("goTo.goButton")}
             </Button>
           </DialogActions>
         </DialogBody>
+        </form>
       </DialogSurface>
     </Dialog>
   );

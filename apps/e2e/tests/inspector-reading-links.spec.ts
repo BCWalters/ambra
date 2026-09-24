@@ -88,7 +88,7 @@ for (const mode of ["paginated", "scroll"]) {
         await expect(page.getByRole("slider", { name: "Position in book" })).toHaveCount(0);
       }
       await page.evaluate(() => document.querySelector("iframe")!.contentWindow!.focus());
-      await page.keyboard.press("Control+ArrowRight");
+      await page.keyboard.press("Alt+PageDown");
       await expect(page.frameLocator("iframe").first().locator("h1")).toHaveText("CHAPTER TWO");
       const passage = await page.evaluate(() => {
         const frame = document.querySelector("iframe")!;
@@ -125,7 +125,7 @@ for (const mode of ["paginated", "scroll"]) {
       expect(await pre.evaluate(() => document.getSelection()?.toString())).toBe("C");
       await expect.poll(() => highlightedSource(page)).toContain("C1Para 80.");
       await show.click();
-      await expect(dialog).toBeHidden();
+      await expect(dialog).toBeVisible();
       await page.waitForTimeout(450);
       await expect
         .poll(() =>
@@ -158,6 +158,7 @@ for (const mode of ["paginated", "scroll"]) {
       await expect.poll(spotlight, { timeout: 6000 }).toBe("");
       if (mode === "paginated") expect(await currentPageLabel(page)).not.toContain("Page 1 of");
 
+      await dialog.getByRole("button", { name: "Close EPUB Inspector", exact: true }).click();
       const reopened = await openInspector(page);
       await expect(reopened.locator("pre.ambra-hljs")).toContainText("CHAPTER ONE");
       await reopened.getByRole("button", { name: "Locate current passage", exact: true }).click();
@@ -187,6 +188,7 @@ test("fixed-layout source linking follows the selected spread document, not just
       doc.getSelection()!.removeAllRanges();
       doc.getSelection()!.addRange(range);
     });
+
     const dialog = await openInspector(page);
     await expect(dialog.locator("pre.ambra-hljs")).toContainText("<title>P2</title>");
     await dialog.getByRole("button", { name: "Locate current passage", exact: true }).click();
@@ -196,7 +198,7 @@ test("fixed-layout source linking follows the selected spread document, not just
     await selectSource(dialog.locator("pre.ambra-hljs"), "P4</h1>");
     await expect.poll(() => highlightedSource(page)).toContain("<h1>P4</h1>");
     await dialog.getByRole("button", { name: "Show in book", exact: true }).click();
-    await expect(dialog).toBeHidden();
+    await expect(dialog).toBeVisible();
     await page.waitForTimeout(450);
     await expect
       .poll(() =>
@@ -227,3 +229,55 @@ test("fixed-layout source linking follows the selected spread document, not just
     await context.close();
   }
 });
+
+for (const backwards of [false, true]) {
+  test(`#192 complete source-element selection highlights in the book (${backwards ? "backward" : "forward"})`, async () => {
+    const { context, readerPage: page } = await launchReader(
+      path.resolve(here, "../fixtures/two-chapter.epub"),
+      { viewport: { width: 1400, height: 900 } },
+    );
+    try {
+      const inspector = await openInspector(page);
+      const pre = inspector.locator("pre.ambra-hljs");
+      await expect(pre).toContainText("C1Para 4.");
+      for (const mode of ["Dock left", "Dock right", "Full screen", "Popover view"]) {
+        await inspector.getByRole("button", { name: mode, exact: true }).click();
+        await pre.evaluate((element, backwards) => {
+          const text = element.textContent!;
+          const paragraph = text.indexOf("C1Para 4.");
+          const start = text.lastIndexOf("<p", paragraph);
+          const end = text.indexOf("</p>", paragraph) + 4;
+          if (start < 0 || end < 4) throw new Error("Fixture paragraph was not found");
+          function point(offset: number): [Node, number] {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              const size = node.textContent!.length;
+              if (offset <= size) return [node, offset];
+              offset -= size;
+            }
+            throw new Error("Selection offset outside source");
+          }
+          const [startNode, startOffset] = point(start);
+          const [endNode, endOffset] = point(end);
+          element.focus();
+          document.getSelection()!.setBaseAndExtent(
+            backwards ? endNode : startNode, backwards ? endOffset : startOffset,
+            backwards ? startNode : endNode, backwards ? startOffset : endOffset,
+          );
+        }, backwards);
+        await expect.poll(() => highlightedSource(page)).toMatch(/^<p>C1Para 4\./);
+        await inspector.getByRole("button", { name: "Show in book", exact: true }).click();
+        await expect(inspector).toBeVisible();
+        await expect.poll(() => page.evaluate(() => {
+          const frame = document.activeElement;
+          if (!(frame instanceof HTMLIFrameElement)) return "";
+          const spotlight: Highlight | undefined = Reflect.get(frame.contentWindow!, "CSS")
+            .highlights.get("ambra-navigation-target");
+          return spotlight ? [...spotlight].map(range => range.toString()).join("") : "";
+        })).toMatch(/^C1Para 4\./);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}

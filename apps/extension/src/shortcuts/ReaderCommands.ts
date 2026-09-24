@@ -1,7 +1,7 @@
 import { isKeyboardNavigationScope } from "@ambra/engine";
 
 export type ReaderCommandId = "previousPage" | "nextPage" | "previousSection" | "nextSection" |
-  "toggleBookmark" | "searchBook" | "showKeyboardShortcuts" | "switchToScrolling" | "switchToPaginated";
+  "goToPage" | "goToPercentage" | "toggleBookmark" | "searchBook" | "showKeyboardShortcuts" | "switchToScrolling" | "switchToPaginated";
 export type ShortcutPlatform = "mac" | "other";
 export interface ShortcutBinding {
   readonly key: string;
@@ -21,6 +21,8 @@ export const READER_COMMANDS: readonly {
   { id: "nextPage", labelKey: "shortcuts.nextPage", group: "navigation" },
   { id: "previousSection", labelKey: "shortcuts.previousSection", group: "navigation" },
   { id: "nextSection", labelKey: "shortcuts.nextSection", group: "navigation" },
+  { id: "goToPage", labelKey: "shortcuts.goToPage", group: "navigation" },
+  { id: "goToPercentage", labelKey: "shortcuts.goToPercentage", group: "navigation" },
   { id: "toggleBookmark", labelKey: "shortcuts.toggleBookmark", group: "reading" },
   { id: "searchBook", labelKey: "shortcuts.searchBook", group: "reading" },
   { id: "switchToScrolling", labelKey: "shortcuts.switchToScrolling", group: "reading" },
@@ -44,6 +46,8 @@ export function getCommandBindings(
     case "nextPage": return [{ key: direction === "rtl" ? "ArrowLeft" : "ArrowRight" }, { key: "PageDown" }, { key: " " }];
     case "previousSection": return [{ key: "PageUp", alt: true }];
     case "nextSection": return [{ key: "PageDown", alt: true }];
+    case "goToPage": return [{ key: "g", mod: true }];
+    case "goToPercentage": return [{ key: "g", mod: true, shift: true }];
     case "toggleBookmark": return [{ key: "b", mod: true }];
     case "searchBook": return [{ key: "f", mod: true }];
     case "showKeyboardShortcuts": return [{ key: "/", mod: true }];
@@ -122,10 +126,12 @@ export function matchReaderCommand(
         (command.id === "switchToScrolling" || command.id === "switchToPaginated")) continue;
     if (context.viewMode === "scroll" && (command.id === "previousPage" || command.id === "nextPage") &&
         (binding.mod || binding.alt || binding.shift || !["ArrowLeft", "ArrowRight"].includes(binding.key))) continue;
-    if (event.repeat && command.id === "toggleBookmark") continue;
+    if (event.repeat && ["toggleBookmark", "goToPage", "goToPercentage"].includes(command.id)) continue;
     if (getCommandBindings(command.id, context.platform, context.direction)
       .some(candidate => sameBinding(candidate, binding))) {
-      const toolbarCommand = command.group !== "navigation" && !!(binding.mod || binding.alt);
+      const goToFromShell = context.scope === "shell" &&
+        (command.id === "goToPage" || command.id === "goToPercentage");
+      const toolbarCommand = (command.group !== "navigation" || goToFromShell) && !!(binding.mod || binding.alt);
       return isKeyboardNavigationScope(event, document, {
         scope: toolbarCommand ? undefined : context.scope,
         preserveSelection: true,

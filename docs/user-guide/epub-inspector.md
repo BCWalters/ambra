@@ -14,10 +14,12 @@ Inspect the EPUB where you read it, without first unpacking the archive or hunti
 
 ## Connect reading and source
 
+Choose **Popover view**, **Full screen**, **Dock left**, or **Dock right** beside the Inspector's Close button. Docking makes room for Inspector alongside the book rather than covering it; popover and docked views let you keep interacting with the book. Switching views preserves the selected file and inspection history.
+
 When opened from the reader, the Inspector links the reading experience to the underlying content:
 
 - **Locate current passage** finds the source element for the selected passage, or the current visible reading position when there is no selection.
-- **Show in book** takes a selected source element back to its reading location and closes the Inspector. Without an element selection, it opens the readable file’s start.
+- **Show in book** takes a selected source element back to its reading location without closing Inspector. Full screen switches to popover during navigation; other views stay in place. Without an element selection, it opens the readable file’s start.
 
 Move between a layout problem and its markup without losing context. This on-demand, two-way navigation works with readable spine documents when inspecting from the reader; library inspection focuses on the files themselves.
 

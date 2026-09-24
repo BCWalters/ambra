@@ -36,7 +36,7 @@ The **Export** button uses a downward download arrow; **Import** uses an upward 
 
 An empty library offers two choices: **Bring a book → Choose EPUB files...** opens the file picker for EPUBs on your device; **Find your next book → Explore free books** reveals trusted sources below the choices. The cards stack in a narrow popup. Settings, Help, and the popup’s expand control remain in the header; **Import EPUB** and **Sort** appear after your first book is added. You can still explore sources through **Find books** in a populated library.
 
-For beautifully formatted classics, try **Standard Ebooks** and choose **Compatible epub** on a book’s page. **Project Gutenberg** offers a vast collection; choose an **EPUB** or **EPUB3** download. For read-along audio, **ReadBeyond** offers EPUBs with recorded narration; choose **Download**, not the browser-based **Read+Listen**. Source links open in a new tab. Check the book’s license and your local copyright rules.
+For beautifully formatted classics, try **Standard Ebooks** and choose **Advanced epub** on a book’s page. **Project Gutenberg** offers a vast collection; choose an **EPUB** or **EPUB3** download. For read-along audio, **ReadBeyond** offers EPUBs with recorded narration; choose **Download**, not the browser-based **Read+Listen**. Source links open in a new tab. Check the book’s license and your local copyright rules.
 
 When a supported EPUB download opens Ambra, keep that library tab open while the book downloads, is prepared for reading, and is added to your library. The status changes to a checkmark and the EPUB’s title after the book has been saved and the library refreshed. Choose **Read now** to open it, or **Dismiss** to clear finished messages without interrupting other imports.
 
@@ -49,6 +49,7 @@ Open **Settings → Help & About** or the **Help & About** footer in **Book deta
 Some useful defaults:
 
 - **Mod+F:** search the book. **Mod+B:** toggle a bookmark.
+- **Mod+G:** go to a page. **Mod+Shift+G:** go to a percentage.
 - **Page Down / Page Up:** next / previous page in pagination.
 - **Space / Shift+Space:** next / previous page in pagination. In scrolling mode, Page keys and Space retain native scrolling.
 - **Left / Right:** navigate in the physical direction, following the book’s reading direction, including right-to-left books; in scrolling mode, move between sections.
@@ -56,6 +57,8 @@ Some useful defaults:
 - **Escape:** dismiss a dialog and return focus to its opening control.
 
 The shortcut popup is a quick reference showing the default shortcuts for your current platform. A single **Enable keyboard shortcuts** checkbox lets you turn Ambra’s shortcuts on or off globally. This preference stays local and is shared across Ambra tabs in the same browser profile. Browser or assistive-technology shortcuts may take priority; visible controls remain available.
+
+**Go to** opens a small numeric dialog, not a toolbar menu or a Book details control. Focus the book or a reader toolbar button before using the shortcut. Enter submits a valid whole number; Escape dismisses and returns to reading. Pages range from 1 to the measured book-wide page count, and remain unavailable while that count is being measured. Percentages range from 1 to 100 and use the progress bar’s existing seek behavior (coarse section-based positioning until pagination is ready). Both require reflowable pagination: scrolling and fixed-layout content show an explanation instead of silently doing nothing or changing reading mode. Editing, text selections, widgets, and other dialogs keep their own keyboard ownership.
 
 ## Reading tips
 

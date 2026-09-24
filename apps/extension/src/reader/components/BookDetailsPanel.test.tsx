@@ -60,11 +60,11 @@ describe("Book Details publication metadata", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
-  async function render({ loading = false, fixedLayout = false }: { loading?: boolean; fixedLayout?: boolean } = {}) {
+  async function render({ loading = false }: { loading?: boolean } = {}) {
     await act(async () => root.render(
       <BookDetailsPanel open details={loading ? undefined : details} onRequestClose={vi.fn()} onOpenInspector={vi.fn()}
         onOpenHelp={onOpenHelp}
-        scrubberVisible={false} isPaginated isFixedLayout={fixedLayout} bookPageCount={10} onSeekToFraction={vi.fn()} />,
+        scrubberVisible={false} />,
     ));
   }
 
@@ -84,12 +84,19 @@ describe("Book Details publication metadata", () => {
     expect(onOpenHelp).toHaveBeenCalledWith(help);
   });
 
-  it.each([{ loading: true }, { fixedLayout: true }])("keeps Help available with %j", async options => {
+  it.each([{ loading: true }, { loading: false }])("keeps Help available with %j", async options => {
     await render(options);
     const help = [...container.querySelectorAll("button")].find(button => button.textContent === "Help & About")!;
     expect(help).toBeDefined();
     await act(async () => help.click());
     expect(onOpenHelp).toHaveBeenCalledWith(help);
+  });
+
+  it("keeps navigation controls out of Book Details", async () => {
+    await render();
+    expect(container.textContent).not.toContain("Go to");
+    expect(container.textContent).not.toContain("Reading tools");
+    expect(container.querySelector("input")).toBeNull();
   });
 
   it("does not invent a file size when none is available", async () => {

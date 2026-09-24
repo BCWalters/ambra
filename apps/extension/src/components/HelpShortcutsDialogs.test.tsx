@@ -125,6 +125,7 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     expect(checkbox().labels?.[0]?.textContent).toBe(t("shortcuts.enabled"));
     expect(container.textContent).toContain(t("shortcuts.layoutNote"));
     expect(container.textContent).toContain(t("shortcuts.scope"));
+    expect(container.textContent).toContain(t("shortcuts.goToHint"));
     expect(CATALOGS[locale]["about.title"]).toBe(CATALOGS[locale]["settings.helpAbout"]);
     expect(CATALOGS[locale]["library.about"]).toBe(CATALOGS[locale]["settings.helpAbout"]);
   });
@@ -187,6 +188,8 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     expect(container.textContent).toContain(platform === "mac" ? "⌘/" : "Ctrl+/");
     await shortcuts();
     expect(assignment("Toggle bookmark")?.textContent).toBe(platform === "mac" ? "⌘B" : "Ctrl+B");
+    expect(assignment("Go to page")?.textContent).toBe(platform === "mac" ? "⌘G" : "Ctrl+G");
+    expect(assignment("Go to percentage")?.textContent).toBe(platform === "mac" ? "⌘⇧G" : "Ctrl+Shift+G");
     expect(assignment("Switch to scrolling")?.textContent).toBe(platform === "mac" ? "⌥⇧PageDown" : "Alt+Shift+PageDown");
     expect(assignment("Switch to paginated")?.textContent).toBe(platform === "mac" ? "⌥⇧PageUp" : "Alt+Shift+PageUp");
   });

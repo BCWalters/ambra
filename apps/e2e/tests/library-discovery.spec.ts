@@ -65,7 +65,7 @@ async function expectDiscovery(page: Page, importLabel = "Import EPUB") {
   await expect(discovery.getByRole("listitem").nth(1)).toContainText("If it downloads instead");
   await expect(discovery.getByRole("listitem").nth(1)).toContainText(importLabel);
   await expect(discovery.getByRole("listitem").nth(1)).toContainText(".epub");
-  await expect(discovery).toContainText("Compatible epub");
+  await expect(discovery).toContainText("Advanced epub");
   await expect(discovery).toContainText("EPUB or EPUB3");
   await expect(discovery).toContainText("not “Read+Listen”");
 }

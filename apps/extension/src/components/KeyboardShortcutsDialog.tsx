@@ -77,6 +77,7 @@ export const KeyboardShortcutsDialog: FC<KeyboardShortcutsDialogProps> = ({
                   <dd style={{ margin: 0 }}><kbd style={{ font: "inherit" }}>Escape</kbd></dd>
                 </div>}
               </dl>
+              {group === "navigation" && <Caption1 as="p" block>{t("shortcuts.goToHint")}</Caption1>}
             </PaneCard>
           ))}
         </div>

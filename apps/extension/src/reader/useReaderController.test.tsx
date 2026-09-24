@@ -100,7 +100,7 @@ it("only adopts the latest requested book, disposing a slow obsolete open", asyn
 
 it("applies shortcut configuration supplied before opening, and updates the live controller", async () => {
     const opened = controller("configured");
-    const actions = { searchBook: vi.fn(), showKeyboardShortcuts: vi.fn() };
+    const actions = { searchBook: vi.fn(), showKeyboardShortcuts: vi.fn(), goToPage: vi.fn(), goToPercentage: vi.fn() };
     const preferences = { enabled: false };
     latest.setShortcutActions(actions);
     latest.setShortcutPreferences(preferences, "mac");
