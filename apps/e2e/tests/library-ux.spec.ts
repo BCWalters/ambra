@@ -4,48 +4,46 @@ import { fileURLToPath } from "node:url";
 import { currentPageLabel, launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const ALICE = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
-const CHILDRENS_LIT = path.resolve(here, "..", "real-books", "childrens-literature.epub");
+const LONG_CONTENT = path.resolve(here, "..", "fixtures", "long-content.epub");
+const TWO_CHAPTER = path.resolve(here, "..", "fixtures", "two-chapter.epub");
+const LONG_CONTENT_TITLE = "Ambra Long Content Test Fixture";
+const TWO_CHAPTER_TITLE = "Ambra Two-Chapter Spread Test Fixture";
 
 /** Covers the Library redesign (themed action buttons/trash-can remove,
  * a full-browser-tab expand option, and book-grid sorting) added on top
  * of the pre-existing bare-bones grid. */
 test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
   test("sorting by title reorders the grid and the choice persists across a reload", async () => {
-    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
-      await libraryPage.locator('input[type="file"]').setInputFiles([CHILDRENS_LIT]);
-      await libraryPage.waitForTimeout(1000);
+      await libraryPage.locator('input[type="file"]').setInputFiles([TWO_CHAPTER]);
 
       const titlesInOrder = () =>
         libraryPage
           .locator("p")
-          .evaluateAll((nodes) =>
+          .evaluateAll((nodes, titles) =>
             nodes
               .map((n) => n.textContent?.trim())
-              .filter((text): text is string => !!text && (text.startsWith("Alice") || text.startsWith("Children"))),
+              .filter((text): text is string => !!text && titles.includes(text)),
+            [LONG_CONTENT_TITLE, TWO_CHAPTER_TITLE],
           );
 
-      // Newest-first (the default) puts the just-imported "Children's
-      // Literature" ahead of "Alice's Adventures…", imported first.
-      expect(await titlesInOrder()).toEqual(["Children's Literature", "Alice's Adventures in Wonderland"]);
+      // Newest-first and alphabetical order must disagree for these fixtures.
+      await expect.poll(titlesInOrder).toEqual([TWO_CHAPTER_TITLE, LONG_CONTENT_TITLE]);
 
       await libraryPage.getByRole("button", { name: "Sort library" }).click();
       await libraryPage.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
-      await libraryPage.waitForTimeout(300);
-
-      expect(await titlesInOrder()).toEqual(["Alice's Adventures in Wonderland", "Children's Literature"]);
+      await expect.poll(titlesInOrder).toEqual([LONG_CONTENT_TITLE, TWO_CHAPTER_TITLE]);
 
       await libraryPage.reload();
-      await libraryPage.waitForTimeout(800);
-      expect(await titlesInOrder()).toEqual(["Alice's Adventures in Wonderland", "Children's Literature"]);
+      await expect.poll(titlesInOrder).toEqual([LONG_CONTENT_TITLE, TWO_CHAPTER_TITLE]);
     } finally {
       await context.close();
     }
   });
 
   test("the expand button opens the library as its own full tab, which then hides that same button", async () => {
-    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
       const expandButton = libraryPage.getByRole("button", { name: "Expand library into a full browser tab" });
       await expect(expandButton).toBeVisible();
@@ -57,16 +55,16 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
       expect(fullTabPage.url()).toContain("?view=tab");
       await expect(fullTabPage.getByRole("button", { name: "Expand library into a full browser tab" })).toHaveCount(0);
       // The rest of the page still works normally in the full tab.
-      await expect(fullTabPage.getByText("Alice's Adventures", { exact: false })).toBeVisible();
+      await expect(fullTabPage.getByText(LONG_CONTENT_TITLE, { exact: true })).toBeVisible();
     } finally {
       await context.close();
     }
   });
 
   test("the remove (trash) button removes a book from the grid", async () => {
-    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
-      const cover = libraryPage.getByRole("button", { name: /^Open Alice's Adventures in Wonderland/ });
+      const cover = libraryPage.getByRole("button", { name: `Open ${LONG_CONTENT_TITLE}`, exact: true });
       await expect(cover).toBeVisible();
       // The trash button is only interactive while its card is
       // hovered/focused (see `BookCard`'s `isActive` — `pointer-events:
@@ -87,9 +85,9 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
  * buttons) and issue #104 (a per-book reading-position percentage). */
 test.describe("Library UX: book details flyout", () => {
   test("opens from the card's info button, shows metadata, and closes via Escape", async () => {
-    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
-      await libraryPage.getByRole("button", { name: /^Open Alice's Adventures in Wonderland/ }).hover();
+      await libraryPage.getByRole("button", { name: `Open ${LONG_CONTENT_TITLE}`, exact: true }).hover();
       const detailsButton = libraryPage.getByRole("button", { name: /details$/ });
       await detailsButton.focus();
       await libraryPage.keyboard.press("Enter");
@@ -98,8 +96,8 @@ test.describe("Library UX: book details flyout", () => {
       await expect(flyout).toBeVisible();
       await expect(flyout).toHaveAttribute("aria-modal", "true");
       await expect(flyout.getByRole("button", { name: "Close", exact: true })).toBeFocused();
-      await expect(flyout.getByText("Alice's Adventures in Wonderland")).toBeVisible();
-      await expect(flyout.getByText("Lewis Carroll")).toBeVisible();
+      await expect(flyout.getByText(LONG_CONTENT_TITLE, { exact: true })).toBeVisible();
+      await expect(flyout.getByText("Ada Lovelace", { exact: true })).toBeVisible();
       // No reading progress yet for a never-opened book — the flyout
       // should simply omit the "Progress" section rather than show 0%.
       await expect(flyout.getByText("Progress")).toHaveCount(0);
@@ -113,7 +111,7 @@ test.describe("Library UX: book details flyout", () => {
   });
 
   test("shows a reading-position percentage once a book has been opened and paged through", async () => {
-    const { context, libraryPage, readerPage } = await launchReader(ALICE, {
+    const { context, libraryPage, readerPage } = await launchReader(LONG_CONTENT, {
       viewport: { width: 1000, height: 700 },
     });
     try {
@@ -133,7 +131,7 @@ test.describe("Library UX: book details flyout", () => {
       await libraryPage.reload();
       await libraryPage.waitForTimeout(800);
 
-      await libraryPage.getByText("Alice's Adventures", { exact: false }).hover();
+      await libraryPage.getByText(LONG_CONTENT_TITLE, { exact: true }).hover();
       await libraryPage.getByRole("button", { name: /details$/ }).click();
 
       const flyout = libraryPage.getByRole("dialog", { name: "Book details" });
@@ -150,7 +148,7 @@ test.describe("Library UX: book details flyout", () => {
 test.describe("Library UX: friendly import error", () => {
   for (const width of [1000, 360]) {
     test(`import errors separate the headline and explanation at ${width}px and can be dismissed`, async () => {
-      const { context, libraryPage } = await launchReader(ALICE, { viewport: { width, height: 700 } });
+      const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width, height: 700 } });
       try {
         await libraryPage.locator('input[type="file"]').setInputFiles({
           name: "bogus.epub",
