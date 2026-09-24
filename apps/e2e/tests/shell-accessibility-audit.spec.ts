@@ -63,7 +63,7 @@ test("Search status and empty annotation tabpanels remain named and keyboard rea
   }
 });
 
-test("Inspector tabs expose named panels, row headers, current file and modal focus return", async () => {
+test("Inspector tabs expose named panels, row headers, current file and reading focus return", async () => {
   const { context, readerPage } = await launchReader(book);
   try {
     await readerPage.getByRole("button", { name: "Book details", exact: true }).click();
@@ -91,7 +91,11 @@ test("Inspector tabs expose named panels, row headers, current file and modal fo
     await expect(current).not.toHaveAttribute("data-file-path", previous!);
     await readerPage.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
-    await expect(trigger).toBeFocused();
+    await expect.poll(() => readerPage.evaluate(() => {
+      const frame = document.activeElement;
+      return frame instanceof HTMLIFrameElement &&
+        frame.contentDocument?.activeElement?.hasAttribute("data-ambra-reading-focus");
+    })).toBe(true);
   } finally {
     await context.close();
   }
