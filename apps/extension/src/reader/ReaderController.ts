@@ -745,6 +745,24 @@ export class ReaderController {
     this.notify();
   }
 
+  private dismissReaderUi: (() => boolean) | undefined;
+  private contentPointerDismissals: WeakMap<PointerEvent, boolean> | undefined;
+
+  /** UI visibility belongs to the shell. The result is sampled at pointerdown,
+   * before activity notifications can hide chrome or rebuild listeners. */
+  public setContentUiDismissal(dismiss: (() => boolean) | undefined): void {
+    this.dismissReaderUi = dismiss;
+  }
+
+  private dismissUiForPointer(event: PointerEvent): boolean {
+    const previous = this.contentPointerDismissals?.get(event);
+    if (previous !== undefined) return previous;
+    if (!this.dismissReaderUi || (event.pointerType === "mouse" && event.button !== 0)) return false;
+    const dismissed = this.dismissReaderUi();
+    (this.contentPointerDismissals ??= new WeakMap()).set(event, dismissed);
+    return dismissed;
+  }
+
   /** Mounts the current view mode's content host into `containerEl` and
    * opens a previously-saved reading position, or spine item 0. Call
    * once, after the container div is available. */
@@ -1707,7 +1725,8 @@ export class ReaderController {
 
       // Any pointer activity in content hides the toolbar, even in
       // scroll and fixed-layout modes.
-      const pointerDownHandler = (): void => {
+      const pointerDownHandler = (event: PointerEvent): void => {
+        this.dismissUiForPointer(event);
         this.bumpContentActivity();
       };
       iframeDocument.addEventListener("pointerdown", pointerDownHandler);
@@ -3074,6 +3093,7 @@ export class ReaderController {
       if (event.pointerType === "mouse" && event.button !== 0) {
         return;
       }
+      this.dismissUiForPointer(event);
       this.bumpContentActivity();
       const startX = event.clientX;
       const startY = event.clientY;
@@ -3149,6 +3169,7 @@ export class ReaderController {
 
     const containerEl = host.element;
     const onContainerPointerDown = (event: PointerEvent): void => {
+      this.dismissUiForPointer(event);
       this.bumpContentActivity();
       if (event.pointerType === "mouse" && event.button !== 0) {
         return;
@@ -3226,6 +3247,7 @@ export class ReaderController {
       rtl,
     );
     const onContainerPointerDown = (event: PointerEvent): void => {
+      this.dismissUiForPointer(event);
       this.bumpContentActivity();
       if (event.pointerType === "mouse" && event.button !== 0) {
         return;
@@ -3285,6 +3307,7 @@ export class ReaderController {
     release: (event: PointerEvent) => void,
   ): void {
     this.gestureCleanup?.();
+    const dismissedUi = this.dismissUiForPointer(start);
     // Native pointerdown clears selection before pointerup can inspect it.
     if (this.dismissContentSelection()) return;
     const cleanup = (): void => {
@@ -3296,6 +3319,9 @@ export class ReaderController {
       const pointer = event as PointerEvent;
       if (pointer.pointerId !== start.pointerId) return;
       cleanup();
+      if (dismissedUi &&
+        Math.abs(pointer.clientX - start.clientX) <= ReaderController.CLICK_MOVEMENT_TOLERANCE &&
+        Math.abs(pointer.clientY - start.clientY) <= ReaderController.CLICK_MOVEMENT_TOLERANCE) return;
       if (event.type === "pointerup" && !this.operations.disposed) release(pointer);
     };
     this.gestureCleanup = cleanup;
@@ -3318,6 +3344,7 @@ export class ReaderController {
       return;
     }
     this.gestureCleanup?.();
+    const dismissedUi = this.dismissUiForPointer(startEvent);
     if (this.dismissContentSelection()) return;
     const oldHost = this.host;
     const startX = startEvent.clientX;
@@ -3485,7 +3512,7 @@ export class ReaderController {
       if (direction === undefined || operation === undefined) {
         // Still a tap, not a drag; only a real release should trigger
         // click-to-navigate.
-        if (upEvent.type === "pointerup") {
+        if (upEvent.type === "pointerup" && !dismissedUi) {
           this.handleContentClick(upEvent, startX, startY, containerWidth, doc);
         }
         return;
@@ -4518,6 +4545,8 @@ export class ReaderController {
     this.operations.dispose();
     this.gestureCleanup?.();
     this.gestureCleanup = undefined;
+    this.dismissReaderUi = undefined;
+    this.contentPointerDismissals = undefined;
     // Cancellation is a settled no-op, not a layout failure to display after
     // unmount. Both queued and currently-draining setters must be released.
     for (const pending of [this.pendingLayout, this.activeLayout]) {

@@ -10,12 +10,13 @@ import { PaneCard } from "./PaneSections.js";
 export interface KeyboardShortcutsDialogProps {
   open: boolean;
   onRequestClose: () => void;
+  onOutsideClick?: () => void;
   pageProgressionDirection?: "ltr" | "rtl";
   onAfterClose?: () => void;
 }
 
 export const KeyboardShortcutsDialog: FC<KeyboardShortcutsDialogProps> = ({
-  open, onRequestClose, pageProgressionDirection = "ltr", onAfterClose,
+  open, onRequestClose, onOutsideClick, pageProgressionDirection = "ltr", onAfterClose,
 }) => {
   const t = useTranslation();
   const { preferences, platform, ready, error, setPreferences } = useShortcutPreferences();
@@ -46,6 +47,7 @@ export const KeyboardShortcutsDialog: FC<KeyboardShortcutsDialogProps> = ({
       open={open}
       title={t("shortcuts.title")}
       onRequestClose={onRequestClose}
+      onOutsideClick={onOutsideClick}
       onAfterClose={onAfterClose}
       backgroundSolid={tokens.colorNeutralBackground1}
       width={440}

@@ -81,6 +81,19 @@ describe("help dialog focus", () => {
     expect(restoreReading).not.toHaveBeenCalled();
   });
 
+  it("returns an outside dismissal to reading without reopening nested Help or its toolbar trigger", () => {
+    act(() => help.openHelp(opener));
+    act(() => help.openShortcutsFromHelp());
+    const focus = vi.spyOn(opener, "focus");
+    act(() => help.closeToContent());
+    expect(help.view).toBeUndefined();
+    act(() => help.afterClose());
+    expect(restoreReading).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersToNextFrame());
+    expect(restoreReading).toHaveBeenCalledOnce();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
   it.each(["removed", "hidden"])("uses reading focus when the opener is %s", (state) => {
     opener.focus();
     const restore = captureFocusReturn(restoreReading);

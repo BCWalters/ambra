@@ -9,6 +9,7 @@ import {
   currentPageLabel,
   currentPageText,
   clickForwardAndWait,
+  clickReadingPage,
 } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -437,7 +438,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         bestC1 = Math.max(bestC1, c1);
         bestC2 = Math.max(bestC2, c2);
         if (bestC2 === 60) break;
-        await turnAndWait(readerPage, () => readerPage.mouse.click(1200, 450));
+        await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1200, y: 450 }));
       }
       expect(sawChapterTwo, "never reached chapter two's content").toBe(true);
       expect(bestC1, "never reached chapter one's actual last paragraph").toBe(120);
@@ -454,10 +455,10 @@ test.describe("paginated reflowable navigation correctness", () => {
     });
     try {
       expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
-      await turnAndWait(readerPage, () => readerPage.mouse.click(1200, 450));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1200, y: 450 }));
       expect(await visibleSpreadText(readerPage), "chapter one's fully paired last spread")
         .toEqual(["C1Para 3.", "C1Para 4."]);
-      await turnAndWait(readerPage, () => readerPage.mouse.click(1200, 450));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1200, y: 450 }));
       expect(await visibleSpreadText(readerPage), "chapter two opens left, without repeating chapter one")
         .toEqual(["C2Para 1.", "C2Para 2."]);
     } finally {
@@ -471,10 +472,10 @@ test.describe("paginated reflowable navigation correctness", () => {
     });
     try {
       expect(await visibleSpreadText(readerPage)).toEqual(["C1Para 1.", "C1Para 2."]);
-      await turnAndWait(readerPage, () => readerPage.mouse.click(1100, 450));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1100, y: 450 }));
       expect(await visibleSpreadText(readerPage), "the first turn already merges the unpaired tail")
         .toEqual(["C1Para 3.", "C2Para 1."]);
-      await turnAndWait(readerPage, () => readerPage.mouse.click(1100, 450));
+      await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 1100, y: 450 }));
       expect(await visibleSpreadText(readerPage), "the next turn never repeats either merged page")
         .toEqual(["C2Para 2.", "C2Para 3."]);
     } finally {
@@ -664,7 +665,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         expect(await visibleSpreadText(readerPage)).toEqual(snapshots[page - 1]);
       }
       for (let page = 2; page <= pages; page++) {
-        await turnAndWait(readerPage, () => readerPage.mouse.click(650, 450));
+        await turnAndWait(readerPage, () => clickReadingPage(readerPage, { x: 650, y: 450 }));
         expect(await visibleSpreadText(readerPage), `click and ArrowRight agree on page ${page}`)
           .toEqual(snapshots[page - 1]);
       }

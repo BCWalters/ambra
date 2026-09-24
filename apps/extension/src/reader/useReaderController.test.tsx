@@ -43,6 +43,7 @@ function controller(title: string) {
     setShortcutActions: vi.fn(),
     setShortcutPreferences: vi.fn(),
     setShortcutModalOpen: vi.fn(),
+    setContentUiDismissal: vi.fn(),
     dispose: vi.fn(),
     flushProgress: vi.fn().mockResolvedValue(undefined),
     mount: vi.fn().mockResolvedValue(undefined),
@@ -121,6 +122,27 @@ it("disposes a controller that finishes opening after unmount", async () => {
   slow.resolve(opened.value);
   await pending;
   expect(opened.methods.dispose).toHaveBeenCalledOnce();
+});
+
+it("caches UI dismissal before open, updates it live, and clears it without retaining a stale callback", async () => {
+  const first = controller("first");
+  const second = controller("second");
+  const dismiss = vi.fn(() => true);
+  const updated = vi.fn(() => false);
+  latest.setContentUiDismissal(dismiss);
+  vi.mocked(ReaderController.open).mockResolvedValueOnce(first.value).mockResolvedValueOnce(second.value);
+  await act(async () => latest.openBook(new ArrayBuffer(0), "first", library().value));
+  expect(first.methods.setContentUiDismissal).toHaveBeenCalledWith(dismiss);
+  latest.setContentUiDismissal(updated);
+  expect(first.methods.setContentUiDismissal).toHaveBeenLastCalledWith(updated);
+  latest.setContentUiDismissal(undefined);
+  expect(first.methods.setContentUiDismissal).toHaveBeenLastCalledWith(undefined);
+  await act(async () => latest.openBook(new ArrayBuffer(0), "second", library().value));
+  expect(second.methods.setContentUiDismissal).toHaveBeenCalledWith(undefined);
+  act(() => root.unmount());
+  mounted = false;
+  latest.setContentUiDismissal(dismiss);
+  expect(second.methods.setContentUiDismissal).toHaveBeenCalledTimes(1);
 });
 
 it("suppresses obsolete open failures but reports current failures and releases their connection", async () => {

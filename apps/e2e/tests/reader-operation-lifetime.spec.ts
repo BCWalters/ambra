@@ -281,7 +281,13 @@ test("a failed navigation that cancels an animated turn retains the original int
     );
     await holdIncomingFrame(page);
     await page.evaluate(() => {
-      Reflect.set(window, "__navigation", Reflect.get(window, "__readerController").goToChapter(1));
+      const ctl = Reflect.get(window, "__readerController");
+      // Section shortcuts ignore busy readers; explicit TOC navigation supersedes the operation.
+      Reflect.set(
+        window,
+        "__navigation",
+        ctl.goToNavPoint({ path: ctl.pkg.spine.at(-1).manifestItem.path }),
+      );
     });
     await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
     await page.evaluate(() => Reflect.get(window, "__operationGate").release(true));
@@ -336,7 +342,12 @@ test("settings superseded by navigation settle only when the replacement using t
     await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
     await holdIncomingFrame(page);
     await page.evaluate(() => {
-      Reflect.set(window, "__navigation", Reflect.get(window, "__readerController").goToChapter(1));
+      const ctl = Reflect.get(window, "__readerController");
+      Reflect.set(
+        window,
+        "__navigation",
+        ctl.goToNavPoint({ path: ctl.pkg.spine.at(-1).manifestItem.path }),
+      );
     });
     await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
     expect(await page.evaluate(() => Reflect.get(window, "__settingsSettled"))).toBe(false);

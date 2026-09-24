@@ -159,6 +159,7 @@ export interface TocPanelProps {
   pinned: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
+  onOutsideClick?: () => void;
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
    * condition) — this panel needs to stop *above* it rather than
@@ -203,6 +204,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   pinned,
   onTogglePin,
   onRequestClose,
+  onOutsideClick,
   scrubberVisible,
 }) => {
   const chromeTheme = useChromeTheme();
@@ -243,7 +245,7 @@ export const TocPanel: FC<TocPanelProps> = ({
       {!pinned && (
         <div
           aria-hidden="true"
-          onClick={onRequestClose}
+          onClick={onOutsideClick ?? onRequestClose}
           style={{
             position: "absolute",
             inset: 0,

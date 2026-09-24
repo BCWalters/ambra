@@ -41,6 +41,7 @@ function collectEnvironmentInfo(): string {
 export interface HelpAboutFlyoutProps {
   open: boolean;
   onRequestClose: () => void;
+  onOutsideClick?: () => void;
   backgroundSolid: string;
   accentForeground: string;
   onOpenKeyboardShortcuts: () => void;
@@ -50,7 +51,7 @@ export interface HelpAboutFlyoutProps {
 }
 
 export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
-  open, onRequestClose, backgroundSolid, accentForeground,
+  open, onRequestClose, onOutsideClick, backgroundSolid, accentForeground,
   onOpenKeyboardShortcuts, getReaderDiagnostics, onAfterClose, focusShortcutsOnOpen = false,
 }) => {
   const t = useTranslation();
@@ -88,6 +89,7 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
       open={open}
       title={t("about.title")}
       onRequestClose={onRequestClose}
+      onOutsideClick={onOutsideClick}
       backgroundSolid={backgroundSolid}
       onAfterClose={onAfterClose}
       onAfterOpen={() => {

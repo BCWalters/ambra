@@ -66,7 +66,12 @@ export interface TypographyMenuActions {
   onSetPageTheme: (theme: PageTheme) => void;
 }
 
-export interface TypographyMenuProps extends TypographyMenuActions {
+interface ReaderMenuState {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export interface TypographyMenuProps extends TypographyMenuActions, ReaderMenuState {
   fontScale: number;
   lineSpacing: number;
   letterSpacing: number;
@@ -83,7 +88,7 @@ export interface ReaderSettingsMenuActions {
   onOpenHelp?: (returnFocusTo: HTMLElement | null) => void;
 }
 
-export interface ReaderSettingsMenuProps extends ReaderSettingsMenuActions {
+export interface ReaderSettingsMenuProps extends ReaderSettingsMenuActions, ReaderMenuState {
   disabled?: boolean;
   showReadingModeShortcuts?: boolean;
   isFixedLayout: boolean;
@@ -188,6 +193,8 @@ const PageStyleSwatch: FC<{ background: string; foreground: string }> = ({
 
 /** Each submenu owns its Fluent radio state; the caller owns persistence. */
 export const TypographyMenu: FC<TypographyMenuProps> = ({
+  open,
+  onOpenChange,
   fontScale,
   lineSpacing,
   letterSpacing,
@@ -204,7 +211,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
   const t = useTranslation();
   const scopeId = useId();
   return (
-    <Menu positioning={MENU_POSITIONING}>
+    <Menu open={open} onOpenChange={(_event, data) => onOpenChange?.(data.open)} positioning={MENU_POSITIONING}>
       <MenuTrigger disableButtonEnhancement>
         <Tooltip content={t("toolbar.textOptions")} relationship="label">
           <Button
@@ -384,6 +391,8 @@ const LanguageMenu: FC = () => {
 };
 
 export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
+  open: controlledOpen,
+  onOpenChange,
   disabled,
   showReadingModeShortcuts = false,
   isFixedLayout,
@@ -399,7 +408,12 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
 }) => {
   const t = useTranslation();
   const scopeId = useId();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean): void => {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const triggerRef = useRef<HTMLButtonElement>(null);
   const scrollingShortcut = useCommandPresentation("switchToScrolling");
   const paginatedShortcut = useCommandPresentation("switchToPaginated");
