@@ -471,6 +471,8 @@ match, not for nearby flags; coarse or invalidated counts cannot claim a match.
 Markers remain decorative, with no extra click targets or focus stops. The
 suite captures desktop/narrow/forced-color screenshots and checks popup bounds,
 reduced motion, bookmark counts and unchanged seek hit testing.
+The taller lane stays below notices and panels in the stacking order, so it
+cannot intercept narration discovery actions at 320px or 400% browser zoom.
 Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
 than dropping the destination and opening the chapter's beginning.
 Typography changes retain that exact scrolling position before mutating styles.

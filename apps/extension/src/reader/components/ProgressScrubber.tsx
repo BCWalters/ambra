@@ -499,7 +499,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         bottom: 0,
         left: 0,
         right: 0,
-        zIndex: 10,
+        // The taller flag lane must not cover notices or panel controls.
+        zIndex: 6,
         padding: "0 20px 7px",
         background: chromeTheme.background,
         backdropFilter: CHROME_BACKDROP_FILTER,

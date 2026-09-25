@@ -192,6 +192,25 @@ async function toggleBookmark(page: Page, name: string) {
   await page.getByRole("button", { name, exact: true }).click();
 }
 
+test("short viewports keep narration notice controls above the flag lane (#214)", async () => {
+  const narratedBook = fileURLToPath(new URL("../fixtures/media-overlay/narrated.epub", import.meta.url));
+  const { context, readerPage: page } = await launchReader(narratedBook, {
+    viewport: { width: 320, height: 256 },
+  });
+  try {
+    await exposeReaderController(page);
+    await measured(page);
+    const currentPage = await page.evaluate(() =>
+      Reflect.get(window, "__readerController").snapshot().bookPageIndex);
+    await page.getByRole("button", { name: "Not now", exact: true }).click();
+    await expect(page.locator("[data-narration-discovery]")).toHaveCount(0);
+    expect(await page.evaluate(() =>
+      Reflect.get(window, "__readerController").snapshot().bookPageIndex)).toBe(currentPage);
+  } finally {
+    await context.close();
+  }
+});
+
 for (const width of [900, 1400]) {
   test(`${width}px: progress bookmarks survive reflow and reload without intercepting seeking (#186)`, async ({ browserName }, info) => {
     const { context, readerPage: page } = await launchReader(book, {

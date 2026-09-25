@@ -299,6 +299,7 @@ describe("ProgressScrubber", () => {
     pointer(slider, "pointerdown");
     expect(document.activeElement).toBe(slider);
     expect(slider.style.height).toBe("64px");
+    expect(slider.parentElement!.style.zIndex).toBe("6");
     expect(slider.getAttribute("aria-valuetext")).toBe(
       "Page 80 of 100 - A long chapter title",
     );
