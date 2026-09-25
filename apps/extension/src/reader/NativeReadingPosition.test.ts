@@ -7,10 +7,10 @@ import { ReaderController } from "./ReaderController.js";
 
 afterEach(() => document.body.replaceChildren());
 
-function setup() {
+function setup(parent: HTMLElement = document.body) {
   const frames = [0, 1].map(() => {
     const frame = document.createElement("iframe");
-    document.body.append(frame);
+    parent.append(frame);
     Object.defineProperty(frame.contentDocument!.defaultView!, "frameElement", { value: frame });
     frame.contentDocument!.body.innerHTML = "<p tabindex='-1'>First paragraph</p><p tabindex='-1'>Later paragraph</p>";
     return frame;
@@ -65,6 +65,49 @@ describe("native reading resume", () => {
 
   it("falls back to the visual page without new native evidence", () => {
     expect(setup().tracker.current()).toBeUndefined();
+  });
+
+  it.each(["aria-hidden", "inert"])("retains a caret across a shell modal's temporary %s scope", attribute => {
+    const shell = document.createElement("div");
+    document.body.append(shell);
+    const { tracker, read } = setup(shell);
+    const point = read();
+    expect(tracker.current()).toEqual(point);
+    shell.setAttribute(attribute, attribute === "aria-hidden" ? "true" : "");
+    expect(tracker.current()).toBeUndefined();
+    expect(tracker.retainedForShell()).toEqual(point);
+    shell.removeAttribute(attribute);
+    expect(tracker.current()).toEqual(point);
+  });
+
+  it("does not resurrect a modal-obscured caret after navigation", () => {
+    const shell = document.createElement("div");
+    document.body.append(shell);
+    const { tracker, read, navigate } = setup(shell);
+    read();
+    expect(tracker.current()).toBeDefined();
+    shell.setAttribute("aria-hidden", "true");
+    expect(tracker.current()).toBeUndefined();
+    navigate();
+    expect(tracker.current()).toBeUndefined();
+    expect(tracker.retainedForShell()).toBeUndefined();
+    shell.removeAttribute("aria-hidden");
+    expect(tracker.current()).toBeUndefined();
+  });
+
+  it("rebases a retained caret during modal-obscured layout changes without exposing it", () => {
+    const shell = document.createElement("div");
+    document.body.append(shell);
+    const { tracker, read, navigate } = setup(shell);
+    const point = read();
+    expect(tracker.current()).toEqual(point);
+    shell.setAttribute("aria-hidden", "true");
+    const retained = tracker.retainedForShell()!;
+    navigate();
+    tracker.retain(retained);
+    expect(tracker.current()).toBeUndefined();
+    shell.removeAttribute("aria-hidden");
+    expect(tracker.current()).toEqual(point);
   });
 
   it("rejects an unmoved caret after visual navigation, then accepts fresh movement", () => {
@@ -216,5 +259,6 @@ describe("native reading resume", () => {
     if (kind === "stale") views.splice(1);
     if (kind === "hidden") frames[1]!.setAttribute("aria-hidden", "true");
     expect(tracker.current()).toBeUndefined();
+    expect(tracker.retainedForShell()).toBeUndefined();
   });
 });

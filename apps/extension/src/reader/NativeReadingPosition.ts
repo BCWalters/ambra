@@ -61,7 +61,7 @@ export class NativeReadingPosition {
   /** A resolved resume CFI or a layout-only change can retain a precise position. */
   public retain(point: NativeReadingPoint): void {
     this.reset();
-    if (this.validPoint(point)) this.point = point;
+    if (this.validPoint(point, true)) this.point = point;
   }
 
   public current(): NativeReadingPoint | undefined {
@@ -90,8 +90,19 @@ export class NativeReadingPosition {
       }
       if (candidate && this.validPoint(candidate)) this.point = candidate;
     }
-    if (this.point && !this.validPoint(this.point)) this.point = undefined;
+    if (this.point && !this.validPoint(this.point)) {
+      // Modal accessibility scopes temporarily exclude the shell, not the book.
+      // Keep the caret privately until that scope clears; never expose hidden content.
+      if (this.validPoint(this.point, true)) return undefined;
+      this.point = undefined;
+    }
     return this.point;
+  }
+
+  /** Shell focus return/reflow can use the saved caret while a modal obscures it. */
+  public retainedForShell(): NativeReadingPoint | undefined {
+    this.current();
+    return this.point && this.validPoint(this.point, true) ? this.point : undefined;
   }
 
   private scrollPosition(doc: Document): { top: number; left: number } {
@@ -115,26 +126,26 @@ export class NativeReadingPosition {
     };
   }
 
-  private available(doc: Document): boolean {
+  private available(doc: Document, ignoreShellScope = false): boolean {
     const frame = doc.defaultView?.frameElement;
     if (!frame?.isConnected || (frame as HTMLIFrameElement).contentDocument !== doc) return false;
     for (let element: Element | null = frame; element; element = element.parentElement) {
       const style = element.ownerDocument.defaultView?.getComputedStyle(element);
-      if (element.hasAttribute("hidden") || element.hasAttribute("inert") ||
-        element.getAttribute("aria-hidden") === "true" ||
+      const excluded = element.hasAttribute("inert") || element.getAttribute("aria-hidden") === "true";
+      if (element.hasAttribute("hidden") || (excluded && (!ignoreShellScope || element === frame)) ||
         style?.display === "none" || style?.visibility === "hidden" || style?.opacity === "0") return false;
     }
     return true;
   }
 
-  private validPoint(point: NativeReadingPoint): boolean {
+  private validPoint(point: NativeReadingPoint, ignoreShellScope = false): boolean {
     const doc = point.node.ownerDocument;
     const element = point.node.nodeType === 1 ? point.node as Element : point.node.parentElement;
     if (!doc || !point.node.isConnected || point.node.getRootNode() !== doc ||
       !doc.body?.contains(point.node) || !element || isReaderOwnedContent(point.node) ||
       element.closest("input, textarea, select, [contenteditable]") ||
       !this.views().some(view => view.document === doc && view.spineIndex === point.spineIndex) ||
-      !this.available(doc)) return false;
+      !this.available(doc, ignoreShellScope)) return false;
     for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
       const style = doc.defaultView?.getComputedStyle(ancestor);
       if (ancestor.hasAttribute("hidden") || ancestor.hasAttribute("inert") ||

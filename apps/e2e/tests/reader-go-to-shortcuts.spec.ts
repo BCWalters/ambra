@@ -144,6 +144,55 @@ test("Go to leaves editing, selections, widgets, and other modals in charge of k
   }
 });
 
+test("Go to retains keyboard focus during pending seeks and after failure", async ({ browserName }, info) => {
+  expect(browserName).toBe("chromium");
+  const { context, readerPage: page } = await launchReader(navigationFixture(info, [3, 4]));
+  try {
+    await ready(page);
+    const modifier = await mod(page);
+    await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 0);
+    await page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      controller.seekToFraction = () => new Promise<void>((_resolve, reject) => {
+        Reflect.set(window, "__rejectGoToSeek", () => reject(new Error("Fixture seek failure")));
+        Reflect.set(window, "__goToSeekCalls", (Reflect.get(window, "__goToSeekCalls") ?? 0) + 1);
+      });
+    });
+    for (const [mode, target] of [["Page", "input"], ["Percentage", "submit"]] as const) {
+      await focusBook(page);
+      await page.keyboard.press(`${modifier}+${mode === "Percentage" ? "Shift+" : ""}g`);
+      const modal = dialog(page, mode);
+      const input = modal.getByRole("spinbutton");
+      const go = modal.getByRole("button", { name: "Go", exact: true });
+      await expect(input).toBeFocused();
+      await input.fill("1");
+      const control = target === "input" ? input : go;
+      if (target === "submit") {
+        await input.press("Tab");
+        await expect(modal.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(go).toBeFocused();
+      }
+      const callsBefore = await page.evaluate(() => Reflect.get(window, "__goToSeekCalls") ?? 0);
+      await control.press("Enter");
+      await expect(input).toHaveAttribute("readonly", "");
+      await expect(control).toHaveAttribute("aria-disabled", "true");
+      await expect(control).toBeFocused();
+      await control.press("Enter");
+      expect(await page.evaluate(() => Reflect.get(window, "__goToSeekCalls"))).toBe(callsBefore + 1);
+      await page.evaluate(() => Reflect.get(window, "__rejectGoToSeek")());
+      await expect(modal.getByRole("alert")).toHaveText("Could not go to that position. Please try again.");
+      await expect(control).toBeFocused();
+      await expect(input).not.toHaveAttribute("readonly", "");
+      await expect(go).toBeEnabled();
+      await control.press("Escape");
+      await expect(modal).toBeHidden();
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("Go to explains fixed-layout unavailability without moving the book", async () => {
   const book = fileURLToPath(new URL("../fixtures/fxl-spread-ltr.epub", import.meta.url));
   const { context, readerPage: page } = await launchReader(book);

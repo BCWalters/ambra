@@ -142,6 +142,26 @@ test("native macOS shortcuts preserve reading ownership through modes, sections,
     await expect(help).toBeHidden();
     await expectReading(0, original.cfi);
 
+    for (const [shortcut, title] of [
+      ["Command+G", "Go to Page"], ["Command+Shift+G", "Go to Percentage"],
+    ] as const) {
+      send(shortcut);
+      const dialog = page.getByRole("dialog", { name: title, exact: true });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("spinbutton")).toBeFocused();
+      const fromGoTo = send("Escape");
+      expect(fromGoTo.before.role).toBe("AXIncrementor");
+      await expect(dialog).toBeHidden();
+      await expectReading(0, original.cfi);
+    }
+
+    send("Command+G");
+    const goToPage = page.getByRole("dialog", { name: "Go to Page", exact: true });
+    await goToPage.getByRole("spinbutton").fill("1");
+    send("Return");
+    await expect(goToPage).toBeHidden();
+    await expectReading(0);
+
     // The initial visual primary is spine 1, but the reading source is spine 0.
     for (const [shortcut, spine] of [
       ["Option+PageDown", 1], ["Option+PageDown", 2], ["Option+PageUp", 1], ["Option+PageUp", 0],

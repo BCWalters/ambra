@@ -772,9 +772,9 @@ const ReaderAppInner: FC = () => {
               onOpenChange={(open) => {
                 if (!open) {
                   setGoToMode(undefined);
-                  restoreContentFocus();
                 }
               }}
+              onAfterClose={restoreContentFocus}
               isPaginated={snapshot.viewMode === "paginated"}
               isFixedLayout={snapshot.isFixedLayout}
               bookPageCount={snapshot.bookPageCount}

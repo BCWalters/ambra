@@ -25,6 +25,7 @@ export interface GoToDialogProps {
   mode: "page" | "percentage";
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAfterClose?: () => void;
   /** The book's total page count, once `BookPaginationEstimator` has
    * measured it — only meaningful for `mode: "page"`. `undefined` means
    * "not yet known," in which case the dialog explains that rather than
@@ -49,6 +50,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   mode,
   open,
   onOpenChange,
+  onAfterClose,
   bookPageCount,
   isPaginated,
   isFixedLayout,
@@ -62,6 +64,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   const submitting = useRef(false);
   const opening = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const restoreFrame = useRef<number | undefined>(undefined);
   const { preferences, platform } = useShortcutPreferences();
   const recordSurfaces = useContext(ReaderDiagnosticContext);
   useEffect(() => {
@@ -83,6 +86,16 @@ export const GoToDialog: FC<GoToDialogProps> = ({
     }
     return () => { opening.current++; };
   }, [open, mode]);
+
+  useEffect(() => {
+    if (open && restoreFrame.current !== undefined) {
+      cancelAnimationFrame(restoreFrame.current);
+      restoreFrame.current = undefined;
+    }
+    return () => {
+      if (restoreFrame.current !== undefined) cancelAnimationFrame(restoreFrame.current);
+    };
+  }, [open]);
 
   const isPage = mode === "page";
   const knownPageCount = Number.isSafeInteger(bookPageCount) && bookPageCount! > 0 ? bookPageCount : undefined;
@@ -122,7 +135,18 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}>
+    <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}
+      surfaceMotion={{
+        onMotionFinish: (_event, data) => {
+          if (data.direction !== "exit" || open) return;
+          // Wait for Fluent to release its modal accessibility scope.
+          restoreFrame.current = requestAnimationFrame(() => {
+            restoreFrame.current = undefined;
+            onAfterClose?.();
+          });
+        },
+      }}
+    >
       <DialogSurface
         onKeyDown={(event) => {
           if (event.key === "Escape") event.stopPropagation();
@@ -156,7 +180,8 @@ export const GoToDialog: FC<GoToDialogProps> = ({
                   max={max}
                   step={1}
                   value={value}
-                  disabled={pending}
+                  readOnly={pending}
+                  aria-disabled={pending || undefined}
                   aria-invalid={value !== "" && !isValid}
                   onChange={(_event, data) => setValue(data.value)}
                   autoFocus
@@ -169,7 +194,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
             <Button type="button" appearance="secondary" onClick={() => onOpenChange(false)}>
               {t("annotations.cancelNote")}
             </Button>
-            <Button type="submit" appearance="primary" disabled={!isValid || pending}>
+            <Button type="submit" appearance="primary" disabled={!isValid || pending} disabledFocusable={pending}>
               {t("goTo.goButton")}
             </Button>
           </DialogActions>

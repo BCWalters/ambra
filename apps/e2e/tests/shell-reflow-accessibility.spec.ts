@@ -4,12 +4,20 @@ import { launchReader } from "../harness.js";
 
 const narratedBook = fileURLToPath(new URL("../fixtures/media-overlay/narrated.epub", import.meta.url));
 
-for (const width of [320, 1400]) {
-  test(`${width}px: all reader controls remain visible and keyboard reachable`, async () => {
+for (const { width, zoom } of [{ width: 320, zoom: 1 }, { width: 1400, zoom: 1 }, { width: 1280, zoom: 4 }]) {
+  test(`${width}px at ${zoom * 100}% zoom: all reader controls remain visible and keyboard reachable`, async () => {
     const { context, readerPage: page } = await launchReader(narratedBook, {
-      viewport: { width, height: width === 320 ? 256 : 900 },
+      viewport: { width, height: zoom === 4 ? 1024 : width === 320 ? 256 : 900 },
     });
     try {
+      if (zoom !== 1) {
+        await page.evaluate(async factor => {
+          const tab = await chrome.tabs.getCurrent();
+          if (tab?.id === undefined) throw new Error("Reader tab unavailable for browser zoom");
+          await chrome.tabs.setZoom(tab.id, factor);
+        }, zoom);
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width / zoom);
+      }
       await page.getByRole("button", { name: "Not now", exact: true }).click();
       const library = page.getByRole("button", { name: "Library", exact: true });
       const toolbar = library.locator("..");
@@ -60,3 +68,38 @@ for (const width of [320, 1400]) {
     }
   });
 }
+
+test("forced colors and reduced motion preserve keyboard focus and dialog controls", async () => {
+  const { context, readerPage: page } = await launchReader(narratedBook);
+  try {
+    await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Not now", exact: true }).click();
+    const settings = page.getByRole("button", { name: "Settings", exact: true });
+    await settings.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(settings).toBeFocused();
+    await expect(settings).toHaveCSS("outline-style", "solid");
+    await expect(settings).not.toHaveCSS("outline-color", "rgba(0, 0, 0, 0)");
+    await expect(settings).toBeInViewport({ ratio: 1 });
+    await settings.press("Enter");
+    await expect(page.getByRole("menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(settings).toBeFocused();
+
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+g" : "Control+g");
+    const dialog = page.getByRole("dialog", { name: "Go to Page", exact: true });
+    const input = dialog.getByRole("spinbutton");
+    await expect(input).toBeFocused();
+    await input.fill("0");
+    await input.press("Enter");
+    await expect(dialog).toBeVisible();
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    await expect(input).toBeFocused();
+    await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});

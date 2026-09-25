@@ -167,6 +167,105 @@ for (const direction of ["ltr", "rtl"] as const) {
   });
 }
 
+test("Shell dismissal restores the precise reading position in a merged spread companion", async () => {
+  const fixture = fileURLToPath(new URL("../fixtures/reading-boundaries.epub", import.meta.url));
+  const { context, readerPage: page } = await launchReader(fixture, {
+    viewport: { width: 1400, height: 900 },
+  });
+  try {
+    await ready(page);
+    await focusReading(page, 0);
+    const original = await page.evaluate(() => {
+      const c = Reflect.get(window, "__readerController");
+      const doc: Document = c.contentDocumentViews().find((view: { spineIndex: number }) => view.spineIndex === 0).document;
+      doc.getSelection()!.collapse(doc.querySelector("p")!.firstChild, 9);
+      const point = c.nativeReading.current();
+      return { spine: point.spineIndex, text: point.node.textContent, offset: point.offset };
+    });
+    expect(original.spine).toBe(0);
+    expect(await position(page)).toMatchObject({ spine: 1 });
+    const expectOriginal = async () => {
+      await expect.poll(() => page.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        const view = c.contentDocumentViews().find((view: { document: Document }) =>
+          view.document.defaultView?.frameElement === document.activeElement);
+        const selection = view?.document.getSelection();
+        const native = c.nativeReading.current();
+        return {
+          spine: view?.spineIndex, text: selection?.anchorNode?.textContent, offset: selection?.anchorOffset,
+          retainedSpine: native?.spineIndex, retainedOffset: native?.offset,
+        };
+      })).toEqual({ ...original, retainedSpine: original.spine, retainedOffset: original.offset });
+    };
+    const modifier = await mod(page);
+    const search = page.getByRole("searchbox", { name: "Search this book…" });
+    for (const dismiss of ["Escape", "close"] as const) {
+      await page.keyboard.press(`${modifier}+f`);
+      await expect(search).toBeFocused();
+      // Repeating Find while already in Search must not replace the return target.
+      await page.keyboard.press(`${modifier}+f`);
+      await expect(search).toBeFocused();
+      if (dismiss === "Escape") await page.keyboard.press("Escape");
+      else await page.getByRole("button", { name: "Close search panel", exact: true }).click();
+      await expect(search).toBeHidden();
+      await expectOriginal();
+    }
+    for (const [shortcut, title] of [
+      [`${modifier}+/`, "Keyboard shortcuts"],
+      [`${modifier}+g`, "Go to Page"],
+      [`${modifier}+Shift+g`, "Go to Percentage"],
+    ]) {
+      await test.step(`${title} returns to the companion caret`, async () => {
+        await page.keyboard.press(shortcut!);
+        const dialog = page.getByRole("dialog", { name: title, exact: true });
+        await expect(dialog).toBeVisible();
+        // Progress/native observations during a modal must not erase its return point.
+        await page.evaluate(() => Reflect.get(window, "__readerController").nativeReading.current());
+        await page.keyboard.press("Escape");
+        await expect(dialog).toBeHidden();
+        await expectOriginal();
+      });
+    }
+    for (const title of ["Show contents", "Bookmarks and highlights", "Book details"]) {
+      await test.step(`${title} returns to the companion caret`, async () => {
+        await page.getByRole("button", { name: title, exact: true }).click();
+        await page.keyboard.press("Escape");
+        await expectOriginal();
+      });
+    }
+    for (const mode of ["Full screen", "Dock left", "Dock right", "Popover view"]) {
+      await test.step(`Inspector ${mode} returns to the companion caret`, async () => {
+        await page.getByRole("button", { name: "Book details", exact: true }).click();
+        await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
+        const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+        await inspector.getByRole("button", { name: mode, exact: true }).click();
+        await settled(page);
+        await page.evaluate(() => Reflect.get(window, "__readerController").nativeReading.current());
+        await inspector.getByRole("button", { name: "Close EPUB Inspector", exact: true }).click();
+        await expect(inspector).toBeHidden();
+        await settled(page);
+        await expectOriginal();
+      });
+    }
+    await test.step("Go to accepts a new position rather than restoring the cancelled-dialog caret", async () => {
+      await page.keyboard.press(`${modifier}+g`);
+      const dialog = page.getByRole("dialog", { name: "Go to Page", exact: true });
+      await dialog.getByRole("spinbutton").fill("1");
+      await page.keyboard.press("Enter");
+      await expect(dialog).toBeHidden();
+      await settled(page);
+      await expect.poll(() => page.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        const view = c.contentDocumentViews().find((view: { document: Document }) =>
+          view.document.defaultView?.frameElement === document.activeElement);
+        return { spine: view?.spineIndex, offset: view?.document.getSelection()?.anchorOffset };
+      })).toEqual({ spine: 0, offset: 0 });
+    });
+  } finally {
+    await context.close();
+  }
+});
+
 test("merged short sections navigate relative to the focused document, not its primary companion", async ({ browserName: _browserName }, info) => {
   const { context, readerPage: page } = await launchReader(navigationFixture(info, [1, 1, 1, 1, 1]), {
     viewport: { width: 1400, height: 900 },

@@ -56,6 +56,7 @@ jobs:
           settings-focus.spec.ts
           reader-viewport-stability.spec.ts
           content-boundary-navigation.spec.ts
+          disclosure-interaction.spec.ts
           native-reading-resume.spec.ts
           shell-accessibility-audit.spec.ts
           shell-reflow-accessibility.spec.ts

@@ -53,6 +53,17 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     ));
   }
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
+
+  it("restores reading focus after exit motion releases the modal, not on close request", async () => {
+    const onAfterClose = vi.fn(() => {
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+    await render({ onAfterClose });
+    expect(onAfterClose).not.toHaveBeenCalled();
+    await render({ open: false, onAfterClose });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(onAfterClose).toHaveBeenCalledOnce();
+  });
   const go = () => dialog().querySelector<HTMLButtonElement>('button[type="submit"]')!;
   async function enter(value: string) {
     const input = dialog().querySelector("input")!;
@@ -135,6 +146,30 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await submit();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+  it.each(["input", "submit"] as const)("retains %s focus while seeking and after failure", async target => {
+    let reject!: (error: Error) => void;
+    onGo.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+    await render();
+    const input = await enter("30");
+    const control = target === "input" ? input : go();
+    await act(async () => control.focus());
+    await submit();
+    expect(control.disabled).toBe(false);
+    expect(control.getAttribute("aria-disabled")).toBe("true");
+    expect(input.readOnly).toBe(true);
+    expect(document.activeElement).toBe(control);
+    await submit();
+    expect(onGo).toHaveBeenCalledOnce();
+    await act(async () => reject(new Error("failed")));
+    expect(dialog().querySelector('[role="alert"]')?.textContent).toBe(getTranslate("en")("goTo.seekFailed"));
+    expect(document.activeElement).toBe(control);
+    expect(input.readOnly).toBe(false);
+    expect(control.getAttribute("aria-disabled")).not.toBe("true");
+    await act(async () => control.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape", bubbles: true, cancelable: true,
+    })));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+  });
   it("ignores duplicate submissions and does not close a reopened dialog when an old seek settles", async () => {
     let finish!: () => void;
     onGo.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
@@ -143,7 +178,7 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await submit();
     await submit();
     expect(onGo).toHaveBeenCalledTimes(1);
-    expect(go().disabled).toBe(true);
+    expect(go().getAttribute("aria-disabled")).toBe("true");
     await render({ open: false });
     await render({ mode: "percentage" });
     await act(async () => finish());

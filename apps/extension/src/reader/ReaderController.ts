@@ -1928,7 +1928,7 @@ export class ReaderController {
       previous.contentWidthEm !== next.contentWidthEm;
     if (!resized && !modeChanged && !typographyChanged && !needsReflow) return;
 
-    const native = this.nativeReading.current();
+    const native = this.nativeReading.retainedForShell();
     Object.assign(this, next);
     const switchingSpread = this.shouldSwitchSpreadMode(next.width);
     const resizedSpread = resized && !modeChanged && !typographyChanged && !needsReflow &&
@@ -1937,7 +1937,7 @@ export class ReaderController {
     if (modeChanged || needsReflow || switchingSpread ||
       (this.host instanceof SpreadPaginatedHost && !resizedSpread)) {
       const previousHost = this.host;
-      await this.reopenForCurrentSize(pending.disclosureFocus);
+      await this.reopenForCurrentSize(pending.disclosureFocus, pending.reflow);
       // A direct navigation may supersede this rebuild while retaining the
       // active layout. Its replacement must settle before settings promises do.
       while (this.operations.current) await this.operations.current.settled;
@@ -2069,8 +2069,8 @@ export class ReaderController {
   private async reopenForCurrentSize(disclosureFocus?: {
     spineIndex: number;
     ordinal: number;
-  }): Promise<void> {
-    const native = this.nativeReading.current();
+  }, preservePageBoundaries = false): Promise<void> {
+    const native = this.nativeReading.retainedForShell();
     let spineIndex = native?.spineIndex ?? this.spineIndex;
     let position = native ?? this.host?.currentPosition();
     if (disclosureFocus && disclosureFocus.spineIndex !== spineIndex) {
@@ -2097,7 +2097,10 @@ export class ReaderController {
       activeElement && activeElement !== doc?.body && activeElement !== doc?.documentElement &&
       !this.host?.element.contains(activeElement),
     );
-    await this.openSpineItem(spineIndex, { bridgeCfi, preserveFocus });
+    await this.openSpineItem(spineIndex, {
+      bridgeCfi, preserveFocus,
+      ...(preservePageBoundaries ? { preservePageBoundaries: true } : {}),
+    });
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
@@ -2248,9 +2251,15 @@ export class ReaderController {
   /** Restores managed focus to the current content document after a
    * parent-document overlay closes without navigating. */
   public restoreContentFocus(): void {
-    const iframeDocument = this.primaryContentDocument();
-    if (iframeDocument) {
-      this.focusReadingContent(iframeDocument);
+    // A merged spread's visual primary may not be the section being read.
+    const native = this.nativeReading.retainedForShell();
+    if (native?.node.ownerDocument) {
+      this.accessibility.focusReadingPosition(native.node.ownerDocument, native);
+      // Managed element focus must not replace the retained caret with its parent.
+      this.nativeReading.retain(native);
+    } else {
+      const iframeDocument = this.primaryContentDocument();
+      if (iframeDocument) this.focusReadingContent(iframeDocument);
     }
   }
 
@@ -4155,6 +4164,8 @@ export class ReaderController {
     options: {
       fragment?: string;
       bridgeCfi?: string;
+      /** Disclosure reflow restores focus within canonical pages, without adding an anchor break. */
+      preservePageBoundaries?: boolean;
       landOnLastPage?: boolean;
       landOnPageIndex?: number;
       landOnFractionInItem?: number;
@@ -4342,7 +4353,7 @@ export class ReaderController {
           requestedSpineIndex,
         );
       } else if (options.bridgeCfi) {
-        this.restoreCfi(options.bridgeCfi, requestedSpineIndex);
+        this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
       } else if (options.fragment) {
         const focusTarget = this.goToFragment(options.fragment);
@@ -4435,7 +4446,7 @@ export class ReaderController {
     }
   }
 
-  private restoreCfi(cfi: string, spineIndex: number): void {
+  private restoreCfi(cfi: string, spineIndex: number, forceAnchor = true): void {
     const iframeDocument = this.contentDocumentViews()
       .find(view => view.spineIndex === spineIndex)?.document;
     if (!iframeDocument) {
@@ -4447,7 +4458,9 @@ export class ReaderController {
       iframeDocument,
     );
     const offset = resolved.characterOffset ?? 0;
-    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
+    if (this.host instanceof PaginatedContentHost) {
+      this.host.goToPosition(resolved.node, offset, forceAnchor);
+    } else if (this.host instanceof SpreadPaginatedHost) {
       this.host.goToPosition(resolved.node, offset);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(resolved.node, offset);
