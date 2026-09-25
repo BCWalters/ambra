@@ -78,6 +78,8 @@ jobs:
           keyboard-ownership.spec.ts
           reader-scale-navigation.spec.ts
           fixed-layout-scrubber.spec.ts
+          fixed-layout-edge-navigation.spec.ts
+          svg-spine.spec.ts
           mixed-rendition-spreads.spec.ts
           pagination-measurement.spec.ts
           --workers=1
