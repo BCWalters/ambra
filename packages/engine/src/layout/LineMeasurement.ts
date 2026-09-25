@@ -82,21 +82,22 @@ type Leaf = Element | InlineRun;
  * Keeping runs as DOM ranges preserves text around nested blocks without
  * wrapping/moving nodes or measuring a descendant twice. Atomic containers
  * (especially tables) must be recognized before descending into their blocks. */
-function collectLeaves(root: Element, out: Leaf[]): void {
+function* collectLeaves(root: Element): Generator<Leaf | undefined> {
   const nodes = Array.from(root.childNodes);
   let runStart = 0;
-  const flushRun = (end: number): void => {
+  const inlineRun = (end: number): InlineRun | undefined => {
     const run = nodes.slice(runStart, end);
     if (run.some((node) => node.nodeType === 1 || node.textContent?.trim())) {
-      out.push({ root, start: runStart, end });
+      return { root, start: runStart, end };
     }
   };
   for (let index = 0; index < nodes.length; index++) {
+    yield undefined;
     const node = nodes[index]!;
     if (node.nodeType !== 1) continue;
     const child = node as Element;
     if (isReaderOwnedContent(child)) {
-      flushRun(index);
+      yield inlineRun(index);
       runStart = index + 1;
       continue;
     }
@@ -110,27 +111,27 @@ function collectLeaves(root: Element, out: Leaf[]): void {
     ) {
       continue;
     }
-    flushRun(index);
+    yield inlineRun(index);
     // Closed disclosures can return nonzero descendant rectangles even though
     // those descendants are not rendered. Measuring them creates phantom pages.
     if (child.localName === "details" && !child.hasAttribute("open")) {
       const summary = Array.from(child.children).find((element) => element.localName === "summary");
       if (child.checkVisibility() && summary) {
-        if (isLeaf(summary)) out.push(summary);
-        else collectLeaves(summary, out);
+        if (isLeaf(summary)) yield summary;
+        else yield* collectLeaves(summary);
       } else if (child.checkVisibility()) {
         // The browser supplies a default summary outside the authored DOM.
-        out.push(child);
+        yield child;
       }
     } else if (display === "contents") {
-      collectLeaves(child, out);
+      yield* collectLeaves(child);
     } else if (child.checkVisibility()) {
-      if (isAtomic(child) || isLeaf(child)) out.push(child);
-      else collectLeaves(child, out);
+      if (isAtomic(child) || isLeaf(child)) yield child;
+      else yield* collectLeaves(child);
     }
     runStart = index + 1;
   }
-  flushRun(nodes.length);
+  yield inlineRun(nodes.length);
 }
 
 /** Measures a single atomic leaf as one unbreakable `Chunk`. */
@@ -159,40 +160,56 @@ const LINE_TOLERANCE_PX = 1;
  * a real layout query — not an approximation) as one `Chunk` per visual
  * line, each with its exact DOM break position found by bisecting the
  * run's concatenated text content against further `Range` measurements. */
-function measureTextLeafChunks(fullRange: Range, textNodes: readonly Text[]): Chunk[] {
-  const lineRects = Array.from(fullRange.getClientRects()).filter((r) => r.height > 0);
+function* measureTextLeafChunks(
+  fullRange: Range,
+  textNodes: readonly Text[],
+  viewportWidth: number,
+): Generator<Chunk | undefined> {
+  const lineRects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
 
   if (lineRects.length === 0) {
-    return [];
+    return;
   }
 
   // Reuse pre-collected text nodes during bisection rather than repeatedly
   // walking the subtree, especially around large MathML expressions (#102).
   const totalLength = sumTextLength(textNodes);
-  const chunks: Chunk[] = [];
+  const probeRange = fullRange.cloneRange();
+  const lineOffsets = new Map<number, number>();
+  // A lone text node has no intervening inline boxes or atomic content whose
+  // rect could end a prefix. Probe its last character instead of remeasuring
+  // every preceding line. Complex inline runs retain the prefix algorithm.
+  const usePointProbe = textNodes.length === 1 &&
+    fullRange.startContainer === fullRange.endContainer &&
+    fullRange.endOffset === fullRange.startOffset + 1 &&
+    fullRange.startContainer.childNodes[fullRange.startOffset] === textNodes[0] &&
+    getComputedStyle(textNodes[0]!.parentElement!).writingMode === "horizontal-tb";
 
   // A partial run begins at its own child boundary, not the container's start.
-  chunks.push({
+  yield {
     top: lineRects[0]!.top,
     bottom: lineRects[0]!.bottom,
     breakBefore: { node: fullRange.startContainer, offset: fullRange.startOffset },
-  });
+  };
 
   for (let lineIndex = 1; lineIndex < lineRects.length; lineIndex++) {
     const targetTop = lineRects[lineIndex]!.top;
-    const offset = bisectLineStartOffset(fullRange, textNodes, totalLength, targetTop);
+    let offset = lineOffsets.get(targetTop);
+    if (offset === undefined) {
+      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth);
+      lineOffsets.set(targetTop, offset);
+    }
     const position = positionFromTextNodes(textNodes, offset);
     if (!position) {
       continue;
     }
-    chunks.push({
+    yield {
       top: lineRects[lineIndex]!.top,
       bottom: lineRects[lineIndex]!.bottom,
       breakBefore: { node: position.node, offset: position.offset },
-    });
+    };
   }
 
-  return chunks;
 }
 
 /** Binary-searches the smallest global text offset within `fullRange` whose
@@ -202,18 +219,22 @@ function measureTextLeafChunks(fullRange: Range, textNodes: readonly Text[]): Ch
  * candidate offset. `textNodes` contains only this range's text nodes,
  * collected once by the caller (see `measureTextLeafChunks`) rather than
  * re-walked on every bisection step. */
-function bisectLineStartOffset(
+function* bisectLineStartOffset(
   fullRange: Range,
+  probeRange: Range,
   textNodes: readonly Text[],
   totalLength: number,
   targetTop: number,
-): number {
+  usePointProbe: boolean,
+  viewportWidth: number,
+): Generator<undefined, number> {
   let lo = 0;
   let hi = totalLength;
 
   while (lo < hi) {
+    yield undefined;
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(fullRange, textNodes, mid, targetTop)) {
+    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth)) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -225,9 +246,12 @@ function bisectLineStartOffset(
 
 function hasReachedLine(
   fullRange: Range,
+  range: Range,
   textNodes: readonly Text[],
   globalOffset: number,
   targetTop: number,
+  usePointProbe: boolean,
+  viewportWidth: number,
 ): boolean {
   if (globalOffset === 0) {
     return false;
@@ -237,11 +261,24 @@ function hasReachedLine(
     return false;
   }
 
-  const range = fullRange.cloneRange();
+  range.setStart(
+    usePointProbe ? position.node : fullRange.startContainer,
+    usePointProbe ? position.offset - 1 : fullRange.startOffset,
+  );
   range.setEnd(position.node, position.offset);
-  const rects = Array.from(range.getClientRects()).filter((r) => r.height > 0);
-  const lastRect = rects[rects.length - 1];
-  return lastRect ? lastRect.top >= targetTop - LINE_TOLERANCE_PX : false;
+  const rects = range.getClientRects();
+  for (let index = rects.length - 1; index >= 0; index--) {
+    const rect = rects[index]!;
+    if (paintsInViewport(rect, viewportWidth)) {
+      if (usePointProbe && rect.width === 0) break;
+      return rect.top >= targetTop - LINE_TOLERANCE_PX;
+    }
+  }
+  // Collapsed whitespace can have a zero-width rect on the next line even
+  // when its prefix still ends on the previous one. Keep exact old boundaries.
+  return usePointProbe
+    ? hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth)
+    : false;
 }
 
 /**
@@ -254,15 +291,17 @@ function hasReachedLine(
  * meaningfully exercised in a DOM-polyfill test environment like
  * happy-dom, which doesn't implement real layout.
  */
-export function measureChunks(bodyElement: Element): Chunk[] {
+function* chunkMeasurements(bodyElement: Element): Generator<Chunk | undefined> {
   const ownerDocument = bodyElement.ownerDocument;
-  const leaves: Leaf[] = [];
-  collectLeaves(bodyElement, leaves);
+  const viewportWidth = ownerDocument.documentElement.clientWidth;
 
-  const chunks: Chunk[] = [];
-  for (const leaf of leaves) {
+  for (const leaf of collectLeaves(bodyElement)) {
+    yield undefined;
+    if (!leaf) continue;
     if (!("root" in leaf) && isAtomic(leaf)) {
-      chunks.push(measureAtomicChunk(leaf));
+      if (paintsInViewport(leaf.getBoundingClientRect(), viewportWidth)) {
+        yield measureAtomicChunk(leaf);
+      }
     } else {
       const range = ownerDocument.createRange();
       let textNodes: Text[];
@@ -279,7 +318,48 @@ export function measureChunks(bodyElement: Element): Chunk[] {
         range.selectNodeContents(leaf);
         textNodes = collectTextNodesOf(leaf);
       }
-      chunks.push(...measureTextLeafChunks(range, textNodes));
+      yield* measureTextLeafChunks(range, textNodes, viewportWidth);
+    }
+  }
+}
+
+/** Horizontal clipping is visual only: offscreen semantic headings remain
+ * untouched in the DOM/accessibility tree. Do not exclude positioned elements:
+ * visible absolute content and descendants still need to contribute bounds. */
+function paintsInViewport(rect: DOMRect, viewportWidth: number): boolean {
+  return rect.height > 0 && (viewportWidth <= 0 || (rect.right > 0 && rect.left < viewportWidth));
+}
+
+export function measureChunks(bodyElement: Element): Chunk[] {
+  const chunks: Chunk[] = [];
+  for (const chunk of chunkMeasurements(bodyElement)) {
+    if (chunk) chunks.push(chunk);
+  }
+  return chunks;
+}
+
+export interface IncrementalMeasurementOptions {
+  readonly signal?: AbortSignal;
+  readonly timeSliceMs?: number;
+}
+
+/** Background-only measurement. The caller must keep this document's layout
+ * stable until completion; foreground pagination deliberately remains atomic.
+ * Checkpoints include each bisection, not just each (potentially huge) leaf. */
+export async function measureChunksIncrementally(
+  bodyElement: Element,
+  { signal, timeSliceMs = 8 }: IncrementalMeasurementOptions = {},
+): Promise<Chunk[]> {
+  signal?.throwIfAborted();
+  const chunks: Chunk[] = [];
+  let deadline = performance.now() + Math.max(1, timeSliceMs);
+  for (const chunk of chunkMeasurements(bodyElement)) {
+    signal?.throwIfAborted();
+    if (chunk) chunks.push(chunk);
+    if (performance.now() >= deadline) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      signal?.throwIfAborted();
+      deadline = performance.now() + Math.max(1, timeSliceMs);
     }
   }
   return chunks;

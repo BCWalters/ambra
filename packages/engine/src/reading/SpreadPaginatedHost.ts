@@ -5,6 +5,7 @@ import { PaginatedContentHost } from "./PaginatedContentHost.js";
 import type { DisclosureState } from "./DisclosureState.js";
 import type { ReflowablePagePosition, ReflowableSpread } from "./ReflowableSpreadPlanner.js";
 import type { ContentDocumentView } from "./ContentDocumentView.js";
+import type { PaginationSnapshot } from "../layout/PaginationSnapshot.js";
 
 const MIN_SPREAD_COLUMN_WIDTH = 480;
 
@@ -70,6 +71,33 @@ export class SpreadPaginatedHost {
   public get secondPageIndex(): number | undefined {
     return this.spread.second ? this.second.currentPageIndex : undefined;
   }
+  public pageCountFor(spineIndex: number): number | undefined {
+    if (this.spread.first.spineIndex === spineIndex) return this.first.pageCount;
+    if (this.spread.second?.spineIndex === spineIndex) return this.second.pageCount;
+    return undefined;
+  }
+  public paginationSnapshotFor(spineIndex: number): PaginationSnapshot | undefined {
+    for (const [host, position] of [
+      [this.first, this.spread.first], [this.second, this.spread.second],
+    ] as const) {
+      if (position?.spineIndex !== spineIndex) continue;
+      const snapshot = host.paginationSnapshot();
+      if (snapshot) return snapshot;
+    }
+    return undefined;
+  }
+  /** Reuse only the documents already owned by their respective columns. */
+  public tryGoToSpread(spread: ReflowableSpread): boolean {
+    if (spread.first.spineIndex !== this.spread.first.spineIndex ||
+      spread.first.pageIndex < 0 || spread.first.pageIndex >= this.first.pageCount ||
+      (spread.second && (spread.second.spineIndex !== this.spread.second?.spineIndex ||
+        spread.second.pageIndex < 0 || spread.second.pageIndex >= this.second.pageCount))) return false;
+    this.first.goToPageIndex(spread.first.pageIndex);
+    if (spread.second) this.second.goToPageIndex(spread.second.pageIndex);
+    this.second.element.style.visibility = spread.second ? "visible" : "hidden";
+    this.spread = spread;
+    return true;
+  }
   public get isShowingMergedTail(): boolean {
     return !!this.spread.second && this.spread.first.spineIndex !== this.spread.second.spineIndex;
   }
@@ -124,24 +152,20 @@ export class SpreadPaginatedHost {
     spread: ReflowableSpread,
     configure?: (doc: Document) => void,
     disclosures?: DisclosureState,
+    snapshotFor?: (spineIndex: number) => PaginationSnapshot | undefined,
   ): Promise<void> {
     this.spread = spread;
+    const snapshots = new Map<number, PaginationSnapshot>();
     for (const [host, position] of [
       [this.first, spread.first],
       [this.second, spread.second],
     ] as const) {
       host.element.style.visibility = position ? "visible" : "hidden";
       if (!position) continue;
-      await host.open(loader, resolver, position.spineIndex, disclosures);
-      if (configure && host.element.contentDocument) {
-        configure(host.element.contentDocument);
-        host.relayout(
-          SpreadPaginatedHost.effectiveColumnWidth(this.width),
-          this.height,
-          undefined,
-          false,
-        );
-      }
+      await host.open(loader, resolver, position.spineIndex, disclosures, configure, undefined,
+        snapshots.get(position.spineIndex) ?? snapshotFor?.(position.spineIndex));
+      const snapshot = host.paginationSnapshot();
+      if (snapshot) snapshots.set(position.spineIndex, snapshot);
       host.goToPageIndex(position.pageIndex);
     }
     if (spread.second && spread.second.pageIndex >= this.second.pageCount) {

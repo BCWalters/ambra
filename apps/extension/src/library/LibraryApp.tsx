@@ -130,8 +130,8 @@ const BookCard: FC<{
             padding: 0,
             border: `2px solid ${isActive ? accent : CHROME_BORDER}`,
             borderRadius: 4,
-            background: book.coverUrl
-              ? `center / cover no-repeat url(${book.coverUrl})`
+            background: book.cardCoverUrl
+              ? `center / cover no-repeat url(${book.cardCoverUrl})`
               : "var(--colorNeutralBackground3, #eee)",
             cursor: "pointer",
             display: "flex",
@@ -142,7 +142,7 @@ const BookCard: FC<{
             boxShadow: isActive ? `0 2px 10px ${accent}66` : "none",
           }}
         >
-          {!book.coverUrl && (
+          {!book.cardCoverUrl && (
             <Body1 style={{
               margin: 8, minWidth: 0, display: "-webkit-box", WebkitLineClamp: 6,
               WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere",

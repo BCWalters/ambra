@@ -257,6 +257,9 @@ export const es: StringCatalog = {
   "announcements.annotationsImported":
     "Se importaron {highlights} resaltados y {bookmarks} marcadores. Se omitieron {skipped} entradas.",
   "reader.loading": "Cargando…",
+  "reader.openingBook": "Preparando tu libro…",
+  "reader.navigating": "Abriendo tu página…",
+  "scrubber.countingPages": "Contando páginas…",
   "reader.bookContentAriaLabel": "Contenido del libro",
   "inspector.specialFileContainer": "Descriptor del contenedor OCF",
   "inspector.specialFileOpf": "Documento del paquete (OPF)",

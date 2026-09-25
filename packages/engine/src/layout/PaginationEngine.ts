@@ -1,5 +1,6 @@
 import type { Chunk } from "./LineMeasurement.js";
-import { measureChunks } from "./LineMeasurement.js";
+import { measureChunks, measureChunksIncrementally } from "./LineMeasurement.js";
+import type { IncrementalMeasurementOptions } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
 import { Page } from "./Page.js";
 import { compareDomPositions, findChunkForPosition } from "./ScrollPositionTracker.js";
@@ -52,14 +53,17 @@ export function planPageBreaks(
 
   for (const chunk of chunks) {
     const isForcedBreak = chunk.breakBefore === forcedBreakBefore;
-    const wouldBeHeight = chunk.bottom - pageStartTop;
+    const wouldBeHeight = Math.max(pageBottom, chunk.bottom) - Math.min(pageStartTop, chunk.top);
     if ((wouldBeHeight > pageHeight || isForcedBreak) && chunksOnCurrentPage > 0) {
       pages.push(new Page(pages.length, pageStartBreak, chunk.breakBefore, pageStartTop, pageBottom));
       pageStartTop = chunk.top;
       pageStartBreak = chunk.breakBefore;
+      pageBottom = chunk.top;
       chunksOnCurrentPage = 0;
     }
-    pageBottom = chunk.bottom;
+    // Positioned publication content need not follow DOM order vertically.
+    pageStartTop = Math.min(pageStartTop, chunk.top);
+    pageBottom = Math.max(pageBottom, chunk.bottom);
     chunksOnCurrentPage++;
   }
 
@@ -88,6 +92,25 @@ export class PaginationEngine {
    * to `planPageBreaks` as a forced break point. */
   public static paginate(bodyElement: Element, pageHeight: number, anchor?: DomBreakPoint): Page[] {
     const chunks = measureChunks(bodyElement);
+    return this.plan(bodyElement, chunks, pageHeight, anchor);
+  }
+
+  public static async paginateIncrementally(
+    bodyElement: Element,
+    pageHeight: number,
+    options?: IncrementalMeasurementOptions,
+  ): Promise<Page[]> {
+    const chunks = await measureChunksIncrementally(bodyElement, options);
+    options?.signal?.throwIfAborted();
+    return this.plan(bodyElement, chunks, pageHeight);
+  }
+
+  private static plan(
+    bodyElement: Element,
+    chunks: readonly Chunk[],
+    pageHeight: number,
+    anchor?: DomBreakPoint,
+  ): Page[] {
     let endOffset = bodyElement.childNodes.length;
     while (endOffset > 0 && isReaderOwnedContent(bodyElement.childNodes[endOffset - 1]!)) endOffset--;
     const endOfDocument: DomBreakPoint = {

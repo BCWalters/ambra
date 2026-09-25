@@ -178,6 +178,7 @@ export interface ReaderSnapshot {
   chromeTheme: ChromeThemeChoice;
   pageTurnAnimationStyle: PageTurnAnimationStyle;
   isLoading: boolean;
+  loadingPhase?: "opening" | "navigating";
   error: string | undefined;
   errorNotificationId: number;
   /** "blocking" (nothing readable on screen), "transient" (a navigation

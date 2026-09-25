@@ -246,6 +246,7 @@ export interface StringCatalog {
   "scrubber.positionInBook": string;
   "scrubber.seeking": string;
   "scrubber.pageOfTotal": string;
+  "scrubber.countingPages": string;
   "scrubber.chapterOfTotal": string;
   "scrubber.pagesLeftInChapterOne": string;
   "scrubber.pagesLeftInChapterOther": string;
@@ -327,6 +328,8 @@ export interface StringCatalog {
   "announcements.spreadOfTotal": string;
   "announcements.annotationsImported": string;
   "reader.loading": string;
+  "reader.openingBook": string;
+  "reader.navigating": string;
   "reader.bookContentAriaLabel": string;
   "inspector.specialFileContainer": string;
   "inspector.locateCurrentPassage": string;
@@ -663,6 +666,7 @@ export const en: StringCatalog = {
   "scrubber.positionInBook": "Position in book",
   "scrubber.seeking": "Going to position…",
   "scrubber.pageOfTotal": "Page {current} of {total}",
+  "scrubber.countingPages": "Counting pages…",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",
   "scrubber.pagesLeftInChapterOne": "1 page left in this chapter",
   "scrubber.pagesLeftInChapterOther": "{count} pages left in this chapter",
@@ -714,6 +718,8 @@ export const en: StringCatalog = {
   "announcements.spreadOfTotal": "Pages {first}–{second} of {total}",
   "announcements.annotationsImported": "Imported {highlights} highlights and {bookmarks} bookmarks. {skipped} entries were skipped.",
   "reader.loading": "Loading…",
+  "reader.openingBook": "Getting your book ready…",
+  "reader.navigating": "Turning to your page…",
   "reader.bookContentAriaLabel": "Book content",
   "inspector.specialFileContainer": "OCF container descriptor",
   "inspector.specialFileOpf": "Package document (OPF)",

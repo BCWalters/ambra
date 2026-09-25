@@ -106,6 +106,49 @@ describe("ProgressScrubber", () => {
     });
   }
 
+  it("shows counting status visually and accessibly until whole-book numbers are known", () => {
+    const { slider } = renderScrubber({
+      snapshot: { ...snapshot, bookPageIndex: 5, bookPageCount: undefined },
+      onPreview: () => ({
+        position: { kind: "chapter", current: 8, total: 10 },
+        chapterLabel: "A long chapter title",
+      }),
+    });
+    expect(container.textContent).toContain("Counting pages…");
+    expect(container.textContent).not.toContain("Page 5 of");
+    expect(slider.getAttribute("aria-valuetext")).toBe(
+      "Counting pages… - 6 pages left in this chapter",
+    );
+    pointer(slider, "pointerdown");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Chapter 8 of 10 - A long chapter title");
+    expect(container.textContent).toContain("Counting pages…");
+    pointer(slider, "pointercancel");
+
+    renderScrubber();
+    expect(container.textContent).not.toContain("Counting pages…");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Page 5 of 100 - 6 pages left in this chapter");
+  });
+
+  it("shows counting status before either global number or chapter count is available", () => {
+    const { slider } = renderScrubber({
+      snapshot: { ...snapshot, bookPageIndex: undefined, bookPageCount: undefined, pageCount: 0 },
+    });
+    expect(slider.getAttribute("aria-valuetext")).toBe("Counting pages…");
+    expect(container.textContent).toContain("Counting pages…");
+    expect(container.textContent).not.toContain("pages left");
+  });
+
+  it.each(["paginated", "scroll"] as const)("shows fixed-layout pages even with saved %s mode", viewMode => {
+    const { slider, onSeek } = renderScrubber({
+      snapshot: { ...snapshot, isFixedLayout: true, viewMode, bookPageIndex: 1, bookPageCount: 5 },
+    });
+    expect(slider.getAttribute("aria-valuetext")).toBe("Page 1 of 5");
+    expect(container.textContent).not.toContain("pages left");
+    expect(container.textContent).not.toContain("Counting pages");
+    act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(onSeek).toHaveBeenCalledWith(0.4);
+  });
+
   it.each(["ltr", "rtl"] as const)("shows deduplicated %s bookmark marks without adding focus stops", direction => {
     const bookmark = { id: "a", bookId: "book", cfi: "", label: "Chapter", createdAt: 0 };
     const { slider } = renderScrubber({

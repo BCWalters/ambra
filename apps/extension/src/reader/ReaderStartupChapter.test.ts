@@ -29,8 +29,10 @@ describe("Startup chapter publication (#175)", () => {
   it("does not publish the provisional first chapter before mount or while progress lookup is pending", () => {
     const { reader, chapterLabel } = controller();
     expect(reader.snapshot().title).toBe("Book");
+    expect(reader.snapshot().loadingPhase).toBeUndefined();
     expect(reader.snapshot().currentChapterLabel).toBe("");
     Object.assign(reader, { cachedSnapshot: undefined, isLoading: true });
+    expect(reader.snapshot().loadingPhase).toBe("opening");
     expect(reader.snapshot().currentChapterLabel).toBe("");
     expect(chapterLabel).not.toHaveBeenCalled();
   });
@@ -50,5 +52,8 @@ describe("Startup chapter publication (#175)", () => {
     const { reader } = controller();
     Object.assign(reader, { host: {}, spineIndex: 1, isLoading: true });
     expect(reader.snapshot().currentChapterLabel).toBe("Chapter Two");
+    expect(reader.snapshot().loadingPhase).toBe("navigating");
+    Object.assign(reader, { cachedSnapshot: undefined, isLoading: false });
+    expect(reader.snapshot().loadingPhase).toBeUndefined();
   });
 });

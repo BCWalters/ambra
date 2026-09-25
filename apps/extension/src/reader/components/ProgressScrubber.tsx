@@ -114,10 +114,9 @@ function currentFraction(snapshot: ProgressScrubberProps["snapshot"]): number {
  * itself doesn't need to know or care which one it's showing, since
  * both are expressed as the same 0-to-1 fraction either way.
  *
- * Scoped to paginated/spread reflowable content only, matching
- * `PageFurniture`'s own scope — scroll mode's native scrollbar already
- * serves this purpose, and fixed-layout content has no meaningful
- * "page" position to scrub through page-by-page.
+ * Available for paginated reflowable and fixed-layout content. Fixed-layout
+ * spine items each count as one page, regardless of the saved reflowable mode.
+ * Reflowable scroll mode uses its native scrollbar instead.
  */
 export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   snapshot,
@@ -359,12 +358,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // "Pages left" only needs this chapter's own page count, known
   // immediately on open; the book-wide "Page X of Y" needs
   // `BookPaginationEstimator` to have reached this point in a possibly-
-  // still-measuring book, so it's dropped (not shown as a placeholder)
-  // until that's known, consistent with how the rest of the reader's
-  // chrome degrades gracefully — the far-right label still shows on its
-  // own in that case, since it doesn't depend on the same thing.
+  // still-measuring book. Until then, show counting status while keeping
+  // the independently known chapter count.
   const pagesLeftInChapter =
-    snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
+    !snapshot.isFixedLayout && snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
   const pagesLeftLabel =
     pagesLeftInChapter === undefined
       ? undefined
@@ -382,7 +379,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           current: snapshot.bookPageIndex,
           total: snapshot.bookPageCount,
         })
-      : undefined;
+      : t("scrubber.countingPages");
   // Still exposed as one combined string for the slider's own
   // `aria-valuetext` (see below) — a screen reader doesn't care how the
   // two pieces are laid out visually, just that both are announced.
@@ -456,7 +453,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     void commitSeek(next);
   };
 
-  // Scoped to paginated/spread reflowable content only (see this
+  // Scoped to paginated reflowable and fixed-layout content (see this
   // component's doc comment) — deliberately checked only *after* every
   // hook above has run unconditionally on every render. An early return
   // before a hook call is a real bug (not just a lint nit): switching
@@ -465,7 +462,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // React's hook-call-order bookkeeping desyncs and throws ("Rendered
   // fewer hooks than expected"), crashing the whole reader — caught via
   // real-Chromium testing switching view modes with this panel mounted.
-  if (snapshot.isFixedLayout || snapshot.viewMode !== "paginated") {
+  if (!snapshot.isFixedLayout && snapshot.viewMode !== "paginated") {
     return null;
   }
 

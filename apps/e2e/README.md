@@ -75,6 +75,143 @@ pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
   --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
+## Library cover memory regression (#199)
+
+Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the
+140 × 200 CSS-pixel card), keeping aspect ratio. JPEG, still PNG, and static SVG covers,
+including Standard Ebooks' embedded JPEG artwork, are resized; SVG thumbnails
+use PNG to preserve transparency. APNG (detected from its `acTL` chunk), animated
+SVG, GIF/WebP and unknown image formats retain their original rendering. Original covers remain
+unchanged for Book Details and the reader.
+
+Existing books are backfilled one at a time when the Library next loads.
+Derived covers live in the existing cover row, disappear atomically with book
+deletion, and need no database version upgrade. Successful results are reused
+across visits; conversion failures warn and show the accessible title fallback,
+then retry on a later visit. Optional cache-write failures warn and use the
+generated thumbnail only in memory, without claiming it was saved; a later
+visit retries persistence. Reads still use the existing Library error path,
+and a post-rollback reread prevents a concurrent deletion from being revived.
+All session-owned object URLs are revoked on removal/disposal. This
+reduces steady-state card decoding, not the initial import/decode high-water
+mark or memory held by a reader sharing the extension's renderer.
+
+Run `tests/library-covers.spec.ts` alongside `library-lifecycle.spec.ts` and
+`library-transactions.spec.ts` for real image decoding, persistence, SVG
+rendering, fallback, deletion races, and transaction-abort coverage.
+
+For a paired memory replay, build the before/after extension into **different**
+directories outside the Playwright output directory, then run from the root:
+
+```sh
+AMBRA_MEMORY_OUTPUT="$PWD/node_modules/.cache/ambra-library-memory/results" \
+  node apps/e2e/scripts/measure-library-memory.mjs \
+  path/to/baseline-build path/to/optimized-build \
+  path/to/book-one.epub path/to/book-two.epub path/to/book-three.epub
+```
+
+The macOS replay imports the same supplied books into two isolated profiles,
+closes those browsers, then alternates three fresh-process samples per build
+at 1400 × 900 with no readers open. It records post-GC JS heap, renderer RSS
+(`ps`, KiB), and Chromium memory-infra private footprint (hex bytes) in
+`results.json`; only its own profiles are removed afterward.
+
+On 2026-09-25, Standard Ebooks' *The Autobiography of a Super-Tramp* and
+*Ulysses*, plus Gutenberg's `pg84-images-3.epub`, produced:
+
+| Metric | Original covers | Bounded card covers |
+| --- | ---: | ---: |
+| Private footprint, three fresh runs (MiB) | 68.36 / 71.47 / 73.74 | 63.88 / 59.24 / 59.11 |
+| Median private footprint | 71.47 MiB | 59.24 MiB |
+| Renderer RSS, three fresh runs (KiB) | 230784 / 218976 / 184592 | 208160 / 204128 / 202736 |
+| Median post-GC JS heap (bytes) | 6155872 | 6141904 |
+
+Median private footprint fell **12.23 MiB (17.1%)**; JS heap was essentially
+unchanged. RSS was noisy (one original-cover sample was lower than the
+optimized samples), so these are controls, not a guaranteed memory budget.
+The original Gutenberg raster was 1824 × 2726; displayed thumbnails were
+401 × 600 and two 400 × 600 images. The original SVGs reported small intrinsic
+viewports despite embedding 1400 × 2100 raster artwork.
+
+These metrics are not Chrome's tab-hover figure. The exact user configuration
+and 453 MB fresh-Library / 1.9 GB earlier report remain unreproduced, and this
+optimization does **not** explain the full footprint or establish a leak.
+
+### Development mode is a substantial confounder
+
+A read-only inspection of the live checkout's `apps/extension/dist` confirmed
+`CRXJS DEV MODE` HTML and a service-worker loader importing Vite/CRXJS modules
+from `http://localhost:5173`, rather than a production bundle. No live profile
+was opened and no live server/build was changed.
+
+A separate copied source tree, Vite server on port 5187, isolated dependency
+cache/build, and disposable browser profiles reproduced a much larger
+fresh-Library footprint. **Both variants below used original covers**, the
+same three books and replay protocol; this measures development overhead,
+not the thumbnail optimization:
+
+| Metric | Isolated CRXJS development | Isolated production |
+| --- | ---: | ---: |
+| Private footprint, three fresh runs (MiB) | 349.10 / 350.85 / 351.60 | 67.69 / 79.86 / 71.35 |
+| Renderer RSS, three fresh runs (KiB) | 437168 / 422880 / 346288 | 229472 / 178704 / 187408 |
+| Median post-GC JS heap (bytes) | 98971240 | 6144888 |
+| Median backing storage (bytes, reported separately by CDP) | 64560770 | 1105593 |
+
+An additional network probe of the isolated development Library observed
+130 script responses totaling **64,538,069 bytes**, with inline source maps
+in 129 responses. The largest dependency script alone was 43,655,640 bytes.
+There were no separate `.map` requests: the maps were embedded in script
+responses, even without DevTools open. These observations support the dev
+module/dependency graph, inline maps, and development runtime as substantial
+contributors; they do not isolate each one's individual memory cost.
+
+The development control is much closer to the user's reported scale, but
+RSS/private footprint still must not be equated with Chrome's hover metric.
+The user's exact 453 MB measurement and earlier 1.9 GB remain unverified.
+Use a separately built production extension in a separate profile when
+comparing user-facing memory; do not overwrite a running development build.
+The isolated server and profiles used for this check were stopped/removed.
+
+### Follow-up with the user's three titles
+
+The user subsequently identified the actual set: Standard Ebooks'
+[*In Search of Lost Time*](https://standardebooks.org/ebooks/marcel-proust/in-search-of-lost-time/c-k-scott-moncrieff),
+Gutenberg's *The Yillian Way* (`pg21782-images-3.epub`), and Davies.
+The current public Proust advanced EPUB was downloaded from the publisher on
+2026-09-25; the other two files were the user's supplied local downloads.
+This reproduces the specified title/edition set, but the newly downloaded
+Proust archive has not been compared with the user's original archive bytes.
+No ebook contents were added to the repository or uploaded.
+
+The same three-fresh-process protocol was repeated with this set:
+
+| Comparison | First variant | Second variant |
+| --- | ---: | ---: |
+| Original-cover dev vs production: private footprint, MiB | 345.60 / 346.61 / 346.03 | 70.46 / 68.21 / 68.28 |
+| Original-cover dev vs production: RSS, KiB | 705744 / 709280 / 709648 | 235888 / 224192 / 223808 |
+| Original-cover dev vs production: median JS heap, bytes | 98961976 | 6144308 |
+| Production original vs thumbnails: private footprint, MiB | 63.67 / 68.56 / 68.41 | 62.08 / 59.72 / 60.60 |
+| Production original vs thumbnails: RSS, KiB | 234736 / 225872 / 224848 | 191216 / 203568 / 203344 |
+| Production original vs thumbnails: median JS heap, bytes | 6151844 | 6151684 |
+
+For this set, thumbnails reduced median private footprint **68.41 → 60.60 MiB**
+(**7.81 MiB, 11.4%**) and median RSS **225872 → 203344 KiB**. All three
+displayed covers are now 400 × 600. The Yillian cover is a still PNG with
+IHDR/IDAT/IEND chunks, not an APNG; this finding motivated the tested still-PNG
+path while preserving animation and transparency. Original-cover development
+mode remained far heavier: median private footprint **346.03 vs 68.28 MiB**
+in production. RSS varied greatly between this and the earlier control set,
+reinforcing that none of these values can be substituted for the user's
+453 MB hover measurement. The earlier 1.9 GB remains unreproduced.
+
+Replay input SHA-256 values:
+
+```text
+Proust: 6eb93a25fef1420e7a5eaef6cff62a49351c26483f9a044a2e9d483d158a4216
+Yillian: 194b155014d9b3b64178f22c6af4d071b80a28c029cd4c3516afe114b1983682
+Davies: 3749c1e689b783879d3011a84b76c0712676ab4c42243126595e60dcd9bc8e97
+```
+
 ## Accessibility validation
 
 The accessibility suites cover browser semantics, keyboard ownership, focus
@@ -148,6 +285,8 @@ selection, single-tap, and zero-opacity intent on valid outer margins.
 controller directly into a real Chromium page. Controlled chapter-load gates
 exercise overlapping turns, resizes, typography, mode changes, and load failures
 without relying on UI debounce timing or adding production test hooks.
+Held second-column scenarios cross the single-page/spread threshold first:
+an ordinary same-mode spread resize intentionally does not load new documents.
 
 ## Synthetic scale checks
 
@@ -176,6 +315,103 @@ pnpm --filter @ambra/e2e exec playwright test disclosure-pagination.spec.ts disc
 These check exact rendered-line accounting in both directions, expanded/collapsed
 state, keyboard focus, and mode changes. To regenerate those small fixtures,
 run `node apps/e2e/scripts/generate-disclosure-fixture.mjs`.
+
+## Pagination measurement regressions (#197 / #198)
+
+The packaged reader's concentrated-chapter regression checks no-animation document
+reuse, exact native reading entry, animated preparation, bounded queued margin
+clicks, and unknown global footers. An optional actual Proust pass measures all
+four animation modes and checks retained document/JS counts after repeated turns:
+
+While whole-book counts are unavailable, the scrubber shows "Counting pages…"
+instead of a page total, including in its accessible value. Book startup uses
+"Getting your book ready…" and subsequent loading uses "Turning to your page…";
+these messages do not change focus or delay navigation.
+
+`fixed-layout-scrubber.spec.ts` checks immediate fixed-layout page totals,
+LTR/RTL keyboard and pointer seeking, exact companion-page destinations,
+bookmarks, resize and resume. Each fixed-layout spine item contributes one
+page without loading a measurement document. Mixed books still measure their
+reflowable chapters; a saved scrolling preference does not hide the FXL scrubber.
+Native moves into an already-visible companion update the scrubber immediately.
+Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
+than dropping the destination and opening the chapter's beginning.
+Typography changes retain that exact scrolling position before mutating styles.
+
+```sh
+pnpm --filter @ambra/e2e run build:extension
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test reader-scale-navigation.spec.ts
+AMBRA_E2E_HEADLESS=1 AMBRA_PROUST_EPUB=/path/to/proust_advanced.epub \
+  pnpm --filter @ambra/e2e exec playwright test reader-scale-navigation.spec.ts
+```
+
+Without the local EPUB the actual-book case is skipped, not counted as passing.
+The synthetic case has one concentrated chapter of more than 600 pages, unlike
+the many-short-chapter scale fixture. Same-document turns avoid new hosts when
+animation is off or reduced motion is enabled; animated turns keep their existing
+visual effects and can transfer guarded DOM-free page boundaries to fresh hosts.
+Snapshot mismatches fall back to measurement. At most one extra turn is retained
+while busy; a newer direction replaces the queued one. Explicit navigation,
+layout changes, failures and disposal discard stale queued input.
+
+In the local production-build replay of the actual Proust advanced EPUB (1,400 x
+900 viewport), the largest chapter measured 474 pages and the book 4,274 pages.
+Settled turns took 11.6 ms without animation, 815.5 ms for slide, 920.4 ms for
+rotate, and 789.2 ms for scroll animation. After twelve additional alternating
+animated turns and forced GC, document count stayed at four and retained JS
+increased by approximately 0.28 MiB. These are local timings and retained-JS
+checks, not total-renderer memory measurements or hardware-independent guarantees.
+
+This focused Chromium suite bundles the engine in memory; it does **not**
+require or overwrite an extension build:
+
+```sh
+pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts
+# Optional local real-book verification (the EPUB is never copied into the repo):
+AMBRA_VISUAL_CLIPPING_EPUB=/path/to/w-h-davies_the-autobiography-of-a-super-tramp_advanced.epub \
+  pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts
+# Optional real large-chapter snapshot validation (largest spine item selected):
+AMBRA_PAGINATION_SCALE_EPUB=/path/to/proust-advanced.epub \
+  pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts -g 'local real large'
+```
+
+It checks complete title/logo image bounds and Chromium accessibility-tree
+exposure of offscreen semantic headings, visible absolute content, LTR/RTL,
+disclosures, exact synchronous/incremental page-boundary parity, heartbeat
+responsiveness inside a single long paragraph, and immediate disposal of stale
+background hosts. JSON attachments record image bounds and timing evidence.
+Synthetic prose is generated locally; no third-party book text is committed.
+An additional comparison checks every measured chunk against prefix-range
+bisection across whitespace, bidi, ligatures, ruby, and MathML. Plain-text leaves
+use single-character probes (falling back for zero-width/collapsed characters);
+complex inline content keeps prefix probes, with repeated line-top lookups cached.
+
+Background estimates use cooperative measurement checkpoints, including line
+bisections, with an 8ms target work budget. Browser layout queries themselves
+cannot be interrupted, so this is not a hard main-thread latency guarantee.
+The heartbeat regression starts at incremental measurement, after the browser's
+non-cooperative iframe parsing/initial layout; whole-run elapsed time is recorded
+separately. It does not claim an upper bound on document-startup latency.
+Foreground pagination remains synchronous against its live document.
+`PaginatedContentHost.open` accepts a fifth `configure(document)` argument,
+applied after disclosure state and before font readiness/initial measurement,
+and optional sixth incremental-measurement options for isolated background
+hosts only. Hosts must not change layout while incremental measurement runs.
+`BookPaginationEstimator.cancelPendingMeasurement()` immediately retires pending
+work while preserving completed counts and CFIs; a later `run()` resumes by
+skipping those completed chapters. Cheap in-place turns need not cancel it.
+For independently loaded animated candidates, `host.paginationSnapshot()` returns
+DOM-free paths and bounds only while the source still matches its measured
+configuration. Pass that value as the seventh `open()` argument. Exact assembled
+source, configured markup/CSSOM, geometry, font and disclosure state must match;
+otherwise the host measures normally. Reader-owned overlays are excluded, but
+authored attributes remain part of the identity. Snapshot paths resolve solely
+against the new document, and no old document or Range is retained. Forced-anchor
+repagination invalidates snapshot export.
+SMIL and potentially dynamic media conservatively disable transfer, including
+images and SVG references behind opaque resource URLs whose intrinsic-size or
+animation stability cannot be established synchronously. Static inline SVG is
+eligible; media chapters simply use normal pagination rather than unsafe reuse.
 
 ## Real-book smoke suite
 

@@ -236,9 +236,9 @@ export class ReaderController {
   /** Guards against overlapping `turnPage` calls — rapid repeated
    * clicks could otherwise start a second animated turn while the first
    * was still in flight, racing to swap `this.host` and corrupting
-   * pagination state. Ignores a call that arrives mid-turn rather than
-   * queuing it. */
+   * pagination state. One additional request can wait for the active turn. */
   private isTurningPage = false;
+  private queuedTurn: 1 | -1 | undefined;
   private readonly operations = new ReaderOperations();
   private pendingLayout: PendingLayout | undefined;
   private activeLayout: PendingLayout | undefined;
@@ -622,7 +622,10 @@ export class ReaderController {
     ) {
       return undefined;
     }
-    const position = this.bookPagination.positionFor(this.spineIndex, pageIndex);
+    const spineIndex = this.isFixedLayoutHost(this.host)
+      ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
+      : this.spineIndex;
+    const position = this.bookPagination.positionFor(spineIndex, pageIndex);
     return { bookPageIndex: position.currentPage, bookPageCount: position.totalPages };
   }
 
@@ -698,7 +701,7 @@ export class ReaderController {
           this.host instanceof SpreadPaginatedHost
             ? [this.host.positions.first, this.host.positions.second].map((position) =>
                 position
-                  ? this.furniturePageNumber(position.spineIndex, position.pageIndex, 1)
+                  ? this.furniturePageNumber(position.spineIndex, position.pageIndex)
                   : undefined,
               )
             : undefined,
@@ -724,6 +727,7 @@ export class ReaderController {
         chromeTheme: this.chromeTheme,
         pageTurnAnimationStyle: this.pageTurnAnimationStyle,
         isLoading: this.isLoading,
+        loadingPhase: this.isLoading ? (this.host ? "navigating" : "opening") : undefined,
         error: this.error,
         errorNotificationId: this.errorNotificationId,
         errorSeverity: this.errorSeverity,
@@ -749,6 +753,13 @@ export class ReaderController {
     this.cachedSnapshot = undefined;
     for (const listener of this.listeners) {
       listener();
+    }
+  }
+
+  private publishFixedReadingPosition(): void {
+    if (!this.isFixedLayoutHost(this.host)) return;
+    if (this.bookWidePagePosition()?.bookPageIndex !== this.cachedSnapshot?.bookPageIndex) {
+      this.notify();
     }
   }
 
@@ -850,11 +861,12 @@ export class ReaderController {
    * column's own width, not the whole pane — so the book-wide page
    * number agrees with what's on screen. */
   private refreshBookPagination(): void {
-    if (!this.bookPagination || this.isFixedLayoutHost(this.host)) {
+    if (!this.bookPagination) {
       return;
     }
     const measureWidth =
-      this.host instanceof SpreadPaginatedHost
+      this.host instanceof SpreadPaginatedHost ||
+        (this.isFixedLayoutHost(this.host) && this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width))
         ? SpreadPaginatedHost.effectiveColumnWidth(this.width)
         : this.width;
     void this.bookPagination.run(
@@ -869,7 +881,9 @@ export class ReaderController {
       () => {
         this.notify();
       },
-    );
+    ).catch((error: unknown) => {
+      if (!this.operations.disposed) this.reportTransientError(error, "open", "the book's page count");
+    });
   }
 
   /** Looks up a saved CFI and, if it resolves to a valid spine item,
@@ -1604,6 +1618,7 @@ export class ReaderController {
    * URIs in a new tab, and wires zoomable images for click and keyboard
    * activation across all active content documents. */
   private setUpContentInteraction(): void {
+    if (this.host) this.host.element.style.pointerEvents = "";
     this.setUpContentBoundaries();
     const documents = this.allContentDocuments();
     if (documents.length === 0) {
@@ -1639,6 +1654,15 @@ export class ReaderController {
 
     for (const iframeDocument of documents) {
       cleanups.push(this.nativeReading.attach(iframeDocument));
+      if (this.isFixedLayoutHost(this.host)) {
+        const publish = () => this.publishFixedReadingPosition();
+        iframeDocument.addEventListener("selectionchange", publish);
+        iframeDocument.addEventListener("focusin", publish);
+        cleanups.push(() => {
+          iframeDocument.removeEventListener("selectionchange", publish);
+          iframeDocument.removeEventListener("focusin", publish);
+        });
+      }
       applyEpubTypeAriaRoles(iframeDocument);
 
       const clickHandler = (event: MouseEvent): void => {
@@ -1822,7 +1846,10 @@ export class ReaderController {
         if (destination) {
           // A spread's second document is the next reading stop, even in RTL.
           if (this.isFixedLayoutHost(host)) {
-            this.accessibility.focusReadingPosition(destination.document, { node: destination.document.body, offset: 0 });
+            const point = { node: destination.document.body, offset: 0, spineIndex: nextSpineIndex };
+            this.accessibility.focusReadingPosition(destination.document, point);
+            this.nativeReading.retain(point);
+            this.publishFixedReadingPosition();
           } else {
             this.focusReadingContent(destination.document);
           }
@@ -1869,6 +1896,7 @@ export class ReaderController {
 
   private requestLayout(changes: Partial<ReaderLayout>): Promise<void> {
     if (this.operations.disposed) return Promise.resolve();
+    this.queuedTurn = undefined;
     const pending = this.enqueueLayout(changes);
     const settled = new Promise<void>((resolve, reject) =>
       pending.waiters.push({ resolve, reject }),
@@ -2293,6 +2321,9 @@ export class ReaderController {
     if (documents.length === 0) {
       return;
     }
+    const scrollPosition = options.relayout && host instanceof ScrollContentHost
+      ? (host === this.host ? this.nativeReading.retainedForShell() : undefined) ?? host.currentPosition()
+      : undefined;
     for (const doc of documents) {
       ReadingTheme.applyFontScale(doc, this.fontScale);
       ReadingTheme.applyFontFamily(doc, this.fontFamily);
@@ -2308,6 +2339,7 @@ export class ReaderController {
       host.relayout(this.width, this.height);
     } else if (host instanceof ScrollContentHost) {
       host.resize(this.width, this.height);
+      if (scrollPosition) host.restorePosition(scrollPosition.node, scrollPosition.offset ?? 0);
     }
   }
 
@@ -2435,16 +2467,11 @@ export class ReaderController {
     return this.highlights.setStyle(id, style);
   }
 
-  /** Turns one page or spread in paginated mode, crossing chapter
-   * boundaries when needed. No-op in scroll mode and while a turn is
-   * already in progress. */
+  /** Turns one page/spread, retaining at most one additional request while busy. */
   public async turnPage(direction: 1 | -1): Promise<void> {
-    if (
-      this.operations.disposed ||
-      this.isTurningPage ||
-      this.isLoadInFlight ||
-      this.isApplyingLayout
-    ) {
+    if (this.operations.disposed || this.isApplyingLayout) return;
+    if (this.isTurningPage || this.isLoadInFlight) {
+      this.queuedTurn = direction;
       return;
     }
     this.gestureCleanup?.();
@@ -2455,8 +2482,10 @@ export class ReaderController {
     try {
       await this.turnPageInternal(direction, operation);
     } catch (error) {
-      if (this.operations.owns(operation))
+      if (this.operations.owns(operation)) {
+        this.queuedTurn = undefined;
         this.reportTransientError(error, "open", "the next page");
+      }
     } finally {
       this.finishTurn(operation);
     }
@@ -2467,6 +2496,14 @@ export class ReaderController {
     this.operations.finish(operation);
     this.isTurningPage = false;
     this.applyPendingLayout();
+    this.drainQueuedTurn();
+  }
+
+  private drainQueuedTurn(): void {
+    const direction = this.queuedTurn;
+    this.queuedTurn = undefined;
+    if (direction !== undefined && !this.operations.disposed && !this.operations.current &&
+      !this.isApplyingLayout && !this.isLoadInFlight) void this.turnPage(direction);
   }
 
   private ownCandidate(
@@ -2498,6 +2535,26 @@ export class ReaderController {
       // after the host swap.
       const focusedColumn = this.spreadFocusedColumn(this.host);
       const oldHost = this.host;
+      if (this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
+        const spread = await this.spreadPlanner(operation).turn(oldHost.positions, direction);
+        operation.check();
+        if (spread && oldHost.tryGoToSpread(spread)) {
+          this.nativeReading.reset();
+          this.highlightInteraction.updateNoteMarkers();
+          this.restoreSpreadFocusAfterHostSwap(oldHost, focusedColumn);
+          const second = oldHost.isShowingMergedTail ? undefined : oldHost.secondPageIndex;
+          this.announce(second !== undefined
+            ? this.translate("announcements.spreadOfTotal", {
+                first: oldHost.pageIndex + 1, second: second + 1, total: oldHost.pageCount,
+              })
+            : this.translate("scrubber.pageOfTotal", {
+                current: oldHost.pageIndex + 1, total: oldHost.pageCount,
+              }));
+          this.notify();
+          await this.saveProgress();
+          return;
+        }
+      }
       const animatedSpread = await this.animateSpreadTurn(oldHost, direction, operation);
       operation.check();
       if (animatedSpread) {
@@ -2554,6 +2611,20 @@ export class ReaderController {
       // navigation can be restored after the swap.
       const hadKeyboardFocus = this.iframeHasFocus(this.host);
       const oldHost = this.host;
+      if (this.pageTurnAnimator.shouldSkipPageTurnAnimation()) {
+        const movedInPlace = direction === 1 ? oldHost.nextPage() : oldHost.previousPage();
+        if (movedInPlace) {
+          this.nativeReading.reset();
+          this.highlightInteraction.updateNoteMarkers();
+          this.restoreFocusAfterHostSwap(hadKeyboardFocus);
+          this.announce(this.translate("scrubber.pageOfTotal", {
+            current: oldHost.currentPageIndex + 1, total: oldHost.pageCount,
+          }));
+          this.notify();
+          await this.saveProgress();
+          return;
+        }
+      }
       const animatedHost = await this.animatePageTurn(oldHost, direction, operation);
       operation.check();
       if (animatedHost) {
@@ -2736,15 +2807,12 @@ export class ReaderController {
     );
   }
 
-  /** Returns the footer page number for this chapter page, using book-wide
-   * pagination when available and the local page number otherwise. */
+  /** Unknown global positions stay blank instead of masquerading as local page numbers. */
   private furniturePageNumber(
     spineIndex: number,
     pageIndex: number,
-    pageCount: number,
   ): number | undefined {
-    const bookPageIndex = this.bookPagination?.positionFor(spineIndex, pageIndex).currentPage;
-    return bookPageIndex ?? (pageCount > 0 ? pageIndex + 1 : undefined);
+    return this.bookPagination?.positionFor(spineIndex, pageIndex).currentPage;
   }
 
   /** Builds the incoming page in a new host and plays a page-turn
@@ -2758,6 +2826,7 @@ export class ReaderController {
     if (!this.containerEl) {
       return undefined;
     }
+    if (this.pageTurnAnimator.shouldSkipPageTurnAnimation()) return undefined;
     const newHost = await this.prepareIncomingPage(oldHost, direction, operation);
     operation.check();
     if (!newHost) {
@@ -2787,12 +2856,10 @@ export class ReaderController {
       outgoingPage: this.furniturePageNumber(
         this.spineIndex,
         oldHost.currentPageIndex,
-        oldHost.pageCount,
       ),
       incomingPage: this.furniturePageNumber(
         this.spineIndex,
         newHost.currentPageIndex,
-        newHost.pageCount,
       ),
     };
   }
@@ -2832,25 +2899,21 @@ export class ReaderController {
     const outgoingPrimary = this.furniturePageNumber(
       oldHost.positions.first.spineIndex,
       oldHost.positions.first.pageIndex,
-      oldHost.pageCount,
     );
     const outgoingSecondary = oldHost.positions.second
       ? this.furniturePageNumber(
           oldHost.positions.second.spineIndex,
           oldHost.positions.second.pageIndex,
-          oldHost.pageCount,
         )
       : undefined;
     const incomingPrimary = this.furniturePageNumber(
       newHost.positions.first.spineIndex,
       newHost.positions.first.pageIndex,
-      newHost.pageCount,
     );
     const incomingSecondary = newHost.positions.second
       ? this.furniturePageNumber(
           newHost.positions.second.spineIndex,
           newHost.positions.second.pageIndex,
-          newHost.pageCount,
         )
       : undefined;
     return {
@@ -2896,28 +2959,12 @@ export class ReaderController {
     // renders page 0 before `goToPageIndex()` moves it to the real target.
     // Use `opacity`, not `visibility`, so pagination measurement still works.
     newEl.style.opacity = "0";
+    newEl.style.pointerEvents = "none";
     containerEl.appendChild(newEl);
 
-    await newHost.open(this.contentLoader, this.resolver, this.spineIndex, this.disclosures);
+    await newHost.open(this.contentLoader, this.resolver, this.spineIndex, this.disclosures,
+      (doc) => this.configureSpreadDocument(doc), undefined, oldHost.paginationSnapshot());
     operation.check();
-    const newDoc = newHost.element.contentDocument;
-    if (newDoc) {
-      ReadingTheme.applyPageTheme(newDoc, this.pageTheme);
-      if (
-        this.fontScale !== 1 ||
-        this.fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
-        this.lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
-        this.letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
-        this.contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
-      ) {
-        ReadingTheme.applyFontScale(newDoc, this.fontScale);
-        ReadingTheme.applyFontFamily(newDoc, this.fontFamily);
-        ReadingTheme.applyLineSpacing(newDoc, this.lineSpacing);
-        ReadingTheme.applyLetterSpacing(newDoc, this.letterSpacing);
-        ReadingTheme.applyContentWidth(newDoc, this.contentWidthEm);
-        newHost.relayout(this.width, this.height);
-      }
-    }
     newHost.goToPageIndex(targetIndex);
     newEl.style.opacity = "";
     newEl.title = oldHost.element.title;
@@ -2975,6 +3022,11 @@ export class ReaderController {
 
   private spreadPageCount(spineIndex: number, operation: ReaderOperation): Promise<number> {
     operation.check();
+    if (this.host instanceof SpreadPaginatedHost && this.width === this.appliedWidth &&
+      this.height === this.appliedHeight && !this.isApplyingLayout) {
+      const visibleCount = this.host.pageCountFor(spineIndex);
+      if (visibleCount !== undefined) return Promise.resolve(visibleCount);
+    }
     let count = this.spreadCounts.get(spineIndex);
     if (!count) {
       count = this.measureSpreadChapter(spineIndex, operation);
@@ -2996,10 +3048,9 @@ export class ReaderController {
     const staging = this.stageHiddenHostElement(probe.element);
     this.ownCandidate(operation, probe, staging);
     try {
-      await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+      await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
+        (doc) => this.configureSpreadDocument(doc));
       operation.check();
-      this.configureSpreadDocument(probe.element.contentDocument!);
-      probe.relayout(width, this.height, undefined, false);
       return probe.pageCount;
     } finally {
       probe.dispose();
@@ -3020,6 +3071,7 @@ export class ReaderController {
       left: "0",
       zIndex: "1",
       opacity: "0",
+      pointerEvents: "none",
     });
     this.containerEl!.appendChild(host.element);
     this.ownCandidate(operation, host);
@@ -3030,6 +3082,9 @@ export class ReaderController {
         spread,
         (doc) => this.configureSpreadDocument(doc),
         this.disclosures,
+        (spineIndex) => this.host instanceof SpreadPaginatedHost
+          ? this.host.paginationSnapshotFor(spineIndex)
+          : undefined,
       );
       operation.check();
       host.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(host.primarySpineIndex)}`);
@@ -3063,11 +3118,10 @@ export class ReaderController {
       const staging = this.stageHiddenHostElement(probe.element);
       this.ownCandidate(operation, probe, staging);
       try {
-        await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+        await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
+          (doc) => this.configureSpreadDocument(doc));
         operation.check();
         const doc = probe.element.contentDocument!;
-        this.configureSpreadDocument(doc);
-        probe.relayout(width, this.height, undefined, false);
         if (options.bridgeCfi) {
           const resolved = this.locatorResolver.resolveInDocument(
             new Locator(options.bridgeCfi),
@@ -3481,7 +3535,7 @@ export class ReaderController {
     startY: number,
     doc: Document,
   ): void {
-    if (this.isTurningPage || this.isLoadInFlight || this.isApplyingLayout) return;
+    if (this.isApplyingLayout) return;
     const deltaX = Math.abs(upEvent.clientX - startX);
     const deltaY = Math.abs(upEvent.clientY - startY);
     if (
@@ -3791,6 +3845,7 @@ export class ReaderController {
       const point = { spineIndex: nextSpineIndex, node: destination.document.body, offset: 0 };
       this.accessibility.focusReadingPosition(destination.document, point);
       this.nativeReading.retain(point);
+      this.publishFixedReadingPosition();
       return;
     }
     await this.openSpineItem(nextSpineIndex);
@@ -3833,6 +3888,13 @@ export class ReaderController {
       const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
+        if (this.viewMode === "scroll" &&
+          this.pkg.spine[resolved.spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) !== "pre-paginated") {
+          const bridgeCfi = this.bookPagination?.pageStartCfi(resolved.spineIndex, resolved.pageIndexInItem);
+          if (!bridgeCfi) throw new Error("The requested page has no measured reading position.");
+          await this.openSpineItem(resolved.spineIndex, { ...options, bridgeCfi });
+          return;
+        }
         await this.openSpineItem(resolved.spineIndex, {
           ...options,
           landOnPageIndex: resolved.pageIndexInItem,
@@ -4013,7 +4075,6 @@ export class ReaderController {
       const oldPrimary = this.furniturePageNumber(
         oldSpineIndex,
         oldSpread.pageIndex,
-        oldSpread.pageCount,
       );
       const oldSecondary =
         oldSpread.secondPageIndex !== undefined && oldPrimary !== undefined
@@ -4022,7 +4083,6 @@ export class ReaderController {
       const newPrimary = this.furniturePageNumber(
         newSpineIndex,
         newSpread.pageIndex,
-        newSpread.pageCount,
       );
       const newSecondary =
         newSpread.secondPageIndex !== undefined && newPrimary !== undefined
@@ -4042,12 +4102,10 @@ export class ReaderController {
       const oldNumber = this.furniturePageNumber(
         oldSpineIndex,
         oldSingle.currentPageIndex,
-        oldSingle.pageCount,
       );
       const newNumber = this.furniturePageNumber(
         newSpineIndex,
         newSingle.currentPageIndex,
-        newSingle.pageCount,
       );
       outgoingOverlay = this.pageTurnAnimator.buildTurnFurnitureOverlay(oldEl, [
         {
@@ -4193,6 +4251,7 @@ export class ReaderController {
     }
 
     const requestedSpineIndex = spineIndex;
+    if (options.animateDirection === undefined) this.queuedTurn = undefined;
     this.navigationSpotlight.clear();
     this.gestureCleanup?.();
     if (this.operations.current) this.spreadCounts.clear();
@@ -4278,8 +4337,13 @@ export class ReaderController {
           createdHost = host;
           stagingEl = this.stageHiddenHostElement(host.element);
           this.ownCandidate(operation, host, stagingEl);
-          await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
-          applyDisplaySettings = true;
+          if (host instanceof PaginatedContentHost) {
+            await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
+              (doc) => this.configureSpreadDocument(doc));
+          } else {
+            await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
+            applyDisplaySettings = true;
+          }
         }
       } catch (err) {
         // Removing `stagingEl` is safe because nothing is reparented;
@@ -4402,7 +4466,14 @@ export class ReaderController {
           );
           this.host.goToPageIndex(targetIndex);
         }
-        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
+        if (this.isFixedLayoutHost(newHost)) {
+          const doc = this.contentDocumentViews().find(view => view.spineIndex === requestedSpineIndex)?.document;
+          if (doc) {
+            readingPosition = { node: doc.body, offset: 0 };
+            this.nativeReading.retain({ ...readingPosition, spineIndex: requestedSpineIndex });
+          }
+        }
+        this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex, readingPosition);
       }
       if (options.bridgeCfi) {
         const view = this.contentDocumentViews().find(view => view.spineIndex === requestedSpineIndex);
@@ -4438,6 +4509,7 @@ export class ReaderController {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (this.operations.owns(operation)) {
+        this.queuedTurn = undefined;
         // A failed replacement leaves the previous host visible; only
         // the very first load can leave the reader with nothing shown.
         this.setNotification(message, this.host ? "transient" : "blocking");
@@ -4463,6 +4535,7 @@ export class ReaderController {
         this.notify();
 
         this.applyPendingLayout();
+        this.drainQueuedTurn();
       }
     }
   }
@@ -4523,6 +4596,7 @@ export class ReaderController {
     this.isLoadInFlight = false;
     this.isLoading = false;
     this.isTurningPage = false;
+    this.queuedTurn = undefined;
     this.isAnimatingPageTurn = false;
     this.isApplyingLayout = false;
     this.accessibility.detach();

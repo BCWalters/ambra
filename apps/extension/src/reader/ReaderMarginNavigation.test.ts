@@ -47,9 +47,16 @@ describe("ReaderController margin taps", () => {
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
   });
 
-  it.each(["isTurningPage", "isLoadInFlight", "isApplyingLayout"])("ignores taps during %s", flag => {
+  it.each(["isTurningPage", "isLoadInFlight"])("forwards valid taps to the bounded turn queue during %s", flag => {
     const { controller, tap } = setup();
     controller[flag] = true;
+    tap(780);
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it("ignores taps while applying a new layout", () => {
+    const { controller, tap } = setup();
+    controller.isApplyingLayout = true;
     tap(780);
     expect(controller.turnPage).not.toHaveBeenCalled();
   });

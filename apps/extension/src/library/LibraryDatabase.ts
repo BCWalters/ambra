@@ -6,6 +6,7 @@ import { DEFAULT_BOOK_READING_SETTINGS, DEFAULT_GLOBAL_READING_SETTINGS } from "
 import type { BookReadingSettings, GlobalReadingSettings } from "./ReadingSettings.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
+import { createLibraryCover } from "./LibraryCover.js";
 
 /** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
  * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
@@ -157,6 +158,16 @@ export interface Highlight {
 interface BlobRecord {
   readonly id: string;
   readonly blob: Blob;
+}
+
+interface CoverRecord extends BlobRecord {
+  /** Optional, lazily generated derived data: no schema upgrade or original replacement. */
+  readonly libraryCoverV1?: Blob | "original";
+}
+
+export interface LibraryCoverBlobs {
+  readonly original: Blob;
+  readonly card: Blob | undefined;
 }
 
 /** App-global preference rows, retained for compatibility with existing data.
@@ -456,6 +467,51 @@ export class LibraryDatabase {
 
   public async getCoverBlob(id: string): Promise<Blob | undefined> {
     return (await this.get<BlobRecord>(COVERS_STORE, id))?.blob;
+  }
+
+  public async getLibraryCoverBlobs(id: string): Promise<LibraryCoverBlobs | undefined> {
+    const record = await this.get<CoverRecord>(COVERS_STORE, id);
+    if (!record) return undefined;
+    if (record.libraryCoverV1 !== undefined) {
+      return { original: record.blob, card: record.libraryCoverV1 === "original" ? record.blob : record.libraryCoverV1 };
+    }
+    const card = await createLibraryCover(record.blob);
+    // A failed decode/encode can be transient. Cache the title fallback only
+    // in the mounted LibrarySession, allowing another visit to retry.
+    if (!card) return { original: record.blob, card: undefined };
+    // Decoding cannot keep an IndexedDB transaction alive. Reread before
+    // writing so a concurrent deletion is never resurrected.
+    return this.transaction<LibraryCoverBlobs | undefined>(
+      [COVERS_STORE], "readwrite", "Failed to save the library cover.",
+      (tx, setResult) => {
+        const store = tx.objectStore(COVERS_STORE);
+        const request = store.get(id);
+        request.onsuccess = () => {
+          const current = request.result as CoverRecord | undefined;
+          if (!current) {
+            setResult(undefined);
+            return;
+          }
+          const cached = current.libraryCoverV1 !== undefined
+            ? current.libraryCoverV1
+            : card === record.blob ? "original" : card;
+          if (current.libraryCoverV1 === undefined) {
+            store.put({ ...current, libraryCoverV1: cached } satisfies CoverRecord);
+          }
+          setResult({ original: current.blob, card: cached === "original" ? current.blob : cached });
+        };
+      },
+    ).catch(async (error: unknown) => {
+      console.warn("Ambra could not save a library cover thumbnail. A temporary cover will be used when available.", error);
+      // A decorative cache must not block reading on quota-full/read-only
+      // storage. Reread after rollback so a concurrent deletion still wins;
+      // genuine read failures continue through the existing Library error UI.
+      const current = await this.get<CoverRecord>(COVERS_STORE, id);
+      return current ? {
+        original: current.blob,
+        card: current.libraryCoverV1 === "original" ? current.blob : current.libraryCoverV1 ?? card,
+      } : undefined;
+    });
   }
 
   /** Records `cfi` as `bookId`'s current reading position, overwriting
