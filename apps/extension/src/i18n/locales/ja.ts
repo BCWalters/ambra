@@ -373,7 +373,7 @@ export const ja: StringCatalog = {
   "settings.scroll": "スクロール",
   "settings.slide": "スライド",
   "text.characterSpacing": "文字間隔",
-  "text.columnWidth": "列幅",
+  "text.columnWidth": "ページ幅",
   "text.font": "フォント",
   "text.fontSizeAriaLabel": "フォントサイズ",
   "text.lineSpacing": "行間",

@@ -5,6 +5,70 @@ import { exposeReaderController } from "../reader-controller.js";
 
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 
+test("settings flyouts separate arrow focus from selection and restore focus one menu level at a time", async () => {
+  const { context, readerPage: page } = await launchReader(book);
+  try {
+    const trigger = page.getByRole("button", { name: "Settings", exact: true });
+    await trigger.focus();
+    await trigger.press("Enter");
+    const menu = page.getByRole("menu", { name: "Settings", exact: true });
+    const themeParent = menu.getByRole("menuitem", { name: /^Page theme/ });
+    await themeParent.press("ArrowRight");
+    const theme = page.getByRole("menu", { name: /^Page theme/ });
+    const white = theme.getByRole("menuitemradio", { name: "White", exact: true });
+    const sepia = theme.getByRole("menuitemradio", { name: "Sepia", exact: true });
+    const dark = theme.getByRole("menuitemradio", { name: "Dark", exact: true });
+    await expect(white).toHaveAttribute("aria-checked", "true");
+    await white.focus();
+    for (const [previous, next] of [[white, sepia], [sepia, dark]] as const) {
+      await previous.press("ArrowDown");
+      await expect(next).toBeFocused();
+      await expect(previous).toHaveAttribute("aria-checked", "true");
+      await expect(next).toHaveAttribute("aria-checked", "false");
+      await next.press("Enter");
+      await expect(next).toHaveAttribute("aria-checked", "true");
+      await expect(page.getByRole("menu")).toHaveCount(2);
+    }
+    await dark.press("Escape");
+    await expect(themeParent).toBeFocused();
+    await expect(themeParent).toContainText("Dark");
+    const modeParent = menu.getByRole("menuitem", { name: /^Reading mode/ });
+    await modeParent.press("ArrowRight");
+    const mode = page.getByRole("menu", { name: /^Reading mode/ });
+    const paginated = mode.getByRole("menuitemradio", { name: "Paginated", exact: true });
+    const scroll = mode.getByRole("menuitemradio", { name: "Scroll", exact: true });
+    await paginated.focus();
+    await paginated.press("ArrowDown");
+    await expect(scroll).toBeFocused();
+    await expect(paginated).toHaveAttribute("aria-checked", "true");
+    await scroll.press("Space");
+    await expect(scroll).toHaveAttribute("aria-checked", "true");
+    await expect(menu.getByRole("menuitem", { name: /^Page turn/ })).toBeDisabled();
+    await scroll.press("ArrowUp");
+    await expect(paginated).toBeFocused();
+    await paginated.press("Enter");
+    await expect(paginated).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menu")).toHaveCount(2);
+    await paginated.press("Escape");
+    await expect(modeParent).toBeFocused();
+    await expect(modeParent).toContainText("Paginated");
+    await modeParent.press("Tab");
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole("button", { name: "Book details", exact: true })).toBeFocused();
+    await trigger.focus();
+    await trigger.press("Enter");
+    await themeParent.press("ArrowRight");
+    await expect(dark).toHaveAttribute("aria-checked", "true");
+    await dark.press("Escape");
+    await expect(themeParent).toBeFocused();
+    await themeParent.press("Escape");
+    await expect(trigger).toBeFocused();
+    await expect(menu).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});
+
 async function settled(page: Page) {
   await page.waitForFunction(() => {
     const c = Reflect.get(window, "__readerController");
@@ -96,7 +160,7 @@ for (const { width, mode } of [
         { name: "Font size", property: "fontScale", submenu: "Text" },
         { name: "Line spacing", property: "lineSpacing", submenu: "Text" },
         { name: "Character spacing", property: "letterSpacing", submenu: "Text" },
-        { name: "Column width", property: "contentWidthEm", submenu: "Page" },
+        { name: "Page width", property: "contentWidthEm", submenu: "Page" },
       ]) {
         await page.getByRole("button", { name: "Text and page options", exact: true }).click();
         await page.getByRole("menuitem", { name: submenu, exact: true }).press("ArrowRight");
@@ -156,6 +220,7 @@ test("font, responsive columns and reading mode preserve shell focus, while expl
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("menuitem", { name: /^Reading mode/ }).press("ArrowRight");
     for (const name of ["Scroll", "Paginated"]) {
       await rememberPosition(page);
       const mode = page.getByRole("menuitemradio", { name, exact: true });
@@ -165,6 +230,7 @@ test("font, responsive columns and reading mode preserve shell focus, while expl
       await expect(mode).toBeFocused();
       await expectPositionVisible(page);
     }
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     const settings = page.getByRole("button", { name: "Settings", exact: true });
     await settings.focus();

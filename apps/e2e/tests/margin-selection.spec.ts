@@ -221,7 +221,10 @@ test("keyboard completion preserves a visible DOM range in paginated and scroll 
       if (mode === "scroll") {
         await page.mouse.move(10, 2);
         await page.getByRole("button", { name: "Settings", exact: true }).click();
+        await page.getByRole("menuitem", { name: /^Reading mode/ }).click();
         await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
+        await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+        await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
         await expect.poll(() => page.evaluate(() =>
           Reflect.get(window, "__readerController").snapshot().viewMode)).toBe("scroll");

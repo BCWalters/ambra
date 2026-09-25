@@ -98,9 +98,11 @@ for (const width of [760, 1400]) {
       try {
         if (style !== "slide") {
           await page.getByRole("button", { name: "Settings" }).click();
+          await page.getByRole("menuitem", { name: /^Page turn/ }).click();
           await page
             .getByRole("menuitemradio", { name: style === "rotate" ? /Page flip/ : /Film strip/ })
             .click();
+          await page.keyboard.press("Escape");
           await page.keyboard.press("Escape");
         }
         await page.locator("iframe").first().evaluate(frame => {

@@ -43,13 +43,15 @@ test("Always show one page retains focus and location, respects width, and survi
     const trigger = page.getByRole("button", { name: "Text and page options", exact: true });
     await trigger.click();
     await page.getByRole("menuitem", { name: "Page", exact: true }).press("ArrowRight");
-    expect(await page.getByRole("combobox", { name: "Page theme", exact: true }).count()).toBe(0);
-    const toggle = page.getByRole("menuitemcheckbox", { name: "Always show one page", exact: true });
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(await page.getByRole("menuitem", { name: /^Page theme/ }).count()).toBe(0);
+    const toggle = page.getByRole("switch", { name: "Always show one page", exact: true });
+    await expect(toggle).not.toBeChecked();
+    await page.screenshot({ path: test.info().outputPath("single-page-switch-off.png"), animations: "disabled" });
     await toggle.press("Space");
     await settled(page);
     await expect(toggle).toBeFocused();
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(toggle).toBeChecked();
+    await page.screenshot({ path: test.info().outputPath("single-page-switch-on.png"), animations: "disabled" });
     expect(await page.evaluate(() => {
       const c = Reflect.get(window, "__readerController");
       const point = c.nativeReading.current();

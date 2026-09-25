@@ -375,7 +375,7 @@ export const es: StringCatalog = {
   "text.lineSpacing": "Interlineado",
   "text.characterSpacing": "Espaciado entre caracteres",
   "text.font": "Fuente",
-  "text.columnWidth": "Ancho de columna",
+  "text.columnWidth": "Ancho de página",
   "text.pageStyle": "Tema de la página",
   "text.alwaysShowOnePage": "Mostrar siempre una sola página",
   "fontFamily.sansSerif": "Sans Serif",

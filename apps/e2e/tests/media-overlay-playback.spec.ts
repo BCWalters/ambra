@@ -365,7 +365,10 @@ test("scroll mode native wheel browsing keeps audio playing and Return restores 
   try {
     await page.mouse.move(350, 2);
     await button(page, "Settings").click();
+    await page.getByRole("menuitem", { name: /^Reading mode/ }).click();
     await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(position(page)).toHaveCount(0);
     await listen(page);

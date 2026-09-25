@@ -32,7 +32,7 @@ test("books keep independent Text options on reopen; newly imported books use bu
     await first.getByRole("menuitemradio", { name: "Georgia", exact: true }).click();
     await first.keyboard.press("Escape");
     await first.getByRole("menuitem", { name: "Page", exact: true }).press("ArrowRight");
-    await first.getByRole("menuitemcheckbox", { name: "Always show one page", exact: true }).click();
+    await first.getByRole("switch", { name: "Always show one page", exact: true }).click();
     await first.keyboard.press("Escape");
     await first.keyboard.press("Escape");
     await first.evaluate(async () => {
@@ -103,14 +103,24 @@ test("Library settings fit at 360px and propagate live both ways, including lang
     });
     expect(fits).toBe(true);
     await settingsButton.click();
+    await library.getByRole("menuitem", { name: /^Reader theme/ }).click();
     await library.getByRole("menuitemradio", { name: "Blue", exact: true }).click();
+    await library.keyboard.press("Escape");
+    await library.getByRole("menuitem", { name: /^Page turn/ }).click();
     await library.getByRole("menuitemradio", { name: "Film strip", exact: true }).click();
-    await library.getByRole("combobox", { name: "Page theme", exact: true }).selectOption("sepia");
+    await library.keyboard.press("Escape");
+    await library.getByRole("menuitem", { name: /^Page theme/ }).click();
+    await library.getByRole("menuitemradio", { name: "Sepia", exact: true }).click();
+    await expect(library.getByRole("menuitemradio", { name: "Sepia", exact: true })).toHaveAttribute("aria-checked", "true");
+    await library.keyboard.press("Escape");
     const brightness = library.getByRole("slider", { name: "Brightness", exact: true });
     await brightness.focus();
     await brightness.press("ArrowLeft");
+    await library.getByRole("menuitem", { name: /^Reading mode/ }).click();
     await library.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
-    await expect(library.getByRole("menuitemradio", { name: "Slide", exact: true })).toBeDisabled();
+    await expect(library.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+    await library.keyboard.press("Escape");
+    await expect(library.getByRole("menuitem", { name: /^Page turn/ })).toBeDisabled();
     await expect.poll(() => reader.evaluate(() => {
       const s = Reflect.get(window, "__readerController").snapshot();
       return { chromeTheme: s.chromeTheme, viewMode: s.viewMode, brightness: s.brightness, animation: s.pageTurnAnimationStyle, pageTheme: s.pageTheme };
@@ -127,8 +137,11 @@ test("Library settings fit at 360px and propagate live both ways, including lang
       await c.setViewMode("paginated");
     });
     await library.getByRole("button", { name: "Paramètres", exact: true }).click();
-    await expect(library.getByRole("menuitemradio", { name: "Vert", exact: true })).toHaveAttribute("aria-checked", "true");
+    await library.getByRole("menuitem", { name: /Paginé/ }).click();
     await expect(library.getByRole("menuitemradio", { name: "Paginé", exact: true })).toHaveAttribute("aria-checked", "true");
+    await library.keyboard.press("Escape");
+    await library.getByRole("menuitem", { name: /Vert/ }).click();
+    await expect(library.getByRole("menuitemradio", { name: "Vert", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(library.getByRole("alert")).toHaveCount(0);
     await expect(reader.getByRole("alert")).toHaveCount(0);
   } finally {

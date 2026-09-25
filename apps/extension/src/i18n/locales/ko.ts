@@ -270,7 +270,7 @@ export const ko: StringCatalog = {
   "text.lineSpacing": "줄 간격",
   "text.characterSpacing": "자간",
   "text.font": "글꼴",
-  "text.columnWidth": "열 너비",
+  "text.columnWidth": "페이지 너비",
   "text.pageStyle": "페이지 테마",
   "text.alwaysShowOnePage": "항상 한 페이지만 표시",
   "fontFamily.sansSerif": "산세리프",

@@ -84,7 +84,10 @@ for (const mode of ["paginated", "scroll"]) {
       await page.emulateMedia({ reducedMotion: "reduce" });
       if (mode === "scroll") {
         await page.getByRole("button", { name: "Settings", exact: true }).click();
+        await page.getByRole("menuitem", { name: /^Reading mode/ }).click();
         await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
+        await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+        await page.keyboard.press("Escape");
         await expect(page.getByRole("slider", { name: "Position in book" })).toHaveCount(0);
       }
       await page.evaluate(() => document.querySelector("iframe")!.contentWindow!.focus());
