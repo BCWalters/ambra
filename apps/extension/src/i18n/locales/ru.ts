@@ -203,6 +203,7 @@ export const ru: StringCatalog = {
   "search.closeSearchPanel": "Закрыть панель поиска",
   "scrubber.positionInBook": "Позиция в книге",
   "scrubber.seeking": "Переход к позиции…",
+  "scrubber.bookmarked": "В закладках",
   "scrubber.pageOfTotal": "Страница {current} из {total}",
   "scrubber.chapterOfTotal": "Глава {current} из {total}",
   "scrubber.pagesLeftInChapterOne": "Осталась 1 страница в этой главе",

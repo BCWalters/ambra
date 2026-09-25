@@ -4,6 +4,7 @@ import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
+const longBook = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
 
 async function measured(page: Page) {
   await page.waitForFunction(() => {
@@ -13,6 +14,178 @@ async function measured(page: Page) {
       !controller.isTurningPage && !controller.isApplyingLayout && !controller.pendingLayout;
   });
 }
+
+async function expectFlagGeometry(page: Page) {
+  const geometry = await page.evaluate(() => {
+    const slider = document.querySelector('[role="slider"][aria-label="Position in book"]')!;
+    const track = slider.getBoundingClientRect();
+    const thumb = slider.querySelector("[data-scrubber-thumb]")!.getBoundingClientRect();
+    const snapshot = Reflect.get(window, "__readerController").snapshot();
+    const fractions = [...new Set<number>(snapshot.bookmarkProgress.map(
+      (marker: { fraction: number }) => marker.fraction,
+    ))];
+    return [...slider.querySelectorAll("[data-bookmark-marker]")].map((marker, index) => {
+      const rect = marker.getBoundingClientRect();
+      const fraction = fractions[index]!;
+      return {
+        width: rect.width, height: rect.height,
+        gap: thumb.top - rect.bottom,
+        left: rect.left, right: rect.right, viewport: innerWidth,
+        error: Math.abs(rect.left + rect.width / 2 - track.left - track.width *
+          (snapshot.pageProgressionDirection === "rtl" ? 1 - fraction : fraction)),
+        pointerEvents: getComputedStyle(marker).pointerEvents,
+      };
+    });
+  });
+  expect(geometry.length).toBeGreaterThan(0);
+  for (const mark of geometry) {
+    expect(mark.width).toBe(18);
+    expect(mark.height).toBe(18);
+    expect(mark.gap).toBeGreaterThanOrEqual(2);
+    expect(mark.error).toBeLessThan(1);
+    expect(mark.left).toBeGreaterThanOrEqual(0);
+    expect(mark.right).toBeLessThanOrEqual(mark.viewport);
+    expect(mark.pointerEvents).toBe("none");
+  }
+}
+
+for (const width of [320, 1400]) {
+  test(`${width}px: current and nearby bookmark flags stay distinct from the thumb (#214)`, async ({ browserName }, info) => {
+    test.setTimeout(180_000);
+    const { context, readerPage: page } = await launchReader(longBook, {
+      viewport: { width, height: 900 },
+    });
+    try {
+      await exposeReaderController(page);
+      await measured(page);
+      await page.evaluate(async () => {
+        const controller = Reflect.get(window, "__readerController");
+        await controller.seekToFraction(0.5);
+        await controller.toggleBookmark();
+        await controller.turnPage(1);
+        await controller.toggleBookmark();
+      });
+      await measured(page);
+      await page.mouse.move(10, 2);
+      const slider = page.getByRole("slider", { name: "Position in book" });
+      await slider.focus();
+      await expect(page.locator("[data-bookmark-marker]")).toHaveCount(2);
+      await expect(slider).toHaveAccessibleDescription("Bookmarks: 2");
+      await expect(slider).toHaveAttribute("aria-valuetext", /Bookmarked$/);
+      await expectFlagGeometry(page);
+      await page.screenshot({ path: info.outputPath(`overlap-${width}-${browserName}.png`) });
+      // A dense cluster still represents every saved bookmark, not just one flag.
+      await page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        const snapshot = controller.snapshot.bind(controller);
+        const state = snapshot();
+        const clustered = {
+          ...state,
+          bookmarks: [...state.bookmarks, { ...state.bookmarks[0], id: "cluster-copy" }],
+          bookmarkProgress: [
+            ...state.bookmarkProgress,
+            { ...state.bookmarkProgress[0], id: "cluster-copy" },
+          ],
+        };
+        controller.snapshot = () => clustered;
+        Reflect.set(window, "__restoreBookmarkSnapshot", () => { controller.snapshot = snapshot; });
+        controller.notify();
+      });
+      await expect(slider).toHaveAccessibleDescription("Bookmarks: 3");
+      await expect(page.locator("[data-bookmark-marker]")).toHaveCount(2);
+      await expectFlagGeometry(page);
+      await page.screenshot({ path: info.outputPath(`cluster-${width}.png`) });
+      await page.evaluate(async () => {
+        Reflect.get(window, "__restoreBookmarkSnapshot")();
+        const controller = Reflect.get(window, "__readerController");
+        await controller.seekToFraction(1);
+        await controller.toggleBookmark();
+      });
+      await measured(page);
+      await slider.focus();
+      await expectFlagGeometry(page);
+      await expect(slider).toHaveAttribute("aria-valuetext", /Bookmarked$/);
+      const track = (await slider.boundingBox())!;
+      await page.mouse.move(track.x + track.width - 0.1, track.y + track.height - 10);
+      await page.mouse.down();
+      await expect(page.locator("[data-bookmark-status]")).toHaveText("Bookmarked");
+      const popup = (await page.locator("[data-scrubber-preview]").boundingBox())!;
+      expect(popup.x).toBeGreaterThanOrEqual(7);
+      expect(popup.x + popup.width).toBeLessThanOrEqual(width - 7);
+      await page.screenshot({ path: info.outputPath(`last-page-${width}.png`) });
+      await page.mouse.up();
+      await measured(page);
+      await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+      await expectFlagGeometry(page);
+      await expect(slider.locator("..")).toHaveCSS("transition-duration", "0s");
+      const flag = page.locator("[data-bookmark-marker]").last();
+      await expect(flag).toHaveCSS("color", "rgb(0, 0, 0)");
+      await page.screenshot({ path: info.outputPath(`forced-colors-${width}.png`) });
+      // Stress subpixel spacing without generating/paginating a 20,000-page EPUB.
+      await page.emulateMedia({ forcedColors: "none" });
+      await page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        const state = controller.snapshot();
+        const endOfLongBook = {
+          ...state,
+          bookPageIndex: 20_000,
+          bookPageCount: 20_000,
+          bookmarkProgress: [19_998, 19_999, 20_000].map(current => ({
+            id: String(current), fraction: current / 20_000,
+          })),
+        };
+        controller.snapshot = () => endOfLongBook;
+        controller.notify();
+      });
+      await expect(slider).toHaveAttribute("aria-valuetext", /Page 20000 of 20000.*Bookmarked$/);
+      await expect(page.locator("[data-bookmark-marker]")).toHaveCount(3);
+      await expectFlagGeometry(page);
+      await page.screenshot({ path: info.outputPath(`long-book-last-page-${width}.png`) });
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("320px RTL: bookmark flags retain true positions at both edges (#214)", async ({ browserName }, info) => {
+  const rtlBook = fileURLToPath(new URL("../fixtures/fxl-spread-rtl.epub", import.meta.url));
+  const { context, readerPage: page } = await launchReader(rtlBook, {
+    viewport: { width: 320, height: 800 },
+  });
+  try {
+    await exposeReaderController(page);
+    await measured(page);
+    await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.seekToFraction(0);
+      await controller.toggleBookmark();
+      await controller.seekToFraction(1);
+      await controller.toggleBookmark();
+    });
+    await measured(page);
+    const slider = page.getByRole("slider", { name: "Position in book" });
+    await slider.focus();
+    await expect(page.locator("[data-bookmark-marker]")).toHaveCount(2);
+    await expect(slider).toHaveAttribute("aria-valuetext", /Bookmarked$/);
+    await expectFlagGeometry(page);
+    const track = (await slider.boundingBox())!;
+    await page.mouse.move(track.x + 0.1, track.y + track.height - 10);
+    await page.mouse.down();
+    await expect(page.locator("[data-bookmark-status]")).toHaveText("Bookmarked");
+    const popup = (await page.locator("[data-scrubber-preview]").boundingBox())!;
+    expect(popup.x).toBeGreaterThanOrEqual(7);
+    expect(popup.x + popup.width).toBeLessThanOrEqual(313);
+    await page.screenshot({ path: info.outputPath(`rtl-left-edge-${browserName}.png`) });
+    await page.mouse.up();
+    await measured(page);
+    await slider.press("Home");
+    await measured(page);
+    await expectFlagGeometry(page);
+    await page.screenshot({ path: info.outputPath("rtl-first-page.png") });
+  } finally {
+    await context.close();
+  }
+});
 
 async function toggleBookmark(page: Page, name: string) {
   await page.mouse.move(10, 2);

@@ -203,6 +203,7 @@ export const es: StringCatalog = {
   "search.closeSearchPanel": "Cerrar panel de búsqueda",
   "scrubber.positionInBook": "Posición en el libro",
   "scrubber.seeking": "Abriendo posición…",
+  "scrubber.bookmarked": "Con marcador",
   "scrubber.pageOfTotal": "Página {current} de {total}",
   "scrubber.chapterOfTotal": "Capítulo {current} de {total}",
   "scrubber.pagesLeftInChapterOne": "Queda 1 página en este capítulo",

@@ -203,6 +203,7 @@ export const ko: StringCatalog = {
   "search.closeSearchPanel": "검색 패널 닫기",
   "scrubber.positionInBook": "책 속 위치",
   "scrubber.seeking": "위치로 이동 중…",
+  "scrubber.bookmarked": "북마크됨",
   "scrubber.pageOfTotal": "{total}페이지 중 {current}페이지",
   "scrubber.chapterOfTotal": "{total}장 중 {current}장",
   "scrubber.pagesLeftInChapterOne": "이 장에 1페이지 남음",
