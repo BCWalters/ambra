@@ -2321,6 +2321,9 @@ export class ReaderController {
     if (documents.length === 0) {
       return;
     }
+    const scrollPosition = options.relayout && host instanceof ScrollContentHost
+      ? (host === this.host ? this.nativeReading.retainedForShell() : undefined) ?? host.currentPosition()
+      : undefined;
     for (const doc of documents) {
       ReadingTheme.applyFontScale(doc, this.fontScale);
       ReadingTheme.applyFontFamily(doc, this.fontFamily);
@@ -2336,6 +2339,7 @@ export class ReaderController {
       host.relayout(this.width, this.height);
     } else if (host instanceof ScrollContentHost) {
       host.resize(this.width, this.height);
+      if (scrollPosition) host.restorePosition(scrollPosition.node, scrollPosition.offset ?? 0);
     }
   }
 

@@ -365,6 +365,13 @@ test("background estimates yield within a large chapter and immediately retire s
       const first = run(1);
       await firstStarted;
       const firstSignal = signal!;
+      const secondStarted = new Promise<void>(resolve => { started = resolve; });
+      const start = performance.now();
+      const second = run(1.1);
+      const retiredImmediately = firstSignal.aborted && hidden.children.length === 0;
+      // Iframe parsing/layout cannot yield; measure cooperative pagination and
+      // CFI generation separately from browser-controlled document startup.
+      await secondStarted;
       const gaps: number[] = [];
       let previous = performance.now();
       const heartbeat = setInterval(() => {
@@ -372,9 +379,6 @@ test("background estimates yield within a large chapter and immediately retire s
         gaps.push(now - previous);
         previous = now;
       }, 0);
-      const start = performance.now();
-      const second = run(1.1);
-      const retiredImmediately = firstSignal.aborted && hidden.children.length === 0;
       await Promise.all([first, second]);
       const elapsed = performance.now() - start;
       clearInterval(heartbeat);

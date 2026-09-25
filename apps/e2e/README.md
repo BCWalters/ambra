@@ -336,6 +336,7 @@ reflowable chapters; a saved scrolling preference does not hide the FXL scrubber
 Native moves into an already-visible companion update the scrubber immediately.
 Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
 than dropping the destination and opening the chapter's beginning.
+Typography changes retain that exact scrolling position before mutating styles.
 
 ```sh
 pnpm --filter @ambra/e2e run build:extension
@@ -388,6 +389,9 @@ complex inline content keeps prefix probes, with repeated line-top lookups cache
 Background estimates use cooperative measurement checkpoints, including line
 bisections, with an 8ms target work budget. Browser layout queries themselves
 cannot be interrupted, so this is not a hard main-thread latency guarantee.
+The heartbeat regression starts at incremental measurement, after the browser's
+non-cooperative iframe parsing/initial layout; whole-run elapsed time is recorded
+separately. It does not claim an upper bound on document-startup latency.
 Foreground pagination remains synchronous against its live document.
 `PaginatedContentHost.open` accepts a fifth `configure(document)` argument,
 applied after disclosure state and before font readiness/initial measurement,

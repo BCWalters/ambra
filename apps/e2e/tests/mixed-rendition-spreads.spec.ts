@@ -142,8 +142,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
     const directory = test.info().outputPath("mixed-rendition");
     fs.mkdirSync(directory, { recursive: true });
     const book = fixture(directory, direction, packageSpread);
-    const runtime = path.join(directory, "runtime");
-    fs.mkdirSync(runtime, { recursive: true });
+    const runtime = fs.mkdtempSync(path.join(os.tmpdir(), "ambra-mixed-"));
     const profile = path.join(directory, "profile");
     const context = await chromium.launchPersistentContext(profile, {
       headless: process.env.AMBRA_E2E_HEADLESS === "1",
@@ -244,6 +243,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       });
       await context.close();
       fs.rmSync(profile, { recursive: true, force: true });
+      fs.rmSync(runtime, { recursive: true, force: true });
     }
   });
 }
