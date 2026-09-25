@@ -75,6 +75,7 @@ jobs:
           spread-gutter-navigation.spec.ts
           outer-margin-navigation.spec.ts
           spread-resize-stability.spec.ts
+          reflowable-animation-handoff.spec.ts
           toolbar-startup.spec.ts
           reader-diagnostics.spec.ts
           inspector-docking.spec.ts
