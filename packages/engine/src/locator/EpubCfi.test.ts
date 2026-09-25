@@ -110,8 +110,18 @@ describe("EpubCfi.parse / toString round-trip", () => {
     expect(() => EpubCfi.parse("/6/4!/4/2")).toThrow(EpubCfiParseError);
   });
 
-  it("throws EpubCfiParseError when missing the '!' indirection", () => {
-    expect(() => EpubCfi.parse("epubcfi(/6/4/4/2)")).toThrow(EpubCfiParseError);
+  it("round-trips a spine itemref location without an empty indirection", () => {
+    const cfi = EpubCfi.parse("epubcfi(/6/4[page])");
+    expect(cfi.packageSteps.map(step => step.index)).toEqual([6, 4]);
+    expect(cfi.contentSteps).toEqual([]);
+    expect(cfi.characterOffset).toBeUndefined();
+    expect(cfi.toString()).toBe("epubcfi(/6/4[page])");
+  });
+
+  it("does not invent a character offset on a spine itemref", () => {
+    expect(() => EpubCfi.parse("epubcfi(/6/4:0)")).toThrow(EpubCfiParseError);
+    expect(() => new EpubCfi([new CfiStep(6), new CfiStep(4)], [], 0).toString())
+      .toThrow(EpubCfiParseError);
   });
 
   it("throws EpubCfiParseError for malformed step syntax", () => {
@@ -121,10 +131,15 @@ describe("EpubCfi.parse / toString round-trip", () => {
   it("throws EpubCfiParseError when package or content steps are empty", () => {
     expect(() => EpubCfi.parse("epubcfi(!/4/2)")).toThrow(EpubCfiParseError);
     expect(() => EpubCfi.parse("epubcfi(/6/4!)")).toThrow(EpubCfiParseError);
+    expect(() => EpubCfi.parse("epubcfi()")).toThrow(EpubCfiParseError);
   });
 });
 
 describe("EpubCfi.compare", () => {
+  it("orders a spine itemref before locations inside its content", () => {
+    expect(EpubCfi.compare("epubcfi(/6/4)", "epubcfi(/6/4!/2)")).toBeLessThan(0);
+    expect(EpubCfi.compare("epubcfi(/6/4!/2)", "epubcfi(/6/6)")).toBeLessThan(0);
+  });
   it("orders by spine item (package steps) first", () => {
     const earlierSpine = "epubcfi(/6/4!/4/2/1:50)";
     const laterSpine = "epubcfi(/6/6!/4/2/1:0)";
@@ -174,6 +189,12 @@ describe("EpubCfi.compare", () => {
 });
 
 describe("EpubCfi.joinRange / parseRange", () => {
+  it("rejects a whole-document itemref as a content-range endpoint", () => {
+    expect(() => EpubCfi.joinRange(
+      EpubCfi.parse("epubcfi(/6/4)"), EpubCfi.parse("epubcfi(/6/4!/2/1:3)"),
+    )).toThrow(EpubCfiParseError);
+  });
+
   it("joins two point CFIs sharing a content-step prefix into a range CFI", () => {
     const start = EpubCfi.parse("epubcfi(/6/4!/4/2/1:3)");
     const end = EpubCfi.parse("epubcfi(/6/4!/4/2/1:10)");

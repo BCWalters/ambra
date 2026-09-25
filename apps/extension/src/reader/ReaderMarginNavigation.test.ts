@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ReaderController } from "./ReaderController.js";
 import { outerMarginSide } from "./PageMargins.js";
+import { FixedSpreadHost } from "@ambra/engine";
 
 function setup(rtl = false) {
   const controller = Object.create(ReaderController.prototype);
@@ -66,6 +67,38 @@ describe("ReaderController margin taps", () => {
     const target = document.createElement(tag);
     if (tag === "a") target.setAttribute("href", "#chapter");
     tap(780, 780, target);
+    expect(controller.turnPage).not.toHaveBeenCalled();
+  });
+
+  it("allows fixed-layout raster artwork but not linked artwork", () => {
+    const { controller, tap } = setup();
+    controller.host = Object.create(FixedSpreadHost.prototype);
+    const image = document.createElement("img");
+    tap(780, 780, image);
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+    controller.turnPage.mockClear();
+    const link = document.createElement("a");
+    link.setAttribute("href", "#target");
+    link.append(image);
+    tap(780, 780, image);
+    expect(controller.turnPage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '<button><span>Button</span></button>',
+    '<label><input type="checkbox"/></label>',
+    '<select><option>Choice</option></select>',
+    '<textarea>Text</textarea>',
+    '<video controls></video>',
+    '<div role="slider"><span>Slider</span></div>',
+    '<div contenteditable="true"><span>Editor</span></div>',
+    '<svg><a href="#target"><rect/></a></svg>',
+  ])("preserves interactive fixed-layout elements: %s", markup => {
+    const { controller, tap } = setup();
+    controller.host = Object.create(FixedSpreadHost.prototype);
+    const container = document.createElement("div");
+    container.innerHTML = markup;
+    tap(780, 780, Array.from(container.querySelectorAll("*")).at(-1)!);
     expect(controller.turnPage).not.toHaveBeenCalled();
   });
 

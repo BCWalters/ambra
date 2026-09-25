@@ -142,7 +142,7 @@ export class NativeReadingPosition {
     const doc = point.node.ownerDocument;
     const element = point.node.nodeType === 1 ? point.node as Element : point.node.parentElement;
     if (!doc || !point.node.isConnected || point.node.getRootNode() !== doc ||
-      !doc.body?.contains(point.node) || !element || isReaderOwnedContent(point.node) ||
+      !(doc.body ?? doc.documentElement).contains(point.node) || !element || isReaderOwnedContent(point.node) ||
       element.closest("input, textarea, select, [contenteditable]") ||
       !this.views().some(view => view.document === doc && view.spineIndex === point.spineIndex) ||
       !this.available(doc, ignoreShellScope)) return false;

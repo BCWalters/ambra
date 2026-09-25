@@ -17,7 +17,7 @@ const DEFAULT_VIEWPORT: ViewportSize = { width: 1000, height: 1400 };
  * Production content host for one spine item in fixed-layout mode: owns
  * a `SandboxedContentHost`, loads/assembles a spine item into it at its
  * *intrinsic* page size (from the content document's own
- * `<meta name="viewport">`, falling back to the package-level
+ * `<meta name="viewport">` or SVG `viewBox`, falling back to the package-level
  * `rendition:viewport` property, then `DEFAULT_VIEWPORT`), and scales the
  * whole iframe via CSS `transform` to fit the available reader pane —
  * letterboxed and centered, aspect ratio always preserved. Unlike
@@ -126,12 +126,14 @@ export class FixedContentHost {
   }
 
   /** A fixed-layout spine item has no sub-page reading position to track
-   * (the whole item *is* one page) — this returns the start of its body,
+   * (the whole item *is* one page) — this returns the start of its body
+   * (or SVG document element),
    * purely so callers that generically persist/restore position (see
    * `resume-reading`) don't need to special-case fixed-layout books. */
   public currentPosition(): DomBreakPoint | undefined {
-    const body = this.sandboxedHost.element.contentDocument?.body;
-    return body ? { node: body, offset: 0 } : undefined;
+    const document = this.sandboxedHost.element.contentDocument;
+    const root = document?.body ?? document?.documentElement;
+    return root ? { node: root, offset: 0 } : undefined;
   }
 
   /** Applies an *externally computed* `scale` (rather than this host's
@@ -187,12 +189,30 @@ export class FixedContentHost {
     element.style.transform = `scale(${scale})`;
   }
 
-  /** Reads `<meta name="viewport" content="width=W, height=H">` from a
-   * fixed-layout content document — the near-universal, per-document
+  /** Reads an SVG root's viewBox/pixel dimensions or an XHTML
+   * `<meta name="viewport" content="width=W, height=H">` — the per-document
    * mechanism real fixed-layout EPUBs use to declare their intrinsic page
    * size (more specific than, and preferred over, the package-level
    * `rendition:viewport` fallback). */
   private static readContentViewport(document: Document): ViewportSize | undefined {
+    const root = document.documentElement;
+    if (root.namespaceURI === "http://www.w3.org/2000/svg" && root.localName === "svg") {
+      const viewBox = root.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number);
+      if (viewBox?.length === 4 && viewBox.every(Number.isFinite) && viewBox[2]! > 0 && viewBox[3]! > 0) {
+        return { width: viewBox[2]!, height: viewBox[3]! };
+      }
+      // Percentage dimensions need a containing viewport; they are not
+      // intrinsic pixel sizes (e.g. width="100%" must not become 100px).
+      const length = (name: string): number => {
+        const value = root.getAttribute(name)?.trim() ?? "";
+        return /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:px)?$/i.test(value)
+          ? Number(value.replace(/px$/i, "")) : NaN;
+      };
+      const width = length("width");
+      const height = length("height");
+      return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+        ? { width, height } : undefined;
+    }
     const meta = document.querySelector('meta[name="viewport"]');
     return parseViewportDimensions(meta?.getAttribute("content"));
   }

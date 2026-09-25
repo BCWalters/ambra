@@ -272,14 +272,23 @@ chapter shortcuts, logical Space, taps, swipes, scrubber direction, page numbers
 and cross-chapter note placement in both single-page and spread layouts.
 
 `outer-margin-navigation.spec.ts` and `spread-gutter-navigation.spec.ts` enforce
-outer-margin-only taps (#182): content whitespace, inner page margins, gutters,
+outer-margin-only reflowable taps (#182): content whitespace, inner page margins, gutters,
 and blank companion interiors never navigate. Coverage includes LTR/RTL,
 cross-chapter spreads, all animation styles, and scaled fixed-layout artwork.
 Navigation fixtures use `outerMarginPoint` / `clickReadingPage` to derive targets
 from the rendered reading measure, not arbitrary content coordinates.
-Width-fitted fixed-layout pages have no lateral margin; keyboard/toolbar navigation
-remains available. The #169, #174, and #180 native pointer regressions retain their
+Fixed-layout artwork also accepts outer-edge taps (#206): 8% of each rendered
+outer page, capped at 64 CSS pixels, without activating inner edges or gutters.
+`fixed-layout-edge-navigation.spec.ts` covers width-fitted artwork, native controls,
+selection, chrome dismissal, reading focus, and RTL. The #169, #174, and #180 native pointer regressions retain their
 selection, single-tap, and zero-opacity intent on valid outer margins.
+
+`svg-spine.spec.ts` uses original synthetic SVG pages to check startup, intrinsic
+viewport sizing, native reading focus, resume, and the no-scripting sandbox (#205).
+For optional local reproductions, set `AMBRA_SVG_SAMPLE` to the downloaded
+`svg-in-spine.epub` and `AMBRA_WIDE_FXL_SAMPLE` to `recollections-of-wartime.epub`
+when running the SVG/edge specs. Keep downloaded public books outside the repository;
+the default regressions generate their own content in test output directories.
 
 `resize-lifecycle.spec.ts` and `settings-lifecycle.spec.ts` also bundle the
 controller directly into a real Chromium page. Controlled chapter-load gates
