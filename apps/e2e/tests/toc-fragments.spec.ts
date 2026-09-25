@@ -79,10 +79,53 @@ async function selectEntry(page: Page, label: string, keyboard = false) {
   await expect.poll(async () => (await snapshot(page)).section).toBe(label);
 }
 
-for (const width of [900, 1400]) {
-  test(`same-spine TOC fragments have distinct pages and track navigation (${width}px, #202)`, async () => {
+async function sectionAtReadingPosition(page: Page) {
+  return page.evaluate(() => {
+    const controller = Reflect.get(window, "__readerController");
+    const visual = controller.host.currentPosition();
+    const native = controller.nativeReading.current();
+    // Empty anchors can carry reading focus just after the visual page boundary.
+    const position = native?.node.ownerDocument === visual?.node.ownerDocument ? native : visual;
+    if (!position) throw new Error("Expected a visible page's reading position");
+    const doc = position.node.ownerDocument as Document;
+    const start = doc.createRange();
+    start.setStart(position.node, position.offset ?? 0);
+    start.collapse(true);
+    let expected = "Start of Book";
+    let fragment: string | undefined;
+    for (const [id, label] of [
+      ["alpha", "Alpha"], ["beta", "Beta"], ["beta-detail", "Beta detail"],
+      ["gamma", "Gamma"], ["contents", "Table of contents"],
+    ] as const) {
+      const element = doc.getElementById(id);
+      if (!element) throw new Error(`Missing fixture section ${id}`);
+      const target = doc.createRange();
+      target.setStart(element, 0);
+      target.collapse(true);
+      if (target.compareBoundaryPoints(Range.START_TO_START, start) <= 0) {
+        expected = label;
+        fragment = id;
+      }
+    }
+    const state = controller.snapshot();
+    return {
+      expected,
+      actual: state.currentChapterLabel as string,
+      expectedTarget: fragment ? `${state.currentSpinePath}#${fragment}` : state.firstSpinePath as string,
+      actualTarget: state.highlightedTocPath as string,
+    };
+  });
+}
+
+for (const { width, height } of [
+  { width: 900, height: 780 },
+  { width: 900, height: 900 },
+  { width: 900, height: 1020 },
+  { width: 1400, height: 900 },
+]) {
+  test(`same-spine TOC fragments have distinct pages and track navigation (${width}px, ${height}px high, #202)`, async () => {
     const book = fixture(test.info().outputPath("fixture"));
-    const { context, readerPage: page } = await launchReader(book, { viewport: { width, height: 900 } });
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width, height } });
     try {
       await page.emulateMedia({ reducedMotion: "reduce" });
       await exposeReaderController(page);
@@ -109,16 +152,40 @@ for (const width of [900, 1400]) {
       await selectEntry(page, "Alpha");
       await page.keyboard.press("ArrowRight");
       await expect.poll(async () => (await snapshot(page)).section).toBe("Alpha");
-      for (let turn = 0; turn < initial.totalPages && (await snapshot(page)).section === "Alpha"; turn++) {
+      const assertPageSection = async () => {
+        const section = await sectionAtReadingPosition(page);
+        expect(section.actual).toBe(section.expected);
+        expect(section.actualTarget).toBe(section.expectedTarget);
+        return section.expected;
+      };
+      // Font metrics can put Beta's heading at the next page start, or put
+      // both headings on the preceding page. Same-page targets do not imply
+      // that the later heading precedes the current reading position.
+      let section = await assertPageSection();
+      const visited = new Set([section]);
+      for (let turn = 0; turn < initial.totalPages && section !== "Beta detail"; turn++) {
         await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
+        section = await assertPageSection();
+        visited.add(section);
       }
-      // Ordinary turns choose the section at the reading position, including
-      // the later of two headings sharing a page; they don't retain a click.
-      await expect.poll(async () => (await snapshot(page)).section).toBe("Beta detail");
-      for (let turn = 0; turn < 3 && (await snapshot(page)).section !== "Alpha"; turn++) {
+      expect(section).toBe("Beta detail");
+      console.log("TOC ordinary-turn sections", { width, height, sections: [...visited] });
+      for (let turn = 0; turn < initial.totalPages && section !== "Alpha"; turn++) {
         await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(-1));
+        section = await assertPageSection();
       }
-      await expect.poll(async () => (await snapshot(page)).section).toBe("Alpha");
+      expect(section).toBe("Alpha");
+      if (width === 900) {
+        // Reproduce the CI layout's heading-at-page-start case deterministically:
+        // a TOC jump anchors Beta, then ordinary backward/forward turns revisit it.
+        await selectEntry(page, "Beta");
+        await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(-1));
+        expect(await assertPageSection()).toBe("Alpha");
+        await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
+        expect(await assertPageSection()).toBe("Beta");
+        await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
+        expect(await assertPageSection()).toBe("Beta detail");
+      }
       await selectEntry(page, "Gamma");
       await page.evaluate(() => Reflect.get(window, "__readerController").flushProgress());
       await page.reload();
