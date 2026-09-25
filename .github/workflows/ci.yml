@@ -19,7 +19,9 @@ jobs:
   validate:
     name: Validate and package
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Expanded reader coverage takes ~25m; setup and remaining browser suites
+    # add ~6m. Keep headroom for hosted-runner variance without dropping tests.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
