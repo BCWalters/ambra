@@ -69,6 +69,7 @@ jobs:
           shell-reflow-accessibility.spec.ts
           reader-shortcuts-help.spec.ts
           first-reading-welcome.spec.ts
+          harness-lifecycle.spec.ts
           reader-ui-dismissal.spec.ts
           margin-selection.spec.ts
           page-turn-margin.spec.ts
