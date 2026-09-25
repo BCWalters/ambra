@@ -780,7 +780,7 @@ const ReaderAppInner: FC = () => {
               bookPageCount={snapshot.bookPageCount}
               onGo={async (fraction) => {
                 recordDiagnosticEvent({ kind: "navigation", source: "go-to", fraction });
-                await seekToFraction(fraction);
+                await seekToFraction(fraction, { preserveFocus: true });
               }}
             />
 

@@ -65,6 +65,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   const opening = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const restoreFrame = useRef<number | undefined>(undefined);
+  const pendingNavigation = useRef<Promise<void> | undefined>(undefined);
   const { preferences, platform } = useShortcutPreferences();
   const recordSurfaces = useContext(ReaderDiagnosticContext);
   useEffect(() => {
@@ -121,12 +122,16 @@ export const GoToDialog: FC<GoToDialogProps> = ({
     setPending(true);
     setFailed(false);
     const currentOpening = opening.current;
+    let navigation: Promise<void> | undefined;
     try {
-      await onGo(parsed / max);
+      navigation = Promise.resolve(onGo(parsed / max));
+      pendingNavigation.current = navigation;
+      await navigation;
       if (opening.current === currentOpening) onOpenChange(false);
     } catch {
       if (opening.current === currentOpening) setFailed(true);
     } finally {
+      if (pendingNavigation.current === navigation) pendingNavigation.current = undefined;
       if (opening.current === currentOpening) {
         submitting.current = false;
         setPending(false);
@@ -142,8 +147,14 @@ export const GoToDialog: FC<GoToDialogProps> = ({
           // Wait for Fluent to release its modal accessibility scope.
           restoreFrame.current = requestAnimationFrame(() => {
             restoreFrame.current = undefined;
-            // A later modal may already own focus and Tabster's accessibility scope.
-            if (!document.querySelector('[aria-modal="true"]')) onAfterClose?.();
+            const closedOpening = opening.current;
+            const restore = () => {
+              // A later modal may already own focus and Tabster's accessibility scope.
+              if (opening.current === closedOpening && !document.querySelector('[aria-modal="true"]')) onAfterClose?.();
+            };
+            // Dismissal does not cancel a submitted seek; return into its final document.
+            if (pendingNavigation.current) void pendingNavigation.current.then(restore, restore);
+            else restore();
           });
         },
       }}

@@ -325,20 +325,27 @@ test("mode commands preserve reading position and focus, are idempotent, and lea
       expect(await page.evaluate(() => document.activeElement === Reflect.get(window, "__shortcutModeFrame"))).toBe(true);
       await expectReadingPositionVisible(page);
     }
-    const scrollTop = () => page.evaluate(() => {
-      const doc = (document.activeElement as HTMLIFrameElement).contentDocument!;
-      return Math.max(doc.scrollingElement?.scrollTop ?? 0,
-        ...Array.from(document.querySelectorAll<HTMLElement>("*")).map(node => node.scrollTop));
-    });
-    const initial = await scrollTop();
-    await page.keyboard.press("PageDown");
-    await expect.poll(scrollTop).toBeGreaterThan(initial + 30);
-    const down = await scrollTop();
-    await page.keyboard.press("PageUp");
-    await expect.poll(scrollTop).toBeLessThan(down - 30);
-    const up = await scrollTop();
-    await page.keyboard.press("Space");
-    await expect.poll(scrollTop).toBeGreaterThan(up + 30);
+    const nativeScroll = async (key: string, direction: number) => {
+      const before = await page.evaluate(() => {
+        const doc = (document.activeElement as HTMLIFrameElement).contentDocument!;
+        const state: { ended: boolean; prevented?: boolean } = { ended: false };
+        Reflect.set(window, "__shortcutNativeScroll", state);
+        doc.addEventListener("keydown", event => { state.prevented = event.defaultPrevented; }, { once: true });
+        doc.addEventListener("scrollend", () => { state.ended = true; }, { once: true });
+        return doc.scrollingElement!.scrollTop;
+      });
+      await page.keyboard.press(key);
+      // Crossing 30px is not completion: another key can reverse a native scroll
+      // while its animation is still running and invalidate that sampled baseline.
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__shortcutNativeScroll")))
+        .toEqual({ ended: true, prevented: false });
+      const after = await page.evaluate(() =>
+        (document.activeElement as HTMLIFrameElement).contentDocument!.scrollingElement!.scrollTop);
+      expect((after - before) * direction).toBeGreaterThan(30);
+    };
+    await nativeScroll("PageDown", 1);
+    await nativeScroll("PageUp", -1);
+    await nativeScroll("Space", 1);
     expect((await position(page)).spine).toBe(0);
     await page.keyboard.press("ArrowRight");
     await expect.poll(async () => (await position(page)).spine).toBe(1);

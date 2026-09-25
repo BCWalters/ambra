@@ -3,6 +3,33 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaginatedContentHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
 
+describe("ReaderController seek focus ownership", () => {
+  it.each([
+    { measured: true, preserveFocus: false },
+    { measured: true, preserveFocus: true },
+    { measured: false, preserveFocus: false },
+    { measured: false, preserveFocus: true },
+  ])("forwards measured=$measured preserveFocus=$preserveFocus without changing the destination", async ({ measured, preserveFocus }) => {
+    const controller = Object.create(ReaderController.prototype);
+    const openSpineItem = vi.fn(async () => {});
+    Object.assign(controller, {
+      diagnostics: { record: vi.fn() },
+      clearNavigationHighlights: vi.fn(),
+      pkg: { spine: [{}, {}] },
+      bookPagination: measured ? {
+        positionFor: () => ({ totalPages: 8 }),
+        resolveGlobalPage: () => ({ spineIndex: 1, pageIndexInItem: 1 }),
+      } : undefined,
+      openSpineItem,
+    });
+    await controller.seekToFraction(0.75, preserveFocus ? { preserveFocus: true } : undefined);
+    expect(openSpineItem).toHaveBeenCalledExactlyOnceWith(1, {
+      ...(measured ? { landOnPageIndex: 1 } : { landOnFractionInItem: 0.5 }),
+      ...(preserveFocus ? { preserveFocus: true } : {}),
+    });
+  });
+});
+
 describe("ReaderController layout-only focus", () => {
   afterEach(() => document.body.replaceChildren());
 

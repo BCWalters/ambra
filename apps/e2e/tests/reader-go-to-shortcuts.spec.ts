@@ -202,6 +202,91 @@ for (const destination of [
   });
 }
 
+for (const destination of [
+  { page: 2, spine: 0, text: "C1Para 2.", name: "same chapter" },
+  { page: 6, spine: 1, text: "C2Para 2.", name: "new chapter" },
+]) {
+  test(`Go to enters the right-page destination once after modal exit (${destination.name})`, async ({ browserName }, info) => {
+    expect(browserName).toBe("chromium");
+    const { context, readerPage: page } = await launchReader(navigationFixture(info, [4, 4]), {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      await ready(page);
+      await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount === 8);
+      await focusBook(page);
+      await page.keyboard.press(`${await mod(page)}+g`);
+      await page.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        const calls: Array<{ modal: boolean; text: string | null }> = [];
+        Reflect.set(window, "__readingFocusCalls", calls);
+        const original = c.accessibility.focusReadingPosition.bind(c.accessibility);
+        c.accessibility.focusReadingPosition = (doc: Document, position: { node: Node; offset?: number }) => {
+          const target = position.node.nodeType === Node.ELEMENT_NODE
+            ? position.node.childNodes[position.offset ?? 0] ?? position.node : position.node;
+          calls.push({
+            modal: !!document.querySelector('[aria-modal="true"]'),
+            text: target.textContent,
+          });
+          return original(doc, position);
+        };
+      });
+      const input = dialog(page, "Page").getByRole("spinbutton");
+      await input.fill(String(destination.page));
+      await input.press("Enter");
+      await expect(dialog(page, "Page")).toBeHidden();
+      await finishModalMotion(page);
+      const calls = await page.evaluate(() => Reflect.get(window, "__readingFocusCalls"));
+      const evidence = info.outputPath("go-to-focus-lifecycle.json");
+      await writeFile(evidence, JSON.stringify(calls, null, 2));
+      await info.attach("go-to-focus-lifecycle", { path: evidence, contentType: "application/json" });
+      expect(calls).toEqual([{ modal: false, text: destination.text }]);
+      expect(await readingCaret(page)).toMatchObject({
+        spine: destination.spine, text: destination.text, offset: 0, collapsed: true, hidden: false,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("Go to returns focus after an in-flight navigation finishes following dismissal", async ({ browserName }, info) => {
+  expect(browserName).toBe("chromium");
+  const { context, readerPage: page } = await launchReader(navigationFixture(info, [4, 4]), {
+    viewport: { width: 1400, height: 900 },
+  });
+  try {
+    await ready(page);
+    await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount === 8);
+    await page.evaluate(() => {
+      const c = Reflect.get(window, "__readerController");
+      Reflect.set(window, "__previousHost", c.host);
+      const original = c.seekToFraction.bind(c);
+      c.seekToFraction = async (...args: unknown[]) => {
+        await new Promise<void>(resolve => Reflect.set(window, "__releaseSeek", resolve));
+        return original(...args);
+      };
+    });
+    await focusBook(page);
+    await page.keyboard.press(`${await mod(page)}+g`);
+    const modal = dialog(page, "Page");
+    await modal.getByRole("spinbutton").fill("6");
+    await modal.getByRole("spinbutton").press("Enter");
+    await expect(modal.getByRole("spinbutton")).toHaveAttribute("readonly", "");
+    await modal.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(modal).toBeHidden();
+    await finishModalMotion(page);
+    await page.evaluate(() => Reflect.get(window, "__releaseSeek")());
+    await page.waitForFunction(() => Reflect.get(window, "__readerController").host !== Reflect.get(window, "__previousHost"));
+    await ready(page);
+    expect(await readingCaret(page)).toMatchObject({
+      spine: 1, text: "C2Para 2.", offset: 0, collapsed: true, hidden: false,
+    });
+  } finally {
+    await context.close();
+  }
+});
+
 test("Go to retains the exact right-page text boundary in the accessible chapter", async ({ browserName }, info) => {
   expect(browserName).toBe("chromium");
   const native = process.env.AMBRA_NATIVE_ACCESSIBILITY === "1";

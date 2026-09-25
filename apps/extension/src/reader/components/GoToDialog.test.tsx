@@ -95,6 +95,22 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await act(async () => dialog().querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   }
 
+  it.each([false, true])("waits for dismissed navigation before returning focus (reopened=%s)", async reopened => {
+    let complete!: () => void;
+    onGo.mockImplementationOnce(() => new Promise<void>(resolve => { complete = resolve; }));
+    const onAfterClose = vi.fn();
+    await render({ onAfterClose });
+    await enter("30");
+    await submit();
+    await render({ open: false, onAfterClose });
+    await act(async () => { await new Promise(requestAnimationFrame); });
+    expect(onAfterClose).not.toHaveBeenCalled();
+    if (reopened) await render({ onAfterClose });
+    await act(async () => { complete(); });
+    expect(onAfterClose).toHaveBeenCalledTimes(reopened ? 0 : 1);
+    if (reopened) expect(document.activeElement).toBe(dialog().querySelector("input"));
+  });
+
   it.each(["1e2", "2e-1", "9.9", "0", "-1", "201", "9007199254740993", ""])("rejects %j rather than guessing a page", async value => {
     await render();
     await enter(value);

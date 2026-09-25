@@ -3824,7 +3824,7 @@ export class ReaderController {
    * Prefer exact page-level seeking when `bookPagination` is ready;
    * otherwise fall back to coarse spine-level seeking that still lands
    * partway through the chosen chapter instead of always at its start. */
-  public async seekToFraction(fraction: number): Promise<void> {
+  public async seekToFraction(fraction: number, options: { preserveFocus?: boolean } = {}): Promise<void> {
     const clamped = Math.max(0, Math.min(1, fraction));
     this.diagnostics.record(`seekToFraction fraction=${fraction} clamped=${clamped}`);
     this.clearNavigationHighlights();
@@ -3834,13 +3834,14 @@ export class ReaderController {
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
         await this.openSpineItem(resolved.spineIndex, {
+          ...options,
           landOnPageIndex: resolved.pageIndexInItem,
         });
         return;
       }
     }
     const { spineIndex: targetSpineIndex, localFraction } = this.resolveSpineFraction(clamped);
-    await this.openSpineItem(targetSpineIndex, { landOnFractionInItem: localFraction });
+    await this.openSpineItem(targetSpineIndex, { ...options, landOnFractionInItem: localFraction });
   }
 
   /** Picks a spine item and an in-item fraction for coarse seeking when
@@ -4368,6 +4369,10 @@ export class ReaderController {
           requestedSpineIndex,
           readingPosition,
         );
+        if (options.preserveFocus && readingPosition) {
+          // A modal seek enters this destination only after its accessibility scope closes.
+          this.nativeReading.retain({ ...readingPosition, spineIndex: requestedSpineIndex });
+        }
       } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
