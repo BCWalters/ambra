@@ -444,6 +444,28 @@ These check exact rendered-line accounting in both directions, expanded/collapse
 state, keyboard focus, and mode changes. To regenerate those small fixtures,
 run `node apps/e2e/scripts/generate-disclosure-fixture.mjs`.
 
+## Bookmark cards (#213)
+
+`bookmark-panel.spec.ts` checks the real packaged reader at 1400px and 320px:
+two-line word-wrapped chapter titles (including unbroken text), full-title hover,
+separate always-visible page badges, current-layout bookwide pages across chapters
+and font/pinned-panel reflow, unchanged legacy labels/CFIs, keyboard deletion focus, and
+publisher bookmarks' read-only navigation. It captures settled Ambra, Silver and
+Purple screenshots at both widths. Scrolling shows "Page unavailable" rather
+than reusing a stale paginated number. Unit tests cover pending measurements and
+invalid positions without inventing page numbers.
+
+The CI reader matrix includes this spec plus annotation mutation, import/export
+and embedded-annotation regression suites. Its `bookmark-panel-review-<sha>`
+artifact retains the six review screenshots. For a targeted run, point
+`AMBRA_E2E_EXTENSION_PATH` at an isolated packaged build and run:
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
+  bookmark-panel.spec.ts annotation-mutation-lifecycle.spec.ts \
+  annotation-export-import.spec.ts embedded-annotations.spec.ts --workers=1
+```
+
 ## Pagination measurement regressions (#197 / #198)
 
 The packaged reader's concentrated-chapter regression checks no-animation document

@@ -12,7 +12,7 @@ import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { SearchResultItem } from "./SearchCoordinator.js";
 import type { ViewMode } from "./ViewMode.js";
 import type { NarrationState } from "./MediaOverlayNarration.js";
-import type { BookmarkProgressMarker } from "./BookmarkManager.js";
+import type { BookmarkLocation, BookmarkProgressMarker } from "./BookmarkManager.js";
 
 /** Plain data types describing `ReaderController`'s state and public
  * shapes, kept separate so consumers don't need to import the
@@ -165,6 +165,8 @@ export interface ReaderSnapshot {
   /** Per-visible-page version of `isBookmarked`. */
   bookmarkedPages: readonly boolean[];
   bookmarks: readonly Bookmark[];
+  /** Derived from the current layout, never persisted in bookmark records. */
+  bookmarkLocations?: Readonly<Record<string, BookmarkLocation>>;
   /** Exact markers are available once the current layout has been measured. */
   bookmarkProgress?: readonly BookmarkProgressMarker[];
   /** Font-size multiplier; always 1 for fixed-layout content. */
@@ -252,6 +254,7 @@ export interface ReadOnlyAnnotationView {
   readonly note: string | undefined;
   /** Which tab this shows up in — see `classifyReadOnlyAnnotationKind`. */
   readonly kind: "highlight" | "bookmark";
+  readonly location?: BookmarkLocation;
 }
 
 export interface ImageViewerState {

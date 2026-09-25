@@ -286,6 +286,9 @@ export interface StringCatalog {
   "annotations.noBookmarksYet": string;
   "annotations.noHighlightsYet": string;
   "annotations.removeBookmark": string;
+  "annotations.bookmarkPage": string;
+  "annotations.bookmarkPagePending": string;
+  "annotations.bookmarkPageUnavailable": string;
   "annotations.editNote": string;
   "annotations.addNote": string;
   "annotations.removeHighlight": string;
@@ -701,6 +704,9 @@ export const en: StringCatalog = {
   "annotations.noBookmarksYet": "No bookmarks yet — use the bookmark button in the toolbar to save your place.",
   "annotations.noHighlightsYet": "No highlights yet — select some text while reading to highlight it.",
   "annotations.removeBookmark": "Remove bookmark: {label}",
+  "annotations.bookmarkPage": "Page {page}",
+  "annotations.bookmarkPagePending": "Finding page…",
+  "annotations.bookmarkPageUnavailable": "Page unavailable",
   "annotations.editNote": "Edit note: {text}",
   "annotations.addNote": "Add note: {text}",
   "annotations.removeHighlight": "Remove highlight: {text}",

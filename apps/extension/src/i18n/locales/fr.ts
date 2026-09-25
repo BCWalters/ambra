@@ -223,6 +223,9 @@ export const fr: StringCatalog = {
   "annotations.noHighlightsYet":
     "Aucun surlignage pour l'instant — sélectionnez du texte pendant la lecture pour le surligner.",
   "annotations.removeBookmark": "Supprimer le signet : {label}",
+  "annotations.bookmarkPage": "Page {page}",
+  "annotations.bookmarkPagePending": "Recherche de la page…",
+  "annotations.bookmarkPageUnavailable": "Page indisponible",
   "annotations.editNote": "Modifier la note : {text}",
   "annotations.addNote": "Ajouter une note : {text}",
   "annotations.removeHighlight": "Supprimer le surlignage : {text}",

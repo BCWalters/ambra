@@ -574,6 +574,7 @@ const ReaderAppInner: FC = () => {
 
           <AnnotationsPanel
             bookmarks={snapshot.bookmarks}
+            bookmarkLocations={snapshot.bookmarkLocations}
             onSelectBookmark={handleSelectBookmark}
             onRemoveBookmark={handleRemoveBookmark}
             highlights={snapshot.highlights}

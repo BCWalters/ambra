@@ -67,6 +67,61 @@ function makeContext(overrides: Partial<BookmarkManagerContext> = {}): BookmarkM
 }
 
 describe("BookmarkManager", () => {
+  it("projects chapter titles and current bookwide pages without parsing or rewriting legacy labels", async () => {
+    const saved = makeBookmark({ label: "An imported title — Page 3" });
+    const library = makeLibrary([saved]);
+    const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true),
+      makeContext({ chapterLabel: () => "History — Page 12" }));
+    await manager.load();
+    const pagination = {
+      positionFor: vi.fn(() => ({ currentPage: 25, totalPages: 100 })),
+      pageIndexForCfi: vi.fn(() => 4),
+    };
+    expect(manager.locations(pagination)["bm-1"]).toEqual({
+      chapterTitle: "History — Page 12", page: { status: "known", number: 25 },
+    });
+    pagination.positionFor.mockReturnValue({ currentPage: 40, totalPages: 150 });
+    expect(manager.locations(pagination)["bm-1"]?.page).toEqual({ status: "known", number: 40 });
+    expect(manager.allSorted()).toEqual([saved]);
+    expect(await library.listBookmarksForBook("book-1")).toEqual([saved]);
+  });
+
+  it("distinguishes pending, unavailable and measured pages without requiring a complete total", async () => {
+    const manager = new BookmarkManager(makeLibrary([makeBookmark()]), "book-1", makeLocatorResolver(true), makeContext());
+    await manager.load();
+    expect(manager.locations({
+      positionFor: () => ({ currentPage: 8, totalPages: undefined }), pageIndexForCfi: () => 2,
+    })["bm-1"]?.page).toEqual({ status: "known", number: 8 });
+    expect(manager.locations({
+      positionFor: () => ({ currentPage: undefined, totalPages: undefined }), pageIndexForCfi: () => undefined,
+    })["bm-1"]?.page).toEqual({ status: "pending" });
+    expect(manager.locations({
+      positionFor: () => ({ currentPage: undefined, totalPages: 50 }), pageIndexForCfi: () => undefined,
+    })["bm-1"]?.page).toEqual({ status: "unavailable" });
+    expect(manager.locations(undefined)["bm-1"]).toEqual({
+      chapterTitle: "Chapter 3", page: { status: "unavailable" },
+    });
+  });
+
+  it("keeps unresolved labels intact and reports a malformed CFI once across cards and markers", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const saved = makeBookmark({ label: "Un titre — Page 123", cfi: "invalid" });
+      const manager = new BookmarkManager(makeLibrary([saved]), "book-1", makeLocatorResolver(true), makeContext());
+      await manager.load();
+      const pagination = {
+        positionFor: () => ({ currentPage: 25, totalPages: 100 }), pageIndexForCfi: vi.fn(() => 4),
+      };
+      expect(manager.locations(pagination)["bm-1"]).toEqual({ page: { status: "unavailable" } });
+      expect(manager.progressMarkers(pagination)).toEqual([]);
+      expect(manager.allSorted()[0]?.label).toBe(saved.label);
+      expect(pagination.pageIndexForCfi).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("maps CFIs to the current measured layout and updates after deletion", async () => {
     const library = makeLibrary([makeBookmark()]);
     const manager = new BookmarkManager(library, "book-1", makeLocatorResolver(true), makeContext());

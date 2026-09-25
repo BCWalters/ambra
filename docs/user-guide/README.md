@@ -30,6 +30,19 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 ## Take your annotations with you
 
+Bookmarks use the same compact card treatment as highlights. Chapter titles
+wrap to two lines; hover a title to read it in full. A separate page badge stays
+visible even when the title is long. Its number is the bookwide page in your
+current layout, so it updates when you change text size or page width.
+**Finding page…** means pagination is still being measured; **Page unavailable**
+is shown in scrolling mode or when the saved position cannot be placed.
+Existing saved labels and locations are not rewritten. Publisher bookmarks keep
+their **Publisher note** tag and cannot be deleted.
+
+Use the card title to return to its saved position. After keyboard deletion,
+focus moves to the next bookmark, or the previous one if the last card was
+removed; removing the final bookmark leaves focus in the empty Bookmarks tab.
+
 **EPUB annotation export and import** let you back up or share your reading work separately from the book. Ambra exports your highlights, text notes, bookmarks, and bookmark labels as an **EPUB Annotations 1.0 JSON file** (`… - annotations.json`), and imports compatible JSON into the open book.
 
 Use the same book or edition for best results. Ambra skips unsupported locations and detected duplicates. Imported highlights use yellow, and compatibility varies between annotation tools.

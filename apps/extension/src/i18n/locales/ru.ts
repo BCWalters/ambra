@@ -223,6 +223,9 @@ export const ru: StringCatalog = {
   "annotations.noHighlightsYet":
     "Пока нет выделений — выделите текст во время чтения, чтобы отметить его.",
   "annotations.removeBookmark": "Удалить закладку: {label}",
+  "annotations.bookmarkPage": "Страница {page}",
+  "annotations.bookmarkPagePending": "Определение страницы…",
+  "annotations.bookmarkPageUnavailable": "Страница недоступна",
   "annotations.editNote": "Редактировать заметку: {text}",
   "annotations.addNote": "Добавить заметку: {text}",
   "annotations.removeHighlight": "Удалить выделение: {text}",

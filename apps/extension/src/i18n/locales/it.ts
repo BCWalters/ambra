@@ -223,6 +223,9 @@ export const it: StringCatalog = {
   "annotations.noHighlightsYet":
     "Ancora nessuna evidenziazione — seleziona del testo durante la lettura per evidenziarlo.",
   "annotations.removeBookmark": "Rimuovi segnalibro: {label}",
+  "annotations.bookmarkPage": "Pagina {page}",
+  "annotations.bookmarkPagePending": "Ricerca della pagina…",
+  "annotations.bookmarkPageUnavailable": "Pagina non disponibile",
   "annotations.editNote": "Modifica nota: {text}",
   "annotations.addNote": "Aggiungi nota: {text}",
   "annotations.removeHighlight": "Rimuovi evidenziazione: {text}",

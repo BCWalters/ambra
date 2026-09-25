@@ -223,6 +223,9 @@ export const de: StringCatalog = {
   "annotations.noHighlightsYet":
     "Noch keine Hervorhebungen — markiere beim Lesen etwas Text, um ihn hervorzuheben.",
   "annotations.removeBookmark": "Lesezeichen entfernen: {label}",
+  "annotations.bookmarkPage": "Seite {page}",
+  "annotations.bookmarkPagePending": "Seite wird ermittelt…",
+  "annotations.bookmarkPageUnavailable": "Seite nicht verfügbar",
   "annotations.editNote": "Notiz bearbeiten: {text}",
   "annotations.addNote": "Notiz hinzufügen: {text}",
   "annotations.removeHighlight": "Hervorhebung entfernen: {text}",
