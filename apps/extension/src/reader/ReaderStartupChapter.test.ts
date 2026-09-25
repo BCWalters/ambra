@@ -12,7 +12,7 @@ function controller() {
     spineIndex: 0, host: undefined, isLoading: false,
     narration: { snapshot: { available: false } },
     navigation: { toc: { items: [] } },
-    bookmarks: { onCurrentPage: () => [], flagsForCurrentPages: () => [], allSorted: () => [] },
+    bookmarks: { onCurrentPage: () => [], flagsForCurrentPages: () => [], allSorted: () => [], locations: () => ({}) },
     highlights: { allSorted: () => [] },
     highlightInteraction: { noteMarkers: [] },
     searchCoordinator: { snapshot: {} },
@@ -29,6 +29,7 @@ describe("Startup chapter publication (#175)", () => {
   it("does not publish the provisional first chapter before mount or while progress lookup is pending", () => {
     const { reader, chapterLabel } = controller();
     expect(reader.snapshot().title).toBe("Book");
+    expect(reader.snapshot().bookmarkLocations).toEqual({});
     expect(reader.snapshot().loadingPhase).toBeUndefined();
     expect(reader.snapshot().currentChapterLabel).toBe("");
     Object.assign(reader, { cachedSnapshot: undefined, isLoading: true });
