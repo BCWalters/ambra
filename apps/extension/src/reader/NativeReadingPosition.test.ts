@@ -37,6 +37,44 @@ function setup(parent: HTMLElement = document.body) {
 }
 
 describe("native reading resume", () => {
+  it.each(["root", "text"] as const)("retains the companion SVG %s position without an HTML body", kind => {
+    const { tracker, views, frames } = setup();
+    const doc = views[1]!.document;
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const text = doc.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.textContent = "Native SVG reading position";
+    svg.append(text);
+    doc.documentElement.remove();
+    doc.append(svg);
+    const point = {
+      spineIndex: views[1]!.spineIndex,
+      node: kind === "root" ? svg : text.firstChild!,
+      offset: kind === "root" ? 0 : 7,
+    };
+    expect(doc.body).toBeNull();
+    tracker.retain(point);
+    expect(tracker.current()).toEqual(point);
+    expect(tracker.retainedForShell()).toEqual(point);
+    frames[1]!.setAttribute("aria-hidden", "true");
+    expect(tracker.current()).toBeUndefined();
+    expect(tracker.retainedForShell()).toBeUndefined();
+  });
+
+  it("captures a new native SVG text caret in the focused companion document", () => {
+    const { tracker, views, frames } = setup();
+    const doc = views[1]!.document;
+    const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const text = doc.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.textContent = "Native SVG reading position";
+    svg.append(text);
+    doc.documentElement.remove();
+    doc.append(svg);
+    tracker.reset();
+    frames[1]!.focus();
+    doc.getSelection()!.collapse(text.firstChild!, 9);
+    expect(tracker.current()).toEqual({ spineIndex: 3, node: text.firstChild!, offset: 9 });
+  });
+
   it("persists the companion document's actual caret rather than the primary visual page", async () => {
     const { tracker, views, read, visual } = setup();
     const point = read();

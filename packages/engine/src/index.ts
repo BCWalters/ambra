@@ -84,7 +84,7 @@ export type {
   TextPositionSelector,
 } from "./annotations/EpubAnnotation.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";
-export { isKeyboardNavigationScope } from "./accessibility/NavigationKeyboard.js";
+export { isInteractiveContentTarget, isKeyboardNavigationScope } from "./accessibility/NavigationKeyboard.js";
 export { parseSmilClockValue, SmilClockValueError } from "./media-overlay/SmilClockValue.js";
 export { SmilDocument, SmilPar, SmilSeq, SmilParseError } from "./media-overlay/SmilDocument.js";
 export type { SmilNode, SmilTextRef, SmilAudioClip } from "./media-overlay/SmilDocument.js";

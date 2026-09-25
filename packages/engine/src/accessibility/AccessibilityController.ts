@@ -51,7 +51,7 @@ export class AccessibilityController {
   }
 
   public focusContent(document: Document, target?: Element): void {
-    const element = target ?? document.body;
+    const element = target ?? document.body ?? document.documentElement;
     if (!element) return;
     const focusTarget = element as HTMLElement;
     const needsTabIndex = focusTarget.tabIndex < 0 || element.matches("a:not([href]), area:not([href])");
@@ -91,7 +91,11 @@ export class AccessibilityController {
       : undefined;
     let node = retained?.range.startContainer ?? position.node;
     let offset = retained?.range.startOffset ?? position.offset ?? 0;
-    if (node.nodeType === 1 && node.childNodes[offset]) {
+    // SVG roots commonly start with non-rendered title/defs/style nodes.
+    // Keep the native entry caret on the accessible page, not those nodes.
+    const isSvgRoot = node === document.documentElement &&
+      document.documentElement.namespaceURI === "http://www.w3.org/2000/svg";
+    if (!isSvgRoot && node.nodeType === 1 && node.childNodes[offset]) {
       node = node.childNodes[offset]!;
       offset = 0;
     }

@@ -19,6 +19,15 @@ const CONTROL_SELECTOR =
   '[role="tablist"], [role="tab"], [role="radiogroup"], [role="grid"], ' +
   '[role="dialog"], [role="alertdialog"], dialog';
 
+const ACTIVATION_CONTROL_SELECTOR =
+  'button, a[href], summary, [role="button"], [role="checkbox"], [role="radio"], audio, video';
+
+/** Pointer page turns must leave native controls, SVG links, and editing alone. */
+export function isInteractiveContentTarget(target: Element): boolean {
+  return !!target.closest(`${CONTROL_SELECTOR}, ${ACTIVATION_CONTROL_SELECTOR}, a, area, label`) ||
+    isEditable(target);
+}
+
 /** One shortcut policy for the shell and every content iframe. */
 export function navigationCommand(
   event: KeyboardEvent,
@@ -63,7 +72,7 @@ export function isKeyboardNavigationScope(
     if (isEditable(target)) return false;
     if (options.scope === "shell" && target.closest("nav, aside")) return false;
     if (space || options.allControls) {
-      const selector = 'button, a[href], summary, [role="button"], [role="checkbox"], [role="radio"], audio, video';
+      const selector = ACTIVATION_CONTROL_SELECTOR;
       const control = target.closest(selector);
       const navigationKey = ["ArrowLeft", "ArrowRight", "PageUp", "PageDown"].includes(event.key);
       // A reader-added zoom affordance must not strand automatic reading focus

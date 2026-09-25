@@ -78,6 +78,11 @@ export class LocatorResolver {
   public generate(spineIndex: number, node: Node, characterOffset?: number): Locator {
     const spineRef = this.requireSpineItem(spineIndex);
     const root = this.requireDocumentRoot(node);
+    if (node === root) {
+      // A bare spine itemref is a valid CFI for the whole page. An empty
+      // path after "!" is not, nor is a character offset on an SVG root.
+      return new Locator(new EpubCfi(spineRef.packageCfiSteps, []).toString());
+    }
 
     let contentSteps: CfiStep[];
     let finalOffset: number | undefined;
@@ -191,7 +196,7 @@ export class LocatorResolver {
   ): ResolvedLocator {
     const root = document.documentElement;
     if (cfi.contentSteps.length === 0) {
-      throw new LocatorResolutionError("CFI has no content steps to resolve.");
+      return { spineIndex, node: root, characterOffset: undefined };
     }
 
     let current: Element = root;

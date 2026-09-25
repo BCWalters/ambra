@@ -126,14 +126,35 @@ describe("content clicks dismiss chrome before navigating", () => {
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(-1);
   });
 
-  it("never treats a scaled fixed page's intrinsic edges as outer margins", () => {
+  it("maps fixed artwork edges through scaling while retaining outer margins", () => {
     const { controller, doc, margin } = setUp("fixed");
     controller.setContentUiDismissal(() => false);
     tap(doc.body, 1);
     tap(doc.body, 1399);
+    expect(controller.turnPage.mock.calls).toEqual([[-1], [1]]);
+    controller.turnPage.mockClear();
+    tap(doc.body, 113);
+    tap(doc.body, 1287);
     expect(controller.turnPage).not.toHaveBeenCalled();
     tap(margin.target, margin.x);
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it("consumes the first fixed artwork-edge tap to dismiss chrome", () => {
+    const { controller, doc } = setUp("fixed");
+    controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
+    tap(doc.body, 1399);
+    expect(controller.turnPage).not.toHaveBeenCalled();
+    tap(doc.body, 1399, "touch");
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it("does not turn when a press on a fixed-page control releases over artwork", () => {
+    const { controller, doc } = setUp("fixed");
+    controller.setContentUiDismissal(() => false);
+    pointer(doc.querySelector("a")!, "pointerdown", 1395);
+    pointer(doc.body, "pointerup", 1399);
+    expect(controller.turnPage).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -190,10 +211,11 @@ describe("content clicks dismiss chrome before navigating", () => {
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
   });
 
-  it("allows a spread swipe even when its pointerdown dismissed chrome", () => {
+  it.each(["body", "a", "img"])("retains a deliberate spread swipe from %s while dismissing chrome", tag => {
     const { controller, doc } = setUp("spread");
     controller.setContentUiDismissal(() => true);
-    pointer(doc.body, "pointerdown", 400, "touch");
+    const target = doc.querySelector(tag) ?? doc.body.appendChild(doc.createElement(tag));
+    pointer(target, "pointerdown", 400, "touch");
     pointer(doc.body, "pointerup", 200, "touch");
     expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
   });

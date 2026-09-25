@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccessibilityController } from "./AccessibilityController.js";
-import { navigationCommand } from "./NavigationKeyboard.js";
+import { isInteractiveContentTarget, navigationCommand } from "./NavigationKeyboard.js";
 
 const controller = new AccessibilityController();
 afterEach(() => {
@@ -15,6 +15,19 @@ function press(target: EventTarget, key: string, options: KeyboardEventInit = {}
   target.dispatchEvent(event);
   return event;
 }
+
+describe("pointer content ownership", () => {
+  it("protects SVG links using legacy xlink href attributes", () => {
+    document.body.innerHTML = '<svg><a xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#target"><rect/></a></svg>';
+    expect(isInteractiveContentTarget(document.querySelector("rect")!)).toBe(true);
+  });
+
+  it("honors inherited editing and explicit noneditable subtrees", () => {
+    document.body.innerHTML = '<div contenteditable="plaintext-only"><p>Editable</p><div contenteditable="false"><img/></div></div>';
+    expect(isInteractiveContentTarget(document.querySelector("p")!)).toBe(true);
+    expect(isInteractiveContentTarget(document.querySelector("img")!)).toBe(false);
+  });
+});
 
 describe("navigation keyboard policy", () => {
   it.each([

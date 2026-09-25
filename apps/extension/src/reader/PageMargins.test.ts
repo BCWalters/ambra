@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
+import { fixedLayoutEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
 
 describe("outer page margins", () => {
   it("excludes both content boundaries, content whitespace, and the entire gutter", () => {
@@ -11,6 +11,38 @@ describe("outer page margins", () => {
     expect(outerMarginSide(1301, pages)).toBe(1);
     expect(outerMarginSide(99, [...pages].reverse())).toBe(-1);
     expect(outerMarginSide(1301, [...pages].reverse())).toBe(1);
+  });
+
+  describe("fixed-layout edge bands", () => {
+    it("uses 8% of rendered page width and retains letterboxing", () => {
+      const pages = [{ left: 50, right: 550 }];
+      expect(fixedLayoutEdgeSide(49, pages)).toBe(-1);
+      expect(fixedLayoutEdgeSide(89, pages)).toBe(-1);
+      expect(fixedLayoutEdgeSide(90, pages)).toBeUndefined();
+      expect(fixedLayoutEdgeSide(510, pages)).toBeUndefined();
+      expect(fixedLayoutEdgeSide(511, pages)).toBe(1);
+      expect(fixedLayoutEdgeSide(551, pages)).toBe(1);
+    });
+
+    it("caps each edge at 64 CSS pixels on wide pages", () => {
+      const pages = [{ left: 0, right: 1600 }];
+      expect(fixedLayoutEdgeSide(63, pages)).toBe(-1);
+      expect(fixedLayoutEdgeSide(64, pages)).toBeUndefined();
+      expect(fixedLayoutEdgeSide(1536, pages)).toBeUndefined();
+      expect(fixedLayoutEdgeSide(1537, pages)).toBe(1);
+    });
+
+    it("excludes inner edges and gutters regardless of reading order", () => {
+      const pages = [{ left: 100, right: 600 }, { left: 620, right: 1120 }];
+      for (const ordered of [pages, [...pages].reverse()]) {
+        expect(fixedLayoutEdgeSide(139, ordered)).toBe(-1);
+        expect(fixedLayoutEdgeSide(1081, ordered)).toBe(1);
+        for (const x of [140, 590, 600, 610, 620, 630, 1080]) {
+          expect(fixedLayoutEdgeSide(x, ordered)).toBeUndefined();
+        }
+      }
+      expect(fixedLayoutEdgeSide(0, [])).toBeUndefined();
+    });
   });
 
   it("supports a single page and no rendered pages", () => {

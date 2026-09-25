@@ -88,7 +88,7 @@ for (const rtl of [false, true]) {
 }
 
 for (const rtl of [false, true]) {
-  test(`FXL ${rtl ? "RTL" : "LTR"}: only outside scaled artwork navigates, never the gutter`, async () => {
+  test(`FXL ${rtl ? "RTL" : "LTR"}: scaled artwork interiors and gutter stay inert; outer edges navigate`, async () => {
     const book = fileURLToPath(new URL(`../fixtures/fxl-spread-${rtl ? "rtl" : "ltr"}.epub`, import.meta.url));
     const { context, readerPage: page } = await launchReader(book, {
       viewport: { width: 1600, height: 900 },
@@ -110,11 +110,14 @@ for (const rtl of [false, true]) {
         body: JSON.stringify(geometry), contentType: "application/json",
       });
       for (const rect of geometry) {
-        for (const x of [rect.left + 5, rect.left + rect.width / 4, rect.right - 5]) {
+        const band = Math.min(rect.width * 0.08, 64);
+        for (const x of [rect.left + band + 1, rect.left + rect.width / 4, rect.right - band - 1]) {
           await page.mouse.click(x, 400);
           expect(await turns(page)).toEqual([]);
         }
       }
+      await page.mouse.click(geometry[0]!.right - 5, 400);
+      await page.mouse.click(geometry[1]!.left + 5, 400);
       await page.mouse.click((geometry[0]!.right + geometry[1]!.left) / 2, 400);
       expect(await turns(page)).toEqual([]);
       const back = await outerMarginPoint(page, rtl ? "right" : "left");
@@ -126,16 +129,20 @@ for (const rtl of [false, true]) {
       await settle(page);
       expect(await turns(page)).toEqual([-1, 1]);
 
-      // Width-fitted artwork leaves no lateral margin. Do not steal its edges.
+      // Width-fitted artwork retains both physical outer-edge targets.
       await page.setViewportSize({ width: 1200, height: 900 });
       await settle(page);
       await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").width)).toBe(1200);
-      await page.mouse.click(5, 400);
-      await page.mouse.click(1195, 400);
-      expect(await turns(page)).toEqual([-1, 1]);
-      await page.keyboard.press(rtl ? "ArrowRight" : "ArrowLeft");
+      await settle(page);
+      await page.mouse.move(600, 400);
+      await expect(page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
+        .locator("..")).toHaveCSS("opacity", "0");
+      await page.mouse.click(rtl ? 1195 : 5, 400);
       await settle(page);
       expect(await turns(page)).toEqual([-1, 1, -1]);
+      await page.mouse.click(rtl ? 5 : 1195, 400);
+      await settle(page);
+      expect(await turns(page)).toEqual([-1, 1, -1, 1]);
     } finally {
       await context.close();
     }

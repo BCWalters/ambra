@@ -9,6 +9,7 @@ import {
   FixedContentHost,
   FixedLayoutSpreadPlanner,
   FixedSpreadHost,
+  isInteractiveContentTarget,
   Locator,
   LocatorResolver,
   NavigationDocument,
@@ -56,7 +57,7 @@ import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
-import { frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
+import { fixedLayoutEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
@@ -1221,7 +1222,8 @@ export class ReaderController {
   private async navigateNarrationTarget(target: NarrationTarget): Promise<void> {
     const view = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex);
     if (view && (this.host instanceof PaginatedContentHost || this.host instanceof ScrollContentHost)) {
-      const element = target.fragment ? view.document.getElementById(target.fragment) : view.document.body;
+      const element = target.fragment ? view.document.getElementById(target.fragment)
+        : view.document.body ?? view.document.documentElement;
       if (!element) throw new Error(`The narrated passage ${target.path}#${target.fragment ?? ""} was not found.`);
       if (this.host instanceof PaginatedContentHost) this.host.goToPosition(element, 0);
       else this.host.restorePosition(element, 0);
@@ -1917,7 +1919,7 @@ export class ReaderController {
         if (destination) {
           // A spread's second document is the next reading stop, even in RTL.
           if (this.isFixedLayoutHost(host)) {
-            const point = { node: destination.document.body, offset: 0, spineIndex: nextSpineIndex };
+            const point = { node: destination.document.body ?? destination.document.documentElement, offset: 0, spineIndex: nextSpineIndex };
             this.accessibility.focusReadingPosition(destination.document, point);
             this.nativeReading.retain(point);
             this.publishFixedReadingPosition();
@@ -2845,6 +2847,10 @@ export class ReaderController {
       this.contentInteractionCleanup = undefined;
       this.dragCleanup?.();
       this.dragCleanup = undefined;
+      const hadReadingFocus = this.contentDocumentViews(host).some(({ document }) => {
+        const frame = document.defaultView?.frameElement;
+        return frame && frame.ownerDocument.activeElement === frame;
+      });
       host.dispose();
       previousWrapperEl?.remove();
       newStagingEl.style.opacity = "";
@@ -2856,6 +2862,7 @@ export class ReaderController {
       this.reattachKeyboardNav();
       this.setUpContentInteraction();
       this.setUpDragPageTurn();
+      this.restoreFocusAfterHostSwap(hadReadingFocus);
       const newIndices = newHost.spineIndices;
       this.announce(
         newIndices.length > 1
@@ -3314,8 +3321,7 @@ export class ReaderController {
     return () => cleanups.forEach(cleanup => cleanup());
   }
 
-  /** FXL has no reader-owned content inset: only letterboxing outside
-   * the scaled pages navigates, never a guessed zone inside the artwork. */
+  /** FXL also accepts bounded artwork-edge taps when letterboxing is absent. */
   private setUpFixedSpreadClickToNavigate(host: FixedSpreadHost): () => void {
     const cleanups = this.contentDocumentViews(host).map(({ document: doc }) =>
       this.setUpMarginClicks(doc, doc));
@@ -3364,7 +3370,9 @@ export class ReaderController {
     const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null;
     const parentX = frame ? frame.getBoundingClientRect().left +
       x * frame.getBoundingClientRect().width / frame.clientWidth : x;
-    return outerMarginSide(parentX, bounds);
+    return host instanceof FixedSpreadHost
+      ? fixedLayoutEdgeSide(parentX, bounds)
+      : outerMarginSide(parentX, bounds);
   }
 
   private dismissContentSelection(): boolean {
@@ -3384,6 +3392,7 @@ export class ReaderController {
     const dismissedUi = this.dismissUiForPointer(start);
     // Native pointerdown clears selection before pointerup can inspect it.
     if (this.dismissContentSelection()) return;
+    if (this.isFixedLayoutHost(this.host) && !this.isPageTurnTarget(start.target)) return;
     const cleanup = (): void => {
       target.removeEventListener("pointerup", listener);
       target.removeEventListener("pointercancel", listener);
@@ -3616,7 +3625,15 @@ export class ReaderController {
   /** Maximum movement for a gesture to still count as a tap. */
   private static readonly CLICK_MOVEMENT_TOLERANCE = 10;
 
-  /** Only a tap that starts and ends in the same outer page margin
+  private isPageTurnTarget(target: EventTarget | null): boolean {
+    const node = target as Node | null;
+    const element = node?.nodeType === 1 ? node as Element : node?.parentElement;
+    if (!element) return true;
+    return !isInteractiveContentTarget(element) &&
+      (this.isFixedLayoutHost(this.host) || !element.closest("img"));
+  }
+
+  /** Only a tap that starts and ends in the same outer margin/FXL edge
    * navigates. Native content interactions remain publication-owned. */
   private handleContentClick(
     upEvent: PointerEvent,
@@ -3644,7 +3661,7 @@ export class ReaderController {
       return;
     }
 
-    if ((upEvent.target as Element | null)?.closest?.("a[href], summary, img")) {
+    if (!this.isPageTurnTarget(upEvent.target)) {
       return;
     }
 
@@ -3932,7 +3949,7 @@ export class ReaderController {
     const destination = views.find(view => view.spineIndex === nextSpineIndex &&
       (this.isFixedLayoutHost(this.host) || view.page?.index === 0));
     if (destination) {
-      const point = { spineIndex: nextSpineIndex, node: destination.document.body, offset: 0 };
+      const point = { spineIndex: nextSpineIndex, node: destination.document.body ?? destination.document.documentElement, offset: 0 };
       this.accessibility.focusReadingPosition(destination.document, point);
       this.nativeReading.retain(point);
       this.publishFixedReadingPosition();
@@ -4562,7 +4579,7 @@ export class ReaderController {
         if (this.isFixedLayoutHost(newHost)) {
           const doc = this.contentDocumentViews().find(view => view.spineIndex === requestedSpineIndex)?.document;
           if (doc) {
-            readingPosition = { node: doc.body, offset: 0 };
+            readingPosition = { node: doc.body ?? doc.documentElement, offset: 0 };
             this.nativeReading.retain({ ...readingPosition, spineIndex: requestedSpineIndex });
           }
         }

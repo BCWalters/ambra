@@ -33,3 +33,12 @@ export function outerMarginSide(x: number, pages: readonly HorizontalBounds[]): 
   if (x > Math.max(...pages.map(page => page.right))) return 1;
   return undefined;
 }
+
+/** FXL artwork can fill the pane. Extend only the two physical outer
+ * margins into 8% of the rendered page, capped at 64 CSS pixels. */
+export function fixedLayoutEdgeSide(x: number, pages: readonly HorizontalBounds[]): -1 | 1 | undefined {
+  return outerMarginSide(x, pages.map(page => {
+    const inset = Math.min((page.right - page.left) * 0.08, 64);
+    return { left: page.left + inset, right: page.right - inset };
+  }));
+}
