@@ -87,6 +87,10 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
     expect(await preference(page, "welcome-unrelated-test")).toEqual({ preserve: true });
     expect(await position(page)).toEqual(before);
     await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe("IFRAME");
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => position(page)).not.toEqual(before);
+    await page.keyboard.press("ArrowLeft");
+    await expect.poll(() => position(page)).toEqual(before);
     await page.reload();
     await expect(page.locator("iframe").first()).toBeAttached();
     await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();

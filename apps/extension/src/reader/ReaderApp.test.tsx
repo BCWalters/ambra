@@ -145,6 +145,7 @@ it("offers welcome only after content commits without an error, even while total
   await act(async () => start.click());
   expect(welcomePreference.acknowledge).toHaveBeenCalledOnce();
   expect(document.querySelector(".reading-welcome")).toBeNull();
+  expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(false);
 });
 
 it.each([
