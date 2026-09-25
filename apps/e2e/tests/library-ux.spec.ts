@@ -35,6 +35,26 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
       await libraryPage.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
       await expect.poll(titlesInOrder).toEqual([LONG_CONTENT_TITLE, TWO_CHAPTER_TITLE]);
 
+      // The grid updates optimistically. A read transaction queues behind the
+      // preference write, so reload cannot abort that still-pending commit.
+      expect(await libraryPage.evaluate(() => new Promise<unknown>((resolve, reject) => {
+        const opening = indexedDB.open("ambra-library");
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const db = opening.result;
+          const transaction = db.transaction("preferences", "readonly");
+          const request = transaction.objectStore("preferences").get("defaultLibrarySort");
+          transaction.oncomplete = () => {
+            db.close();
+            resolve(request.result?.value);
+          };
+          transaction.onabort = () => {
+            db.close();
+            reject(transaction.error);
+          };
+        };
+      }))).toBe("titleAsc");
+
       await libraryPage.reload();
       await expect.poll(titlesInOrder).toEqual([LONG_CONTENT_TITLE, TWO_CHAPTER_TITLE]);
     } finally {
