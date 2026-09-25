@@ -117,6 +117,8 @@ describe("book-wide CFI page index", () => {
     expect(estimator.pageIndexForCfi(0, cfi(19))).toBe(1);
     expect(estimator.pageIndexForCfi(0, cfi(20))).toBe(2);
     expect(estimator.pageIndexForCfi(0, cfi(40))).toBe(2);
+    expect(estimator.pageStartCfi(0, 1)).toBe(cfi(10));
+    expect(estimator.pageStartCfi(0, 99)).toBeUndefined();
     expect(estimator.pageIndexForCfi(99, cfi(10))).toBeUndefined();
   });
 
@@ -157,6 +159,7 @@ describe("book-wide CFI page index", () => {
     await run();
     const saved = cfi(15);
     estimator.invalidateSpineItem(0);
+    expect(estimator.pageStartCfi(0, 1)).toBeUndefined();
     expect(estimator.pageIndexForCfi(0, saved)).toBeUndefined();
     await run();
     expect(estimator.pageIndexForCfi(0, saved)).toBe(1);

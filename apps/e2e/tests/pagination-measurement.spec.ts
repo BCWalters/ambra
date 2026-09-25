@@ -40,7 +40,9 @@ async function browser(): Promise<{ context: BrowserContext; page: Page; close: 
   });
   const page = await context.newPage();
   await page.route("http://pagination.test/**", route => route.fulfill({
-    contentType: "text/html", body: "<!doctype html><html><body style='margin:0'></body></html>",
+    contentType: "text/html",
+    // Cache-equivalence tests must not give only the first iframe native :hover state.
+    body: "<!doctype html><html><head><style>iframe{pointer-events:none}</style></head><body style='margin:0'></body></html>",
   }));
   await page.goto("http://pagination.test/");
   await page.addScriptTag({ content: code });
@@ -447,6 +449,10 @@ test("identical fresh documents reuse DOM-free boundaries; changed typography an
       const sameBoundaries = JSON.stringify(target.paginationSnapshot()?.pages) === JSON.stringify(snapshot.pages);
       const targetOwned = target.currentPosition()?.node.ownerDocument === target.element.contentDocument;
       const reuseMeasurements = measurements;
+      const identityDifferences = JSON.parse(snapshot.identity).flatMap((value: unknown, index: number) =>
+        JSON.stringify(value) === JSON.stringify(JSON.parse(Reflect.get(target, "measurementIdentity") ?? "[]")[index])
+          ? [] : [index],
+      );
       const typography = create();
       await typography.open(loader, resolver, 0, undefined, doc => {
         E.ReadingTheme.applyFontScale(doc, 1.2);
@@ -462,13 +468,13 @@ test("identical fresh documents reuse DOM-free boundaries; changed typography an
       for (const host of [target, typography, changed]) { host.dispose(); host.element.remove(); }
       resolver.dispose();
       return { pageCount, initialMs, cachedMs, sameBoundaries, targetOwned, reuseMeasurements,
-        typographyMeasurements, disclosureMeasurements, invalidatedSource };
+        typographyMeasurements, disclosureMeasurements, invalidatedSource, identityDifferences };
     }, bytes);
     const report = test.info().outputPath("pagination-snapshot.json");
     fs.writeFileSync(report, JSON.stringify(result, null, 2));
     await test.info().attach("pagination-snapshot.json", { path: report, contentType: "application/json" });
     expect(result.pageCount).toBeGreaterThan(400);
-    expect(result.reuseMeasurements).toBe(0);
+    expect(result.reuseMeasurements, JSON.stringify(result)).toBe(0);
     expect(result.sameBoundaries).toBe(true);
     expect(result.targetOwned).toBe(true);
     expect(result.typographyMeasurements).toBe(1);
@@ -568,12 +574,13 @@ test("SMIL and opaque media decline snapshot transfer while static inline SVG re
         };
         await target.open(loader, resolver, 0, undefined, undefined, undefined, snapshot);
         E.PaginationEngine.paginate = original;
+        const sameIdentity = snapshot?.identity === Reflect.get(target, "measurementIdentity");
         for (const host of [source, target]) { host.dispose(); host.element.remove(); }
         resolver.dispose();
-        return { eligible: !!snapshot, webAnimations, measurements };
+        return { eligible: !!snapshot, webAnimations, measurements, sameIdentity };
       }, bytes);
       expect(result.eligible, entry.name).toBe(entry.eligible);
-      expect(result.measurements, entry.name).toBe(entry.eligible ? 0 : 1);
+      expect(result.measurements, `${entry.name}: ${JSON.stringify(result)}`).toBe(entry.eligible ? 0 : 1);
       if (entry.name === "SMIL") expect(result.webAnimations).toBe(0);
     }
   } finally { await session.close(); }

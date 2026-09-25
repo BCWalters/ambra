@@ -264,6 +264,11 @@ export class BookPaginationEstimator {
     return aggregateBookPosition(this.pageCounts, currentSpineIndex, pageIndexInItem);
   }
 
+  /** A measured page's portable start, also usable when the destination opens in scroll mode. */
+  public pageStartCfi(spineIndex: number, pageIndex: number): string | undefined {
+    return this.pageStarts[spineIndex]?.[pageIndex];
+  }
+
   /** Resolves a saved position without reloading a chapter or retaining its DOM. */
   public pageIndexForCfi(spineIndex: number, cfi: string): number | undefined {
     if (this.pageCounts[spineIndex] === 1 &&

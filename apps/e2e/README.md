@@ -333,6 +333,9 @@ LTR/RTL keyboard and pointer seeking, exact companion-page destinations,
 bookmarks, resize and resume. Each fixed-layout spine item contributes one
 page without loading a measurement document. Mixed books still measure their
 reflowable chapters; a saved scrolling preference does not hide the FXL scrubber.
+Native moves into an already-visible companion update the scrubber immediately.
+Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
+than dropping the destination and opening the chapter's beginning.
 
 ```sh
 pnpm --filter @ambra/e2e run build:extension

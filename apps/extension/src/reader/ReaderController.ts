@@ -756,6 +756,13 @@ export class ReaderController {
     }
   }
 
+  private publishFixedReadingPosition(): void {
+    if (!this.isFixedLayoutHost(this.host)) return;
+    if (this.bookWidePagePosition()?.bookPageIndex !== this.cachedSnapshot?.bookPageIndex) {
+      this.notify();
+    }
+  }
+
   /** Bumps `contentPointerActivityId` and notifies. */
   private bumpContentActivity(): void {
     this.contentPointerActivityId++;
@@ -1647,6 +1654,15 @@ export class ReaderController {
 
     for (const iframeDocument of documents) {
       cleanups.push(this.nativeReading.attach(iframeDocument));
+      if (this.isFixedLayoutHost(this.host)) {
+        const publish = () => this.publishFixedReadingPosition();
+        iframeDocument.addEventListener("selectionchange", publish);
+        iframeDocument.addEventListener("focusin", publish);
+        cleanups.push(() => {
+          iframeDocument.removeEventListener("selectionchange", publish);
+          iframeDocument.removeEventListener("focusin", publish);
+        });
+      }
       applyEpubTypeAriaRoles(iframeDocument);
 
       const clickHandler = (event: MouseEvent): void => {
@@ -1830,7 +1846,10 @@ export class ReaderController {
         if (destination) {
           // A spread's second document is the next reading stop, even in RTL.
           if (this.isFixedLayoutHost(host)) {
-            this.accessibility.focusReadingPosition(destination.document, { node: destination.document.body, offset: 0 });
+            const point = { node: destination.document.body, offset: 0, spineIndex: nextSpineIndex };
+            this.accessibility.focusReadingPosition(destination.document, point);
+            this.nativeReading.retain(point);
+            this.publishFixedReadingPosition();
           } else {
             this.focusReadingContent(destination.document);
           }
@@ -3822,6 +3841,7 @@ export class ReaderController {
       const point = { spineIndex: nextSpineIndex, node: destination.document.body, offset: 0 };
       this.accessibility.focusReadingPosition(destination.document, point);
       this.nativeReading.retain(point);
+      this.publishFixedReadingPosition();
       return;
     }
     await this.openSpineItem(nextSpineIndex);
@@ -3864,6 +3884,13 @@ export class ReaderController {
       const targetGlobalPage = Math.max(1, Math.round(clamped * totalPages));
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
+        if (this.viewMode === "scroll" &&
+          this.pkg.spine[resolved.spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) !== "pre-paginated") {
+          const bridgeCfi = this.bookPagination?.pageStartCfi(resolved.spineIndex, resolved.pageIndexInItem);
+          if (!bridgeCfi) throw new Error("The requested page has no measured reading position.");
+          await this.openSpineItem(resolved.spineIndex, { ...options, bridgeCfi });
+          return;
+        }
         await this.openSpineItem(resolved.spineIndex, {
           ...options,
           landOnPageIndex: resolved.pageIndexInItem,

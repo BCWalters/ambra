@@ -31,6 +31,26 @@ for (const direction of ["ltr", "rtl"] as const) {
               view.document.defaultView?.frameElement === document.activeElement)?.spineIndex;
           })).toBe(target - 1);
         }
+        await page.evaluate(async () => {
+          const c = Reflect.get(window, "__readerController");
+          await c.seekToFraction(0.4);
+          await c.goToChapter(1);
+        });
+        await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
+        await slider.focus();
+        await slider.press(direction === "rtl" ? "ArrowLeft" : "ArrowRight");
+        await settled(page);
+        await expect(slider).toHaveAttribute("aria-valuetext", "Page 4 of 5");
+        if (width === 1400) {
+          await page.evaluate(async () => {
+            const c = Reflect.get(window, "__readerController");
+            await c.seekToFraction(0.4);
+            const doc = c.contentDocumentViews().find((view: { spineIndex: number }) => view.spineIndex === 2).document;
+            doc.defaultView.frameElement.focus();
+            doc.getSelection().collapse(doc.body, 0);
+          });
+          await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
+        }
         await slider.focus();
         await slider.press("Home");
         await settled(page);
@@ -52,7 +72,12 @@ for (const direction of ["ltr", "rtl"] as const) {
         await page.reload();
         await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
         await exposeReaderController(page);
-        await page.evaluate(async () => Reflect.get(window, "__readerController").setViewMode("scroll"));
+        await page.evaluate(async () => Reflect.get(window, "__readerController")
+          .library.patchGlobalReadingSettings({ viewMode: "scroll" }));
+        await page.reload();
+        await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
+        await exposeReaderController(page);
+        await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().viewMode === "scroll");
         await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
         await page.setViewportSize({ width: width === 760 ? 1400 : 760, height: 900 });
         await settled(page);

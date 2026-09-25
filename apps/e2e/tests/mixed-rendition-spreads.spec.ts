@@ -3,7 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { EXTENSION_PATH } from "../harness.js";
+import { EXTENSION_PATH, launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
 
 type Direction = "ltr" | "rtl";
 const reflowMarkers = Array.from({ length: 48 }, (_, i) => `R${String(i + 1).padStart(3, "0")}`);
@@ -79,6 +80,62 @@ async function visible(page: Page, direction: Direction) {
 }
 
 for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as const) {
+  test(`${direction}: FXL scrubbing into a scrolling chapter restores the previewed page (#200)`, async () => {
+    const directory = test.info().outputPath("mixed-scroll-seek");
+    const book = fixture(directory, direction, packageSpread);
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width: 1400, height: 900 } });
+    try {
+      await exposeReaderController(page);
+      await page.evaluate(async () => Reflect.get(window, "__readerController")
+        .library.patchGlobalReadingSettings({ viewMode: "scroll" }));
+      await page.reload();
+      await expect(page.getByRole("slider", { name: "Position in book" })).toHaveCount(1);
+      await exposeReaderController(page);
+      await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().viewMode === "scroll");
+      await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 0);
+      const target = await page.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        const total = c.snapshot().bookPageCount;
+        const first = c.bookPagination.positionFor(3, 0).currentPage;
+        const cfi = c.bookPagination.pageStartCfi(3, 1);
+        if (!cfi) throw new Error("Expected a measured second page in the reflowable chapter");
+        return { fraction: (first + 1) / total, cfi };
+      });
+      const slider = page.getByRole("slider", { name: "Position in book" });
+      await slider.focus();
+      const box = (await slider.boundingBox())!;
+      await page.mouse.click(
+        box.x + box.width * (direction === "rtl" ? 1 - target.fraction : target.fraction),
+        box.y + box.height / 2,
+      );
+      await expect(slider).toHaveCount(0);
+      await page.waitForFunction(() => !Reflect.get(window, "__readerController").isLoadInFlight);
+      const actual = await page.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        const point = c.nativeReading.current();
+        if (!point) throw new Error("Expected retained scrolling destination");
+        const doc = point.node.ownerDocument;
+        const range = doc.createRange();
+        range.setStart(point.node, point.offset);
+        range.collapse(true);
+        return {
+          cfi: c.locatorResolver.generate(point.spineIndex, point.node, point.offset).cfi,
+          spine: point.spineIndex,
+          scrollTop: doc.scrollingElement.scrollTop,
+          top: range.getBoundingClientRect().top,
+          height: doc.defaultView.innerHeight,
+        };
+      });
+      expect(actual.cfi).toBe(target.cfi);
+      expect(actual.spine).toBe(3);
+      expect(actual.scrollTop).toBeGreaterThan(0);
+      expect(actual.top).toBeGreaterThanOrEqual(0);
+      expect(actual.top).toBeLessThan(actual.height);
+    } finally {
+      await context.close();
+    }
+  });
+
   test(`${direction}, package spread-${packageSpread}: per-item spreads cross FXL/reflowable boundaries and survive resize/reload`, async () => {
     test.setTimeout(120_000);
     const contention = [{ at: "start", loadAverage: os.loadavg(), logicalCpus: os.cpus().length }];
@@ -89,7 +146,8 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
     fs.mkdirSync(runtime, { recursive: true });
     const profile = path.join(directory, "profile");
     const context = await chromium.launchPersistentContext(profile, {
-      headless: false,
+      headless: process.env.AMBRA_E2E_HEADLESS === "1",
+      ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
       viewport: { width: 1400, height: 900 },
       env: { ...process.env, TMPDIR: runtime },
