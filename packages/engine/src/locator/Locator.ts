@@ -1,5 +1,6 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { PackageDocument } from "../container/PackageDocument.js";
+import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 import { CfiStep, EpubCfi, EpubCfiParseError } from "./EpubCfi.js";
 import {
   childStepIndex,
@@ -97,6 +98,35 @@ export class LocatorResolver {
 
     const cfi = new EpubCfi(spineRef.packageCfiSteps, contentSteps, finalOffset);
     return new Locator(cfi.toString());
+  }
+
+  /** Generates an orderable point for a DOM boundary. Element offsets are child
+   * indices, not character offsets: `/body:80` would otherwise sort before
+   * every descendant of body, even those preceding its eightieth child. */
+  public generateBoundary(spineIndex: number, node: Node, offset = 0): Locator {
+    if (node.nodeType !== ELEMENT_NODE || offset === 0) {
+      return this.generate(spineIndex, node, node.nodeType === ELEMENT_NODE ? undefined : offset);
+    }
+    const nextAfter = (node: Node): Node | undefined => {
+      let current: Node | null = node;
+      while (current && !current.nextSibling) current = current.parentNode;
+      return current?.nextSibling ?? undefined;
+    };
+    const addressable = (node: Node): boolean =>
+      !isReaderOwnedContent(node) && (node.nodeType === ELEMENT_NODE || node.nodeType === 3 || node.nodeType === 4);
+    let next: Node | undefined = node.childNodes[offset] ?? nextAfter(node);
+    while (next && !addressable(next)) next = nextAfter(next);
+    if (next) return this.generate(spineIndex, next, next.nodeType === ELEMENT_NODE ? undefined : 0);
+    // At the document's end, use the final content leaf's end rather than a
+    // parent offset that sorts before its own descendants.
+    let last = node;
+    for (;;) {
+      let child = last.lastChild;
+      while (child && !addressable(child)) child = child.previousSibling;
+      if (!child) break;
+      last = child;
+    }
+    return this.generate(spineIndex, last, last.nodeType === ELEMENT_NODE ? undefined : last.textContent?.length ?? 0);
   }
 
   /** Resolves `locator` to a live DOM position, loading (via this

@@ -47,6 +47,12 @@ export class NavPoint {
   public get isLinked(): boolean {
     return this.path !== undefined;
   }
+
+  /** Full navigation target: entries in the same document can name different sections. */
+  public get target(): string | undefined {
+    return this.path === undefined ? undefined
+      : this.fragment ? `${this.path}#${this.fragment}` : this.path;
+  }
 }
 
 /** One navigation list (e.g. the table of contents) — its type and

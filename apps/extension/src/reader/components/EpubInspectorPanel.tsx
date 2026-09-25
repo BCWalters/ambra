@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FC, ReactNode } from "react";
+import { ErrorDetails } from "../../components/ErrorDetails.js";
 import { flushSync } from "react-dom";
 import {
   Body1,
@@ -737,7 +738,7 @@ const FilesTab: FC<{
           <section aria-label={t("inspector.findReferences")} style={{ maxHeight: "35%", minHeight: 0, overflow: "auto",
             padding: "8px 12px", borderBottom: `1px solid ${CHROME_BORDER}`, flexShrink: 0 }}>
             {referenceSearch.status === "loading" && <Spinner size="tiny" label={t("inspector.findingReferences")} />}
-            {referenceSearch.status === "error" && <Caption1 role="alert">{referenceSearch.error}</Caption1>}
+            {referenceSearch.status === "error" && <ErrorDetails role="alert">{referenceSearch.error}</ErrorDetails>}
             {referenceSearch.status === "ready" && (
               <>
                 <Body1 as="p" block role="status" style={{ margin: "0 0 4px", fontWeight: 600 }}>
@@ -1445,7 +1446,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                   {t("inspector.locateCurrentPassage")}
                 </Button>
                 {operation === "locate" && <Spinner size="tiny" label={t("inspector.locatingPassage")} />}
-                {linkError && <Caption1 role="alert">{linkError}</Caption1>}
+                {linkError && <ErrorDetails role="alert">{linkError}</ErrorDetails>}
               </div>
             )}
             {!data ? (

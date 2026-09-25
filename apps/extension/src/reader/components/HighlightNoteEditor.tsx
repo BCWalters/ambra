@@ -3,6 +3,7 @@ import type { FC } from "react";
 import { Button, Textarea } from "@fluentui/react-components";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { describeStorageError } from "../../StorageErrors.js";
+import { ErrorDetails } from "../../components/ErrorDetails.js";
 
 export interface HighlightNoteEditorProps {
   value: string;
@@ -93,13 +94,13 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
         style={{ width: "100%" }}
       />
       {saveError !== undefined && (
-        <div
+        <ErrorDetails
           id={errorId}
           role="alert"
-          style={{ fontSize: 12, marginTop: 6, overflowWrap: "anywhere" }}
+          style={{ marginTop: 6 }}
         >
           {t("error.detailsPrefix")} {saveError}
-        </div>
+        </ErrorDetails>
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 6 }}>
         <Button size="small" onClick={onCancel}>

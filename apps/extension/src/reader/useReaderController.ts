@@ -79,6 +79,7 @@ export interface UseReaderControllerResult {
   listEmbeddedAnnotations: () => ReadOnlyAnnotationView[];
   goToReadOnlyAnnotation: (cfi: string) => Promise<void>;
   exportAnnotations: () => Promise<{ filename: string; text: string } | undefined>;
+  saveBookAs: () => Promise<void>;
   importAnnotationsFile: (file: File) => Promise<AnnotationImportResult | undefined>;
   dismissSelectionToolbar: () => void;
   dismissActiveHighlight: () => void;
@@ -505,6 +506,10 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     return controller?.exportAnnotations();
   }, [controller]);
 
+  const saveBookAs = useCallback(async () => {
+    await controller?.saveBookAs();
+  }, [controller]);
+
   const importAnnotationsFile = useCallback(
     async (file: File) => {
       return controller?.importAnnotationsFile(file);
@@ -588,6 +593,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     listEmbeddedAnnotations,
     goToReadOnlyAnnotation,
     exportAnnotations,
+    saveBookAs,
     importAnnotationsFile,
     dismissSelectionToolbar,
     dismissActiveHighlight,

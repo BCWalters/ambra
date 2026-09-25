@@ -40,11 +40,11 @@ describe("Library localization and action order", () => {
     language.locale = "en";
     state = {
       books: [], isLoading: false, canImport: true, error: undefined,
-      importActivities: [], dismissCompletedImports: vi.fn(),
+      importActivities: [], dismissCompletedImports: vi.fn(), cancelDownload: vi.fn(),
       dismissError: vi.fn(), importFiles: vi.fn(), removeBook: vi.fn(), openBook: vi.fn(),
       chromeTheme: "ambra", settings: DEFAULT_GLOBAL_READING_SETTINGS, setSettings: vi.fn(),
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: false, openInFullTab: vi.fn(),
-      storageUsage: { usageBytes: 1536, quotaBytes: 1048576 }, openInspectionSession: vi.fn(),
+      storageUsage: { usageBytes: 1536, quotaBytes: 1048576 }, openInspectionSession: vi.fn(), saveBookAs: vi.fn(),
     };
     vi.mocked(useLibrary).mockImplementation(() => state);
     container = document.createElement("div");
@@ -258,6 +258,10 @@ describe("Library localization and action order", () => {
     expect(status.textContent).not.toContain("complete.epub");
     expect(status.textContent).toContain(t("library.importKeepOpen"));
     expect(status.querySelector('[aria-valuenow]')).toBeNull();
+    const cancel = button(t("library.cancelDownloadFile", { fileName: "narrated.epub" }));
+    expect(cancel.textContent).toBe(t("library.cancelDownload"));
+    await act(async () => cancel.click());
+    expect(state.cancelDownload).toHaveBeenCalledExactlyOnceWith(2);
     await act(async () => button(t("library.readNowBook", { title })).click());
     expect(state.openBook).toHaveBeenCalledExactlyOnceWith("complete");
     await act(async () => button(t("library.dismiss")).click());

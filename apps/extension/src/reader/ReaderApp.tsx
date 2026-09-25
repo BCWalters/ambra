@@ -22,6 +22,7 @@ import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
 import { FootnotePopup } from "./components/FootnotePopup.js";
 import { NoteMarkers } from "./components/NoteMarkers.js";
 import { FriendlyError } from "./components/FriendlyError.js";
+import { isInvalidEpubError } from "../EpubErrors.js";
 import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
 import { useReaderController } from "./useReaderController.js";
@@ -101,6 +102,7 @@ const ReaderAppInner: FC = () => {
     listEmbeddedAnnotations,
     goToReadOnlyAnnotation,
     exportAnnotations,
+    saveBookAs,
     importAnnotationsFile,
     setHighlightNote,
     setHighlightStyle,
@@ -224,7 +226,7 @@ const ReaderAppInner: FC = () => {
   const [inspectorReader, setInspectorReader] = useState<InspectorReaderBridge>();
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
-  const [openError, setOpenError] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<{ message: string; invalidEpub?: boolean } | null>(null);
   useEffect(() => {
     if (!snapshot) return;
     recordDiagnosticSurfaces({
@@ -454,7 +456,7 @@ const ReaderAppInner: FC = () => {
   useEffect(() => {
     const bookId = new URLSearchParams(window.location.search).get("bookId");
     if (!bookId) {
-      setOpenError("No book selected — open this book from the Ambra library.");
+      setOpenError({ message: "No book selected — open this book from the Ambra library." });
       return;
     }
 
@@ -485,7 +487,7 @@ const ReaderAppInner: FC = () => {
       } catch (err) {
         library?.close();
         if (!cancelled) {
-          setOpenError(err instanceof Error ? err.message : String(err));
+          setOpenError({ message: err instanceof Error ? err.message : String(err), invalidEpub: isInvalidEpubError(err) });
         }
       }
     })();
@@ -499,7 +501,8 @@ const ReaderAppInner: FC = () => {
     return (
       <div style={{ height: "100vh", position: "relative" }}>
         <FriendlyError
-          message={openError}
+          message={openError.message}
+          headline={openError.invalidEpub ? t("error.invalidEpubHeadline") : undefined}
           severity="blocking"
           onDismiss={() => setOpenError(null)}
           getDiagnosticsText={getDiagnosticsText}
@@ -763,6 +766,8 @@ const ReaderAppInner: FC = () => {
               details={bookDetails}
               onOpenInspector={openInspector}
               onOpenHelp={help.openHelp}
+              onSaveAs={saveBookAs}
+              getDiagnosticsText={getDiagnosticsText}
               scrubberVisible={scrubberVisible}
             />
 

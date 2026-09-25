@@ -84,7 +84,7 @@ describe("reader diagnostic intent", () => {
     await controller.goToReadOnlyAnnotation("private annotation");
     await controller.goToSearchResult("private search CFI");
     await controller.goToNavPoint({ label: "private title", path: "private-chapter.xhtml",
-      children: [], fragment: undefined, isLinked: true });
+      children: [], fragment: undefined, isLinked: true, target: "private-chapter.xhtml" });
     const report = diagnostics.format({});
     for (const source of ["bookmark", "highlight", "embedded-annotation", "search", "toc"]) {
       expect(report).toContain(`navigation source="${source}"`);

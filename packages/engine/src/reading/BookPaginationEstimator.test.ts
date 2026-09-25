@@ -122,6 +122,45 @@ describe("book-wide CFI page index", () => {
     expect(estimator.pageIndexForCfi(99, cfi(10))).toBeUndefined();
   });
 
+  it("measures distinct fragment targets once, preserves them on pause, and invalidates them on reflow", async () => {
+    estimator.dispose();
+    estimator = new BookPaginationEstimator(
+      loader, resources, loader.packageDocument.spine,
+      loader.packageDocument.metadata.renditionLayout, container, undefined, locators,
+      new Map([[0, ["first", "second", "missing"]]]),
+    );
+    const open = vi.mocked(PaginatedContentHost.prototype.open);
+    const implementation = open.getMockImplementation()!;
+    open.mockImplementation(async function (this: PaginatedContentHost, ...args) {
+      await implementation.apply(this, args);
+      const doc = this.element.contentDocument!;
+      doc.body.insertAdjacentHTML("beforeend", '<h2 id="first">First</h2><h2 id="second">Second</h2>');
+    });
+    let secondPage = 2;
+    const find = vi.spyOn(PaginatedContentHost.prototype, "pageIndexForPosition")
+      .mockImplementation(node => (node as Element).id === "first" ? 0 : secondPage);
+    expect(estimator.pageIndexForFragment(0, "first")).toBeUndefined();
+    await run();
+    expect(estimator.pageIndexForFragment(0, "first")).toBe(0);
+    expect(estimator.pageIndexForFragment(0, "second")).toBe(2);
+    expect(estimator.pageIndexForFragment(0, "missing")).toBeUndefined();
+    expect(estimator.pageIndexForFragment(99, "first")).toBeUndefined();
+    expect(find).toHaveBeenCalledTimes(2);
+    estimator.cancelPendingMeasurement();
+    await run();
+    expect(find).toHaveBeenCalledTimes(2);
+    secondPage = 1;
+    const resize = run(900);
+    expect(estimator.pageIndexForFragment(0, "second")).toBeUndefined();
+    await resize;
+    expect(estimator.pageIndexForFragment(0, "second")).toBe(1);
+    estimator.invalidateSpineItem(0);
+    expect(estimator.pageIndexForFragment(0, "second")).toBeUndefined();
+    await run(900);
+    expect(estimator.pageIndexForFragment(0, "second")).toBe(1);
+    expect(container.children).toHaveLength(0);
+  });
+
   it("reuses the cached index for unchanged layout and replaces it after resize", async () => {
     await run();
     const saved = cfi(15);

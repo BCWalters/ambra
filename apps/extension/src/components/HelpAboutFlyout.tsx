@@ -8,6 +8,7 @@ import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
 import { ariaShortcut, formatShortcut, getCommandBindings } from "../shortcuts/ReaderCommands.js";
 import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
+import { ErrorDetails } from "./ErrorDetails.js";
 
 const GITHUB_REPO_URL = "https://github.com/BCWalters/ambra";
 const USER_GUIDE_URL = "https://github.com/BCWalters/ambra/blob/main/docs/user-guide/README.md";
@@ -185,7 +186,12 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
           <Caption1 as="p" block role="status" aria-live="polite" style={{ margin: "8px 0 0" }}>
             {copyState === "copied" ? t("about.copied") : copyState === "copying" ? t("about.copying") : ""}
           </Caption1>
-          {copyError && <Body1 as="p" block role="alert" style={{ margin: "12px 0 0" }}>{t("about.copyError")} {copyError}</Body1>}
+          {copyError && (
+            <div role="alert" style={{ marginTop: 12 }}>
+              <Body1 as="p" block style={{ margin: 0 }}>{t("about.copyError")} </Body1>
+              <ErrorDetails style={{ marginTop: 4 }}>{copyError}</ErrorDetails>
+            </div>
+          )}
         </PaneCard>
         </div>
 

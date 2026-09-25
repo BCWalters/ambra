@@ -1,4 +1,6 @@
 export const EPUB_IMPORT_RESULT = "ambra:epub-import-result";
+export const EPUB_IMPORT_ACTIVE = "ambra:epub-import-active";
+export const EPUB_IMPORT_CANCEL = "ambra:epub-import-cancel";
 export const LIBRARY_IMPORT_TOKEN_PARAM = "importToken";
 
 export function httpImportOrigins(urls: readonly string[]): string[] | undefined {

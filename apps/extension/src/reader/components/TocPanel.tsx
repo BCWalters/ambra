@@ -52,8 +52,8 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {items.map((item, index) => {
-        const isCurrent = item.isLinked && item.path === currentPath;
-        const pageNumber = item.path !== undefined ? pageNumbers.get(item.path) : undefined;
+        const isCurrent = item.isLinked && item.target === currentPath;
+        const pageNumber = item.target !== undefined ? pageNumbers.get(item.target) : undefined;
         return (
           <li key={index}>
             {item.isLinked ? (
@@ -135,17 +135,15 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
 
 export interface TocPanelProps {
   items: readonly NavPoint[];
-  /** Archive-relative path of the currently-open spine item (see
-   * `ReaderSnapshot.currentSpinePath`) — highlights whichever entry
-   * points at it. */
+  /** Full target (path and optional fragment) of the current TOC entry. */
   currentPath: string | undefined;
   /** Archive-relative path of the book's very first spine item (see
    * `ReaderSnapshot.firstSpinePath`) — compared against the TOC's own
    * first linked entry to decide whether to show a synthetic "Start of
    * Book" entry above it (see the component doc comment). */
   firstSpinePath: string | undefined;
-  /** Book-wide page number of each entry's target spine item, keyed by
-   * path (see `ReaderSnapshot.tocPageNumbers`) — shown right-justified
+  /** Book-wide page number of each entry's target, keyed by
+   * path and optional fragment (see `ReaderSnapshot.tocPageNumbers`) — shown right-justified
    * alongside each entry's label, whenever it's known. */
   pageNumbers: ReadonlyMap<string, number>;
   onSelect: (navPoint: NavPoint) => void;

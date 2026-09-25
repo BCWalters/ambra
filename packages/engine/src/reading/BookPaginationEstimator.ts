@@ -17,6 +17,7 @@ import { EpubCfi } from "../locator/EpubCfi.js";
 interface MeasuredSpineItem {
   pageCount: number;
   pageStarts?: readonly string[];
+  fragmentPages?: ReadonlyMap<string, number>;
 }
 
 export type { BookPosition } from "./BookPagination.js";
@@ -59,6 +60,7 @@ function yieldToEventLoop(): Promise<void> {
 export class BookPaginationEstimator {
   private pageCounts: (number | undefined)[];
   private pageStarts: (readonly string[] | undefined)[];
+  private fragmentPages: (ReadonlyMap<string, number> | undefined)[];
   private generation = 0;
   private activeRun: AbortController | undefined;
   private lastWidth: number | undefined;
@@ -77,9 +79,11 @@ export class BookPaginationEstimator {
     private readonly hiddenContainer: HTMLElement,
     private readonly disclosures?: DisclosureState,
     private readonly locatorResolver?: LocatorResolver,
+    private readonly fragments: ReadonlyMap<number, readonly string[]> = new Map(),
   ) {
     this.pageCounts = this.initialPageCounts();
     this.pageStarts = new Array(spine.length).fill(undefined);
+    this.fragmentPages = new Array(spine.length).fill(undefined);
   }
 
   private initialPageCounts(): (number | undefined)[] {
@@ -137,6 +141,7 @@ export class BookPaginationEstimator {
     ) {
       this.pageCounts = this.initialPageCounts();
       this.pageStarts = new Array(this.spine.length).fill(undefined);
+      this.fragmentPages = new Array(this.spine.length).fill(undefined);
       this.lastWidth = width;
       this.lastHeight = height;
       this.lastFontScale = fontScale;
@@ -186,6 +191,7 @@ export class BookPaginationEstimator {
       }
       this.pageCounts[spineIndex] = measured.pageCount;
       this.pageStarts[spineIndex] = measured.pageStarts;
+      this.fragmentPages[spineIndex] = measured.fragmentPages;
       onProgress();
     }
   }
@@ -242,7 +248,7 @@ export class BookPaginationEstimator {
           signal.throwIfAborted();
           const start = host.pageStartPosition(index);
           if (!start) throw new Error(`Missing page ${index} in spine item ${spineIndex}.`);
-          pageStarts.push(locatorResolver.generate(spineIndex, start.node, start.offset).cfi);
+          pageStarts.push(locatorResolver.generateBoundary(spineIndex, start.node, start.offset).cfi);
           if (performance.now() >= deadline) {
             await yieldToEventLoop();
             signal.throwIfAborted();
@@ -250,7 +256,13 @@ export class BookPaginationEstimator {
           }
         }
       }
-      return { pageCount: host.pageCount, pageStarts };
+      const fragmentPages = new Map<string, number>();
+      for (const fragment of this.fragments.get(spineIndex) ?? []) {
+        const target = host.element.contentDocument?.getElementById(fragment);
+        const page = target ? host.pageIndexForPosition(target, 0) : undefined;
+        if (page !== undefined) fragmentPages.set(fragment, page);
+      }
+      return { pageCount: host.pageCount, pageStarts, fragmentPages };
     } finally {
       signal.removeEventListener("abort", disposeHost);
       disposeHost();
@@ -267,6 +279,14 @@ export class BookPaginationEstimator {
   /** A measured page's portable start, also usable when the destination opens in scroll mode. */
   public pageStartCfi(spineIndex: number, pageIndex: number): string | undefined {
     return this.pageStarts[spineIndex]?.[pageIndex];
+  }
+
+  /** Unknown/missing anchors stay unknown rather than masquerading as the chapter's first page. */
+  public pageIndexForFragment(spineIndex: number, fragment: string): number | undefined {
+    if (this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
+      return 0;
+    }
+    return this.fragmentPages[spineIndex]?.get(fragment);
   }
 
   /** Resolves a saved position without reloading a chapter or retaining its DOM. */
@@ -306,6 +326,7 @@ export class BookPaginationEstimator {
     this.pageCounts[spineIndex] =
       this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated" ? 1 : undefined;
     this.pageStarts[spineIndex] = undefined;
+    this.fragmentPages[spineIndex] = undefined;
   }
 
   /** Pauses pending work and releases its hidden host immediately, preserving

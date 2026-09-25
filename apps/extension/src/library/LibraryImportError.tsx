@@ -1,11 +1,13 @@
 import type { FC } from "react";
-import { Body1, Button, Caption1 } from "@fluentui/react-components";
+import { Body1, Button } from "@fluentui/react-components";
 import { BookTroubleIllustration } from "../reader/components/BookTroubleIllustration.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../reader/chromeTheme.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
+import { ErrorDetails } from "../components/ErrorDetails.js";
 
 export interface LibraryImportErrorProps {
   message: string;
+  headline?: string;
   onDismiss: () => void;
 }
 
@@ -19,7 +21,7 @@ export interface LibraryImportErrorProps {
  * already in the library, so there's no reason to hide the rest of the
  * page behind it the way the reader's own "blocking" severity does.
  */
-export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDismiss }) => {
+export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, headline, onDismiss }) => {
   const t = useTranslation();
   return (
   <div
@@ -29,7 +31,10 @@ export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDis
       alignItems: "center",
       gap: 14,
       padding: "14px 18px",
-      marginBottom: 16,
+      margin: "0 auto 16px",
+      width: "100%",
+      maxWidth: 600,
+      boxSizing: "border-box",
       borderRadius: 8,
       background: "var(--colorNeutralBackground1, #fff)",
       border: `1px solid ${CHROME_BORDER}`,
@@ -39,11 +44,11 @@ export const LibraryImportError: FC<LibraryImportErrorProps> = ({ message, onDis
     <BookTroubleIllustration size={48} />
     <div style={{ flex: 1, minWidth: 0 }}>
       <Body1 as="p" block style={{ margin: 0, fontWeight: 600 }}>
-        {t("error.somethingWentWrongHeadline")}
+        {headline ?? t("error.somethingWentWrongHeadline")}
       </Body1>
-      <Caption1 as="p" block style={{ margin: "2px 0 0", opacity: 0.75 }}>
+      <ErrorDetails style={{ marginTop: 4 }}>
         {message}
-      </Caption1>
+      </ErrorDetails>
     </div>
     <Button appearance="subtle" size="small" onClick={onDismiss}>
       {t("library.dismiss")}

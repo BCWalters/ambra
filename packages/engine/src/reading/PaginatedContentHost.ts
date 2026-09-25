@@ -394,6 +394,14 @@ export class PaginatedContentHost {
     }
   }
 
+  /** Finds a target's natural page without navigating or changing page boundaries. */
+  public pageIndexForPosition(node: Node, offset: number): number | undefined {
+    const document = this.sandboxedHost.element.contentDocument;
+    return document
+      ? PaginationEngine.findPageForPosition(this.pages, node, offset, document)?.index
+      : undefined;
+  }
+
   private showCurrentPage(): void {
     const page = this.pages[this.pageIndex];
     if (!page) {

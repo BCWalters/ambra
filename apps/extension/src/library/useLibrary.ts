@@ -10,12 +10,20 @@ import { DEFAULT_GLOBAL_READING_SETTINGS, type GlobalReadingSettings } from "./R
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
-import { EPUB_IMPORT_RESULT, LIBRARY_IMPORT_TOKEN_PARAM, hasImportHostAccess, httpImportOrigins } from "../epubImportHandoff.js";
+import { EPUB_IMPORT_ACTIVE, EPUB_IMPORT_CANCEL, EPUB_IMPORT_RESULT, LIBRARY_IMPORT_TOKEN_PARAM, hasImportHostAccess, httpImportOrigins } from "../epubImportHandoff.js";
 import type { LibraryImportActivity } from "./LibraryImportStatus.js";
+import { readLibraryDownload } from "./LibraryDownload.js";
+import { saveLibraryBookAs } from "./LibrarySaveAs.js";
+import { isInvalidEpubError } from "../EpubErrors.js";
 
-type LibraryError = string | { key: keyof StringCatalog; params?: Record<string, string | number> };
+type LibraryError = string |
+  { key: keyof StringCatalog; params?: Record<string, string | number>; headline?: keyof StringCatalog } |
+  { detail: string; headline: keyof StringCatalog };
 
 function describeLibraryStorageError(error: unknown, fileName?: string): LibraryError {
+  if (isInvalidEpubError(error)) {
+    return { detail: error instanceof Error ? error.message : String(error), headline: "error.invalidEpubHeadline" };
+  }
   if (error instanceof DOMException && error.name === "QuotaExceededError") {
     return fileName ? { key: "library.importStorageFull", params: { fileName } } : { key: "library.storageFull" };
   }
@@ -40,13 +48,17 @@ export interface UseLibraryResult {
   canImport: boolean;
   importActivities: readonly LibraryImportActivity[];
   dismissCompletedImports: () => void;
+  /** Returns false if the download has already entered processing. */
+  cancelDownload: (id: number) => boolean;
   error: string | undefined;
+  errorHeadline?: string;
   /** Dismisses the current import-failure message (see
    * `LibraryImportError`) without otherwise affecting the library. */
   dismissError: () => void;
   importFiles: (files: readonly File[]) => Promise<void>;
   removeBook: (id: string) => Promise<void>;
   openBook: (id: string) => void;
+  saveBookAs: (id: string) => Promise<void>;
   /** App-global settings, shared live with open readers. */
   chromeTheme: ChromeThemeChoice;
   settings: GlobalReadingSettings;
@@ -87,6 +99,8 @@ export function useLibrary(): UseLibraryResult {
   const [error, setError] = useState<LibraryError | undefined>(undefined);
   const [importActivities, setImportActivities] = useState<LibraryImportActivity[]>([]);
   const nextImportId = useRef(0);
+  const cancelDownloadRef = useRef<((id: number) => boolean) | undefined>(undefined);
+  const cancelDownload = useCallback((id: number) => cancelDownloadRef.current?.(id) ?? false, []);
   const [settings, setSettingsState] = useState<GlobalReadingSettings>(DEFAULT_GLOBAL_READING_SETTINGS);
   const settingsRevision = useRef(0);
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
@@ -105,7 +119,10 @@ export function useLibrary(): UseLibraryResult {
 
   const updateImport = useCallback((id: number, phase?: LibraryImportActivity["phase"], bookId?: string) => {
     setImportActivities((current) => phase
-      ? current.map((entry) => entry.id === id ? { ...entry, phase, ...(bookId ? { bookId } : {}) } : entry)
+      ? current.map((entry) => entry.id === id ? {
+        ...entry, phase, download: phase === "downloading" ? entry.download : undefined,
+        ...(bookId ? { bookId } : {}),
+      } : entry)
       : current.filter((entry) => entry.id !== id));
   }, []);
 
@@ -138,6 +155,7 @@ export function useLibrary(): UseLibraryResult {
     let cancelled = false;
     let session: LibrarySession | undefined;
     let unsubscribe: (() => void) | undefined;
+    let unsubscribeBooks: (() => void) | undefined;
 
     void (async () => {
       try {
@@ -152,6 +170,13 @@ export function useLibrary(): UseLibraryResult {
         refreshStorageUsage();
         unsubscribe = database.subscribePreferences(() => {
           void refreshSettings(database).catch((err) => {
+            if (!cancelled) setError(describeLibraryStorageError(err));
+          });
+        });
+        unsubscribeBooks = database.subscribeBooks(() => {
+          void refresh(database).then(() => {
+            if (!cancelled) refreshStorageUsage();
+          }).catch((err) => {
             if (!cancelled) setError(describeLibraryStorageError(err));
           });
         });
@@ -174,6 +199,7 @@ export function useLibrary(): UseLibraryResult {
     return () => {
       cancelled = true;
       unsubscribe?.();
+      unsubscribeBooks?.();
       if (sessionRef.current === session) sessionRef.current = undefined;
       session?.dispose();
     };
@@ -276,6 +302,13 @@ export function useLibrary(): UseLibraryResult {
     void openLibraryTab();
   }, []);
 
+  const saveBookAs = useCallback(async (id: string): Promise<void> => {
+    if (!db || !ownsDatabase(db)) {
+      throw new Error(translateRef.current("library.notReady"));
+    }
+    await saveLibraryBookAs(db, id, translateRef.current);
+  }, [db, ownsDatabase]);
+
   const openInspectionSession = useCallback(
     async (id: string): Promise<EpubInspectionSession> => {
       if (!db || !ownsDatabase(db)) {
@@ -295,8 +328,8 @@ export function useLibrary(): UseLibraryResult {
     [],
   );
 
-  // The original Chrome download remains a fallback until we acknowledge a
-  // persisted import. The ref also prevents duplicate imports in StrictMode.
+  // The paused Chrome download remains a fallback until persistence succeeds.
+  // The ref also prevents duplicate imports in StrictMode.
   const importUrlHandledRef = useRef(false);
   useEffect(() => {
     if (!db || !canImport || importUrlHandledRef.current) {
@@ -318,6 +351,49 @@ export function useLibrary(): UseLibraryResult {
 
     const abort = new AbortController();
     const activity = startImports([{ name: suggestedFileNameFor(importUrl) }], "downloading")[0]!;
+    const reportActive = async () => {
+      try {
+        const response = await chrome.runtime.sendMessage({ type: EPUB_IMPORT_ACTIVE, token });
+        if (response?.received !== true) {
+          console.warn("Ambra could not report EPUB import activity. Chrome may resume the original download.");
+        }
+      } catch (error) {
+        console.warn("Ambra could not report EPUB import activity. Chrome may resume the original download.", error);
+      }
+    };
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let downloading = true;
+    let userCancelled = false;
+    const cancel = (id: number): boolean => {
+      if (id !== activity.id || !downloading || abort.signal.aborted || !ownsDatabase(db)) return false;
+      // Set this before aborting: the fetch's finally must never resume the
+      // original Chrome download via a normal failed-import result.
+      userCancelled = true;
+      downloading = false;
+      clearInterval(heartbeat);
+      abort.abort();
+      updateImport(activity.id);
+      if (token) {
+        void (async () => {
+          let timeout: ReturnType<typeof setTimeout> | undefined;
+          try {
+            const response = await Promise.race([
+              chrome.runtime.sendMessage({ type: EPUB_IMPORT_CANCEL, token }),
+              new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error("Cancellation acknowledgement timed out")), 5_000);
+              }),
+            ]);
+            if (response?.received !== true) throw new Error("Cancellation not acknowledged");
+          } catch {
+            if (ownsDatabase(db)) setError({ key: "library.cancelDownloadFailed" });
+          } finally {
+            clearTimeout(timeout);
+          }
+        })();
+      }
+      return true;
+    };
+    cancelDownloadRef.current = cancel;
     void (async () => {
       let importing = false;
       let imported = false;
@@ -334,6 +410,11 @@ export function useLibrary(): UseLibraryResult {
           return;
         }
         if (abort.signal.aborted || !ownsDatabase(db)) return;
+        if (token) {
+          await reportActive();
+          if (abort.signal.aborted || !ownsDatabase(db)) return;
+          heartbeat = setInterval(() => { void reportActive(); }, 30_000);
+        }
         const response = await fetch(importUrl, { signal: abort.signal });
         if (!response.ok) {
           if (!abort.signal.aborted && ownsDatabase(db)) {
@@ -341,8 +422,13 @@ export function useLibrary(): UseLibraryResult {
           }
           return;
         }
-        const blob = await response.blob();
+        const blob = await readLibraryDownload(response, (download) => {
+          if (abort.signal.aborted || !ownsDatabase(db)) return;
+          setImportActivities((current) => current.map((entry) =>
+            entry.id === activity.id && entry.phase === "downloading" ? { ...entry, download } : entry));
+        }, abort.signal);
         if (abort.signal.aborted || !ownsDatabase(db)) return;
+        downloading = false;
         const file = new File([blob], suggestedFileNameFor(importUrl), { type: "application/epub+zip" });
         importing = true;
         updateImport(activity.id, "processing");
@@ -363,16 +449,20 @@ export function useLibrary(): UseLibraryResult {
             setError({
               key: "library.downloadImportFailed",
               params: { detail: err instanceof Error ? err.message : String(err) },
+              headline: isInvalidEpubError(err) ? "error.invalidEpubHeadline" : undefined,
             });
           } else {
             setError({ key: "library.downloadNetworkFailed" });
           }
         }
       } finally {
+        downloading = false;
+        if (cancelDownloadRef.current === cancel) cancelDownloadRef.current = undefined;
+        clearInterval(heartbeat);
         if (!abort.signal.aborted && ownsDatabase(db)) {
           updateImport(activity.id, imported ? "complete" : undefined, imported ? bookId : undefined);
         }
-        if (token) {
+        if (token && !userCancelled) {
           try {
             const response = await chrome.runtime.sendMessage({
               type: EPUB_IMPORT_RESULT, token,
@@ -389,7 +479,11 @@ export function useLibrary(): UseLibraryResult {
         }
       }
     })();
-    return () => abort.abort();
+    return () => {
+      if (cancelDownloadRef.current === cancel) cancelDownloadRef.current = undefined;
+      clearInterval(heartbeat);
+      abort.abort();
+    };
   }, [db, canImport, ownsDatabase, refresh, refreshStorageUsage, startImports, updateImport]);
 
   const books = useMemo(() => sortBooks(rawBooks, sort, locale), [rawBooks, sort, locale]);
@@ -400,7 +494,9 @@ export function useLibrary(): UseLibraryResult {
     canImport,
     importActivities,
     dismissCompletedImports,
-    error: typeof error === "string" || error === undefined ? error : t(error.key, {
+    cancelDownload,
+    errorHeadline: typeof error === "object" && error.headline ? t(error.headline) : undefined,
+    error: typeof error === "string" || error === undefined ? error : "detail" in error ? error.detail : t(error.key, {
       importLabel: t(books.length ? "library.importEpub" : "library.chooseEpubFiles"),
       ...error.params,
     }),
@@ -408,6 +504,7 @@ export function useLibrary(): UseLibraryResult {
     importFiles,
     removeBook,
     openBook,
+    saveBookAs,
     chromeTheme: settings.chromeTheme,
     settings,
     setSettings,

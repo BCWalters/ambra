@@ -106,9 +106,17 @@ describe("ProgressScrubber", () => {
     });
   }
 
-  it("shows counting status visually and accessibly until whole-book numbers are known", () => {
+  it("shows counting status after reopening, but not during the initial appearance", () => {
+    const countingSnapshot = { ...snapshot, bookPageIndex: 5, bookPageCount: undefined };
+    renderScrubber({ snapshot: countingSnapshot });
+    expect(container.textContent).not.toContain("Counting pages");
+    expect(container.querySelector('[role="slider"]')?.getAttribute("aria-valuetext"))
+      .toBe("6 pages left in this chapter");
+    renderScrubber({ snapshot: countingSnapshot });
+    expect(container.textContent).not.toContain("Counting pages");
+    renderScrubber({ snapshot: countingSnapshot, visible: false });
     const { slider } = renderScrubber({
-      snapshot: { ...snapshot, bookPageIndex: 5, bookPageCount: undefined },
+      snapshot: countingSnapshot,
       onPreview: () => ({
         position: { kind: "chapter", current: 8, total: 10 },
         chapterLabel: "A long chapter title",
@@ -129,10 +137,15 @@ describe("ProgressScrubber", () => {
     expect(slider.getAttribute("aria-valuetext")).toBe("Page 5 of 100 - 6 pages left in this chapter");
   });
 
-  it("shows counting status before either global number or chapter count is available", () => {
+  it("uses an accessible percentage initially and counting status on reopen when no counts exist", () => {
+    const emptyCounts = { ...snapshot, bookPageIndex: undefined, bookPageCount: undefined, pageCount: 0 };
     const { slider } = renderScrubber({
-      snapshot: { ...snapshot, bookPageIndex: undefined, bookPageCount: undefined, pageCount: 0 },
+      snapshot: emptyCounts,
     });
+    expect(slider.getAttribute("aria-valuetext")).toMatch(/^\d+%$/);
+    expect(container.textContent).not.toContain("Counting pages");
+    renderScrubber({ snapshot: emptyCounts, visible: false });
+    renderScrubber({ snapshot: emptyCounts });
     expect(slider.getAttribute("aria-valuetext")).toBe("Counting pages…");
     expect(container.textContent).toContain("Counting pages…");
     expect(container.textContent).not.toContain("pages left");

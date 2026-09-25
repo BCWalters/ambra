@@ -131,6 +131,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const t = useTranslation();
   const styles = useStyles();
   const bookmarkCountId = useId();
+  const [hasHidden, setHasHidden] = useState(!visible);
+  useEffect(() => {
+    if (!visible) setHasHidden(true);
+  }, [visible]);
   const rtl = snapshot.pageProgressionDirection === "rtl";
   const barRef = useRef<HTMLDivElement | null>(null);
   const registerBar = useCallback((element: HTMLDivElement | null) => {
@@ -358,8 +362,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   // "Pages left" only needs this chapter's own page count, known
   // immediately on open; the book-wide "Page X of Y" needs
   // `BookPaginationEstimator` to have reached this point in a possibly-
-  // still-measuring book. Until then, show counting status while keeping
-  // the independently known chapter count.
+  // still-measuring book. Keep initial chrome quiet; counting status appears
+  // only after it has hidden and been revealed again.
   const pagesLeftInChapter =
     !snapshot.isFixedLayout && snapshot.pageCount > 0 ? snapshot.pageCount - snapshot.pageIndex : undefined;
   const pagesLeftLabel =
@@ -379,7 +383,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           current: snapshot.bookPageIndex,
           total: snapshot.bookPageCount,
         })
-      : t("scrubber.countingPages");
+      : hasHidden ? t("scrubber.countingPages") : undefined;
   // Still exposed as one combined string for the slider's own
   // `aria-valuetext` (see below) — a screen reader doesn't care how the
   // two pieces are laid out visually, just that both are announced.
