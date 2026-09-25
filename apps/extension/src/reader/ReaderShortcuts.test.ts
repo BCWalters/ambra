@@ -164,7 +164,7 @@ it("preserves precise native companion position through mode changes and does no
     containerEl: document.createElement("main"),
     host: Object.create(PaginatedContentHost.prototype),
     viewMode: "paginated",
-    nativeReading: { current: () => native },
+    nativeReading: { current: () => native, retainedForShell: () => native },
     locatorResolver: { generate: vi.fn(() => ({ cfi: "native-companion-cfi" })) },
     library: { patchGlobalReadingSettings: vi.fn(async () => {}) },
     refreshGlobalSettings: vi.fn(async () => {}),

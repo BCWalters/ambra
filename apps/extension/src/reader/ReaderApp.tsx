@@ -772,15 +772,15 @@ const ReaderAppInner: FC = () => {
               onOpenChange={(open) => {
                 if (!open) {
                   setGoToMode(undefined);
-                  restoreContentFocus();
                 }
               }}
+              onAfterClose={restoreContentFocus}
               isPaginated={snapshot.viewMode === "paginated"}
               isFixedLayout={snapshot.isFixedLayout}
               bookPageCount={snapshot.bookPageCount}
               onGo={async (fraction) => {
                 recordDiagnosticEvent({ kind: "navigation", source: "go-to", fraction });
-                await seekToFraction(fraction);
+                await seekToFraction(fraction, { preserveFocus: true });
               }}
             />
 

@@ -75,6 +75,40 @@ pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
   --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
+## Accessibility validation
+
+The accessibility suites cover browser semantics, keyboard ownership, focus
+return, native reading offsets, chapter boundaries, and responsive shell layout.
+`shell-reflow-accessibility.spec.ts` includes actual 400% Chrome tab zoom as well
+as a 320 CSS-pixel viewport, forced colors, and reduced-motion emulation.
+
+On an unlocked Mac with existing Accessibility and event-posting permission,
+the opt-in native checks exercise macOS AX text markers and application-scoped
+keyboard events (not just Playwright keyboard dispatch):
+
+```sh
+AMBRA_NATIVE_ACCESSIBILITY=1 pnpm --filter @ambra/e2e exec playwright test \
+  content-boundary-native-focus.spec.ts native-reader-shortcuts.spec.ts
+```
+
+Build first; omit `AMBRA_E2E_HEADLESS=1`. These tests activate only their own
+temporary browser profile, target its PID, and close it afterward. They do not
+enable VoiceOver, change permissions, or unlock the desktop. Missing prerequisites
+are reported as skips, not passes.
+
+Native AX focus is not proof of VoiceOver speech or its private reading cursor.
+Human acceptance still needs:
+
+- Open/resume a book mid-paragraph and start reading at the expected passage.
+- Activate the end-of-chapter control when the next chapter is already visible
+  in the same spread; confirm speech continues in that chapter without repetition.
+- Repeat chapter/page handoffs in scrolling and fixed-layout reading.
+- Use TOC, Search, Go To, and Inspector's Show in book; verify spoken destination
+  and return-to-reading behavior, including Escape without navigation.
+- Create, edit, and revisit a note; check draft/error announcements and focus.
+- Navigate Library, Settings, and Help without a pointer; check control names.
+- Start/pause recorded narration and check for competing or excessive announcements.
+
 ## Fixtures
 
 `fixtures/long-content.epub` — a small synthetic single-chapter book (30

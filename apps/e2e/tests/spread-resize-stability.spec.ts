@@ -79,8 +79,12 @@ for (const boundary of [false, true]) {
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
       await page.evaluate(() => {
         const c = Reflect.get(window, "__readerController");
+        const anchor = c.nativeReading.current() ?? c.host.currentPosition();
+        // Managed focus can normalize an element boundary to a caret in its child.
+        const selection = anchor.node.ownerDocument.getSelection();
+        if (!selection?.anchorNode || !selection.isCollapsed) throw new Error("Expected a native reading caret before resize.");
         const state = { host: c.host, documents: c.host.contentDocuments(),
-          anchor: c.nativeReading.current() ?? c.host.currentPosition(), loads: 0, loading: false };
+          anchor, caret: { node: selection.anchorNode, offset: selection.anchorOffset }, loads: 0, loading: false };
         Reflect.set(window, "__resizeState", state);
         const open = c.openSpineItem;
         c.openSpineItem = function (...args: unknown[]) { state.loads++; return open.apply(this, args); };
@@ -104,13 +108,13 @@ for (const boundary of [false, true]) {
           const before = Reflect.get(window, "__resizeState");
           const views = c.host.documentViews();
           const anchorView = views.find((v: { document: Document }) => v.document === before.anchor.node.ownerDocument);
-          const selection = before.anchor.node.ownerDocument.getSelection();
+          const selection = before.caret.node.ownerDocument.getSelection();
           return {
             sameHost: c.host === before.host,
             sameDocuments: views.every((v: { document: Document }, i: number) => v.document === before.documents[i]),
             anchorVisible: anchorView?.page.containsPosition(before.anchor.node, before.anchor.offset ?? 0, anchorView.document),
-            nativeCaretRetained: selection?.anchorNode === before.anchor.node &&
-              selection.anchorOffset === (before.anchor.offset ?? 0),
+            nativeCaretRetained: selection?.anchorNode === before.caret.node &&
+              selection.anchorOffset === before.caret.offset,
             loads: before.loads, loading: before.loading,
             frames: views.map((v: { document: Document }) => ({
               width: v.document.defaultView!.innerWidth, height: v.document.defaultView!.innerHeight,

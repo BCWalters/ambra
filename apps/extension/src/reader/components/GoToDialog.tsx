@@ -25,6 +25,7 @@ export interface GoToDialogProps {
   mode: "page" | "percentage";
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAfterClose?: () => void;
   /** The book's total page count, once `BookPaginationEstimator` has
    * measured it — only meaningful for `mode: "page"`. `undefined` means
    * "not yet known," in which case the dialog explains that rather than
@@ -49,6 +50,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   mode,
   open,
   onOpenChange,
+  onAfterClose,
   bookPageCount,
   isPaginated,
   isFixedLayout,
@@ -62,6 +64,8 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   const submitting = useRef(false);
   const opening = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const restoreFrame = useRef<number | undefined>(undefined);
+  const pendingNavigation = useRef<Promise<void> | undefined>(undefined);
   const { preferences, platform } = useShortcutPreferences();
   const recordSurfaces = useContext(ReaderDiagnosticContext);
   useEffect(() => {
@@ -83,6 +87,16 @@ export const GoToDialog: FC<GoToDialogProps> = ({
     }
     return () => { opening.current++; };
   }, [open, mode]);
+
+  useEffect(() => {
+    if (open && restoreFrame.current !== undefined) {
+      cancelAnimationFrame(restoreFrame.current);
+      restoreFrame.current = undefined;
+    }
+    return () => {
+      if (restoreFrame.current !== undefined) cancelAnimationFrame(restoreFrame.current);
+    };
+  }, [open]);
 
   const isPage = mode === "page";
   const knownPageCount = Number.isSafeInteger(bookPageCount) && bookPageCount! > 0 ? bookPageCount : undefined;
@@ -108,12 +122,16 @@ export const GoToDialog: FC<GoToDialogProps> = ({
     setPending(true);
     setFailed(false);
     const currentOpening = opening.current;
+    let navigation: Promise<void> | undefined;
     try {
-      await onGo(parsed / max);
+      navigation = Promise.resolve(onGo(parsed / max));
+      pendingNavigation.current = navigation;
+      await navigation;
       if (opening.current === currentOpening) onOpenChange(false);
     } catch {
       if (opening.current === currentOpening) setFailed(true);
     } finally {
+      if (pendingNavigation.current === navigation) pendingNavigation.current = undefined;
       if (opening.current === currentOpening) {
         submitting.current = false;
         setPending(false);
@@ -122,7 +140,25 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}>
+    <Dialog open={open} onOpenChange={(_event, data) => onOpenChange(data.open)}
+      surfaceMotion={{
+        onMotionFinish: (_event, data) => {
+          if (data.direction !== "exit" || open) return;
+          // Wait for Fluent to release its modal accessibility scope.
+          restoreFrame.current = requestAnimationFrame(() => {
+            restoreFrame.current = undefined;
+            const closedOpening = opening.current;
+            const restore = () => {
+              // A later modal may already own focus and Tabster's accessibility scope.
+              if (opening.current === closedOpening && !document.querySelector('[aria-modal="true"]')) onAfterClose?.();
+            };
+            // Dismissal does not cancel a submitted seek; return into its final document.
+            if (pendingNavigation.current) void pendingNavigation.current.then(restore, restore);
+            else restore();
+          });
+        },
+      }}
+    >
       <DialogSurface
         onKeyDown={(event) => {
           if (event.key === "Escape") event.stopPropagation();
@@ -156,7 +192,8 @@ export const GoToDialog: FC<GoToDialogProps> = ({
                   max={max}
                   step={1}
                   value={value}
-                  disabled={pending}
+                  readOnly={pending}
+                  aria-disabled={pending || undefined}
                   aria-invalid={value !== "" && !isValid}
                   onChange={(_event, data) => setValue(data.value)}
                   autoFocus
@@ -169,7 +206,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
             <Button type="button" appearance="secondary" onClick={() => onOpenChange(false)}>
               {t("annotations.cancelNote")}
             </Button>
-            <Button type="submit" appearance="primary" disabled={!isValid || pending}>
+            <Button type="submit" appearance="primary" disabled={!isValid || pending} disabledFocusable={pending}>
               {t("goTo.goButton")}
             </Button>
           </DialogActions>

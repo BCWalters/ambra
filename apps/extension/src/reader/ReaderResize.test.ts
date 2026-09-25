@@ -12,7 +12,7 @@ function fixture() {
     host, width: 1400, height: 900, appliedWidth: 1400, appliedHeight: 900,
     viewMode: "paginated", fontScale: 1, fontFamily: "palatino",
     lineSpacing: 1, letterSpacing: 0, contentWidthEm: 34,
-    operations: { disposed: false }, nativeReading: { current: () => anchor, retain: vi.fn() },
+    operations: { disposed: false }, nativeReading: { current: () => anchor, retainedForShell: () => anchor, retain: vi.fn() },
     shouldSwitchSpreadMode: vi.fn(() => false), reopenForCurrentSize: vi.fn(async () => {}),
     setUpDragPageTurn: vi.fn(), refreshBookPagination: vi.fn(),
     highlightInteraction: { updateNoteMarkers: vi.fn() },
@@ -58,6 +58,16 @@ describe("spread resize ownership", () => {
     await controller.applyLayout({ configuration: { ...controller.currentLayout(), fontScale: 1.2 } });
     expect(host.relayoutForResize).not.toHaveBeenCalled();
     expect(controller.reopenForCurrentSize).toHaveBeenCalledOnce();
+  });
+
+  it("keeps disclosure rebuilds on canonical pages while carrying summary focus", async () => {
+    const { controller, host } = fixture();
+    const disclosureFocus = { spineIndex: 0, ordinal: 1 };
+    await controller.applyLayout({
+      configuration: controller.currentLayout(), reflow: true, disclosureFocus,
+    });
+    expect(host.relayoutForResize).not.toHaveBeenCalled();
+    expect(controller.reopenForCurrentSize).toHaveBeenCalledWith(disclosureFocus, true);
   });
 
   it("does no work for unchanged dimensions", async () => {

@@ -26,6 +26,7 @@ import {
 } from "@ambra/engine";
 import type {
   ContentDocumentView,
+  DomBreakPoint,
   EpubAnnotation,
   FontFamilyChoice,
   FragmentSelector,
@@ -1573,7 +1574,9 @@ export class ReaderController {
 
   /** Reattaches accessibility handlers and moves focus into the current
    * content document. */
-  private setUpAccessibility(focusTarget?: Element, moveFocus = true, readingSpineIndex?: number): void {
+  private setUpAccessibility(
+    focusTarget?: Element, moveFocus = true, readingSpineIndex?: number, readingPosition?: DomBreakPoint,
+  ): void {
     this.updateContentTitle();
     this.reattachKeyboardNav();
 
@@ -1586,7 +1589,15 @@ export class ReaderController {
     if (!iframeDocument) {
       return;
     }
-    if (moveFocus) this.focusReadingContent(iframeDocument, focusTarget);
+    if (moveFocus) {
+      if (readingPosition && readingSpineIndex !== undefined) {
+        this.accessibility.focusReadingPosition(iframeDocument, readingPosition);
+        // Explicit page navigation takes precedence over any shell-return caret.
+        this.nativeReading.retain({ ...readingPosition, spineIndex: readingSpineIndex });
+      } else {
+        this.focusReadingContent(iframeDocument, focusTarget);
+      }
+    }
   }
 
   /** Intercepts in-content links for reader navigation, opens external
@@ -1928,7 +1939,7 @@ export class ReaderController {
       previous.contentWidthEm !== next.contentWidthEm;
     if (!resized && !modeChanged && !typographyChanged && !needsReflow) return;
 
-    const native = this.nativeReading.current();
+    const native = this.nativeReading.retainedForShell();
     Object.assign(this, next);
     const switchingSpread = this.shouldSwitchSpreadMode(next.width);
     const resizedSpread = resized && !modeChanged && !typographyChanged && !needsReflow &&
@@ -1937,7 +1948,7 @@ export class ReaderController {
     if (modeChanged || needsReflow || switchingSpread ||
       (this.host instanceof SpreadPaginatedHost && !resizedSpread)) {
       const previousHost = this.host;
-      await this.reopenForCurrentSize(pending.disclosureFocus);
+      await this.reopenForCurrentSize(pending.disclosureFocus, pending.reflow);
       // A direct navigation may supersede this rebuild while retaining the
       // active layout. Its replacement must settle before settings promises do.
       while (this.operations.current) await this.operations.current.settled;
@@ -2069,8 +2080,8 @@ export class ReaderController {
   private async reopenForCurrentSize(disclosureFocus?: {
     spineIndex: number;
     ordinal: number;
-  }): Promise<void> {
-    const native = this.nativeReading.current();
+  }, preservePageBoundaries = false): Promise<void> {
+    const native = this.nativeReading.retainedForShell();
     let spineIndex = native?.spineIndex ?? this.spineIndex;
     let position = native ?? this.host?.currentPosition();
     if (disclosureFocus && disclosureFocus.spineIndex !== spineIndex) {
@@ -2097,7 +2108,10 @@ export class ReaderController {
       activeElement && activeElement !== doc?.body && activeElement !== doc?.documentElement &&
       !this.host?.element.contains(activeElement),
     );
-    await this.openSpineItem(spineIndex, { bridgeCfi, preserveFocus });
+    await this.openSpineItem(spineIndex, {
+      bridgeCfi, preserveFocus,
+      ...(preservePageBoundaries ? { preservePageBoundaries: true } : {}),
+    });
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
@@ -2248,9 +2262,15 @@ export class ReaderController {
   /** Restores managed focus to the current content document after a
    * parent-document overlay closes without navigating. */
   public restoreContentFocus(): void {
-    const iframeDocument = this.primaryContentDocument();
-    if (iframeDocument) {
-      this.focusReadingContent(iframeDocument);
+    // A merged spread's visual primary may not be the section being read.
+    const native = this.nativeReading.retainedForShell();
+    if (native?.node.ownerDocument) {
+      this.accessibility.focusReadingPosition(native.node.ownerDocument, native);
+      // Managed element focus must not replace the retained caret with its parent.
+      this.nativeReading.retain(native);
+    } else {
+      const iframeDocument = this.primaryContentDocument();
+      if (iframeDocument) this.focusReadingContent(iframeDocument);
     }
   }
 
@@ -3030,7 +3050,7 @@ export class ReaderController {
       landOnFractionInItem?: number;
     },
     operation: ReaderOperation,
-  ): Promise<SpreadPaginatedHost> {
+  ): Promise<{ host: SpreadPaginatedHost; position: DomBreakPoint | undefined }> {
     const planner = this.spreadPlanner(operation);
     const count = await this.spreadPageCount(spineIndex, operation);
     operation.check();
@@ -3065,13 +3085,12 @@ export class ReaderController {
         staging.remove();
       }
     }
-    return this.buildSpreadHost(
-      await planner.containing({
-        spineIndex,
-        pageIndex: Math.max(0, Math.min(pageIndex, count - 1)),
-      }),
+    pageIndex = Math.max(0, Math.min(pageIndex, count - 1));
+    const host = await this.buildSpreadHost(
+      await planner.containing({ spineIndex, pageIndex }),
       operation,
     );
+    return { host, position: host.pageStartPosition(spineIndex, pageIndex) };
   }
 
   private async prepareIncomingSpread(
@@ -3805,7 +3824,7 @@ export class ReaderController {
    * Prefer exact page-level seeking when `bookPagination` is ready;
    * otherwise fall back to coarse spine-level seeking that still lands
    * partway through the chosen chapter instead of always at its start. */
-  public async seekToFraction(fraction: number): Promise<void> {
+  public async seekToFraction(fraction: number, options: { preserveFocus?: boolean } = {}): Promise<void> {
     const clamped = Math.max(0, Math.min(1, fraction));
     this.diagnostics.record(`seekToFraction fraction=${fraction} clamped=${clamped}`);
     this.clearNavigationHighlights();
@@ -3815,13 +3834,14 @@ export class ReaderController {
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
         await this.openSpineItem(resolved.spineIndex, {
+          ...options,
           landOnPageIndex: resolved.pageIndexInItem,
         });
         return;
       }
     }
     const { spineIndex: targetSpineIndex, localFraction } = this.resolveSpineFraction(clamped);
-    await this.openSpineItem(targetSpineIndex, { landOnFractionInItem: localFraction });
+    await this.openSpineItem(targetSpineIndex, { ...options, landOnFractionInItem: localFraction });
   }
 
   /** Picks a spine item and an in-item fraction for coarse seeking when
@@ -4155,6 +4175,8 @@ export class ReaderController {
     options: {
       fragment?: string;
       bridgeCfi?: string;
+      /** Disclosure reflow restores focus within canonical pages, without adding an anchor break. */
+      preservePageBoundaries?: boolean;
       landOnLastPage?: boolean;
       landOnPageIndex?: number;
       landOnFractionInItem?: number;
@@ -4216,6 +4238,7 @@ export class ReaderController {
         | ScrollContentHost
         | undefined;
       let applyDisplaySettings = false;
+      let readingPosition: DomBreakPoint | undefined;
       try {
         if (resolvedLayout === "pre-paginated") {
           // Fixed-layout content always uses `FixedSpreadHost`;
@@ -4240,7 +4263,11 @@ export class ReaderController {
           );
           spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
-          const host = await this.prepareSpreadForOpen(spineIndex, options, operation);
+          const prepared = await this.prepareSpreadForOpen(spineIndex, options, operation);
+          const host = prepared.host;
+          if (options.landOnPageIndex !== undefined || options.landOnFractionInItem !== undefined) {
+            readingPosition = prepared.position;
+          }
           createdHost = host;
           spineIndex = host.primarySpineIndex;
         } else {
@@ -4340,9 +4367,14 @@ export class ReaderController {
             : undefined,
           !options.automatic && !options.preserveFocus,
           requestedSpineIndex,
+          readingPosition,
         );
+        if (options.preserveFocus && readingPosition) {
+          // A modal seek enters this destination only after its accessibility scope closes.
+          this.nativeReading.retain({ ...readingPosition, spineIndex: requestedSpineIndex });
+        }
       } else if (options.bridgeCfi) {
-        this.restoreCfi(options.bridgeCfi, requestedSpineIndex);
+        this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
       } else if (options.fragment) {
         const focusTarget = this.goToFragment(options.fragment);
@@ -4435,7 +4467,7 @@ export class ReaderController {
     }
   }
 
-  private restoreCfi(cfi: string, spineIndex: number): void {
+  private restoreCfi(cfi: string, spineIndex: number, forceAnchor = true): void {
     const iframeDocument = this.contentDocumentViews()
       .find(view => view.spineIndex === spineIndex)?.document;
     if (!iframeDocument) {
@@ -4447,7 +4479,9 @@ export class ReaderController {
       iframeDocument,
     );
     const offset = resolved.characterOffset ?? 0;
-    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
+    if (this.host instanceof PaginatedContentHost) {
+      this.host.goToPosition(resolved.node, offset, forceAnchor);
+    } else if (this.host instanceof SpreadPaginatedHost) {
       this.host.goToPosition(resolved.node, offset);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(resolved.node, offset);

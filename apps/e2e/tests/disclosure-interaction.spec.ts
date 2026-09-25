@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
 
 const book = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -137,6 +138,16 @@ for (const width of [760, 1400]) {
       const columns = width === 760 ? 1 : 2;
       const pages: string[][] = [];
       const slider = page.getByRole("slider", { name: "Position in book" });
+      await exposeReaderController(page);
+      await page.waitForFunction(() => {
+        const c = Reflect.get(window, "__readerController");
+        return !c.isApplyingLayout && !c.isLoadInFlight && !c.pendingLayout;
+      });
+      expect(await page.evaluate(() => Reflect.get(window, "__readerController").host.pageCount)).toBe(collapsedTotal);
+      await expect(slider).toHaveAttribute("aria-valuetext", /^Page 1 of/);
+      // Summary retains activation keys; page commands start from reading content.
+      await page.frameLocator("iframe").first().locator("h1").click();
+      await expect(summary).not.toBeFocused();
       for (let first = 0; first < collapsedTotal; first += columns) {
         if (first > 0) {
           await page.keyboard.press("ArrowRight");
@@ -144,6 +155,7 @@ for (const width of [760, 1400]) {
             "aria-valuetext",
             new RegExp(`^Page ${first + 1} of`),
           );
+          await page.waitForFunction(() => !Reflect.get(window, "__readerController").isTurningPage);
         }
         pages.push(await visibleLines(page));
       }
@@ -166,7 +178,8 @@ for (const width of [760, 1400]) {
 
 test("a disclosure toggle during a held spread load shares the latest queued resize", async () => {
   const { context, readerPage: page } = await launchReader(book, {
-    viewport: { width: 1400, height: 900 },
+    // Crossing into spread mode loads new documents; ordinary spread resizes no longer do.
+    viewport: { width: 900, height: 900 },
   });
   try {
     const collapsedTotal = await totalPages(page);
@@ -223,6 +236,8 @@ test("a disclosure toggle during a held spread load shares the latest queued res
         ),
     ).toEqual([530, 530]);
     await expect(page.frameLocator("iframe").first().locator("summary")).toBeFocused();
+    await page.frameLocator("iframe").first().locator("h1").click();
+    await expect(page.frameLocator("iframe").first().locator("summary")).not.toBeFocused();
     const slider = page.getByRole("slider", { name: "Position in book" });
     await page.keyboard.press("ArrowRight");
     await expect(slider).toHaveAttribute("aria-valuetext", /^Page 3 of/);

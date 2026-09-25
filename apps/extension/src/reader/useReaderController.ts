@@ -53,7 +53,7 @@ export interface UseReaderControllerResult {
   setChromeTheme: (theme: ChromeThemeChoice) => void;
   setPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
   previewSeek: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
-  seekToFraction: (fraction: number) => Promise<void>;
+  seekToFraction: (fraction: number, options?: { preserveFocus?: boolean }) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
   getEpubInspectionData: () => EpubInspectionData | undefined;
   getInspectorReaderBridge: () => InspectorReaderBridge | undefined;
@@ -352,8 +352,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   );
 
   const seekToFraction = useCallback(
-    async (fraction: number): Promise<void> => {
-      await controller?.seekToFraction(fraction);
+    async (fraction: number, options?: { preserveFocus?: boolean }): Promise<void> => {
+      await controller?.seekToFraction(fraction, options);
     },
     [controller],
   );

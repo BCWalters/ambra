@@ -192,8 +192,9 @@ it("opens Go to through shortcut actions and distinguishes it from scrubber navi
     });
     await act(async () => input.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     expect(bridge.recordDiagnosticEvent).toHaveBeenCalledWith({ kind: "navigation", source: "go-to", fraction: 0.25 });
-    expect(bridge.seekToFraction).toHaveBeenCalledWith(0.25);
+    expect(bridge.seekToFraction).toHaveBeenCalledWith(0.25, { preserveFocus: true });
     expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(false);
+    await act(async () => { await new Promise(requestAnimationFrame); });
     expect(bridge.restoreContentFocus).toHaveBeenCalled();
     expect(bridge.recordDiagnosticSurfaces).toHaveBeenCalledWith({ "go-to": { open: false, mode: "percentage" } });
     await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="seek"]')!.click());

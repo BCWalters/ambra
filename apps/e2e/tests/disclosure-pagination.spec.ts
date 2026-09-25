@@ -121,6 +121,8 @@ for (const width of [760, 1400]) {
           await disclosure.locator("summary").click();
           await expect(disclosure).toHaveAttribute("open", "");
           await page.waitForTimeout(1000);
+          await page.frameLocator("iframe").first().locator("h1").click();
+          await expect(disclosure.locator("summary")).not.toBeFocused();
         }
         await page.mouse.move(0, 450);
         const expanded = await sample(page);

@@ -162,6 +162,12 @@ export class SpreadPaginatedHost {
   public currentPosition(): DomBreakPoint | undefined {
     return this.primary.currentPosition();
   }
+  /** Resolve a page in the chapter's accessible document, not its hidden duplicate. */
+  public pageStartPosition(spineIndex: number, pageIndex: number): DomBreakPoint | undefined {
+    const host = this.spread.first.spineIndex === spineIndex ? this.first
+      : this.spread.second?.spineIndex === spineIndex ? this.second : undefined;
+    return host?.pageStartPosition(pageIndex);
+  }
   public currentPagesAndDocuments(): Array<{ page: Page; document: Document; spineIndex: number }> {
     return this.documentViews().flatMap(({ page, document, spineIndex }) =>
       page ? [{ page, document, spineIndex }] : []);

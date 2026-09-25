@@ -9,8 +9,9 @@ func fail(_ message: String) -> Never {
 }
 
 func locked() -> Bool {
-  let session = CGSessionCopyCurrentDictionary() as? [String: Any]
-  return session?["CGSSessionScreenIsLocked"] as? Bool ?? true
+  guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }
+  // macOS omits this key in an unlocked session; a missing session is still unsafe.
+  return session["CGSSessionScreenIsLocked"] as? Bool ?? false
 }
 
 func emit(_ value: [String: Any]) {
@@ -64,7 +65,10 @@ case "Option+PageDown": key = CGKeyCode(kVK_PageDown); flags = .maskAlternate
 case "Option+PageUp": key = CGKeyCode(kVK_PageUp); flags = .maskAlternate
 case "Command+B": key = CGKeyCode(kVK_ANSI_B); flags = .maskCommand
 case "Command+F": key = CGKeyCode(kVK_ANSI_F); flags = .maskCommand
+case "Command+G": key = CGKeyCode(kVK_ANSI_G); flags = .maskCommand
+case "Command+Shift+G": key = CGKeyCode(kVK_ANSI_G); flags = [.maskCommand, .maskShift]
 case "Command+/": key = CGKeyCode(kVK_ANSI_Slash); flags = .maskCommand
+case "Return": key = CGKeyCode(kVK_Return); flags = []
 case "Escape": key = CGKeyCode(kVK_Escape); flags = []
 default: fail("Unsupported shortcut")
 }
