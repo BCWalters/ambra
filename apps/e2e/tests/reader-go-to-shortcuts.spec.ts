@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 import { navigationFixture } from "../navigation-fixture.js";
@@ -23,6 +25,31 @@ async function mod(page: Page) {
 }
 const dialog = (page: Page, mode: "Page" | "Percentage") =>
   page.getByRole("dialog", { name: `Go to ${mode}`, exact: true });
+
+async function finishModalMotion(page: Page) {
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations()
+      .filter(animation => animation.effect?.getComputedTiming().endTime !== Infinity)
+      .map(animation => animation.finished.catch(() => undefined)));
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+}
+
+async function readingCaret(page: Page) {
+  return page.evaluate(() => {
+    const c = Reflect.get(window, "__readerController");
+    const view = c.contentDocumentViews().find((view: { document: Document }) =>
+      view.document.defaultView?.frameElement === document.activeElement);
+    const selection: Selection | undefined = view?.document.getSelection();
+    if (!view || !selection?.anchorNode) return undefined;
+    return {
+      spine: view.spineIndex, text: selection.anchorNode.textContent, offset: selection.anchorOffset,
+      collapsed: selection.isCollapsed,
+      hidden: view.document.defaultView.frameElement.getAttribute("aria-hidden") === "true",
+      cfi: c.locatorResolver.generate(view.spineIndex, selection.anchorNode, selection.anchorOffset).cfi,
+    };
+  });
+}
 
 test("Go to shortcuts seek pages and percentages, retain focus, and explain scrolling without switching mode", async ({ browserName }, info) => {
   expect(browserName).toBe("chromium");
@@ -91,6 +118,156 @@ test("Go to shortcuts seek pages and percentages, retain focus, and explain scro
     await page.keyboard.press(`${modifier}+g`);
     await page.keyboard.press(`${modifier}+Shift+g`);
     await expect(page.getByRole("dialog")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("A late Go to exit preserves the shortcut guide's focus and accessibility ownership", async ({ browserName }, info) => {
+  expect(browserName).toBe("chromium");
+  const { context, readerPage: page } = await launchReader(navigationFixture(info, [3, 4]));
+  try {
+    await ready(page);
+    const modifier = await mod(page);
+    await focusBook(page);
+    await page.keyboard.press(`${modifier}+Shift+g`);
+    await expect(dialog(page, "Percentage").getByRole("spinbutton")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog(page, "Percentage")).toBeHidden();
+    await focusBook(page);
+    await page.keyboard.press(`${modifier}+/`);
+    const guide = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+    await expect(guide).toBeVisible();
+    await finishModalMotion(page);
+    await expect(guide.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+    const enabled = guide.getByRole("checkbox", { name: "Enable keyboard shortcuts" });
+    await enabled.click();
+    await expect(guide.getByRole("status")).toHaveText("Shortcut settings saved.");
+    await expect(enabled).not.toBeChecked();
+    await expect(enabled).toBeFocused();
+  } finally {
+    await context.close();
+  }
+});
+
+for (const destination of [
+  { page: 2, spine: 0, localPage: 1, text: "C1Para 2.", name: "same-chapter" },
+  { page: 4, spine: 1, localPage: 0, text: "C2Para 1.", name: "cross-chapter" },
+]) {
+  test(`Go to focuses the exact right-hand ${destination.name} page and Cancel retains its caret`, async ({ browserName }, info) => {
+    expect(browserName).toBe("chromium");
+    const { context, readerPage: page } = await launchReader(navigationFixture(info, [3, 4, 3]), {
+      viewport: { width: 1400, height: 900 },
+    });
+    try {
+      await ready(page);
+      await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount === 10);
+      const modifier = await mod(page);
+      for (const mode of ["Page", "Percentage"] as const) {
+        await focusBook(page);
+        await page.keyboard.press(`${modifier}+${mode === "Percentage" ? "Shift+" : ""}g`);
+        const input = dialog(page, mode).getByRole("spinbutton");
+        await input.fill(String(destination.page * (mode === "Percentage" ? 10 : 1)));
+        await input.press("Enter");
+        await expect(dialog(page, mode)).toBeHidden();
+        await ready(page);
+        await finishModalMotion(page);
+        expect(await page.evaluate(() => Reflect.get(window, "__readerController").host.positions.second))
+          .toEqual({ spineIndex: destination.spine, pageIndex: destination.localPage });
+        expect(await readingCaret(page)).toMatchObject({
+          spine: destination.spine, text: destination.text, offset: 0, collapsed: true, hidden: false,
+        });
+
+        await page.evaluate(() => {
+          const c = Reflect.get(window, "__readerController");
+          const doc = (document.activeElement as HTMLIFrameElement).contentDocument!;
+          const selection = doc.getSelection()!;
+          const node = selection.anchorNode!;
+          const text = node.nodeType === Node.TEXT_NODE ? node
+            : doc.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode()!;
+          selection.collapse(text, 3);
+          c.nativeReading.current();
+        });
+        const original = await readingCaret(page);
+        await page.keyboard.press(`${modifier}+g`);
+        await dialog(page, "Page").getByRole("spinbutton").fill("1");
+        await page.keyboard.press("Escape");
+        await expect(dialog(page, "Page")).toBeHidden();
+        await finishModalMotion(page);
+        expect(await readingCaret(page)).toEqual(original);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("Go to retains the exact right-page text boundary in the accessible chapter", async ({ browserName }, info) => {
+  expect(browserName).toBe("chromium");
+  const native = process.env.AMBRA_NATIVE_ACCESSIBILITY === "1";
+  if (native) {
+    expect(process.platform).toBe("darwin");
+    expect(process.env.AMBRA_E2E_HEADLESS).not.toBe("1");
+    const helper = fileURLToPath(new URL("../scripts/native-reader-shortcut.swift", import.meta.url));
+    const prerequisites = JSON.parse(execFileSync("swift", [helper, "--check"], { encoding: "utf8" }));
+    test.skip(prerequisites.locked || !prerequisites.accessibilityTrusted, "Native AX requires existing permission and an unlocked desktop");
+  }
+  const fixture = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
+  const { context, readerPage: page } = await launchReader(fixture, {
+    viewport: { width: 1400, height: 900 }, forceAccessibility: native,
+  });
+  try {
+    await ready(page);
+    await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 1);
+    const expected = await page.evaluate(() => {
+      const c = Reflect.get(window, "__readerController");
+      const right = c.contentDocumentViews().find((view: { physicalSide: string }) => view.physicalSide === "right");
+      if (right?.spineIndex !== 0 || right.page?.index !== 1) throw new Error("Expected the second page on the right");
+      let { node, offset = 0 }: { node: Node; offset?: number } = right.page.startBreak;
+      if (node.nodeType === Node.ELEMENT_NODE && node.childNodes[offset]) {
+        node = node.childNodes[offset]!;
+        offset = 0;
+      }
+      return {
+        spine: right.spineIndex, text: node.textContent, offset,
+        cfi: c.locatorResolver.generate(right.spineIndex, node, offset).cfi,
+      };
+    });
+    expect(expected.text).not.toBe((await readingCaret(page))?.text);
+    await page.keyboard.press(`${await mod(page)}+g`);
+    const input = dialog(page, "Page").getByRole("spinbutton");
+    await input.fill("2");
+    await input.press("Enter");
+    await expect(dialog(page, "Page")).toBeHidden();
+    await finishModalMotion(page);
+    expect(await readingCaret(page)).toEqual({ ...expected, collapsed: true, hidden: false });
+
+    if (native) {
+      const browser = context.browser();
+      if (!browser) throw new Error("Owned test browser unavailable");
+      const client = await browser.newBrowserCDPSession();
+      const { processInfo } = await client.send("SystemInfo.getProcessInfo");
+      const pid = processInfo.find(process => process.type === "browser")?.id;
+      if (!pid) throw new Error("Owned test browser PID unavailable");
+      await page.bringToFront();
+      execFileSync("osascript", ["-e",
+        `tell application "System Events" to set frontmost of (first process whose unix id is ${pid}) to true`,
+      ]);
+      const url = await page.evaluate(() => (document.activeElement as HTMLIFrameElement).contentDocument!.URL);
+      const helper = fileURLToPath(new URL("../scripts/native-reading-focus.swift", import.meta.url));
+      const result = JSON.parse(execFileSync("swift", [helper, String(pid)], { encoding: "utf8", timeout: 20_000 })).after;
+      const evidence = info.outputPath("native-go-to-destination.json");
+      await writeFile(evidence, JSON.stringify({ expected, result }, null, 2));
+      await info.attach("native-go-to-destination", {
+        path: evidence, contentType: "application/json",
+      });
+      expect(result).toMatchObject({
+        focusPid: pid, frontmostPid: pid, focused: true, webAreaURL: url,
+        selectionOwnerURL: url, selectionOwnerRole: "AXStaticText", selectionCollapsed: true,
+        selectionIndex: expected.offset,
+      });
+      expect(result.selectionOwnerText.trim()).toBe(expected.text!.trim());
+    }
   } finally {
     await context.close();
   }

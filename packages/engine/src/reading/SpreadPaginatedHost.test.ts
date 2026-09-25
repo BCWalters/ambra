@@ -91,6 +91,21 @@ describe("in-place spread resize", () => {
 });
 
 describe("reflowable document ownership", () => {
+  it.each([
+    { crossChapter: false, spine: 0, page: 3 },
+    { crossChapter: true, spine: 0, page: 5 },
+    { crossChapter: true, spine: 1, page: 0 },
+  ])("resolves spine $spine page $page in its accessible document (boundary=$crossChapter)", async ({
+    crossChapter, spine, page,
+  }) => {
+    const { host, first, second } = await resizeFixture(crossChapter);
+    const owner = spine === 0 ? first : second;
+    expect(host.pageStartPosition(spine, page)).toBe(owner.pageStartPosition(page));
+    expect(host.pageStartPosition(spine, page)?.node.ownerDocument).toBe(owner.element.contentDocument);
+    expect(host.pageStartPosition(9, page)).toBeUndefined();
+    host.dispose();
+  });
+
   it.each(["ltr", "rtl"] as const)("keeps explicit spine identities in reading order under %s", async direction => {
     vi.spyOn(PaginatedContentHost.prototype, "open").mockImplementation(async function (this: PaginatedContentHost, _loader, _resolver, spineIndex) {
       const doc = document.implementation.createHTMLDocument(String(spineIndex));

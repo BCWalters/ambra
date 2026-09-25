@@ -142,7 +142,8 @@ export const GoToDialog: FC<GoToDialogProps> = ({
           // Wait for Fluent to release its modal accessibility scope.
           restoreFrame.current = requestAnimationFrame(() => {
             restoreFrame.current = undefined;
-            onAfterClose?.();
+            // A later modal may already own focus and Tabster's accessibility scope.
+            if (!document.querySelector('[aria-modal="true"]')) onAfterClose?.();
           });
         },
       }}

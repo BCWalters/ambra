@@ -127,4 +127,32 @@ describe("ReaderController layout-only focus", () => {
       expect(controller.nativeReading.retain).not.toHaveBeenCalled();
     }
   });
+
+  it.each([true, false])("uses an explicit page destination instead of the visual page or saved caret (move=%s)", moveFocus => {
+    const controller = Object.create(ReaderController.prototype);
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = "<p>Left page</p><p>Right page destination</p>";
+    const position = { node: doc.body.lastChild!.firstChild!, offset: 6 };
+    Object.assign(controller, {
+      updateContentTitle: vi.fn(),
+      reattachKeyboardNav: vi.fn(),
+      primaryContentDocument: () => doc,
+      contentDocumentViews: () => [{ document: doc, spineIndex: 0 }],
+      focusReadingContent: vi.fn(),
+      nativeReading: {
+        current: () => ({ spineIndex: 0, node: doc.body.firstChild!.firstChild!, offset: 2 }),
+        retain: vi.fn(),
+      },
+      accessibility: { focusReadingPosition: vi.fn() },
+    });
+    controller.setUpAccessibility(undefined, moveFocus, 0, position);
+    expect(controller.focusReadingContent).not.toHaveBeenCalled();
+    if (moveFocus) {
+      expect(controller.accessibility.focusReadingPosition).toHaveBeenCalledWith(doc, position);
+      expect(controller.nativeReading.retain).toHaveBeenCalledWith({ ...position, spineIndex: 0 });
+    } else {
+      expect(controller.accessibility.focusReadingPosition).not.toHaveBeenCalled();
+      expect(controller.nativeReading.retain).not.toHaveBeenCalled();
+    }
+  });
 });

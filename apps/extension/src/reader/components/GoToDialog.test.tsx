@@ -64,6 +64,24 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await act(async () => { await new Promise(requestAnimationFrame); });
     expect(onAfterClose).toHaveBeenCalledOnce();
   });
+  it("does not reclaim focus when another modal opens before its deferred return", async () => {
+    const onAfterClose = vi.fn();
+    await render({ onAfterClose });
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
+    await render({ open: false, onAfterClose });
+    expect(frames).toHaveLength(1);
+    const nextModal = document.createElement("section");
+    nextModal.setAttribute("role", "dialog");
+    nextModal.setAttribute("aria-modal", "true");
+    const control = document.createElement("button");
+    nextModal.append(control);
+    container.append(nextModal);
+    control.focus();
+    await act(async () => { frames[0]!(0); });
+    expect(onAfterClose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(control);
+  });
   const go = () => dialog().querySelector<HTMLButtonElement>('button[type="submit"]')!;
   async function enter(value: string) {
     const input = dialog().querySelector("input")!;

@@ -26,6 +26,7 @@ import {
 } from "@ambra/engine";
 import type {
   ContentDocumentView,
+  DomBreakPoint,
   EpubAnnotation,
   FontFamilyChoice,
   FragmentSelector,
@@ -1573,7 +1574,9 @@ export class ReaderController {
 
   /** Reattaches accessibility handlers and moves focus into the current
    * content document. */
-  private setUpAccessibility(focusTarget?: Element, moveFocus = true, readingSpineIndex?: number): void {
+  private setUpAccessibility(
+    focusTarget?: Element, moveFocus = true, readingSpineIndex?: number, readingPosition?: DomBreakPoint,
+  ): void {
     this.updateContentTitle();
     this.reattachKeyboardNav();
 
@@ -1586,7 +1589,15 @@ export class ReaderController {
     if (!iframeDocument) {
       return;
     }
-    if (moveFocus) this.focusReadingContent(iframeDocument, focusTarget);
+    if (moveFocus) {
+      if (readingPosition && readingSpineIndex !== undefined) {
+        this.accessibility.focusReadingPosition(iframeDocument, readingPosition);
+        // Explicit page navigation takes precedence over any shell-return caret.
+        this.nativeReading.retain({ ...readingPosition, spineIndex: readingSpineIndex });
+      } else {
+        this.focusReadingContent(iframeDocument, focusTarget);
+      }
+    }
   }
 
   /** Intercepts in-content links for reader navigation, opens external
@@ -3039,7 +3050,7 @@ export class ReaderController {
       landOnFractionInItem?: number;
     },
     operation: ReaderOperation,
-  ): Promise<SpreadPaginatedHost> {
+  ): Promise<{ host: SpreadPaginatedHost; position: DomBreakPoint | undefined }> {
     const planner = this.spreadPlanner(operation);
     const count = await this.spreadPageCount(spineIndex, operation);
     operation.check();
@@ -3074,13 +3085,12 @@ export class ReaderController {
         staging.remove();
       }
     }
-    return this.buildSpreadHost(
-      await planner.containing({
-        spineIndex,
-        pageIndex: Math.max(0, Math.min(pageIndex, count - 1)),
-      }),
+    pageIndex = Math.max(0, Math.min(pageIndex, count - 1));
+    const host = await this.buildSpreadHost(
+      await planner.containing({ spineIndex, pageIndex }),
       operation,
     );
+    return { host, position: host.pageStartPosition(spineIndex, pageIndex) };
   }
 
   private async prepareIncomingSpread(
@@ -4227,6 +4237,7 @@ export class ReaderController {
         | ScrollContentHost
         | undefined;
       let applyDisplaySettings = false;
+      let readingPosition: DomBreakPoint | undefined;
       try {
         if (resolvedLayout === "pre-paginated") {
           // Fixed-layout content always uses `FixedSpreadHost`;
@@ -4251,7 +4262,11 @@ export class ReaderController {
           );
           spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
-          const host = await this.prepareSpreadForOpen(spineIndex, options, operation);
+          const prepared = await this.prepareSpreadForOpen(spineIndex, options, operation);
+          const host = prepared.host;
+          if (options.landOnPageIndex !== undefined || options.landOnFractionInItem !== undefined) {
+            readingPosition = prepared.position;
+          }
           createdHost = host;
           spineIndex = host.primarySpineIndex;
         } else {
@@ -4351,6 +4366,7 @@ export class ReaderController {
             : undefined,
           !options.automatic && !options.preserveFocus,
           requestedSpineIndex,
+          readingPosition,
         );
       } else if (options.bridgeCfi) {
         this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
