@@ -6,6 +6,11 @@ import { makeOverflowingPreElementsFocusable } from "../rendering/PreOverflowFoc
 import type { DomBreakPoint } from "../layout/Page.js";
 import { Page } from "../layout/Page.js";
 import { PaginationEngine } from "../layout/PaginationEngine.js";
+import type { IncrementalMeasurementOptions } from "../layout/LineMeasurement.js";
+import {
+  bodyPaint, paginationIdentity, restoreSnapshotPages, snapshotPages,
+  type BodyPaint, type PaginationSnapshot,
+} from "../layout/PaginationSnapshot.js";
 import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
 import type { DisclosureState } from "./DisclosureState.js";
 
@@ -43,6 +48,10 @@ export class PaginatedContentHost {
   private disclosureCleanup: (() => void) | undefined;
   private readerOverlay: { body: HTMLElement; clipPath: string; priority: string } | undefined;
   private animationClip: { body: HTMLElement; clipPath: string; priority: string } | undefined;
+  private measurementIdentity: string | undefined;
+  private measurementPaint: BodyPaint | undefined;
+  private measuredSnapshot: PaginationSnapshot | undefined;
+  private sourceXhtml: string | undefined;
   // Grown past `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM`'s own
   // fixed floor by `refreshInsets` whenever the current font scale/
   // line-spacing demands more room — see `ReadingTheme.insetsForLineHeight`'s
@@ -103,24 +112,40 @@ export class PaginatedContentHost {
     return Math.max(50, this.height - this.insetTop - this.insetBottom);
   }
 
-  /** Loads spine item `spineIndex`, paginates it at this host's current
-   * width/height, and displays its first page. */
+  /** Loads spine item `spineIndex`, applies disclosures and `configure`
+   * before font readiness/first measurement, then displays its first page.
+   * `paginationOptions` opts isolated background hosts into cooperative work;
+   * foreground hosts omit it so layout cannot change between checkpoints.
+   * `snapshot` may supply DOM-free boundaries from an identical configured
+   * document; any identity mismatch falls back to normal measurement. */
   public async open(
     contentLoader: ContentLoader,
     resolver: ResourceUrlResolver,
     spineIndex: number,
     disclosures?: DisclosureState,
+    configure?: (document: Document) => void,
+    paginationOptions?: IncrementalMeasurementOptions,
+    snapshot?: PaginationSnapshot,
   ): Promise<void> {
+    const signal = paginationOptions?.signal;
+    signal?.throwIfAborted();
     this.disclosureCleanup?.();
     this.disclosureCleanup = undefined;
+    this.measurementIdentity = undefined;
+    this.measurementPaint = undefined;
+    this.measuredSnapshot = undefined;
+    this.sourceXhtml = undefined;
     const assembledXhtml = await loadAssembledSpineItem(contentLoader, resolver, spineIndex);
+    signal?.throwIfAborted();
     await this.sandboxedHost.render(assembledXhtml);
+    signal?.throwIfAborted();
 
     const iframeDocument = this.sandboxedHost.element.contentDocument;
     if (!iframeDocument) {
       throw new Error("Sandboxed iframe has no contentDocument after loading (unexpected).");
     }
     this.disclosureCleanup = disclosures?.attach(spineIndex, iframeDocument);
+    configure?.(iframeDocument);
 
     // Prevent the iframe's own scrollbar from appearing for content taller
     // than one page — display is purely the transform/height PaginationEngine
@@ -150,14 +175,43 @@ export class PaginatedContentHost {
     // *every* `PaginatedContentHost`, so left/right columns (as well as
     // ordinary single-column mode, which this same race could otherwise
     // silently mis-paginate too) always agree.
-    await PaginatedContentHost.waitForFontsReady(iframeDocument);
+    await PaginatedContentHost.waitForFontsReady(iframeDocument, signal);
+    signal?.throwIfAborted();
     makeOverflowingPreElementsFocusable(iframeDocument);
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight);
+    if (!paginationOptions) {
+      this.sourceXhtml = assembledXhtml;
+      this.measurementPaint = bodyPaint(iframeDocument);
+      this.measurementIdentity = this.currentPaginationIdentity(iframeDocument);
+    }
+    this.pages = restoreSnapshotPages(iframeDocument, this.measurementIdentity, snapshot) ?? (paginationOptions
+      ? await PaginationEngine.paginateIncrementally(iframeDocument.body, this.pageContentHeight, paginationOptions)
+      : PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight));
+    signal?.throwIfAborted();
+    this.measuredSnapshot = this.measurementIdentity
+      ? snapshotPages(iframeDocument, this.measurementIdentity, this.pages)
+      : undefined;
     this.pageIndex = 0;
     this.showCurrentPage();
+  }
+
+  /** Serializable canonical boundaries for an identically configured fresh
+   * document. Any authored/configuration mutation since measurement fails
+   * closed. Reader-owned overlays and page display paint do not affect layout. */
+  public paginationSnapshot(): PaginationSnapshot | undefined {
+    const doc = this.element.contentDocument;
+    if (!doc || !this.measurementIdentity ||
+      this.currentPaginationIdentity(doc) !== this.measurementIdentity) return undefined;
+    return this.measuredSnapshot;
+  }
+
+  private currentPaginationIdentity(doc: Document): string | undefined {
+    return this.sourceXhtml !== undefined && this.measurementPaint
+      ? paginationIdentity(doc, this.sourceXhtml, this.element.style.width,
+        this.height, this.pageContentHeight, this.measurementPaint)
+      : undefined;
   }
 
   /** The most any single `open()` call will wait on `document.fonts.ready`
@@ -175,14 +229,26 @@ export class PaginatedContentHost {
    * `document.fonts` isn't guaranteed to exist in every environment this
    * code might run in (e.g. a test DOM polyfill), so this is a no-op
    * there rather than throwing. */
-  private static async waitForFontsReady(doc: Document): Promise<void> {
+  private static async waitForFontsReady(doc: Document, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (!doc.fonts) {
       return;
     }
-    await Promise.race([
-      doc.fonts.ready.catch(() => undefined),
-      new Promise<void>((resolve) => setTimeout(resolve, PaginatedContentHost.FONTS_READY_TIMEOUT_MS)),
-    ]);
+    await new Promise<void>((resolve, reject) => {
+      const finish = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      };
+      const abort = (): void => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        reject(signal?.reason);
+      };
+      const timer = setTimeout(finish, PaginatedContentHost.FONTS_READY_TIMEOUT_MS);
+      signal?.addEventListener("abort", abort, { once: true });
+      void doc.fonts.ready.then(finish, finish);
+    });
   }
 
   /** The DOM position at the start of the currently-displayed page — the
@@ -213,6 +279,8 @@ export class PaginatedContentHost {
    * false`: their two independently loaded documents must share canonical
    * page boundaries, regardless of the route used to reach a page. */
   public relayout(width: number, height: number, anchorOverride?: DomBreakPoint, forceAnchor = true): void {
+    this.measurementIdentity = undefined;
+    this.measuredSnapshot = undefined;
     const preserve = anchorOverride ?? this.currentPosition();
     this.height = height;
 
@@ -299,6 +367,8 @@ export class PaginatedContentHost {
    * reference shows the footnote as the first line on screen, not buried
    * wherever normal pagination happens to place it. */
   public goToPosition(node: Node, offset: number, forceAnchor = true): void {
+    this.measurementIdentity = undefined;
+    this.measuredSnapshot = undefined;
     const iframeDocument = this.sandboxedHost.element.contentDocument;
     if (!iframeDocument) {
       return;
@@ -432,6 +502,10 @@ export class PaginatedContentHost {
   }
 
   public dispose(): void {
+    this.measurementIdentity = undefined;
+    this.measurementPaint = undefined;
+    this.measuredSnapshot = undefined;
+    this.sourceXhtml = undefined;
     this.readerOverlay = undefined;
     this.animationClip = undefined;
     this.disclosureCleanup?.();

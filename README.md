@@ -58,7 +58,7 @@ Browser tests run separately; see [contributor setup](CONTRIBUTING.md).
 
 Load the built extension into Chrome to use the Library and reader.
 
-1. Run `pnpm --filter @ambra/extension dev` (recommended — gives you HMR, so most changes
+1. Run `pnpm --filter @ambra/extension dev` (for development — gives you HMR, so most changes
    to `apps/extension`, `packages/shell`, or `packages/engine` show up without a manual
    reload) **or** `pnpm build` for a one-off production bundle. Either way this produces
    `apps/extension/dist`.
@@ -73,6 +73,17 @@ Load the built extension into Chrome to use the Library and reader.
 If you're using the dev server (step 1), leave it running — Chrome will pick up most changes
 automatically; for changes to `manifest.json` itself, restart the chosen build/dev process
 and then click the reload icon on the extension card in `chrome://extensions`.
+
+For everyday reading and performance/memory measurements, use a production bundle.
+Development mode loads the unbundled module graph and source maps: in the #199
+three-book Library reproduction, its median renderer private footprint was about
+346 MiB versus 68 MiB for production with the same original covers. This is not
+the same counter as Chrome's tab-hover memory display. See the
+[memory measurement procedure](apps/e2e/README.md#library-cover-memory-regression-199).
+Coordinate stopping the dev process before rebuilding its output. To retain an
+existing unpacked extension's library, reload the same extension from the same
+directory; loading a different directory can create a different extension ID and
+separate storage. Do not uninstall the existing extension to switch build modes.
 
 ### If EPUB links do not import
 

@@ -91,21 +91,9 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
     margin: 0,
   } as const;
 
-  // A simple "Page N" per visible page — no running total, no
-  // percentage (see the standalone percentage indicator below instead).
-  // The companion (right) page in spread mode is always exactly one
-  // page after the primary one (`SpreadPaginatedHost.secondPageIndex`
-  // is defined as `left.currentPageIndex + 1`), so its own number is
-  // just the primary's plus one — no separate book-wide/chapter-relative
-  // branching needed for it — *except* while `isPrimaryPageMergedTail`
-  // (issue #90/#92): there, `bookPageIndex`/`pageIndex` already describe
-  // the *right* column's page (this chapter's own real page 0, not the
-  // left column's borrowed previous-chapter content), so "primary plus
-  // one" would double-count it, and the left column has no correct
-  // number available here to show at all (it belongs to a different
-  // spine item's own book-wide count) — better to show no number there
-  // than a confidently wrong one.
-  const primaryPageNumber = snapshot.bookPageIndex ?? (snapshot.pageCount > 0 ? snapshot.pageIndex + 1 : undefined);
+  // Footers show global numbers only. Unknown preceding chapter counts must
+  // not turn a chapter-local "1" into a misleading second book-wide "Page 1".
+  const primaryPageNumber = snapshot.bookPageIndex;
   const secondaryPageNumber =
     snapshot.secondPageIndex !== undefined && primaryPageNumber !== undefined && !snapshot.isPrimaryPageMergedTail
       ? primaryPageNumber + 1

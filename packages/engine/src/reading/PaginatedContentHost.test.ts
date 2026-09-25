@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { Page } from "../layout/Page.js";
 import { PaginationEngine } from "../layout/PaginationEngine.js";
 import { PaginatedContentHost } from "./PaginatedContentHost.js";
+import * as SpineItemAssembler from "./SpineItemAssembler.js";
+import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
+import type { ContentLoader } from "../content/ContentLoader.js";
+import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
+import type { DisclosureState } from "./DisclosureState.js";
 
 function fixture() {
   const host = new PaginatedContentHost(600, 900);
@@ -23,6 +28,35 @@ function fixture() {
 }
 
 describe("paginated viewport and animation paint clipping", () => {
+  it("configures after disclosures and before the only initial pagination", async () => {
+    const { host, body } = fixture();
+    const doc = body.ownerDocument;
+    const assemble = vi.spyOn(SpineItemAssembler, "loadAssembledSpineItem").mockResolvedValue("");
+    const render = vi.spyOn(SandboxedContentHost.prototype, "render").mockResolvedValue();
+    const attach = vi.fn(() => { body.dataset.disclosure = "applied"; return () => {}; });
+    const configure = vi.fn((document: Document) => {
+      expect(document).toBe(doc);
+      expect(body.dataset.disclosure).toBe("applied");
+      body.dataset.configured = "true";
+    });
+    const paginate = vi.spyOn(PaginationEngine, "paginate").mockImplementation(() => {
+      expect(body.dataset.configured).toBe("true");
+      return [];
+    });
+    try {
+      await host.open({} as ContentLoader, {} as ResourceUrlResolver, 0,
+        { attach } as unknown as DisclosureState, configure);
+      expect(attach).toHaveBeenCalledWith(0, doc);
+      expect(configure).toHaveBeenCalledOnce();
+      expect(paginate).toHaveBeenCalledOnce();
+    } finally {
+      assemble.mockRestore();
+      render.mockRestore();
+      paginate.mockRestore();
+      host.dispose();
+    }
+  });
+
   it("sets the new iframe height before measuring viewport-relative publication styles", () => {
     const { host } = fixture();
     const pages = Reflect.get(host, "pages") as Page[];

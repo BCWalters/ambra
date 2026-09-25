@@ -131,7 +131,7 @@ for (const boundary of [false, true]) {
         expect(state.frames).toEqual(Array.from({ length: 2 }, () => ({
           width: (viewport.width - 40) / 2, height: viewport.height,
         })));
-        await expect(page.getByText("Loading…", { exact: true })).toBeHidden();
+        await expect(page.getByText("Turning to your page…", { exact: true })).toBeHidden();
       }
       await test.info().attach("resize-host-and-position", {
         body: JSON.stringify(measurements, null, 2), contentType: "application/json",

@@ -25,6 +25,15 @@ describe("planPageBreaks", () => {
     expect(pages[0]!.endBreak).toBe(END_OF_DOC);
   });
 
+  it("includes the full bounds of visible positioned content in nonvisual DOM order", () => {
+    const chunks = [chunk(160, 200, "positioned-heading"), chunk(54, 270, "image"), chunk(220, 240, "caption")];
+    const pages = planPageBreaks(chunks, 700, END_OF_DOC);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]!.topY).toBe(54);
+    expect(pages[0]!.bottomY).toBe(270);
+    expect(pages[0]!.startBreak).toBe(chunks[0]!.breakBefore);
+  });
+
   it("splits chunks across pages when they exceed page height", () => {
     // Each chunk is 30px tall; page height 50 fits at most 1 (30 fits, 60
     // doesn't), so this should break after every single chunk.

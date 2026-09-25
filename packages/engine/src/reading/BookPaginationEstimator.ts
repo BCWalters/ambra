@@ -60,6 +60,7 @@ export class BookPaginationEstimator {
   private pageCounts: (number | undefined)[];
   private pageStarts: (readonly string[] | undefined)[];
   private generation = 0;
+  private activeRun: AbortController | undefined;
   private lastWidth: number | undefined;
   private lastHeight: number | undefined;
   private lastFontScale: number | undefined;
@@ -77,8 +78,14 @@ export class BookPaginationEstimator {
     private readonly disclosures?: DisclosureState,
     private readonly locatorResolver?: LocatorResolver,
   ) {
-    this.pageCounts = new Array(spine.length).fill(undefined);
+    this.pageCounts = this.initialPageCounts();
     this.pageStarts = new Array(spine.length).fill(undefined);
+  }
+
+  private initialPageCounts(): (number | undefined)[] {
+    return this.spine.map(item =>
+      item.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated" ? 1 : undefined,
+    );
   }
 
   /** (Re-)starts measuring spine items' page counts at `width`/`height`
@@ -101,11 +108,8 @@ export class BookPaginationEstimator {
    * any of those seven invalidates every existing count, since they were
    * all measured against a now-stale layout.
    *
-   * Any previously in-flight `run` is cancelled — its own remaining
-   * measurements finish (an in-progress `PaginatedContentHost.open()`
-   * can't be aborted mid-flight) but are discarded rather than
-   * reported, since a newer call means something more current is now
-   * wanted instead. */
+   * Any previous run is cancelled, its hidden host disposed immediately,
+   * and its incremental measurement stops at the next work checkpoint. */
   public async run(
     currentSpineIndex: number,
     width: number,
@@ -117,6 +121,10 @@ export class BookPaginationEstimator {
     contentWidthEm: number,
     onProgress: () => void,
   ): Promise<void> {
+    this.activeRun?.abort();
+    const controller = new AbortController();
+    this.activeRun = controller;
+    const { signal } = controller;
     const token = ++this.generation;
     if (
       width !== this.lastWidth ||
@@ -127,7 +135,7 @@ export class BookPaginationEstimator {
       letterSpacing !== this.lastLetterSpacing ||
       contentWidthEm !== this.lastContentWidthEm
     ) {
-      this.pageCounts = new Array(this.spine.length).fill(undefined);
+      this.pageCounts = this.initialPageCounts();
       this.pageStarts = new Array(this.spine.length).fill(undefined);
       this.lastWidth = width;
       this.lastHeight = height;
@@ -148,32 +156,28 @@ export class BookPaginationEstimator {
       if (!spineItem) {
         continue;
       }
-      // Yields one real macrotask to the event loop *before* each spine
-      // item's own measurement, not just relying on `measureSpineItem`'s
-      // internal `await`s — those only yield at genuine async I/O
-      // boundaries (loading the content document), not around the
-      // synchronous pagination work itself, so a run of several large
-      // chapters back to back (a real, confirmed problem on a MathML-
-      // dense textbook, issue #102) could still starve pending user
-      // input (a page turn, a click) for one item's whole measurement
-      // time before this loop's own `await` ever got a chance to hand
-      // control back. A zero-delay `setTimeout` is enough to let the
-      // browser process anything already queued (input, rendering)
-      // ahead of the next item — this is a background estimate a reader
-      // never directly waits on, so pacing it more considerately costs
-      // nothing but wall-clock time to finish scanning the whole book.
+      // Yield before chapter loading as well as at the incremental measurement
+      // checkpoints, and stop superseded runs before allocating another host.
       await yieldToEventLoop();
-      const measured = await this.measureSpineItem(
-        spineItem,
-        spineIndex,
-        width,
-        height,
-        fontScale,
-        fontFamily,
-        lineSpacing,
-        letterSpacing,
-        contentWidthEm,
-      );
+      if (signal.aborted || token !== this.generation) return;
+      let measured: MeasuredSpineItem;
+      try {
+        measured = await this.measureSpineItem(
+          spineItem,
+          spineIndex,
+          width,
+          height,
+          fontScale,
+          fontFamily,
+          lineSpacing,
+          letterSpacing,
+          contentWidthEm,
+          signal,
+        );
+      } catch (error) {
+        if (signal.aborted) return;
+        throw error;
+      }
       if (token !== this.generation) {
         // A newer `run` call has since started — this one's remaining
         // work is stale and should stop reporting (and stop consuming
@@ -196,7 +200,9 @@ export class BookPaginationEstimator {
     lineSpacing: number,
     letterSpacing: number,
     contentWidthEm: number,
+    signal: AbortSignal,
   ): Promise<MeasuredSpineItem> {
+    signal.throwIfAborted();
     if (spineItem.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
       // Fixed-layout content is never reflowed/paginated — it's always
       // exactly one page.
@@ -209,38 +215,45 @@ export class BookPaginationEstimator {
       this.hiddenContainer.ownerDocument ?? undefined,
     );
     this.hiddenContainer.appendChild(host.element);
+    const disposeHost = (): void => {
+      host.dispose();
+      host.element.remove();
+    };
+    signal.addEventListener("abort", disposeHost, { once: true });
     try {
-      await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
-      const needsNonDefaultSettings =
-        fontScale !== 1 ||
-        fontFamily !== ReadingTheme.DEFAULT_FONT_FAMILY ||
-        lineSpacing !== ReadingTheme.DEFAULT_LINE_SPACING ||
-        letterSpacing !== ReadingTheme.DEFAULT_LETTER_SPACING ||
-        contentWidthEm !== ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
-      if (needsNonDefaultSettings) {
-        const doc = host.element.contentDocument;
-        if (doc) {
+      await host.open(
+        this.contentLoader, this.resolver, spineIndex, this.disclosures,
+        (doc) => {
           ReadingTheme.applyFontScale(doc, fontScale);
           ReadingTheme.applyFontFamily(doc, fontFamily);
           ReadingTheme.applyLineSpacing(doc, lineSpacing);
           ReadingTheme.applyLetterSpacing(doc, letterSpacing);
           ReadingTheme.applyContentWidth(doc, contentWidthEm);
-          host.relayout(width, height);
-        }
-      }
+        },
+        { signal },
+      );
+      signal.throwIfAborted();
       // Retain only CFIs, never the measured document or its DOM ranges.
       const locatorResolver = this.locatorResolver;
-      const pageStarts = locatorResolver
-        ? Array.from({ length: host.pageCount }, (_, index) => {
-            const start = host.pageStartPosition(index);
-            if (!start) throw new Error(`Missing page ${index} in spine item ${spineIndex}.`);
-            return locatorResolver.generate(spineIndex, start.node, start.offset).cfi;
-          })
-        : undefined;
+      const pageStarts: string[] | undefined = locatorResolver ? [] : undefined;
+      if (locatorResolver && pageStarts) {
+        let deadline = performance.now() + 8;
+        for (let index = 0; index < host.pageCount; index++) {
+          signal.throwIfAborted();
+          const start = host.pageStartPosition(index);
+          if (!start) throw new Error(`Missing page ${index} in spine item ${spineIndex}.`);
+          pageStarts.push(locatorResolver.generate(spineIndex, start.node, start.offset).cfi);
+          if (performance.now() >= deadline) {
+            await yieldToEventLoop();
+            signal.throwIfAborted();
+            deadline = performance.now() + 8;
+          }
+        }
+      }
       return { pageCount: host.pageCount, pageStarts };
     } finally {
-      host.dispose();
-      host.element.remove();
+      signal.removeEventListener("abort", disposeHost);
+      disposeHost();
     }
   }
 
@@ -284,15 +297,24 @@ export class BookPaginationEstimator {
 
   /** A native disclosure changes one chapter's measured layout, not its neighbors. */
   public invalidateSpineItem(spineIndex: number): void {
-    this.generation++;
-    this.pageCounts[spineIndex] = undefined;
+    this.cancelPendingMeasurement();
+    this.pageCounts[spineIndex] =
+      this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated" ? 1 : undefined;
     this.pageStarts[spineIndex] = undefined;
   }
 
-  /** Invalidates any in-flight `run` (its remaining work will finish but
-   * won't report through `onProgress`) — call when the controller itself
-   * is being torn down. */
-  public dispose(): void {
+  /** Pauses pending work and releases its hidden host immediately, preserving
+   * completed counts/CFIs and their layout key. Resume with `run`; unchanged
+   * chapters are skipped. Intended for foreground work that needs exclusive
+   * main-thread time, not every cheap in-place page turn. */
+  public cancelPendingMeasurement(): void {
+    this.activeRun?.abort();
+    this.activeRun = undefined;
     this.generation++;
+  }
+
+  /** Stops background work and releases its hidden host immediately. */
+  public dispose(): void {
+    this.cancelPendingMeasurement();
   }
 }

@@ -91,6 +91,40 @@ describe("in-place spread resize", () => {
 });
 
 describe("reflowable document ownership", () => {
+  it("turns compatible spreads without loading, measuring, or replacing accessible documents", async () => {
+    const { host, reflow } = await resizeFixture();
+    const documents = host.contentDocuments();
+    const opens = vi.spyOn(PaginatedContentHost.prototype, "open");
+    opens.mockClear();
+    expect(host.tryGoToSpread({
+      first: { spineIndex: 0, pageIndex: 4 }, second: { spineIndex: 0, pageIndex: 5 },
+    })).toBe(true);
+    expect(host.pageIndex).toBe(4);
+    expect(host.secondPageIndex).toBe(5);
+    expect(host.pageCountFor(0)).toBe(6);
+    expect(host.pageCountFor(1)).toBeUndefined();
+    expect(host.contentDocuments()).toEqual(documents);
+    expect(opens).not.toHaveBeenCalled();
+    expect(reflow).not.toHaveBeenCalled();
+    expect(host.columnElement("right").getAttribute("aria-hidden")).toBe("true");
+    host.dispose();
+  });
+
+  it("rejects changed chapter pairings and invalid indices without mutating the visible spread", async () => {
+    const { host } = await resizeFixture(true);
+    const before = host.positions;
+    expect(host.tryGoToSpread({
+      first: { spineIndex: 1, pageIndex: 1 }, second: { spineIndex: 1, pageIndex: 2 },
+    })).toBe(false);
+    expect(host.tryGoToSpread({
+      first: { spineIndex: 0, pageIndex: 6 }, second: { spineIndex: 1, pageIndex: 0 },
+    })).toBe(false);
+    expect(host.positions).toBe(before);
+    expect(host.pageCountFor(0)).toBe(6);
+    expect(host.pageCountFor(1)).toBe(6);
+    host.dispose();
+  });
+
   it.each([
     { crossChapter: false, spine: 0, page: 3 },
     { crossChapter: true, spine: 0, page: 5 },

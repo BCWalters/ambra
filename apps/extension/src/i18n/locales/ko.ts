@@ -289,6 +289,9 @@ export const ko: StringCatalog = {
   "announcements.annotationsImported":
     "하이라이트 {highlights}개와 책갈피 {bookmarks}개를 가져왔습니다. {skipped}개 항목은 건너뛰었습니다.",
   "reader.loading": "불러오는 중…",
+  "reader.openingBook": "책을 준비하는 중…",
+  "reader.navigating": "페이지를 여는 중…",
+  "scrubber.countingPages": "페이지 수 계산 중…",
   "reader.bookContentAriaLabel": "책 내용",
   "inspector.specialFileContainer": "OCF 컨테이너 설명자",
   "inspector.specialFileOpf": "패키지 문서 (OPF)",

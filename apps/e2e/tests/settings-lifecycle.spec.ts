@@ -75,6 +75,14 @@ for (const trigger of ["animated turn", "held load"] as const) {
           await page.evaluate(() => { void Reflect.get(window, "__settingsController").turnPage(1); });
           await page.waitForFunction(() => Reflect.get(window, "__settingsController").snapshot().isAnimatingPageTurn);
         } else {
+          // Same-mode spread resizes reuse documents; cross the threshold to
+          // exercise a real second-column load, as in resize-lifecycle.spec.ts.
+          await page.setViewportSize({ width: 800, height: 900 });
+          await page.waitForFunction(() => {
+            const controller = Reflect.get(window, "__settingsController");
+            return controller.appliedWidth === 800 && !controller.isApplyingLayout &&
+              !controller.isLoadInFlight && document.querySelectorAll("iframe").length === 1;
+          });
           await holdSecondColumn(page);
           await page.setViewportSize({ width: 1300, height: 900 });
           await page.waitForFunction(() => Reflect.get(window, "__settingsGate").held);

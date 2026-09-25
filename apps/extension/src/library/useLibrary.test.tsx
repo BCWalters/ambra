@@ -22,7 +22,10 @@ function makeDatabase() {
     close: vi.fn(),
     listBooks: vi.fn().mockResolvedValue([{ id: "book", title: "Book" } as BookMetadata]),
     getAllProgress: vi.fn().mockResolvedValue(new Map()),
-    getCoverBlob: vi.fn().mockResolvedValue(new Blob(["cover"])),
+    getLibraryCoverBlobs: vi.fn().mockImplementation(async () => {
+      const blob = new Blob(["cover"]);
+      return { original: blob, card: blob };
+    }),
     getGlobalReadingSettings: vi.fn().mockResolvedValue(DEFAULT_GLOBAL_READING_SETTINGS),
     patchGlobalReadingSettings: vi.fn().mockResolvedValue(undefined),
     subscribePreferences: vi.fn<LibraryDatabase["subscribePreferences"]>().mockReturnValue(vi.fn()),

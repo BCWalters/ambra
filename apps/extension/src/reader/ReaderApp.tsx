@@ -512,7 +512,7 @@ const ReaderAppInner: FC = () => {
     return (
       <div style={{ padding: 24 }}>
         <Title2>Ambra Reader</Title2>
-        <Spinner label={t("reader.loading")} />
+        <Spinner label={t("reader.openingBook")} />
       </div>
     );
   }
@@ -523,7 +523,7 @@ const ReaderAppInner: FC = () => {
   // Mirrors `ProgressScrubber`'s own identical early-return condition —
   // the flyout panels need to know this too so they can stop above the
   // scrubber bar instead of running underneath it (issue #59).
-  const scrubberVisible = !snapshot.isFixedLayout && snapshot.viewMode === "paginated";
+  const scrubberVisible = snapshot.isFixedLayout || snapshot.viewMode === "paginated";
   const startNarration = (): void => {
     setIsNarrationOpen(true);
     narrationAction("start");
@@ -667,7 +667,7 @@ const ReaderAppInner: FC = () => {
             )}
             {snapshot.isLoading && (
               <Spinner
-                label="Loading…"
+                label={t(snapshot.loadingPhase === "navigating" ? "reader.navigating" : "reader.openingBook")}
                 style={{
                   position: "absolute",
                   top: "50%",

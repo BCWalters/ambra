@@ -112,6 +112,32 @@ function chromeVisible() {
   return container.querySelector('[data-testid="toolbar"]')?.getAttribute("data-visible") === "true";
 }
 
+it("uses book preparation copy before the first snapshot", async () => {
+  bridge.snapshot = undefined;
+  await act(async () => root.render(<ReaderApp />));
+  expect(container.textContent).toContain("Getting your book ready…");
+  expect(container.textContent).not.toContain("Loading…");
+});
+
+it.each([
+  ["opening", "Getting your book ready…"],
+  ["navigating", "Turning to your page…"],
+] as const)("shows the %s loading message without moving focus", async (phase, label) => {
+  const button = container.querySelector<HTMLButtonElement>('[data-testid="toolbar"] button')!;
+  act(() => button.focus());
+  bridge.snapshot = { ...bridge.snapshot!, isLoading: true, loadingPhase: phase };
+  await act(async () => root.render(<ReaderApp />));
+  expect(container.textContent).toContain(label);
+  const spinner = [...container.querySelectorAll('[role="progressbar"]')].find(element =>
+    document.getElementById(element.getAttribute("aria-labelledby") ?? "")?.textContent === label,
+  );
+  expect(spinner).toBeDefined();
+  expect(document.activeElement).toBe(button);
+  bridge.snapshot = { ...bridge.snapshot, isLoading: false, loadingPhase: undefined };
+  await act(async () => root.render(<ReaderApp />));
+  expect(container.textContent).not.toContain(label);
+});
+
 async function openPanel(name: string) {
   const button = [...container.querySelectorAll<HTMLButtonElement>('[data-testid="toolbar"] button')]
     .find(button => button.textContent === name)!;
