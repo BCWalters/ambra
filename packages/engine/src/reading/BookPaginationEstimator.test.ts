@@ -122,6 +122,46 @@ describe("book-wide CFI page index", () => {
     expect(estimator.pageIndexForCfi(99, cfi(10))).toBeUndefined();
   });
 
+  it("indexes legacy and newly saved image-parent CFIs after measurement, pause and repagination", async () => {
+    let doc: Document;
+    let imageOffsets = [0, 3, 4];
+    vi.mocked(PaginatedContentHost.prototype.open).mockImplementation(async function (this: PaginatedContentHost) {
+      doc = document.implementation.createHTMLDocument();
+      doc.body.innerHTML = '<img id="one"/><!-- comment --> \n<img id="two"/><img id="three"/>';
+      Object.defineProperty(this.element, "contentDocument", { value: doc });
+      Reflect.set(this, "pages", imageOffsets.map((offset, index) => new Page(
+        index, { node: doc.body, offset },
+        { node: doc.body, offset: imageOffsets[index + 1] ?? doc.body.childNodes.length },
+        index * 100, (index + 1) * 100,
+      )));
+    });
+    await run();
+    const legacyFirst = locators.generate(0, doc!.body, 0).cfi;
+    const legacySecond = locators.generate(0, doc!.body, 3).cfi;
+    const legacyThird = locators.generate(0, doc!.body, 4).cfi;
+    const canonicalThird = locators.generateBoundary(0, doc!.body, 4).cfi;
+    expect(estimator.pageIndexForCfi(0, legacyFirst)).toBe(0);
+    expect(estimator.pageIndexForCfi(0, legacySecond)).toBe(1);
+    expect(estimator.pageIndexForCfi(0, legacyThird)).toBe(2);
+    expect(estimator.pageIndexForCfi(0, canonicalThird)).toBe(2);
+    expect(estimator.pageIndexForCfi(0, locators.generate(0, doc!.body, 2).cfi)).toBe(0);
+    estimator.cancelPendingMeasurement();
+    expect(estimator.pageIndexForCfi(0, legacyThird)).toBe(2);
+    expect(container.children).toHaveLength(0);
+    imageOffsets = [0, 4];
+    const resizing = run(900);
+    expect(estimator.pageIndexForCfi(0, legacyThird)).toBeUndefined();
+    await resizing;
+    // This old bookmark is no longer one of the measured page starts.
+    expect(estimator.pageIndexForCfi(0, legacySecond)).toBe(0);
+    expect(estimator.pageIndexForCfi(0, legacyThird)).toBe(1);
+    expect(estimator.pageIndexForCfi(0, canonicalThird)).toBe(1);
+    estimator.invalidateSpineItem(0);
+    expect(estimator.pageIndexForCfi(0, legacyThird)).toBeUndefined();
+    await run(900);
+    expect(estimator.pageIndexForCfi(0, legacyThird)).toBe(1);
+  });
+
   it("measures distinct fragment targets once, preserves them on pause, and invalidates them on reflow", async () => {
     estimator.dispose();
     estimator = new BookPaginationEstimator(

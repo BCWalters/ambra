@@ -82,6 +82,8 @@ sections in one spine document, including nested/same-page sections, empty
 anchors, wrapper targets and image-page DOM boundaries. It checks target-specific page numbers, current
 section highlighting, keyboard navigation, ordinary page turns, resume and
 scrolling in single-page and spread layouts.
+Legacy and newly saved image-boundary bookmark markers are also checked against
+their navigated pages, after reopening the reader and changing typography.
 
 An optional real-book replay uses Gutenberg's EPUB3 for *Le Chat du Neptune*:
 set `AMBRA_GUTENBERG_10289_BOOK` to a local download of

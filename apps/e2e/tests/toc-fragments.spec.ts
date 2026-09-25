@@ -153,6 +153,68 @@ for (const width of [900, 1400]) {
 }
 
 const realBook = process.env.AMBRA_GUTENBERG_10289_BOOK;
+
+test("legacy and new image-boundary bookmark markers survive reopening and repagination (#202)", async () => {
+  const book = fixture(test.info().outputPath("fixture"));
+  const { context, readerPage: page } = await launchReader(book);
+  try {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await exposeReaderController(page);
+    await selectEntry(page, "Alpha");
+    await expect.poll(async () => (await snapshot(page)).totalPages).toBeGreaterThan(0);
+    const saved = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const imagePages = c.host.pages.filter((page: { startBreak: { node: Node; offset?: number } }) => {
+        const { node, offset = 0 } = page.startBreak;
+        return node.nodeType === 1 && offset > 0 &&
+          (node.childNodes[offset] as Element | undefined)?.localName === "img";
+      });
+      if (imagePages.length < 2) throw new Error("The fixture must expose at least two parent-offset image pages.");
+      const first = imagePages[0];
+      const legacyCfi = c.locatorResolver.generate(c.spineIndex, first.startBreak.node, first.startBreak.offset).cfi;
+      const canonicalCfi = c.locatorResolver.generateBoundary(c.spineIndex, first.startBreak.node, first.startBreak.offset).cfi;
+      const legacy = await c.library.addBookmark(c.bookId, legacyCfi, "Legacy image boundary");
+      await c.refreshBookmarks();
+      c.host.goToPageIndex(imagePages[1].index);
+      c.nativeReading.reset();
+      const added = await c.addBookmark();
+      if (!added) throw new Error("Image bookmark was not saved.");
+      const current = c.host.currentPosition();
+      const newCanonical = c.locatorResolver.generateBoundary(c.spineIndex, current.node, current.offset).cfi;
+      const total = c.snapshot().bookPageCount;
+      const expected = [
+        { id: legacy.id, fraction: c.bookPagination.positionFor(c.spineIndex, c.bookPagination.pageIndexForCfi(c.spineIndex, canonicalCfi)).currentPage / total },
+        { id: added.id, fraction: c.bookPagination.positionFor(c.spineIndex, c.bookPagination.pageIndexForCfi(c.spineIndex, newCanonical)).currentPage / total },
+      ];
+      await c.flushProgress();
+      return { expected, legacyCfi, newCfi: added.cfi, currentPage: c.snapshot().bookPageIndex };
+    });
+    expect(saved.legacyCfi).toMatch(/\/4:\d+\)$/);
+    expect(saved.newCfi).toMatch(/\/4:\d+\)$/);
+    const markers = () => page.evaluate(() =>
+      Reflect.get(window, "__readerController").snapshot().bookmarkProgress as { id: string; fraction: number }[]);
+    expect(await markers()).toEqual(saved.expected);
+    await expect(page.locator("[data-bookmark-marker]")).toHaveCount(2);
+    await page.reload();
+    await page.waitForTimeout(1000);
+    await exposeReaderController(page);
+    await expect.poll(markers).toEqual(saved.expected);
+    expect((await snapshot(page)).currentPage).toBe(saved.currentPage);
+    await page.evaluate(cfi => Reflect.get(window, "__readerController").goToBookmark(cfi), saved.legacyCfi);
+    expect((await snapshot(page)).currentPage / (await snapshot(page)).totalPages).toBe(saved.expected[0]!.fraction);
+    await page.evaluate(() => Reflect.get(window, "__readerController").setFontScale(1.3));
+    await expect.poll(async () => (await markers())?.length).toBe(2);
+    for (const cfi of [saved.legacyCfi, saved.newCfi]) {
+      await page.evaluate(cfi => Reflect.get(window, "__readerController").goToBookmark(cfi), cfi);
+      const state = await snapshot(page);
+      const marker = (await markers())[cfi === saved.legacyCfi ? 0 : 1]!;
+      expect(state.currentPage / state.totalPages).toBe(marker.fraction);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("published Gutenberg #10289 fragments show their own page and section", async () => {
   test.skip(!realBook || !fs.existsSync(realBook), "Set AMBRA_GUTENBERG_10289_BOOK to the downloaded EPUB3.");
   test.setTimeout(120_000);

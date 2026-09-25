@@ -33,7 +33,8 @@ export const LibraryImportStatus: FC<{
   onDismissCompleted: () => void;
   onCancelDownload: (id: number) => boolean;
   focusFallbackRef?: RefObject<HTMLButtonElement | null>;
-}> = ({ activities, books, onOpenBook, onDismissCompleted, onCancelDownload, focusFallbackRef }) => {
+  focusBackupRef?: RefObject<HTMLElement | null>;
+}> = ({ activities, books, onOpenBook, onDismissCompleted, onCancelDownload, focusFallbackRef, focusBackupRef }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const busy = activities.some(({ phase }) => phase !== "complete");
@@ -90,8 +91,12 @@ export const LibraryImportStatus: FC<{
                   onClick={(event) => {
                     const hadFocus = event.currentTarget === event.currentTarget.ownerDocument.activeElement;
                     if (onCancelDownload(id) && hadFocus) {
-                      // The empty-library import button is revealed by the cancellation render.
-                      queueMicrotask(() => focusFallbackRef?.current?.focus());
+                      // Another import may keep the empty-state action hidden after cancellation.
+                      queueMicrotask(() => {
+                        const target = focusFallbackRef?.current;
+                        (target && !target.closest("[hidden]") && !target.disabled
+                          ? target : focusBackupRef?.current)?.focus();
+                      });
                     }
                   }}>
                   {t("library.cancelDownload")}

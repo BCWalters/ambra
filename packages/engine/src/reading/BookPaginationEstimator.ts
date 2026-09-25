@@ -17,6 +17,7 @@ import { EpubCfi } from "../locator/EpubCfi.js";
 interface MeasuredSpineItem {
   pageCount: number;
   pageStarts?: readonly string[];
+  pageStartAncestors?: readonly (readonly number[])[];
   fragmentPages?: ReadonlyMap<string, number>;
 }
 
@@ -60,6 +61,7 @@ function yieldToEventLoop(): Promise<void> {
 export class BookPaginationEstimator {
   private pageCounts: (number | undefined)[];
   private pageStarts: (readonly string[] | undefined)[];
+  private pageStartAncestors: (readonly (readonly number[])[] | undefined)[];
   private fragmentPages: (ReadonlyMap<string, number> | undefined)[];
   private generation = 0;
   private activeRun: AbortController | undefined;
@@ -83,6 +85,7 @@ export class BookPaginationEstimator {
   ) {
     this.pageCounts = this.initialPageCounts();
     this.pageStarts = new Array(spine.length).fill(undefined);
+    this.pageStartAncestors = new Array(spine.length).fill(undefined);
     this.fragmentPages = new Array(spine.length).fill(undefined);
   }
 
@@ -141,6 +144,7 @@ export class BookPaginationEstimator {
     ) {
       this.pageCounts = this.initialPageCounts();
       this.pageStarts = new Array(this.spine.length).fill(undefined);
+      this.pageStartAncestors = new Array(this.spine.length).fill(undefined);
       this.fragmentPages = new Array(this.spine.length).fill(undefined);
       this.lastWidth = width;
       this.lastHeight = height;
@@ -191,6 +195,7 @@ export class BookPaginationEstimator {
       }
       this.pageCounts[spineIndex] = measured.pageCount;
       this.pageStarts[spineIndex] = measured.pageStarts;
+      this.pageStartAncestors[spineIndex] = measured.pageStartAncestors;
       this.fragmentPages[spineIndex] = measured.fragmentPages;
       onProgress();
     }
@@ -239,16 +244,26 @@ export class BookPaginationEstimator {
         { signal },
       );
       signal.throwIfAborted();
-      // Retain only CFIs, never the measured document or its DOM ranges.
+      // Retain only portable boundary data, never the measured document or DOM ranges.
       const locatorResolver = this.locatorResolver;
       const pageStarts: string[] | undefined = locatorResolver ? [] : undefined;
+      const pageStartAncestors: number[][] = [];
       if (locatorResolver && pageStarts) {
         let deadline = performance.now() + 8;
         for (let index = 0; index < host.pageCount; index++) {
           signal.throwIfAborted();
           const start = host.pageStartPosition(index);
           if (!start) throw new Error(`Missing page ${index} in spine item ${spineIndex}.`);
-          pageStarts.push(locatorResolver.generateBoundary(spineIndex, start.node, start.offset).cfi);
+          const locator = locatorResolver.generateBoundary(spineIndex, start.node, start.offset);
+          pageStarts.push(locator.cfi);
+          const resolved = locatorResolver.resolveInDocument(
+            locator, spineIndex, host.element.contentDocument!,
+          );
+          const ancestors: number[] = [];
+          for (let child = resolved.node; child.parentElement; child = child.parentElement) {
+            ancestors.unshift(Array.prototype.indexOf.call(child.parentElement.childNodes, child));
+          }
+          pageStartAncestors.push(ancestors);
           if (performance.now() >= deadline) {
             await yieldToEventLoop();
             signal.throwIfAborted();
@@ -262,7 +277,7 @@ export class BookPaginationEstimator {
         const page = target ? host.pageIndexForPosition(target, 0) : undefined;
         if (page !== undefined) fragmentPages.set(fragment, page);
       }
-      return { pageCount: host.pageCount, pageStarts, fragmentPages };
+      return { pageCount: host.pageCount, pageStarts, pageStartAncestors, fragmentPages };
     } finally {
       signal.removeEventListener("abort", disposeHost);
       disposeHost();
@@ -297,11 +312,34 @@ export class BookPaginationEstimator {
     }
     const starts = this.pageStarts[spineIndex];
     if (!starts?.length) return undefined;
+    const target = EpubCfi.parse(cfi);
+    const elementOffset = target.characterOffset !== undefined &&
+      (target.contentSteps.at(-1)?.index ?? 0) % 2 === 0;
     let low = 0;
     let high = starts.length;
     while (low < high) {
       const middle = Math.floor((low + high) / 2);
-      if (EpubCfi.compare(starts[middle]!, cfi) <= 0) low = middle + 1;
+      const start = EpubCfi.parse(starts[middle]!);
+      let comparison = EpubCfi.compare(starts[middle]!, cfi);
+      // Saved bookmarks/resume CFIs can still address a parent's child offset.
+      // Compare that offset with the measured descendant's real child index,
+      // not CFI step numbers (which ignore whitespace, comments and controls).
+      // Retaining only these ancestor indices keeps disposed measurement DOMs
+      // collectible while supporting old and newly saved element-offset CFIs.
+      const depth = target.contentSteps.length;
+      if (elementOffset && depth < start.contentSteps.length &&
+        target.packageSteps.length === start.packageSteps.length &&
+        target.packageSteps.every((step, index) => step.index === start.packageSteps[index]?.index) &&
+        target.contentSteps.every((step, index) => step.index === start.contentSteps[index]?.index)) {
+        const childIndex = this.pageStartAncestors[spineIndex]?.[middle]?.[depth];
+        if (childIndex !== undefined) {
+          comparison = childIndex - target.characterOffset!;
+          if (comparison === 0) {
+            comparison = start.contentSteps.length === depth + 1 && (start.characterOffset ?? 0) === 0 ? 0 : 1;
+          }
+        }
+      }
+      if (comparison <= 0) low = middle + 1;
       else high = middle;
     }
     return Math.max(0, low - 1);
@@ -326,6 +364,7 @@ export class BookPaginationEstimator {
     this.pageCounts[spineIndex] =
       this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated" ? 1 : undefined;
     this.pageStarts[spineIndex] = undefined;
+    this.pageStartAncestors[spineIndex] = undefined;
     this.fragmentPages[spineIndex] = undefined;
   }
 
