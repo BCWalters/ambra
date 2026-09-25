@@ -3,6 +3,21 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "welcome.title": "安心落座，开始阅读",
+  "welcome.intro": "下一段故事，从这里开始。",
+  "welcome.readingTips": "阅读小提示",
+  "welcome.turnTitle": "翻一页",
+  "welcome.scrollTitle": "按自己的节奏阅读",
+  "welcome.marginsLtr": "点击或轻触右侧外边距可向后阅读，左侧外边距可返回前页。",
+  "welcome.marginsRtl": "点击或轻触左侧外边距可向后阅读，右侧外边距可返回前页。",
+  "welcome.keysLtr": "右方向键：下一页。左方向键：上一页。",
+  "welcome.keysRtl": "左方向键：下一页。右方向键：上一页。",
+  "welcome.scroll": "向下滚动或向上轻扫可继续阅读，反向操作可返回。",
+  "welcome.firstTap": "阅读控件显示时，第一次轻触边距只会隐藏控件，不会翻页。",
+  "welcome.libraryTitle": "书库始终在身边",
+  "welcome.library": "选择阅读工具栏中的“书库”即可返回您的藏书。",
+  "welcome.start": "开始阅读",
+  "welcome.reopen": "您可以在“帮助与关于”中再次查看这些提示。",
   "settings.helpAbout": "帮助与关于",
   "library.about": "帮助与关于",
   "about.userGuide": "用户指南",

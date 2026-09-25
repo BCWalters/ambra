@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { EXTENSION_PATH, launchReader } from "../harness.js";
+import { EXTENSION_PATH, launchReader, seedReadingWelcomeAcknowledgement } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 type Direction = "ltr" | "rtl";
@@ -192,6 +192,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       const library = await context.newPage();
       await library.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html`);
       await expect(library.locator('input[type="file"]')).toBeEnabled();
+      await seedReadingWelcomeAcknowledgement(library);
       await library.locator('input[type="file"]').setInputFiles(book);
       const opening = context.waitForEvent("page");
       await library.getByRole("button", { name: /^Open / }).click({ force: true });

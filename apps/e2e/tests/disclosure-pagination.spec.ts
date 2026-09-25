@@ -2,7 +2,7 @@ import { chromium, expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXTENSION_PATH, launchReader } from "../harness.js";
+import { EXTENSION_PATH, launchReader, seedReadingWelcomeAcknowledgement } from "../harness.js";
 
 // Issue #132. Generate: node apps/e2e/scripts/generate-disclosure-fixture.mjs
 // Do not weaken/skip failures when native <details>
@@ -104,6 +104,8 @@ for (const width of [760, 1400]) {
         await library.goto(
           `chrome-extension://${worker.url().split("/")[2]}/src/library/index.html`,
         );
+        await expect(library.locator('input[type="file"]')).toBeEnabled();
+        await seedReadingWelcomeAcknowledgement(library);
         await library
           .locator('input[type="file"]:enabled')
           .setInputFiles(

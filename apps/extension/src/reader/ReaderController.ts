@@ -686,6 +686,7 @@ export class ReaderController {
       const requestedLayout = this.pendingLayout?.configuration ?? this.currentLayout();
 
       this.cachedSnapshot = {
+        hasRenderedContent: this.host !== undefined,
         narration: this.narration.snapshot,
         narrationNoticeVisible: this.narrationNoticeVisible && this.host !== undefined,
         hasReadingSelection: this.narration.snapshot.available && selectedReadingRange(this.contentDocumentViews()) !== undefined,

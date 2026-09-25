@@ -56,6 +56,16 @@ into `apps/extension/dist`, which is reserved for the CRXJS *dev-mode*
 loader stubs the maintainer's own live-reloaded Chrome window depends on.
 Running this suite never disturbs that.
 
+Reader tests default to an experienced profile: `launchReader` seeds only
+`readingWelcomeVersion: 1` in the real IndexedDB preferences store before
+importing. Pass `{ firstReadingWelcome: true }` to exercise the unmodified
+production first-reading welcome. `beforeBookImport` can seed other preferences
+or verify Library/error states in that same profile. The CI-wired
+`first-reading-welcome.spec.ts` covers acknowledgement, Escape, reload, Help
+reopening, multiple books, RTL fixed layout, scrolling, touch-width reflow,
+modal focus, reduced motion and forced colors. There is no headless-only
+production behavior.
+
 Tests using the shared `launchReader` harness can opt into full Chromium's
 headless mode with `AMBRA_E2E_HEADLESS=1`. This keeps validation from opening
 windows or interrupting someone testing the live extension. It still loads the

@@ -9,6 +9,7 @@ import type { ToolbarProps } from "./components/Toolbar.js";
 import type { ProgressScrubberProps } from "./components/ProgressScrubber.js";
 
 const realMenu = vi.hoisted(() => ({ enabled: false }));
+const welcomePreference = vi.hoisted(() => ({ version: 1, acknowledge: vi.fn() }));
 vi.mock("./useReaderController.js", () => ({ useReaderController: vi.fn() }));
 vi.mock("../library/LibraryDatabase.js", () => ({
   LibraryDatabase: {
@@ -16,6 +17,8 @@ vi.mock("../library/LibraryDatabase.js", () => ({
       getBookFile: async () => new Blob(["book"]),
       getLocalePreference: async () => "en",
       getShortcutPreferences: async () => ({ enabled: true }),
+      getReadingWelcomeVersion: async () => welcomePreference.version,
+      acknowledgeReadingWelcome: welcomePreference.acknowledge,
       subscribePreferences: () => () => {},
       close: () => {},
     }),
@@ -53,6 +56,8 @@ let bridge: UseReaderControllerResult;
 let dismiss: (() => boolean) | undefined;
 
 beforeEach(async () => {
+  welcomePreference.version = 1;
+  welcomePreference.acknowledge.mockReset();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("chrome", { runtime: { getManifest: () => ({ version: "1.0.0" }) } });
   const animate = Element.prototype.animate;
@@ -117,6 +122,30 @@ it("uses book preparation copy before the first snapshot", async () => {
   await act(async () => root.render(<ReaderApp />));
   expect(container.textContent).toContain("Getting your book ready…");
   expect(container.textContent).not.toContain("Loading…");
+});
+
+it("offers welcome only after content commits without an error, even while totals are unknown", async () => {
+  welcomePreference.version = 0;
+  bridge.snapshot = { ...bridge.snapshot!, hasRenderedContent: false, isLoading: false };
+  await act(async () => root.render(<ReaderApp />));
+  expect(document.querySelector(".reading-welcome")).toBeNull();
+  bridge.snapshot = { ...bridge.snapshot, hasRenderedContent: true, isLoading: true };
+  await act(async () => root.render(<ReaderApp />));
+  expect(document.querySelector(".reading-welcome")).toBeNull();
+  bridge.snapshot = { ...bridge.snapshot, isLoading: false, error: "Could not open this chapter" };
+  await act(async () => root.render(<ReaderApp />));
+  expect(document.querySelector(".reading-welcome")).toBeNull();
+  expect(welcomePreference.acknowledge).not.toHaveBeenCalled();
+  bridge.snapshot = { ...bridge.snapshot, error: undefined, bookPageCount: undefined, currentChapterLabel: "" };
+  await act(async () => root.render(<ReaderApp />));
+  expect(document.querySelector(".reading-welcome")?.textContent).toContain("Make yourself at home");
+  expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(true);
+  const start = [...document.querySelectorAll<HTMLButtonElement>(".reading-welcome button")]
+    .find(button => button.textContent === "Start reading")!;
+  await act(async () => start.click());
+  expect(welcomePreference.acknowledge).toHaveBeenCalledOnce();
+  expect(document.querySelector(".reading-welcome")).toBeNull();
+  expect(bridge.setShortcutModalOpen).toHaveBeenLastCalledWith(false);
 });
 
 it.each([

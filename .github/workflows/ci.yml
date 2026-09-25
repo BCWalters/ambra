@@ -68,6 +68,8 @@ jobs:
           shell-accessibility-audit.spec.ts
           shell-reflow-accessibility.spec.ts
           reader-shortcuts-help.spec.ts
+          first-reading-welcome.spec.ts
+          harness-lifecycle.spec.ts
           reader-ui-dismissal.spec.ts
           margin-selection.spec.ts
           page-turn-margin.spec.ts
@@ -100,6 +102,13 @@ jobs:
         with:
           name: bookmark-panel-review-${{ github.sha }}
           path: apps/e2e/test-results/bookmark-panel-*/bookmark-cards-*.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Keep reading welcome previews
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reading-welcome-${{ github.sha }}
+          path: apps/e2e/test-results/first-reading-welcome-*/welcome-*.png
           if-no-files-found: error
           retention-days: 14
       - name: Verify Inspector and import feedback

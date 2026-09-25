@@ -2,7 +2,7 @@ import { chromium, expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXTENSION_PATH } from "../harness.js";
+import { EXTENSION_PATH, seedReadingWelcomeAcknowledgement } from "../harness.js";
 
 // Generate with: node apps/e2e/scripts/generate-scale-fixtures.mjs
 // Run: pnpm --filter @ambra/e2e exec playwright test scale-validation.spec.ts
@@ -36,6 +36,7 @@ async function launch(book: string) {
     const library = await context.newPage();
     await library.goto(`chrome-extension://${id}/src/library/index.html`);
     await expect(library.locator('input[type="file"]')).toBeEnabled();
+    await seedReadingWelcomeAcknowledgement(library);
     const started = Date.now();
     await library.locator('input[type="file"]').setInputFiles(path.join(root, `${book}.epub`));
     const open = library.getByRole("button", { name: /^Open / }).first();

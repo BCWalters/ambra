@@ -33,6 +33,21 @@
  * ship-quality copy. */
 export interface StringCatalog {
   "settings.helpAbout": string;
+  "welcome.title": string;
+  "welcome.intro": string;
+  "welcome.readingTips": string;
+  "welcome.turnTitle": string;
+  "welcome.scrollTitle": string;
+  "welcome.marginsLtr": string;
+  "welcome.marginsRtl": string;
+  "welcome.keysLtr": string;
+  "welcome.keysRtl": string;
+  "welcome.scroll": string;
+  "welcome.firstTap": string;
+  "welcome.libraryTitle": string;
+  "welcome.library": string;
+  "welcome.start": string;
+  "welcome.reopen": string;
   "library.about": string;
   "about.userGuide": string;
   "about.issues": string;
@@ -445,6 +460,21 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "welcome.title": "Make yourself at home",
+  "welcome.intro": "Your next chapter starts here.",
+  "welcome.readingTips": "Reading tips",
+  "welcome.turnTitle": "Turn a page",
+  "welcome.scrollTitle": "Read at your pace",
+  "welcome.marginsLtr": "Click or tap the right outer margin to go forward, the left to go back.",
+  "welcome.marginsRtl": "Click or tap the left outer margin to go forward, the right to go back.",
+  "welcome.keysLtr": "Right arrow: forward. Left arrow: back.",
+  "welcome.keysRtl": "Left arrow: forward. Right arrow: back.",
+  "welcome.scroll": "Scroll down or swipe up to keep reading. Reverse the movement to go back.",
+  "welcome.firstTap": "When reader controls are showing, the first margin tap hides them without turning a page.",
+  "welcome.libraryTitle": "Your library is always close",
+  "welcome.library": "Choose Library in the reader toolbar to return to your books.",
+  "welcome.start": "Start reading",
+  "welcome.reopen": "Find these tips again in Help & About.",
   "settings.helpAbout": "Help & About",
   "library.about": "Help & About",
   "about.userGuide": "User guide",

@@ -117,6 +117,8 @@ export interface InspectorReaderBridge {
 }
 
 export interface ReaderSnapshot {
+  /** A real reading host has committed, independently of background page counting. */
+  readonly hasRenderedContent: boolean;
   narration?: NarrationState;
   narrationNoticeVisible?: boolean;
   hasReadingSelection?: boolean;

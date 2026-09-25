@@ -46,6 +46,7 @@ export interface HelpAboutFlyoutProps {
   backgroundSolid: string;
   accentForeground: string;
   onOpenKeyboardShortcuts: () => void;
+  onOpenReadingTips?: () => void;
   getReaderDiagnostics?: () => string | undefined;
   onAfterClose?: () => void;
   focusShortcutsOnOpen?: boolean;
@@ -53,7 +54,7 @@ export interface HelpAboutFlyoutProps {
 
 export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
   open, onRequestClose, onOutsideClick, backgroundSolid, accentForeground,
-  onOpenKeyboardShortcuts, getReaderDiagnostics, onAfterClose, focusShortcutsOnOpen = false,
+  onOpenKeyboardShortcuts, onOpenReadingTips, getReaderDiagnostics, onAfterClose, focusShortcutsOnOpen = false,
 }) => {
   const t = useTranslation();
   const diagnosticsHintId = useId();
@@ -118,6 +119,11 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
         </Caption1>
 
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 16px" }}>
+          {onOpenReadingTips && (
+            <Link as="button" onClick={onOpenReadingTips} style={{ color: accentForeground }}>
+              {t("welcome.readingTips")}
+            </Link>
+          )}
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 6 }}>
             <Link
               as="button"
