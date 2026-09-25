@@ -24,6 +24,23 @@ export interface LaunchedReader {
   extensionId: string;
 }
 
+/** Use only after Library has initialized the real preference store. */
+export async function seedReadingWelcomeAcknowledgement(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open("ambra-library");
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("preferences", "readwrite");
+        tx.objectStore("preferences").put({ key: "readingWelcomeVersion", value: 1 });
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      };
+    });
+  });
+}
+
 /** Launches a persistent Chromium context with the *real, built*
  * extension loaded (see `EXTENSION_PATH`), imports `bookPath` via the
  * library page's file picker, opens it, and returns the resulting
@@ -41,6 +58,10 @@ export async function launchReader(
     showScrollbars?: boolean;
     forceAccessibility?: boolean;
     hasTouch?: boolean;
+    /** Exercise the production first-reading welcome instead of seeding its acknowledgement. */
+    firstReadingWelcome?: boolean;
+    /** Optional real-profile setup/assertions before importing the first book. */
+    beforeBookImport?: (libraryPage: Page) => Promise<void>;
   } = {},
 ): Promise<LaunchedReader> {
   if (!fs.existsSync(EXTENSION_PATH)) {
@@ -90,6 +111,12 @@ export async function launchReader(
     // setInputFiles can dispatch a change on a disabled input; wait for the
     // same readiness gate a person using the Import button must pass.
     await expect(fileInput).toBeEnabled({ timeout: 15_000 });
+    if (!options.firstReadingWelcome) {
+      // Most reader regressions start with an experienced profile. Seed only this
+      // preference through the real database, never a production/headless bypass.
+      await seedReadingWelcomeAcknowledgement(libraryPage);
+    }
+    await options.beforeBookImport?.(libraryPage);
     await fileInput.setInputFiles(bookPath);
 
     const openButton = libraryPage.getByRole("button", { name: /^Open /i }).first();

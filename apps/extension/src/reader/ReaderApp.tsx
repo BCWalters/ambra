@@ -36,6 +36,8 @@ import { ShortcutPreferencesProvider, useShortcutPreferences } from "../shortcut
 import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
 import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.js";
 import { captureFocusReturn, useHelpDialogs } from "../components/useHelpDialogs.js";
+import { ReadingWelcome } from "./components/ReadingWelcome.js";
+import { useReadingWelcome } from "./useReadingWelcome.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -228,6 +230,11 @@ const ReaderAppInner: FC = () => {
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
   const [openError, setOpenError] = useState<{ message: string; invalidEpub?: boolean } | null>(null);
+  const welcome = useReadingWelcome(snapshot?.hasRenderedContent === true, help.view === undefined &&
+    !snapshot?.isLoading && !snapshot?.error && !openError &&
+    !isInspectorOpen && goToMode === undefined && !snapshot?.imageViewer &&
+    activePanel === undefined && rightPanel === undefined && !isNarrationOpen &&
+    toolbarMenu === undefined, help.openWelcome);
   useEffect(() => {
     if (!snapshot) return;
     recordDiagnosticSurfaces({
@@ -659,7 +666,7 @@ const ReaderAppInner: FC = () => {
               }}
             />
             <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
-            {snapshot.narrationNoticeVisible && !snapshot.isLoading && !snapshot.error &&
+            {snapshot.narrationNoticeVisible && !snapshot.isLoading && !snapshot.error && help.view !== "welcome" &&
               activePanel === undefined && rightPanel === undefined && !isNarrationOpen && (
               <NarrationDiscoveryNotice
                 onListen={startNarration}
@@ -748,7 +755,23 @@ const ReaderAppInner: FC = () => {
               backgroundSolid={CHROME_THEMES[snapshot.chromeTheme].backgroundSolid}
               accentForeground={CHROME_THEMES[snapshot.chromeTheme].accentForeground}
               onOpenKeyboardShortcuts={help.openShortcutsFromHelp}
+              onOpenReadingTips={help.openWelcome}
               getReaderDiagnostics={getDiagnosticsText}
+            />
+            <ReadingWelcome
+              open={help.view === "welcome"}
+              scrolling={!snapshot.isFixedLayout && snapshot.viewMode === "scroll"}
+              rtl={snapshot.pageProgressionDirection === "rtl"}
+              onDismiss={() => {
+                void welcome.acknowledge();
+                help.closeToContent();
+              }}
+              onAfterClose={help.afterClose}
+              onLibrary={() => {
+                void welcome.acknowledge().then(() => {
+                  window.location.href = libraryFullTabUrl();
+                });
+              }}
             />
             <KeyboardShortcutsDialog
               open={help.view === "shortcuts"}

@@ -68,6 +68,7 @@ jobs:
           shell-accessibility-audit.spec.ts
           shell-reflow-accessibility.spec.ts
           reader-shortcuts-help.spec.ts
+          first-reading-welcome.spec.ts
           reader-ui-dismissal.spec.ts
           margin-selection.spec.ts
           page-turn-margin.spec.ts
@@ -91,6 +92,13 @@ jobs:
           mixed-rendition-spreads.spec.ts
           pagination-measurement.spec.ts
           --workers=1
+      - name: Keep reading welcome previews
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reading-welcome-${{ github.sha }}
+          path: apps/e2e/test-results/first-reading-welcome-*/welcome-*.png
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify Inspector and import feedback
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension

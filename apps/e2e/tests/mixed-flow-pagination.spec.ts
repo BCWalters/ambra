@@ -2,7 +2,7 @@ import { chromium, expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { EXTENSION_PATH } from "../harness.js";
+import { EXTENSION_PATH, seedReadingWelcomeAcknowledgement } from "../harness.js";
 
 function fixture(directory: string): { book: string; expected: string[]; atomicGroups: string[][] } {
   const source = path.join(directory, "source");
@@ -116,6 +116,7 @@ for (const width of [760, 1400]) {
       const library = await context.newPage();
       await library.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html`);
       await expect(library.locator('input[type="file"]')).toBeEnabled();
+      await seedReadingWelcomeAcknowledgement(library);
       await library.locator('input[type="file"]').setInputFiles(book);
       const opening = context.waitForEvent("page");
       await library.getByRole("button", { name: /^Open / }).click({ force: true });
