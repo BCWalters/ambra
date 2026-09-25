@@ -100,13 +100,17 @@ AMBRA_E2E_HEADLESS=1 AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/build \
 
 When checking `settings-ownership.spec.ts`, `reader-preferences.spec.ts`,
 `settings-focus.spec.ts`, and `page-theme.spec.ts`, treat **Page theme** as a
-global setting, not a book override. It is a compact native select in
-**Settings** beside **Brightness**. Theme changes should apply across books;
+global setting, not a book override. In **Settings**, the
+**Page theme** submenu contains **White**, **Sepia**, and **Dark**
+`menuitemradio` rows with colored previews. **Brightness** stays directly
+accessible on the top-level menu. The appearance section is ordered
+**Reader theme**, **Page theme**, then **Brightness**, before the divider.
+Assert selection with `aria-checked`. Theme changes apply across books;
 old per-book themes must not override them. Legacy `defaultPageTheme` initializes
 the global theme, with white as the fallback.
 
 The book's **Page** menu instead has **Always show one page**, saved per book
-and off by default. Check that enabling it centers a single reflowable page
+and off by default, alongside the **Page width** slider. Check that enabling it centers a single reflowable page
 even at spread-width viewports, including in reflowable sections of mixed-layout
 books. Fixed-layout pages and scrolling must remain unchanged. Scrolling
 already has a centered, width-limited reading area. Ownership/reset checks
@@ -122,8 +126,34 @@ Focused browser coverage:
   one-page option enabled, for both LTR and RTL books.
 - `settings-lifecycle.spec.ts`: an external global theme change during a held
   spread load, plus a queued one-page option change.
-- `shell-reflow-accessibility.spec.ts`: the new theme select and one-page
-  checkbox at 320px and 400% zoom.
+- `reader-preferences.spec.ts`: compact top-level Settings height, consistent
+  flyout ordering, preview colors, full-menu/preview screenshots in the reader and Library, and the
+  **Page theme**, **Reading mode**, **Page turn**, and **Reader theme** submenus. The parent rows show the current
+  value; Page turn is disabled while scrolling. Animation/theme choices inside
+  the submenus remain `menuitemradio` controls with `aria-checked`.
+  Computed-font checks preserve the 14px semibold dark title and 14px regular
+  Brightness label, choices, and submenu rows.
+- `settings-focus.spec.ts`: **Reading mode** choices (**Paginated**
+  and **Scroll**) and Page theme choices use menu arrow navigation for focus and
+  Enter/Space for selection inside their flyouts. Reading mode shows inline keyboard shortcuts.
+  Tab exits the menu; Escape closes one menu level and restores focus. Fixed-layout books hide
+  Reading mode; Language remains a submenu and Help keeps its existing dialog.
+- `shell-reflow-accessibility.spec.ts`: theme previews, submenus, and the
+  one-page switch at 320px and actual 400% browser zoom, with menu screenshots.
+  Both reader and Library exercise the single-row Brightness label, slider,
+  and reset in all nine locales at 320px, checking geometry and real keyboard input.
+  At 1400px, both top-level Settings and Book options popovers open below their
+  triggers with matching right edges; narrow viewports retain collision fallback.
+  Both titles share the same 14px/600 dark text and 20px line-height.
+  Anchor screenshots include the trigger and surrounding reader, not just the menu.
+- `shell-accessibility-audit.spec.ts`: Chromium's actual accessibility tree
+  exposes named Page theme/Reading mode flyout menus with checked
+  menu-row names, selection, and focus. This checks browser semantics, not
+  VoiceOver speech or a complete ARIA conformance audit.
+  Library toolbar tooltips are hidden while Settings is open so they cannot
+  consume the first Escape from Language. Pointer and pre-visible-tooltip
+  cases check one-level dismissal, restored focus, and normal tooltip behavior
+  after the menu closes.
 
 ## Reflowable animation handoff (#208)
 

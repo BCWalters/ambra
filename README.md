@@ -152,8 +152,8 @@ Without the native-input flag, the same test uses ordinary Playwright mouse inpu
 
 ## Reading preferences
 
-**Settings** owns the global **Page theme** control: a compact native select
-next to **Brightness**, using the existing `text.pageStyle` translation key.
+**Settings** owns the global **Page theme** control: a flyout with three visual samples
+above the directly accessible **Brightness** slider, using the existing `text.pageStyle` translation key.
 `GlobalReadingSettings.pageTheme` applies across books. Legacy
 `defaultPageTheme` supplies the initial global theme when present; otherwise
 it defaults to white. Saved per-book page themes are no longer used.

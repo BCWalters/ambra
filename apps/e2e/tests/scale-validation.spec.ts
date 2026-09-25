@@ -157,7 +157,10 @@ test("100+ MiB image book imports, persists, turns, spreads and scrolls (#130)",
     const spreadReadyMs = Date.now() - spreadStart;
     const spreadTurnMs = await turn(page);
     await toolbar(page, "Settings");
+    await page.getByRole("menuitem", { name: /^Reading mode/ }).click();
     await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("slider", { name: "Position in book" })).toHaveCount(0);
     const chapterLoadsMs = [];

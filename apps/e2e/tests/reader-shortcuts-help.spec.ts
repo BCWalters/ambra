@@ -675,16 +675,17 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     await settings.focus();
     await page.keyboard.press("Enter");
     const menu = page.getByRole("menu");
+    await menu.getByRole("menuitem", { name: /^Reading mode/ }).press("ArrowRight");
+    const modeMenu = page.getByRole("menu").last();
     for (const [name, chord] of [
       [/^Paginated/, "Alt+Shift+PageUp"],
       [/^Scroll/, "Alt+Shift+PageDown"],
     ] as const) {
-      const mode = menu.getByRole("menuitemradio", { name });
+      const mode = modeMenu.getByRole("menuitemradio", { name });
       await expect(mode).toHaveAttribute("aria-keyshortcuts", chord);
       await mode.focus();
       await expect(mode).toBeInViewport({ ratio: 1 });
-      // Fluent's focus ring is a ::after extending 2px beyond the item. Check
-      // actual label/hint boxes and the scrollport, not that intentional ring.
+      await expect(mode.getByText(/Page(?:Up|Down)/)).toBeVisible();
       expect(await mode.evaluate(node => {
         const bounds = node.getBoundingClientRect();
         return Array.from(node.children).every(child => {
@@ -694,8 +695,9 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
         });
       })).toBe(true);
     }
-    expect(await menu.locator("..").evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
-    await expect(menu.locator("..")).toBeInViewport({ ratio: 1 });
+    expect(await modeMenu.locator("..").evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+    await expect(modeMenu.locator("..")).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await focusReading(page);
     await openShortcuts(page);

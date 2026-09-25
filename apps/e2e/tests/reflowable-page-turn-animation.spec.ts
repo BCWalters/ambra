@@ -25,11 +25,13 @@ async function setPageTurnAnimationStyle(
   const box = (await settingsButton.boundingBox())!;
   await manualClick(readerPage, box.x + box.width / 2, box.y + box.height / 2);
   await readerPage.waitForTimeout(150);
+  await readerPage.getByRole("menuitem", { name: /^Page turn/ }).click();
   const label = { rotate: "Page flip", slide: "Slide", scroll: "Film strip", none: "Off" }[style];
   const item = readerPage.getByRole("menuitemradio", { name: new RegExp(label) });
   const itemBox = (await item.boundingBox())!;
   await manualClick(readerPage, itemBox.x + itemBox.width / 2, itemBox.y + itemBox.height / 2);
   await readerPage.waitForTimeout(100);
+  await readerPage.keyboard.press("Escape");
   await readerPage.keyboard.press("Escape");
   await readerPage.waitForTimeout(100);
 }

@@ -377,7 +377,7 @@ export const it: StringCatalog = {
   "settings.scroll": "Scorrimento",
   "settings.slide": "Scorrimento laterale",
   "text.characterSpacing": "Spaziatura caratteri",
-  "text.columnWidth": "Larghezza colonna",
+  "text.columnWidth": "Larghezza pagina",
   "text.font": "Font",
   "text.fontSizeAriaLabel": "Dimensione del font",
   "text.lineSpacing": "Interlinea",

@@ -78,10 +78,11 @@ for (const mode of ["single", "spread", "scroll"] as const) {
         }
       });
       await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("menuitem", { name: /^Page theme/ }).click();
       for (const name of ["Sepia", "White", "Dark"] as const) {
-        const choice = page.getByRole("combobox", { name: "Page theme", exact: true });
-        await choice.selectOption(name.toLowerCase());
-        await expect(choice).toHaveValue(name.toLowerCase());
+        const choice = page.getByRole("menuitemradio", { name, exact: true });
+        await choice.click();
+        await expect(choice).toHaveAttribute("aria-checked", "true");
         const [background, foreground, link] = palettes[name];
         await expect.poll(() => canvasColors(page)).toEqual(
           Array.from({ length: frameCount }, () => [background, foreground]),
@@ -156,15 +157,17 @@ test("#203 page theme syncs between Library and different books, persists, and o
     await expect(second.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
     await exposeReaderController(second);
     await library.getByRole("button", { name: "Settings", exact: true }).click();
-    const libraryTheme = library.getByRole("combobox", { name: "Page theme", exact: true });
-    await libraryTheme.selectOption("sepia");
+    await library.getByRole("menuitem", { name: /^Page theme/ }).click();
+    const libraryTheme = library.getByRole("menu", { name: /^Page theme/ });
+    await libraryTheme.getByRole("menuitemradio", { name: "Sepia", exact: true }).click();
     for (const page of [first, second])
       await expect.poll(() => canvasColors(page)).toEqual([palettes.Sepia.slice(0, 2)]);
 
     await first.getByRole("button", { name: "Settings", exact: true }).focus();
     await first.getByRole("button", { name: "Settings", exact: true }).press("Enter");
-    await first.getByRole("combobox", { name: "Page theme", exact: true }).selectOption("dark");
-    await expect(libraryTheme).toHaveValue("dark");
+    await first.getByRole("menuitem", { name: /^Page theme/ }).click();
+    await first.getByRole("menuitemradio", { name: "Dark", exact: true }).click();
+    await expect(libraryTheme.getByRole("menuitemradio", { name: "Dark", exact: true })).toHaveAttribute("aria-checked", "true");
     for (const page of [first, second])
       await expect.poll(() => canvasColors(page)).toEqual([palettes.Dark.slice(0, 2)]);
 
@@ -185,7 +188,8 @@ test("#203 page theme syncs between Library and different books, persists, and o
     await expect.poll(() => canvasColors(first)).toEqual([palettes.Dark.slice(0, 2)]);
     await library.reload();
     await library.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(libraryTheme).toHaveValue("dark");
+    await library.getByRole("menuitem", { name: /^Page theme/ }).click();
+    await expect(libraryTheme.getByRole("menuitemradio", { name: "Dark", exact: true })).toHaveAttribute("aria-checked", "true");
     for (const page of [library, first, second]) await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await context.close();

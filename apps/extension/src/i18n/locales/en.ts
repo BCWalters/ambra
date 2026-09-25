@@ -646,7 +646,7 @@ export const en: StringCatalog = {
   "text.lineSpacing": "Line spacing",
   "text.characterSpacing": "Character spacing",
   "text.font": "Font",
-  "text.columnWidth": "Column width",
+  "text.columnWidth": "Page width",
   "text.alwaysShowOnePage": "Always show one page",
   "text.pageStyle": "Page theme",
   "fontFamily.sansSerif": "Sans-Serif",

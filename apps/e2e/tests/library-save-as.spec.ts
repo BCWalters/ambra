@@ -140,8 +140,12 @@ test("compact Save as follows the selected theme rather than the context default
 }, testInfo) => {
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByText("Blue", { exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Reader theme/ }).press("ArrowRight");
+  await page.getByRole("menuitemradio", { name: "Blue", exact: true }).click();
   await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu", { name: "Settings", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
   await page.getByText(title, { exact: true }).first().hover();
   await page.getByRole("button", { name: `${title} details`, exact: true }).click();
   const save = page.getByRole("button", { name: "Save as…", exact: true });

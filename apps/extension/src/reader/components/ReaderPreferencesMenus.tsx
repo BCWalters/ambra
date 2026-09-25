@@ -6,12 +6,11 @@ import {
   MenuGroup,
   MenuGroupHeader,
   MenuItem,
-  MenuItemCheckbox,
   MenuItemRadio,
   MenuList,
   MenuPopover,
   MenuTrigger,
-  Select,
+  Switch,
   Tooltip,
 } from "@fluentui/react-components";
 import type { MenuProps } from "@fluentui/react-components";
@@ -44,6 +43,12 @@ const MENU_POSITIONING = {
   autoSize: true,
   overflowBoundaryPadding: 4,
 } satisfies MenuProps["positioning"];
+
+const TOP_LEVEL_MENU_POSITIONING: MenuProps["positioning"] = {
+  ...MENU_POSITIONING,
+  position: "below",
+  align: "end",
+};
 
 // Allow submenus to overlap their parent rather than leave the viewport at high zoom.
 const SUBMENU_POSITIONING: MenuProps["positioning"] = {
@@ -121,6 +126,25 @@ const ANIMATION_LABEL_KEYS: Readonly<Record<PageTurnAnimationStyle, keyof String
 };
 const ANIMATION_ORDER: readonly PageTurnAnimationStyle[] = ["slide", "scroll", "rotate", "none"];
 
+const MENU_TITLE_STYLE = {
+  fontSize: 14,
+  fontWeight: 600,
+  lineHeight: "20px",
+  color: "var(--colorNeutralForeground1, #242424)",
+  marginBottom: 4,
+};
+
+const PageStyleSwatch: FC<{ background: string; foreground: string }> = ({ background, foreground }) => (
+  <span aria-hidden="true" style={{
+    display: "inline-flex", flexDirection: "column", justifyContent: "center",
+    gap: 3, width: 20, height: 20, borderRadius: 4, background,
+    border: "1px solid rgba(0, 0, 0, 0.15)", boxSizing: "border-box", padding: "0 4px",
+  }}>
+    <span style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "100%" }} />
+    <span style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "65%" }} />
+  </span>
+);
+
 const PreferenceSlider: FC<DefaultableSliderProps & { label: string }> = ({ label, ...props }) => (
   <MenuGroup>
     <MenuGroupHeader>{label}</MenuGroupHeader>
@@ -180,7 +204,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
   const t = useTranslation();
   const scopeId = useId();
   return (
-    <Menu open={open} onOpenChange={(_event, data) => onOpenChange?.(data.open)} positioning={MENU_POSITIONING}>
+    <Menu open={open} onOpenChange={(_event, data) => onOpenChange?.(data.open)} positioning={TOP_LEVEL_MENU_POSITIONING}>
       <MenuTrigger disableButtonEnhancement>
         <Tooltip content={t("toolbar.textOptions")} relationship="label">
           <Button
@@ -193,7 +217,7 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
       </MenuTrigger>
       <MenuPopover onFocusCapture={revealMenuFocus}>
         <MenuList aria-describedby={scopeId}>
-          <MenuGroupHeader id={scopeId}>{t("text.bookScope")}</MenuGroupHeader>
+          <MenuGroupHeader id={scopeId} style={MENU_TITLE_STYLE}>{t("text.bookScope")}</MenuGroupHeader>
           <Menu
             positioning={SUBMENU_POSITIONING}
             persistOnItemClick
@@ -270,11 +294,6 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
           <Menu
             positioning={SUBMENU_POSITIONING}
             persistOnItemClick
-            checkedValues={{ alwaysShowOnePage: alwaysShowOnePage ? ["on"] : [] }}
-            onCheckedValueChange={(_event, data) => {
-              if (data.name === "alwaysShowOnePage")
-                onSetAlwaysShowOnePage(data.checkedItems.includes("on"));
-            }}
           >
             <MenuTrigger disableButtonEnhancement>
               <MenuItem icon={<DocumentOnePageColumnsRegular />}>
@@ -294,9 +313,15 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
                   onChange={onSetContentWidth}
                 />
                 <MenuDivider />
-                <MenuItemCheckbox name="alwaysShowOnePage" value="on">
-                  {t("text.alwaysShowOnePage")}
-                </MenuItemCheckbox>
+                <div style={{ padding: "6px 12px" }}>
+                  <Switch
+                    label={t("text.alwaysShowOnePage")}
+                    labelPosition="before"
+                    checked={alwaysShowOnePage}
+                    onChange={(_event, data) => onSetAlwaysShowOnePage(data.checked)}
+                    style={{ width: "100%", justifyContent: "space-between" }}
+                  />
+                </div>
               </MenuList>
             </MenuPopover>
           </Menu>
@@ -323,11 +348,12 @@ const LanguageMenu: FC = () => {
           <MenuItem
             disabled={!ready}
             icon={<LocalLanguageRegular />}
-            secondaryContent={
-              preference === "system"
+            secondaryContent={{
+              children: preference === "system"
                 ? t("settings.languageSystemDefault")
-                : LOCALE_NATIVE_NAMES[preference]
-            }
+                : LOCALE_NATIVE_NAMES[preference],
+              style: { fontSize: 14 },
+            }}
           >
             {t("settings.language")}
           </MenuItem>
@@ -382,24 +408,15 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const scrollingShortcut = useCommandPresentation("switchToScrolling");
   const paginatedShortcut = useCommandPresentation("switchToPaginated");
+  const chromeThemeLabel = CHROME_THEME_LABEL_KEYS[chromeTheme]
+    ? t(CHROME_THEME_LABEL_KEYS[chromeTheme]!)
+    : CHROME_THEMES[chromeTheme].label;
   return (
     <Menu
       open={open}
       onOpenChange={(_event, data) => setOpen(data.open)}
-      positioning={MENU_POSITIONING}
+      positioning={TOP_LEVEL_MENU_POSITIONING}
       persistOnItemClick
-      checkedValues={{
-        viewMode: [viewMode],
-        chromeTheme: [chromeTheme],
-        pageTurnAnimation: [pageTurnAnimationStyle],
-      }}
-      onCheckedValueChange={(_event, data) => {
-        if (data.name === "viewMode") onSetViewMode(data.checkedItems[0] as ViewMode);
-        else if (data.name === "chromeTheme")
-          onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
-        else if (data.name === "pageTurnAnimation")
-          onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
-      }}
     >
       <MenuTrigger disableButtonEnhancement>
         <Tooltip
@@ -418,109 +435,136 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
           />
         </Tooltip>
       </MenuTrigger>
-      <MenuPopover onFocusCapture={revealMenuFocus}>
+      <MenuPopover onFocusCapture={revealMenuFocus} style={{ width: 288, maxWidth: "calc(100vw - 16px)" }}>
         <MenuList aria-describedby={scopeId}>
-          <MenuGroupHeader id={scopeId}>{t("settings.globalScope")}</MenuGroupHeader>
-          <LanguageMenu />
+          <MenuGroupHeader id={scopeId} style={MENU_TITLE_STYLE}>{t("settings.globalScope")}</MenuGroupHeader>
+          <Menu
+            positioning={SUBMENU_POSITIONING}
+            persistOnItemClick
+            checkedValues={{ chromeTheme: [chromeTheme] }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === "chromeTheme")
+                onSetChromeTheme(data.checkedItems[0] as ChromeThemeChoice);
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <MenuItem secondaryContent={{ children: chromeThemeLabel, style: { fontSize: 14 } }}>{t("settings.readerTheme")}</MenuItem>
+            </MenuTrigger>
+            <MenuPopover onFocusCapture={revealMenuFocus}>
+              <MenuList>
+                {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
+                  <MenuItemRadio key={key} name="chromeTheme" value={key}
+                    icon={<ThemeSwatch background={CHROME_THEMES[key].backgroundSolid} accent={CHROME_THEMES[key].accent} />}>
+                    {CHROME_THEME_LABEL_KEYS[key] ? t(CHROME_THEME_LABEL_KEYS[key]!) : CHROME_THEMES[key].label}
+                  </MenuItemRadio>
+                ))}
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+          <Menu
+            positioning={SUBMENU_POSITIONING}
+            persistOnItemClick
+            checkedValues={{ pageTheme: [pageTheme] }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === "pageTheme") onSetPageTheme(data.checkedItems[0] as PageTheme);
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <MenuItem secondaryContent={{ children: t(PAGE_THEME_LABEL_KEYS[pageTheme]), style: { fontSize: 14 } }}>
+                {t("text.pageStyle")}
+              </MenuItem>
+            </MenuTrigger>
+            <MenuPopover onFocusCapture={revealMenuFocus}>
+              <MenuList>
+                {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
+                  <MenuItemRadio key={key} name="pageTheme" value={key}
+                    icon={<PageStyleSwatch {...ReadingTheme.PAGE_THEMES[key]} />}>
+                    {t(PAGE_THEME_LABEL_KEYS[key])}
+                  </MenuItemRadio>
+                ))}
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+          <div style={{
+            padding: "6px 12px", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)",
+            alignItems: "center", gap: 12,
+          }}>
+            <span>{t("settings.brightness")}</span>
+            <DefaultableSlider
+              aria-label={t("settings.brightness")}
+              min={ReadingTheme.MIN_BRIGHTNESS}
+              max={ReadingTheme.MAX_BRIGHTNESS}
+              step={ReadingTheme.BRIGHTNESS_STEP}
+              value={brightness}
+              defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
+              onChange={onSetBrightness}
+            />
+          </div>
           <MenuDivider />
           {!isFixedLayout && (
-            <>
-              <MenuGroup>
-                <MenuGroupHeader>{t("settings.readingMode")}</MenuGroupHeader>
-                <MenuItemRadio
-                  name="viewMode"
-                  value="paginated"
-                  aria-label={t("settings.paginated")}
-                  icon={<BookOpenRegular />}
-                  secondaryContent={showReadingModeShortcuts ? paginatedShortcut.shortcutLabel : undefined}
-                  aria-keyshortcuts={showReadingModeShortcuts ? paginatedShortcut.ariaKeyShortcuts : undefined}
-                >
-                  {t("settings.paginated")}
-                </MenuItemRadio>
-                <MenuItemRadio
-                  name="viewMode"
-                  value="scroll"
-                  aria-label={t("settings.scroll")}
-                  icon={<TextColumnOneRegular />}
-                  secondaryContent={showReadingModeShortcuts ? scrollingShortcut.shortcutLabel : undefined}
-                  aria-keyshortcuts={showReadingModeShortcuts ? scrollingShortcut.ariaKeyShortcuts : undefined}
-                >
-                  {t("settings.scroll")}
-                </MenuItemRadio>
-              </MenuGroup>
-              <MenuDivider />
-            </>
-          )}
-          <MenuGroup>
-            <MenuGroupHeader>{t("settings.pageTurn")}</MenuGroupHeader>
-            {ANIMATION_ORDER.map((style) => (
-              <MenuItemRadio
-                key={style}
-                name="pageTurnAnimation"
-                value={style}
-                disabled={viewMode === "scroll"}
-                secondaryContent={style === "rotate" ? t("settings.experimental") : undefined}
-              >
-                {t(ANIMATION_LABEL_KEYS[style])}
-              </MenuItemRadio>
-            ))}
-          </MenuGroup>
-          <MenuDivider />
-          <MenuGroup>
-            <MenuGroupHeader>{t("settings.readerTheme")}</MenuGroupHeader>
-            {(Object.keys(CHROME_THEMES) as ChromeThemeChoice[]).map((key) => (
-              <MenuItemRadio
-                key={key}
-                name="chromeTheme"
-                value={key}
-                icon={
-                  <ThemeSwatch
-                    background={CHROME_THEMES[key].backgroundSolid}
-                    accent={CHROME_THEMES[key].accent}
-                  />
-                }
-              >
-                {CHROME_THEME_LABEL_KEYS[key]
-                  ? t(CHROME_THEME_LABEL_KEYS[key]!)
-                  : CHROME_THEMES[key].label}
-              </MenuItemRadio>
-            ))}
-          </MenuGroup>
-          <MenuDivider />
-          <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 12 }}>
-            <label htmlFor={`${scopeId}-page-theme`} style={{ flex: 1 }}>{t("text.pageStyle")}</label>
-            <Select
-              id={`${scopeId}-page-theme`}
-              size="small"
-              value={pageTheme}
-              onChange={(_event, data) => {
-                if (data.value === "white" || data.value === "sepia" || data.value === "dark")
-                  onSetPageTheme(data.value);
-              }}
-              onKeyDown={(event) => {
-                // Keep native selection/typeahead keys out of the surrounding menu.
-                if (event.key !== "Escape" && event.key !== "Tab")
-                  event.stopPropagation();
+            <Menu
+              positioning={SUBMENU_POSITIONING}
+              persistOnItemClick
+              checkedValues={{ viewMode: [viewMode] }}
+              onCheckedValueChange={(_event, data) => {
+                if (data.name === "viewMode") onSetViewMode(data.checkedItems[0] as ViewMode);
               }}
             >
-              {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
-                <option key={key} value={key}>{t(PAGE_THEME_LABEL_KEYS[key])}</option>
-              ))}
-            </Select>
-          </div>
-          <PreferenceSlider
-            label={t("settings.brightness")}
-            aria-label={t("settings.brightness")}
-            min={ReadingTheme.MIN_BRIGHTNESS}
-            max={ReadingTheme.MAX_BRIGHTNESS}
-            step={ReadingTheme.BRIGHTNESS_STEP}
-            value={brightness}
-            defaultValue={ReadingTheme.DEFAULT_BRIGHTNESS}
-            onChange={onSetBrightness}
-          />
+              <MenuTrigger disableButtonEnhancement>
+                <MenuItem secondaryContent={{
+                  children: t(viewMode === "scroll" ? "settings.scroll" : "settings.paginated"),
+                  style: { fontSize: 14 },
+                }}>{t("settings.readingMode")}</MenuItem>
+              </MenuTrigger>
+              <MenuPopover onFocusCapture={revealMenuFocus}>
+                <MenuList>
+                  <MenuItemRadio name="viewMode" value="paginated"
+                    aria-label={t("settings.paginated")} icon={<BookOpenRegular />}
+                    secondaryContent={showReadingModeShortcuts ? paginatedShortcut.shortcutLabel : undefined}
+                    aria-keyshortcuts={showReadingModeShortcuts ? paginatedShortcut.ariaKeyShortcuts : undefined}>
+                    {t("settings.paginated")}
+                  </MenuItemRadio>
+                  <MenuItemRadio name="viewMode" value="scroll"
+                    aria-label={t("settings.scroll")} icon={<TextColumnOneRegular />}
+                    secondaryContent={showReadingModeShortcuts ? scrollingShortcut.shortcutLabel : undefined}
+                    aria-keyshortcuts={showReadingModeShortcuts ? scrollingShortcut.ariaKeyShortcuts : undefined}>
+                    {t("settings.scroll")}
+                  </MenuItemRadio>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+          )}
+          <Menu
+            positioning={SUBMENU_POSITIONING}
+            persistOnItemClick
+            checkedValues={{ pageTurnAnimation: [pageTurnAnimationStyle] }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === "pageTurnAnimation")
+                onSetPageTurnAnimationStyle(data.checkedItems[0] as PageTurnAnimationStyle);
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <MenuItem disabled={viewMode === "scroll"}
+                secondaryContent={{ children: t(ANIMATION_LABEL_KEYS[pageTurnAnimationStyle]), style: { fontSize: 14 } }}>
+                {t("settings.pageTurn")}
+              </MenuItem>
+            </MenuTrigger>
+            <MenuPopover onFocusCapture={revealMenuFocus}>
+              <MenuList>
+                {ANIMATION_ORDER.map((style) => (
+                  <MenuItemRadio key={style} name="pageTurnAnimation" value={style}
+                    disabled={viewMode === "scroll"}
+                    secondaryContent={style === "rotate" ? t("settings.experimental") : undefined}>
+                    {t(ANIMATION_LABEL_KEYS[style])}
+                  </MenuItemRadio>
+                ))}
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+          <MenuDivider />
+          <LanguageMenu />
           {onOpenHelp && (
             <>
-              <MenuDivider />
               <MenuItem
                 icon={<QuestionCircleRegular />}
                 onClick={() => {

@@ -381,7 +381,7 @@ export const fr: StringCatalog = {
   "settings.scroll": "Défilement",
   "settings.slide": "Glissement",
   "text.characterSpacing": "Espacement des caractères",
-  "text.columnWidth": "Largeur de colonne",
+  "text.columnWidth": "Largeur de page",
   "text.font": "Police",
   "text.fontSizeAriaLabel": "Taille de la police",
   "text.lineSpacing": "Interligne",

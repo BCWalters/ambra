@@ -13,6 +13,7 @@ import {
   Spinner,
   Title2,
   Tooltip,
+  type TooltipProps,
   makeStyles,
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
@@ -328,6 +329,14 @@ export const LibraryApp: FC = () => {
   }, [importInProgress]);
   const palette = CHROME_THEMES[chromeTheme];
   const toolbarStyles = useChromeToolbarStyles();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [visibleToolbarTooltip, setVisibleToolbarTooltip] = useState<string>();
+  // A toolbar tooltip's Escape handler must not intercept an open settings menu.
+  const toolbarTooltipProps = (name: string): Pick<TooltipProps, "visible" | "onVisibleChange"> => ({
+    visible: visibleToolbarTooltip === name && !settingsOpen,
+    onVisibleChange: (_event, data) => setVisibleToolbarTooltip((current) =>
+      data.visible && !settingsOpen ? name : current === name ? undefined : current),
+  });
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
   const detailsBook = books.find((book) => book.id === detailsBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
@@ -410,7 +419,7 @@ export const LibraryApp: FC = () => {
           }}
         >
           <MenuTrigger disableButtonEnhancement>
-            <Tooltip content={t("library.sort")} relationship="label">
+            <Tooltip content={t("library.sort")} relationship="label" {...toolbarTooltipProps("sort")}>
               <Button appearance="subtle" size="small" icon={<ArrowSortRegular />} aria-label={t("library.sort")} />
             </Tooltip>
           </MenuTrigger>
@@ -432,6 +441,10 @@ export const LibraryApp: FC = () => {
         </>}
         <ReaderSettingsMenu
           {...settings}
+          onOpenChange={(open) => {
+            setSettingsOpen(open);
+            setVisibleToolbarTooltip(undefined);
+          }}
           disabled={isLoading || !canImport}
           isFixedLayout={false}
           onSetViewMode={(viewMode) => setSettings({ viewMode })}
@@ -440,7 +453,7 @@ export const LibraryApp: FC = () => {
           onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
           onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
         />
-        <Tooltip content={t("about.title")} relationship="label">
+        <Tooltip content={t("about.title")} relationship="label" {...toolbarTooltipProps("about")}>
           <Button
             {...restoreAboutFocus}
             appearance="subtle"
@@ -452,7 +465,7 @@ export const LibraryApp: FC = () => {
         </Tooltip>
 
         {!isFullTab && (
-          <Tooltip content={t("library.expand")} relationship="label">
+          <Tooltip content={t("library.expand")} relationship="label" {...toolbarTooltipProps("expand")}>
             <Button appearance="subtle" size="small" icon={<WindowNewRegular />} onClick={openInFullTab}
               aria-label={t("library.expand")} />
           </Tooltip>

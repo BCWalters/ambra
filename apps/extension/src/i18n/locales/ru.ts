@@ -383,7 +383,7 @@ export const ru: StringCatalog = {
   "settings.scroll": "Прокрутка",
   "settings.slide": "Скольжение",
   "text.characterSpacing": "Межбуквенный интервал",
-  "text.columnWidth": "Ширина колонки",
+  "text.columnWidth": "Ширина страницы",
   "text.font": "Шрифт",
   "text.fontSizeAriaLabel": "Размер шрифта",
   "text.lineSpacing": "Межстрочный интервал",

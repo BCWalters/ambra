@@ -383,7 +383,7 @@ export const de: StringCatalog = {
   "settings.scroll": "Scrollen",
   "settings.slide": "Schieben",
   "text.characterSpacing": "Zeichenabstand",
-  "text.columnWidth": "Spaltenbreite",
+  "text.columnWidth": "Seitenbreite",
   "text.font": "Schriftart",
   "text.fontSizeAriaLabel": "Schriftgröße",
   "text.lineSpacing": "Zeilenabstand",

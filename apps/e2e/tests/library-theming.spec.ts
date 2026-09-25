@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const EPUB = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
+const EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
 
 /** The Library page previously had no chrome-theme awareness at all —
  * picking any reader "Reader Theme" besides the default left it reading
@@ -26,7 +26,9 @@ test.describe("Library page picks up the reader's chrome theme (issue #86 follow
       await expect(heading).toHaveCSS("color", "rgb(122, 62, 0)"); // Accessible Ambra text accent.
 
       await readerPage.getByRole("button", { name: "Settings" }).click();
-      await readerPage.getByText("Silver", { exact: true }).click();
+      await readerPage.getByRole("menuitem", { name: /^Reader theme/ }).press("ArrowRight");
+      await readerPage.getByRole("menuitemradio", { name: "Silver", exact: true }).click();
+      await readerPage.keyboard.press("Escape");
       await readerPage.keyboard.press("Escape");
       await libraryPage.reload();
       await expect(heading).toHaveCSS("color", "rgb(64, 74, 89)"); // Accessible Silver text accent.

@@ -369,7 +369,7 @@ export const zh: StringCatalog = {
   "settings.scroll": "滚动",
   "settings.slide": "滑动",
   "text.characterSpacing": "字间距",
-  "text.columnWidth": "栏宽",
+  "text.columnWidth": "页面宽度",
   "text.font": "字体",
   "text.fontSizeAriaLabel": "字体大小",
   "text.lineSpacing": "行距",

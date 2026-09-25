@@ -25,24 +25,18 @@ vi.mock("@fluentui/react-components", async (importOriginal) => {
     MenuTrigger: Container,
     MenuPopover: Container,
     MenuList: Container,
-    MenuItemCheckbox: ({ name, value, children }: { name: string; value: string; children: ReactNode }) => {
-      const menu = useContext(Context);
-      const checked = menu.checkedValues?.[name]?.includes(value) ?? false;
-      return <button role="menuitemcheckbox" aria-checked={checked}
-        onClick={event => menu.onCheckedValueChange?.(event, { name, checkedItems: checked ? [] : [value] })}>
-        {children}
-      </button>;
-    },
     MenuItemRadio: ({
       name,
       value,
       children,
       disabled,
+      icon,
     }: {
       name: string;
       value: string;
       children: ReactNode;
       disabled?: boolean;
+      icon?: ReactNode;
     }) => {
       const menu = useContext(Context);
       return (
@@ -52,7 +46,7 @@ vi.mock("@fluentui/react-components", async (importOriginal) => {
           disabled={disabled}
           onClick={(event) => menu.onCheckedValueChange?.(event, { name, checkedItems: [value] })}
         >
-          {children}
+          {icon}{children}
         </button>
       );
     },
@@ -127,11 +121,11 @@ describe("reader preference menu contracts", () => {
     act(() => root.render(<TypographyMenu {...typography} />));
     expect(radio("Book default").getAttribute("aria-checked")).toBe("true");
     expect(container.querySelector("select")).toBeNull();
-    const checkbox = container.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]')!;
-    expect(checkbox.textContent).toBe("Always show one page");
-    expect(checkbox.getAttribute("aria-checked")).toBe("false");
+    const toggle = container.querySelector<HTMLInputElement>('input[role="switch"]')!;
+    expect(toggle.labels?.[0]?.textContent).toBe("Always show one page");
+    expect(toggle.checked).toBe(false);
     act(() => radio("Georgia").click());
-    act(() => checkbox.click());
+    act(() => toggle.click());
     expect(typography.onSetFontFamily).toHaveBeenCalledWith("georgia");
     expect(typography.onSetAlwaysShowOnePage).toHaveBeenCalledWith(true);
 
@@ -139,24 +133,37 @@ describe("reader preference menu contracts", () => {
       root.render(<TypographyMenu {...typography} fontFamily="georgia" alwaysShowOnePage />),
     );
     expect(radio("Georgia").getAttribute("aria-checked")).toBe("true");
-    expect(checkbox.getAttribute("aria-checked")).toBe("true");
-    act(() => checkbox.click());
+    expect(toggle.checked).toBe(true);
+    act(() => toggle.click());
     expect(typography.onSetAlwaysShowOnePage).toHaveBeenLastCalledWith(false);
   });
 
-  it("places the controlled global page-theme select immediately before brightness", () => {
+  it("orders reader theme, page-theme previews and brightness before reading modes", () => {
     act(() => root.render(<ReaderSettingsMenu {...settings} pageTheme="sepia" />));
-    const select = container.querySelector("select")!;
-    expect(select.labels?.[0]?.textContent).toBe("Page theme");
-    expect(select.value).toBe("sepia");
-    expect([...select.options].map(option => option.value)).toEqual(["white", "sepia", "dark"]);
+    expect(container.querySelector("select")).toBeNull();
+    for (const label of ["White", "Sepia", "Dark"])
+      expect(radio(label).querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(radio("Sepia").getAttribute("aria-checked")).toBe("true");
     const brightness = container.querySelector('input[aria-label="Brightness"]')!;
-    expect(select.compareDocumentPosition(brightness) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    act(() => {
-      select.value = "dark";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    const readerTheme = [...container.querySelectorAll('[role="menuitem"]')]
+      .find(item => item.textContent?.startsWith("Reader theme"))!;
+    expect(radio("Dark").compareDocumentPosition(brightness) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(readerTheme.compareDocumentPosition(radio("White")) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(brightness.compareDocumentPosition(radio("Paginated")) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    act(() => radio("Dark").click());
     expect(settings.onSetPageTheme).toHaveBeenCalledWith("dark");
+  });
+
+  it("uses the same title typography for Book options and Ambra settings", () => {
+    act(() => root.render(<><TypographyMenu {...typography} /><ReaderSettingsMenu {...settings} /></>));
+    const title = (text: string) => [...container.querySelectorAll<HTMLElement>("div")]
+      .find(element => element.textContent === text && element.style.fontSize === "14px")!;
+    const bookTitle = title("Book options");
+    const settingsTitle = title("Ambra settings");
+    expect(bookTitle).toBeDefined();
+    expect(settingsTitle).toBeDefined();
+    expect(bookTitle.style.cssText).toBe(settingsTitle.style.cssText);
+    expect(bookTitle.style.fontWeight).toBe("600");
   });
 
   it("keeps each typography slider's engine limits and reset callback", () => {
@@ -190,7 +197,7 @@ describe("reader preference menu contracts", () => {
         typography.onSetLetterSpacing,
       ],
       [
-        "Column width",
+        "Page width",
         typography.contentWidthEm,
         ReadingTheme.MIN_CONTENT_WIDTH_EM,
         ReadingTheme.MAX_CONTENT_WIDTH_EM,
