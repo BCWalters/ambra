@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ContentLoader } from "../content/ContentLoader.js";
 import { Locator, LocatorResolutionError, LocatorResolver } from "./Locator.js";
+import { EpubCfi } from "./EpubCfi.js";
+import { markReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
   const buffer = await readFile(
@@ -35,6 +37,55 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     expect(resolved.spineIndex).toBe(0);
     expect((resolved.node as Element).tagName.toLowerCase()).toBe("h1");
     expect(resolved.node.textContent).toBe("Chapter 1");
+  });
+
+  it("resolves canonical element starts and explicitly saved zero offsets to the exact same DOM boundary", async () => {
+    const doc = (await contentLoader.loadSpineDocument(0)).document;
+    const heading = doc.querySelector("h1")!;
+    const canonical = resolver.generateBoundary(0, heading, 0);
+    const saved = resolver.generate(0, heading, 0);
+    expect(canonical.cfi).not.toBe(saved.cfi);
+    const expected = resolver.resolveInDocument(canonical, 0, doc);
+    const actual = resolver.resolveInDocument(saved, 0, doc);
+    expect(actual.node).toBe(expected.node);
+    expect(actual.characterOffset ?? 0).toBe(expected.characterOffset ?? 0);
+    expect(resolver.generateBoundary(0, actual.node, actual.characterOffset).cfi).toBe(canonical.cfi);
+  });
+
+  it("orders image-page parent boundaries among descendants rather than before the entire chapter", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<h2>First</h2>\n<img alt="First illustration"/>\n<h2>Second</h2>\n<img alt="Second illustration"/>\n<p>End</p>';
+    const first = doc.querySelectorAll("h2")[0]!;
+    const second = doc.querySelectorAll("h2")[1]!;
+    const images = [...doc.querySelectorAll("img")];
+    const boundaries = [
+      resolver.generateBoundary(0, first),
+      ...images.map(image => resolver.generateBoundary(
+        0, doc.body, [...doc.body.childNodes].indexOf(image),
+      )),
+    ];
+    const secondHeading = resolver.generateBoundary(0, second);
+    expect(EpubCfi.compare(boundaries[0]!.cfi, boundaries[1]!.cfi)).toBeLessThan(0);
+    expect(EpubCfi.compare(boundaries[1]!.cfi, secondHeading.cfi)).toBeLessThan(0);
+    expect(EpubCfi.compare(secondHeading.cfi, boundaries[2]!.cfi)).toBeLessThan(0);
+    expect(resolver.resolveInDocument(boundaries[1]!, 0, doc).node).toBe(images[0]);
+    const text = doc.querySelector("p")!.firstChild!;
+    expect(resolver.generateBoundary(0, text, 2).cfi).toBe(resolver.generate(0, text, 2).cfi);
+  });
+
+  it("canonicalizes container ends and skips comments and reader-owned content", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<div><p>First</p></div><!-- ignored --><aside>Reader control</aside><h2>Second</h2><!-- ignored -->';
+    const container = doc.querySelector("div")!;
+    const heading = doc.querySelector("h2")!;
+    markReaderOwnedContent(doc.querySelector("aside")!);
+    const boundary = resolver.generateBoundary(0, container, container.childNodes.length);
+    expect(resolver.resolveInDocument(boundary, 0, doc).node).toBe(heading);
+    const end = resolver.generateBoundary(0, doc.body, doc.body.childNodes.length);
+    const resolvedEnd = resolver.resolveInDocument(end, 0, doc);
+    expect(resolvedEnd.node).toBe(heading.firstChild);
+    expect(resolvedEnd.characterOffset).toBe(6);
+    expect(EpubCfi.compare(boundary.cfi, end.cfi)).toBeLessThan(0);
   });
 
   it("generates a Locator for a text character position and resolves it back to the exact offset", async () => {

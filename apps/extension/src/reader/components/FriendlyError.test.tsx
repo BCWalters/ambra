@@ -75,4 +75,14 @@ describe("FriendlyError notification lifetime", () => {
     act(() => vi.advanceTimersByTime(8000));
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  it("keeps blocking technical details readable but smaller than the specific headline", () => {
+    render({ severity: "blocking", headline: "Not a valid EPUB", message: "ZIP diagnostic" });
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs[0]?.textContent).toBe("Not a valid EPUB");
+    expect(paragraphs[1]?.textContent).toBe("ZIP diagnostic");
+    expect(paragraphs[1]?.style.fontSize).toBe("12px");
+    expect(paragraphs[1]?.style.overflowWrap).toBe("anywhere");
+    expect(container.querySelector('[tabindex="-1"]')).toBe(document.activeElement);
+  });
 });

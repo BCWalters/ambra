@@ -6,6 +6,29 @@ import { NavPoint } from "@ambra/engine";
 import { TocPanel } from "./TocPanel.js";
 
 describe("Contents presentation", () => {
+  it("distinguishes current section and page numbers for same-spine fragments", () => {
+    const markup = renderToStaticMarkup(
+      <TocPanel
+        items={[
+          new NavPoint("First", "chapter.xhtml", "first", []),
+          new NavPoint("Second", "chapter.xhtml", "second", []),
+          new NavPoint("Missing", "chapter.xhtml", "missing", []),
+        ]}
+        currentPath="chapter.xhtml#second"
+        firstSpinePath="cover.xhtml"
+        pageNumbers={new Map([["chapter.xhtml", 2], ["chapter.xhtml#first", 3], ["chapter.xhtml#second", 8]])}
+        onSelect={vi.fn()} open pinned onTogglePin={vi.fn()} onRequestClose={vi.fn()} scrubberVisible={false}
+      />,
+    );
+    const container = document.createElement("div");
+    container.innerHTML = markup;
+    expect(container.querySelectorAll('[aria-current="location"]')).toHaveLength(1);
+    expect(container.querySelector('[aria-current="location"]')?.textContent).toBe("Second8");
+    const buttons = [...container.querySelectorAll("button")];
+    expect(buttons.find(button => button.textContent?.startsWith("First"))?.textContent).toBe("First3");
+    expect(buttons.find(button => button.textContent?.startsWith("Missing"))?.textContent).toBe("Missing");
+  });
+
   it("keeps the current chapter emphasized and allows long labels to wrap", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");

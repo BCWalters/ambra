@@ -103,7 +103,8 @@ describe("Book Details publication metadata", () => {
     details = { ...details, fileSizeBytes: undefined };
     await render();
     expect(container.textContent).not.toContain("EPUB file size");
-    expect(container.textContent).not.toContain("Publication details");
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Publication details")!.click());
+    expect(container.textContent).toContain("book.epub");
   });
 
   it("keeps short description content and attribution with comfortably spaced text", async () => {

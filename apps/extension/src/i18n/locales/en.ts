@@ -135,6 +135,13 @@ export interface StringCatalog {
   "library.gutenbergDownload": string;
   "library.readBeyondDownload": string;
   "library.dismiss": string;
+  "library.saveAs": string;
+  "library.saveAsFailed": string;
+  "library.downloadProgress": string;
+  "library.downloadReceived": string;
+  "library.cancelDownload": string;
+  "library.cancelDownloadFile": string;
+  "library.cancelDownloadFailed": string;
   "library.findBooks": string;
   "library.discoveryTitle": string;
   "library.discoveryDescription": string;
@@ -257,6 +264,7 @@ export interface StringCatalog {
    * goofiness in each language, not a literal translation of
    * "snickerdoodles" (which means nothing in most of them). */
   "error.somethingWentWrongHeadline": string;
+  "error.invalidEpubHeadline": string;
   /** The "actionFailed" toast's headline (issue #114) — a punchier,
    * one-word interjection distinct from the blocking card's own (that
    * one's self-deprecating "oh well"; this one's more "yikes", since a
@@ -536,6 +544,13 @@ export const en: StringCatalog = {
   "library.gutenbergDownload": "On a book’s page, choose an EPUB or EPUB3 download.",
   "library.readBeyondDownload": "Choose “Download” for an EPUB with audio, not “Read+Listen”.",
   "library.dismiss": "Dismiss",
+  "library.saveAs": "Save as…",
+  "library.saveAsFailed": "Could not save a copy of this EPUB. {message}",
+  "library.downloadProgress": "{received} of {total} ({percent})",
+  "library.downloadReceived": "{received} received",
+  "library.cancelDownload": "Cancel download",
+  "library.cancelDownloadFile": "Cancel download: {fileName}",
+  "library.cancelDownloadFailed": "Ambra stopped downloading, but could not confirm cancellation in Chrome. Open Chrome Downloads to check and cancel the original download.",
   "library.findBooks": "Find books",
   "library.discoveryTitle": "Find your next read",
   "library.discoveryDescription": "Start with these free EPUB collections. Links open in a new tab.",
@@ -672,6 +687,7 @@ export const en: StringCatalog = {
   "scrubber.pagesLeftInChapterOther": "{count} pages left in this chapter",
   "pageFurniture.pageNumber": "Page {number}",
   "error.somethingWentWrongHeadline": "Oh snickerdoodles, something went wrong.",
+  "error.invalidEpubHeadline": "Oh dear, that doesn't look like a valid EPUB file.",
   "error.actionFailedHeadline": "Zoinks!",
   "error.detailsPrefix": "Error details:",
   "annotations.panelAriaLabel": "Bookmarks and highlights",

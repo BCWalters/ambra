@@ -53,6 +53,7 @@ jobs:
           book-metadata-display.spec.ts
           library-card-focus.spec.ts
           navigation-correctness.spec.ts
+          toc-fragments.spec.ts
           settings-focus.spec.ts
           reader-viewport-stability.spec.ts
           content-boundary-navigation.spec.ts
@@ -85,11 +86,9 @@ jobs:
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
           AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          epub-inspector.spec.ts epub-direct-import.spec.ts
-          --grep '#181|download import shows ongoing status'
-          --workers=1
+        run: |
+          pnpm --filter @ambra/e2e exec playwright test epub-inspector.spec.ts --grep '#181' --workers=1
+          pnpm --filter @ambra/e2e exec playwright test epub-direct-import.spec.ts library-save-as.spec.ts reader-save-as.spec.ts --workers=1
       - name: Verify Library first-run and import flows
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension

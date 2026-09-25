@@ -38,6 +38,41 @@ const test = base.extend<{ library: Page }>({
   },
 });
 
+test("invalid EPUB errors use a specific headline, quiet details, and a centered responsive Library card", async ({ library }, testInfo) => {
+  const headline = "Oh dear, that doesn't look like a valid EPUB file.";
+  const diagnostic = "Not a valid ZIP archive: End of Central Directory record not found.";
+  await library.locator('input[type="file"]').setInputFiles({
+    name: "not-a-book.epub", mimeType: "application/epub+zip", buffer: Buffer.from("not a book"),
+  });
+  const alert = library.getByRole("alert");
+  await expect(alert).toContainText(headline);
+  const detail = alert.getByText(diagnostic, { exact: true });
+  await expect(detail).toHaveCSS("font-size", "12px");
+  await expect(detail).toHaveCSS("font-weight", "400");
+  await expect(detail).toHaveCSS("color", "rgb(66, 66, 66)");
+  for (const width of [1920, 360]) {
+    await library.setViewportSize({ width, height: 900 });
+    const bounds = await alert.boundingBox();
+    expect(bounds!.width).toBe(Math.min(600, width - 32));
+    expect(Math.abs(bounds!.x - (width - bounds!.width) / 2)).toBeLessThan(1);
+    expect(await library.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await alert.screenshot({ path: testInfo.outputPath(`invalid-epub-library-${width}.png`) });
+  }
+  await alert.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await expect(alert).toHaveCount(0);
+  const id: string = await library.evaluate(() => Reflect.get(window, "__libraryDatabase")
+    .addBook(new Blob(["not a book"]), { title: "Invalid stored book", identifier: "bad" }, undefined));
+  const reader = await library.context().newPage();
+  await reader.goto(new URL(`../reader/index.html?bookId=${id}`, library.url()).href);
+  await expect(reader.getByRole("alert")).toContainText(headline);
+  await expect(reader.getByText(diagnostic, { exact: true })).toHaveCSS("font-size", "12px");
+  await expect(reader.locator('[tabindex="-1"]').filter({ hasText: headline })).toBeFocused();
+  await reader.screenshot({ path: testInfo.outputPath("invalid-epub-reader.png") });
+  await reader.goto(new URL("../reader/index.html", library.url()).href);
+  await expect(reader.getByRole("alert")).toContainText("No book selected");
+  await expect(reader.getByRole("alert")).not.toContainText(headline);
+});
+
 test("concurrent highlight patches merge across connections, clear notes, and never resurrect deletes", async ({ library }) => {
   const result = await library.evaluate(async () => {
     const db = Reflect.get(window, "__libraryDatabase");

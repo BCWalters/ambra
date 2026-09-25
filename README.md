@@ -93,9 +93,21 @@ separate storage. Do not uninstall the existing extension to switch build modes.
 - Check Ambra's **Site access** in Chrome's extension details. Access withheld for the
   download site leaves the normal Chrome download running instead of opening an automatic
   import. Use **Import EPUB** to open the downloaded file; no new permission is required.
-- During automatic import, the native download continues until Ambra confirms the book
-  is saved. If it finishes first, the copy in Downloads is intentionally retained.
-  Failed imports, closed Library tabs, and worker restarts do not pause or discard it.
+- During automatic import, Ambra pauses the native download before fetching the book
+  for its Library. The browser fallback is cancelled only after the book is saved.
+  Failed imports, closed/reloaded Library tabs, and browser/extension restarts restore
+  the native download. A suspended background worker retains the handoff in local storage.
+  If an import stops reporting activity, a recovery alarm restores its fallback at
+  the next check (normally within six minutes while Chrome is running).
+  If Ambra is disabled or uninstalled mid-import, resume the paused download in
+  Chrome Downloads. Chrome may need to restart a transfer if its server cannot resume it.
+  A native download that finishes before pausing is intentionally retained on disk.
+  The `storage` and `alarms` permissions support this recovery; if safe pausing fails,
+  Ambra leaves the download to Chrome rather than starting another transfer.
+  **Cancel download** is different from a failure: it stops Ambra's transfer and
+  cancels the native fallback rather than resuming it. Already-completed files
+  and existing Library books are not deleted. Cancellation is available while
+  downloading, not after processing/saving begins.
   Authenticated, single-use, or non-HTTP links may require downloading and importing manually.
 - Only one process should own `apps/extension/dist`. In particular, an older
   `vite build --watch` can keep rewriting a stale manifest even when a newer dev server

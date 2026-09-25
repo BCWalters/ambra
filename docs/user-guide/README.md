@@ -40,7 +40,15 @@ For beautifully formatted classics, try **Standard Ebooks** and choose **Advance
 
 When a supported EPUB download opens Ambra, keep that library tab open while the book downloads, is prepared for reading, and is added to your library. The status changes to a checkmark and the EPUB’s title after the book has been saved and the library refreshed. Choose **Read now** to open it, or **Dismiss** to clear finished messages without interrupting other imports.
 
-If automatic import fails, follow the error message and use **Choose EPUB files...** (or **Import EPUB** in a populated library) to select the downloaded file. Ambra leaves the original browser download available unless a successful import has been confirmed.
+In an empty library, the welcome choices are hidden while a book is being added so the progress stays in focus. They return if the import fails or is cancelled and the library is still empty.
+
+Open Library tabs update automatically when a book finishes importing or is deleted in another tab. Each tab keeps its own download status and display choices; no manual reload is needed.
+
+If a file is not a valid EPUB, Ambra says so in the error headline. Smaller technical details remain visible underneath for troubleshooting. Library error cards are centered and use the same maximum width as download notifications.
+
+While the status says **Downloading**, choose **Cancel download** to stop Ambra’s download and cancel the paused original download in Chrome. Cancellation is no longer available once preparation or saving starts, and does not apply to files chosen from your device. If Ambra cannot confirm cancellation, its error message directs you to **Chrome Downloads** to check and cancel the original download.
+
+If automatic import fails, follow the error message and use **Choose EPUB files...** (or **Import EPUB** in a populated library) to select the downloaded file. Ambra leaves the original browser download available unless a successful import has been confirmed or you explicitly cancel it.
 
 ## Keyboard shortcuts and help, close at hand
 
@@ -71,6 +79,8 @@ The shortcut popup is a quick reference showing the default shortcuts for your c
 ## Local library, thoughtful sharing
 
 Book handling and library storage stay in your browser profile, without a cloud library or automatic cross-device library sync. Keep original EPUBs and annotation exports as backups: storage has limits, and removing the extension, clearing its data, or losing the profile can remove local books and reading data.
+
+To copy an EPUB out of your library, open that book’s **Book details → Publication details** in the Library or reader and choose **Save as…** near **File name**. Chrome asks where to save the original EPUB, using its imported filename. Keep that Library or reader tab open until you confirm the save dialog and the download starts. This copies the bytes already stored on your device without downloading the book again or changing the library copy, reading position, or annotations. Canceling the save dialog leaves everything unchanged.
 
 Feedback is welcome through [GitHub issues](https://github.com/BCWalters/ambra/issues) or [AmbraEPUB@outlook.com](mailto:AmbraEPUB@outlook.com)—email needs no GitHub account. Reader diagnostics may include book details, paths, reading positions, and recent actions. Review them before sharing; nothing is sent automatically. GitHub issues are public.
 

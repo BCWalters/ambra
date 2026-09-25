@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChangeEvent, FC } from "react";
 import {
   Body1,
@@ -297,11 +297,14 @@ export const LibraryApp: FC = () => {
     canImport,
     importActivities,
     dismissCompletedImports,
+    cancelDownload,
     error,
+    errorHeadline,
     dismissError,
     importFiles,
     removeBook,
     openBook,
+    saveBookAs,
     chromeTheme,
     settings,
     setSettings,
@@ -314,6 +317,15 @@ export const LibraryApp: FC = () => {
   } = useLibrary();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarImportRef = useRef<HTMLButtonElement | null>(null);
+  const emptyImportRef = useRef<HTMLButtonElement | null>(null);
+  const emptyStateRef = useRef<HTMLDivElement | null>(null);
+  const libraryHeadingRef = useRef<HTMLDivElement | null>(null);
+  const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
+  useLayoutEffect(() => {
+    if (importInProgress && emptyStateRef.current?.contains(document.activeElement)) {
+      libraryHeadingRef.current?.focus();
+    }
+  }, [importInProgress]);
   const palette = CHROME_THEMES[chromeTheme];
   const toolbarStyles = useChromeToolbarStyles();
   const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
@@ -371,10 +383,12 @@ export const LibraryApp: FC = () => {
           boxShadow: CHROME_SHADOW,
         }}
       >
+        <div ref={libraryHeadingRef} tabIndex={-1}>
         <Title2 as="h1" style={{ margin: 0, color: palette.accentForeground, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           <AmbraMarkIcon size={24} />
           Ambra
         </Title2>
+        </div>
         <div style={{ flex: 1 }} />
         {books.length > 0 && <>
         <Button
@@ -455,14 +469,18 @@ export const LibraryApp: FC = () => {
 
       <main aria-label={t("library.pageTitle")} style={{ padding: 16, flex: 1 }}>
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
-          onDismissCompleted={dismissCompletedImports} />
-        {error && <LibraryImportError message={error} onDismiss={dismissError} />}
+          onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
+          focusFallbackRef={books.length ? toolbarImportRef : emptyImportRef} focusBackupRef={libraryHeadingRef} />
+        {error && <LibraryImportError message={error} headline={errorHeadline} onDismiss={dismissError} />}
 
         {isLoading ? (
           <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
-          <LibraryEmptyState accent={palette.accentForeground} canImport={canImport}
-            focusFallbackRef={toolbarImportRef} onImport={() => fileInputRef.current?.click()} />
+          <div ref={emptyStateRef} hidden={importInProgress}>
+            <LibraryEmptyState accent={palette.accentForeground} canImport={canImport}
+              focusFallbackRef={toolbarImportRef} importButtonRef={emptyImportRef}
+              onImport={() => fileInputRef.current?.click()} />
+          </div>
         ) : (
           <>
             <div style={{ marginBottom: 16 }}>
@@ -488,7 +506,9 @@ export const LibraryApp: FC = () => {
         book={detailsBook}
         inspectorOpen={inspector.isOpen}
         onRequestClose={() => setDetailsBookId(undefined)}
+        onSaveAs={saveBookAs}
         accent={palette.accent}
+        accentForeground={palette.accentForeground}
         backgroundSolid={palette.backgroundSolid}
         onOpenInspector={isFullTab ? inspector.open : undefined}
         inspectionError={inspector.error ? { message: inspector.error, onDismiss: inspector.close } : undefined}

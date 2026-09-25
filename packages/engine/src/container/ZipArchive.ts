@@ -4,7 +4,7 @@ import { crc32 } from "./Crc32.js";
 /** Thrown when a buffer is not a well-formed ZIP archive, or uses a feature
  * (e.g. ZIP64, an unsupported compression method) that isn't handled yet. */
 export class ZipFormatError extends Error {
-  public constructor(message: string) {
+  public constructor(message: string, public readonly reason: "invalid" | "unsupported" = "invalid") {
     super(message);
     this.name = "ZipFormatError";
   }
@@ -172,6 +172,7 @@ export class ZipArchive {
       ) {
         throw new ZipFormatError(
           "ZIP64 archives are not supported (entry size/offset exceeds 32-bit range).",
+          "unsupported",
         );
       }
 
@@ -203,6 +204,7 @@ export class ZipArchive {
     );
 
     let invalidRecordReason: string | undefined;
+    let invalidRecordKind: "invalid" | "unsupported" = "invalid";
     for (
       let offset = this.bytes.length - END_OF_CENTRAL_DIRECTORY_FIXED_SIZE;
       offset >= searchWindowStart;
@@ -223,10 +225,12 @@ export class ZipArchive {
         }
         if (centralDirectorySize === ZIP64_SENTINEL || centralDirectoryOffset === ZIP64_SENTINEL) {
           invalidRecordReason = "ZIP64 archives are not supported (central directory exceeds 32-bit range).";
+          invalidRecordKind = "unsupported";
           continue;
         }
         if (diskNumber !== 0 || centralDirectoryDisk !== 0 || entriesOnDisk !== entryCount) {
           invalidRecordReason = "Multi-disk ZIP archives are not supported.";
+          invalidRecordKind = "unsupported";
           continue;
         }
         if (
@@ -234,6 +238,7 @@ export class ZipArchive {
           entryCount * CENTRAL_DIRECTORY_HEADER_FIXED_SIZE > centralDirectorySize
         ) {
           invalidRecordReason = "Malformed ZIP central directory bounds.";
+          invalidRecordKind = "invalid";
           continue;
         }
         return { entryCount, centralDirectoryOffset, centralDirectorySize };
@@ -242,6 +247,7 @@ export class ZipArchive {
 
     throw new ZipFormatError(
       invalidRecordReason ?? "Not a valid ZIP archive: End of Central Directory record not found.",
+      invalidRecordKind,
     );
   }
 
@@ -308,6 +314,7 @@ export class ZipArchive {
 
     throw new ZipFormatError(
       `Unsupported compression method ${compressionMethod} for "${metadata.fileName}".`,
+      "unsupported",
     );
   }
 

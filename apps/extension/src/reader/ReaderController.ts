@@ -38,6 +38,7 @@ import type {
   ReflowableSpread,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import { saveLibraryBookAs } from "../library/LibrarySaveAs.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ariaShortcut, DEFAULT_SHORTCUT_PREFERENCES, getCommandBindings, getShortcutPlatform, matchReaderCommand, parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
@@ -625,6 +626,16 @@ export class ReaderController {
     const spineIndex = this.isFixedLayoutHost(this.host)
       ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
       : this.spineIndex;
+    // Explicit fragment jumps may insert a local page boundary so the target
+    // appears at the top. Whole-book numbering must still use the same natural
+    // pagination as the TOC, rather than counting that temporary extra page.
+    if (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost) {
+      const start = this.host.currentPosition();
+      if (start) {
+        const cfi = this.locatorResolver.generateBoundary(spineIndex, start.node, start.offset).cfi;
+        pageIndex = this.bookPagination.pageIndexForCfi(spineIndex, cfi) ?? pageIndex;
+      }
+    }
     const position = this.bookPagination.positionFor(spineIndex, pageIndex);
     return { bookPageIndex: position.currentPage, bookPageCount: position.totalPages };
   }
@@ -851,6 +862,12 @@ export class ReaderController {
       container,
       this.disclosures,
       this.locatorResolver,
+      new Map(this.pkg.spine.map((ref, index) => [
+        index,
+        ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)
+          .filter(point => point.path === ref.manifestItem.path && point.fragment)
+          .map(point => point.fragment!),
+      ])),
     );
   }
 
@@ -1054,6 +1071,12 @@ export class ReaderController {
       filename: `${safeTitle} - annotations.json`,
       text: serializeAnnotationCollection(annotations),
     };
+  }
+
+  /** Copies the imported archive without changing the live reading session. */
+  public async saveBookAs(): Promise<void> {
+    if (this.operations.disposed) throw new Error(this.translate("library.notReady"));
+    await saveLibraryBookAs(this.library, this.bookId, this.translate);
   }
 
   /** Imports a previously-exported (or third-party) annotation file
@@ -1288,11 +1311,34 @@ export class ReaderController {
     return result;
   }
 
-  /** Last linked TOC entry whose resolved spine position is at or before
-   * `spineIndex`. */
+  private readonly tocLocations = new WeakMap<Document, ReadonlyMap<NavPoint, string>>();
+
+  private tocLocationsInDocument(document: Document, spineIndex: number): ReadonlyMap<NavPoint, string> {
+    const cached = this.tocLocations.get(document);
+    if (cached) return cached;
+    const locations = new Map<NavPoint, string>();
+    const path = this.pkg.spine[spineIndex]?.manifestItem.path;
+    for (const point of ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)) {
+      if (point.path !== path) continue;
+      const target = point.fragment ? document.getElementById(point.fragment) : document.body;
+      if (target) locations.set(point, this.locatorResolver.generate(spineIndex, target).cfi);
+    }
+    this.tocLocations.set(document, locations);
+    return locations;
+  }
+
+  /** Nearest preceding full TOC target, including positions within a spine item. */
   private nearestPrecedingNavPoint(spineIndex: number): NavPoint | undefined {
     let best: NavPoint | undefined;
     let bestSpineIndex = -1;
+    let bestCfi: string | undefined;
+    const view = this.contentDocumentViews().find(view => view.spineIndex === spineIndex);
+    const native = this.nativeReading.current();
+    const position = native?.spineIndex === spineIndex && native.node.ownerDocument === view?.document
+      ? native : view?.page?.startBreak ?? (spineIndex === this.spineIndex ? this.host?.currentPosition() : undefined);
+    const currentCfi = position && view && position.node.ownerDocument === view.document
+      ? this.locatorResolver.generateBoundary(spineIndex, position.node, position.offset).cfi : undefined;
+    const locations = view ? this.tocLocationsInDocument(view.document, spineIndex) : undefined;
 
     for (const candidate of ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)) {
       const candidateIndex = this.pkg.spine.findIndex(
@@ -1301,9 +1347,18 @@ export class ReaderController {
       if (candidateIndex === -1 || candidateIndex > spineIndex) {
         continue;
       }
+      const candidateCfi = candidateIndex === spineIndex ? locations?.get(candidate) : undefined;
+      if (candidateIndex === spineIndex && locations && !candidateCfi) continue;
+      if (candidateCfi && currentCfi && EpubCfi.compare(candidateCfi, currentCfi) > 0) continue;
+      if (candidateIndex === bestSpineIndex && candidateCfi && bestCfi &&
+        EpubCfi.compare(candidateCfi, bestCfi) < 0) continue;
+      // Without a live position, a chapter preview denotes its beginning, not
+      // the last subsection merely because all entries share a document path.
+      if (candidateIndex === spineIndex && !currentCfi && bestSpineIndex === spineIndex) continue;
       if (candidateIndex >= bestSpineIndex) {
         best = candidate;
         bestSpineIndex = candidateIndex;
+        bestCfi = candidateCfi;
       }
     }
 
@@ -1314,11 +1369,11 @@ export class ReaderController {
    * first spine item before the first real TOC entry. */
   private tocHighlightPath(): string | undefined {
     return (
-      this.nearestPrecedingNavPoint(this.spineIndex)?.path ?? this.pkg.spine[0]?.manifestItem.path
+      this.nearestPrecedingNavPoint(this.spineIndex)?.target ?? this.pkg.spine[0]?.manifestItem.path
     );
   }
 
-  /** First measured page number for each spine item, keyed by manifest path. */
+  /** Measured target pages, distinguishing anchors in the same content document. */
   private computeTocPageNumbers(): ReadonlyMap<string, number> {
     const result = new Map<string, number>();
     if (!this.bookPagination) {
@@ -1330,6 +1385,14 @@ export class ReaderController {
       if (currentPage !== undefined && path !== undefined) {
         result.set(path, currentPage);
       }
+    }
+    for (const point of ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)) {
+      if (!point.fragment || point.target === undefined) continue;
+      const spineIndex = this.pkg.spine.findIndex(ref => ref.manifestItem.path === point.path);
+      const pageIndex = this.bookPagination.pageIndexForFragment(spineIndex, point.fragment);
+      if (pageIndex === undefined) continue;
+      const page = this.bookPagination.positionFor(spineIndex, pageIndex).currentPage;
+      if (page !== undefined) result.set(point.target, page);
     }
     return result;
   }

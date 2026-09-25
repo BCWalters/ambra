@@ -56,7 +56,7 @@ export async function openLibraryTab(): Promise<void> {
  * never re-triggers the same import. */
 export const LIBRARY_IMPORT_URL_PARAM = "importUrl";
 
-/** Opens a parallel import while Chrome keeps the original download safe. */
+/** Opens the Library import after its native fallback has been safely paused. */
 export async function openLibraryImportTab(sourceUrl: string, token: string): Promise<chrome.tabs.Tab> {
   const params = new URLSearchParams({
     [LIBRARY_FULL_TAB_PARAM]: LIBRARY_FULL_TAB_VALUE,

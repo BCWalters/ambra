@@ -140,6 +140,13 @@ test("unknown cross-chapter footer numbers stay blank instead of showing Page 1 
     });
     await expect(page.getByText("Page 1", { exact: true })).toHaveCount(1);
     await expect(page.getByText("Page 2", { exact: true })).toHaveCount(0);
+    // Counting is intentionally quiet during the initial chrome appearance.
+    // Hide and reveal the controls before expecting the status.
+    await page.mouse.move(700, 450);
+    const toolbar = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ }).locator("..");
+    await expect(toolbar).toHaveCSS("pointer-events", "none", { timeout: 10_000 });
+    await page.mouse.move(700, 895);
+    await expect(toolbar).toHaveCSS("pointer-events", "auto");
     await expect(page.getByText("Counting pages…", { exact: true })).toHaveCount(1);
     await expect(page.getByRole("slider", { name: "Position in book" }))
       .toHaveAttribute("aria-valuetext", /^Counting pages…/);

@@ -5,6 +5,7 @@ import { BookTroubleIllustration } from "./BookTroubleIllustration.js";
 import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { ErrorDetails } from "../../components/ErrorDetails.js";
 
 /** How long a "transient" toast stays up before auto-dismissing itself —
  * long enough to read a short message and, if wanted, click "Copy
@@ -16,6 +17,7 @@ const TRANSIENT_AUTO_DISMISS_MS = 8000;
 
 export interface FriendlyErrorProps {
   message: string;
+  headline?: string;
   /** Change for a fresh notification even when its message is identical. */
   notificationId?: number;
   /** A smaller, de-emphasized technical detail (e.g. the raw underlying
@@ -54,6 +56,7 @@ export interface FriendlyErrorProps {
  */
 export const FriendlyError: FC<FriendlyErrorProps> = ({
   message,
+  headline,
   notificationId,
   detail,
   severity,
@@ -127,12 +130,12 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         <BookTroubleIllustration />
         <div ref={headingRef} tabIndex={-1} style={{ outline: "none" }}>
           <Body1 as="p" block style={{ margin: 0, fontWeight: 600 }}>
-            {t("error.somethingWentWrongHeadline")}
+            {headline ?? t("error.somethingWentWrongHeadline")}
           </Body1>
         </div>
-        <Caption1 as="p" block style={{ margin: 0, maxWidth: 360, opacity: 0.75 }}>
+        <ErrorDetails style={{ maxWidth: 360 }}>
           {message}
-        </Caption1>
+        </ErrorDetails>
         <Button appearance="outline" size="small" onClick={copyDiagnostics}>
           {copied ? "Copied!" : "Copy diagnostics"}
         </Button>
@@ -170,9 +173,9 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
               {message}
             </Caption1>
             {detail && (
-              <Caption1 as="p" block style={{ margin: 0, color: "var(--colorNeutralForeground2, #333)", fontSize: 11 }}>
+              <ErrorDetails>
                 {t("error.detailsPrefix")} {detail}
-              </Caption1>
+              </ErrorDetails>
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
@@ -240,8 +243,9 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
       }}
     >
       <Body1 as="p" block style={{ margin: 0 }}>
-        Hmm, that didn't quite work: {message}
+        {t("error.actionFailedHeadline")}
       </Body1>
+      <ErrorDetails>{message}</ErrorDetails>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
         <Button appearance="outline" size="small" onClick={copyDiagnostics}>
           {copied ? "Copied!" : "Copy diagnostics"}

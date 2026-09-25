@@ -12,6 +12,8 @@ import { formatLibraryBytes } from "../../library/LibraryFormatting.js";
 import { BookDescription, BookDetailRow as DetailRow, BookMetadataText, BookRightsRow } from "../../components/BookMetadataRows.js";
 import { PaneDisclosure } from "../../components/PaneSections.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
+import { BookSaveAsAction } from "../../components/BookSaveAsAction.js";
+import { FriendlyError } from "./FriendlyError.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -31,6 +33,8 @@ export interface BookDetailsPanelProps {
    * so an ordinary reader never stumbles into it. */
   onOpenInspector: () => void;
   onOpenHelp: (returnFocusTo: HTMLElement) => void;
+  onSaveAs?: (() => Promise<void>) | undefined;
+  getDiagnosticsText?: (() => string | undefined) | undefined;
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
    * condition) — this panel needs to stop *above* it rather than
@@ -81,6 +85,8 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
   details,
   onOpenInspector,
   onOpenHelp,
+  onSaveAs,
+  getDiagnosticsText = () => undefined,
   scrubberVisible,
 }) => {
   const t = useTranslation();
@@ -222,7 +228,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 <BookDescription value={details.description} sourceName={details.descriptionSourceName} sourceUrl={details.descriptionSourceUrl} />
               )}
 
-              {(knownIdentifiers.length > 0 || details.fileSizeBytes !== undefined || details.rights ||
+              {(knownIdentifiers.length > 0 || details.fileName || onSaveAs || details.fileSizeBytes !== undefined || details.rights ||
                 details.accessibility.accessibilitySummary || details.accessibility.accessibilityFeatures.length > 0) && (
                 <PaneDisclosure title={t("bookDetails.publicationDetails")}>
                   <BookRightsRow label={t("bookDetails.rights")} value={details.rights} />
@@ -237,15 +243,21 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   {otherIdentifiers.map((id, index) => (
                     <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
                   ))}
+                  <DetailRow small label={t("inspector.fileName")} value={details.fileName} />
+                  {onSaveAs && (
+                    <BookSaveAsAction accent={chromeTheme.accent} accentForeground={chromeTheme.accentForeground}
+                      onSaveAs={onSaveAs}
+                      renderError={(message, onDismiss) => (
+                        <FriendlyError message={message} severity="actionFailed" onDismiss={onDismiss}
+                          getDiagnosticsText={getDiagnosticsText} />
+                      )} />
+                  )}
                 </PaneDisclosure>
               )}
 
               {/* An EPUB-author-facing tool, deliberately tucked away
                   down here rather than given its own toolbar button —
-                  see `EpubInspectorPanel`'s doc comment. The file name
-                  (issue follow-up) now lives there too, alongside the
-                  rest of the book's raw metadata, rather than cluttering
-                  this reader-facing summary.
+                  see `EpubInspectorPanel`'s doc comment.
 
                   Given a deliberately distinct, "developer tool" look
                   (issue #76) — a dark, code-editor-like background and

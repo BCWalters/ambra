@@ -75,6 +75,27 @@ pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
   --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
+## Fragment-based tables of contents (#202)
+
+`tests/toc-fragments.spec.ts` generates original synthetic content with several
+sections in one spine document, including nested/same-page sections, empty
+anchors, wrapper targets and image-page DOM boundaries. It checks target-specific page numbers, current
+section highlighting, keyboard navigation, ordinary page turns, resume and
+scrolling in single-page and spread layouts.
+Legacy and newly saved image-boundary bookmark markers are also checked against
+their navigated pages, after reopening the reader and changing typography.
+
+An optional real-book replay uses Gutenberg's EPUB3 for *Le Chat du Neptune*:
+set `AMBRA_GUTENBERG_10289_BOOK` to a local download of
+`https://www.gutenberg.org/ebooks/10289.epub3.images`. The publication stays
+outside git. With an existing immutable build, run:
+
+```sh
+AMBRA_E2E_HEADLESS=1 AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/build \
+  pnpm --filter @ambra/e2e exec playwright test tests/toc-fragments.spec.ts \
+  --output=test-results/toc-fragments
+```
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the
@@ -248,6 +269,26 @@ Human acceptance still needs:
 
 ## Fixtures
 
+Library download feedback is covered by `tests/epub-direct-import.spec.ts`.
+The book-arrival illustration loops every 4.8 seconds and is
+static under reduced motion or after completion. It is decorative and outside
+the existing polite live region. The tests cover real download success/failure,
+motion preferences, focus retention, the centered 600px notification limit,
+small-window wrapping, the right-aligned Read now action, and the top-right close button.
+Completed rows keep their check, wrapped title, and action on the same grid row,
+including long book titles at 600px and narrow 360px browser widths.
+Progress counts bytes in the Library's own response stream, independently of the
+browser's fallback download. A valid uncompressed Content-Length enables percentage
+progress; unknown or compressed sizes show only bytes received. Updates are
+coalesced to four per second (plus the initial/first/final updates) and are not
+re-announced on each tick. Importing and saving remain distinct stages.
+Automatic imports journal their native-download ownership before pausing Chrome,
+then cancel only after successful persistence. Failure, tab closure/reload, and
+browser/extension restart restore the fallback. Library activity renews a five-minute
+lease every 30 seconds; a one-minute alarm recovers abandoned imports. The durable
+journal survives ordinary service-worker suspension without resuming a healthy
+active import. Resume/cancel API failures retain recovery state for later retry.
+
 `fixtures/long-content.epub` — a small synthetic single-chapter book (30
 numbered paragraphs, `packages/engine/test/fixtures/long-content-epub-src`
 is its source) used by `tests/navigation-correctness.spec.ts`'s exact
@@ -324,7 +365,8 @@ clicks, and unknown global footers. An optional actual Proust pass measures all
 four animation modes and checks retained document/JS counts after repeated turns:
 
 While whole-book counts are unavailable, the scrubber shows "Counting pages…"
-instead of a page total, including in its accessible value. Book startup uses
+instead of a page total, including in its accessible value, only after its first
+hide/reveal cycle. It is suppressed on the initial book-opening appearance. Book startup uses
 "Getting your book ready…" and subsequent loading uses "Turning to your page…";
 these messages do not change focus or delay navigation.
 

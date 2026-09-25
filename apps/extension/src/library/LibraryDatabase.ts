@@ -250,6 +250,7 @@ async function hashBookFile(blob: Blob): Promise<string> {
  */
 export class LibraryDatabase {
   private static readonly preferenceListeners = new Map<() => void, LibraryDatabase>();
+  private static readonly bookListeners = new Map<() => void, LibraryDatabase>();
   private readonly subscriptions = new Set<() => void>();
   private readonly preferenceSender = crypto.randomUUID();
   private constructor(private readonly db: IDBDatabase) {}
@@ -371,7 +372,7 @@ export class LibraryDatabase {
     const contentHash = await hashBookFile(fileBlob);
     await this.indexLegacyBooks();
 
-    return this.transaction<string>(
+    const id = await this.transaction<string>(
       [BOOKS_STORE, FILES_STORE, COVERS_STORE],
       "readwrite",
       "Failed to import the book into the library.",
@@ -396,6 +397,8 @@ export class LibraryDatabase {
         };
       },
     );
+    this.booksChanged();
+    return id;
   }
 
   /** Lazy, resumable migration: hash stored archives only when importing,
@@ -598,6 +601,7 @@ export class LibraryDatabase {
         }
       },
     );
+    this.booksChanged();
   }
 
   /** Creates a new bookmark for `bookId` at `cfi` (see `Bookmark`'s doc
@@ -744,14 +748,24 @@ export class LibraryDatabase {
   /** Invalidate after commit, both within this page and across extension tabs.
    * Consumers reread IndexedDB rather than trusting potentially stale payloads. */
   public subscribePreferences(listener: () => void): () => void {
-    const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("ambra-preferences");
+    return this.subscribeChanges("ambra-preferences", LibraryDatabase.preferenceListeners, listener);
+  }
+
+  public subscribeBooks(listener: () => void): () => void {
+    return this.subscribeChanges("ambra-books", LibraryDatabase.bookListeners, listener);
+  }
+
+  private subscribeChanges(
+    name: string, listeners: Map<() => void, LibraryDatabase>, listener: () => void,
+  ): () => void {
+    const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel(name);
     if (channel) channel.onmessage = (event) => {
       if (event.data !== this.preferenceSender) listener();
     };
-    LibraryDatabase.preferenceListeners.set(listener, this);
+    listeners.set(listener, this);
     const unsubscribe = () => {
       channel?.close();
-      LibraryDatabase.preferenceListeners.delete(listener);
+      listeners.delete(listener);
       this.subscriptions.delete(unsubscribe);
     };
     this.subscriptions.add(unsubscribe);
@@ -759,11 +773,19 @@ export class LibraryDatabase {
   }
 
   private preferencesChanged(): void {
-    for (const [listener, owner] of LibraryDatabase.preferenceListeners) {
+    this.notifyChanges("ambra-preferences", LibraryDatabase.preferenceListeners);
+  }
+
+  private booksChanged(): void {
+    this.notifyChanges("ambra-books", LibraryDatabase.bookListeners);
+  }
+
+  private notifyChanges(name: string, listeners: Map<() => void, LibraryDatabase>): void {
+    for (const [listener, owner] of listeners) {
       if (owner !== this) listener();
     }
     if (typeof BroadcastChannel !== "undefined") {
-      const channel = new BroadcastChannel("ambra-preferences");
+      const channel = new BroadcastChannel(name);
       channel.postMessage(this.preferenceSender);
       channel.close();
     }

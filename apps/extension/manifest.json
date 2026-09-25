@@ -21,7 +21,7 @@
     "service_worker": "src/background/service-worker.ts",
     "type": "module"
   },
-  "permissions": ["unlimitedStorage", "downloads", "notifications"],
+  "permissions": ["unlimitedStorage", "downloads", "notifications", "storage", "alarms"],
   "host_permissions": ["*://*/*"],
   "options_page": "src/library/index.html"
 }

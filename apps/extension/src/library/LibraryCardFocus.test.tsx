@@ -32,11 +32,11 @@ describe("Library card focus (#173)", () => {
         id: title, title, identifiers: [],
       } as unknown as LibraryBookViewModel)),
       isLoading: false, canImport: true, error: undefined,
-      importActivities: [], dismissCompletedImports: vi.fn(),
+      importActivities: [], dismissCompletedImports: vi.fn(), cancelDownload: vi.fn(),
       dismissError: vi.fn(), importFiles: vi.fn(), removeBook, openBook,
       chromeTheme: "ambra", settings: DEFAULT_GLOBAL_READING_SETTINGS, setSettings: vi.fn(),
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: true, openInFullTab: vi.fn(),
-      storageUsage: undefined, openInspectionSession: vi.fn(),
+      storageUsage: undefined, openInspectionSession: vi.fn(), saveBookAs: vi.fn(),
     });
     container = document.createElement("div");
     document.body.append(container);

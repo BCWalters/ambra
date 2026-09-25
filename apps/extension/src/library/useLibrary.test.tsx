@@ -1,4 +1,5 @@
 import { act, StrictMode } from "react";
+import { ZipFormatError } from "@ambra/engine";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryDatabase, type BookMetadata } from "./LibraryDatabase.js";
@@ -7,7 +8,7 @@ import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { LibraryApp } from "./LibraryApp.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import { LocaleProvider, useLocale } from "../i18n/LocaleContext.js";
-import { EPUB_IMPORT_RESULT } from "../epubImportHandoff.js";
+import { EPUB_IMPORT_ACTIVE, EPUB_IMPORT_CANCEL, EPUB_IMPORT_RESULT } from "../epubImportHandoff.js";
 
 vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue("book") }));
 
@@ -29,6 +30,7 @@ function makeDatabase() {
     getGlobalReadingSettings: vi.fn().mockResolvedValue(DEFAULT_GLOBAL_READING_SETTINGS),
     patchGlobalReadingSettings: vi.fn().mockResolvedValue(undefined),
     subscribePreferences: vi.fn<LibraryDatabase["subscribePreferences"]>().mockReturnValue(vi.fn()),
+    subscribeBooks: vi.fn<LibraryDatabase["subscribeBooks"]>().mockReturnValue(vi.fn()),
     getDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
     deleteBook: vi.fn().mockResolvedValue(undefined),
     setDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
@@ -44,6 +46,11 @@ describe("useLibrary ownership and failures", () => {
   let mounted: boolean;
   let latest: UseLibraryResult;
   let db: ReturnType<typeof makeDatabase>;
+  const resultMessages = () => vi.mocked(chrome.runtime.sendMessage).mock.calls.flatMap((args) => {
+    const message: unknown = args[0];
+    return message && typeof message === "object" && "type" in message && message.type === EPUB_IMPORT_RESULT
+      ? [message] : [];
+  });
 
   function Harness() {
     latest = useLibrary();
@@ -71,6 +78,7 @@ describe("useLibrary ownership and failures", () => {
   });
   afterEach(() => {
     if (mounted) act(() => root.unmount());
+    vi.useRealTimers();
     container.remove();
     window.history.replaceState(null, "", "/");
     vi.restoreAllMocks();
@@ -145,6 +153,7 @@ describe("useLibrary ownership and failures", () => {
     mounted = false;
     expect(db.methods.close).toHaveBeenCalledOnce();
     expect(db.methods.subscribePreferences.mock.results[0]?.value).toHaveBeenCalledOnce();
+    expect(db.methods.subscribeBooks.mock.results[0]?.value).toHaveBeenCalledOnce();
     expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:cover");
   });
 
@@ -174,6 +183,47 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.error).toBeUndefined();
     expect(latest.books).toEqual([]);
     expect(URL.revokeObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it("uses a specific headline for invalid EPUBs without losing the technical message", async () => {
+    await render();
+    vi.mocked(importBook).mockRejectedValueOnce(new ZipFormatError("Not a valid ZIP archive"));
+    await act(async () => latest.importFiles([new File(["bad"], "bad.epub")]));
+    expect(latest.errorHeadline).toBe("Oh dear, that doesn't look like a valid EPUB file.");
+    expect(latest.error).toBe("Not a valid ZIP archive");
+    vi.mocked(importBook).mockRejectedValueOnce(new Error("Storage unavailable"));
+    await act(async () => latest.importFiles([new File(["book"], "book.epub")]));
+    expect(latest.errorHeadline).toBeUndefined();
+    expect(latest.error).toBe("Storage unavailable");
+  });
+
+  it("refreshes peer book changes and storage usage without replacing local import status", async () => {
+    await render();
+    await act(async () => latest.importFiles([new File(["book"], "book.epub")]));
+    const activities = latest.importActivities;
+    const notify = db.methods.subscribeBooks.mock.calls[0]![0];
+    const estimates = vi.mocked(LibraryDatabase.estimateStorageUsage).mock.calls.length;
+    db.methods.listBooks.mockResolvedValue([]);
+    await act(async () => notify());
+    expect(latest.books).toEqual([]);
+    expect(latest.importActivities).toBe(activities);
+    expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:cover");
+    expect(LibraryDatabase.estimateStorageUsage).toHaveBeenCalledTimes(estimates + 1);
+    db.methods.listBooks.mockResolvedValue([{ id: "other", title: "Other book" } as BookMetadata]);
+    await act(async () => notify());
+    expect(latest.books.map(book => book.id)).toEqual(["other"]);
+  });
+
+  it("surfaces peer refresh errors and recovers on a later notification", async () => {
+    await render();
+    const notify = db.methods.subscribeBooks.mock.calls[0]![0];
+    db.methods.listBooks.mockRejectedValueOnce(new Error("Peer refresh failed"));
+    await act(async () => notify());
+    expect(latest.error).toBe("Peer refresh failed");
+    expect(latest.books).toHaveLength(1);
+    db.methods.listBooks.mockResolvedValue([]);
+    await act(async () => notify());
+    expect(latest.books).toEqual([]);
   });
 
   it.each(["remove", "import"] as const)("reports refresh failure after %s without an unhandled rejection", async (action) => {
@@ -225,6 +275,224 @@ describe("useLibrary ownership and failures", () => {
     window.history.replaceState(null, "", `/?view=tab&importUrl=${encodeURIComponent(url)}&importToken=handoff`);
   }
 
+  it("aborts pending response headers and cancels the Chrome handoff without a failed RESULT or error", async () => {
+    let signal!: AbortSignal;
+    vi.stubGlobal("fetch", vi.fn((_url, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      signal = init.signal!;
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    })));
+    setDirectImportUrl();
+    await render();
+    const id = latest.importActivities[0]!.id;
+    expect(latest.cancelDownload(id + 1)).toBe(false);
+    await act(async () => { expect(latest.cancelDownload(id)).toBe(true); });
+    expect(signal.aborted).toBe(true);
+    expect(latest.cancelDownload(id)).toBe(false);
+    expect(latest.importActivities).toEqual([]);
+    expect(latest.error).toBeUndefined();
+    expect(importBook).not.toHaveBeenCalled();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: EPUB_IMPORT_CANCEL, token: "handoff" });
+    expect(resultMessages()).toEqual([]);
+  });
+
+  it("cancels a partially received response body without importing its bytes", async () => {
+    const cancel = vi.fn();
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(new ReadableStream({
+      start(controller) { stream = controller; },
+      cancel,
+    }), { headers: { "content-length": "100" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    setDirectImportUrl();
+    await render();
+    await act(async () => { stream.enqueue(new Uint8Array([1, 2, 3])); });
+    expect(latest.importActivities[0]?.download?.receivedBytes).toBe(3);
+    await act(async () => { expect(latest.cancelDownload(latest.importActivities[0]!.id)).toBe(true); });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(importBook).not.toHaveBeenCalled();
+    expect(latest.importActivities).toEqual([]);
+    expect(latest.error).toBeUndefined();
+    expect(resultMessages()).toEqual([]);
+  });
+
+  it.each(["headers", "body"])("does not import when cancellation wins a %s-completion race", async (stage) => {
+    const headers = deferred<Response>();
+    const body = deferred<Blob>();
+    const response = new Response(null);
+    vi.spyOn(response, "blob").mockReturnValue(body.promise);
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(headers.promise));
+    setDirectImportUrl();
+    await render();
+    const id = latest.importActivities[0]!.id;
+    if (stage === "body") await act(async () => headers.resolve(response));
+    await act(async () => {
+      if (stage === "headers") headers.resolve(response);
+      body.resolve(new Blob(["epub"]));
+      expect(latest.cancelDownload(id)).toBe(true);
+    });
+    expect(importBook).not.toHaveBeenCalled();
+    expect(resultMessages()).toEqual([]);
+    expect(latest.error).toBeUndefined();
+    expect(latest.importActivities).toEqual([]);
+  });
+
+  it("rejects a stale downloading action before React renders processing, and throughout saving and completion", async () => {
+    const response = deferred<Response>();
+    const saving = deferred<string>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    setDirectImportUrl();
+    await render();
+    const id = latest.importActivities[0]!.id;
+    const cancelDownload = latest.cancelDownload;
+    vi.mocked(importBook).mockImplementationOnce(() => {
+      expect(latest.importActivities[0]?.phase).toBe("downloading");
+      expect(cancelDownload(id)).toBe(false);
+      return saving.promise;
+    });
+    await act(async () => response.resolve(new Response("epub")));
+    expect(latest.importActivities[0]?.phase).toBe("processing");
+    expect(cancelDownload(id)).toBe(false);
+    act(() => vi.mocked(importBook).mock.calls[0]?.[2]?.("saving"));
+    expect(latest.importActivities[0]?.phase).toBe("saving");
+    expect(cancelDownload(id)).toBe(false);
+    await act(async () => saving.resolve("book"));
+    expect(cancelDownload(id)).toBe(false);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: EPUB_IMPORT_CANCEL }));
+    expect(resultMessages()).toEqual([{ type: EPUB_IMPORT_RESULT, token: "handoff", imported: true }]);
+  });
+
+  it("does not cancel queued or processing imports chosen from the device", async () => {
+    const saving = deferred<string>();
+    vi.mocked(importBook).mockReturnValueOnce(saving.promise);
+    await render();
+    let importing!: Promise<void>;
+    act(() => {
+      importing = latest.importFiles([new File(["one"], "one.epub"), new File(["two"], "two.epub")]);
+    });
+    expect(latest.importActivities.map(({ phase }) => phase)).toEqual(["processing", "queued"]);
+    for (const { id } of latest.importActivities) expect(latest.cancelDownload(id)).toBe(false);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    await act(async () => { saving.resolve("book"); await importing; });
+    expect(importBook).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a tokenless URL download without sending any Chrome handoff messages", async () => {
+    const response = deferred<Response>();
+    const fetch = vi.fn().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetch);
+    window.history.replaceState(null, "", "/?view=tab&importUrl=https%3A%2F%2Fexample.com%2Fbook.epub");
+    await render();
+    await act(async () => { expect(latest.cancelDownload(latest.importActivities[0]!.id)).toBe(true); });
+    expect(fetch.mock.calls[0]![1].signal.aborted).toBe(true);
+    await act(async () => response.resolve(new Response("epub")));
+    expect(importBook).not.toHaveBeenCalled();
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(latest.importActivities).toEqual([]);
+    expect(latest.error).toBeUndefined();
+  });
+
+  it.each(["acknowledged", "rejected", "unacknowledged", "timeout"])(
+    "clears heartbeat and acknowledgement timers after %s cancellation, never sending RESULT", async (outcome) => {
+      vi.useFakeTimers();
+      const headers = deferred<Response>();
+      const acknowledgement = deferred<{ received: boolean }>();
+      vi.stubGlobal("fetch", vi.fn().mockReturnValue(headers.promise));
+      vi.mocked(chrome.runtime.sendMessage).mockImplementation((message: unknown) => {
+        if (!message || typeof message !== "object" || !("type" in message) || message.type !== EPUB_IMPORT_CANCEL) {
+          return Promise.resolve({ received: true });
+        }
+        if (outcome === "rejected") return Promise.reject(new Error("Worker unavailable"));
+        if (outcome === "unacknowledged") return Promise.resolve({ received: false });
+        return acknowledgement.promise;
+      });
+      setDirectImportUrl();
+      await render();
+      await act(async () => { expect(latest.cancelDownload(latest.importActivities[0]!.id)).toBe(true); });
+      await act(async () => headers.resolve(new Response("epub")));
+      expect(importBook).not.toHaveBeenCalled();
+      expect(resultMessages()).toEqual([]);
+      if (outcome === "acknowledged") await act(async () => acknowledgement.resolve({ received: true }));
+      await act(async () => vi.advanceTimersByTimeAsync(60_000));
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(resultMessages()).toEqual([]);
+      expect(latest.importActivities).toEqual([]);
+      if (outcome === "acknowledged") expect(latest.error).toBeUndefined();
+      else expect(latest.error).toContain("Open Chrome Downloads");
+      // Even a late worker reply must not turn an intentional cancellation into
+      // a normal failed import or restart the heartbeat.
+      await act(async () => acknowledgement.resolve({ received: true }));
+      expect(resultMessages()).toEqual([]);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it.each([true, false])("restores focus to the import action after cancelling a focused row (empty=%s)", async (empty) => {
+    if (empty) db.methods.listBooks.mockResolvedValue([]);
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    setDirectImportUrl();
+    await act(async () => root.render(<LibraryApp />));
+    const cancel = container.querySelector<HTMLButtonElement>('[aria-label="Cancel download: book.epub"]')!;
+    const importButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => empty ? button.textContent?.includes("Choose EPUB files...") : button.textContent === "Import EPUB")!;
+    cancel.focus();
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => cancel.click());
+    expect(cancel.isConnected).toBe(false);
+    expect(document.activeElement).toBe(importButton);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => response.resolve(new Response("epub")));
+    expect(resultMessages()).toEqual([]);
+  });
+
+  it("does not move unrelated focus when a download is cancelled", async () => {
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    setDirectImportUrl();
+    await act(async () => root.render(<LibraryApp />));
+    const cancel = container.querySelector<HTMLButtonElement>('[aria-label^="Cancel download:"]')!;
+    const other = container.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')!;
+    other.focus();
+    await act(async () => cancel.click());
+    expect(document.activeElement).toBe(other);
+    await act(async () => response.resolve(new Response("epub")));
+  });
+
+  it("presents an unacknowledged cancellation in the standard library error alert", async () => {
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((message: unknown) =>
+      Promise.resolve({
+        received: !message || typeof message !== "object" || !("type" in message) || message.type !== EPUB_IMPORT_CANCEL,
+      }));
+    setDirectImportUrl();
+    await act(async () => root.render(<LibraryApp />));
+    const cancel = container.querySelector<HTMLButtonElement>('[aria-label^="Cancel download:"]')!;
+    await act(async () => cancel.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Open Chrome Downloads");
+    expect(cancel.isConnected).toBe(false);
+    act(() => root.unmount());
+    mounted = false;
+    await act(async () => response.resolve(new Response("epub")));
+    expect(resultMessages()).toEqual([]);
+  });
+
+  it("clears the download heartbeat when normal import finishes", async () => {
+    vi.useFakeTimers();
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    setDirectImportUrl();
+    await render();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => response.resolve(new Response("epub")));
+    expect(latest.importActivities[0]?.phase).toBe("complete");
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(2);
+    expect(resultMessages()).toEqual([{ type: EPUB_IMPORT_RESULT, token: "handoff", imported: true }]);
+  });
+
   it("acknowledges only after the book is persisted and strips handoff parameters", async () => {
     const saving = deferred<string>();
     vi.mocked(importBook).mockReturnValueOnce(saving.promise);
@@ -232,13 +500,13 @@ describe("useLibrary ownership and failures", () => {
     setDirectImportUrl();
     await render();
     expect(importBook).toHaveBeenCalledOnce();
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(resultMessages()).toEqual([]);
     expect(window.location.search).toBe("?view=tab");
     expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "processing" }]);
     await act(async () => saving.resolve("book"));
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
+    expect(resultMessages()).toEqual([{
       type: EPUB_IMPORT_RESULT, token: "handoff", imported: true,
-    });
+    }]);
     expect(latest.importActivities[0]?.phase).toBe("complete");
   });
 
@@ -255,7 +523,9 @@ describe("useLibrary ownership and failures", () => {
     setDirectImportUrl();
     await render();
     expect(latest.importActivities[0]?.phase).toBe("downloading");
-    await act(async () => response.resolve({ ok: true, blob: () => body.promise } as Response));
+    const pendingBody = new Response(null);
+    vi.spyOn(pendingBody, "blob").mockReturnValue(body.promise);
+    await act(async () => response.resolve(pendingBody));
     expect(latest.importActivities[0]?.phase).toBe("downloading");
     expect(importBook).not.toHaveBeenCalled();
     await act(async () => body.resolve(new Blob(["epub"])));
@@ -263,11 +533,11 @@ describe("useLibrary ownership and failures", () => {
     act(() => vi.mocked(importBook).mock.calls[0]?.[2]?.("saving"));
     expect(latest.importActivities[0]?.phase).toBe("saving");
     expect(latest.importActivities[0]?.bookId).toBeUndefined();
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(resultMessages()).toEqual([]);
     db.methods.listBooks.mockReturnValueOnce(refreshing.promise);
     await act(async () => saving.resolve("book"));
     expect(latest.importActivities[0]?.phase).toBe("saving");
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(resultMessages()).toEqual([]);
     await act(async () => refreshing.resolve([{ id: "book", title: "Saved" } as BookMetadata]));
     expect(latest.importActivities[0]?.phase).toBe("complete");
     expect(latest.importActivities[0]?.bookId).toBe("book");
@@ -355,7 +625,11 @@ describe("useLibrary ownership and failures", () => {
       const fetch = vi.fn().mockResolvedValue(new Response("epub"));
       if (failure === "network") fetch.mockRejectedValue(new TypeError("Failed to fetch"));
       if (failure === "http") fetch.mockResolvedValue(new Response("", { status: 403 }));
-      if (failure === "body") fetch.mockResolvedValue({ ok: true, blob: () => Promise.reject(new Error("Disconnected")) });
+      if (failure === "body") {
+        const response = new Response(null);
+        vi.spyOn(response, "blob").mockRejectedValue(new Error("Disconnected"));
+        fetch.mockResolvedValue(response);
+      }
       if (failure === "parse") vi.mocked(importBook).mockRejectedValueOnce(new Error("Invalid EPUB: missing OEBPS/chapter.xhtml"));
       if (failure === "quota") vi.mocked(importBook).mockRejectedValueOnce(new DOMException("Full", "QuotaExceededError"));
       vi.stubGlobal("fetch", fetch);
@@ -368,9 +642,9 @@ describe("useLibrary ownership and failures", () => {
       else expect(latest.error).toContain("Import EPUB");
       if (failure === "http") expect(latest.error).toContain("403");
       if (failure === "parse") expect(latest.error).toContain("Invalid EPUB: missing OEBPS/chapter.xhtml");
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
+      expect(resultMessages()).toEqual([{
         type: EPUB_IMPORT_RESULT, token: "handoff", imported: false,
-      });
+      }]);
     },
   );
 
@@ -440,9 +714,28 @@ describe("useLibrary ownership and failures", () => {
     act(() => root.unmount());
     mounted = false;
     await act(async () => saving.resolve("book"));
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({
+    expect(resultMessages()).toEqual([{
       type: EPUB_IMPORT_RESULT, token: "handoff", imported: false,
-    });
+    }]);
+  });
+
+  it("renews the paused-download lease only while the importing page is active", async () => {
+    vi.useFakeTimers();
+    const response = deferred<Response>();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
+    setDirectImportUrl();
+    await render();
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledExactlyOnceWith({ type: EPUB_IMPORT_ACTIVE, token: "handoff" });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(2);
+    expect(resultMessages()).toEqual([]);
+    act(() => root.unmount());
+    mounted = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(2);
+    await act(async () => response.resolve(new Response("epub")));
+    expect(importBook).not.toHaveBeenCalled();
+    expect(resultMessages()).toEqual([{ type: EPUB_IMPORT_RESULT, token: "handoff", imported: false }]);
   });
 
   it("loads global settings and refreshes them after an atomic patch or external change", async () => {

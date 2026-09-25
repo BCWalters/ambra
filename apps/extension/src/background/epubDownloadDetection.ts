@@ -45,7 +45,7 @@ export function registerEpubDownloadDetection(): void {
     chrome.downloads.search({ id: delta.id }, (items) => {
       if (chrome.runtime.lastError) return;
       const item = items[0];
-      if (!item || item.state !== "complete" || !isLikelyEpubDownload(item)) {
+      if (!item || item.state !== "complete" || item.byExtensionId === chrome.runtime.id || !isLikelyEpubDownload(item)) {
         return;
       }
       chrome.notifications.create(`${NOTIFICATION_ID_PREFIX}${item.id}`, {

@@ -10,6 +10,7 @@ export interface LibraryEmptyStateProps {
   canImport: boolean;
   onImport: () => void;
   focusFallbackRef?: RefObject<HTMLButtonElement | null>;
+  importButtonRef?: RefObject<HTMLButtonElement | null>;
 }
 
 const useStyles = makeStyles({
@@ -58,7 +59,7 @@ const useStyles = makeStyles({
 });
 
 /** Two equally weighted entry points, only for a loaded, genuinely empty library. */
-export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport, focusFallbackRef }) => {
+export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport, focusFallbackRef, importButtonRef }) => {
   const t = useTranslation();
   const styles = useStyles();
   const id = useId();
@@ -98,7 +99,7 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImpor
       {t("library.emptyDescription")}
     </Body1>
     <div className={styles.choices}>
-      <button type="button" className={styles.choice} disabled={!canImport} onClick={onImport}
+      <button ref={importButtonRef} type="button" className={styles.choice} disabled={!canImport} onClick={onImport}
         aria-labelledby={`${id}-import-title ${id}-import-action`} aria-describedby={`${id}-import-description`}>
         <DocumentAddRegular fontSize={28} aria-hidden="true" />
         <span className={styles.eyebrow}>{t("library.fromDevice")}</span>

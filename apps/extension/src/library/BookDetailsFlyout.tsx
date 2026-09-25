@@ -8,6 +8,7 @@ import { BookDescription, BookDetailRow as DetailRow, BookMetadataText, BookRigh
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryProgress } from "./LibraryFormatting.js";
+import { BookSaveAsAction } from "../components/BookSaveAsAction.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -29,6 +30,7 @@ export interface BookDetailsFlyoutProps {
   book: LibraryBookViewModel | undefined;
   onRequestClose: () => void;
   accent: string;
+  accentForeground?: string | undefined;
   backgroundSolid: string;
   /** Opens the EPUB Inspector (issue #111) directly from this book's
    * stored bytes, no live reading session required. `undefined` hides
@@ -38,6 +40,8 @@ export interface BookDetailsFlyoutProps {
   onOpenInspector: (() => void) | undefined;
   inspectionError?: { message: string; onDismiss: () => void } | undefined;
   inspectorOpen?: boolean;
+  /** Saves the original stored EPUB with the browser's destination picker. */
+  onSaveAs?: ((bookId: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -53,10 +57,12 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   book,
   onRequestClose,
   accent,
+  accentForeground = "inherit",
   backgroundSolid,
   onOpenInspector,
   inspectionError,
   inspectorOpen = false,
+  onSaveAs,
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
@@ -157,6 +163,11 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
             ))}
             <DetailRow small label={t("inspector.fileName")} value={book.fileName} />
+            {onSaveAs && (
+              <BookSaveAsAction key={book.id} accent={accent} accentForeground={accentForeground}
+                onSaveAs={() => onSaveAs(book.id)}
+                renderError={(message, onDismiss) => <LibraryImportError message={message} onDismiss={onDismiss} />} />
+            )}
             <DetailRow small label={t("library.added")} value={new Date(book.addedAt).toLocaleDateString(locale)} />
           </PaneDisclosure>
 

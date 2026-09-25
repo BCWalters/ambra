@@ -40,11 +40,11 @@ describe("Library localization and action order", () => {
     language.locale = "en";
     state = {
       books: [], isLoading: false, canImport: true, error: undefined,
-      importActivities: [], dismissCompletedImports: vi.fn(),
+      importActivities: [], dismissCompletedImports: vi.fn(), cancelDownload: vi.fn(),
       dismissError: vi.fn(), importFiles: vi.fn(), removeBook: vi.fn(), openBook: vi.fn(),
       chromeTheme: "ambra", settings: DEFAULT_GLOBAL_READING_SETTINGS, setSettings: vi.fn(),
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: false, openInFullTab: vi.fn(),
-      storageUsage: { usageBytes: 1536, quotaBytes: 1048576 }, openInspectionSession: vi.fn(),
+      storageUsage: { usageBytes: 1536, quotaBytes: 1048576 }, openInspectionSession: vi.fn(), saveBookAs: vi.fn(),
     };
     vi.mocked(useLibrary).mockImplementation(() => state);
     container = document.createElement("div");
@@ -152,7 +152,7 @@ describe("Library localization and action order", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Database unavailable");
   });
 
-  it("keeps choices, errors and concurrent import progress until the first book appears", async () => {
+  it("hides choices safely while retaining errors and concurrent import progress", async () => {
     await render();
     const bring = button("Bring a book Choose EPUB files...");
     bring.focus();
@@ -164,7 +164,8 @@ describe("Library localization and action order", () => {
     await render();
     expect(button("Bring a book Choose EPUB files...")).toBe(bring);
     expect(bring.disabled).toBe(false);
-    expect(document.activeElement).toBe(bring);
+    expect(bring.closest("[hidden]")).not.toBeNull();
+    expect(document.activeElement).toBe(container.querySelector("h1")?.parentElement);
     expect(container.querySelector('[role="status"]')?.textContent).toContain("first.epub");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Another file failed");
     state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
@@ -174,10 +175,29 @@ describe("Library localization and action order", () => {
     ];
     await render();
     expect(container.textContent).not.toContain("What will you read first?");
-    expect(document.activeElement).toBe(button("Import EPUB"));
+    expect(document.activeElement).toBe(container.querySelector("h1")?.parentElement);
     expect(button("Read now: First book")).toBeDefined();
     expect(button("Find books").getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector('[role="status"]')?.textContent).toContain("second.epub");
+  });
+
+  it("restores focus to the visible heading when cancellation leaves another import running", async () => {
+    state.importActivities = [
+      { id: 1, fileName: "download.epub", phase: "downloading" },
+      { id: 2, fileName: "local.epub", phase: "processing" },
+    ];
+    state.cancelDownload = () => {
+      state.importActivities = state.importActivities.filter(activity => activity.id !== 1);
+      root.render(<LibraryApp />);
+      return true;
+    };
+    await render();
+    const cancel = button("Cancel download: download.epub");
+    cancel.focus();
+    await act(async () => cancel.click());
+    expect(button("Bring a book Choose EPUB files...").closest("[hidden]")).not.toBeNull();
+    expect(document.activeElement).toBe(container.querySelector("h1")?.parentElement);
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("local.epub");
   });
 
   it.each(["Help & About", undefined])("does not steal focus from %s after the first import", async (focusLabel) => {
@@ -258,6 +278,10 @@ describe("Library localization and action order", () => {
     expect(status.textContent).not.toContain("complete.epub");
     expect(status.textContent).toContain(t("library.importKeepOpen"));
     expect(status.querySelector('[aria-valuenow]')).toBeNull();
+    const cancel = button(t("library.cancelDownloadFile", { fileName: "narrated.epub" }));
+    expect(cancel.textContent).toBe(t("library.cancelDownload"));
+    await act(async () => cancel.click());
+    expect(state.cancelDownload).toHaveBeenCalledExactlyOnceWith(2);
     await act(async () => button(t("library.readNowBook", { title })).click());
     expect(state.openBook).toHaveBeenCalledExactlyOnceWith("complete");
     await act(async () => button(t("library.dismiss")).click());

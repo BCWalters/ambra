@@ -130,10 +130,10 @@ export interface ReaderSnapshot {
   /** Manifest path of the book's first spine item, so `TocPanel` can
    * offer a synthetic "Start of Book" entry for unlisted front matter. */
   firstSpinePath: string | undefined;
-  /** The TOC entry path the shell should highlight as "current". */
+  /** The full TOC target (path and optional fragment) highlighted as "current". */
   highlightedTocPath: string | undefined;
-  /** Book-wide page number of each spine item's first page, keyed by
-   * manifest path, for `TocPanel`'s page numbers. */
+  /** Book-wide page numbers keyed by full TOC target (path and optional fragment),
+   * plus spine paths for synthetic start-of-book entries. */
   tocPageNumbers: ReadonlyMap<string, number>;
   currentChapterLabel: string;
   viewMode: ViewMode;
