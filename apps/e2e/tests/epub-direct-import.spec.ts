@@ -676,7 +676,10 @@ for (const scenario of [
       expect(server.importRequests()).toBe(scenario === "missing-access" ? 0 : 1);
       if (scenario !== "success" && scenario !== "active-lease") {
         expect(await download.failure()).toBeNull();
-        expect((await nativeRecords())[0]?.paused).toBe(false);
+        // Chrome can retain paused=true when completion wins the early-pause
+        // race. Terminal state and the preserved file, not that transfer flag,
+        // establish that the native fallback actually finished.
+        expect((await nativeRecords())[0]).toMatchObject({ state: "complete", exists: true });
         expect(fs.readFileSync((await download.path())!)).toEqual(fs.readFileSync(fixture));
       }
     } finally {
