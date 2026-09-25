@@ -218,6 +218,7 @@ export const ja: StringCatalog = {
   "search.closeSearchPanel": "検索パネルを閉じる",
   "scrubber.positionInBook": "本の中の位置",
   "scrubber.seeking": "移動中…",
+  "scrubber.bookmarked": "ブックマーク済み",
   "scrubber.pageOfTotal": "{total}ページ中{current}ページ",
   "scrubber.chapterOfTotal": "{total}章中第{current}章",
   "scrubber.pagesLeftInChapterOne": "この章残り1ページ",

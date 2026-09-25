@@ -268,6 +268,7 @@ export interface StringCatalog {
   "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
   "scrubber.seeking": string;
+  "scrubber.bookmarked": string;
   "scrubber.pageOfTotal": string;
   "scrubber.countingPages": string;
   "scrubber.chapterOfTotal": string;
@@ -715,6 +716,7 @@ export const en: StringCatalog = {
   "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
   "scrubber.seeking": "Going to position…",
+  "scrubber.bookmarked": "Bookmarked",
   "scrubber.pageOfTotal": "Page {current} of {total}",
   "scrubber.countingPages": "Counting pages…",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",

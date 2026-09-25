@@ -218,6 +218,7 @@ export const zh: StringCatalog = {
   "search.closeSearchPanel": "关闭搜索面板",
   "scrubber.positionInBook": "书中位置",
   "scrubber.seeking": "正在跳转…",
+  "scrubber.bookmarked": "已添加书签",
   "scrubber.pageOfTotal": "第 {current} 页，共 {total} 页",
   "scrubber.chapterOfTotal": "第 {current} 章，共 {total} 章",
   "scrubber.pagesLeftInChapterOne": "本章还剩 1 页",
