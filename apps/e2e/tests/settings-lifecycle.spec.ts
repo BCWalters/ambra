@@ -63,6 +63,56 @@ async function waitForLayout(page: Page): Promise<void> {
   });
 }
 
+async function readingFrameCount(page: Page): Promise<number> {
+  return page.evaluate(() =>
+    Reflect.get(window, "__settingsController").containerEl.querySelectorAll("iframe").length);
+}
+
+for (const onePage of [false, true]) {
+  test(`held spread load: global theme and one-page=${onePage} settle on the latest settings (#203)`, async () => {
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width: 800, height: 900 } });
+    try {
+      await findController(page);
+      await holdSecondColumn(page);
+      await page.setViewportSize({ width: 1400, height: 900 });
+      await page.waitForFunction(() => Reflect.get(window, "__settingsGate").held);
+      await page.evaluate(async onePage => {
+        const c = Reflect.get(window, "__settingsController");
+        const requests = { count: 1, settled: 0 };
+        Reflect.set(window, "__settingsRequests", requests);
+        void c.setAlwaysShowOnePage(onePage).then(() => requests.settled++);
+        const other = await c.library.constructor.open();
+        try {
+          await other.patchGlobalReadingSettings({ pageTheme: "dark" });
+        } finally {
+          other.close();
+        }
+      }, onePage);
+      await page.waitForFunction(() => Reflect.get(window, "__settingsController").snapshot().pageTheme === "dark");
+      expect(await page.evaluate(() => Reflect.get(window, "__settingsRequests").settled)).toBe(0);
+      await page.evaluate(() => Reflect.get(window, "__settingsGate").release());
+      await waitForLayout(page);
+      const result = await page.evaluate(async () => {
+        const c = Reflect.get(window, "__settingsController");
+        return {
+          single: c.snapshot().alwaysShowOnePage,
+          spread: c.snapshot().isSpread,
+          saved: (await c.library.getBookReadingSettings(c.bookId)).alwaysShowOnePage,
+          colors: c.contentDocumentViews().map(({ document: doc }: { document: Document }) =>
+            doc.defaultView!.getComputedStyle(doc.body).backgroundColor),
+        };
+      });
+      expect(result).toEqual({
+        single: onePage, spread: !onePage, saved: onePage,
+        colors: Array.from({ length: onePage ? 1 : 2 }, () => "rgb(35, 35, 35)"),
+      });
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const trigger of ["animated turn", "held load"] as const) {
   for (const mode of ["paginated", "scroll"] as const) {
     test(`${trigger}: typography and ${mode} requests merge with resize and settle on one owned host`, async () => {
@@ -81,7 +131,7 @@ for (const trigger of ["animated turn", "held load"] as const) {
           await page.waitForFunction(() => {
             const controller = Reflect.get(window, "__settingsController");
             return controller.appliedWidth === 800 && !controller.isApplyingLayout &&
-              !controller.isLoadInFlight && document.querySelectorAll("iframe").length === 1;
+              !controller.isLoadInFlight && controller.containerEl.querySelectorAll("iframe").length === 1;
           });
           await holdSecondColumn(page);
           await page.setViewportSize({ width: 1300, height: 900 });
@@ -124,14 +174,15 @@ for (const trigger of ["animated turn", "held load"] as const) {
         await waitForLayout(page);
 
         const expectedFrames = mode === "paginated" ? 2 : 1;
-        await expect.poll(() => page.locator("iframe").count()).toBe(expectedFrames);
+        await expect.poll(() => readingFrameCount(page)).toBe(expectedFrames);
         await expect.poll(() => page.evaluate(() =>
           Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(expectedFrames);
-        const actual = await page.evaluate(async () => {
+        const actual = await page.evaluate(() => {
           const controller = Reflect.get(window, "__settingsController");
-          const frames = Array.from(document.querySelectorAll("iframe"));
-          const library = controller.library;
-          const settings = await library.getBookReadingSettings(controller.bookId);
+          // Background pagination owns transient offscreen iframes outside this
+          // container. Snapshot the mounted reading layout without yielding.
+          const container: HTMLElement = controller.containerEl;
+          const frames = Array.from(container.querySelectorAll("iframe"));
           return {
             mode: controller.snapshot().viewMode,
             width: controller.width,
@@ -150,10 +201,6 @@ for (const trigger of ["animated turn", "held load"] as const) {
             families: frames.map(frame =>
               frame.contentDocument!.documentElement.style.getPropertyValue("--ambra-font-family")),
             focused: frames.includes(document.activeElement as HTMLIFrameElement),
-            persisted: await Promise.all([
-              (await library.getGlobalReadingSettings()).viewMode, settings.fontScale, settings.fontFamily,
-              settings.lineSpacing, settings.letterSpacing, settings.contentWidthEm,
-            ]),
           };
         });
         expect(actual).toMatchObject({
@@ -164,8 +211,17 @@ for (const trigger of ["animated turn", "held load"] as const) {
         expect(actual.families.every(family => family.includes("Georgia"))).toBe(true);
         // Returning to an unchanged default need not materialize that default
         // in IndexedDB; effective persisted values must still match the request.
+        const persisted = await page.evaluate(async () => {
+          const controller = Reflect.get(window, "__settingsController");
+          const [settings, global] = await Promise.all([
+            controller.library.getBookReadingSettings(controller.bookId),
+            controller.library.getGlobalReadingSettings(),
+          ]);
+          return [global.viewMode, settings.fontScale, settings.fontFamily,
+            settings.lineSpacing, settings.letterSpacing, settings.contentWidthEm];
+        });
         const defaults = ["paginated", 1, during.before.family, 1, 0, 34];
-        expect(actual.persisted.map((value, index) => value ?? defaults[index]))
+        expect(persisted.map((value, index) => value ?? defaults[index]))
           .toEqual([mode, scale, "georgia", 1.15, 0.02, 30]);
 
         if (mode === "scroll") {
@@ -179,7 +235,7 @@ for (const trigger of ["animated turn", "held load"] as const) {
         await page.evaluate(() => Reflect.get(window, "__settingsController").turnPage(-1));
         expect(await page.evaluate(() => JSON.stringify(Reflect.get(window, "__settingsController").host.positions)))
           .toBe(before);
-        await expect.poll(() => page.locator("iframe").count()).toBe(2);
+        await expect.poll(() => readingFrameCount(page)).toBe(2);
         expect(errors).toEqual([]);
         await expect(page.getByRole("alert")).toHaveCount(0);
       } finally {
@@ -238,7 +294,7 @@ test("setters arriving during a settings reload settle only after the latest lay
       const controller = Reflect.get(window, "__settingsController");
       return (await controller.library.getBookReadingSettings(controller.bookId)).fontScale;
     })).toBe(1);
-    await expect.poll(() => page.locator("iframe").count()).toBe(2);
+    await expect.poll(() => readingFrameCount(page)).toBe(2);
     await expect.poll(() => page.evaluate(() =>
       Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(2);
     await expect(page.getByRole("alert")).toHaveCount(0);
@@ -273,7 +329,7 @@ test("a failed settings reload rejects its waiter and still applies the newer qu
       };
     });
     expect(final).toEqual({ scale: 1.5, persisted: 1.5, busy: false });
-    await expect.poll(() => page.locator("iframe").count()).toBe(2);
+    await expect.poll(() => readingFrameCount(page)).toBe(2);
     await expect.poll(() => page.evaluate(() =>
       Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(2);
     await expect(page.getByRole("alert")).toHaveCount(0);
@@ -303,7 +359,7 @@ for (const interaction of ["keyboard", "click", "selection"] as const) {
       await page.evaluate(() => Reflect.get(window, "__originalSettingsRequest"));
       expect(await page.evaluate(() =>
         Reflect.get(window, "__settingsController").host === Reflect.get(window, "__retainedSettingsHost"))).toBe(true);
-      await expect.poll(() => page.locator("iframe").count()).toBe(2);
+      await expect.poll(() => readingFrameCount(page)).toBe(2);
 
       await page.frameLocator("iframe").first().locator("body").focus();
       if (interaction === "keyboard") {
@@ -313,7 +369,7 @@ for (const interaction of ["keyboard", "click", "selection"] as const) {
         await page.keyboard.press("ArrowRight");
         await expect.poll(() => page.evaluate(() =>
           JSON.stringify(Reflect.get(window, "__settingsController").host.positions))).not.toBe(before);
-        await expect.poll(() => page.locator("iframe").count()).toBe(2);
+        await expect.poll(() => readingFrameCount(page)).toBe(2);
         await page.keyboard.press("ArrowLeft");
         await expect.poll(() => page.evaluate(() =>
           JSON.stringify(Reflect.get(window, "__settingsController").host.positions))).toBe(before);

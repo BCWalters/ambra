@@ -120,6 +120,8 @@ function parseSteps(segment: string, cfiString: string): CfiStep[] {
  * against a live DOM (every other call site in this app still stores and
  * resolves a highlight as two independent point CFIs — see `Highlight`'s
  * own doc comment for why that remains functionally equivalent here).
+ * A package-only path addresses the spine itemref itself, representing
+ * the whole content document without inventing an empty indirection.
  */
 export class EpubCfi {
   public constructor(
@@ -130,6 +132,12 @@ export class EpubCfi {
 
   public toString(): string {
     const packagePart = this.packageSteps.map((step) => step.toString()).join("");
+    if (this.contentSteps.length === 0) {
+      if (this.characterOffset !== undefined) {
+        throw new EpubCfiParseError("A spine itemref location cannot have a character offset.");
+      }
+      return `epubcfi(${packagePart})`;
+    }
     const contentPart = this.contentSteps.map((step) => step.toString()).join("");
     const offsetPart = this.characterOffset !== undefined ? `:${this.characterOffset}` : "";
     return `epubcfi(${packagePart}!${contentPart}${offsetPart})`;
@@ -146,6 +154,13 @@ export class EpubCfi {
 
     const inner = wrapperMatch[1] as string;
     const indirectParts = splitOutsideAssertions(inner, "!", cfiString);
+    if (indirectParts.length === 1) {
+      const packageSteps = parseSteps(inner, cfiString);
+      if (packageSteps.length === 0) {
+        throw new EpubCfiParseError(`CFI is missing package steps: "${cfiString}"`);
+      }
+      return new EpubCfi(packageSteps, []);
+    }
     if (indirectParts.length !== 2) {
       throw new EpubCfiParseError(
         `CFI requires a single "!" indirection into a content document: "${cfiString}"`,
@@ -226,6 +241,9 @@ export class EpubCfi {
    * point's own remaining steps (plus its own character offset) forming
    * its comma-separated tail. */
   public static joinRange(start: EpubCfi, end: EpubCfi): string {
+    if (start.contentSteps.length === 0 || end.contentSteps.length === 0) {
+      throw new EpubCfiParseError("Range endpoints must address positions within content documents.");
+    }
     if (
       EpubCfi.compareSteps(start.packageSteps, end.packageSteps) !== 0 ||
       start.packageSteps.length !== end.packageSteps.length

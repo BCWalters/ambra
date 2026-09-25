@@ -10,7 +10,8 @@ export interface BookReadingSettings {
   lineSpacing: number;
   letterSpacing: number;
   contentWidthEm: number;
-  pageTheme: PageTheme;
+  /** Reflowable pagination only; fixed-layout spreads and scrolling are unchanged. */
+  alwaysShowOnePage: boolean;
 }
 
 export const DEFAULT_BOOK_READING_SETTINGS: Readonly<BookReadingSettings> = {
@@ -19,13 +20,14 @@ export const DEFAULT_BOOK_READING_SETTINGS: Readonly<BookReadingSettings> = {
   lineSpacing: ReadingTheme.DEFAULT_LINE_SPACING,
   letterSpacing: ReadingTheme.DEFAULT_LETTER_SPACING,
   contentWidthEm: ReadingTheme.DEFAULT_CONTENT_WIDTH_EM,
-  pageTheme: ReadingTheme.DEFAULT_PAGE_THEME,
+  alwaysShowOnePage: false,
 };
 
 /** Settings-menu choices apply throughout the app. Locale is owned by LocaleProvider. */
 export interface GlobalReadingSettings {
   viewMode: ViewMode;
   brightness: number;
+  pageTheme: PageTheme;
   chromeTheme: ChromeThemeChoice;
   pageTurnAnimationStyle: PageTurnAnimationStyle;
 }
@@ -33,6 +35,7 @@ export interface GlobalReadingSettings {
 export const DEFAULT_GLOBAL_READING_SETTINGS: Readonly<GlobalReadingSettings> = {
   viewMode: "paginated",
   brightness: ReadingTheme.DEFAULT_BRIGHTNESS,
+  pageTheme: ReadingTheme.DEFAULT_PAGE_THEME,
   chromeTheme: DEFAULT_CHROME_THEME,
   pageTurnAnimationStyle: DEFAULT_PAGE_TURN_ANIMATION_STYLE,
 };

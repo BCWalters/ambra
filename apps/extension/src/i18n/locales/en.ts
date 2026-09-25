@@ -5,7 +5,7 @@
  * runtime fallback discovered only by clicking around in that language.
  *
  * Covers essentially the entire reader page: the toolbar (including its
- * Text/Page/Settings menus, the reader theme/page style/font pickers,
+ * Text/Page/Settings menus, the reader theme/page theme/font pickers,
  * and the language switcher itself), the Table of Contents/Search/
  * Bookmarks & Highlights panels, Book Details, the EPUB Inspector, the
  * Go to Page/Percentage dialog, the image viewer, the in-book selection/
@@ -218,6 +218,7 @@ export interface StringCatalog {
   "text.characterSpacing": string;
   "text.font": string;
   "text.columnWidth": string;
+  "text.alwaysShowOnePage": string;
   "text.pageStyle": string;
   "fontFamily.sansSerif": string;
   "fontFamily.bookDefault": string;
@@ -646,7 +647,8 @@ export const en: StringCatalog = {
   "text.characterSpacing": "Character spacing",
   "text.font": "Font",
   "text.columnWidth": "Column width",
-  "text.pageStyle": "Page style",
+  "text.alwaysShowOnePage": "Always show one page",
+  "text.pageStyle": "Page theme",
   "fontFamily.sansSerif": "Sans-Serif",
   "fontFamily.bookDefault": "Book default",
   "pageTheme.white": "White",

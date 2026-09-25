@@ -96,6 +96,54 @@ AMBRA_E2E_HEADLESS=1 AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/build \
   --output=test-results/toc-fragments
 ```
 
+## Reading preference ownership (#203)
+
+When checking `settings-ownership.spec.ts`, `reader-preferences.spec.ts`,
+`settings-focus.spec.ts`, and `page-theme.spec.ts`, treat **Page theme** as a
+global setting, not a book override. It is a compact native select in
+**Settings** beside **Brightness**. Theme changes should apply across books;
+old per-book themes must not override them. Legacy `defaultPageTheme` initializes
+the global theme, with white as the fallback.
+
+The book's **Page** menu instead has **Always show one page**, saved per book
+and off by default. Check that enabling it centers a single reflowable page
+even at spread-width viewports, including in reflowable sections of mixed-layout
+books. Fixed-layout pages and scrolling must remain unchanged. Scrolling
+already has a centered, width-limited reading area. Ownership/reset checks
+should keep this book preference separate from the global page theme.
+
+Focused browser coverage:
+
+- `single-page-setting.spec.ts`: exact centered page width at a 2400px viewport,
+  navigation, reopening, and unchanged scrolling.
+- `page-theme.spec.ts`: live global theme synchronization across books and the
+  Library, including ignoring legacy v7 per-book theme overrides.
+- `mixed-rendition-spreads.spec.ts`: unchanged fixed-layout spreads with the
+  one-page option enabled, for both LTR and RTL books.
+- `settings-lifecycle.spec.ts`: an external global theme change during a held
+  spread load, plus a queued one-page option change.
+- `shell-reflow-accessibility.spec.ts`: the new theme select and one-page
+  checkbox at 320px and 400% zoom.
+
+## Reflowable animation handoff (#208)
+
+`reflowable-animation-handoff.spec.ts` generates a long original-text EPUB and
+opens its middle in a wide spread. It holds the real animation's final frame
+before host adoption, then compares both pages' global text/iframe rectangles
+and visible text pixels against the settled layout. Forward Page flip covers
+one page with its back face, so that page's pixels are checked on the backward
+turn instead; both pages' layout rectangles are always checked.
+
+The matrix covers Slide, Page flip, Film strip and Off, LTR/RTL progression,
+forward/backward margin clicks, odd and fractional pane widths, and resizing
+back to an even width. Off checks unchanged frame geometry and a pixel-identical
+round trip. Failures attach final/settled screenshots and horizontal ink-shift
+measurements. Run it with:
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e run test:e2e reflowable-animation-handoff.spec.ts
+```
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the
@@ -313,14 +361,23 @@ chapter shortcuts, logical Space, taps, swipes, scrubber direction, page numbers
 and cross-chapter note placement in both single-page and spread layouts.
 
 `outer-margin-navigation.spec.ts` and `spread-gutter-navigation.spec.ts` enforce
-outer-margin-only taps (#182): content whitespace, inner page margins, gutters,
+outer-margin-only reflowable taps (#182): content whitespace, inner page margins, gutters,
 and blank companion interiors never navigate. Coverage includes LTR/RTL,
 cross-chapter spreads, all animation styles, and scaled fixed-layout artwork.
 Navigation fixtures use `outerMarginPoint` / `clickReadingPage` to derive targets
 from the rendered reading measure, not arbitrary content coordinates.
-Width-fitted fixed-layout pages have no lateral margin; keyboard/toolbar navigation
-remains available. The #169, #174, and #180 native pointer regressions retain their
+Fixed-layout artwork also accepts outer-edge taps (#206): 8% of each rendered
+outer page, capped at 64 CSS pixels, without activating inner edges or gutters.
+`fixed-layout-edge-navigation.spec.ts` covers width-fitted artwork, native controls,
+selection, chrome dismissal, reading focus, and RTL. The #169, #174, and #180 native pointer regressions retain their
 selection, single-tap, and zero-opacity intent on valid outer margins.
+
+`svg-spine.spec.ts` uses original synthetic SVG pages to check startup, intrinsic
+viewport sizing, native reading focus, resume, and the no-scripting sandbox (#205).
+For optional local reproductions, set `AMBRA_SVG_SAMPLE` to the downloaded
+`svg-in-spine.epub` and `AMBRA_WIDE_FXL_SAMPLE` to `recollections-of-wartime.epub`
+when running the SVG/edge specs. Keep downloaded public books outside the repository;
+the default regressions generate their own content in test output directories.
 
 `resize-lifecycle.spec.ts` and `settings-lifecycle.spec.ts` also bundle the
 controller directly into a real Chromium page. Controlled chapter-load gates

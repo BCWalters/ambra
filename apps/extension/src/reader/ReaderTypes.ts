@@ -174,6 +174,7 @@ export interface ReaderSnapshot {
   contentWidthEm: number;
   fontFamily: FontFamilyChoice;
   pageTheme: PageTheme;
+  alwaysShowOnePage: boolean;
   brightness: number;
   chromeTheme: ChromeThemeChoice;
   pageTurnAnimationStyle: PageTurnAnimationStyle;

@@ -53,6 +53,7 @@ describe("Toolbar startup positioning (#175)", () => {
       onToggleDetails: toggleDetails, onToggleBookmark: noop, onSetViewMode: noop,
       onSetFontScale: noop, onSetLineSpacing: noop, onSetLetterSpacing: noop,
       onSetContentWidth: noop, onSetFontFamily: noop, onSetPageTheme: noop,
+      onSetAlwaysShowOnePage: noop,
       onSetBrightness: noop, onSetChromeTheme: noop, onSetPageTurnAnimationStyle: noop,
       onOpenHelp: noop, visible: true,
       handlers: { onPointerEnter: noop, onPointerLeave: noop, onFocus: noop, onBlur: noop },

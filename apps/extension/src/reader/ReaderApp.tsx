@@ -76,6 +76,7 @@ const ReaderAppInner: FC = () => {
     setLineSpacing,
     setLetterSpacing,
     setContentWidth,
+    setAlwaysShowOnePage,
     setFontFamily,
     setPageTheme,
     setBrightness,
@@ -727,6 +728,7 @@ const ReaderAppInner: FC = () => {
               onSetLineSpacing={setLineSpacing}
               onSetLetterSpacing={setLetterSpacing}
               onSetContentWidth={setContentWidth}
+              onSetAlwaysShowOnePage={setAlwaysShowOnePage}
               onSetFontFamily={setFontFamily}
               onSetPageTheme={setPageTheme}
               onSetBrightness={setBrightness}

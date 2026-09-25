@@ -17,7 +17,7 @@ async function settings(page: Page) {
     const controller = Reflect.get(window, "__readerController");
     return controller.library.getBookReadingSettings(controller.bookId) as Promise<{
       fontScale: number; fontFamily: string; lineSpacing: number; letterSpacing: number;
-      contentWidthEm: number; pageTheme: string;
+      contentWidthEm: number; alwaysShowOnePage: boolean;
     }>;
   });
 }
@@ -32,7 +32,7 @@ test("books keep independent Text options on reopen; newly imported books use bu
     await first.getByRole("menuitemradio", { name: "Georgia", exact: true }).click();
     await first.keyboard.press("Escape");
     await first.getByRole("menuitem", { name: "Page", exact: true }).press("ArrowRight");
-    await first.getByRole("menuitemradio", { name: "Sepia", exact: true }).click();
+    await first.getByRole("menuitemcheckbox", { name: "Always show one page", exact: true }).click();
     await first.keyboard.press("Escape");
     await first.keyboard.press("Escape");
     await first.evaluate(async () => {
@@ -44,7 +44,7 @@ test("books keep independent Text options on reopen; newly imported books use bu
     });
     const firstSettings = {
       fontScale: 1.25, fontFamily: "georgia", lineSpacing: 1.15,
-      letterSpacing: 0.02, contentWidthEm: 30, pageTheme: "sepia",
+      letterSpacing: 0.02, contentWidthEm: 30, alwaysShowOnePage: true,
     };
     expect(await settings(first)).toEqual(firstSettings);
 
@@ -60,13 +60,13 @@ test("books keep independent Text options on reopen; newly imported books use bu
       const c = Reflect.get(window, "__readerController");
       return {
         fontScale: c.fontScale, fontFamily: c.fontFamily, lineSpacing: c.lineSpacing,
-        letterSpacing: c.letterSpacing, contentWidthEm: c.contentWidthEm, pageTheme: c.pageTheme,
+        letterSpacing: c.letterSpacing, contentWidthEm: c.contentWidthEm, alwaysShowOnePage: c.alwaysShowOnePage,
       };
     })).toEqual(defaults);
     await second.evaluate(async () => {
       const controller = Reflect.get(window, "__readerController");
       await controller.setFontScale(1.5);
-      await controller.setPageTheme("dark");
+      await controller.setContentWidth(40);
     });
     expect(await settings(first)).toEqual(firstSettings);
     await first.reload();
@@ -74,11 +74,11 @@ test("books keep independent Text options on reopen; newly imported books use bu
     expect(await settings(first)).toEqual(firstSettings);
     expect(await first.evaluate(() => {
       const c = Reflect.get(window, "__readerController");
-      return { fontScale: c.snapshot().fontScale, pageTheme: c.snapshot().pageTheme };
-    })).toEqual({ fontScale: 1.25, pageTheme: "sepia" });
+      return { fontScale: c.snapshot().fontScale, alwaysShowOnePage: c.snapshot().alwaysShowOnePage };
+    })).toEqual({ fontScale: 1.25, alwaysShowOnePage: true });
     await second.reload();
     await ready(second);
-    expect(await settings(second)).toEqual({ ...defaults, fontScale: 1.5, pageTheme: "dark" });
+    expect(await settings(second)).toEqual({ ...defaults, fontScale: 1.5, contentWidthEm: 40 });
   } finally {
     await context.close();
   }
@@ -105,6 +105,7 @@ test("Library settings fit at 360px and propagate live both ways, including lang
     await settingsButton.click();
     await library.getByRole("menuitemradio", { name: "Blue", exact: true }).click();
     await library.getByRole("menuitemradio", { name: "Film strip", exact: true }).click();
+    await library.getByRole("combobox", { name: "Page theme", exact: true }).selectOption("sepia");
     const brightness = library.getByRole("slider", { name: "Brightness", exact: true });
     await brightness.focus();
     await brightness.press("ArrowLeft");
@@ -112,8 +113,8 @@ test("Library settings fit at 360px and propagate live both ways, including lang
     await expect(library.getByRole("menuitemradio", { name: "Slide", exact: true })).toBeDisabled();
     await expect.poll(() => reader.evaluate(() => {
       const s = Reflect.get(window, "__readerController").snapshot();
-      return { chromeTheme: s.chromeTheme, viewMode: s.viewMode, brightness: s.brightness, animation: s.pageTurnAnimationStyle };
-    })).toEqual({ chromeTheme: "blue", viewMode: "scroll", brightness: 0.95, animation: "scroll" });
+      return { chromeTheme: s.chromeTheme, viewMode: s.viewMode, brightness: s.brightness, animation: s.pageTurnAnimationStyle, pageTheme: s.pageTheme };
+    })).toEqual({ chromeTheme: "blue", viewMode: "scroll", brightness: 0.95, animation: "scroll", pageTheme: "sepia" });
     await library.getByRole("menuitem", { name: /Language/ }).press("ArrowRight");
     await library.getByRole("menuitemradio", { name: "Français", exact: true }).click();
     await expect(reader.locator("html")).toHaveAttribute("lang", "fr");
@@ -146,7 +147,7 @@ test("atomic per-book patches merge across connections, roll back on abort, and 
       try {
         await Promise.all([
           db.patchBookReadingSettings(c.bookId, { fontScale: 1.5 }),
-          other.patchBookReadingSettings(c.bookId, { pageTheme: "sepia" }),
+          other.patchBookReadingSettings(c.bookId, { alwaysShowOnePage: true }),
           db.patchBookReadingSettings(c.bookId, { lineSpacing: 1.2 }),
         ]);
         const merged = await db.getBookReadingSettings(c.bookId);
@@ -158,7 +159,7 @@ test("atomic per-book patches merge across connections, roll back on abort, and 
         };
         let rejected = false;
         try {
-          await db.patchBookReadingSettings(c.bookId, { fontScale: 2, pageTheme: "dark" });
+          await db.patchBookReadingSettings(c.bookId, { fontScale: 2, alwaysShowOnePage: false });
         } catch {
           rejected = true;
         } finally {
@@ -193,7 +194,7 @@ test("atomic per-book patches merge across connections, roll back on abort, and 
         other.close();
       }
     });
-    expect(result.merged).toMatchObject({ fontScale: 1.5, pageTheme: "sepia", lineSpacing: 1.2 });
+    expect(result.merged).toMatchObject({ fontScale: 1.5, alwaysShowOnePage: true, lineSpacing: 1.2 });
     expect(result.afterAbort).toEqual(result.merged);
     expect(result.rejected).toBe(true);
     expect(result.globalRejected).toBe(true);
@@ -206,7 +207,8 @@ test("atomic per-book patches merge across connections, roll back on abort, and 
 
 test("v6 migration preserves existing books and reading data while later imports start with built-in defaults", async ({ playwright }, testInfo) => {
   const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
-    headless: false,
+    headless: process.env.AMBRA_E2E_HEADLESS === "1",
+    ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
     args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
   });
   try {
@@ -298,7 +300,7 @@ test("v6 migration preserves existing books and reading data while later imports
       }
     });
     expect(stored[0]).toEqual(["legacy-a", "legacy-b"].map(bookId => ({
-      bookId, settings: { fontScale: 1.25, fontFamily: "georgia", lineSpacing: 1.15, letterSpacing: 0.02, contentWidthEm: 30, pageTheme: "sepia" },
+      bookId, settings: { fontScale: 1.25, fontFamily: "georgia", lineSpacing: 1.15, letterSpacing: 0.02, contentWidthEm: 30, alwaysShowOnePage: false },
     })));
     expect(stored[1]).toEqual(["legacy-a", "legacy-b"].map(bookId => ({
       bookId, cfi: "epubcfi(/6/2!/4/2/1:0)", updatedAt: 321, fractionComplete: 0.25,
@@ -311,6 +313,7 @@ test("v6 migration preserves existing books and reading data while later imports
     })));
     expect(Object.fromEntries(stored[4]!.map(row => [row.key, row.value]))).toEqual({
       defaultViewMode: "scroll", defaultBrightness: 0.8, defaultChromeTheme: "blue",
+      defaultPageTheme: "sepia",
       defaultPageTurnAnimationStyle: "none", localePreference: "en", defaultLibrarySort: "titleAsc",
     });
     await page.locator('input[type="file"]').setInputFiles(otherBook);
@@ -319,7 +322,7 @@ test("v6 migration preserves existing books and reading data while later imports
     const reader = await opened;
     await ready(reader);
     expect(await settings(reader)).toMatchObject({
-      fontScale: 1, lineSpacing: 1, letterSpacing: 0, contentWidthEm: 34, pageTheme: "white",
+      fontScale: 1, lineSpacing: 1, letterSpacing: 0, contentWidthEm: 34, alwaysShowOnePage: false,
     });
     expect(await reader.evaluate(() => {
       const s = Reflect.get(window, "__readerController").snapshot();

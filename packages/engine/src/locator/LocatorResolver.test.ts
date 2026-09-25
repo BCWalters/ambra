@@ -26,6 +26,29 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     resolver = new LocatorResolver(pkg, contentLoader);
   });
 
+  it.each(["", "<title>Accessible page</title><text x=\"10\" y=\"30\">Original text</text>"])(
+    "round-trips an SVG root through a standard spine itemref CFI: %s",
+    content => {
+      const markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800">${content}</svg>`;
+      const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
+      const locator = resolver.generate(0, doc.documentElement, 0);
+      expect(locator.cfi).toBe("epubcfi(/6/2)");
+      const fresh = new DOMParser().parseFromString(markup, "image/svg+xml");
+      const restored = resolver.resolveInDocument(locator, 0, fresh);
+      expect(restored.node).toBe(fresh.documentElement);
+      expect(restored.characterOffset).toBeUndefined();
+      expect(restored.spineIndex).toBe(0);
+    },
+  );
+
+  it("resolves a whole-document location through the normal loading path", async () => {
+    const doc = await contentLoader.loadSpineDocument(0);
+    const locator = resolver.generate(0, doc.document.documentElement);
+    const resolved = await resolver.resolve(locator);
+    expect(resolved.node).toBe(resolved.node.ownerDocument?.documentElement);
+    expect(resolved.spineIndex).toBe(0);
+  });
+
   it("generates a Locator for an element position and resolves it back to that element", async () => {
     const doc = await contentLoader.loadSpineDocument(0);
     const h1 = doc.document.querySelector("h1")!;

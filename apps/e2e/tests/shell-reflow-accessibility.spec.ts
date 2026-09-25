@@ -60,6 +60,24 @@ for (const { width, zoom } of [{ width: 320, zoom: 1 }, { width: 1400, zoom: 1 }
         await expect(page.getByRole("menu")).toHaveCount(1);
         await page.keyboard.press("End");
         await expect(menu.locator(":focus")).toBeInViewport({ ratio: 1 });
+        if (name === "Settings") {
+          const theme = menu.getByRole("combobox", { name: "Page theme", exact: true });
+          await theme.focus();
+          await expect(theme).toBeInViewport({ ratio: 1 });
+          await page.keyboard.press("s");
+          await expect(theme).toHaveValue("sepia");
+          await expect(theme).toBeFocused();
+          await expect(menu.locator("..")).toBeInViewport({ ratio: 1 });
+        } else {
+          await menu.getByRole("menuitem", { name: "Page", exact: true }).press("ArrowRight");
+          const onePage = page.getByRole("menuitemcheckbox", { name: "Always show one page", exact: true });
+          await onePage.focus();
+          await expect(onePage).toBeInViewport({ ratio: 1 });
+          await onePage.press("Space");
+          await expect(onePage).toHaveAttribute("aria-checked", "true");
+          await expect(onePage).toBeFocused();
+          await page.keyboard.press("Escape");
+        }
         await page.keyboard.press("Escape");
         await expect(trigger).toBeFocused();
       }

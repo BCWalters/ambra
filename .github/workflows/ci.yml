@@ -19,7 +19,9 @@ jobs:
   validate:
     name: Validate and package
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Expanded reader coverage takes ~25m; setup and remaining browser suites
+    # add ~6m. Keep headroom for hosted-runner variance without dropping tests.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -55,6 +57,10 @@ jobs:
           navigation-correctness.spec.ts
           toc-fragments.spec.ts
           settings-focus.spec.ts
+          settings-ownership.spec.ts
+          settings-lifecycle.spec.ts
+          reader-preferences.spec.ts
+          single-page-setting.spec.ts
           reader-viewport-stability.spec.ts
           content-boundary-navigation.spec.ts
           disclosure-interaction.spec.ts
@@ -71,6 +77,7 @@ jobs:
           spread-gutter-navigation.spec.ts
           outer-margin-navigation.spec.ts
           spread-resize-stability.spec.ts
+          reflowable-animation-handoff.spec.ts
           toolbar-startup.spec.ts
           reader-diagnostics.spec.ts
           inspector-docking.spec.ts
@@ -79,6 +86,8 @@ jobs:
           keyboard-ownership.spec.ts
           reader-scale-navigation.spec.ts
           fixed-layout-scrubber.spec.ts
+          fixed-layout-edge-navigation.spec.ts
+          svg-spine.spec.ts
           mixed-rendition-spreads.spec.ts
           pagination-measurement.spec.ts
           --workers=1
