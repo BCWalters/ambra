@@ -34,6 +34,10 @@ describe("ReaderController content boundaries", () => {
       clearNavigationHighlights: vi.fn(),
       focusReadingContent: vi.fn(),
       accessibility: { focusReadingPosition: vi.fn() },
+      nativeReading: { retain: vi.fn() },
+      cachedSnapshot: { bookPageIndex: 2 },
+      bookWidePagePosition: () => ({ bookPageIndex: 3 }),
+      notify: vi.fn(),
       openSpineItem: vi.fn(async () => {}),
     });
     controller.setUpContentBoundaries();
@@ -50,10 +54,15 @@ describe("ReaderController content boundaries", () => {
     expect(controller.clearNavigationHighlights).toHaveBeenCalledOnce();
     if (fixed) {
       expect(controller.accessibility.focusReadingPosition).toHaveBeenCalledWith(
-        views[1]!.document, { node: views[1]!.document.body, offset: 0 },
+        views[1]!.document, { node: views[1]!.document.body, offset: 0, spineIndex: 2 },
       );
+      expect(controller.nativeReading.retain).toHaveBeenCalledWith(
+        { node: views[1]!.document.body, offset: 0, spineIndex: 2 },
+      );
+      expect(controller.notify).toHaveBeenCalledOnce();
     } else {
       expect(controller.focusReadingContent).toHaveBeenCalledWith(views[1]!.document);
+      expect(controller.notify).not.toHaveBeenCalled();
     }
     buttons[1]!.click();
     expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(3);
