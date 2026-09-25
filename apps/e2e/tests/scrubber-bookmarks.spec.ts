@@ -98,8 +98,15 @@ for (const width of [320, 1400]) {
       await page.evaluate(async () => {
         Reflect.get(window, "__restoreBookmarkSnapshot")();
         const controller = Reflect.get(window, "__readerController");
+        // Font metrics can put the final page beside an already-bookmarked
+        // companion. Isolate the exact last page before toggling its bookmark.
+        await controller.setAlwaysShowOnePage(true);
+      });
+      await measured(page);
+      await page.evaluate(async () => {
+        const controller = Reflect.get(window, "__readerController");
         await controller.seekToFraction(1);
-        await controller.toggleBookmark();
+        if (!controller.snapshot().isBookmarked) await controller.toggleBookmark();
       });
       await measured(page);
       await slider.focus();
