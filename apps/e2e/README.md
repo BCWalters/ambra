@@ -473,6 +473,8 @@ suite captures desktop/narrow/forced-color screenshots and checks popup bounds,
 reduced motion, bookmark counts and unchanged seek hit testing.
 The taller lane stays below notices and panels in the stacking order, so it
 cannot intercept narration discovery actions at 320px or 400% browser zoom.
+Panel clearance follows the shared 72px scrubber height. Bookmark status text
+uses the neutral foreground for text contrast; only its icon uses bookmark blue.
 Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
 than dropping the destination and opening the chapter's beginning.
 Typography changes retain that exact scrolling position before mutating styles.

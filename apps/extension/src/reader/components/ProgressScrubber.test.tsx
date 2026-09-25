@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoHideChrome } from "../useAutoHideChrome.js";
+import { SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { ProgressScrubber, type ProgressScrubberProps } from "./ProgressScrubber.js";
 
 const snapshot = {
@@ -300,6 +301,7 @@ describe("ProgressScrubber", () => {
     expect(document.activeElement).toBe(slider);
     expect(slider.style.height).toBe("64px");
     expect(slider.parentElement!.style.zIndex).toBe("6");
+    expect(parseFloat(slider.style.height) + 7 + 1).toBe(SCRUBBER_HEIGHT);
     expect(slider.getAttribute("aria-valuetext")).toBe(
       "Page 80 of 100 - A long chapter title",
     );

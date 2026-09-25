@@ -638,7 +638,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           </Caption1>
           {bookmarkLabel && (
             <span
-              className={styles.bookmark}
               data-bookmark-status=""
               style={{
                 display: "flex",
@@ -649,9 +648,14 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
                 fontSize: 12,
                 lineHeight: "18px",
                 fontWeight: 600,
+                color: "var(--colorNeutralForeground1, #242424)",
               }}
             >
-              <BookmarkFilled aria-hidden="true" style={{ width: 18, height: 18, flexShrink: 0 }} />
+              <BookmarkFilled
+                aria-hidden="true"
+                className={styles.bookmark}
+                style={{ width: 18, height: 18, flexShrink: 0 }}
+              />
               {bookmarkLabel}
             </span>
           )}

@@ -74,6 +74,16 @@ for (const width of [320, 1400]) {
       await expect(slider).toHaveAttribute("aria-valuetext", /Bookmarked$/);
       await expectFlagGeometry(page);
       await page.screenshot({ path: info.outputPath(`overlap-${width}-${browserName}.png`) });
+      await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
+      const panel = page.getByRole("navigation", { name: "Bookmarks and highlights", exact: true });
+      await expect(panel).toBeVisible();
+      await expect.poll(async () => {
+        const panelBox = (await panel.boundingBox())!;
+        const barBox = (await slider.locator("..").boundingBox())!;
+        return panelBox.y + panelBox.height - barBox.y;
+      }).toBeLessThanOrEqual(1);
+      await page.getByRole("button", { name: "Close bookmarks and highlights panel", exact: true }).click();
+      await slider.focus();
       // A dense cluster still represents every saved bookmark, not just one flag.
       await page.evaluate(() => {
         const controller = Reflect.get(window, "__readerController");
@@ -116,6 +126,8 @@ for (const width of [320, 1400]) {
       await page.mouse.move(track.x + track.width - 0.1, track.y + track.height - 10);
       await page.mouse.down();
       await expect(page.locator("[data-bookmark-status]")).toHaveText("Bookmarked");
+      await expect(page.locator("[data-bookmark-status]")).toHaveCSS("color", "rgb(36, 36, 36)");
+      await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("color", "rgb(15, 108, 189)");
       const popup = (await page.locator("[data-scrubber-preview]").boundingBox())!;
       expect(popup.x).toBeGreaterThanOrEqual(7);
       expect(popup.x + popup.width).toBeLessThanOrEqual(width - 7);
