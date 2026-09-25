@@ -51,7 +51,7 @@ test("French Library localizes live, preserves toolbar order and persists across
     await page.locator('input[type="file"]').setInputFiles({
       name: "invalid.epub", mimeType: "application/epub+zip", buffer: Buffer.from("not an EPUB"),
     });
-    await expect(page.getByRole("alert")).toContainText(t("error.somethingWentWrongHeadline"));
+    await expect(page.getByRole("alert")).toContainText(t("error.invalidEpubHeadline"));
     await page.getByRole("alert").getByRole("button", { name: t("library.dismiss"), exact: true }).click();
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {

@@ -81,7 +81,7 @@ test("a failed first import retains both choices and the import card retries wit
       buffer: Buffer.from("not an EPUB"),
     });
     const alert = page.getByRole("alert");
-    await expect(alert).toContainText("Oh snickerdoodles, something went wrong.");
+    await expect(alert).toContainText("Oh dear, that doesn't look like a valid EPUB file.");
     await expectDiscovery(page, "Choose EPUB files...");
     await page.screenshot({
       path: testInfo.outputPath("invalid-first-import.png"),
@@ -154,7 +154,7 @@ test("empty library offers equal cards, on-demand discovery and keyboard import 
     const chooser = await chooserPromise;
     await chooser.setFiles(BOOK);
     await expect(page.getByRole("button", { name: /^Open / })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toBeFocused();
+    await expect(page.getByRole("heading", { name: "Ambra", exact: true }).locator("..")).toBeFocused();
     await expect(page.getByRole("button", { name: "Sort library" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Read now:/ })).toBeVisible();
     await expect(page.getByRole("region", { name: "Find your next read" })).toBeHidden();

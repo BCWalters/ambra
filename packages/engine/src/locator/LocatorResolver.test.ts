@@ -39,6 +39,19 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     expect(resolved.node.textContent).toBe("Chapter 1");
   });
 
+  it("resolves canonical element starts and explicitly saved zero offsets to the exact same DOM boundary", async () => {
+    const doc = (await contentLoader.loadSpineDocument(0)).document;
+    const heading = doc.querySelector("h1")!;
+    const canonical = resolver.generateBoundary(0, heading, 0);
+    const saved = resolver.generate(0, heading, 0);
+    expect(canonical.cfi).not.toBe(saved.cfi);
+    const expected = resolver.resolveInDocument(canonical, 0, doc);
+    const actual = resolver.resolveInDocument(saved, 0, doc);
+    expect(actual.node).toBe(expected.node);
+    expect(actual.characterOffset ?? 0).toBe(expected.characterOffset ?? 0);
+    expect(resolver.generateBoundary(0, actual.node, actual.characterOffset).cfi).toBe(canonical.cfi);
+  });
+
   it("orders image-page parent boundaries among descendants rather than before the entire chapter", () => {
     const doc = document.implementation.createHTMLDocument();
     doc.body.innerHTML = '<h2>First</h2>\n<img alt="First illustration"/>\n<h2>Second</h2>\n<img alt="Second illustration"/>\n<p>End</p>';

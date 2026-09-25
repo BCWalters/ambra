@@ -143,7 +143,7 @@ test.describe("Library UX: book details flyout", () => {
   });
 });
 
-/** Covers issue #106: a themed, "snickerdoodles"-toned error surface for
+/** Covers issue #106: a themed, friendly error surface for
  * a failed import, replacing a bare red error-message line. */
 test.describe("Library UX: friendly import error", () => {
   for (const width of [1000, 360]) {
@@ -156,7 +156,7 @@ test.describe("Library UX: friendly import error", () => {
           buffer: Buffer.from("not a real epub"),
         });
 
-        await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toBeVisible();
+        await expect(libraryPage.getByText("Oh dear, that doesn't look like a valid EPUB file.")).toBeVisible();
         const alert = libraryPage.getByRole("alert");
         await expect(alert).toBeVisible();
         const headline = alert.locator("p").nth(0);
@@ -169,8 +169,8 @@ test.describe("Library UX: friendly import error", () => {
         expect(explanationBounds).not.toBeNull();
         expect(explanationBounds!.y).toBeGreaterThan(headlineBounds!.y + headlineBounds!.height);
 
-        await libraryPage.getByRole("button", { name: "Dismiss" }).click();
-        await expect(libraryPage.getByText("Oh snickerdoodles, something went wrong.")).toHaveCount(0);
+        await alert.getByRole("button", { name: "Dismiss" }).click();
+        await expect(libraryPage.getByText("Oh dear, that doesn't look like a valid EPUB file.")).toHaveCount(0);
       } finally {
         await context.close();
       }

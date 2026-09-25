@@ -110,22 +110,32 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       );
       await expect(slider).toHaveCount(0);
       await page.waitForFunction(() => !Reflect.get(window, "__readerController").isLoadInFlight);
-      const actual = await page.evaluate(() => {
+      const actual = await page.evaluate(targetCfi => {
         const c = Reflect.get(window, "__readerController");
         const point = c.nativeReading.current();
         if (!point) throw new Error("Expected retained scrolling destination");
         const doc = point.node.ownerDocument;
+        const expected = c.locatorResolver.resolveInDocument(
+          { cfi: targetCfi }, point.spineIndex, doc,
+        );
         const range = doc.createRange();
         range.setStart(point.node, point.offset);
         range.collapse(true);
         return {
-          cfi: c.locatorResolver.generate(point.spineIndex, point.node, point.offset).cfi,
+          cfi: c.locatorResolver.generateBoundary(point.spineIndex, point.node, point.offset).cfi,
+          sameNode: point.node === expected.node,
+          offset: point.offset ?? 0,
+          expectedOffset: expected.characterOffset ?? 0,
           spine: point.spineIndex,
           scrollTop: doc.scrollingElement.scrollTop,
           top: range.getBoundingClientRect().top,
           height: doc.defaultView.innerHeight,
         };
-      });
+      }, target.cfi);
+      // Element CFIs with no offset and with :0 identify the same DOM boundary.
+      // Require exact node/offset identity, not just nearby text or visibility.
+      expect(actual.sameNode).toBe(true);
+      expect(actual.offset).toBe(actual.expectedOffset);
       expect(actual.cfi).toBe(target.cfi);
       expect(actual.spine).toBe(3);
       expect(actual.scrollTop).toBeGreaterThan(0);

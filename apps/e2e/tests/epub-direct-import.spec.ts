@@ -449,7 +449,7 @@ for (const outcome of ["success", "unknown-size", "http-error"] as const) {
         await library.setViewportSize({ width: 360, height: 740 });
         await expect(notification).toBeVisible();
         expect((await notification.boundingBox())!.width).toBeLessThan(360);
-        expect(await library.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+        await expect.poll(() => library.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
         await expect(library.getByRole("button", { name: /^Read now:/ })).toBeVisible();
         await expectCompletionRow();
         await notification.screenshot({ path: testInfo.outputPath("completion-360px.png") });
