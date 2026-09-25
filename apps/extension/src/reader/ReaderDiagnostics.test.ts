@@ -31,6 +31,7 @@ describe("reader diagnostic intent", () => {
     ["lineSpacing", c => c.setLineSpacing(1.8), "1.6"],
     ["letterSpacing", c => c.setLetterSpacing(0.1), "0.1"],
     ["contentWidthEm", c => c.setContentWidth(30), "30"],
+    ["alwaysShowOnePage", c => c.setAlwaysShowOnePage(true), "true"],
     ["pageTheme", c => c.setPageTheme("sepia"), '"sepia"'],
     ["brightness", c => c.setBrightness(0.8), "0.8"],
     ["chromeTheme", c => c.setChromeTheme("blue"), '"blue"'],
@@ -77,7 +78,7 @@ describe("reader diagnostic intent", () => {
 
   it("omits no-op settings, and never records search terms, annotation text, CFI assertions or paths", async () => {
     const { controller, diagnostics } = setup();
-    await controller.setPageTheme(DEFAULT_BOOK_READING_SETTINGS.pageTheme);
+    await controller.setPageTheme(DEFAULT_GLOBAL_READING_SETTINGS.pageTheme);
     controller.search("private search terms");
     await controller.goToBookmark("private bookmark assertion");
     await controller.goToHighlight("private highlighted words");

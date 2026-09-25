@@ -80,6 +80,32 @@ async function visible(page: Page, direction: Direction) {
 }
 
 for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as const) {
+  test(`${direction}: one-page preference affects only reflowable sections of mixed books (#203)`, async () => {
+    const book = fixture(test.info().outputPath("mixed-one-page"), direction, packageSpread);
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width: 1600, height: 900 } });
+    try {
+      await exposeReaderController(page);
+      const originalFixed = await visible(page, direction);
+      await page.evaluate(async () => {
+        const c = Reflect.get(window, "__readerController");
+        await c.openSpineItem(3);
+        await c.setAlwaysShowOnePage(true);
+      });
+      expect((await visible(page, direction)).chapters).toEqual(["R"]);
+      expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().isSpread)).toBe(false);
+      await page.evaluate(() => Reflect.get(window, "__readerController").openSpineItem(0));
+      expect(await visible(page, direction)).toEqual(originalFixed);
+      await expect(page.getByRole("button", { name: "Text and page options", exact: true })).toHaveCount(0);
+      await page.evaluate(() => Reflect.get(window, "__readerController").openSpineItem(3));
+      expect((await visible(page, direction)).chapters).toEqual(["R"]);
+      await page.evaluate(() => Reflect.get(window, "__readerController").setAlwaysShowOnePage(false));
+      expect((await visible(page, direction)).chapters).toEqual(["R", "R"]);
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+
   test(`${direction}: FXL scrubbing into a scrolling chapter restores the previewed page (#200)`, async () => {
     const directory = test.info().outputPath("mixed-scroll-seek");
     const book = fixture(directory, direction, packageSpread);

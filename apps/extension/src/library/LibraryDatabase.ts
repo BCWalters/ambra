@@ -213,18 +213,18 @@ const LEGACY_BOOK_SETTING_KEYS = {
   lineSpacing: LINE_SPACING_PREFERENCE_KEY,
   letterSpacing: LETTER_SPACING_PREFERENCE_KEY,
   contentWidthEm: CONTENT_WIDTH_PREFERENCE_KEY,
-  pageTheme: PAGE_THEME_PREFERENCE_KEY,
-} satisfies Record<keyof BookReadingSettings, string>;
+} satisfies Partial<Record<keyof BookReadingSettings, string>>;
 const GLOBAL_SETTING_KEYS = {
   viewMode: VIEW_MODE_PREFERENCE_KEY,
   brightness: BRIGHTNESS_PREFERENCE_KEY,
+  pageTheme: PAGE_THEME_PREFERENCE_KEY,
   chromeTheme: CHROME_THEME_PREFERENCE_KEY,
   pageTurnAnimationStyle: PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY,
 } satisfies Record<keyof GlobalReadingSettings, string>;
 
 function settingsFromPreferences<T extends object>(
   defaults: T,
-  keys: Record<keyof T, string>,
+  keys: Partial<Record<keyof T, string>>,
   records: readonly PreferenceRecord[],
 ): T {
   const result = { ...defaults };
@@ -703,7 +703,11 @@ export class LibraryDatabase {
 
   public async getBookReadingSettings(bookId: string): Promise<BookReadingSettings> {
     const record = await this.get<BookReadingSettingsRecord>(BOOK_SETTINGS_STORE, bookId);
-    return { ...DEFAULT_BOOK_READING_SETTINGS, ...record?.settings };
+    const settings = { ...DEFAULT_BOOK_READING_SETTINGS };
+    for (const key of Object.keys(settings) as (keyof BookReadingSettings)[]) {
+      if (record?.settings[key] !== undefined) Object.assign(settings, { [key]: record.settings[key] });
+    }
+    return settings;
   }
 
   /** Read/merge/write in one transaction; independent tabs cannot lose fields,

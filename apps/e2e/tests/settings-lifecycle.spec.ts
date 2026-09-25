@@ -63,6 +63,51 @@ async function waitForLayout(page: Page): Promise<void> {
   });
 }
 
+for (const onePage of [false, true]) {
+  test(`held spread load: global theme and one-page=${onePage} settle on the latest settings (#203)`, async () => {
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width: 800, height: 900 } });
+    try {
+      await findController(page);
+      await holdSecondColumn(page);
+      await page.setViewportSize({ width: 1400, height: 900 });
+      await page.waitForFunction(() => Reflect.get(window, "__settingsGate").held);
+      await page.evaluate(async onePage => {
+        const c = Reflect.get(window, "__settingsController");
+        const requests = { count: 1, settled: 0 };
+        Reflect.set(window, "__settingsRequests", requests);
+        void c.setAlwaysShowOnePage(onePage).then(() => requests.settled++);
+        const other = await c.library.constructor.open();
+        try {
+          await other.patchGlobalReadingSettings({ pageTheme: "dark" });
+        } finally {
+          other.close();
+        }
+      }, onePage);
+      await page.waitForFunction(() => Reflect.get(window, "__settingsController").snapshot().pageTheme === "dark");
+      expect(await page.evaluate(() => Reflect.get(window, "__settingsRequests").settled)).toBe(0);
+      await page.evaluate(() => Reflect.get(window, "__settingsGate").release());
+      await waitForLayout(page);
+      const result = await page.evaluate(async () => {
+        const c = Reflect.get(window, "__settingsController");
+        return {
+          single: c.snapshot().alwaysShowOnePage,
+          spread: c.snapshot().isSpread,
+          saved: (await c.library.getBookReadingSettings(c.bookId)).alwaysShowOnePage,
+          colors: c.contentDocumentViews().map(({ document: doc }: { document: Document }) =>
+            doc.defaultView!.getComputedStyle(doc.body).backgroundColor),
+        };
+      });
+      expect(result).toEqual({
+        single: onePage, spread: !onePage, saved: onePage,
+        colors: Array.from({ length: onePage ? 1 : 2 }, () => "rgb(35, 35, 35)"),
+      });
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const trigger of ["animated turn", "held load"] as const) {
   for (const mode of ["paginated", "scroll"] as const) {
     test(`${trigger}: typography and ${mode} requests merge with resize and settle on one owned host`, async () => {

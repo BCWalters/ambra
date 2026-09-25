@@ -75,6 +75,35 @@ pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
   --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
+## Reading preference ownership (#203)
+
+When checking `settings-ownership.spec.ts`, `reader-preferences.spec.ts`,
+`settings-focus.spec.ts`, and `page-theme.spec.ts`, treat **Page theme** as a
+global setting, not a book override. It is a compact native select in
+**Settings** beside **Brightness**. Theme changes should apply across books;
+old per-book themes must not override them. Legacy `defaultPageTheme` initializes
+the global theme, with white as the fallback.
+
+The book's **Page** menu instead has **Always show one page**, saved per book
+and off by default. Check that enabling it centers a single reflowable page
+even at spread-width viewports, including in reflowable sections of mixed-layout
+books. Fixed-layout pages and scrolling must remain unchanged. Scrolling
+already has a centered, width-limited reading area. Ownership/reset checks
+should keep this book preference separate from the global page theme.
+
+Focused browser coverage:
+
+- `single-page-setting.spec.ts`: exact centered page width at a 2400px viewport,
+  navigation, reopening, and unchanged scrolling.
+- `page-theme.spec.ts`: live global theme synchronization across books and the
+  Library, including ignoring legacy v7 per-book theme overrides.
+- `mixed-rendition-spreads.spec.ts`: unchanged fixed-layout spreads with the
+  one-page option enabled, for both LTR and RTL books.
+- `settings-lifecycle.spec.ts`: an external global theme change during a held
+  spread load, plus a queued one-page option change.
+- `shell-reflow-accessibility.spec.ts`: the new theme select and one-page
+  checkbox at 320px and 400% zoom.
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the

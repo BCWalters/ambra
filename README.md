@@ -138,6 +138,20 @@ of the original fixture. Each layout performs 24 long drags and verifies actual
 navigation, exactly one seek per release, and the native capture-loss ordering.
 Without the native-input flag, the same test uses ordinary Playwright mouse input.
 
+## Reading preferences
+
+**Settings** owns the global **Page theme** control: a compact native select
+next to **Brightness**, using the existing `text.pageStyle` translation key.
+`GlobalReadingSettings.pageTheme` applies across books. Legacy
+`defaultPageTheme` supplies the initial global theme when present; otherwise
+it defaults to white. Saved per-book page themes are no longer used.
+
+`BookReadingSettings` owns typography and `alwaysShowOnePage` (default `false`),
+not `pageTheme`. The **Always show one page** checkbox in the book's **Page**
+menu forces a single centered page for reflowable paginated content, including
+reflowable sections of mixed-layout books. It does not change fixed-layout
+pages or scrolling, which already uses a centered, width-limited reading area.
+
 ## Keyboard shortcuts and help
 
 See the [user guide](docs/user-guide/README.md) for a feature overview and

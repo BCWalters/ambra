@@ -18,11 +18,11 @@ function Harness({ typography }: { typography: boolean }) {
   const controlled = { open: menuOpen, onOpenChange: setMenuOpen };
   return typography
     ? <TypographyMenu {...controlled} fontScale={1} lineSpacing={1.5} letterSpacing={0}
-        contentWidthEm={40} fontFamily="book-default" pageTheme="white"
+        contentWidthEm={40} fontFamily="book-default" alwaysShowOnePage={false}
         onSetFontScale={noop} onSetLineSpacing={noop} onSetLetterSpacing={noop}
-        onSetContentWidth={noop} onSetFontFamily={noop} onSetPageTheme={noop} />
+        onSetContentWidth={noop} onSetFontFamily={noop} onSetAlwaysShowOnePage={noop} />
     : <ReaderSettingsMenu {...controlled} isFixedLayout={false} viewMode="paginated"
-        brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide"
+        brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide" pageTheme="white" onSetPageTheme={noop}
         onSetViewMode={noop} onSetBrightness={noop} onSetChromeTheme={noop}
         onSetPageTurnAnimationStyle={noop} />;
 }
@@ -56,7 +56,7 @@ it("dismisses the Settings tooltip before handing Escape ownership to its menu a
     const [helpOpen, setHelpOpen] = useState(false);
     return <FluentProvider theme={webLightTheme}>
       <ReaderSettingsMenu isFixedLayout={false} viewMode="paginated"
-        brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide"
+        brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide" pageTheme="white" onSetPageTheme={noop}
         onSetViewMode={noop} onSetBrightness={noop} onSetChromeTheme={noop}
         onSetPageTurnAnimationStyle={noop} onOpenHelp={() => setHelpOpen(true)} />
       <ModalFlyout open={helpOpen} title="Help" backgroundSolid="#fff" onRequestClose={closeHelp}>

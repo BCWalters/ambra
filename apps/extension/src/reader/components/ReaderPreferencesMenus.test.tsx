@@ -25,6 +25,14 @@ vi.mock("@fluentui/react-components", async (importOriginal) => {
     MenuTrigger: Container,
     MenuPopover: Container,
     MenuList: Container,
+    MenuItemCheckbox: ({ name, value, children }: { name: string; value: string; children: ReactNode }) => {
+      const menu = useContext(Context);
+      const checked = menu.checkedValues?.[name]?.includes(value) ?? false;
+      return <button role="menuitemcheckbox" aria-checked={checked}
+        onClick={event => menu.onCheckedValueChange?.(event, { name, checkedItems: checked ? [] : [value] })}>
+        {children}
+      </button>;
+    },
     MenuItemRadio: ({
       name,
       value,
@@ -68,18 +76,20 @@ describe("reader preference menu contracts", () => {
       letterSpacing: 0.05,
       contentWidthEm: ReadingTheme.MAX_CONTENT_WIDTH_EM,
       fontFamily: "book-default",
-      pageTheme: "white",
+      alwaysShowOnePage: false,
       onSetFontScale: vi.fn(),
       onSetLineSpacing: vi.fn(),
       onSetLetterSpacing: vi.fn(),
       onSetContentWidth: vi.fn(),
       onSetFontFamily: vi.fn(),
-      onSetPageTheme: vi.fn(),
+      onSetAlwaysShowOnePage: vi.fn(),
     };
     settings = {
       isFixedLayout: false,
       viewMode: "paginated",
       brightness: 0.7,
+      pageTheme: "white",
+      onSetPageTheme: vi.fn(),
       chromeTheme: "ambra",
       pageTurnAnimationStyle: "slide",
       onSetViewMode: vi.fn(),
@@ -116,18 +126,37 @@ describe("reader preference menu contracts", () => {
   it("routes font and page choices independently and reflects controlled values", () => {
     act(() => root.render(<TypographyMenu {...typography} />));
     expect(radio("Book default").getAttribute("aria-checked")).toBe("true");
-    expect(radio("White").getAttribute("aria-checked")).toBe("true");
+    expect(container.querySelector("select")).toBeNull();
+    const checkbox = container.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]')!;
+    expect(checkbox.textContent).toBe("Always show one page");
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
     act(() => radio("Georgia").click());
-    act(() => radio("Sepia").click());
+    act(() => checkbox.click());
     expect(typography.onSetFontFamily).toHaveBeenCalledWith("georgia");
-    expect(typography.onSetPageTheme).toHaveBeenCalledWith("sepia");
+    expect(typography.onSetAlwaysShowOnePage).toHaveBeenCalledWith(true);
 
     act(() =>
-      root.render(<TypographyMenu {...typography} fontFamily="georgia" pageTheme="sepia" />),
+      root.render(<TypographyMenu {...typography} fontFamily="georgia" alwaysShowOnePage />),
     );
     expect(radio("Georgia").getAttribute("aria-checked")).toBe("true");
-    expect(radio("Sepia").getAttribute("aria-checked")).toBe("true");
-    expect(radio("White").getAttribute("aria-checked")).toBe("false");
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    act(() => checkbox.click());
+    expect(typography.onSetAlwaysShowOnePage).toHaveBeenLastCalledWith(false);
+  });
+
+  it("places the controlled global page-theme select immediately before brightness", () => {
+    act(() => root.render(<ReaderSettingsMenu {...settings} pageTheme="sepia" />));
+    const select = container.querySelector("select")!;
+    expect(select.labels?.[0]?.textContent).toBe("Page theme");
+    expect(select.value).toBe("sepia");
+    expect([...select.options].map(option => option.value)).toEqual(["white", "sepia", "dark"]);
+    const brightness = container.querySelector('input[aria-label="Brightness"]')!;
+    expect(select.compareDocumentPosition(brightness) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    act(() => {
+      select.value = "dark";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(settings.onSetPageTheme).toHaveBeenCalledWith("dark");
   });
 
   it("keeps each typography slider's engine limits and reset callback", () => {
