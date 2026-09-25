@@ -75,6 +75,25 @@ pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
   --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
+## Reflowable animation handoff (#208)
+
+`reflowable-animation-handoff.spec.ts` generates a long original-text EPUB and
+opens its middle in a wide spread. It holds the real animation's final frame
+before host adoption, then compares both pages' global text/iframe rectangles
+and visible text pixels against the settled layout. Forward Page flip covers
+one page with its back face, so that page's pixels are checked on the backward
+turn instead; both pages' layout rectangles are always checked.
+
+The matrix covers Slide, Page flip, Film strip and Off, LTR/RTL progression,
+forward/backward margin clicks, odd and fractional pane widths, and resizing
+back to an even width. Off checks unchanged frame geometry and a pixel-identical
+round trip. Failures attach final/settled screenshots and horizontal ink-shift
+measurements. Run it with:
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e run test:e2e reflowable-animation-handoff.spec.ts
+```
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the

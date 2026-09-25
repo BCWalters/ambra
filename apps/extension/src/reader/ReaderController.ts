@@ -3068,7 +3068,8 @@ export class ReaderController {
     Object.assign(host.element.style, {
       position: "absolute",
       top: "0",
-      left: "0",
+      // Auto horizontal insets retain the flex container's centering while
+      // staged, just as after adoption. Rounded columns may not fill the pane.
       zIndex: "1",
       opacity: "0",
       pointerEvents: "none",
