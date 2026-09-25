@@ -77,12 +77,11 @@ for (const mode of ["single", "spread", "scroll"] as const) {
           doc.body.appendChild(probe);
         }
       });
-      await page.getByRole("button", { name: "Text and page options", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Page", exact: true }).press("ArrowRight");
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       for (const name of ["Sepia", "White", "Dark"] as const) {
-        const choice = page.getByRole("menuitemradio", { name, exact: true });
-        await choice.click();
-        await expect(choice).toHaveAttribute("aria-checked", "true");
+        const choice = page.getByRole("combobox", { name: "Page theme", exact: true });
+        await choice.selectOption(name.toLowerCase());
+        await expect(choice).toHaveValue(name.toLowerCase());
         const [background, foreground, link] = palettes[name];
         await expect.poll(() => canvasColors(page)).toEqual(
           Array.from({ length: frameCount }, () => [background, foreground]),
@@ -139,6 +138,55 @@ test("#185 page palettes leave fixed-layout publisher pages unchanged", async ()
     expect(await page.evaluate(() => Array.from(document.querySelectorAll("iframe")).every(frame =>
       !frame.contentDocument?.documentElement.hasAttribute("data-ambra-page-theme"),
     ))).toBe(true);
+  } finally {
+    await context.close();
+  }
+});
+
+test("#203 page theme syncs between Library and different books, persists, and overrides legacy book themes", async () => {
+  const { context, libraryPage: library, readerPage: first } = await launchReader(sourceBook);
+  try {
+    await exposeReaderController(first);
+    await library.locator('input[type="file"]').setInputFiles(
+      fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url)),
+    );
+    const opened = context.waitForEvent("page");
+    await library.getByRole("button", { name: /^Open Ambra Long Content/ }).click();
+    const second = await opened;
+    await expect(second.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    await exposeReaderController(second);
+    await library.getByRole("button", { name: "Settings", exact: true }).click();
+    const libraryTheme = library.getByRole("combobox", { name: "Page theme", exact: true });
+    await libraryTheme.selectOption("sepia");
+    for (const page of [first, second])
+      await expect.poll(() => canvasColors(page)).toEqual([palettes.Sepia.slice(0, 2)]);
+
+    await first.getByRole("button", { name: "Settings", exact: true }).focus();
+    await first.getByRole("button", { name: "Settings", exact: true }).press("Enter");
+    await first.getByRole("combobox", { name: "Page theme", exact: true }).selectOption("dark");
+    await expect(libraryTheme).toHaveValue("dark");
+    for (const page of [first, second])
+      await expect.poll(() => canvasColors(page)).toEqual([palettes.Dark.slice(0, 2)]);
+
+    // Emulate an existing v7 per-book record. It must not override app settings on reopen.
+    await first.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const settings = await c.library.getBookReadingSettings(c.bookId);
+      await new Promise<void>((resolve, reject) => {
+        const tx = c.library.db.transaction("bookReadingSettings", "readwrite");
+        tx.objectStore("bookReadingSettings").put({ bookId: c.bookId, settings: { ...settings, pageTheme: "sepia" } });
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+      });
+    });
+    await first.reload();
+    await expect(first.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    await exposeReaderController(first);
+    await expect.poll(() => canvasColors(first)).toEqual([palettes.Dark.slice(0, 2)]);
+    await library.reload();
+    await library.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(libraryTheme).toHaveValue("dark");
+    for (const page of [library, first, second]) await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await context.close();
   }

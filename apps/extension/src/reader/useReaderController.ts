@@ -47,6 +47,7 @@ export interface UseReaderControllerResult {
   setLineSpacing: (spacing: number) => void;
   setLetterSpacing: (spacing: number) => void;
   setContentWidth: (widthEm: number) => void;
+  setAlwaysShowOnePage: (enabled: boolean) => void;
   setFontFamily: (family: FontFamilyChoice) => void;
   setPageTheme: (theme: PageTheme) => void;
   setBrightness: (brightness: number) => void;
@@ -317,6 +318,13 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
+  const setAlwaysShowOnePage = useCallback(
+    (enabled: boolean) => {
+      void controller?.setAlwaysShowOnePage(enabled).catch(error => controller.reportActionFailure(error));
+    },
+    [controller],
+  );
+
   const setPageTheme = useCallback(
     (theme: PageTheme) => {
       void controller?.setPageTheme(theme).catch(error => controller.reportActionFailure(error));
@@ -561,6 +569,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     setLineSpacing,
     setLetterSpacing,
     setContentWidth,
+    setAlwaysShowOnePage,
     setFontFamily,
     setPageTheme,
     setBrightness,

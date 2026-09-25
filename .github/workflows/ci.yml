@@ -55,6 +55,10 @@ jobs:
           navigation-correctness.spec.ts
           toc-fragments.spec.ts
           settings-focus.spec.ts
+          settings-ownership.spec.ts
+          settings-lifecycle.spec.ts
+          reader-preferences.spec.ts
+          single-page-setting.spec.ts
           reader-viewport-stability.spec.ts
           content-boundary-navigation.spec.ts
           disclosure-interaction.spec.ts

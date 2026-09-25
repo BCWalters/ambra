@@ -117,6 +117,7 @@ interface ReaderLayout {
   lineSpacing: number;
   letterSpacing: number;
   contentWidthEm: number;
+  alwaysShowOnePage: boolean;
 }
 
 interface PendingLayout {
@@ -206,6 +207,7 @@ export class ReaderController {
   private lineSpacing = ReadingTheme.DEFAULT_LINE_SPACING;
   private letterSpacing = ReadingTheme.DEFAULT_LETTER_SPACING;
   private contentWidthEm = ReadingTheme.DEFAULT_CONTENT_WIDTH_EM;
+  private alwaysShowOnePage = false;
   private fontFamily: FontFamilyChoice = ReadingTheme.DEFAULT_FONT_FAMILY;
   private pageTheme: PageTheme = ReadingTheme.DEFAULT_PAGE_THEME;
   private brightness = ReadingTheme.DEFAULT_BRIGHTNESS;
@@ -580,17 +582,22 @@ export class ReaderController {
     const { viewMode, ...settings } = await this.library.getGlobalReadingSettings();
     if (this.operations.disposed || revision !== this.preferencesRevision) return;
     const chromeChanged = this.brightness !== settings.brightness ||
+      this.pageTheme !== settings.pageTheme ||
       this.chromeTheme !== settings.chromeTheme ||
       this.pageTurnAnimationStyle !== settings.pageTurnAnimationStyle;
     this.recordDiagnosticEvent({ kind: "setting", name: "viewMode",
       before: this.viewMode, after: viewMode, source: "preferences" });
     this.recordDiagnosticEvent({ kind: "setting", name: "brightness",
       before: this.brightness, after: settings.brightness, source: "preferences" });
+    this.recordDiagnosticEvent({ kind: "setting", name: "pageTheme",
+      before: this.pageTheme, after: settings.pageTheme, source: "preferences" });
     this.recordDiagnosticEvent({ kind: "setting", name: "chromeTheme",
       before: this.chromeTheme, after: settings.chromeTheme, source: "preferences" });
     this.recordDiagnosticEvent({ kind: "setting", name: "pageTurnAnimationStyle",
       before: this.pageTurnAnimationStyle, after: settings.pageTurnAnimationStyle, source: "preferences" });
+    const pageThemeChanged = this.pageTheme !== settings.pageTheme;
     Object.assign(this, settings);
+    if (pageThemeChanged) this.applyPageThemeToHost();
     if (!this.containerEl) {
       this.viewMode = viewMode;
     } else if (viewMode !== (this.pendingLayout?.configuration.viewMode ?? this.viewMode)) {
@@ -733,6 +740,7 @@ export class ReaderController {
           ? ReadingTheme.DEFAULT_CONTENT_WIDTH_EM
           : requestedLayout.contentWidthEm,
         fontFamily: requestedLayout.fontFamily,
+        alwaysShowOnePage: requestedLayout.alwaysShowOnePage,
         pageTheme: this.pageTheme,
         brightness: this.brightness,
         chromeTheme: this.chromeTheme,
@@ -883,7 +891,7 @@ export class ReaderController {
     }
     const measureWidth =
       this.host instanceof SpreadPaginatedHost ||
-        (this.isFixedLayoutHost(this.host) && this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width))
+        (this.isFixedLayoutHost(this.host) && this.viewMode === "paginated" && this.useReflowableSpread(this.width))
         ? SpreadPaginatedHost.effectiveColumnWidth(this.width)
         : this.width;
     void this.bookPagination.run(
@@ -1945,6 +1953,7 @@ export class ReaderController {
       fontScale: this.fontScale, fontFamily: this.fontFamily,
       lineSpacing: this.lineSpacing, letterSpacing: this.letterSpacing,
       contentWidthEm: this.contentWidthEm,
+      alwaysShowOnePage: this.alwaysShowOnePage,
     };
   }
 
@@ -2024,16 +2033,17 @@ export class ReaderController {
     const next = pending.configuration;
     const resized = next.width !== this.appliedWidth || next.height !== this.appliedHeight;
     const modeChanged = previous.viewMode !== next.viewMode;
+    const onePageChanged = previous.alwaysShowOnePage !== next.alwaysShowOnePage;
     const needsReflow = pending.reflow && !(this.host instanceof ScrollContentHost);
     const typographyChanged = previous.fontScale !== next.fontScale || previous.fontFamily !== next.fontFamily ||
       previous.lineSpacing !== next.lineSpacing || previous.letterSpacing !== next.letterSpacing ||
       previous.contentWidthEm !== next.contentWidthEm;
-    if (!resized && !modeChanged && !typographyChanged && !needsReflow) return;
+    if (!resized && !modeChanged && !typographyChanged && !onePageChanged && !needsReflow) return;
 
     const native = this.nativeReading.retainedForShell();
     Object.assign(this, next);
     const switchingSpread = this.shouldSwitchSpreadMode(next.width);
-    const resizedSpread = resized && !modeChanged && !typographyChanged && !needsReflow &&
+    const resizedSpread = resized && !modeChanged && !typographyChanged && !onePageChanged && !needsReflow &&
       !switchingSpread && this.host instanceof SpreadPaginatedHost &&
       this.host.relayoutForResize(next.width, next.height, native);
     if (modeChanged || needsReflow || switchingSpread ||
@@ -2066,13 +2076,14 @@ export class ReaderController {
       if (native) this.nativeReading.retain(native);
     }
     if (this.operations.disposed) return;
-    if (typographyChanged) {
+    if (typographyChanged || onePageChanged) {
       await this.library.patchBookReadingSettings(this.bookId, {
         ...(previous.fontScale !== next.fontScale ? { fontScale: next.fontScale } : {}),
         ...(previous.fontFamily !== next.fontFamily ? { fontFamily: next.fontFamily } : {}),
         ...(previous.lineSpacing !== next.lineSpacing ? { lineSpacing: next.lineSpacing } : {}),
         ...(previous.letterSpacing !== next.letterSpacing ? { letterSpacing: next.letterSpacing } : {}),
         ...(previous.contentWidthEm !== next.contentWidthEm ? { contentWidthEm: next.contentWidthEm } : {}),
+        ...(onePageChanged ? { alwaysShowOnePage: next.alwaysShowOnePage } : {}),
       });
     }
     if (this.operations.disposed) return;
@@ -2085,7 +2096,7 @@ export class ReaderController {
       );
     }
     this.notify();
-    if (typographyChanged) await this.saveProgress();
+    if (typographyChanged || onePageChanged) await this.saveProgress();
   }
 
   private restoreDisclosureFocus(focus: PendingLayout["disclosureFocus"]): void {
@@ -2155,7 +2166,11 @@ export class ReaderController {
     if (this.viewMode !== "paginated" || this.isFixedLayoutHost(this.host)) {
       return false;
     }
-    return SpreadPaginatedHost.isEligible(width) !== this.host instanceof SpreadPaginatedHost;
+    return this.useReflowableSpread(width) !== this.host instanceof SpreadPaginatedHost;
+  }
+
+  private useReflowableSpread(width: number): boolean {
+    return !this.alwaysShowOnePage && SpreadPaginatedHost.isEligible(width);
   }
 
   private fixedSpreadViewport(width = this.width) {
@@ -2274,19 +2289,23 @@ export class ReaderController {
     await this.requestLayout({ contentWidthEm: clamped });
   }
 
-  /** Sets and persists page theme without relayout. No-op for fixed-layout content. */
+  public async setAlwaysShowOnePage(alwaysShowOnePage: boolean): Promise<void> {
+    if (this.isFixedLayoutHost(this.host)) return;
+    this.recordDiagnosticEvent({ kind: "setting", name: "alwaysShowOnePage",
+      before: this.pendingLayout?.configuration.alwaysShowOnePage ?? this.alwaysShowOnePage,
+      after: alwaysShowOnePage, source: "reader-control" });
+    await this.requestLayout({ alwaysShowOnePage });
+  }
+
+  /** The global theme recolors reflowable pages without changing their layout. */
   public async setPageTheme(theme: PageTheme): Promise<void> {
-    if (this.operations.disposed || this.isFixedLayoutHost(this.host)) {
+    if (this.operations.disposed) {
       return;
     }
     this.recordDiagnosticEvent({ kind: "setting", name: "pageTheme",
       before: this.pageTheme, after: theme, source: "reader-control" });
-    await this.library.patchBookReadingSettings(this.bookId, { pageTheme: theme });
-    if (this.operations.disposed) return;
-    this.pageTheme = theme;
-    this.diagnostics.record(`pageTheme applied value=${theme}`);
-    this.applyDisplaySettingsToHost({ relayout: false });
-    this.notify();
+    await this.library.patchGlobalReadingSettings({ pageTheme: theme });
+    await this.refreshGlobalSettings();
   }
 
   /** Sets and persists reader brightness. It is applied at the reader-shell
@@ -2404,6 +2423,11 @@ export class ReaderController {
       host.resize(this.width, this.height);
       if (scrollPosition) host.restorePosition(scrollPosition.node, scrollPosition.offset ?? 0);
     }
+  }
+
+  private applyPageThemeToHost(host = this.host): void {
+    if (!host || this.isFixedLayoutHost(host)) return;
+    for (const doc of this.allContentDocuments(host)) ReadingTheme.applyPageTheme(doc, this.pageTheme);
   }
 
   /** Applies non-default persisted display settings to a freshly opened
@@ -2627,6 +2651,7 @@ export class ReaderController {
         this.dragCleanup = undefined;
         oldHost.dispose();
         this.host = animatedSpread;
+        this.applyPageThemeToHost();
         this.clearStaleHostWrapper();
         if (animatedSpread.primarySpineIndex !== this.spineIndex) {
           this.spineIndex = animatedSpread.primarySpineIndex;
@@ -2697,6 +2722,7 @@ export class ReaderController {
         this.dragCleanup = undefined;
         oldHost.dispose();
         this.host = animatedHost;
+        this.applyPageThemeToHost();
         this.clearStaleHostWrapper();
         this.updateContentTitle();
         this.reattachKeyboardNav();
@@ -3046,7 +3072,7 @@ export class ReaderController {
       return false;
     }
     const resolvedLayout = nextSpineItem.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
-    return resolvedLayout !== "pre-paginated" && SpreadPaginatedHost.isEligible(this.width);
+    return resolvedLayout !== "pre-paginated" && this.useReflowableSpread(this.width);
   }
 
   private configureSpreadDocument(doc: Document): void {
@@ -3732,6 +3758,7 @@ export class ReaderController {
         this.dragCleanup?.();
         this.dragCleanup = undefined;
         this.host = newHost;
+        this.applyPageThemeToHost();
         this.clearStaleHostWrapper();
         this.updateContentTitle();
         this.reattachKeyboardNav();
@@ -4384,7 +4411,7 @@ export class ReaderController {
             this.pkg.metadata.renditionViewport,
           );
           spineIndex = Math.min(...fixedHost.spineIndices);
-        } else if (this.viewMode === "paginated" && SpreadPaginatedHost.isEligible(this.width)) {
+        } else if (this.viewMode === "paginated" && this.useReflowableSpread(this.width)) {
           const prepared = await this.prepareSpreadForOpen(spineIndex, options, operation);
           const host = prepared.host;
           if (options.landOnPageIndex !== undefined || options.landOnFractionInItem !== undefined) {
@@ -4419,6 +4446,7 @@ export class ReaderController {
 
       operation.check();
       if (applyDisplaySettings) this.applyPersistedDisplaySettingsToFreshHost(newHost);
+      this.applyPageThemeToHost(newHost);
 
       // For chapter-boundary turns, land on the target page and apply
       // display settings before reveal so the animation shows the right
@@ -4464,6 +4492,8 @@ export class ReaderController {
       stagingEl?.style.setProperty("opacity", "");
       stagingEl?.style.setProperty("pointer-events", "");
       this.host = newHost;
+      // A global theme may change while the candidate is loading or animating.
+      this.applyPageThemeToHost();
       this.hostWrapperEl = stagingEl;
       if (newHost instanceof SpreadPaginatedHost) {
         Object.assign(newHost.element.style, {

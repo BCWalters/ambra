@@ -436,6 +436,7 @@ export const LibraryApp: FC = () => {
           isFixedLayout={false}
           onSetViewMode={(viewMode) => setSettings({ viewMode })}
           onSetBrightness={(brightness) => setSettings({ brightness })}
+          onSetPageTheme={(pageTheme) => setSettings({ pageTheme })}
           onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
           onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
         />

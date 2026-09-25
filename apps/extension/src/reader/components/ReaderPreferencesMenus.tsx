@@ -6,10 +6,12 @@ import {
   MenuGroup,
   MenuGroupHeader,
   MenuItem,
+  MenuItemCheckbox,
   MenuItemRadio,
   MenuList,
   MenuPopover,
   MenuTrigger,
+  Select,
   Tooltip,
 } from "@fluentui/react-components";
 import type { MenuProps } from "@fluentui/react-components";
@@ -63,7 +65,7 @@ export interface TypographyMenuActions {
   onSetLetterSpacing: (spacing: number) => void;
   onSetContentWidth: (widthEm: number) => void;
   onSetFontFamily: (family: FontFamilyChoice) => void;
-  onSetPageTheme: (theme: PageTheme) => void;
+  onSetAlwaysShowOnePage: (enabled: boolean) => void;
 }
 
 interface ReaderMenuState {
@@ -77,10 +79,11 @@ export interface TypographyMenuProps extends TypographyMenuActions, ReaderMenuSt
   letterSpacing: number;
   contentWidthEm: number;
   fontFamily: FontFamilyChoice;
-  pageTheme: PageTheme;
+  alwaysShowOnePage: boolean;
 }
 
 export interface ReaderSettingsMenuActions {
+  onSetPageTheme: (theme: PageTheme) => void;
   onSetViewMode: (mode: ViewMode) => void;
   onSetBrightness: (brightness: number) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
@@ -89,6 +92,7 @@ export interface ReaderSettingsMenuActions {
 }
 
 export interface ReaderSettingsMenuProps extends ReaderSettingsMenuActions, ReaderMenuState {
+  pageTheme: PageTheme;
   disabled?: boolean;
   showReadingModeShortcuts?: boolean;
   isFixedLayout: boolean;
@@ -156,41 +160,6 @@ const ThemeSwatch: FC<{ background: string; accent: string }> = ({ background, a
   </span>
 );
 
-const PageStyleSwatch: FC<{ background: string; foreground: string }> = ({
-  background,
-  foreground,
-}) => (
-  <span
-    aria-hidden="true"
-    style={{
-      display: "inline-flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      gap: 3,
-      width: 20,
-      height: 20,
-      borderRadius: 4,
-      background,
-      border: "1px solid rgba(0, 0, 0, 0.15)",
-      boxSizing: "border-box",
-      padding: "0 4px",
-    }}
-  >
-    <span
-      style={{
-        display: "block",
-        height: 2,
-        borderRadius: 1,
-        background: foreground,
-        width: "100%",
-      }}
-    />
-    <span
-      style={{ display: "block", height: 2, borderRadius: 1, background: foreground, width: "65%" }}
-    />
-  </span>
-);
-
 /** Each submenu owns its Fluent radio state; the caller owns persistence. */
 export const TypographyMenu: FC<TypographyMenuProps> = ({
   open,
@@ -200,13 +169,13 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
   letterSpacing,
   contentWidthEm,
   fontFamily,
-  pageTheme,
+  alwaysShowOnePage,
   onSetFontScale,
   onSetLineSpacing,
   onSetLetterSpacing,
   onSetContentWidth,
   onSetFontFamily,
-  onSetPageTheme,
+  onSetAlwaysShowOnePage,
 }) => {
   const t = useTranslation();
   const scopeId = useId();
@@ -301,9 +270,10 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
           <Menu
             positioning={SUBMENU_POSITIONING}
             persistOnItemClick
-            checkedValues={{ pageTheme: [pageTheme] }}
+            checkedValues={{ alwaysShowOnePage: alwaysShowOnePage ? ["on"] : [] }}
             onCheckedValueChange={(_event, data) => {
-              if (data.name === "pageTheme") onSetPageTheme(data.checkedItems[0] as PageTheme);
+              if (data.name === "alwaysShowOnePage")
+                onSetAlwaysShowOnePage(data.checkedItems.includes("on"));
             }}
           >
             <MenuTrigger disableButtonEnhancement>
@@ -324,19 +294,9 @@ export const TypographyMenu: FC<TypographyMenuProps> = ({
                   onChange={onSetContentWidth}
                 />
                 <MenuDivider />
-                <MenuGroup>
-                  <MenuGroupHeader>{t("text.pageStyle")}</MenuGroupHeader>
-                  {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
-                    <MenuItemRadio
-                      key={key}
-                      name="pageTheme"
-                      value={key}
-                      icon={<PageStyleSwatch {...ReadingTheme.PAGE_THEMES[key]} />}
-                    >
-                      {t(PAGE_THEME_LABEL_KEYS[key])}
-                    </MenuItemRadio>
-                  ))}
-                </MenuGroup>
+                <MenuItemCheckbox name="alwaysShowOnePage" value="on">
+                  {t("text.alwaysShowOnePage")}
+                </MenuItemCheckbox>
               </MenuList>
             </MenuPopover>
           </Menu>
@@ -398,10 +358,12 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   isFixedLayout,
   viewMode,
   brightness,
+  pageTheme,
   chromeTheme,
   pageTurnAnimationStyle,
   onSetViewMode,
   onSetBrightness,
+  onSetPageTheme,
   onSetChromeTheme,
   onSetPageTurnAnimationStyle,
   onOpenHelp,
@@ -525,6 +487,27 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
             ))}
           </MenuGroup>
           <MenuDivider />
+          <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 12 }}>
+            <label htmlFor={`${scopeId}-page-theme`} style={{ flex: 1 }}>{t("text.pageStyle")}</label>
+            <Select
+              id={`${scopeId}-page-theme`}
+              size="small"
+              value={pageTheme}
+              onChange={(_event, data) => {
+                if (data.value === "white" || data.value === "sepia" || data.value === "dark")
+                  onSetPageTheme(data.value);
+              }}
+              onKeyDown={(event) => {
+                // Keep native selection/typeahead keys out of the surrounding menu.
+                if (event.key !== "Escape" && event.key !== "Tab")
+                  event.stopPropagation();
+              }}
+            >
+              {(Object.keys(ReadingTheme.PAGE_THEMES) as PageTheme[]).map((key) => (
+                <option key={key} value={key}>{t(PAGE_THEME_LABEL_KEYS[key])}</option>
+              ))}
+            </Select>
+          </div>
           <PreferenceSlider
             label={t("settings.brightness")}
             aria-label={t("settings.brightness")}

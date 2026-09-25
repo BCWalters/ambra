@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { SpreadPaginatedHost } from "@ambra/engine";
+import { PaginatedContentHost, ScrollContentHost, SpreadPaginatedHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
 
 function fixture() {
@@ -11,7 +11,7 @@ function fixture() {
   Object.assign(controller, {
     host, width: 1400, height: 900, appliedWidth: 1400, appliedHeight: 900,
     viewMode: "paginated", fontScale: 1, fontFamily: "palatino",
-    lineSpacing: 1, letterSpacing: 0, contentWidthEm: 34,
+    lineSpacing: 1, letterSpacing: 0, contentWidthEm: 34, alwaysShowOnePage: false,
     operations: { disposed: false }, nativeReading: { current: () => anchor, retainedForShell: () => anchor, retain: vi.fn() },
     shouldSwitchSpreadMode: vi.fn(() => false), reopenForCurrentSize: vi.fn(async () => {}),
     setUpDragPageTurn: vi.fn(), refreshBookPagination: vi.fn(),
@@ -76,4 +76,45 @@ describe("spread resize ownership", () => {
     expect(host.relayoutForResize).not.toHaveBeenCalled();
     expect(controller.reopenForCurrentSize).not.toHaveBeenCalled();
   });
+
+  it("queues one-page changes through layout ownership and saves them as book settings", async () => {
+    const { controller } = fixture();
+    controller.shouldSwitchSpreadMode.mockReturnValue(true);
+    await controller.applyLayout({
+      configuration: { ...controller.currentLayout(), alwaysShowOnePage: true },
+    });
+    expect(controller.reopenForCurrentSize).toHaveBeenCalledOnce();
+    expect(controller.library.patchBookReadingSettings).toHaveBeenCalledWith(undefined, { alwaysShowOnePage: true });
+    expect(controller.saveProgress).toHaveBeenCalledOnce();
+    expect(controller.currentLayout().alwaysShowOnePage).toBe(true);
+  });
+
+  it("keeps the centered scroll host when the saved one-page preference changes", async () => {
+    const { controller } = fixture();
+    const host = Object.create(ScrollContentHost.prototype);
+    host.resize = vi.fn();
+    Object.assign(controller, { host, viewMode: "scroll" });
+    await controller.applyLayout({
+      configuration: { ...controller.currentLayout(), alwaysShowOnePage: true },
+    });
+    expect(controller.reopenForCurrentSize).not.toHaveBeenCalled();
+    expect(controller.library.patchBookReadingSettings).toHaveBeenCalledWith(undefined, { alwaysShowOnePage: true });
+  });
+});
+
+it("one-page display gates every reflowable spread decision, not fixed-layout planning", () => {
+  const controller = Object.create(ReaderController.prototype);
+  Object.assign(controller, {
+    alwaysShowOnePage: true, viewMode: "paginated", host: Object.create(PaginatedContentHost.prototype),
+    containerEl: document.createElement("div"), width: 2400,
+    pkg: { metadata: {}, spine: [{ resolveRenditionLayout: () => "reflowable" }] },
+  });
+  expect(controller.useReflowableSpread(2400)).toBe(false);
+  expect(controller.shouldSwitchSpreadMode(2400)).toBe(false);
+  expect(controller.canMergeSpreadIntoNext(0)).toBe(false);
+  controller.alwaysShowOnePage = false;
+  expect(controller.useReflowableSpread(2400)).toBe(true);
+  expect(controller.shouldSwitchSpreadMode(2400)).toBe(true);
+  expect(controller.canMergeSpreadIntoNext(0)).toBe(true);
+  expect(controller.useReflowableSpread(600)).toBe(false);
 });

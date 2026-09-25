@@ -103,7 +103,7 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
  * was removed for being pure screen-clutter; "Go to Page…"/"Go to
  * Percentage…" are keyboard commands (see `ReaderCommands`).
  * Typography and page-layout settings (font size/
- * family, line/character spacing, column width, page style) share
+ * family, line/character spacing, column width, single-page display) share
  * one "Aa" menu with two cascading submenus ("Text"/"Page") rather than
  * either a flat wall of every setting at once or two separate top-level
  * buttons — kept apart from the gear "Settings" menu (reading mode, page
@@ -134,6 +134,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetLineSpacing,
   onSetLetterSpacing,
   onSetContentWidth,
+  onSetAlwaysShowOnePage,
   onSetFontFamily,
   onSetPageTheme,
   onSetBrightness,
@@ -476,13 +477,13 @@ export const Toolbar: FC<ToolbarProps> = ({
             letterSpacing={snapshot.letterSpacing}
             contentWidthEm={snapshot.contentWidthEm}
             fontFamily={snapshot.fontFamily}
-            pageTheme={snapshot.pageTheme}
+            alwaysShowOnePage={snapshot.alwaysShowOnePage}
             onSetFontScale={onSetFontScale}
             onSetLineSpacing={onSetLineSpacing}
             onSetLetterSpacing={onSetLetterSpacing}
             onSetContentWidth={onSetContentWidth}
             onSetFontFamily={onSetFontFamily}
-            onSetPageTheme={onSetPageTheme}
+            onSetAlwaysShowOnePage={onSetAlwaysShowOnePage}
           />
         )}
 
@@ -493,6 +494,8 @@ export const Toolbar: FC<ToolbarProps> = ({
           isFixedLayout={snapshot.isFixedLayout}
           viewMode={snapshot.viewMode}
           brightness={snapshot.brightness}
+          pageTheme={snapshot.pageTheme}
+          onSetPageTheme={onSetPageTheme}
           chromeTheme={snapshot.chromeTheme}
           pageTurnAnimationStyle={snapshot.pageTurnAnimationStyle}
           onSetViewMode={onSetViewMode}
