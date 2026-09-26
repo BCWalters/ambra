@@ -10,6 +10,13 @@ No credentials belong in this guide, logs, issues, or chat.
 
 - [ ] Merge the approved runtime fixes (including note layering), then this
       1.0.0 preparation, through the normal protected-branch process.
+- [ ] Consolidate the next friends build and store candidate into one reviewed
+      release: planned GitHub **prerelease `v1.0.0-rc.1`**, containing the exact
+      **`ambra-1.0.0.zip`** used for final screenshots and the manual handoff.
+      The GitHub prerelease tag does not change the Chrome manifest version:
+      it remains **`1.0.0`**, not `1.0.0-rc.1`. No intermediate `0.0.1` beta7
+      build is needed. Creating the GitHub prerelease is a later coordinated
+      release step, not a Google submission or authorization to perform one.
 - [ ] Keep the **same existing Chrome Web Store listing and extension ID**.
       Do not create a new listing. Preserve **Unlisted**, the current regions, and
       other distribution choices; do not assume 1.0.0 means Public.
@@ -107,6 +114,12 @@ git status --porcelain
       1280×800 PNGs. A **440×280** small promo and **128×128 PNG** icon are required.
       The icon must also be in the ZIP; a dashboard image does not replace it.
       No optional marquee is needed for this handoff.
+- [ ] For the coordinated `v1.0.0-rc.1` friends handoff, use this same package,
+      `SHA256SUMS`, `release.json`, all seven final PNGs and their
+      `asset-provenance.json`, plus the manual checklist/listing/privacy sources
+      from that release commit. Keep store graphics and instructions separate
+      from the extension ZIP; do not rebuild or repackage just for friends.
+      Friends testing does not itself authorize a Google dashboard action.
 
 ## 4. Prepare the listing and privacy fields
 
