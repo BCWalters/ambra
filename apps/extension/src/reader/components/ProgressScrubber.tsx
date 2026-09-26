@@ -738,9 +738,9 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             style={{
               position: "absolute",
               left: `${(rtl ? 1 - fraction : fraction) * 100}%`,
-              top: 26,
-              width: 18,
-              height: 18,
+              top: 29,
+              width: 14,
+              height: 15,
               transform: "translateX(-50%)",
               pointerEvents: "none",
             }}

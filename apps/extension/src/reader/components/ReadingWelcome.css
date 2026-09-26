@@ -12,7 +12,7 @@
 .reading-welcome-title { font-size: 26px; line-height: 1.25; }
 .reading-welcome-content { overflow: visible; overflow-wrap: anywhere; }
 .reading-welcome-intro { margin: 8px 0 0; font-size: 15px; }
-.reading-welcome-art { display: block; width: 100%; max-height: 165px; margin: 12px 0 16px; color: #775b43; }
+.reading-welcome-art { display: block; width: 100%; max-height: 225px; margin: 8px 0 12px; }
 .reading-welcome-tip { display: flex; gap: 14px; margin: 20px 0; }
 .reading-welcome-icon {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
@@ -21,15 +21,13 @@
 }
 .reading-welcome-tip h3 { margin: 0 0 5px; font-size: 16px; line-height: 1.4; }
 .reading-welcome-tip p { margin: 0; line-height: 1.55; }
-.reading-welcome-tip .reading-welcome-keys { margin-top: 7px; font-weight: 600; }
-.reading-welcome-tip .reading-welcome-note { margin-top: 7px; font-size: 12px; }
-.reading-welcome-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 24px; }
+.reading-welcome-actions { display: flex; justify-content: center; margin-top: 24px; }
 .reading-welcome-actions button { min-height: 44px; white-space: normal; max-width: 100%; }
-.reading-welcome-footer { margin: 16px 0 0; font-size: 12px; line-height: 1.5; }
+.reading-welcome-footer { margin: 16px 0 0; font-size: 12px; line-height: 1.5; text-align: center; }
 @media (max-width: 400px), (max-height: 500px) {
   .reading-welcome.fui-DialogSurface { padding: 18px; border-radius: 14px; }
   .reading-welcome-title { font-size: 22px; }
-  .reading-welcome-art { max-height: 108px; margin: 8px 0; }
+  .reading-welcome-art { max-height: 150px; margin: 8px 0; }
   .reading-welcome-tip { gap: 10px; margin: 16px 0; }
 }
 @media (forced-colors: active) {

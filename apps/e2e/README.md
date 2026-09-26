@@ -495,7 +495,7 @@ bookmarks, resize and resume. Each fixed-layout spine item contributes one
 page without loading a measurement document. Mixed books still measure their
 reflowable chapters; a saved scrolling preference does not hide the FXL scrubber.
 Native moves into an already-visible companion update the scrubber immediately.
-`scrubber-bookmarks.spec.ts` also checks the bookmark flag lane: 18px flags
+`scrubber-bookmarks.spec.ts` also checks the bookmark flag lane: 14 × 15px flags
 remain at their exact fractions above (never underneath) the thumb, including
 current/adjacent pages, duplicate clusters, long-book last pages and 320px RTL.
 The preview and slider value say "Bookmarked" only for an exact measured page

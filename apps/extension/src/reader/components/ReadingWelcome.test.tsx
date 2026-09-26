@@ -17,12 +17,10 @@ vi.mock("../../shortcuts/ShortcutPreferencesContext.js", () => ({
 let root: Root;
 let container: HTMLDivElement;
 const dismiss = vi.fn();
-const library = vi.fn();
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Object.assign(settings, { locale: "en", enabled: true, ready: true });
   dismiss.mockClear();
-  library.mockClear();
   const animate = Element.prototype.animate;
   vi.spyOn(Element.prototype, "animate").mockImplementation(function (this: Element, keyframes, options) {
     const animation = animate.call(this, keyframes, options);
@@ -43,7 +41,7 @@ afterEach(() => {
 async function render(scrolling = false, rtl = false, open = true) {
   await act(async () => root.render(<FluentProvider theme={webLightTheme}>
     <ReadingWelcome open={open} scrolling={scrolling} rtl={rtl} onDismiss={dismiss}
-      onLibrary={library} onAfterClose={() => {}} />
+      onAfterClose={() => {}} />
   </FluentProvider>));
 }
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
@@ -72,14 +70,14 @@ it.each(["disabled", "loading"])("omits arrow instructions while shortcuts are %
   expect(dialog().textContent).toContain(getTranslate("en")("welcome.marginsLtr"));
   expect(dialog().textContent).not.toContain(getTranslate("en")("welcome.keysLtr"));
 });
-it("only dismisses on Start reading, navigates only on Library, and leaves no hidden welcome", async () => {
+it("offers only Start reading and Close, omits chrome instructions, and leaves no hidden welcome", async () => {
   await render();
   const buttons = [...dialog().querySelectorAll("button")];
+  expect(buttons).toHaveLength(2);
+  expect(buttons.some(button => button.textContent === "Library")).toBe(false);
+  expect(dialog().textContent).not.toMatch(/first margin tap|reader controls/i);
   await act(async () => buttons.find(button => button.textContent === "Start reading")!.click());
   expect(dismiss).toHaveBeenCalledOnce();
-  expect(library).not.toHaveBeenCalled();
-  await act(async () => buttons.find(button => button.textContent === "Library")!.click());
-  expect(library).toHaveBeenCalledOnce();
   await render(false, false, false);
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.querySelector(".reading-welcome-art")).toBeNull();

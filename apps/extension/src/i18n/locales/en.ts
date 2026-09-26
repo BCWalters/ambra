@@ -43,7 +43,6 @@ export interface StringCatalog {
   "welcome.keysLtr": string;
   "welcome.keysRtl": string;
   "welcome.scroll": string;
-  "welcome.firstTap": string;
   "welcome.libraryTitle": string;
   "welcome.library": string;
   "welcome.start": string;
@@ -466,14 +465,13 @@ export const en: StringCatalog = {
   "welcome.readingTips": "Reading tips",
   "welcome.turnTitle": "Turn a page",
   "welcome.scrollTitle": "Read at your pace",
-  "welcome.marginsLtr": "Click or tap the right outer margin to go forward, the left to go back.",
-  "welcome.marginsRtl": "Click or tap the left outer margin to go forward, the right to go back.",
-  "welcome.keysLtr": "Right arrow: forward. Left arrow: back.",
-  "welcome.keysRtl": "Left arrow: forward. Right arrow: back.",
+  "welcome.marginsLtr": "Click or tap in the right and left book margins to go forward or back.",
+  "welcome.marginsRtl": "Click or tap in the left and right book margins to go forward or back.",
+  "welcome.keysLtr": "You can also use the left and right arrows on your keyboard.",
+  "welcome.keysRtl": "You can also use the left and right arrows on your keyboard.",
   "welcome.scroll": "Scroll down or swipe up to keep reading. Reverse the movement to go back.",
-  "welcome.firstTap": "When reader controls are showing, the first margin tap hides them without turning a page.",
   "welcome.libraryTitle": "Your library is always close",
-  "welcome.library": "Choose Library in the reader toolbar to return to your books.",
+  "welcome.library": "Click or tap on the library icon to go back to your books.",
   "welcome.start": "Start reading",
   "welcome.reopen": "Find these tips again in Help & About.",
   "settings.helpAbout": "Help & About",

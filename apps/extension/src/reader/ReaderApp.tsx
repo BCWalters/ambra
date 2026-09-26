@@ -768,11 +768,6 @@ const ReaderAppInner: FC = () => {
                 help.closeToContent();
               }}
               onAfterClose={help.afterClose}
-              onLibrary={() => {
-                void welcome.acknowledge().then(() => {
-                  window.location.href = libraryFullTabUrl();
-                });
-              }}
             />
             <KeyboardShortcutsDialog
               open={help.view === "shortcuts"}

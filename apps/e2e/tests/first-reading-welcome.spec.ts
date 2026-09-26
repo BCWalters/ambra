@@ -52,6 +52,43 @@ async function reopen(page: Page) {
   await expect(welcome(page)).toBeVisible();
 }
 
+for (const width of [1100, 320]) {
+  // eslint-disable-next-line no-empty-pattern
+  test(`${width}px: Help gives reading tips, shortcuts and the user guide separate rows`, async ({}, info) => {
+    const app = await launchReader(book, { viewport: { width, height: 850 } });
+    try {
+      const page = app.readerPage;
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+      const help = page.getByRole("dialog", { name: "Help & About", exact: true });
+      const tips = help.getByRole("button", { name: "Reading tips", exact: true });
+      const shortcuts = help.getByRole("button", { name: "Show keyboard shortcuts", exact: true });
+      const guide = help.getByRole("link", { name: "User guide", exact: true });
+      await expect(tips).toBeVisible();
+      await expect(guide).toHaveAttribute("target", "_blank");
+      await expect(help).toBeInViewport({ ratio: 1 });
+      const boxes = await Promise.all([tips, shortcuts, guide].map(item => item.boundingBox()));
+      for (let index = 0; index < boxes.length; index++) {
+        const box = boxes[index]!;
+        expect(box.height).toBeGreaterThanOrEqual(40);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+        if (index > 0) expect(box.y).toBeGreaterThanOrEqual(boxes[index - 1]!.y + boxes[index - 1]!.height);
+      }
+      await tips.focus();
+      await page.keyboard.press("Tab");
+      await expect(shortcuts).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(guide).toBeFocused();
+      await page.screenshot({ path: info.outputPath(`help-actions-${width}.png`) });
+      await tips.click();
+      await expect(welcome(page)).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(welcome(page)).toHaveCount(0);
+    } finally { await app.context.close(); }
+  });
+}
+
 // eslint-disable-next-line no-empty-pattern
 test("first successful reading only; acknowledge once, reload, reopen, and open another book", async ({}, info) => {
   const app = await launchReader(book, {
@@ -79,7 +116,12 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
     const before = await position(page);
     await page.keyboard.press("ArrowRight");
     expect(await position(page)).toEqual(before);
-    await expect(welcome(page).getByText("Right arrow: forward. Left arrow: back.")).toBeVisible();
+    await expect(welcome(page).getByText(/You can also use the left and right arrows on your keyboard/)).toBeVisible();
+    await expect(welcome(page).getByRole("button", { name: "Library", exact: true })).toHaveCount(0);
+    await expect(welcome(page).getByText(/first margin tap|reader controls/i)).toHaveCount(0);
+    const start = await welcome(page).getByRole("button", { name: "Start reading" }).boundingBox();
+    const surface = await welcome(page).boundingBox();
+    expect(Math.abs(start!.x + start!.width / 2 - surface!.x - surface!.width / 2)).toBeLessThan(1);
     await page.screenshot({ path: info.outputPath("welcome-desktop.png") });
     await welcome(page).getByRole("button", { name: "Start reading", exact: true }).click();
     await expect(welcome(page)).toHaveCount(0);
@@ -130,7 +172,7 @@ test("Escape is an acknowledgement, while reloading an undismissed welcome is no
 });
 
 // eslint-disable-next-line no-empty-pattern
-test("touch-width welcome reflows, traps focus, survives forced colors and offers Library", async ({}, info) => {
+test("touch-width welcome reflows, traps focus and starts reading in forced colors", async ({}, info) => {
   const app = await launchReader(book, {
     firstReadingWelcome: true, hasTouch: true, viewport: { width: 320, height: 700 },
   });
@@ -156,8 +198,8 @@ test("touch-width welcome reflows, traps focus, survives forced colors and offer
     await dialog.getByRole("button", { name: "Start reading" }).scrollIntoViewIfNeeded();
     await page.emulateMedia({ forcedColors: "active" });
     await expect(dialog.locator("svg.reading-welcome-art")).toBeHidden();
-    await dialog.getByRole("button", { name: "Library", exact: true }).click();
-    await expect(page).toHaveURL(/\/library\/index\.html/);
+    await dialog.getByRole("button", { name: "Start reading", exact: true }).click();
+    await expect(page).toHaveURL(/\/reader\/index\.html/);
     await expect.poll(() => preference(page)).toBe(1);
     await expect(welcome(page)).toHaveCount(0);
   } finally { await app.context.close(); }
@@ -175,7 +217,7 @@ test("scroll mode offers native scrolling, not margin turns; disabled keys are n
     const page = app.readerPage;
     await expect(welcome(page)).toBeVisible();
     await expect(welcome(page).getByRole("heading", { name: "Read at your pace" })).toBeVisible();
-    await expect(welcome(page).getByText(/outer margin|arrow:/)).toHaveCount(0);
+    await expect(welcome(page).getByText(/book margins|arrows on your keyboard/)).toHaveCount(0);
     await welcome(page).getByRole("button", { name: "Close", exact: true }).click();
     await expect.poll(() => preference(page)).toBe(1);
     expect(await preference(page, "readerKeyboardShortcuts")).toEqual({ enabled: false });
@@ -187,8 +229,8 @@ test("fixed-layout RTL tips match forward/back direction, without turning a page
   try {
     const page = app.readerPage;
     await expect(welcome(page)).toBeVisible();
-    await expect(welcome(page).getByText(/left outer margin to go forward/)).toBeVisible();
-    await expect(welcome(page).getByText("Left arrow: forward. Right arrow: back.")).toBeVisible();
+    await expect(welcome(page).getByText(/left and right book margins to go forward or back/)).toBeVisible();
+    await expect(welcome(page).getByText(/You can also use the left and right arrows on your keyboard/)).toBeVisible();
     await exposeReaderController(page);
     const before = await position(page);
     await welcome(page).getByRole("button", { name: "Start reading" }).click();
@@ -214,8 +256,8 @@ test("disabled shortcuts keep paginated touch tips without advertising arrow key
   try {
     const page = app.readerPage;
     await expect(welcome(page)).toBeVisible();
-    await expect(welcome(page).getByText(/right outer margin to go forward/)).toBeVisible();
-    await expect(welcome(page).getByText(/arrow:/)).toHaveCount(0);
+    await expect(welcome(page).getByText(/right and left book margins to go forward or back/)).toBeVisible();
+    await expect(welcome(page).getByText(/arrows on your keyboard/)).toHaveCount(0);
     await welcome(page).getByRole("button", { name: "Start reading" }).click();
     expect(await preference(page, "readerKeyboardShortcuts")).toEqual({ enabled: false });
   } finally { await app.context.close(); }

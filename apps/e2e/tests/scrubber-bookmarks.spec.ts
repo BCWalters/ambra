@@ -39,8 +39,8 @@ async function expectFlagGeometry(page: Page) {
   });
   expect(geometry.length).toBeGreaterThan(0);
   for (const mark of geometry) {
-    expect(mark.width).toBe(18);
-    expect(mark.height).toBe(18);
+    expect(mark.width).toBe(14);
+    expect(mark.height).toBe(15);
     expect(mark.gap).toBeGreaterThanOrEqual(2);
     expect(mark.error).toBeLessThan(1);
     expect(mark.left).toBeGreaterThanOrEqual(0);
@@ -128,6 +128,8 @@ for (const width of [320, 1400]) {
       await expect(page.locator("[data-bookmark-status]")).toHaveText("Bookmarked");
       await expect(page.locator("[data-bookmark-status]")).toHaveCSS("color", "rgb(36, 36, 36)");
       await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("color", "rgb(15, 108, 189)");
+      await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("width", "18px");
+      await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("height", "18px");
       const popup = (await page.locator("[data-scrubber-preview]").boundingBox())!;
       expect(popup.x).toBeGreaterThanOrEqual(7);
       expect(popup.x + popup.width).toBeLessThanOrEqual(width - 7);
