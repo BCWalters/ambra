@@ -64,6 +64,7 @@ export const GoToDialog: FC<GoToDialogProps> = ({
   const submitting = useRef(false);
   const opening = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const restoreFrame = useRef<number | undefined>(undefined);
   const pendingNavigation = useRef<Promise<void> | undefined>(undefined);
   const { preferences, platform } = useShortcutPreferences();
@@ -144,22 +145,31 @@ export const GoToDialog: FC<GoToDialogProps> = ({
       surfaceMotion={{
         onMotionFinish: (_event, data) => {
           if (data.direction !== "exit" || open) return;
-          // Wait for Fluent to release its modal accessibility scope.
-          restoreFrame.current = requestAnimationFrame(() => {
+          const closingSurface = surfaceRef.current;
+          // Fluent reports motion completion before scheduling its React unmount.
+          // A frame can precede that commit; wait for this surface, not a later modal.
+          const afterUnmount = () => {
+            if (closingSurface?.isConnected) {
+              restoreFrame.current = requestAnimationFrame(afterUnmount);
+              return;
+            }
             restoreFrame.current = undefined;
             const closedOpening = opening.current;
             const restore = () => {
-              // A later modal may already own focus and Tabster's accessibility scope.
-              if (opening.current === closedOpening && !document.querySelector('[aria-modal="true"]')) onAfterClose?.();
+              // A later modal or menu may already own focus. Returning to the
+              // book would steal that focus and dismiss Fluent's newer menu.
+              if (opening.current === closedOpening && !document.querySelector('[aria-modal="true"], [role="menu"]')) onAfterClose?.();
             };
             // Dismissal does not cancel a submitted seek; return into its final document.
             if (pendingNavigation.current) void pendingNavigation.current.then(restore, restore);
             else restore();
-          });
+          };
+          restoreFrame.current = requestAnimationFrame(afterUnmount);
         },
       }}
     >
       <DialogSurface
+        ref={surfaceRef}
         onKeyDown={(event) => {
           if (event.key === "Escape") event.stopPropagation();
         }}

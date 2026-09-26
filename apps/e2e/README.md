@@ -85,6 +85,21 @@ pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
   --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
 ```
 
+## Go to modal focus lifecycle
+
+`tests/reader-go-to-shortcuts.spec.ts` checks exact reading-caret placement and
+one-time focus restoration after both same-chapter and cross-chapter seeks.
+The frame-before-unmount variants hold React's posted commit until the exit
+animation's first requested frame has run. Fluent reports motion completion
+before scheduling its surface removal, so an animation frame alone is not an
+unmount barrier. These cases verify that the frame actually precedes the commit,
+then retain the same destination, accessibility, and single-restoration assertions
+as the normal ordering. Late exits must still defer to a newer modal or menu.
+A separate Settings regression defers the Go to focus-return frame until the
+menu owns keyboard focus, then verifies that releasing the frame neither closes
+the menu nor prevents opening Help & About. Diagnostic close events describe
+requested state, not completion of exit motion.
+
 ## Fragment-based tables of contents (#202)
 
 `tests/toc-fragments.spec.ts` generates original synthetic content with several

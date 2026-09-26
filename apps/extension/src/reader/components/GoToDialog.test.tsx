@@ -64,7 +64,7 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await act(async () => { await new Promise(requestAnimationFrame); });
     expect(onAfterClose).toHaveBeenCalledOnce();
   });
-  it("does not reclaim focus when another modal opens before its deferred return", async () => {
+  it.each(["dialog", "menu"])("does not reclaim focus when another %s opens before its deferred return", async role => {
     const onAfterClose = vi.fn();
     await render({ onAfterClose });
     const frames: FrameRequestCallback[] = [];
@@ -72,8 +72,8 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await render({ open: false, onAfterClose });
     expect(frames).toHaveLength(1);
     const nextModal = document.createElement("section");
-    nextModal.setAttribute("role", "dialog");
-    nextModal.setAttribute("aria-modal", "true");
+    nextModal.setAttribute("role", role);
+    if (role === "dialog") nextModal.setAttribute("aria-modal", "true");
     const control = document.createElement("button");
     nextModal.append(control);
     container.append(nextModal);
@@ -81,6 +81,30 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await act(async () => { frames[0]!(0); });
     expect(onAfterClose).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(control);
+  });
+  it("waits for Fluent's unmount when the first frame precedes its React commit", async () => {
+    const onAfterClose = vi.fn(() => {
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+    await render({ onAfterClose });
+    const frames: FrameRequestCallback[] = [];
+    let firstFrame = true;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      if (firstFrame) {
+        firstFrame = false;
+        expect(dialog()).not.toBeNull();
+        callback(0);
+        expect(onAfterClose).not.toHaveBeenCalled();
+      } else {
+        frames.push(callback);
+      }
+      return frames.length;
+    });
+    await render({ open: false, onAfterClose });
+    expect(dialog()).toBeNull();
+    expect(frames).toHaveLength(1);
+    await act(async () => { frames[0]!(0); });
+    expect(onAfterClose).toHaveBeenCalledOnce();
   });
   const go = () => dialog().querySelector<HTMLButtonElement>('button[type="submit"]')!;
   async function enter(value: string) {

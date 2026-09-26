@@ -66,6 +66,8 @@ controls does not summon the reader toolbar or progress bar over it—even near
 the screen edges. Typing in a note stays in the note editor. Moving to a reading
 edge outside popup controls or focusing the reader toolbar still reveals the
 usual controls; Escape keeps its existing popup-dismissal behavior.
+Page note icons stay beneath overlapping popups, including when a note editor
+is shifted down to fit near the top of the screen.
 
 **EPUB annotation export and import** let you back up or share your reading work separately from the book. Ambra exports your highlights, text notes, bookmarks, and bookmark labels as an **EPUB Annotations 1.0 JSON file** (`… - annotations.json`), and imports compatible JSON into the open book.
 

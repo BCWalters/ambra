@@ -135,6 +135,61 @@ for (const { width, zoom } of [
   });
 }
 
+for (const width of [900, 360]) {
+  test(`${width}px: a top-clamped note editor covers the page note marker`, async () => {
+    const { context, readerPage: page } = await launchReader(book, {
+      viewport: { width, height: 900 },
+    });
+    try {
+      await exposeReaderController(page);
+      await page.mouse.move(width / 2, 350);
+      await expect(toolbar(page)).toHaveCSS("opacity", "0");
+      await selectLine(page);
+      await page.getByRole("button", { name: "Add note", exact: true }).click();
+      const input = popup(page).getByRole("textbox", { name: "Add a note…" });
+      await input.fill("Original note");
+      await popup(page).getByRole("button", { name: "Save", exact: true }).click();
+      await expect(popup(page)).toBeHidden();
+      const marker = page.getByRole("button", { name: "This highlight has a note", exact: true });
+      await expect(marker).toBeVisible();
+      await marker.click();
+      await expect(input).toHaveValue("Original note");
+      const markerBounds = (await marker.boundingBox())!;
+      const editorBounds = (await input.boundingBox())!;
+      const popupBounds = (await popup(page).boundingBox())!;
+      expect(popupBounds.y).toBeCloseTo(8, 0);
+      const x = markerBounds.x + markerBounds.width / 2;
+      const y = markerBounds.y + markerBounds.height / 2;
+      expect(x).toBeGreaterThan(editorBounds.x);
+      expect(x).toBeLessThan(editorBounds.x + editorBounds.width);
+      expect(y).toBeGreaterThan(editorBounds.y);
+      expect(y).toBeLessThan(editorBounds.y + editorBounds.height);
+      await expect
+        .poll(() => input.evaluate((element, point) =>
+          element === document.elementFromPoint(point.x, point.y), { x, y }))
+        .toBe(true);
+      await page.mouse.click(x, y);
+      await expect(input).toBeFocused();
+      await input.fill("Edited over the marker");
+      await page.screenshot({ path: test.info().outputPath("note-marker-below-editor.png") });
+      await popup(page).getByRole("button", { name: "Save", exact: true }).click();
+      await expect(popup(page)).toBeHidden();
+      await marker.click();
+      await expect(input).toHaveValue("Edited over the marker");
+      await input.press("Escape");
+      await expect(popup(page)).toBeHidden();
+      await page.reload();
+      await page.locator("iframe").first().waitFor();
+      await exposeReaderController(page);
+      expect(await page.evaluate(() =>
+        Reflect.get(window, "__readerController").snapshot().highlights[0]?.note,
+      )).toBe("Edited over the marker");
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const direction of ["ltr", "rtl"]) {
   test(`${direction}: bottom-page selection and note popup preserve saved text and keyboard focus`, async ({
     browserName,
