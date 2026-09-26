@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
-import type { FC } from "react";
-import { Body1, Button, Caption1, Tab, TabList, Tooltip } from "@fluentui/react-components";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, FC, MouseEvent } from "react";
+import { Body1, Button, Caption1, makeStyles, Tab, TabList, Tooltip } from "@fluentui/react-components";
 import {
   ArrowDownloadRegular,
   ArrowUploadRegular,
@@ -17,18 +17,19 @@ import { BOOKMARK_COLOR, CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, 
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
-import { useTranslation } from "../../i18n/LocaleContext.js";
+import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { EPUB_TOOLTIP_STYLE } from "../../components/EpubTextStyles.js";
 import type { Bookmark, Highlight } from "../../library/LibraryDatabase.js";
 import type { ReadOnlyAnnotationView } from "../ReaderTypes.js";
+import type { BookmarkLocation } from "../BookmarkManager.js";
 import { HighlightNoteEditor } from "./HighlightNoteEditor.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 interface BookmarkListProps {
   bookmarks: readonly Bookmark[];
+  locations?: Readonly<Record<string, BookmarkLocation>>;
   /** Publisher-embedded, read-only bookmarks (issue #109/#116) — merged
-   * in after the reader's own, each rendered with `ReadOnlyRow`'s
-   * read-only treatment instead of a remove button. */
+   * in after the reader's own, without a remove button. */
   embedded: readonly ReadOnlyAnnotationView[];
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
@@ -38,15 +39,116 @@ interface BookmarkListProps {
   onSelectEmbedded: (cfi: string) => void;
 }
 
-/** The "Bookmarks" tab's contents — a flat, creation-order list (oldest
- * first, matching `LibraryDatabase.listBookmarksForBook`), each showing
- * its label (chapter + page — see `BookmarkManager`'s private `label`
- * method in `ReaderController.ts`) and
- * an inline remove button. No "current position" highlight the way the
- * TOC tree has one: unlike TOC entries, a bookmark is exactly one saved
- * position, not a section the reader might currently be inside. */
-const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, embedded, onSelect, onRemove, onSelectEmbedded }) => {
+const ANNOTATION_CARD_STYLE: CSSProperties = {
+  marginBottom: 8,
+  border: `1px solid ${CHROME_BORDER}`,
+  borderRadius: 8,
+  background: "rgba(255, 255, 255, 0.16)",
+  overflowWrap: "anywhere",
+};
+
+const useBookmarkStyles = makeStyles({
+  jump: {
+    width: "100%",
+    minWidth: 0,
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "10px",
+    backgroundColor: "transparent",
+    border: "none",
+    borderRadius: "7px",
+    color: "var(--colorNeutralForeground1, #242424)",
+    cursor: "pointer",
+    padding: "12px 10px 10px",
+    textAlign: "left",
+    fontFamily: "inherit",
+    fontSize: "14px",
+    lineHeight: "20px",
+    ":hover": { backgroundColor: CHROME_HOVER_BACKGROUND },
+    ":focus-visible": {
+      outline: "2px solid var(--colorStrokeFocus2, #242424)",
+      outlineOffset: "-2px",
+    },
+  },
+  title: {
+    minWidth: 0,
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    overflowWrap: "anywhere",
+    wordBreak: "normal",
+    fontWeight: 600,
+  },
+});
+
+const BookmarkCard: FC<{
+  title: string;
+  location?: BookmarkLocation;
+  onSelect: () => void;
+  onRemove?: (event: MouseEvent<HTMLButtonElement>) => void;
+}> = ({ title, location, onSelect, onRemove }) => {
   const t = useTranslation();
+  const { locale } = useLocale();
+  const styles = useBookmarkStyles();
+  const pageId = useId();
+  const page = location?.page;
+  const pageLabel = page?.status === "known"
+    ? t("annotations.bookmarkPage", { page: new Intl.NumberFormat(locale).format(page.number) })
+    : t(page?.status === "pending" ? "annotations.bookmarkPagePending" : "annotations.bookmarkPageUnavailable");
+
+  return (
+    <li style={ANNOTATION_CARD_STYLE} data-bookmark-card="">
+      <Tooltip content={{ children: title, style: EPUB_TOOLTIP_STYLE }} relationship="inaccessible">
+        <button type="button" className={styles.jump} onClick={onSelect}
+          aria-describedby={pageId} data-bookmark-link="">
+          <BookmarkFilled aria-hidden="true" fontSize={18}
+            style={{ flexShrink: 0, marginTop: 1, color: BOOKMARK_COLOR }} />
+          <span className={styles.title} data-bookmark-title="">{title}</span>
+        </button>
+      </Tooltip>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 8px 8px 10px" }}>
+        <span id={pageId} data-bookmark-page="" style={{
+          minWidth: 0,
+          padding: "2px 7px",
+          borderRadius: 4,
+          background: "var(--colorNeutralBackground1, #fff)",
+          color: "var(--colorNeutralForeground2, #424242)",
+          fontSize: 12,
+          fontWeight: 600,
+          lineHeight: "20px",
+          fontVariantNumeric: "tabular-nums",
+        }}>{pageLabel}</span>
+        {onRemove ? (
+          <Tooltip content={{ children: t("annotations.removeBookmark", { label: title }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
+            <Button appearance="subtle" size="small" icon={<DeleteRegular />} onClick={onRemove} />
+          </Tooltip>
+        ) : (
+          <Caption1 style={{ color: "var(--colorNeutralForeground3, #616161)", textAlign: "right" }}>
+            {t("annotations.publisherNoteTag")}
+          </Caption1>
+        )}
+      </div>
+    </li>
+  );
+};
+
+/** Saved positions in reading order; publisher bookmarks keep their own navigation and read-only actions. */
+const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, locations, embedded, onSelect, onRemove, onSelectEmbedded }) => {
+  const t = useTranslation();
+  const listRef = useRef<HTMLUListElement>(null);
+  const pendingFocus = useRef<{ id: string; index: number; button: HTMLButtonElement; fallback: HTMLElement | null } | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const pending = pendingFocus.current;
+    if (!pending || bookmarks.some(bookmark => bookmark.id === pending.id)) return;
+    pendingFocus.current = undefined;
+    if (document.activeElement !== document.body && document.activeElement !== pending.button) return;
+    const links = listRef.current?.querySelectorAll<HTMLButtonElement>("[data-bookmark-link]");
+    const target = links?.[Math.min(pending.index, links.length - 1)] ?? pending.fallback;
+    target?.focus();
+  }, [bookmarks]);
+
   if (bookmarks.length === 0 && embedded.length === 0) {
     return (
       <Body1 as="p" block style={{ padding: "16px 12px", opacity: 0.75, margin: 0 }}>
@@ -56,52 +158,21 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, embedded, onSelect, on
   }
 
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      {bookmarks.map((bookmark) => (
-        <li key={bookmark.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <button
-            type="button"
-            onClick={() => onSelect(bookmark.cfi)}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: "none",
-              border: "none",
-              borderRadius: 6,
-              color: "var(--colorNeutralForeground2, #333)",
-              cursor: "pointer",
-              padding: "7px 10px",
-              textAlign: "left",
-              font: "inherit",
-              lineHeight: 1.35,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "none";
-            }}
-          >
-            <BookmarkFilled fontSize={16} style={{ flexShrink: 0, color: BOOKMARK_COLOR }} />
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {bookmark.label}
-            </span>
-          </button>
-          <Tooltip content={{ children: t("annotations.removeBookmark", { label: bookmark.label }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<DeleteRegular />}
-              onClick={() => onRemove(bookmark.id)}
-            />
-          </Tooltip>
-        </li>
+    <ul ref={listRef} style={{ listStyle: "none", margin: 0, padding: 0 }}>
+      {bookmarks.map((bookmark, index) => (
+        <BookmarkCard key={bookmark.id} title={locations?.[bookmark.id]?.chapterTitle ?? bookmark.label}
+          location={locations?.[bookmark.id]} onSelect={() => onSelect(bookmark.cfi)}
+          onRemove={event => {
+            pendingFocus.current = {
+              id: bookmark.id, index, button: event.currentTarget,
+              fallback: event.currentTarget.closest<HTMLElement>('[role="tabpanel"]'),
+            };
+            onRemove(bookmark.id);
+          }} />
       ))}
       {embedded.map((annotation) => (
-        <ReadOnlyRow key={annotation.id} annotation={annotation} onSelect={onSelectEmbedded} clampLines={1} />
+        <BookmarkCard key={annotation.id} title={annotation.label} location={annotation.location}
+          onSelect={() => onSelectEmbedded(annotation.cfi)} />
       ))}
     </ul>
   );
@@ -194,13 +265,7 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
 
   return (
     <li
-      style={{
-        marginBottom: 8,
-        border: `1px solid ${CHROME_BORDER}`,
-        borderRadius: 8,
-        background: "rgba(255, 255, 255, 0.16)",
-        overflowWrap: "anywhere",
-      }}
+      style={ANNOTATION_CARD_STYLE}
     >
       <button
         type="button"
@@ -408,6 +473,7 @@ const ReadOnlyRow: FC<ReadOnlyRowProps> = ({ annotation, onSelect, clampLines })
 
 export interface AnnotationsPanelProps {
   bookmarks: readonly Bookmark[];
+  bookmarkLocations?: Readonly<Record<string, BookmarkLocation>>;
   onSelectBookmark: (cfi: string) => void;
   onRemoveBookmark: (id: string) => void;
   highlights: readonly Highlight[];
@@ -459,6 +525,7 @@ export interface AnnotationsPanelProps {
  * in common beyond that chrome. */
 export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   bookmarks,
+  bookmarkLocations,
   onSelectBookmark,
   onRemoveBookmark,
   highlights,
@@ -623,6 +690,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           {activeTab === "bookmarks" ? (
             <BookmarkList
               bookmarks={bookmarks}
+              locations={bookmarkLocations}
               embedded={embeddedBookmarks}
               onSelect={onSelectBookmark}
               onRemove={onRemoveBookmark}

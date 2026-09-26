@@ -559,6 +559,16 @@ export class LibraryDatabase {
     return record ? parseShortcutPreferences(record.value) : undefined;
   }
 
+  /** Separate from reading settings: acknowledging help must not reset any preferences. */
+  public async getReadingWelcomeVersion(): Promise<number> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, "readingWelcomeVersion");
+    return typeof record?.value === "number" && Number.isInteger(record.value) ? record.value : 0;
+  }
+
+  public async acknowledgeReadingWelcome(): Promise<void> {
+    await this.put(PREFERENCES_STORE, { key: "readingWelcomeVersion", value: 1 });
+  }
+
   public async setShortcutPreferences(preferences: ShortcutPreferences): Promise<void> {
     const value = parseShortcutPreferences(preferences);
     await this.put(PREFERENCES_STORE, { key: SHORTCUT_PREFERENCES_KEY, value });

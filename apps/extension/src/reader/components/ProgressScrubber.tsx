@@ -183,6 +183,19 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           total: preview.position.total,
         })
     : undefined;
+  // Marker fractions encode exact measured page / total, not seek targets.
+  // Comparing page numbers avoids claiming a nearby (but different) page.
+  const displayedPage = preview
+    ? preview.position.kind === "page" && preview.position.total === snapshot.bookPageCount
+      ? preview.position.current
+      : undefined
+    : snapshot.bookPageIndex;
+  const displayedPageBookmarked = displayedPage !== undefined &&
+    snapshot.bookPageCount !== undefined && snapshot.bookPageCount > 0 &&
+    snapshot.bookmarkProgress?.some(marker =>
+      Math.round(marker.fraction * snapshot.bookPageCount!) === displayedPage,
+    );
+  const bookmarkLabel = displayedPageBookmarked ? t("scrubber.bookmarked") : undefined;
 
   useLayoutEffect(() => {
     const bar = barRef.current;
@@ -214,7 +227,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     // popup's rendered width changes as its text does (e.g. "Page 9 of
     // 12" vs "Page 100 of 120"), which can itself push it back into (or
     // out of) needing to be clamped, even without `dragFraction` moving.
-  }, [optimisticFraction, previewLabel, preview?.chapterLabel, rtl]);
+  }, [optimisticFraction, previewLabel, preview?.chapterLabel, bookmarkLabel, rtl]);
 
   const fractionAt = (clientX: number): number => {
     const track = trackRef.current;
@@ -486,7 +499,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         bottom: 0,
         left: 0,
         right: 0,
-        zIndex: 10,
+        // The taller flag lane must not cover notices or panel controls.
+        zIndex: 6,
         padding: "0 20px 7px",
         background: chromeTheme.background,
         backdropFilter: CHROME_BACKDROP_FILTER,
@@ -550,6 +564,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       {preview && (
         <div
           ref={popupRef}
+          data-scrubber-preview=""
           aria-hidden="true"
           style={{
             position: "absolute",
@@ -621,6 +636,29 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           >
             {preview.chapterLabel}
           </Caption1>
+          {bookmarkLabel && (
+            <span
+              data-bookmark-status=""
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 5,
+                marginTop: 6,
+                fontSize: 12,
+                lineHeight: "18px",
+                fontWeight: 600,
+                color: "var(--colorNeutralForeground1, #242424)",
+              }}
+            >
+              <BookmarkFilled
+                aria-hidden="true"
+                className={styles.bookmark}
+                style={{ width: 18, height: 18, flexShrink: 0 }}
+              />
+              {bookmarkLabel}
+            </span>
+          )}
         </div>
       )}
 
@@ -650,14 +688,15 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         aria-valuemax={100}
         aria-orientation="horizontal"
         aria-valuenow={Math.round(displayFraction * 100)}
-        aria-valuetext={
+        aria-valuetext={[
           previewLabel
             ? `${previewStateLabel ? `${previewStateLabel}: ` : ""}${previewLabel} - ${preview!.chapterLabel}`
-            : (currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`)
-        }
+            : (currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`),
+          bookmarkLabel,
+        ].filter(Boolean).join(" - ")}
         style={{
           position: "relative",
-          height: 44,
+          height: 64,
           borderRadius: 8,
           display: "flex",
           alignItems: "center",
@@ -672,7 +711,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             left: 0,
             right: 0,
             height: 4,
-            top: 32,
+            top: 52,
             borderRadius: 2,
             background: "var(--colorNeutralStroke2, rgba(0, 0, 0, 0.12))",
           }}
@@ -684,11 +723,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             right: rtl ? 0 : "auto",
             width: `${displayFraction * 100}%`,
             height: 4,
-            top: 32,
+            top: 52,
             borderRadius: 2,
             background: chromeTheme.accentForeground,
           }}
         />
+        {/* A separate flag lane keeps exact x positions, even under the thumb. */}
         {Array.from(new Set(snapshot.bookmarkProgress?.map(marker => marker.fraction))).map(fraction => (
           <BookmarkFilled
             key={fraction}
@@ -698,19 +738,20 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             style={{
               position: "absolute",
               left: `${(rtl ? 1 - fraction : fraction) * 100}%`,
-              top: 22,
-              width: 10,
-              height: 12,
+              top: 29,
+              width: 14,
+              height: 15,
               transform: "translateX(-50%)",
               pointerEvents: "none",
             }}
           />
         ))}
         <div
+          data-scrubber-thumb=""
           style={{
             position: "absolute",
             left: `${(rtl ? 1 - displayFraction : displayFraction) * 100}%`,
-            top: 26,
+            top: 46,
             width: 16,
             height: 16,
             boxSizing: "border-box",

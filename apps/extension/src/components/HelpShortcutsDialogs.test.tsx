@@ -36,6 +36,7 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
   let setPreferences: ReturnType<typeof vi.fn<(next: ShortcutPreferences) => Promise<void>>>;
   const close = vi.fn();
   const openShortcuts = vi.fn();
+  const openTips = vi.fn();
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -53,6 +54,7 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     error = undefined;
     close.mockReset();
     openShortcuts.mockReset();
+    openTips.mockReset();
     setPreferences = vi.fn(async (next) => { preferences = next; });
     vi.mocked(useShortcutPreferences).mockImplementation(() => ({ preferences, platform, ready, error, setPreferences }));
     container = document.createElement("div");
@@ -65,10 +67,11 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
-  async function help(getReaderDiagnostics?: () => string | undefined) {
+  async function help(getReaderDiagnostics?: () => string | undefined, readingTips = false) {
     await act(async () => root.render(<HelpAboutFlyout
       open onRequestClose={close} backgroundSolid="#fff" accentForeground="#7a3e00"
       onOpenKeyboardShortcuts={openShortcuts} getReaderDiagnostics={getReaderDiagnostics}
+      onOpenReadingTips={readingTips ? openTips : undefined}
     />));
   }
   async function shortcuts(direction: "ltr" | "rtl" = "ltr", open = true) {
@@ -88,13 +91,13 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     return [...container.querySelectorAll("dt")].find((term) => term.textContent === label)?.nextElementSibling;
   }
 
-  it.each(SUPPORTED_LOCALES)("localizes subtle Help links and the read-only grouped reference in %s", async (locale) => {
+  it.each(SUPPORTED_LOCALES)("localizes Help actions and the read-only grouped reference in %s", async (locale) => {
     language.locale = locale;
     const t = getTranslate(locale);
     await help();
     expect(container.querySelector("h2")?.textContent).toBe(t("about.title"));
     const shortcutLink = button(t("shortcuts.showKeyboardShortcuts"));
-    expect(shortcutLink.className).toContain("fui-Link");
+    expect(shortcutLink.className).toContain("fui-Button");
     expect(shortcutLink.getAttribute("aria-keyshortcuts")).toBe("Control+/");
     expect(shortcutLink.closest("section")).toBe(container.querySelector('[role="dialog"]'));
     expect([...container.querySelectorAll("h3")].map((heading) => heading.textContent)).not.toContain(t("shortcuts.title"));
@@ -128,6 +131,19 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     expect(container.textContent).toContain(t("shortcuts.goToHint"));
     expect(CATALOGS[locale]["about.title"]).toBe(CATALOGS[locale]["settings.helpAbout"]);
     expect(CATALOGS[locale]["library.about"]).toBe(CATALOGS[locale]["settings.helpAbout"]);
+  });
+
+  it("uses separate button rows for reader actions and a link for the external guide", async () => {
+    await help(undefined, true);
+    const tips = button("Reading tips");
+    const shortcuts = button("Show keyboard shortcuts");
+    expect(tips.className).toContain("fui-Button");
+    expect(shortcuts.className).toContain("fui-Button");
+    expect(tips.parentElement?.style.flexDirection).toBe("column");
+    expect(tips.parentElement?.children).toHaveLength(3);
+    await click("Reading tips");
+    expect(openTips).toHaveBeenCalledOnce();
+    expect(openShortcuts).not.toHaveBeenCalled();
   });
 
   it("copies only environment data in the library and announces success", async () => {
@@ -185,7 +201,7 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     platform = currentPlatform;
     await help();
     expect(button("Show keyboard shortcuts").getAttribute("aria-keyshortcuts")).toBe(platform === "mac" ? "Meta+/" : "Control+/");
-    expect(container.textContent).toContain(platform === "mac" ? "⌘/" : "Ctrl+/");
+    expect(container.textContent).not.toContain(platform === "mac" ? "⌘/" : "Ctrl+/");
     await shortcuts();
     expect(assignment("Toggle bookmark")?.textContent).toBe(platform === "mac" ? "⌘B" : "Ctrl+B");
     expect(assignment("Go to page")?.textContent).toBe(platform === "mac" ? "⌘G" : "Ctrl+G");

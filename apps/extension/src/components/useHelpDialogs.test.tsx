@@ -71,6 +71,17 @@ describe("help dialog focus", () => {
     expect(restoreReading).toHaveBeenCalledOnce();
   });
 
+  it("returns welcome opened from Help to reading without reopening or retaining the flyout", () => {
+    act(() => help.openHelp(opener));
+    act(() => help.openWelcome());
+    expect(help.view).toBe("welcome");
+    act(() => help.closeToContent());
+    expect(help.view).toBeUndefined();
+    act(() => help.afterClose());
+    act(() => vi.advanceTimersToNextFrame());
+    expect(restoreReading).toHaveBeenCalledOnce();
+  });
+
   it("uses the provided Settings trigger instead of a disappearing menu item", () => {
     act(() => help.openHelp(opener));
     const focus = vi.spyOn(opener, "focus");

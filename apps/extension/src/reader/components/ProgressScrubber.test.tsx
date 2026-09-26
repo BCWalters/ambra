@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoHideChrome } from "../useAutoHideChrome.js";
+import { SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { ProgressScrubber, type ProgressScrubberProps } from "./ProgressScrubber.js";
 
 const snapshot = {
@@ -194,6 +195,59 @@ describe("ProgressScrubber", () => {
     expect(slider.hasAttribute("aria-describedby")).toBe(false);
   });
 
+  it("announces the exact preview page, not a bookmark within the thumb's visual radius", () => {
+    const { slider, onSeek } = renderScrubber({
+      snapshot: {
+        ...snapshot,
+        bookPageIndex: 20_000,
+        bookPageCount: 20_000,
+        bookmarkProgress: [{ id: "last", fraction: 1 }],
+      },
+      onPreview: fraction => ({
+        position: { kind: "page", current: Math.max(1, Math.round(fraction * 20_000)), total: 20_000 },
+        chapterLabel: "Last chapter",
+      }),
+    });
+    expect(slider.getAttribute("aria-valuetext")).toContain("Bookmarked");
+    pointer(slider, "pointerdown", { clientX: 119.995 });
+    expect(slider.getAttribute("aria-valuetext")).toBe("Page 19999 of 20000 - Last chapter");
+    expect(container.querySelector("[data-bookmark-status]")).toBeNull();
+    pointer(slider, "pointermove", { clientX: 120 });
+    expect(container.querySelector("[data-bookmark-status]")?.textContent).toBe("Bookmarked");
+    pointer(slider, "pointerup", { clientX: 120, buttons: 0 });
+    expect(onSeek).toHaveBeenCalledExactlyOnceWith(1);
+    expect(slider.getAttribute("aria-valuetext"))
+      .toBe("Going to position…: Page 20000 of 20000 - Last chapter - Bookmarked");
+  });
+
+  it.each([
+    { position: { kind: "chapter", current: 5, total: 10 } as const, total: 100 },
+    { position: { kind: "page", current: 5, total: 99 } as const, total: 100 },
+    { position: { kind: "page", current: 5, total: 100 } as const, total: undefined },
+  ])("does not label coarse or stale previews as bookmarked: %j", ({ position, total }) => {
+    const { slider } = renderScrubber({
+      snapshot: {
+        ...snapshot,
+        bookPageCount: total,
+        bookmarkProgress: [{ id: "a", fraction: 0.05 }],
+      },
+      onPreview: () => ({ position, chapterLabel: "Chapter" }),
+    });
+    pointer(slider, "pointerdown");
+    expect(slider.getAttribute("aria-valuetext")).not.toContain("Bookmarked");
+    expect(container.querySelector("[data-bookmark-status]")).toBeNull();
+  });
+
+  it("clears exact-page status when markers are invalidated or deleted", () => {
+    const marked = { ...snapshot, bookmarkProgress: [{ id: "a", fraction: 0.05 }] };
+    const { slider } = renderScrubber({ snapshot: marked });
+    expect(slider.getAttribute("aria-valuetext")).toContain("Bookmarked");
+    renderScrubber({ snapshot: { ...marked, bookmarkProgress: undefined } });
+    expect(slider.getAttribute("aria-valuetext")).not.toContain("Bookmarked");
+    renderScrubber({ snapshot: { ...marked, bookmarkProgress: [] } });
+    expect(slider.getAttribute("aria-valuetext")).not.toContain("Bookmarked");
+  });
+
   it("reveals on focus, stays visible during keyboard inactivity, and hides after blur", () => {
     act(() => root.render(<Harness />));
     const slider = container.querySelector<HTMLElement>('[role="slider"]')!;
@@ -245,7 +299,9 @@ describe("ProgressScrubber", () => {
     const { slider, onSeek } = renderScrubber({ visible: false });
     pointer(slider, "pointerdown");
     expect(document.activeElement).toBe(slider);
-    expect(slider.style.height).toBe("44px");
+    expect(slider.style.height).toBe("64px");
+    expect(slider.parentElement!.style.zIndex).toBe("6");
+    expect(parseFloat(slider.style.height) + 7 + 1).toBe(SCRUBBER_HEIGHT);
     expect(slider.getAttribute("aria-valuetext")).toBe(
       "Page 80 of 100 - A long chapter title",
     );

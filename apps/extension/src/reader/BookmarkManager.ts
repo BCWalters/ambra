@@ -25,6 +25,14 @@ export interface BookmarkProgressMarker {
   readonly fraction: number;
 }
 
+export interface BookmarkLocation {
+  readonly chapterTitle?: string;
+  readonly page: { readonly status: "known"; readonly number: number }
+    | { readonly status: "pending" | "unavailable" };
+}
+
+type BookmarkPagination = Pick<BookPaginationEstimator, "positionFor" | "pageIndexForCfi">;
+
 /** Owns the current book's bookmarks: the in-memory cache mirroring
  * `LibraryDatabase`'s persisted copy, and every read/write op the
  * reader UI needs. */
@@ -71,28 +79,52 @@ export class BookmarkManager {
     });
   }
 
-  public progressMarkers(
-    pagination: Pick<BookPaginationEstimator, "positionFor" | "pageIndexForCfi">,
-  ): BookmarkProgressMarker[] {
+  private spineFor(bookmark: Bookmark): number | null {
+    if (!this.progressSpines.has(bookmark)) {
+      try {
+        const spineIndex = this.ctx.spineIndexForCfi(EpubCfi.parse(bookmark.cfi));
+        if (spineIndex === undefined) {
+          console.warn(`Cannot place bookmark ${bookmark.id}: its chapter is not in this book.`);
+        }
+        this.progressSpines.set(bookmark, spineIndex ?? null);
+      } catch (error) {
+        if (!(error instanceof EpubCfiParseError)) throw error;
+        console.warn(`Cannot place bookmark ${bookmark.id}.`, error);
+        this.progressSpines.set(bookmark, null);
+      }
+    }
+    return this.progressSpines.get(bookmark) ?? null;
+  }
+
+  /** Current-layout metadata only: saved labels and CFIs remain portable and untouched. */
+  public locations(pagination: BookmarkPagination | undefined): Readonly<Record<string, BookmarkLocation>> {
+    return Object.fromEntries(this.cache.map((bookmark): [string, BookmarkLocation] => {
+      const spineIndex = this.spineFor(bookmark);
+      return [bookmark.id, spineIndex === null
+        ? { page: { status: "unavailable" } }
+        : this.locationAt(spineIndex, bookmark.cfi, pagination)];
+    }));
+  }
+
+  public locationAt(spineIndex: number, cfi: string, pagination: BookmarkPagination | undefined): BookmarkLocation {
+    const chapterTitle = this.ctx.chapterLabel(spineIndex);
+    if (!pagination) return { chapterTitle, page: { status: "unavailable" } };
+    const pageIndex = pagination.pageIndexForCfi(spineIndex, cfi);
+    const number = pageIndex === undefined ? undefined : pagination.positionFor(spineIndex, pageIndex).currentPage;
+    if (number !== undefined) return { chapterTitle, page: { status: "known", number } };
+    return {
+      chapterTitle,
+      page: { status: pagination.positionFor(0, 0).totalPages === undefined ? "pending" : "unavailable" },
+    };
+  }
+
+  public progressMarkers(pagination: BookmarkPagination): BookmarkProgressMarker[] {
     const total = pagination.positionFor(0, 0).totalPages;
     if (!total) return [];
     const markers: BookmarkProgressMarker[] = [];
     for (const bookmark of this.cache) {
-      if (!this.progressSpines.has(bookmark)) {
-        try {
-          const spineIndex = this.ctx.spineIndexForCfi(EpubCfi.parse(bookmark.cfi));
-          if (spineIndex === undefined) {
-            console.warn(`Cannot place bookmark ${bookmark.id}: its chapter is not in this book.`);
-          }
-          this.progressSpines.set(bookmark, spineIndex ?? null);
-        } catch (error) {
-          if (!(error instanceof EpubCfiParseError)) throw error;
-          console.warn(`Cannot place bookmark ${bookmark.id} on the progress bar.`, error);
-          this.progressSpines.set(bookmark, null);
-        }
-      }
-      const spineIndex = this.progressSpines.get(bookmark);
-      if (spineIndex === null || spineIndex === undefined) continue;
+      const spineIndex = this.spineFor(bookmark);
+      if (spineIndex === null) continue;
       const pageIndex = pagination.pageIndexForCfi(spineIndex, bookmark.cfi);
       if (pageIndex === undefined) continue;
       const position = pagination.positionFor(spineIndex, pageIndex);

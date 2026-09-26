@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type HelpView = "about" | "shortcuts";
+type HelpView = "about" | "shortcuts" | "welcome";
 
 export function captureFocusReturn(restoreReadingFocus?: () => void, target?: HTMLElement | null): () => void {
   const element = target ?? document.activeElement;
@@ -58,6 +58,14 @@ export function useHelpDialogs(restoreReadingFocus?: () => void) {
     setView("shortcuts");
   }, [captureFocus]);
 
+  const openWelcome = useCallback(() => {
+    captureFocus();
+    focusReturn.current = restoreReadingFocus;
+    returnToAbout.current = false;
+    setFocusShortcutsOnOpen(false);
+    setView("welcome");
+  }, [captureFocus, restoreReadingFocus]);
+
   const openShortcutsFromHelp = useCallback(() => {
     setFocusShortcutsOnOpen(false);
     returnToAbout.current = true;
@@ -95,5 +103,5 @@ export function useHelpDialogs(restoreReadingFocus?: () => void) {
     });
   }, []);
 
-  return { view, focusShortcutsOnOpen, openHelp, openShortcuts, openShortcutsFromHelp, close, closeToContent, afterClose };
+  return { view, focusShortcutsOnOpen, openHelp, openShortcuts, openShortcutsFromHelp, openWelcome, close, closeToContent, afterClose };
 }

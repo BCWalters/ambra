@@ -56,6 +56,16 @@ into `apps/extension/dist`, which is reserved for the CRXJS *dev-mode*
 loader stubs the maintainer's own live-reloaded Chrome window depends on.
 Running this suite never disturbs that.
 
+Reader tests default to an experienced profile: `launchReader` seeds only
+`readingWelcomeVersion: 1` in the real IndexedDB preferences store before
+importing. Pass `{ firstReadingWelcome: true }` to exercise the unmodified
+production first-reading welcome. `beforeBookImport` can seed other preferences
+or verify Library/error states in that same profile. The CI-wired
+`first-reading-welcome.spec.ts` covers acknowledgement, Escape, reload, Help
+reopening, multiple books, RTL fixed layout, scrolling, touch-width reflow,
+modal focus, reduced motion and forced colors. There is no headless-only
+production behavior.
+
 Tests using the shared `launchReader` harness can opt into full Chromium's
 headless mode with `AMBRA_E2E_HEADLESS=1`. This keeps validation from opening
 windows or interrupting someone testing the live extension. It still loads the
@@ -444,6 +454,28 @@ These check exact rendered-line accounting in both directions, expanded/collapse
 state, keyboard focus, and mode changes. To regenerate those small fixtures,
 run `node apps/e2e/scripts/generate-disclosure-fixture.mjs`.
 
+## Bookmark cards (#213)
+
+`bookmark-panel.spec.ts` checks the real packaged reader at 1400px and 320px:
+two-line word-wrapped chapter titles (including unbroken text), full-title hover,
+separate always-visible page badges, current-layout bookwide pages across chapters
+and font/pinned-panel reflow, unchanged legacy labels/CFIs, keyboard deletion focus, and
+publisher bookmarks' read-only navigation. It captures settled Ambra, Silver and
+Purple screenshots at both widths. Scrolling shows "Page unavailable" rather
+than reusing a stale paginated number. Unit tests cover pending measurements and
+invalid positions without inventing page numbers.
+
+The CI reader matrix includes this spec plus annotation mutation, import/export
+and embedded-annotation regression suites. Its `bookmark-panel-review-<sha>`
+artifact retains the six review screenshots. For a targeted run, point
+`AMBRA_E2E_EXTENSION_PATH` at an isolated packaged build and run:
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
+  bookmark-panel.spec.ts annotation-mutation-lifecycle.spec.ts \
+  annotation-export-import.spec.ts embedded-annotations.spec.ts --workers=1
+```
+
 ## Pagination measurement regressions (#197 / #198)
 
 The packaged reader's concentrated-chapter regression checks no-animation document
@@ -463,6 +495,18 @@ bookmarks, resize and resume. Each fixed-layout spine item contributes one
 page without loading a measurement document. Mixed books still measure their
 reflowable chapters; a saved scrolling preference does not hide the FXL scrubber.
 Native moves into an already-visible companion update the scrubber immediately.
+`scrubber-bookmarks.spec.ts` also checks the bookmark flag lane: 14 × 15px flags
+remain at their exact fractions above (never underneath) the thumb, including
+current/adjacent pages, duplicate clusters, long-book last pages and 320px RTL.
+The preview and slider value say "Bookmarked" only for an exact measured page
+match, not for nearby flags; coarse or invalidated counts cannot claim a match.
+Markers remain decorative, with no extra click targets or focus stops. The
+suite captures desktop/narrow/forced-color screenshots and checks popup bounds,
+reduced motion, bookmark counts and unchanged seek hit testing.
+The taller lane stays below notices and panels in the stacking order, so it
+cannot intercept narration discovery actions at 320px or 400% browser zoom.
+Panel clearance follows the shared 72px scrubber height. Bookmark status text
+uses the neutral foreground for text contrast; only its icon uses bookmark blue.
 Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
 than dropping the destination and opening the chapter's beginning.
 Typography changes retain that exact scrolling position before mutating styles.

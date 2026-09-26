@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Link, Subtitle1 } from "@fluentui/react-components";
-import { CopyRegular, MailRegular } from "@fluentui/react-icons";
+import { BookOpenRegular, CopyRegular, KeyboardRegular, MailRegular } from "@fluentui/react-icons";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { ModalFlyout } from "./ModalFlyout.js";
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
-import { ariaShortcut, formatShortcut, getCommandBindings } from "../shortcuts/ReaderCommands.js";
+import { ariaShortcut, getCommandBindings } from "../shortcuts/ReaderCommands.js";
 import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
 import { ErrorDetails } from "./ErrorDetails.js";
 
@@ -46,6 +46,7 @@ export interface HelpAboutFlyoutProps {
   backgroundSolid: string;
   accentForeground: string;
   onOpenKeyboardShortcuts: () => void;
+  onOpenReadingTips?: () => void;
   getReaderDiagnostics?: () => string | undefined;
   onAfterClose?: () => void;
   focusShortcutsOnOpen?: boolean;
@@ -53,7 +54,7 @@ export interface HelpAboutFlyoutProps {
 
 export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
   open, onRequestClose, onOutsideClick, backgroundSolid, accentForeground,
-  onOpenKeyboardShortcuts, getReaderDiagnostics, onAfterClose, focusShortcutsOnOpen = false,
+  onOpenKeyboardShortcuts, onOpenReadingTips, getReaderDiagnostics, onAfterClose, focusShortcutsOnOpen = false,
 }) => {
   const t = useTranslation();
   const diagnosticsHintId = useId();
@@ -117,22 +118,25 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
           {t("about.createdBy")} <span>Ben Walters</span>
         </Caption1>
 
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 16px" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 6 }}>
-            <Link
-              as="button"
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {onOpenReadingTips && (
+            <Button appearance="subtle" icon={<BookOpenRegular />} onClick={onOpenReadingTips}
+              style={{ justifyContent: "flex-start", minHeight: 40, textAlign: "left", color: accentForeground }}>
+              {t("welcome.readingTips")}
+            </Button>
+          )}
+            <Button
+              appearance="subtle"
+              icon={<KeyboardRegular />}
               ref={shortcutsLinkRef}
               onClick={onOpenKeyboardShortcuts}
               aria-keyshortcuts={bindings.length ? bindings.map((binding) => ariaShortcut(binding, platform)).join(" ") : undefined}
-              style={{ color: accentForeground }}
+              style={{ minWidth: 0, minHeight: 40, justifyContent: "flex-start", textAlign: "left", color: accentForeground }}
             >
               {t("shortcuts.showKeyboardShortcuts")}
-            </Link>
-            {bindings.length > 0 && <Caption1 style={{ opacity: 0.75 }}>
-              {bindings.map((binding) => formatShortcut(binding, platform)).join(" / ")}
-            </Caption1>}
-          </div>
-          <Link href={USER_GUIDE_URL} target="_blank" rel="noreferrer" style={{ color: accentForeground }}>
+            </Button>
+          <Link href={USER_GUIDE_URL} target="_blank" rel="noreferrer"
+            style={{ color: accentForeground, alignSelf: "flex-start", marginLeft: 12, minHeight: 40, display: "inline-flex", alignItems: "center" }}>
             {t("about.userGuide")}
           </Link>
         </div>

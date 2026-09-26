@@ -686,6 +686,7 @@ export class ReaderController {
       const requestedLayout = this.pendingLayout?.configuration ?? this.currentLayout();
 
       this.cachedSnapshot = {
+        hasRenderedContent: this.host !== undefined,
         narration: this.narration.snapshot,
         narrationNoticeVisible: this.narrationNoticeVisible && this.host !== undefined,
         hasReadingSelection: this.narration.snapshot.available && selectedReadingRange(this.contentDocumentViews()) !== undefined,
@@ -729,6 +730,7 @@ export class ReaderController {
         isBookmarked: this.bookmarks.onCurrentPage().length > 0,
         bookmarkedPages: this.bookmarks.flagsForCurrentPages(),
         bookmarks: this.bookmarks.allSorted(),
+        bookmarkLocations: this.bookmarks.locations(this.host instanceof ScrollContentHost ? undefined : this.bookPagination),
         bookmarkProgress: this.bookPagination
           ? this.bookmarks.progressMarkers(this.bookPagination)
           : undefined,
@@ -1040,10 +1042,12 @@ export class ReaderController {
       }
       let cfi: string;
       let isRange: boolean;
+      let cfiSpineIndex: number | undefined;
       try {
         const selection = parseSelectorCfi(selector.value);
         cfi = selection.start.toString();
         isRange = selection.end !== undefined;
+        cfiSpineIndex = this.pkg.findSpineIndexByPackageCfiSteps(selection.start.packageSteps);
       } catch {
         continue;
       }
@@ -1054,6 +1058,11 @@ export class ReaderController {
         label: note && note.length > 0 ? note : this.chapterLabel(spineIndex),
         note,
         kind: classifyReadOnlyAnnotationKind(annotation.motivation, isRange),
+        location: cfiSpineIndex === undefined
+          ? { page: { status: "unavailable" } }
+          : this.bookmarks.locationAt(
+            cfiSpineIndex, cfi, this.host instanceof ScrollContentHost ? undefined : this.bookPagination,
+          ),
       });
     }
     return views;

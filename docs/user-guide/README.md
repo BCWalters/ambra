@@ -30,6 +30,19 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 ## Take your annotations with you
 
+Bookmarks use the same compact card treatment as highlights. Chapter titles
+wrap to two lines; hover a title to read it in full. A separate page badge stays
+visible even when the title is long. Its number is the bookwide page in your
+current layout, so it updates when you change text size or page width.
+**Finding page…** means pagination is still being measured; **Page unavailable**
+is shown in scrolling mode or when the saved position cannot be placed.
+Existing saved labels and locations are not rewritten. Publisher bookmarks keep
+their **Publisher note** tag and cannot be deleted.
+
+Use the card title to return to its saved position. After keyboard deletion,
+focus moves to the next bookmark, or the previous one if the last card was
+removed; removing the final bookmark leaves focus in the empty Bookmarks tab.
+
 **EPUB annotation export and import** let you back up or share your reading work separately from the book. Ambra exports your highlights, text notes, bookmarks, and bookmark labels as an **EPUB Annotations 1.0 JSON file** (`… - annotations.json`), and imports compatible JSON into the open book.
 
 Use the same book or edition for best results. Ambra skips unsupported locations and detected duplicates. Imported highlights use yellow, and compatibility varies between annotation tools.
@@ -75,6 +88,7 @@ The shortcut popup is a quick reference showing the default shortcuts for your c
 ## Reading tips
 
 - **Turn from the outer margins.** Click to the right of the rightmost page’s reading area to move right, or to the left of the leftmost page’s reading area to move left (reversed reading order in right-to-left books). Reflowable content and whitespace inside its reading area do not turn pages. Fixed-layout books also accept taps within the outermost 8% of each rendered outer page, capped at 64 screen pixels, so artwork filling the width remains navigable. The gap between pages and their inner edges never turn pages. Links, controls, editing, and text selection keep their own behavior.
+- **A quiet welcome.** The first book you successfully open offers a short illustrated introduction to turning pages and returning to your Library. Choose the centered **Start reading** button, close it, or press **Escape** to continue at the same position. Dismissing it saves a versioned acknowledgement for this browser profile, across books; it does not change your reading settings. To return to your books, click or tap the library icon in the reader toolbar. You can revisit **Reading tips** in the reader’s **Help & About** at any time. Its in-app actions, **Reading tips** and **Show keyboard shortcuts**, appear as separate button rows; **User guide** is a separate external link. Tips follow the current book’s reading direction and paginated/scroll layout; keyboard tips appear only when shortcuts are enabled. Loading or failed book opens do not count as a first reading. If browser storage fails, reading remains available, but the welcome may appear again next time.
 - **Settle back into the book.** When reader controls are showing, a page-turning click or tap first dismisses them without turning the page. The next click turns normally. Pinned panels stay open; links, images, and deliberate swipes retain their own behavior.
 - **Choose your rhythm.** Pagination turns pages; scrolling keeps Page Up, Page Down, and Space available for native scrolling. For continuous screen-reader reading, consider scrolling using the shortcut above. Mode selection is reflowable-only; choosing the current mode leaves it unchanged.
 - **Keep keys in context.** Reading navigation belongs to the book content; modified commands such as search, bookmark, and the shortcut popup can also work from toolbar buttons. Text fields, selections, interactive widgets, and dialogs retain their own keys. Ambra does not require a screen reader’s application mode.

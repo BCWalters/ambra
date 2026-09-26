@@ -20,6 +20,8 @@ class Locator {
 class StubContext extends EventEmitter {
   public closeCount = 0;
   public closeFailure: Error | undefined;
+  public preferenceSeedCount = 0;
+  public preferenceSeedFailure: Error | undefined;
   public readonly input = new Locator();
   private readonly reader = {
     url: () => "chrome-extension://test/src/reader/index.html",
@@ -33,6 +35,10 @@ class StubContext extends EventEmitter {
       locator: () => this.input,
       getByRole: () => this.input,
       waitForTimeout: async () => {},
+      evaluate: async () => {
+        this.preferenceSeedCount++;
+        if (this.preferenceSeedFailure) throw this.preferenceSeedFailure;
+      },
     };
   }
   public pages() { return [this.reader]; }
@@ -72,6 +78,7 @@ const test = base.extend<{ harness: HarnessStub }>({
 
 test("successful context close removes only its own unique profile", async ({ harness }) => {
   const { context } = await launchReader("unused.epub");
+  expect(harness.context.preferenceSeedCount).toBe(1);
   const profile = harness.profiles[0]!;
   const neighbor = fs.mkdtempSync(path.join(path.dirname(profile), "unrelated-test-profile-"));
   try {
@@ -83,6 +90,21 @@ test("successful context close removes only its own unique profile", async ({ ha
   } finally {
     fs.rmSync(neighbor, { recursive: true, force: true });
   }
+});
+
+test("first-reading coverage leaves the real profile preference unseeded", async ({ harness }) => {
+  const { context } = await launchReader("unused.epub", { firstReadingWelcome: true });
+  expect(harness.context.preferenceSeedCount).toBe(0);
+  await context.close();
+  expect(fs.existsSync(harness.profiles[0]!)).toBe(false);
+});
+
+test("a preference-seeding failure closes the context and removes its profile", async ({ harness }) => {
+  const failure = new Error("Preference write failed");
+  harness.context.preferenceSeedFailure = failure;
+  await expect(launchReader("unused.epub")).rejects.toBe(failure);
+  expect(harness.context.closeCount).toBe(1);
+  expect(fs.existsSync(harness.profiles[0]!)).toBe(false);
 });
 
 test("failed initial import closes the context and removes its profile before rejecting", async ({ harness }) => {

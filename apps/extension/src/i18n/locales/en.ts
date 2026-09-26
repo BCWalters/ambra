@@ -33,6 +33,20 @@
  * ship-quality copy. */
 export interface StringCatalog {
   "settings.helpAbout": string;
+  "welcome.title": string;
+  "welcome.intro": string;
+  "welcome.readingTips": string;
+  "welcome.turnTitle": string;
+  "welcome.scrollTitle": string;
+  "welcome.marginsLtr": string;
+  "welcome.marginsRtl": string;
+  "welcome.keysLtr": string;
+  "welcome.keysRtl": string;
+  "welcome.scroll": string;
+  "welcome.libraryTitle": string;
+  "welcome.library": string;
+  "welcome.start": string;
+  "welcome.reopen": string;
   "library.about": string;
   "about.userGuide": string;
   "about.issues": string;
@@ -253,6 +267,7 @@ export interface StringCatalog {
   "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
   "scrubber.seeking": string;
+  "scrubber.bookmarked": string;
   "scrubber.pageOfTotal": string;
   "scrubber.countingPages": string;
   "scrubber.chapterOfTotal": string;
@@ -286,6 +301,9 @@ export interface StringCatalog {
   "annotations.noBookmarksYet": string;
   "annotations.noHighlightsYet": string;
   "annotations.removeBookmark": string;
+  "annotations.bookmarkPage": string;
+  "annotations.bookmarkPagePending": string;
+  "annotations.bookmarkPageUnavailable": string;
   "annotations.editNote": string;
   "annotations.addNote": string;
   "annotations.removeHighlight": string;
@@ -442,6 +460,20 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "welcome.title": "Make yourself at home",
+  "welcome.intro": "Your next chapter starts here.",
+  "welcome.readingTips": "Reading tips",
+  "welcome.turnTitle": "Turn a page",
+  "welcome.scrollTitle": "Read at your pace",
+  "welcome.marginsLtr": "Click or tap in the right and left book margins to go forward or back.",
+  "welcome.marginsRtl": "Click or tap in the left and right book margins to go forward or back.",
+  "welcome.keysLtr": "You can also use the left and right arrows on your keyboard.",
+  "welcome.keysRtl": "You can also use the left and right arrows on your keyboard.",
+  "welcome.scroll": "Scroll down or swipe up to keep reading. Reverse the movement to go back.",
+  "welcome.libraryTitle": "Your library is always close",
+  "welcome.library": "Click or tap on the library icon to go back to your books.",
+  "welcome.start": "Start reading",
+  "welcome.reopen": "Find these tips again in Help & About.",
   "settings.helpAbout": "Help & About",
   "library.about": "Help & About",
   "about.userGuide": "User guide",
@@ -682,6 +714,7 @@ export const en: StringCatalog = {
   "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
   "scrubber.seeking": "Going to position…",
+  "scrubber.bookmarked": "Bookmarked",
   "scrubber.pageOfTotal": "Page {current} of {total}",
   "scrubber.countingPages": "Counting pages…",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",
@@ -701,6 +734,9 @@ export const en: StringCatalog = {
   "annotations.noBookmarksYet": "No bookmarks yet — use the bookmark button in the toolbar to save your place.",
   "annotations.noHighlightsYet": "No highlights yet — select some text while reading to highlight it.",
   "annotations.removeBookmark": "Remove bookmark: {label}",
+  "annotations.bookmarkPage": "Page {page}",
+  "annotations.bookmarkPagePending": "Finding page…",
+  "annotations.bookmarkPageUnavailable": "Page unavailable",
   "annotations.editNote": "Edit note: {text}",
   "annotations.addNote": "Add note: {text}",
   "annotations.removeHighlight": "Remove highlight: {text}",

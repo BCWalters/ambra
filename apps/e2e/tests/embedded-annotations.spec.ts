@@ -49,7 +49,7 @@ test("a publisher-embedded, bookmark-shaped annotation merges into the Bookmarks
     // Tagged distinctly from a real bookmark, and has no remove button —
     // there's nothing here for the reader to delete (it lives in the
     // EPUB itself, not this app's own library).
-    await expect(noteRow.getByText("Publisher note")).toBeVisible();
+    await expect(readerPage.locator("[data-bookmark-card]").getByText("Publisher note")).toBeVisible();
     await expect(readerPage.getByRole("button", { name: /^Remove bookmark:/ })).toHaveCount(0);
 
     await noteRow.click();
