@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefCallback } from "react";
+import { isInteractiveContentTarget } from "@ambra/engine";
 
 /** How long the toolbar stays visible after the most recent activity
  * before fading away. */
@@ -38,7 +39,7 @@ export interface AutoHideChrome {
  * Auto-hides the reader's toolbar chrome after a period of inactivity, so
  * it doesn't visually compete with the page underneath it once a reader
  * settles into actually reading — a deliberately "less intrusive" chrome
- * behavior, restoring it on a key press anywhere in the reader, or a
+ * behavior, restoring it on a key press outside another UI surface, or a
  * pointer move that reaches near the top or bottom edge of the window
  * (see `EDGE_REVEAL_ZONE_PX`) — deliberately *not* anywhere the pointer
  * moves at all, which used to reveal the chrome on the perfectly
@@ -47,6 +48,8 @@ export interface AutoHideChrome {
  * Stays shown continuously whenever `pinned` is true (e.g. the Table of
  * Contents panel is open — the toolbar holds its own close control) or
  * the pointer/focus is on the toolbar itself.
+ * Input within another control, popup, or panel belongs to that surface,
+ * even when it overlaps an edge-reveal strip.
  *
  * `contentActivityId`, if given, is watched for changes (typically
  * `ReaderSnapshot.contentPointerActivityId`) and hides the toolbar
@@ -132,11 +135,25 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
       return;
     }
 
+    const belongsToOtherUi = (event: Event): boolean => {
+      const path = event.composedPath();
+      // The actual toolbar/scrubber still own their reveal and focus behavior.
+      // Portalled popups are independent DOM surfaces, not reading-edge activity.
+      if (path.some(target => elementsRef.current.has(target as HTMLDivElement))) return false;
+      return path.some(target => {
+        const node = target as Node;
+        if (node.nodeType !== 1) return false;
+        const element = node as Element;
+        return isInteractiveContentTarget(element) ||
+          element.matches('nav, aside, [role="toolbar"], [role="region"], [role="tooltip"]');
+      });
+    };
     const reveal = (): void => {
       show();
       scheduleHide();
     };
     const handlePointerMove = (event: PointerEvent): void => {
+      if (belongsToOtherUi(event)) return;
       const nearTop = event.clientY <= EDGE_REVEAL_ZONE_PX;
       const nearBottom = event.clientY >= window.innerHeight - EDGE_REVEAL_ZONE_PX;
       if (!nearTop && !nearBottom) {
@@ -153,8 +170,11 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
       })) return;
       reveal();
     };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (!belongsToOtherUi(event)) reveal();
+    };
     window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("keydown", reveal);
+    window.addEventListener("keydown", handleKeyDown);
     // A window resize (e.g. crossing the two-page-spread width threshold,
     // which swaps the whole content host) is itself a deliberate user
     // action that changes the layout — worth surfacing the chrome for,
@@ -165,7 +185,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("keydown", reveal);
+      window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("resize", reveal);
       window.clearTimeout(timerRef.current);
     };

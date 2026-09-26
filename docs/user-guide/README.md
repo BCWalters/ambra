@@ -61,6 +61,12 @@ Use the card title to return to its saved position. After keyboard deletion,
 focus moves to the next bookmark, or the previous one if the last card was
 removed; removing the final bookmark leaves focus in the empty Bookmarks tab.
 
+While using an inline highlight, selection, or footnote popup, moving over its
+controls does not summon the reader toolbar or progress bar over it—even near
+the screen edges. Typing in a note stays in the note editor. Moving to a reading
+edge outside popup controls or focusing the reader toolbar still reveals the
+usual controls; Escape keeps its existing popup-dismissal behavior.
+
 **EPUB annotation export and import** let you back up or share your reading work separately from the book. Ambra exports your highlights, text notes, bookmarks, and bookmark labels as an **EPUB Annotations 1.0 JSON file** (`… - annotations.json`), and imports compatible JSON into the open book.
 
 Use the same book or edition for best results. Ambra skips unsupported locations and detected duplicates. Imported highlights use yellow, and compatibility varies between annotation tools.

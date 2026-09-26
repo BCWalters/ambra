@@ -150,6 +150,24 @@ of the original fixture. Each layout performs 24 long drags and verifies actual
 navigation, exactly one seek per release, and the native capture-loss ordering.
 Without the native-input flag, the same test uses ordinary Playwright mouse input.
 
+## Popup hover ownership
+
+`useAutoHideChrome` treats a pointer's window-edge coordinates as a reveal request
+only when its composed event path does not belong to another UI surface. It
+reuses the engine's interactive-control guard, includes popup/panel/toolbar
+backgrounds and portalled tooltips, and explicitly exempts its registered reader
+toolbar and progress bar. Keyboard input in another surface likewise remains
+with that surface; focus on reader chrome and existing pinned-panel behavior are
+unchanged. This avoids covering first-line annotation actions without changing
+popup layout or stacking order.
+
+`popup-hover-ownership.spec.ts` covers real first-line highlight deletion at
+normal/narrow widths and 200% Chrome zoom, LTR/RTL note saving, bottom-edge
+narration/menu interactions, footnote dismissal, and ordinary chrome reveal.
+Run it against an immutable isolated build, together with
+`reader-ui-dismissal.spec.ts` and `note-save-lifecycle.spec.ts` for related
+interaction coverage.
+
 ## Browser reading-location history
 
 Chrome's native Back/Forward controls traverse deliberate reading jumps without

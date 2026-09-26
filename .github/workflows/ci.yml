@@ -72,6 +72,7 @@ jobs:
           first-reading-welcome.spec.ts
           harness-lifecycle.spec.ts
           reader-ui-dismissal.spec.ts
+          popup-hover-ownership.spec.ts
           margin-selection.spec.ts
           page-turn-margin.spec.ts
           page-turn-viewport.spec.ts

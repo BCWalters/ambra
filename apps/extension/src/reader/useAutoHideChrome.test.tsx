@@ -53,6 +53,58 @@ it("does not reveal chrome for ordinary reading-area movement", () => {
   act(() => { expect(chrome.dismissForContent()).toBe(false); });
 });
 
+it.each(["dialog", "toolbar", "menu", "listbox", "region", "tooltip"])(
+  "leaves pointer and keyboard activity in another %s surface to that surface",
+  role => {
+    const surface = document.createElement("div");
+    surface.setAttribute("role", role);
+    const child = document.createElement("span");
+    surface.append(child);
+    document.body.append(surface);
+    act(() => chrome.hide());
+    for (const y of [12, window.innerHeight - 12]) {
+      act(() => child.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientY: y })));
+      expect(chrome.visible).toBe(false);
+    }
+    act(() => child.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "a" })));
+    expect(chrome.visible).toBe(false);
+    surface.remove();
+    act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientY: 5 })));
+    expect(chrome.visible).toBe(true);
+  },
+);
+
+it("checks the composed ownership path for shadow descendants and a popup dismissed by Escape", () => {
+  const surface = document.createElement("div");
+  surface.setAttribute("role", "dialog");
+  const child = document.createElement("span");
+  surface.attachShadow({ mode: "open" }).append(child);
+  document.body.append(surface);
+  act(() => chrome.hide());
+  act(() => child.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, composed: true, clientY: 5 })));
+  expect(chrome.visible).toBe(false);
+  surface.addEventListener("keydown", () => surface.remove(), { once: true });
+  act(() => child.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, composed: true, key: "Escape" })));
+  expect(surface.isConnected).toBe(false);
+  expect(chrome.visible).toBe(false);
+});
+
+it("keeps registered chrome controls and their keyboard focus reveal available", () => {
+  const surface = element.firstElementChild as HTMLElement;
+  surface.setAttribute("role", "toolbar");
+  const button = document.createElement("button");
+  surface.append(button);
+  act(() => chrome.hide());
+  act(() => button.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientY: 5 })));
+  expect(chrome.visible).toBe(true);
+  act(() => chrome.hide());
+  act(() => button.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Tab" })));
+  expect(chrome.visible).toBe(true);
+  act(() => chrome.hide());
+  act(() => chrome.handlers.onFocus());
+  expect(chrome.visible).toBe(true);
+});
+
 it("does not charge a click for an edge reveal queued in the same input turn", () => {
   act(() => { chrome.hide(); });
   act(() => {
