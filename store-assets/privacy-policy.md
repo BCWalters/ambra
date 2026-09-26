@@ -1,6 +1,6 @@
 # Ambra Privacy Policy
 
-Effective date: 2026-09-24
+Effective date: 2026-09-26
 
 Ambra is a local-first EPUB3 reader for Chrome. It lets users import, store, and read EPUB books in the browser without creating an account and without sending reading activity to Ambra-operated servers.
 
@@ -16,6 +16,12 @@ Ambra stores the following data locally in an on-device IndexedDB database named
 
 This data is stored on your device so the extension can work offline and reopen your library and reading progress later. Ambra does not upload this local library data to Ambra servers because Ambra currently does not operate any sync or cloud account service.
 
+For automatic download imports, Ambra also keeps a small recovery journal in
+`chrome.storage.local`. It contains download, tab, and document identifiers,
+timestamps, and handoff status, not book contents or browsing-history logs.
+Settled handoffs are removed. A local recovery alarm helps restore paused
+downloads if the import tab closes or the background worker restarts.
+
 ## When data leaves your device
 
 ### Importing books from websites
@@ -26,10 +32,14 @@ automatically. The website and any redirect destinations receive the requested
 URL (including any query parameters) and normal browser network metadata.
 Ambra does not upload your existing library to that website.
 
-The original Chrome download continues until Ambra confirms a successful import.
-Ambra may then cancel a still-running download and remove its canceled download
-record. A download that has already finished is retained. If access is withheld
-or the import fails, you can import the downloaded file manually.
+Ambra can pause the original Chrome download while its Library imports the EPUB.
+After successful import, it cancels a redundant in-progress download and removes
+its canceled download record. If import fails or the handoff is abandoned, Ambra
+attempts to resume Chrome's download; when Chrome cannot resume it, retry in
+Chrome Downloads. The Library's Cancel action cancels the active import and
+its pending native download. A download that has already finished is retained.
+If access is withheld, Chrome's normal download remains available and you can
+import the file manually.
 
 ### Looking up missing descriptions
 
@@ -84,10 +94,14 @@ or transfer it for advertising, determining creditworthiness, or lending.
 
 - **unlimitedStorage**: allows large local book libraries to be stored on-device without normal browser quota pressure.
 - **downloads**: lets Ambra recognize EPUB downloads, start the automatic import
-  described above, cancel a redundant download after a successful import, and
-  offer a library shortcut for a completed EPUB download.
+  described above, pause/resume the native download during handoff and recovery,
+  cancel it after import or an explicit user cancellation, and offer a library
+  shortcut for a completed EPUB download.
 - **notifications**: lets Ambra show an “add this EPUB to Ambra?” prompt for
   completed EPUB downloads.
+- **storage**: stores the local download-handoff recovery journal described above.
+- **alarms**: schedules local recovery checks while download handoffs are pending.
+  These checks are not analytics or advertising and stop when no handoffs remain.
 - **Website access (`*://*/*`)**: allows HTTP/HTTPS EPUB downloads from different
   websites and redirect hosts, and the description lookups above. The extension
   does not inject content scripts into ordinary websites. You can restrict site

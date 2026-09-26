@@ -2,7 +2,7 @@
   "name": "@ambra/extension",
   "private": true,
   "license": "MIT",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Ambra Chrome extension: Manifest V3 wiring for the library UI, reader page, and background service worker.",
   "type": "module",
   "scripts": {

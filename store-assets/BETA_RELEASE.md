@@ -1,112 +1,117 @@
 # Unlisted Chrome Web Store beta
 
+> **For the 1.0.0 update, use [RESUBMISSION.md](RESUBMISSION.md).** It is a
+> manual, owner-only update of the existing listing. The automation reference
+> below is not authorization to dispatch a workflow, upload, cancel review,
+> submit, publish, or change visibility. Do not create another listing.
+
 The source repository is public under MIT. The initial store listing is
 **Unlisted**: anyone with its URL can install, without an invitation or tester
 allowlist, but it does not appear in store search or browsing. Share that URL
-with friends, then change dashboard visibility to **Public** when ready for a
-listed launch. Unlisted is not an access-control boundary; links can be forwarded.
+with friends. Preserve this visibility; a Public launch requires a separate
+explicit owner decision. Unlisted is not an access-control boundary; links can
+be forwarded.
 
 ## Repository prerequisites
 
 - [ ] Include and review [screenshot attributions](ATTRIBUTIONS.md) and
-  [third-party notices](../THIRD_PARTY_NOTICES.md) with the published repository.
-  Official sample licenses support retaining these images with attribution and
-  ShareAlike compliance; history rewriting is not presumed necessary. Check the
-  Gutenberg jurisdiction caveat for the intended use. Any history rewrite still
-  requires explicit owner approval.
+      [third-party notices](../THIRD_PARTY_NOTICES.md) with the published repository.
+      Official sample licenses support retaining these images with attribution and
+      ShareAlike compliance; history rewriting is not presumed necessary. Check the
+      Gutenberg jurisdiction caveat for the intended use. Any history rewrite still
+      requires explicit owner approval.
 - [ ] Review all reachable Git history, tracked archives/images, issues, PRs,
-  releases, Actions artifacts/logs, and repository settings for sensitive content.
-  The local history scan is not a review of GitHub-hosted artifacts or a guarantee
-  that every possible secret was detected. Confirm intended author/contact
-  metadata is suitable for publication; rotate any credentials found before
-  cleaning history.
+      releases, Actions artifacts/logs, and repository settings for sensitive content.
+      The local history scan is not a review of GitHub-hosted artifacts or a guarantee
+      that every possible secret was detected. Confirm intended author/contact
+      metadata is suitable for publication; rotate any credentials found before
+      cleaning history.
 - [ ] Confirm GitHub enforces PR-only changes to `main`: required checks, blocked
-  force pushes/deletion, and no unintended bypass actors. Decide the reviewer
-  policy explicitly; a sole maintainer cannot approve their own PR.
-  The CI job is named **Validate and package** (workflow **CI**); verify the
-  emitted check context after its first run when configuring required checks.
+      force pushes/deletion, and no unintended bypass actors. Decide the reviewer
+      policy explicitly; a sole maintainer cannot approve their own PR.
+      The CI job is named **Validate and package** (workflow **CI**); verify the
+      emitted check context after its first run when configuring required checks.
 - [ ] Verify the license, README links, and privacy policy on the public default
-  branch after the approved PR merges. Repository visibility is changed by the
-  owner separately, not by a build or release command.
+      branch after the approved PR merges. Repository visibility is changed by the
+      owner separately, not by a build or release command.
 
 ## Before uploading a candidate
 
 - [ ] Keep source version, manifest version, release notes, and archive name
-  consistent. Chrome Web Store updates require an increasing manifest version.
+      consistent. Chrome Web Store updates require an increasing manifest version.
 - [ ] Use a clean reviewed checkout with a frozen lockfile. Build in an isolated
-  directory, never over the maintainer's live `apps/extension/dist`.
+      directory, never over the maintainer's live `apps/extension/dist`.
 - [ ] Run unit/type/lint and relevant real-browser regression checks. Record
-  which tests were actually run, which were skipped, and the tested commit.
+      which tests were actually run, which were skipped, and the tested commit.
 - [ ] Check the archive has a production manifest at its root, no development
-  server references, no private EPUBs/profiles/logs/source maps, and the required
-  original and third-party license/NOTICE texts.
-- [ ] Approve the minimal source-controlled 128px icon update described in
-  [ASSETS.md](ASSETS.md) so ordinary packaging includes the prepared padded
-  store icon. Keep 16px/48px icons unchanged; do not rely on a manual ZIP overlay.
+      server references, no private EPUBs/profiles/logs/source maps, and the required
+      original and third-party license/NOTICE texts.
+- [ ] Verify the source-controlled padded 128px icon described in
+      [ASSETS.md](ASSETS.md) is present in the package. Keep 16px/48px icons
+      unchanged; do not rely on a manual ZIP overlay.
 - [ ] Smoke-test the exact candidate in a separate Chrome profile: file import,
-  automatic download import and denied-site-access fallback, library persistence,
-  reading/resume, settings, navigation, annotations, and recorded narration.
-  Keep original books/exports; a store installation and an unpacked installation
-  may have different extension IDs and do not automatically share a library.
-- [ ] Test keyboard navigation and perform live VoiceOver/NVDA checks on stated
-  OS/browser versions. Until then, mark AT behavior pending rather than claiming
-  exact current-page entry or uninterrupted virtual-cursor reading.
-  Native macOS AXPress plus DOM-caret transfer passed during integration, but
-  does not prove the VoiceOver cursor/speech hand-off. That manual check remains
-  a release gate.
-  See the [optional native regression command](../README.md#optional-native-macos-accessibility-regression).
+      automatic download import and denied-site-access fallback, library persistence,
+      reading/resume, settings, navigation, annotations, and recorded narration.
+      Keep original books/exports; a store installation and an unpacked installation
+      may have different extension IDs and do not automatically share a library.
+- [ ] Record keyboard and human AT evidence on the tested candidate.
+      The owner has reported a human VoiceOver pass; do not call that earlier check
+      pending or invent its environment. NVDA acceptance is not established.
+      A source bump, automated native-event test, or screenshot run is not a new
+      final-candidate AT test and does not establish certified accessibility.
+      See the [optional native regression command](../README.md#optional-native-macos-accessibility-regression).
 - [ ] Capture screenshots of the actual clean merged candidate using the original
-  synthetic books in [ASSETS.md](ASSETS.md). Verify
-  `dist/beta-release/artifacts/store-assets/asset-provenance.json` says `release`,
-  matches the clean source commit and package ZIP checksum, and records the captured
-  candidate's hash. Final capture writes only that ignored handoff folder; it does
-  not update the checked-in previews or require another commit. Preview captures
-  from an uncommitted bugfix are not release-ready.
-  Retained historical third-party images keep [their attributions](ATTRIBUTIONS.md).
+      synthetic books in [ASSETS.md](ASSETS.md). Verify
+      `dist/beta-release/artifacts/store-assets/asset-provenance.json` says `release`,
+      matches the clean source commit and package ZIP checksum, and records the captured
+      candidate's hash. Final capture writes only that ignored handoff folder; it does
+      not update the checked-in previews or require another commit. Preview captures
+      from an uncommitted bugfix are not release-ready.
+      Retained historical third-party images keep [their attributions](ATTRIBUTIONS.md).
 - [ ] Review listing copy against the actual candidate: reading modes, notes and
-  annotation JSON exchange, read-only Inspector/source linking/reference finding,
-  and shared Help/platform shortcuts. Do not claim complete EPUB conformance,
-  an EPUB editor, automatic speech synthesis, or live AT acceptance.
+      annotation JSON exchange, read-only Inspector/source linking/reference finding,
+      and shared Help/platform shortcuts. Do not claim complete EPUB conformance,
+      an EPUB editor, automatic speech synthesis, or unverified AT acceptance.
 
 ## Dashboard and friends rollout
 
 - [ ] Owner signs into the intended Google publishing account; verify registration,
-  any fee/terms/account-verification prompts, publisher name, and verified contact
-  email. Account readiness is not implied by the public GitHub repository.
-- [ ] Confirm the first accepted store version. `0.0.1` is suitable only if it
-  does not conflict with an existing item/version; otherwise approve an increasing
-  version through the source-release process.
+      any fee/terms/account-verification prompts, publisher name, and verified contact
+      email. Account readiness is not implied by the public GitHub repository.
+- [ ] For the existing item's 1.0.0 resubmission, confirm it exceeds every
+      uploaded/accepted version; otherwise approve a higher source version first.
+      Do not create a new item or patch an archive to bypass a version conflict.
 - [ ] Set the privacy policy URL to the [canonical GitHub policy](https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md).
-  Confirm it is readable without signing in. This Markdown file is the single
-  source of truth; changes become live after an Ambra PR merges to `main`, with
-  no separate website deployment. Keep the repository public and the path stable.
+      Confirm it is readable without signing in. This Markdown file is the single
+      source of truth; changes become live after an Ambra PR merges to `main`, with
+      no separate website deployment. Keep the repository public and the path stable.
 - [ ] Complete the listing and privacy disclosures using
-  [store-listing.md](store-listing.md), including all three permissions and broad
-  HTTP/HTTPS host access. Describe automatic imports and metadata requests
-  accurately; do not assert that no data leaves the device.
+      [store-listing.md](store-listing.md), including all five permissions and broad
+      HTTP/HTTPS host access. Describe automatic imports and metadata requests
+      accurately; do not assert that no data leaves the device.
 - [ ] Set **Distribution → Visibility → Unlisted**, verify the intended regions,
-  and save. Do not select Private (which requires a tester audience) or Public
-  (which makes the listing discoverable). Review this setting before every
-  submission; uploading a ZIP does not select visibility.
+      and save. Do not select Private (which requires a tester audience) or Public
+      (which makes the listing discoverable). Review this setting before every
+      submission; uploading a ZIP does not select visibility.
 - [ ] Publish the initial Unlisted release manually in the dashboard. Google
-  requires a manual publication after a visibility change before API publication
-  can use that visibility. Use the workflow for packaging/draft uploads during
-  setup, then enable API submission for subsequent updates.
+      requires a manual publication after a visibility change before API publication
+      can use that visibility. Use the workflow for packaging/draft uploads during
+      setup, then enable API submission for subsequent updates.
 - [ ] Submit for review and publish only after dashboard checks and owner approval,
-  either in the dashboard or through the explicit unlisted-submission opt-in below.
-  If creating a separate testing listing alongside production, follow Chrome's
-  beta naming/description requirements.
-  For the initial release, decide explicitly whether to defer publication until
-  review passes (recommended for a final owner check) or publish automatically
-  after approval. A submitted/reviewed item is not evidence of a completed rollout.
+      either in the dashboard or through the explicit unlisted-submission opt-in below.
+      If creating a separate testing listing alongside production, follow Chrome's
+      beta naming/description requirements.
+      For the initial release, decide explicitly whether to defer publication until
+      review passes (recommended for a final owner check) or publish automatically
+      after approval. A submitted/reviewed item is not evidence of a completed rollout.
 - [ ] Confirm a fresh Chrome profile/account not on any tester list can install
-  using the listing URL, and that the item is not publicly listed in search.
-  Share the installation URL with friends after this check.
+      using the listing URL, and that the item is not publicly listed in search.
+      Share the installation URL with friends after this check.
 - [ ] Ask friends for the version, OS/Chrome version, settings, reproduction
-  steps, and sanitized screenshots. Do not request private books or raw profiles.
-  Stop rollout if imports lose data or reading/navigation regressions recur;
-  retain the last known-good source and prepare a higher-version corrective
-  update rather than attempting a lower-version store downgrade.
+      steps, and sanitized screenshots. Do not request private books or raw profiles.
+      Stop rollout if imports lose data or reading/navigation regressions recur;
+      retain the last known-good source and prepare a higher-version corrective
+      update rather than attempting a lower-version store downgrade.
 
 Reference: [Chrome's distribution and trusted-tester documentation](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution).
 Builds must not change repository visibility. Store review submission requires
@@ -118,9 +123,9 @@ the separate explicit owner-approved submission action described below.
 
 1. Confirm the publishing account/contact details and any account prompts.
 2. Approve the final candidate/version, listing, icon, and clean-candidate screenshots.
-3. Complete live VoiceOver acceptance or explicitly decide how the pending beta
-   limitation affects release timing. The existing manual acceptance gate remains
-   pending; automated tests and promotional edits do not waive it.
+3. Record the prior owner-reported VoiceOver pass and any final-candidate human
+   checks accurately. NVDA is not established; automated tests and promotional
+   edits are not a substitute for human AT acceptance.
 4. Choose deferred versus automatic publication after the first review.
 
 The minimum first-release path is dashboard-assisted: create/upload the item,
@@ -176,12 +181,12 @@ is manually dispatched.
 It becomes available in Actions after it is merged to the default branch.
 Both inputs default to **false**:
 
-| `upload_draft` | `publish_unlisted` | Effect |
-| --- | --- | --- |
-| false | false | Validate/package only; no store credentials |
-| true | false | Upload the validated artifact to an existing item's draft; no review submission |
-| true | true | Upload, then submit for review using the saved dashboard visibility |
-| false | true | Rejected before building |
+| `upload_draft` | `publish_unlisted` | Effect                                                                          |
+| -------------- | ------------------ | ------------------------------------------------------------------------------- |
+| false          | false              | Validate/package only; no store credentials                                     |
+| true           | false              | Upload the validated artifact to an existing item's draft; no review submission |
+| true           | true               | Upload, then submit for review using the saved dashboard visibility             |
+| false          | true               | Rejected before building                                                        |
 
 Credentialed actions run only on `main` after the release PR merges and require
 the protected environment approval. Automation does not create a listing.
