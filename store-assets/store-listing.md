@@ -1,4 +1,8 @@
-# Ambra Chrome Web Store listing notes
+# Ambra 1.0.0 Chrome Web Store listing notes
+
+Prepared for the existing listing's **manual, owner-only resubmission**.
+Follow [RESUBMISSION.md](RESUBMISSION.md); this file does not authorize a
+dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 ## Product
 
@@ -6,8 +10,8 @@
 - **Category**: Productivity > Tools (the saved dashboard category).
 - **Distribution**: Unlisted. Anyone with the installation URL can install;
   the listing does not appear in store search or browsing. Share the URL with
-  friends for the initial beta; no trusted-tester allowlist is required.
-  Change to Public in the dashboard when ready for a listed launch.
+  friends; no trusted-tester allowlist is required. Preserve the existing
+  visibility and regions. A Public launch requires a separate explicit decision.
 
 ## Short description
 
@@ -15,7 +19,8 @@ A polished, accessible EPUB3 reader for Chrome.
 
 Character count: 47. This read-only dashboard summary comes from the uploaded
 package's manifest `description`; it is not separately editable listing copy.
-The beta assistive-technology limitations below still apply.
+Accessibility is not a certification; compatibility varies with the publication
+and assistive technology.
 
 ## Single purpose
 
@@ -29,15 +34,16 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 MAKE ROOM FOR READING
 
-- Import saved EPUBs into an on-device library and return to your saved position.
-- Read reflowable and fixed-layout books in a dedicated full-tab reader. Adjust text and themes; choose pagination or scrolling for reflowable books.
+- Import saved EPUBs into an on-device library, browse covers, search and sort your collection, and return to your saved position.
+- Read reflowable and fixed-layout books in a dedicated full-tab reader. Adjust text, page width, brightness, and reader/page themes; choose pagination, a single-page view, or scrolling for reflowable books. Fixed-layout artwork keeps its page design.
 - DRM-protected EPUBs are not supported.
 - Find passages with book search, the table of contents, bookmarks, and the reading-position control.
+- Use Chrome's native Back and Forward buttons to return after jumps from search, contents, bookmarks, notes, or links. Ordinary page turns and scrolling update the current stop rather than filling your history.
 - Listen to recorded narration with synchronized highlighting when the EPUB includes it. This is not automatic text-to-speech.
 
 KEEP YOUR NOTES
 
-- Highlight passages, add text notes, and organize bookmarks with labels.
+- Highlight passages, add text notes, and bookmark places to revisit. Browse saved passages in the bookmarks and highlights panel; bookmark ribbons on the progress bar help you find your place once pagination is ready.
 - Export and import EPUB Annotations 1.0 JSON to back up or share annotations separately from the book. Use the same book or edition for best results; compatibility with other annotation tools varies.
 
 EXPLORE THE EPUB
@@ -51,7 +57,8 @@ Inspector is read-only: it does not change your book, edit EPUBs, or replace EPU
 
 HELP WHEN YOU NEED IT
 
-- Open shared Help & About from the Library, reader Settings, or Book details.
+- Start with a short welcome to reading, and reopen reading tips from Help & About.
+- Open shared Help & About from the Library, reader Settings, or Book details. Settings groups appearance, reading modes, and language choices in keyboard-navigable flyouts.
 - See platform-specific keyboard shortcuts, including book search, bookmarks, page navigation, reading-mode selection, and the shortcut popup. You can disable Ambra shortcuts with one local preference.
 - Open the user guides on GitHub, review diagnostics before sharing them, and send feedback by email or GitHub issue. Diagnostics are not sent automatically.
 
@@ -59,9 +66,9 @@ LOCAL-FIRST, WITH CLEAR NETWORK DISCLOSURES
 
 Your library stays in your browser profile. Ambra does not require an account or run analytics or ads. It can fetch EPUB downloads from websites for automatic import. When you open a book missing a description, it may send title, author, and ISBN to Open Library or Wikipedia for a summary. There is currently no in-app lookup opt-out; see the privacy policy for details.
 
-Keep original EPUBs and annotation exports as backups. Ambra has no cloud sync, and removing the extension or clearing its data can remove your local library.
+Keep original EPUBs and annotation exports as backups. Ambra has no cloud sync, and removing the extension or clearing its data can remove your local library. Different Chrome profiles or extension IDs do not automatically share books or notes.
 
-This is an early unlisted beta. Screen-reader support is still being tested; compatibility varies by book, browser, and assistive technology. Ambra does not claim complete EPUB conformance or certified accessibility.
+Designed for keyboard and screen-reader use. Compatibility varies by book, browser, and assistive technology. Ambra does not claim complete EPUB conformance or certified accessibility.
 
 User guide: https://github.com/BCWalters/ambra/blob/main/docs/user-guide/README.md
 EPUB Inspector guide: https://github.com/BCWalters/ambra/blob/main/docs/user-guide/epub-inspector.md
@@ -71,11 +78,14 @@ Feedback: AmbraEPUB@outlook.com
 
 ### Internal claim/review notes (not listing copy)
 
-Live VoiceOver/NVDA acceptance remains pending. Automated keyboard, accessibility-tree,
-and native-event checks are not a substitute. Do not claim exact virtual-cursor
-reading-position support or silently mark the runbook's manual acceptance gate passed.
-The initial Unlisted listing keeps the product name above; a separate parallel
-testing listing would need the Chrome beta-name/description treatment.
+The owner reports that human VoiceOver acceptance passed before this preparation.
+Do not relabel that completed check as pending, or invent its OS/browser versions.
+The source version bump and screenshots are not a new final-candidate AT test.
+NVDA acceptance is not established; do not claim it, universal screen-reader
+compatibility, certified accessibility, or complete EPUB conformance. Automated
+keyboard, accessibility-tree, and native-event checks are not substitutes for
+human AT testing. Record any final-candidate checks separately in the handoff.
+Keep the existing listing identity; do not create a parallel beta listing.
 
 ## Permission justifications
 
@@ -86,14 +96,31 @@ Ambra stores complete EPUB files, extracted cover images, and per-book reading d
 ### downloads
 
 Ambra recognizes likely EPUB downloads at creation and completion. With website
-access, it opens the Library and imports the download URL. The native download
-continues until import succeeds; Ambra may then cancel the redundant download
-and erase its canceled download record. Completed downloads are retained and can
-trigger a library-import notification. It does not read arbitrary downloaded files.
+access, it can pause the native download, open the Library, and import the
+download URL. Successful import cancels the redundant in-progress download and
+removes its canceled record; failure or an abandoned handoff attempts to resume
+Chrome's download. The Library also lets the user cancel an active import and its
+pending native download. Completed downloads are retained and can trigger a
+library-import notification. It does not read arbitrary downloaded files.
 
 ### notifications
 
 Ambra uses notifications only to show the optional “this looks like an EPUB — add it to Ambra?” prompt after an EPUB download completes. Notifications are not used for advertising, marketing, or background engagement.
+
+### storage
+
+Ambra keeps a small local recovery journal for automatic EPUB imports in
+`chrome.storage.local`: download/tab/document identifiers, timestamps, and
+handoff status. It lets a restarted worker recover a paused download instead
+of stranding it. This is separate from the IndexedDB book library and is not
+cloud sync or browsing-history collection.
+
+### alarms
+
+Ambra schedules a local recovery check while download handoffs are pending.
+It restores eligible paused downloads after failed or abandoned imports, retries
+transient recovery failures, and clears the alarm when the journal is empty.
+It is not a marketing notification, analytics timer, or remote polling service.
 
 ### Website access (`*://*/*`)
 
@@ -111,7 +138,8 @@ reaching those services; there is currently no in-app lookup opt-out.
 ## Privacy/data-use notes for the dashboard
 
 - **Main local data handled**: imported EPUB files, extracted metadata/cover images, reading progress, bookmarks, highlights/notes, reader preferences.
-- **Where it is stored**: locally on-device in an IndexedDB database named `ambra-library`.
+- **Where it is stored**: the library is in local IndexedDB `ambra-library`;
+  download handoff/recovery identifiers and status use `chrome.storage.local`.
 - **Third-party transmission**: automatic imports request the EPUB download URL
   from its website/redirect hosts; when an opened book lacks a description, Ambra
   may send title, author, and ISBN to `openlibrary.org` and, if needed,
@@ -141,7 +169,7 @@ in and check that its disclosures and effective date match the candidate.
 
 ## Release assets
 
-Follow [BETA_RELEASE.md](BETA_RELEASE.md) and [ASSETS.md](ASSETS.md). New captures
+Follow [RESUBMISSION.md](RESUBMISSION.md) and [ASSETS.md](ASSETS.md). New captures
 use only the original synthetic publications produced by the asset generator.
 Do not submit a draft capture as evidence of a clean merged release candidate.
 Historical official-sample screenshots retain their [attributions and CC
@@ -149,7 +177,7 @@ license notices](ATTRIBUTIONS.md); replacing current images does not relicense
 historical copies.
 
 The padded `icon-store-128.png` is prepared for store use. The official guidance
-also requires a 128px icon inside the submitted ZIP. Prefer the minimal approved
-source-controlled 128px icon update described in [ASSETS.md](ASSETS.md), leaving
-16px/48px icons alone. Do not manually modify a final ZIP or assume an independent
+also requires a 128px icon inside the submitted ZIP. The source-controlled
+128px icon already uses that padded artwork, as described in [ASSETS.md](ASSETS.md).
+Leave 16px/48px icons alone. Do not manually modify a final ZIP or assume an independent
 dashboard upload replaces its manifest icon.

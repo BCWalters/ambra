@@ -36,7 +36,9 @@ async function treeDigest(directory) {
 }
 
 export async function captureOutputDirectory(releaseCapture, rootDirectory = root) {
-  const relative = releaseCapture ? "dist/beta-release/artifacts/store-assets" : "store-assets";
+  const relative = releaseCapture
+    ? "dist/beta-release/artifacts/store-assets"
+    : "store-assets/.generated/previews";
   let current = rootDirectory;
   for (const segment of relative.split("/")) {
     current = path.join(current, segment);
@@ -217,12 +219,25 @@ async function main() {
     await library.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
     const dismissImport = library.getByRole("button", { name: "Dismiss", exact: true });
     if (await dismissImport.isVisible()) await dismissImport.click();
+    await library.getByRole("button", { name: /^Open The Quiet Observatory/ }).hover();
+    await library
+      .getByRole("button", { name: "The Quiet Observatory details", exact: true })
+      .click();
+    const libraryDetails = library.getByRole("dialog", { name: "Book details", exact: true });
+    await expect(libraryDetails).toBeVisible();
+    await library.mouse.move(640, 20);
     await screenshot(library, "screenshot-library-1280x800.png");
+    await libraryDetails.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(libraryDetails).toBeHidden();
 
     const opened = context.waitForEvent("page");
     await library.getByRole("button", { name: /^Open The Quiet Observatory/ }).click();
     const reader = await opened;
     await reader.waitForLoadState("domcontentloaded");
+    const welcome = reader.getByRole("dialog", { name: "Make yourself at home", exact: true });
+    await expect(welcome).toBeVisible({ timeout: 20_000 });
+    await welcome.getByRole("button", { name: "Start reading", exact: true }).click();
+    await expect(welcome).toBeHidden();
     const position = reader.getByRole("slider", { name: "Position in book" });
     await expect(position).toHaveAttribute("aria-valuetext", /^Page \d+ of \d+/, {
       timeout: 20_000,
@@ -251,7 +266,15 @@ async function main() {
     await reader.getByRole("button", { name: "Bookmark this page", exact: true }).click();
     await reader.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
     await reader.getByRole("tab", { name: /Highlights/ }).click();
+    await reader.getByRole("button", { name: /^Add note:/ }).click();
+    const note =
+      "A small act of care, repeated each spring. Notice how the green door brings the village together.";
+    await reader.getByRole("textbox", { name: "Add a note…", exact: true }).fill(note);
+    await reader.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(reader.getByText(note, { exact: true })).toBeVisible();
+    await expect(reader.getByRole("button", { name: /^Edit note:/ })).toBeVisible();
     await expect(reader.getByRole("button", { name: /^Export/ })).toBeVisible();
+    await reader.mouse.move(640, 20);
     await screenshot(reader, "screenshot-annotations-1280x800.png");
     await reader.keyboard.press("Escape");
 

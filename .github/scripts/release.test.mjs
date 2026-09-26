@@ -24,6 +24,15 @@ const metadata = { version: "0.0.2" };
 const token = { access_token: "sensitive-access-token" };
 const bytes = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
+test("release source versions agree with the Chrome manifest", async () => {
+  const paths = ["package.json", "apps/extension/package.json", "apps/extension/manifest.json"];
+  const versions = await Promise.all(
+    paths.map(async (file) => JSON.parse(await readFile(path.join(root, file), "utf8")).version),
+  );
+  assert.ok(validVersion(versions[0]));
+  assert.equal(new Set(versions).size, 1);
+});
+
 test("dependency notices include installed texts and pinned overrides, failing closed on omissions", async () => {
   const directory = path.join(root, "dist", `release-notices-tests-${process.pid}`);
   const dependencyPath = path.join(directory, "node_modules/example");
@@ -68,7 +77,7 @@ test("dependency notices include installed texts and pinned overrides, failing c
   }
 });
 
-test("release screenshots stay separate from tracked previews and package metadata", async () => {
+test("release screenshots stay separate from ignored previews and package metadata", async () => {
   const directory = path.join(root, "dist", `store-capture-tests-${process.pid}`);
   const capture = path.join(directory, "capture");
   const image = "screenshot-reader-1280x800.png";
@@ -76,15 +85,21 @@ test("release screenshots stay separate from tracked previews and package metada
   try {
     const preview = await captureOutputDirectory(false, directory);
     const output = await captureOutputDirectory(true, directory);
+    assert.equal(preview, path.join(directory, "store-assets/.generated/previews"));
     assert.equal(output, path.join(directory, "dist/beta-release/artifacts/store-assets"));
-    await writeFile(path.join(preview, image), "tracked preview");
+    const historical = path.join(directory, "store-assets", image);
+    await writeFile(historical, "historical tracked preview");
+    await writeFile(path.join(capture, image), "ignored preview");
+    assert.equal(await promoteCapture(capture, false, directory), preview);
+    assert.equal(await readFile(historical, "utf8"), "historical tracked preview");
     for (const name of ["ambra-0.0.1.zip", "SHA256SUMS", "release.json"]) {
       await writeFile(path.join(path.dirname(output), name), `original ${name}`);
     }
     await writeFile(path.join(capture, image), "verified release image");
     assert.equal(await promoteCapture(capture, true, directory), output);
     assert.equal(await readFile(path.join(output, image), "utf8"), "verified release image");
-    assert.equal(await readFile(path.join(preview, image), "utf8"), "tracked preview");
+    assert.equal(await readFile(path.join(preview, image), "utf8"), "ignored preview");
+    assert.equal(await readFile(historical, "utf8"), "historical tracked preview");
     for (const name of ["ambra-0.0.1.zip", "SHA256SUMS", "release.json"]) {
       assert.equal(
         await readFile(path.join(path.dirname(output), name), "utf8"),

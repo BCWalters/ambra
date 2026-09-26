@@ -2,7 +2,7 @@
   "name": "ambra",
   "private": true,
   "license": "MIT",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Ambra — an EPUB3 reader browser extension.",
   "type": "module",
   "engines": {

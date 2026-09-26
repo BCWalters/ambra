@@ -50,16 +50,19 @@ For a **preview**, against an already built isolated candidate:
 
 ```sh
 AMBRA_STORE_ALLOW_BROWSER=1 \
-  AMBRA_STORE_EXTENSION_PATH="$PWD/dist/reader-ui-dismissal" \
+  AMBRA_STORE_EXTENSION_PATH="$PWD/dist/beta-release/extension" \
   node store-assets/scripts/generate-images.mjs
 ```
 
 Do not run this while another agent/session owns the browser-validation slot.
-Preview mode updates checked-in `store-assets/` images and provenance; those
-editorial previews are not release acceptance.
+Preview mode writes images and provenance to ignored
+`store-assets/.generated/previews/`, leaving checked-in images untouched.
+These editorial previews are not release acceptance. Inspect them all before
+deciding the capture is ready; no raster commit is needed for script validation.
 
-For the final capture, first merge the reader-dismissal fix and build the chosen
-clean `main` commit, including the approved 128px source-icon update. Prepare
+For the final 1.0.0 capture, follow [RESUBMISSION.md](RESUBMISSION.md): first merge
+the approved runtime fixes and source-version/materials update, then build the
+chosen clean `main` commit. The padded 128px source icon is already included. Prepare
 the original fixtures **before packaging**, and verify the worktree is still clean:
 
 ```sh
@@ -102,23 +105,33 @@ cross-platform pixel identity.
 
 ## Five views to review
 
-| Image | Intended real UI |
-| --- | --- |
-| `screenshot-library-1280x800.png` | Library with original demo covers |
-| `screenshot-reader-1280x800.png` | Original prose and reading controls |
-| `screenshot-annotations-1280x800.png` | Actual saved highlight, bookmark, and annotation controls |
-| `screenshot-inspector-1280x800.png` | Actual EPUB source in Inspector |
-| `screenshot-shortcuts-1280x800.png` | Platform-specific shortcut reference opened through Help |
+| Image                                 | Intended real UI                                            |
+| ------------------------------------- | ----------------------------------------------------------- |
+| `screenshot-library-1280x800.png`     | Original demo covers and the book-details panel             |
+| `screenshot-reader-1280x800.png`      | Original prose and reading controls                         |
+| `screenshot-annotations-1280x800.png` | Actual saved highlight, note, bookmark, and export controls |
+| `screenshot-inspector-1280x800.png`   | Actual EPUB source in Inspector                             |
+| `screenshot-shortcuts-1280x800.png`   | Platform-specific shortcut reference opened through Help    |
+
+The fresh-profile capture acknowledges the real first-reading welcome before
+photographing the reader. Annotation controls, menus, and Help are opened through
+the real UI; selection is limited to original fixture prose. No application text,
+styles, library data, or welcome preferences are replaced behind the UI.
 
 All captures must be 1280×800, full bleed, square-cornered, and legible. The small
 promo must be 440×280. Check every image visually, ensure no personal data or
 browser/debug chrome appears, and verify that the provenance points to the
 chosen clean candidate before upload.
 
-The five checked-in screenshots have been regenerated from original demo books.
-Check checked-in `asset-provenance.json` for their status: **preview** is not a final
-release capture even if application changes were committed while preparing the
-assets. Historical library/reader screenshots with third-party samples retain
+Chrome's [official requirements](https://developer.chrome.com/docs/webstore/images)
+(checked 2026-09-26) allow at least one and at most five screenshots, each
+1280×800 or 640×400. This set uses all five at the larger size, plus the required
+128×128 PNG icon and 440×280 promo. An optional marquee is not part of this set.
+
+The five checked-in screenshots and their `asset-provenance.json` are historical
+original-book **previews**, not the 1.0.0 release assets. New previews stay in the
+ignored directory, so no tracked screenshot/provenance churn is necessary.
+Historical library/reader screenshots with third-party samples retain
 their [attributions](ATTRIBUTIONS.md). The new generated prose, covers, and original
 screenshots are Ambra project material under MIT. For a release upload, use only
 the reviewed images and provenance from the ignored final-output directory above.
