@@ -82,6 +82,30 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     expect(onAfterClose).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(control);
   });
+  it("waits for Fluent's unmount when the first frame precedes its React commit", async () => {
+    const onAfterClose = vi.fn(() => {
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+    });
+    await render({ onAfterClose });
+    const frames: FrameRequestCallback[] = [];
+    let firstFrame = true;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      if (firstFrame) {
+        firstFrame = false;
+        expect(dialog()).not.toBeNull();
+        callback(0);
+        expect(onAfterClose).not.toHaveBeenCalled();
+      } else {
+        frames.push(callback);
+      }
+      return frames.length;
+    });
+    await render({ open: false, onAfterClose });
+    expect(dialog()).toBeNull();
+    expect(frames).toHaveLength(1);
+    await act(async () => { frames[0]!(0); });
+    expect(onAfterClose).toHaveBeenCalledOnce();
+  });
   const go = () => dialog().querySelector<HTMLButtonElement>('button[type="submit"]')!;
   async function enter(value: string) {
     const input = dialog().querySelector("input")!;

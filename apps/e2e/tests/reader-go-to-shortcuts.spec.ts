@@ -35,6 +35,36 @@ async function finishModalMotion(page: Page) {
   });
 }
 
+async function runExitFrameBeforeReactCommit(page: Page) {
+  await page.evaluate(() => {
+    const requestFrame = window.requestAnimationFrame;
+    window.requestAnimationFrame = callback => {
+      window.requestAnimationFrame = requestFrame;
+      // React schedules the Fluent unmount with MessageChannel after the exit
+      // callback. Deliver that work after the frame to exercise both legal orders.
+      const postMessage = MessagePort.prototype.postMessage;
+      const commits: Array<() => void> = [];
+      MessagePort.prototype.postMessage = function (message: unknown, options?: Transferable[] | StructuredSerializeOptions) {
+        const send = () => Reflect.apply(postMessage, this, [message, options]);
+        if (message === null) commits.push(send);
+        else send();
+      };
+      return requestFrame.call(window, time => {
+        Reflect.set(window, "__goToExitFrame", {
+          modal: !!document.querySelector('[aria-modal="true"]'),
+          pendingCommits: commits.length,
+        });
+        try {
+          callback(time);
+        } finally {
+          MessagePort.prototype.postMessage = postMessage;
+          for (const commit of commits) commit();
+        }
+      });
+    };
+  });
+}
+
 async function readingCaret(page: Page) {
   return page.evaluate(() => {
     const c = Reflect.get(window, "__readerController");
@@ -205,7 +235,10 @@ for (const destination of [
 for (const destination of [
   { page: 2, spine: 0, text: "C1Para 2.", name: "same chapter" },
   { page: 6, spine: 1, text: "C2Para 2.", name: "new chapter" },
-]) {
+].flatMap(destination => [
+  { ...destination, frameBeforeCommit: false },
+  { ...destination, name: `${destination.name}, frame before unmount`, frameBeforeCommit: true },
+])) {
   test(`Go to enters the right-page destination once after modal exit (${destination.name})`, async ({ browserName }, info) => {
     expect(browserName).toBe("chromium");
     const { context, readerPage: page } = await launchReader(navigationFixture(info, [4, 4]), {
@@ -233,9 +266,15 @@ for (const destination of [
       });
       const input = dialog(page, "Page").getByRole("spinbutton");
       await input.fill(String(destination.page));
+      if (destination.frameBeforeCommit) await runExitFrameBeforeReactCommit(page);
       await input.press("Enter");
       await expect(dialog(page, "Page")).toBeHidden();
       await finishModalMotion(page);
+      if (destination.frameBeforeCommit) {
+        const frame = await page.evaluate(() => Reflect.get(window, "__goToExitFrame"));
+        expect(frame.modal).toBe(true);
+        expect(frame.pendingCommits).toBeGreaterThan(0);
+      }
       const calls = await page.evaluate(() => Reflect.get(window, "__readingFocusCalls"));
       const evidence = info.outputPath("go-to-focus-lifecycle.json");
       await writeFile(evidence, JSON.stringify(calls, null, 2));
