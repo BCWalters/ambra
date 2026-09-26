@@ -10,6 +10,7 @@ import {
   FixedLayoutSpreadPlanner,
   FixedSpreadHost,
   isInteractiveContentTarget,
+  isReaderOwnedContent,
   Locator,
   LocatorResolver,
   NavigationDocument,
@@ -60,6 +61,7 @@ import { PageTurnAnimator } from "./PageTurnAnimator.js";
 import { fixedLayoutEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
+import { ReadingHistory } from "./ReadingHistory.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
 import { readerDocumentViews } from "./ReaderDocuments.js";
 import { attachContentBoundary, contentBoundary, setContentBoundaryShortcut } from "./ContentBoundaryNavigation.js";
@@ -244,6 +246,7 @@ export class ReaderController {
   private isTurningPage = false;
   private queuedTurn: 1 | -1 | undefined;
   private readonly operations = new ReaderOperations();
+  private readingHistory: ReadingHistory | undefined;
   private pendingLayout: PendingLayout | undefined;
   private activeLayout: PendingLayout | undefined;
   private isApplyingLayout = false;
@@ -407,7 +410,7 @@ export class ReaderController {
       },
       navigate: async (spineIndex, cfi) => {
         this.suspendNarrationFollowing();
-        await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
+        await this.openSpineItem(spineIndex, { bridgeCfi: cfi, history: "jump" });
         if (this.error) throw new Error(this.error);
         if (this.operations.disposed ||
             !this.contentDocumentViews().some(view => view.spineIndex === spineIndex)) {
@@ -820,6 +823,29 @@ export class ReaderController {
     this.height = height;
     this.setUpBookPagination(containerEl.ownerDocument);
     this.setUpGlobalArrowKeyFallback(containerEl.ownerDocument);
+    const ownerWindow = containerEl.ownerDocument.defaultView;
+    if (ownerWindow) {
+      this.readingHistory = new ReadingHistory(ownerWindow, this.bookId, {
+        read: () => this.currentReadingCfi(),
+        equal: (left, right) => this.sameReadingLocation(left, right),
+        restore: async cfi => {
+          const parsed = EpubCfi.parse(cfi);
+          const spineIndex = this.pkg.findSpineIndexByPackageCfiSteps(parsed.packageSteps);
+          if (spineIndex === undefined) throw new Error("This reading position does not belong to the open book.");
+          this.clearNavigationHighlights();
+          return this.openSpineItem(spineIndex, { bridgeCfi: cfi, history: "restore" });
+        },
+        cancel: () => {
+          if (this.operations.current) this.operations.finish(this.operations.current);
+          this.queuedTurn = undefined;
+          this.isLoading = false;
+          this.isLoadInFlight = false;
+          this.isTurningPage = false;
+          this.notify();
+        },
+        report: error => this.reportTransientError(error, "open", "browser reading history"),
+      });
+    }
 
     // Guards against a resize racing with the async progress lookup
     // below, before `openSpineItem` sets this same flag itself. Shown
@@ -836,6 +862,8 @@ export class ReaderController {
     if (!resumed && this.operations.owns(resumeOperation)) {
       await this.openSpineItem(0);
     }
+    const cfi = this.currentReadingCfi();
+    if (cfi) this.readingHistory?.start(cfi);
 
     if (this.pendingNavigationLoadError) {
       const message = this.pendingNavigationLoadError;
@@ -919,7 +947,8 @@ export class ReaderController {
    * or it can't be resolved, so the caller falls back to the start. */
   private async tryResume(operation: ReaderOperation): Promise<boolean> {
     try {
-      const progress = await this.library.getProgress(this.bookId);
+      const historyCfi = this.readingHistory?.resumeCfi;
+      const progress = historyCfi ? { cfi: historyCfi } : await this.library.getProgress(this.bookId);
       if (!this.operations.owns(operation)) return true;
       if (!progress) {
         return false;
@@ -934,6 +963,41 @@ export class ReaderController {
     } catch {
       return false;
     }
+  }
+
+  private currentReadingCfi(): string | undefined {
+    const native = this.nativeReading.retainedForShell();
+    const position = native ?? this.host?.currentPosition();
+    return position ? this.locatorResolver.generate(
+      native?.spineIndex ?? this.spineIndex, position.node, position.offset,
+    ).cfi : undefined;
+  }
+
+  private sameReadingLocation(left: string, right: string): boolean {
+    if (EpubCfi.compare(left, right) === 0) return true;
+    const leftSpine = this.pkg.findSpineIndexByPackageCfiSteps(EpubCfi.parse(left).packageSteps);
+    const rightSpine = this.pkg.findSpineIndexByPackageCfiSteps(EpubCfi.parse(right).packageSteps);
+    if (leftSpine === undefined || leftSpine !== rightSpine) return false;
+    const document = this.contentDocumentViews().find(view => view.spineIndex === leftSpine)?.document;
+    if (!document) return false;
+    const canonical = (cfi: string): string => {
+      const resolved = this.locatorResolver.resolveInDocument(new Locator(cfi), leftSpine, document);
+      let node = resolved.node;
+      let offset = resolved.characterOffset ?? 0;
+      // Legacy page CFIs address a parent's child offset; native caret CFIs can
+      // address that child's start. Compare their reading boundary, not spelling.
+      // This is comparison only: saved CFIs and history destinations stay intact.
+      while (node.nodeType === 1 && (node as Element).namespaceURI === "http://www.w3.org/1999/xhtml") {
+        const children = Array.from(node.childNodes).slice(offset);
+        const child = children.find(child => !isReaderOwnedContent(child) &&
+          (child.nodeType === 1 || ((child.nodeType === 3 || child.nodeType === 4) && child.textContent?.trim())));
+        if (!child) break;
+        node = child;
+        offset = 0;
+      }
+      return this.locatorResolver.generate(leftSpine, node, offset).cfi;
+    };
+    return EpubCfi.compare(canonical(left), canonical(right)) === 0;
   }
 
   /** Resolves the current position to a CFI and persists it as reading
@@ -951,6 +1015,7 @@ export class ReaderController {
         position.node,
         position.offset,
       );
+      if (!this.isApplyingLayout && !this.isLoadInFlight) this.readingHistory?.update(locator.cfi);
       await this.library.saveProgress(this.bookId, locator.cfi,
         native ? this.nativeBookFraction(native) : this.currentBookFraction());
     } catch {
@@ -1289,7 +1354,7 @@ export class ReaderController {
         );
         return;
       }
-      await this.openSpineItem(spineIndex, { bridgeCfi: cfi });
+      await this.openSpineItem(spineIndex, { bridgeCfi: cfi, history: "jump" });
     } catch (err) {
       this.reportTransientError(err, "open", subject);
     }
@@ -1716,7 +1781,6 @@ export class ReaderController {
       return path ? { path, spineIndex } : undefined;
     };
 
-    const focusDocument = this.primaryContentDocument();
     const cleanups: Array<() => void> = [];
 
     const isZoomableImage = (element: Element): element is HTMLImageElement => {
@@ -1749,8 +1813,8 @@ export class ReaderController {
 
       const clickHandler = (event: MouseEvent): void => {
         const target = event.target as Element | null;
-        const anchor = target?.closest?.("a[href]");
-        const href = anchor?.getAttribute("href");
+        const anchor = target?.closest?.("a");
+        const href = anchor?.getAttribute("href") ?? anchor?.getAttributeNS("http://www.w3.org/1999/xlink", "href");
         if (!href) {
           const img = target?.closest?.("img");
           if (img && isZoomableImage(img)) {
@@ -1803,16 +1867,7 @@ export class ReaderController {
 
         this.recordDiagnosticEvent({ kind: "navigation", source: "content-link", targetSpine: targetSpineIndex });
         this.suspendNarrationFollowing();
-        if (targetSpineIndex === own.spineIndex && !(this.host instanceof SpreadPaginatedHost)) {
-          if (fragment) {
-            const focusTarget = this.goToFragment(fragment);
-            if (focusDocument) {
-              this.accessibility.focusContent(focusDocument, focusTarget);
-            }
-          }
-          return;
-        }
-        void this.openSpineItem(targetSpineIndex, { fragment });
+        void this.openSpineItem(targetSpineIndex, { fragment, history: "jump" });
       };
 
       iframeDocument.addEventListener("click", clickHandler);
@@ -1895,7 +1950,23 @@ export class ReaderController {
       iframeDocument.addEventListener("wheel", scrollIntent, { passive: true });
       iframeDocument.addEventListener("touchmove", scrollIntent, { passive: true });
       iframeDocument.addEventListener("keydown", scrollKeyIntent);
+      let historyTimer: ReturnType<typeof setTimeout> | undefined;
+      const saveHistory = (): void => {
+        clearTimeout(historyTimer);
+        if (!this.isLoadInFlight && !this.isTurningPage && !this.isApplyingLayout) {
+          this.readingHistory?.update();
+        }
+      };
+      const selectionHistory = (): void => {
+        clearTimeout(historyTimer);
+        historyTimer = setTimeout(saveHistory, 150);
+      };
+      iframeDocument.addEventListener("scrollend", saveHistory);
+      iframeDocument.addEventListener("selectionchange", selectionHistory);
       cleanups.push(() => {
+        clearTimeout(historyTimer);
+        iframeDocument.removeEventListener("scrollend", saveHistory);
+        iframeDocument.removeEventListener("selectionchange", selectionHistory);
         iframeDocument.removeEventListener("wheel", scrollIntent);
         iframeDocument.removeEventListener("touchmove", scrollIntent);
         iframeDocument.removeEventListener("keydown", scrollKeyIntent);
@@ -1921,11 +1992,13 @@ export class ReaderController {
       contentBoundary(view.spineIndex, this.isFixedLayoutHost(host), this.pkg, this.navigation.toc.items, this.translate),
       this.translate("readingBoundary.navigation"),
       async nextSpineIndex => {
+        if (this.readingHistory) await this.readingHistory.settled();
         if (this.operations.disposed || this.host !== host || this.isLoadInFlight ||
           this.isTurningPage || this.isApplyingLayout) return;
         this.clearNavigationHighlights();
         const destination = this.contentDocumentViews().find(candidate => candidate.spineIndex === nextSpineIndex);
         if (destination) {
+          const commit = this.readingHistory?.beginJump();
           // A spread's second document is the next reading stop, even in RTL.
           if (this.isFixedLayoutHost(host)) {
             const point = { node: destination.document.body ?? destination.document.documentElement, offset: 0, spineIndex: nextSpineIndex };
@@ -1935,10 +2008,11 @@ export class ReaderController {
           } else {
             this.focusReadingContent(destination.document);
           }
+          commit?.();
           return;
         }
         // Uses the existing owned load/error path; never advances without activation.
-        await this.openSpineItem(nextSpineIndex);
+        await this.openSpineItem(nextSpineIndex, { history: "jump" });
       },
       this.translate.locale ?? DEFAULT_LOCALE,
     ));
@@ -3943,6 +4017,7 @@ export class ReaderController {
   /** Adjacent spine item, relative to actual reading focus, not a spread's visual primary. */
   public async goToChapter(direction: 1 | -1, sourceDocument?: Document): Promise<void> {
     this.recordDiagnosticEvent({ kind: "navigation", source: "chapter" });
+    await this.readingHistory?.settled();
     if (this.operations.disposed || this.isLoadInFlight || this.isTurningPage || this.isApplyingLayout) return;
     const views = this.contentDocumentViews();
     const source = views.find(view => view.document === sourceDocument)
@@ -3959,13 +4034,15 @@ export class ReaderController {
     const destination = views.find(view => view.spineIndex === nextSpineIndex &&
       (this.isFixedLayoutHost(this.host) || view.page?.index === 0));
     if (destination) {
+      const commit = this.readingHistory?.beginJump();
       const point = { spineIndex: nextSpineIndex, node: destination.document.body ?? destination.document.documentElement, offset: 0 };
       this.accessibility.focusReadingPosition(destination.document, point);
       this.nativeReading.retain(point);
       this.publishFixedReadingPosition();
+      commit?.();
       return;
     }
-    await this.openSpineItem(nextSpineIndex);
+    await this.openSpineItem(nextSpineIndex, { history: "jump" });
   }
 
   /** Side-effect-free preview of where a scrubber drag would land.
@@ -4009,18 +4086,19 @@ export class ReaderController {
           this.pkg.spine[resolved.spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) !== "pre-paginated") {
           const bridgeCfi = this.bookPagination?.pageStartCfi(resolved.spineIndex, resolved.pageIndexInItem);
           if (!bridgeCfi) throw new Error("The requested page has no measured reading position.");
-          await this.openSpineItem(resolved.spineIndex, { ...options, bridgeCfi });
+          await this.openSpineItem(resolved.spineIndex, { ...options, bridgeCfi, history: "jump" });
           return;
         }
         await this.openSpineItem(resolved.spineIndex, {
           ...options,
           landOnPageIndex: resolved.pageIndexInItem,
+          history: "jump",
         });
         return;
       }
     }
     const { spineIndex: targetSpineIndex, localFraction } = this.resolveSpineFraction(clamped);
-    await this.openSpineItem(targetSpineIndex, { ...options, landOnFractionInItem: localFraction });
+    await this.openSpineItem(targetSpineIndex, { ...options, landOnFractionInItem: localFraction, history: "jump" });
   }
 
   /** Picks a spine item and an in-item fraction for coarse seeking when
@@ -4050,7 +4128,7 @@ export class ReaderController {
       return;
     }
     this.clearNavigationHighlights();
-    await this.openSpineItem(spineIndex, { fragment: navPoint.fragment });
+    await this.openSpineItem(spineIndex, { fragment: navPoint.fragment, history: "jump" });
   }
 
   /** Reveals a newly loaded paginated host with the same page-turn
@@ -4361,11 +4439,14 @@ export class ReaderController {
       /** Narration follows without moving keyboard focus or announcing every chapter. */
       automatic?: boolean;
       preserveFocus?: boolean;
+      history?: "jump" | "restore";
     } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if (options.history === "jump") await this.readingHistory?.settled();
     if (this.operations.disposed || !this.containerEl) {
-      return;
+      return false;
     }
+    const commitHistory = options.history === "jump" ? this.readingHistory?.beginJump() : undefined;
 
     const requestedSpineIndex = spineIndex;
     if (options.animateDirection === undefined) this.queuedTurn = undefined;
@@ -4474,6 +4555,21 @@ export class ReaderController {
       operation.check();
       if (applyDisplaySettings) this.applyPersistedDisplaySettingsToFreshHost(newHost);
       this.applyPageThemeToHost(newHost);
+      // Resolve before replacing the visible host: a stale CFI or broken EPUB
+      // anchor must not move the reader (or create a browser-history entry).
+      const destinationDocument = readerDocumentViews(newHost, requestedSpineIndex)
+        .find(view => view.spineIndex === requestedSpineIndex)?.document;
+      if (options.bridgeCfi) {
+        if (!destinationDocument) throw new Error("The saved position's reading document is unavailable.");
+        const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), requestedSpineIndex, destinationDocument);
+        if (resolved.node.nodeType === 1 && resolved.characterOffset !== undefined &&
+          resolved.characterOffset > resolved.node.childNodes.length) {
+          throw new Error("The saved position's child offset is outside its reading element.");
+        }
+      }
+      if (options.fragment && !destinationDocument?.getElementById(options.fragment)) {
+        throw new Error(`The linked reading position #${options.fragment} was not found.`);
+      }
 
       // For chapter-boundary turns, land on the target page and apply
       // display settings before reveal so the animation shows the right
@@ -4613,6 +4709,8 @@ export class ReaderController {
       // recompute them after the final landing page is set.
       this.highlightInteraction.updateNoteMarkers();
       if (!options.automatic && !options.preserveFocus) this.announce(this.chapterLabel(spineIndex));
+      commitHistory?.();
+      if (!options.history && !this.isApplyingLayout) this.readingHistory?.update();
       await this.saveProgress();
       // properties="remote-resources" (EPUB3) is the book's own
       // declaration that this item may need network access this reader's
@@ -4626,6 +4724,7 @@ export class ReaderController {
         );
       }
       this.diagnostics.record(`openSpineItem success spineIndex=${spineIndex}`);
+      return this.operations.owns(operation);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (this.operations.owns(operation)) {
@@ -4644,6 +4743,7 @@ export class ReaderController {
       }
       // Ignore stale-load failures; a newer `openSpineItem` call has
       // already replaced this one.
+      return false;
     } finally {
       finished = true;
       if (this.narrationOperation === operation) this.narrationOperation = undefined;
@@ -4696,6 +4796,7 @@ export class ReaderController {
   }
 
   public dispose(): void {
+    this.readingHistory?.dispose();
     this.narration.dispose();
     this.narrationReading.clear();
     this.navigationSpotlight.clear();

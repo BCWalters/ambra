@@ -24,6 +24,7 @@ describe("ReaderController seek focus ownership", () => {
     });
     await controller.seekToFraction(0.75, preserveFocus ? { preserveFocus: true } : undefined);
     expect(openSpineItem).toHaveBeenCalledExactlyOnceWith(1, {
+      history: "jump",
       ...(measured ? { landOnPageIndex: 1 } : { landOnFractionInItem: 0.5 }),
       ...(preserveFocus ? { preserveFocus: true } : {}),
     });

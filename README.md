@@ -150,6 +150,34 @@ of the original fixture. Each layout performs 24 long drags and verifies actual
 navigation, exactly one seek per release, and the native capture-loss ordering.
 Without the native-input flag, the same test uses ordinary Playwright mouse input.
 
+## Browser reading-location history
+
+Chrome's native Back/Forward controls traverse deliberate reading jumps without
+reloading the book. `ReadingHistory` owns a versioned `__ambraReading` state entry
+per book/document session; it preserves unrelated browser state and never puts
+CFIs or book content in the URL. `ReaderController.openSpineItem` commits jumps
+only after the owned replacement resolves and lands. Ordinary reading replaces
+the current stop; previews, reflow, failed loads, and history restoration never
+push. Existing bookmark/annotation CFIs are not migrated.
+
+Settled page turns, native reading selections, and `scrollend` update the current
+entry. If Back precedes `scrollend`, a compact session-storage departure correction
+preserves the forward destination across refresh. Failed restores return to the
+last successfully displayed entry; superseded loads cannot rewrite the stack.
+The controller cleans up listeners and restores the prior `scrollRestoration`
+policy on disposal.
+
+`ReadingHistory.test.ts` exercises ownership, branching, failure rollback,
+reload corrections, foreign state, and disposal. The CI-selected
+`browser-reading-history.spec.ts` uses real Chromium `page.goBack()`/`goForward()`
+and the actual jump controls. Run against an already-built, immutable isolated
+extension:
+
+```bash
+AMBRA_E2E_EXTENSION_PATH="$PWD/dist/history-test-build" AMBRA_E2E_HEADLESS=1 \
+  pnpm --filter @ambra/e2e exec playwright test browser-reading-history.spec.ts --workers=1
+```
+
 ## Reading preferences
 
 **Settings** owns the global **Page theme** control: a flyout with three visual samples
