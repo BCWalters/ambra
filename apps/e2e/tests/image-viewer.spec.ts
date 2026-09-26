@@ -17,6 +17,82 @@ async function scrollState(image: Locator) {
   });
 }
 
+for (const format of ["svg", "png"] as const) {
+  test(`transparent ${format} images have a white viewer backing in every page theme (#226)`, async () => {
+    const { context, readerPage } = await launchReader(
+      path.resolve(here, "../fixtures/footnote.epub"),
+    );
+    try {
+      for (const theme of ["White", "Sepia", "Dark"]) {
+        await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
+        await readerPage.getByRole("menuitem", { name: /^Page theme/ }).click();
+        await readerPage.getByRole("menuitemradio", { name: theme, exact: true }).click();
+        await readerPage.keyboard.press("Escape");
+        await readerPage.keyboard.press("Escape");
+        const src = await readerPage.evaluate(async (format) => {
+          const doc = document.querySelector("iframe")!.contentDocument!;
+          const image = doc.createElement("img");
+          image.alt = "Transparent illustration";
+          const svg = URL.createObjectURL(
+            new Blob(
+              [
+                '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120"><path d="M60 90L120 30L180 90Z" fill="none" stroke="black" stroke-width="4"/></svg>',
+              ],
+              { type: "image/svg+xml" },
+            ),
+          );
+          image.src = svg;
+          await image.decode();
+          if (format === "png") {
+            const canvas = doc.createElement("canvas");
+            canvas.width = 240;
+            canvas.height = 120;
+            canvas.getContext("2d")!.drawImage(image, 0, 0);
+            const blob = await new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error("Could not encode transparent PNG fixture"));
+              }, "image/png");
+            });
+            image.src = URL.createObjectURL(blob);
+            await image.decode();
+            URL.revokeObjectURL(svg);
+          }
+          image.style.cssText = "position:absolute;top:0;left:0;width:240px;height:120px";
+          doc.body.append(image);
+          image.click();
+          return image.src;
+        }, format);
+        const dialog = readerPage.getByRole("dialog", { name: "Transparent illustration" });
+        const image = dialog.getByRole("img");
+        await expect(image).toBeVisible();
+        await expect(image).toHaveCSS("background-color", "rgb(255, 255, 255)");
+        await expect(dialog).toHaveCSS("background-color", "rgba(10, 8, 6, 0.82)");
+        await dialog.getByRole("button", { name: "Zoom in", exact: true }).click();
+        await expect(dialog.locator("output")).toHaveText("125%");
+        await expect(image).toHaveCSS("background-color", "rgb(255, 255, 255)");
+        await dialog.getByRole("button", { name: "Fit to window", exact: true }).click();
+        await expect(dialog.locator("output")).toHaveText("100%");
+        await expect(image).toHaveCSS("background-color", "rgb(255, 255, 255)");
+        await dialog.screenshot({
+          path: test.info().outputPath(`transparent-${format}-${theme}.png`),
+        });
+        await dialog.getByRole("button", { name: "Close", exact: true }).click();
+        await expect(dialog).toBeHidden();
+        const source = readerPage
+          .frameLocator("iframe")
+          .first()
+          .getByRole("img", { name: "Transparent illustration" });
+        await expect(source).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        await source.evaluate((img) => img.remove());
+        await readerPage.evaluate((src) => URL.revokeObjectURL(src), src);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 test("image viewer traps keyboard focus and restores the originating book image", async () => {
   const { context, readerPage } = await launchReader(
     path.resolve(here, "../fixtures/footnote.epub"),

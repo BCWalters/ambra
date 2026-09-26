@@ -234,6 +234,7 @@ const OpenImageViewer: FC<{
                 maxWidth: aspectRatio ? undefined : "90cqw",
                 maxHeight: aspectRatio ? undefined : "100cqh",
                 objectFit: "contain",
+                backgroundColor: "#fff",
                 boxShadow: "0 8px 40px rgba(0, 0, 0, 0.5)",
                 borderRadius: 4,
                 cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "default",
