@@ -180,6 +180,42 @@ test("A late Go to exit preserves the shortcut guide's focus and accessibility o
   }
 });
 
+test("A late Go to exit preserves a newly opened Settings menu and its focus", async ({ browserName }, info) => {
+  expect(browserName).toBe("chromium");
+  const { context, readerPage: page } = await launchReader(navigationFixture(info, [3, 4]));
+  try {
+    await ready(page);
+    await focusBook(page);
+    await page.keyboard.press(`${await mod(page)}+Shift+g`);
+    await expect(dialog(page, "Percentage").getByRole("spinbutton")).toBeFocused();
+    await page.evaluate(() => {
+      const requestFrame = window.requestAnimationFrame;
+      window.requestAnimationFrame = callback => {
+        window.requestAnimationFrame = requestFrame;
+        return requestFrame.call(window, time => {
+          Reflect.set(window, "__finishGoToExit", () => callback(time));
+        });
+      };
+    });
+    await page.keyboard.press("Escape");
+    await expect(dialog(page, "Percentage")).toHaveCount(0);
+    await page.waitForFunction(() => Reflect.has(window, "__finishGoToExit"));
+    await page.mouse.move(10, 2);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await page.evaluate(() => Reflect.get(window, "__finishGoToExit")());
+    await finishModalMotion(page);
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await menu.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Help & About", exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
 for (const destination of [
   { page: 2, spine: 0, localPage: 1, text: "C1Para 2.", name: "same-chapter" },
   { page: 4, spine: 1, localPage: 0, text: "C2Para 1.", name: "cross-chapter" },

@@ -156,8 +156,9 @@ export const GoToDialog: FC<GoToDialogProps> = ({
             restoreFrame.current = undefined;
             const closedOpening = opening.current;
             const restore = () => {
-              // A later modal may already own focus and Tabster's accessibility scope.
-              if (opening.current === closedOpening && !document.querySelector('[aria-modal="true"]')) onAfterClose?.();
+              // A later modal or menu may already own focus. Returning to the
+              // book would steal that focus and dismiss Fluent's newer menu.
+              if (opening.current === closedOpening && !document.querySelector('[aria-modal="true"], [role="menu"]')) onAfterClose?.();
             };
             // Dismissal does not cancel a submitted seek; return into its final document.
             if (pendingNavigation.current) void pendingNavigation.current.then(restore, restore);

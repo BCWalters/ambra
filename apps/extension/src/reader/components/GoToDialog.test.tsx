@@ -64,7 +64,7 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await act(async () => { await new Promise(requestAnimationFrame); });
     expect(onAfterClose).toHaveBeenCalledOnce();
   });
-  it("does not reclaim focus when another modal opens before its deferred return", async () => {
+  it.each(["dialog", "menu"])("does not reclaim focus when another %s opens before its deferred return", async role => {
     const onAfterClose = vi.fn();
     await render({ onAfterClose });
     const frames: FrameRequestCallback[] = [];
@@ -72,8 +72,8 @@ describe("GoToDialog with native form and Fluent modal ownership", () => {
     await render({ open: false, onAfterClose });
     expect(frames).toHaveLength(1);
     const nextModal = document.createElement("section");
-    nextModal.setAttribute("role", "dialog");
-    nextModal.setAttribute("aria-modal", "true");
+    nextModal.setAttribute("role", role);
+    if (role === "dialog") nextModal.setAttribute("aria-modal", "true");
     const control = document.createElement("button");
     nextModal.append(control);
     container.append(nextModal);
