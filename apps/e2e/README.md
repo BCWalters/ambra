@@ -100,6 +100,15 @@ menu owns keyboard focus, then verifies that releasing the frame neither closes
 the menu nor prevents opening Help & About. Diagnostic close events describe
 requested state, not completion of exit motion.
 
+## Image viewer transparency (#226)
+
+`tests/image-viewer.spec.ts` checks that transparent SVG and PNG illustrations
+have an opaque white backing inside the image viewer in White, Sepia and Dark
+page themes, including after zooming and fitting. The surrounding overlay stays
+translucent, and the original inline image keeps its transparency. Synthetic
+illustrations and per-theme screenshots keep this regression independent of
+external books. CI runs these cases against the packaged production build.
+
 ## Fragment-based tables of contents (#202)
 
 `tests/toc-fragments.spec.ts` generates original synthetic content with several
