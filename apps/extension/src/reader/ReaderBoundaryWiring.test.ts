@@ -65,7 +65,7 @@ describe("ReaderController content boundaries", () => {
       expect(controller.notify).not.toHaveBeenCalled();
     }
     buttons[1]!.click();
-    expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(3);
+    expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(3, { history: "jump" });
     controller.boundaryCleanup();
   });
 

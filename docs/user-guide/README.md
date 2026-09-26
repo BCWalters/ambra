@@ -28,6 +28,24 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 **Bookmarks on the progress bar** appear as small blue ribbons once book-wide pagination is ready. They update when text size or window size changes, and mirror for right-to-left books. The bar keeps its usual click, drag, and keyboard controls; use **Bookmarks and highlights** to browse saved bookmarks by name.
 
+## Return after a reading jump
+
+Use Chrome's **Back** and **Forward** buttons to revisit reading locations.
+Ambra remembers completed jumps from the contents, chapter navigation, search,
+bookmarks, highlights, notes, in-book links, Go to page/percentage, and a released
+reading-position drag. There are no extra history buttons in the reader.
+
+Ordinary page turns and scrolling update the current stop rather than adding
+stops. For example, jump from A to B, then read on to C: **Back** returns to A
+and **Forward** returns to C. A new jump after Back replaces the forward branch.
+Text-size and layout changes, cancelled or unsuccessful jumps, and popup
+footnotes do not add stops.
+
+Locations follow the book's content, not old page numbers, and the current
+reading-history stack survives a page refresh. Library and other real pages
+remain ordinary browser navigation. Closing the tab ends this tab's history;
+your saved reading progress and bookmarks remain separate.
+
 ## Take your annotations with you
 
 Bookmarks use the same compact card treatment as highlights. Chapter titles

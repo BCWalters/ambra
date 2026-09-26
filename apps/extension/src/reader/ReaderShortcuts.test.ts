@@ -70,7 +70,7 @@ it("uses native reading spine when invoked from shell and opens the next unmount
   await controller.goToChapter(1, document);
   expect(controller.nativeReading.retain).toHaveBeenCalledWith({ spineIndex: 1, node: second.body, offset: 0 });
   await controller.goToChapter(1, second);
-  expect(controller.openSpineItem).toHaveBeenCalledWith(2);
+  expect(controller.openSpineItem).toHaveBeenCalledWith(2, { history: "jump" });
 });
 it("does not reuse the end of a previous companion as its section start", async () => {
   const { controller, first, second } = setup();
@@ -79,7 +79,7 @@ it("does not reuse the end of a previous companion as its section start", async 
     { document: second, spineIndex: 1, page: { index: 0 } },
   ];
   await controller.goToChapter(-1, second);
-  expect(controller.openSpineItem).toHaveBeenCalledWith(0);
+  expect(controller.openSpineItem).toHaveBeenCalledWith(0, { history: "jump" });
 });
 it("has one app registry listener with no legacy fallback when disabled", () => {
   const { controller } = setup();

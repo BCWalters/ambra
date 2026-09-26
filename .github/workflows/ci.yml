@@ -55,6 +55,7 @@ jobs:
           book-metadata-display.spec.ts
           library-card-focus.spec.ts
           navigation-correctness.spec.ts
+          browser-reading-history.spec.ts
           toc-fragments.spec.ts
           settings-focus.spec.ts
           settings-ownership.spec.ts
