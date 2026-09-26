@@ -44,7 +44,8 @@ export const NoteMarkers: FC<NoteMarkersProps> = ({ markers, onSelect }) => {
               left: marker.left,
               top: marker.top,
               transform: "translate(-50%, -50%)",
-              zIndex: 6,
+              // Page decoration: below selection and annotation popups (layer 6).
+              zIndex: 5,
               width: 18,
               height: 18,
               borderRadius: "50%",
