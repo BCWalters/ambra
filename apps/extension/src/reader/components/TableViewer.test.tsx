@@ -7,7 +7,8 @@ import type { PreparedTable } from "../TableViewerContent.js";
 
 const surfaces = vi.hoisted(() => ({ list: [] as Array<{ element: HTMLIFrameElement; dispose: ReturnType<typeof vi.fn> }>,
   fail: false }));
-vi.mock("@ambra/engine", () => ({
+vi.mock("@ambra/engine", async importOriginal => ({
+  ...await importOriginal<typeof import("@ambra/engine")>(),
   SandboxedContentHost: class {
     element = document.createElement("iframe");
     dispose = vi.fn(() => this.element.remove());
@@ -182,6 +183,25 @@ describe("TableViewer", () => {
     key(doc, "Tab");
     expect(doc.activeElement).toBe(summary);
     key(summary, "Tab");
+    expect(document.activeElement).toBe(button("Close"));
+  });
+
+  it("includes overflowing code blocks in frame traversal but skips blocks that fit", async () => {
+    await render();
+    const doc = surfaces.list[0]!.element.contentDocument!;
+    doc.body.innerHTML = "<pre>Long code sample</pre>";
+    const pre = doc.querySelector("pre")!;
+    vi.spyOn(pre, "getClientRects").mockReturnValue([new DOMRect(0, 0, 160, 40)] as unknown as DOMRectList);
+    vi.spyOn(pre, "scrollWidth", "get").mockReturnValue(640);
+    const width = vi.spyOn(pre, "clientWidth", "get").mockReturnValue(160);
+    key(button("Close"), "Tab", { shiftKey: true });
+    expect(pre.tabIndex).toBe(0);
+    expect(doc.activeElement).toBe(pre);
+    expect(key(pre, "ArrowRight").defaultPrevented).toBe(false);
+    key(pre, "Tab");
+    expect(document.activeElement).toBe(button("Close"));
+    width.mockReturnValue(640);
+    key(doc, "Tab");
     expect(document.activeElement).toBe(button("Close"));
   });
 });

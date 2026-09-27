@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Button, Spinner } from "@fluentui/react-components";
 import { DismissRegular, ZoomInRegular, ZoomOutRegular } from "@fluentui/react-icons";
-import { SandboxedContentHost } from "@ambra/engine";
+import { makeOverflowingPreElementsFocusable, SandboxedContentHost } from "@ambra/engine";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { PreparedTable } from "../TableViewerContent.js";
 
@@ -69,13 +69,18 @@ const OpenTableViewer: FC<TableViewerProps & { table: PreparedTable }> = ({
       onError(new Error("Some table resources could not be loaded."));
     };
     let removeFrameListeners: (() => void) | undefined;
-    const disclosures = (): HTMLElement[] => Array.from(
-      surface.element.contentDocument?.querySelectorAll<HTMLElement>("summary") ?? [],
-    ).filter(summary => summary.getClientRects().length > 0);
+    const frameControls = (): HTMLElement[] => {
+      const doc = surface.element.contentDocument;
+      if (!doc) return [];
+      makeOverflowingPreElementsFocusable(doc);
+      return Array.from(doc.querySelectorAll<HTMLElement>("summary, pre[tabindex='0']"))
+        .filter(element => element.getClientRects().length > 0 &&
+          (element.localName !== "pre" || element.scrollWidth > element.clientWidth));
+    };
     const enterFrame = (reverse: boolean): void => {
       // The iframe element is the parent document's actual tab stop.
       surface.element.focus();
-      const controls = disclosures();
+      const controls = frameControls();
       const target = reverse ? controls.at(-1) : controls[0];
       if (target) target.focus();
     };
@@ -96,7 +101,7 @@ const OpenTableViewer: FC<TableViewerProps & { table: PreparedTable }> = ({
         if (inFrame) {
           event.preventDefault();
           event.stopImmediatePropagation();
-          const controls = disclosures();
+          const controls = frameControls();
           const active = surface.element.contentDocument?.activeElement;
           const index = controls.indexOf(active as HTMLElement);
           const next = index + (event.shiftKey ? -1 : 1);

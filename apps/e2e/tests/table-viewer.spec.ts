@@ -436,6 +436,7 @@ test("table viewer keeps text and disclosures usable but makes links and forms r
       <p><span id="selection">Selectable table text</span></p>
       <a href="#table">Chapter link</a>
       <details><summary>More observations</summary><p>Disclosed observation</p></details>
+      <pre style="width:160px;overflow:auto;white-space:pre">${"Wide nested code sample ".repeat(20)}</pre>
       <form><label>Value<input name="value"/></label><button type="submit">Save</button></form>
     </td></tr></tbody>`,
     ),
@@ -466,6 +467,14 @@ test("table viewer keeps text and disclosures usable but makes links and forms r
           .evaluate((node) => node.ownerDocument.getSelection()?.toString().length ?? 0),
       )
       .toBeGreaterThan(0);
+    await dialog.getByRole("button", { name: "Close", exact: true }).focus();
+    await page.keyboard.press("Shift+Tab");
+    const code = frame.locator("pre");
+    await expect(code).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => code.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
   } finally {
