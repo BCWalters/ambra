@@ -25,9 +25,11 @@ export function resolveEpubPath(referencingFilePath: string, href: string): stri
 function safeDecodeUriComponent(value: string): string {
   try {
     return decodeURIComponent(value);
-  } catch {
+  } catch (error) {
+    if (!(error instanceof URIError)) throw error;
     // Malformed percent-encoding: fall back to the raw string rather than
-    // throwing when a publisher used a literal percent sign in a filename.
+    // throwing when a publisher used a literal percent sign in a filename or ID.
+    console.warn("Invalid percent-encoding in EPUB reference; preserving the literal value.");
     return value;
   }
 }
@@ -39,15 +41,17 @@ export function directoryOf(path: string): string {
   return lastSlash === -1 ? "" : path.slice(0, lastSlash);
 }
 
-/** Splits a raw href like `"chapter1.xhtml#section2"` into its path and
- * fragment parts. Used by navigation parsing (Nav Document / NCX), where a
- * link's target position within a content document (the fragment) needs to
- * be kept separate from the document path (which gets resolved via
- * `resolveEpubPath`). */
+/** Splits a raw href into its URL path and decoded element ID. Decode the
+ * fragment exactly once here, after separating it from the path; consumers
+ * must use it directly for DOM lookup. The path remains a URL reference for
+ * `resolveEpubPath`. Malformed escapes retain their literal value. */
 export function splitHrefFragment(href: string): { path: string; fragment: string | undefined } {
   const hashIndex = href.indexOf("#");
   if (hashIndex === -1) {
     return { path: href, fragment: undefined };
   }
-  return { path: href.slice(0, hashIndex), fragment: href.slice(hashIndex + 1) };
+  return {
+    path: href.slice(0, hashIndex),
+    fragment: safeDecodeUriComponent(href.slice(hashIndex + 1)),
+  };
 }

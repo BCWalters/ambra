@@ -66,6 +66,15 @@ reopening, multiple books, RTL fixed layout, scrolling, touch-width reflow,
 modal focus, reduced motion and forced colors. There is no headless-only
 production behavior.
 
+`launchReader` subscribes to the new-page event before clicking **Open**, then
+waits for the reader URL, a visible content iframe inside the main landmark,
+and the loading progressbar to disappear. Explicit first-welcome cases also
+wait for the welcome dialog using a locale-independent selector; a German-locale
+startup regression covers this path. These readiness signals replace fixed startup
+sleeps and work without a paginated page label. Individual tests must still
+wait for their own feature-specific completion (for example TOC page estimates
+or image decoding).
+
 Tests using the shared `launchReader` harness can opt into full Chromium's
 headless mode with `AMBRA_E2E_HEADLESS=1`. This keeps validation from opening
 windows or interrupting someone testing the live extension. It still loads the
@@ -74,15 +83,22 @@ real unpacked extension, not a web-only preview.
 For concurrent validation, set `AMBRA_E2E_EXTENSION_PATH` to a dedicated
 absolute build directory for both the build and test commands. This keeps
 one run's rebuild from replacing files used by another run's browser.
-Give each run its own Playwright output directory too, so profiles and reports
-cannot overwrite another run's artifacts.
+Give each run its own Playwright output directory too, so reports cannot
+overwrite another run's artifacts. Each `launchReader` context owns a unique
+profile under the ignored `apps/e2e/.reader-profiles/`, outside Playwright's
+output-cleanup tree. Closing a context removes only its profile; setup failures
+also close the context and remove that profile. Concurrent output cleanup
+therefore cannot delete another active reader's profile.
 Use only a disposable build directory: the build empties it first.
 
 ```sh
-export AMBRA_E2E_EXTENSION_PATH="$(mktemp -d /tmp/ambra-e2e-build.XXXXXX)"
+RUN="$PWD/apps/e2e/real-books/isolated-run-$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$RUN/runtime"
+export TMPDIR="$RUN/runtime"
+export AMBRA_E2E_EXTENSION_PATH="$RUN/extension"
 pnpm --filter @ambra/e2e run build:extension
-pnpm --filter @ambra/e2e exec playwright test tests/about-flyout.spec.ts \
-  --output "$(mktemp -d /tmp/ambra-e2e-results.XXXXXX)"
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
+  tests/about-flyout.spec.ts --output "$RUN/results"
 ```
 
 ## Go to modal focus lifecycle
@@ -108,6 +124,12 @@ page themes, including after zooming and fitting. The surrounding overlay stays
 translucent, and the original inline image keeps its transparency. Synthetic
 illustrations and per-theme screenshots keep this regression independent of
 external books. CI runs these cases against the packaged production build.
+
+The localized native-wheel regression closes both the language submenu and
+Settings after selecting Deutsch, and verifies no menus remain before sending
+wheel input to the image center. An open submenu can intercept that native
+input even though the viewer is still visible; that is a test precondition,
+not evidence of broken image zoom or a reason to weaken the wheel assertions.
 
 ## Fragment-based tables of contents (#202)
 
@@ -641,3 +663,127 @@ Use `harness.ts`'s `launchReader`/`currentPageLabel`/`currentPageText`/
 `clickForwardAndWait` helpers rather than re-deriving the "launch a
 persistent Chromium context with the extension loaded, import a book,
 open it" dance in every spec file.
+
+## Bounded synthetic content variation / stress
+
+`tests/content-stress.spec.ts` generates ten deterministic, original-content
+EPUB3 combinations using `content-stress-fixtures.ts`. No external books or
+generated binaries are required in git:
+
+| Combination | Stress dimensions |
+| --- | --- |
+| `toc-1000-nested-notes` | 1,000 fragment entries, depth 12, nested footnotes |
+| `toc-1000-unicode-spread` | 1,000 literal-Unicode anchors, mixed scripts, spread |
+| `120-short-chapters-notes` | 120 tiny spine documents, nested notes |
+| `80-short-chapters-rtl` | 80 tiny chapters, RTL progression, Unicode, spread |
+| `deep-unicode-notes` | TOC depth 16, Unicode, nested footnotes |
+| `transparent-extreme-media` | Transparent/inline SVG, 50:1 and 1:50 images |
+| `media-rtl-spread` | The same media combined with RTL spreads |
+| `wide-table-pre-narrow` | 12-column table, 1,300-character token, long code, 600px |
+| `overflow-unicode-scroll` | Overflow specimens, Unicode, scrolling |
+| `mixed-writing-notes-scroll` | RTL/mixed scripts, vertical specimen, notes, scrolling |
+
+The assertions cover complete TOC enumeration, ordered/in-range page mappings,
+real destination visibility at first/deep/middle/final entries, ordinary
+margin-turn round trips, notes without navigation, image decoding, code-block
+keyboard scrolling, persisted final position after reload, and destinations
+after typography changes. Facing-spread labels may belong to the other visible
+chapter: tests check the requested target's geometry and mapped displayed page,
+not an incorrect assumption that the primary chapter must always own the target.
+Arrows inside overflowing `pre` blocks intentionally scroll code; outer margins
+are used for page turns. This is not a claim of full vertical-writing support
+or that every oversized table cell fits. Confirmed paginated table content loss
+is covered separately by the opt-in #229 reproduction below; choosing its fix
+remains a visual policy question, but lost content is not treated as one.
+
+From the repository root, keep the extension, runtime, profiles and output
+isolated from other runs and the live extension:
+
+```sh
+RUN="$PWD/apps/e2e/real-books/content-stress-$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$RUN/runtime"
+export TMPDIR="$RUN/runtime"
+export AMBRA_E2E_EXTENSION_PATH="$RUN/extension"
+pnpm --filter @ambra/e2e run build:extension
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
+  tests/content-stress.spec.ts --output "$RUN/results"
+```
+
+Every case retains its EPUB, expanded source, `scenario.json`, screenshots
+(including the end of the TOC), and measurements under its result directory.
+Import the EPUB directly for manual review, or add `--grep 'case-id$'` to replay
+one case. The normal run is **16 passing cases and 4 skipped opt-in repros**:
+ten content combinations, six fragment-navigation regressions, and four table
+comparisons that remain opt-in.
+
+### Encoded-fragment regression (#228)
+
+[Issue #228](https://github.com/BCWalters/ambra/issues/228) reduces an encoded
+Unicode fragment failure to one chapter and two links: `#arrivée` succeeds;
+`#arriv%C3%A9e` previously lost its TOC page number and did not navigate.
+Fragments are now decoded exactly once when a raw EPUB href is parsed, before
+TOC page mapping, navigation, internal links, footnotes, or narration use the
+element ID. Literal percent escapes are not decoded a second time. Malformed
+publisher escapes retain their literal value with a diagnostic warning.
+The standalone generator writes both EPUBs and their complete original sources:
+
+```sh
+node apps/e2e/scripts/generate-encoded-fragment-repro.mjs "$RUN/minimal"
+AMBRA_E2E_HEADLESS=1 \
+  pnpm --filter @ambra/e2e exec playwright test tests/content-stress.spec.ts \
+  --grep '#228' --repeat-each 2 \
+  --output "$RUN/repro-results"
+```
+
+Both variants now pass in single-page, spread and scrolling modes, including
+TOC page mapping in paginated modes and resume after reload. These six tests run
+normally and in CI against the packaged production build; no opt-in flag is
+required. Unit coverage also checks EPUB3 navigation lists, legacy NCX, SMIL,
+encoded delimiters, literal percent IDs, internal links, and footnotes.
+Historical review screenshots retain the original pre-fix comparison.
+
+### Confirmed paginated table content loss (#229), explicit opt-in
+
+[Issue #229](https://github.com/BCWalters/ambra/issues/229) confirms that the
+rightmost columns of `wide-table-pre-narrow` cannot be reached by native
+horizontal scrolling or any page of the chapter in paginated mode. A one-page,
+three-column reduction reproduces this without code blocks or other overflow.
+The issue contains the complete original source and measured geometry.
+
+In `overflow-unicode-scroll`, columns **are reachable**: hover the table and
+horizontally scroll toward later columns with a trackpad/wheel. A native
+`deltaX` of approximately 3,089 pixels brings Column 12 fully into the 900px
+viewport. The whole chapter pans horizontally, not just the table. The minimal
+EPUB also passes this Scroll-mode control at 600px. This working interaction
+does not make paginated data loss merely a design choice.
+
+```sh
+node apps/e2e/scripts/generate-wide-table-repro.mjs "$RUN/minimal-table"
+AMBRA_E2E_HEADLESS=1 AMBRA_E2E_TABLE_REPRO=1 \
+  pnpm --filter @ambra/e2e exec playwright test tests/content-stress.spec.ts \
+  --grep 'wide table native reachability' --repeat-each 2 \
+  --output "$RUN/table-results"
+```
+
+Until fixed, this intentionally produces **four paginated failures and four
+Scroll-control passes**: both original fixtures and the table-only reduction
+are exercised twice in fresh profiles. Results include native-wheel screenshots,
+EPUB/source, every ancestor's overflow/scroll metrics, and page traversal.
+
+### One-click visual gallery
+
+After running the matrix and opt-in repro above, generate a self-contained local
+HTML review with screenshots, downloadable EPUBs, source and measurement links,
+and copyable per-case commands against the immutable build:
+
+```sh
+node apps/e2e/scripts/render-content-stress-review.mjs \
+  "$RUN/results" "$RUN/repro-results" "$RUN/review" "$RUN/extension" \
+  "$RUN/table-results"
+open "$RUN/review/index.html" # macOS; otherwise open it in a browser
+```
+
+Clicking a screenshot opens it full-size. Copy buttons only copy a command;
+they do not auto-open an extension reader. The gallery explicitly separates
+confirmed bug evidence from visual-policy review (wide tables, mixed writing,
+and extreme-aspect media). No image-viewer background change is implied.

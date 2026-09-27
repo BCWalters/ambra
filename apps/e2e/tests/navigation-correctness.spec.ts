@@ -288,6 +288,7 @@ test.describe("paginated reflowable navigation correctness", () => {
     });
     try {
       const seenPerPage: number[][] = [];
+      await expect.poll(() => currentPageLabel(readerPage)).not.toBeNull();
       let lastLabel = await currentPageLabel(readerPage);
       expect(lastLabel).not.toBeNull();
 

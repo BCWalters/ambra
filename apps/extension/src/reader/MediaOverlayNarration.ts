@@ -119,7 +119,7 @@ export class MediaOverlayNarration {
     return {
       spineIndex: this.associations[this.cursor.association]!,
       path: this.par.text.path,
-      ...(this.par.text.fragment !== undefined ? { fragment: decodeFragment(this.par.text.fragment) } : {}),
+      ...(this.par.text.fragment !== undefined ? { fragment: this.par.text.fragment } : {}),
     };
   }
 
@@ -505,13 +505,6 @@ export class MediaOverlayNarration {
   }
 }
 
-function decodeFragment(fragment: string): string {
-  try { return decodeURIComponent(fragment); } catch (error) {
-    if (error instanceof URIError) return fragment;
-    throw error;
-  }
-}
-
 function findPassage(clips: readonly SmilPar[], element: Element): number {
   let containing = -1;
   let containingElement: Element | undefined;
@@ -521,7 +514,7 @@ function findPassage(clips: readonly SmilPar[], element: Element): number {
   for (let index = 0; index < clips.length; index++) {
     const fragment = clips[index]!.text.fragment;
     const target = fragment
-      ? element.ownerDocument.getElementById(decodeFragment(fragment))
+      ? element.ownerDocument.getElementById(fragment)
       : element.ownerDocument.documentElement;
     if (!target) continue;
     if (first < 0) first = index;

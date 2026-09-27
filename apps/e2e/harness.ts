@@ -48,9 +48,9 @@ export async function seedReadingWelcomeAcknowledgement(page: Page): Promise<voi
  * hand, not a shortcut around it, so this suite exercises the actual
  * library/import code path too, not just the reader in isolation.
  *
- * Each call owns a unique profile under this package's ignored test-results
- * directory. Closing the context removes that profile; failed setup closes
- * the context and removes it before rethrowing the original failure. */
+ * Each call owns a unique profile outside Playwright's output directory, so
+ * another runner clearing its results cannot remove a live profile. Closing
+ * the context removes that profile; failed setup does the same before throwing. */
 export async function launchReader(
   bookPath: string,
   options: {
@@ -69,7 +69,7 @@ export async function launchReader(
       `Built extension not found at ${EXTENSION_PATH} — run "pnpm --filter @ambra/e2e run build:extension" first (the "test" script does this automatically).`,
     );
   }
-  const profileRoot = path.join(here, "test-results", "reader-profiles");
+  const profileRoot = path.join(here, ".reader-profiles");
   fs.mkdirSync(profileRoot, { recursive: true });
   const profileDir = fs.mkdtempSync(path.join(profileRoot, "ambra-e2e-"));
   let profileRemoved = false;
@@ -121,25 +121,22 @@ export async function launchReader(
 
     const openButton = libraryPage.getByRole("button", { name: /^Open /i }).first();
     await openButton.waitFor({ timeout: 20_000 });
-    await openButton.click({ force: true });
-
-    await libraryPage.waitForTimeout(500);
-    let readerPage: Page | undefined;
-    for (let attempt = 0; attempt < 40 && !readerPage; attempt++) {
-      readerPage = context.pages().find((page) => page.url().includes("/reader/"));
-      if (!readerPage) {
-        await libraryPage.waitForTimeout(250);
-      }
-    }
-    if (!readerPage) {
-      throw new Error("Reader page never opened after clicking Open.");
-    }
+    const [readerPage] = await Promise.all([
+      context.waitForEvent("page", { timeout: 15_000 }),
+      openButton.click(),
+    ]);
+    await readerPage.waitForURL(`chrome-extension://${extensionId}/src/reader/index.html*`);
     await readerPage.waitForLoadState("domcontentloaded");
-    // A fixed settle window rather than waiting on a specific readiness
-    // signal — deliberately simple, since every test that uses this then
-    // does its own explicit waiting (for text, for a page-number label,
-    // etc.) before asserting anything.
-    await readerPage.waitForTimeout(1500);
+    // The content host mounts before opening/layout finishes. Wait for both
+    // the visible book frame and the loading indicator to finish, not a fixed
+    // delay or a page label (which does not exist in every reading mode).
+    await expect(readerPage.getByRole("main").locator("iframe").first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(readerPage.getByRole("progressbar")).toHaveCount(0, { timeout: 20_000 });
+    if (options.firstReadingWelcome) {
+      await expect(readerPage.locator('.reading-welcome[role="dialog"]')).toBeVisible();
+    }
 
     return { context, libraryPage, readerPage, extensionId };
   } catch (error) {

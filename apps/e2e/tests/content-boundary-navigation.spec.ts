@@ -156,7 +156,9 @@ test("reader boundaries do not alter text, CFIs, page counts, or duplicate-sprea
       controller.setUpContentBoundaries();
       controller.host.relayout(controller.width, controller.height);
       const afterReflow = snapshot();
-      const frames = [...document.querySelectorAll("iframe")];
+      // Background pagination/preload frames are not part of the active spread.
+      const hostElement: HTMLElement = controller.host.element;
+      const frames = [...hostElement.querySelectorAll("iframe")];
       return {
         withBoundary, withoutBoundary, afterReflow,
         hidden: frames.filter(frame => frame.getAttribute("aria-hidden") === "true")

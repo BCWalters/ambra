@@ -9,11 +9,20 @@ const book = path.resolve(
   "../fixtures/disclosure-pagination/initially-closed.epub",
 );
 
-async function totalPages(page: Page): Promise<number> {
-  const text = await page
-    .getByRole("slider", { name: "Position in book" })
+async function totalPages(page: Page): Promise<number | undefined> {
+  const text = await page.getByRole("slider", { name: "Position in book" })
     .getAttribute("aria-valuetext");
-  return Number(text?.match(/of (\d+)/)?.[1]);
+  const match = text?.match(/of (\d+)/);
+  return match ? Number(match[1]) : undefined;
+}
+
+async function readyTotalPages(page: Page): Promise<number> {
+  let total: number | undefined;
+  await expect.poll(async () => {
+    total = await totalPages(page);
+    return total;
+  }, { message: "disclosure page count is ready" }).toBeGreaterThan(0);
+  return total!;
 }
 
 async function states(page: Page): Promise<boolean[]> {
@@ -78,13 +87,13 @@ for (const width of [760, 1400]) {
     try {
       const summary = page.frameLocator("iframe").first().locator("#long-disclosure > summary");
       const columns = width === 760 ? 1 : 2;
-      const collapsedTotal = await totalPages(page);
+      const collapsedTotal = await readyTotalPages(page);
       await summary.focus();
       await page.keyboard.press("Space");
       await expect.poll(() => totalPages(page)).toBeGreaterThan(collapsedTotal);
       await expect.poll(() => states(page)).toEqual(Array(columns).fill(true));
       await expect(summary).toBeFocused();
-      const expandedTotal = await totalPages(page);
+      const expandedTotal = await readyTotalPages(page);
 
       await page.keyboard.press("Space");
       await expect.poll(() => states(page)).toEqual(Array(columns).fill(false));
@@ -129,7 +138,7 @@ for (const width of [760, 1400]) {
     });
     try {
       const summary = page.frameLocator("iframe").first().locator("#long-disclosure > summary");
-      const collapsedTotal = await totalPages(page);
+      const collapsedTotal = await readyTotalPages(page);
       await summary.focus();
       await page.keyboard.press("Space");
       await expect.poll(() => totalPages(page)).toBeGreaterThan(collapsedTotal);
@@ -185,7 +194,7 @@ test("a disclosure toggle during a held spread load shares the latest queued res
     viewport: { width: 900, height: 900 },
   });
   try {
-    const collapsedTotal = await totalPages(page);
+    const collapsedTotal = await readyTotalPages(page);
     await page.evaluate(() => {
       const prototype = HTMLIFrameElement.prototype;
       const descriptor = Object.getOwnPropertyDescriptor(prototype, "src")!;
