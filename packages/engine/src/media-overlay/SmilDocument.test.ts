@@ -43,6 +43,22 @@ const NESTED_SMIL = `<?xml version="1.0" encoding="UTF-8"?>
 </smil>`;
 
 describe("SmilDocument.parse", () => {
+  it("decodes seq and text fragments exactly once while resolving archive paths separately", () => {
+    const xml = `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
+      <body><seq epub:textref="ch%23one.xhtml#arriv%C3%A9e">
+        <par><text src="ch%23one.xhtml#literal%2520id"/></par>
+      </seq></body></smil>`;
+    const doc = SmilDocument.parse(xml, "OEBPS/overlay.smil");
+    const seq = doc.body.children[0];
+    expect(seq).toBeInstanceOf(SmilSeq);
+    if (!(seq instanceof SmilSeq)) throw new Error("Expected the fixture's seq");
+    expect(seq.textref).toEqual({ path: "OEBPS/ch#one.xhtml", fragment: "arrivée" });
+    expect(doc.flattenPars()[0]!.text).toEqual({
+      path: "OEBPS/ch#one.xhtml",
+      fragment: "literal%20id",
+    });
+  });
+
   it("parses a flat sequence of pars at the top level", () => {
     const doc = SmilDocument.parse(SIMPLE_SMIL, "OEBPS/chapter1_overlay.smil");
 

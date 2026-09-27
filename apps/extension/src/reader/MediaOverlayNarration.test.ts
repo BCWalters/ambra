@@ -198,10 +198,27 @@ describe("MediaOverlayNarration", () => {
       "EPUB/m0.smil": smil(clip(0, "a", 0, 1), clip(0, "b%20c", 1, 2)),
       "EPUB/m2.smil": second,
     });
+
     const doc = new DOMParser().parseFromString('<html><body><h1 id="before">Title</h1><p id="a"><em id="inside">A</em></p><aside id="between">gap</aside><p id="b c">B</p><div id="after">end</div></body></html>', "text/html");
     for (const [id, expected] of [["before", "a"], ["inside", "a"], ["between", "a"], ["after", "b c"]]) {
       await narration.playFrom(0, doc.getElementById(id!)!);
       expect(narration.target?.fragment).toBe(expected);
+    }
+  });
+
+  it("does not decode an already parsed literal-percent fragment again", async () => {
+    const { narration, onTarget } = setup({
+      "EPUB/m0.smil": smil(clip(0, "literal%2520id", 0, 1), clip(0, "literal%20id", 1, 2)),
+      "EPUB/m2.smil": second,
+    });
+    const doc = new DOMParser().parseFromString(
+      '<p id="literal%20id">Percent</p><p id="literal id">Space</p>',
+      "text/html",
+    );
+    for (const id of ["literal%20id", "literal id"]) {
+      await narration.playFrom(0, doc.getElementById(id)!);
+      expect(narration.target?.fragment).toBe(id);
+      expect(onTarget).toHaveBeenLastCalledWith(narration.target, true);
     }
   });
 

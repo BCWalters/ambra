@@ -155,6 +155,25 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
   } finally { await app.context.close(); }
 });
 
+test("first-reading harness readiness follows the seeded locale", async () => {
+  const app = await launchReader(book, {
+    firstReadingWelcome: true,
+    beforeBookImport: library => seed(library, [{ key: "localePreference", value: "de" }]),
+  });
+  try {
+    await expect(app.readerPage.locator("html")).toHaveAttribute("lang", "de");
+    const dialog = app.readerPage.locator('.reading-welcome[role="dialog"]');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAccessibleName("Machen Sie es sich gemütlich");
+    expect(await preference(app.readerPage)).toBeUndefined();
+    await app.readerPage.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    expect(await preference(app.readerPage)).toBe(1);
+  } finally {
+    await app.context.close();
+  }
+});
+
 test("Escape is an acknowledgement, while reloading an undismissed welcome is not", async () => {
   const app = await launchReader(book, { firstReadingWelcome: true });
   try {

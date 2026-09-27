@@ -100,6 +100,37 @@ function tap(target: EventTarget, x: number, pointerType = "mouse") {
 }
 
 describe("content clicks dismiss chrome before navigating", () => {
+  it.each([
+    ["#arriv%C3%A9e", 0, "arrivée"],
+    ["next.xhtml#literal%2520id", 1, "literal%20id"],
+    ["#part%23two%3Fend", 0, "part#two?end"],
+  ])("decodes an internal link %s once before navigating", (href, spineIndex, fragment) => {
+    const { controller, doc } = setUp("single");
+    controller.pkg.spine.push({ manifestItem: { path: "next.xhtml" } });
+    controller.openSpineItem = vi.fn();
+    const anchor = doc.querySelector("a")!;
+    anchor.setAttribute("href", href);
+    anchor.click();
+    expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(
+      spineIndex, { fragment, history: "jump" },
+    );
+  });
+
+  it.each(["note-été", "literal%20note"])("resolves an encoded footnote to its actual ID %s", id => {
+    const { controller, doc } = setUp("single");
+    controller.openSpineItem = vi.fn();
+    const note = doc.createElement("aside");
+    note.id = id;
+    note.textContent = "Decoded note content";
+    doc.body.append(note);
+    const anchor = doc.querySelector("a")!;
+    anchor.setAttribute("href", `#${encodeURIComponent(id)}`);
+    anchor.setAttributeNS("http://www.idpf.org/2007/ops", "epub:type", "noteref");
+    anchor.click();
+    expect(controller.footnotePopup?.content).toBe("Decoded note content");
+    expect(controller.openSpineItem).not.toHaveBeenCalled();
+  });
+
   it.each(["single", "spread", "fixed"] as const)(
     "%s publication content dismisses chrome but never becomes a navigation target",
     mode => {

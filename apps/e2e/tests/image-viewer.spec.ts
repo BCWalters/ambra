@@ -532,6 +532,11 @@ test("image fit respects a pinned contents pane and narrow translated controls",
     await readerPage.getByRole("menuitem", { name: /^Language/ }).click();
     await readerPage.getByRole("menuitemradio", { name: "Deutsch", exact: true }).click();
     await expect(readerPage.locator("html")).toHaveAttribute("lang", "de");
+    // Radio selections keep both menu levels open; the language submenu would
+    // otherwise intercept the native wheel at the center of the injected image.
+    await readerPage.keyboard.press("Escape");
+    await readerPage.keyboard.press("Escape");
+    await expect(readerPage.getByRole("menu")).toHaveCount(0);
     await readerPage.evaluate(async () => {
       const doc = document.querySelector("iframe")!.contentDocument!;
       const image = doc.createElement("img");

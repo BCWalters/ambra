@@ -13,7 +13,7 @@ export class SmilParseError extends Error {
 }
 
 /** A `<text>` child's `src`, already resolved to an archive-relative path
- * plus its fragment (the content document element this clip narrates). */
+ * plus its decoded element ID (the content document element this clip narrates). */
 export interface SmilTextRef {
   readonly path: string;
   readonly fragment: string | undefined;

@@ -1,4 +1,5 @@
 .extension-build/
+.reader-profiles/
 test-results/
 playwright-report/
 node_modules/

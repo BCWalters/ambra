@@ -38,8 +38,8 @@ export class NavPoint {
      * structural headings with no link of their own (EPUB3 permits a
      * `<span>` in place of `<a>` for a heading that only groups children). */
     public readonly path: string | undefined,
-    /** The fragment (anchor) portion of the target href, if any — e.g.
-     * `"section2"` for a target of `chapter1.xhtml#section2`. */
+    /** The decoded element ID from the target href, if any — e.g.
+     * `"arrivée"` for a target of `chapter1.xhtml#arriv%C3%A9e`. */
     public readonly fragment: string | undefined,
     public readonly children: readonly NavPoint[],
   ) {}

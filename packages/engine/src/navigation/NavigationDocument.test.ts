@@ -105,6 +105,22 @@ describe("NavigationDocument.load error handling", () => {
 });
 
 describe("NavigationDocument.parseNavDocument", () => {
+  it.each([
+    ["arriv%C3%A9e", "arrivée"],
+    ["literal%2520id", "literal%20id"],
+    ["section%23two%3Fend", "section#two?end"],
+  ])("decodes %s once in the TOC, page list and landmarks", (fragment, id) => {
+    const list = (type: string) =>
+      `<nav epub:type="${type}"><ol><li><a href="ch%23one.xhtml#${fragment}">Destination</a></li></ol></nav>`;
+    const xml = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+      <body>${["toc", "page-list", "landmarks"].map(list).join("")}</body></html>`;
+    const nav = NavigationDocument.parseNavDocument(xml, "OEBPS/nav.xhtml");
+    for (const list of [nav.toc, nav.pageList!, nav.landmarks!]) {
+      expect(list.items[0]).toMatchObject({ path: "OEBPS/ch#one.xhtml", fragment: id });
+      expect(list.items[0]!.target).toBe(`OEBPS/ch#one.xhtml#${id}`);
+    }
+  });
+
   it("distinguishes an encoded hash in a filename from the navigation fragment", () => {
     const xml = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
       <body><nav epub:type="toc"><ol><li>
@@ -129,5 +145,20 @@ describe("NavigationDocument.parseNavDocument", () => {
     expect(() => NavigationDocument.parseNavDocument(xml, "OEBPS/nav.xhtml")).toThrow(
       NavigationDocumentError,
     );
+  });
+});
+
+describe("NavigationDocument.parseNcx", () => {
+  it("decodes nested navigation and page targets exactly once", () => {
+    const xml = `<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/">
+      <navMap><navPoint><navLabel><text>Arrival</text></navLabel><content src="ch.xhtml#arriv%C3%A9e"/>
+        <navPoint><navLabel><text>Literal percent</text></navLabel><content src="ch.xhtml#literal%2520id"/></navPoint>
+      </navPoint></navMap>
+      <pageList><pageTarget><navLabel><text>1</text></navLabel><content src="ch.xhtml#arriv%C3%A9e"/></pageTarget></pageList>
+    </ncx>`;
+    const nav = NavigationDocument.parseNcx(xml, "OEBPS/toc.ncx");
+    expect(nav.toc.items[0]!.fragment).toBe("arrivée");
+    expect(nav.toc.items[0]!.children[0]!.fragment).toBe("literal%20id");
+    expect(nav.pageList!.items[0]!.fragment).toBe("arrivée");
   });
 });

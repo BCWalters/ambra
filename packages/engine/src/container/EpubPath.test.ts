@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { resolveEpubPath, directoryOf } from "./EpubPath.js";
+import { describe, expect, it, vi } from "vitest";
+import { resolveEpubPath, directoryOf, splitHrefFragment } from "./EpubPath.js";
 
 describe("resolveEpubPath", () => {
   it("resolves a plain sibling href relative to the referencing file's directory", () => {
@@ -76,4 +76,39 @@ describe("directoryOf", () => {
   it("returns an empty string for a path with no directory", () => {
     expect(directoryOf("mimetype")).toBe("");
   });
+});
+
+describe("splitHrefFragment", () => {
+  it.each([
+    ["chapter.xhtml", "chapter.xhtml", undefined],
+    ["chapter.xhtml#", "chapter.xhtml", ""],
+    ["#section", "", "section"],
+    ["chapter.xhtml#arrivée", "chapter.xhtml", "arrivée"],
+    ["chapter.xhtml#arriv%C3%A9e", "chapter.xhtml", "arrivée"],
+    ["chapter.xhtml#%E7%AF%80-%D9%85%D9%84%D8%A7%D8%AD%D8%B8%D8%A9", "chapter.xhtml", "節-ملاحظة"],
+    ["chapter.xhtml#a%23b%3Fc%2Fd%25", "chapter.xhtml", "a#b?c/d%"],
+    ["chapter.xhtml#a+b%2Bc", "chapter.xhtml", "a+b+c"],
+    ["chapter.xhtml#literal%2520id", "chapter.xhtml", "literal%20id"],
+    ["chapter.xhtml#literal%25C3%25A9", "chapter.xhtml", "literal%C3%A9"],
+    ["chapter.xhtml#one#two", "chapter.xhtml", "one#two"],
+    ["ch%23one.xhtml?edition=2#arriv%C3%A9e", "ch%23one.xhtml?edition=2", "arrivée"],
+  ])("splits %s before decoding only its fragment once", (href, path, fragment) => {
+    expect(splitHrefFragment(href)).toEqual({ path, fragment });
+  });
+
+  it.each(["100%", "bad%2", "bad%GG", "%C3%28", "%FF"])(
+    "retains a malformed publisher fragment %s with a warning",
+    (fragment) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        expect(splitHrefFragment(`chapter.xhtml#${fragment}`)).toEqual({
+          path: "chapter.xhtml",
+          fragment,
+        });
+        expect(warn).toHaveBeenCalledOnce();
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
 });
