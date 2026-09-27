@@ -98,6 +98,46 @@ async function instrument(page: Page): Promise<void> {
   });
 }
 
+for (const direction of ["ltr", "rtl"]) {
+  test(`scrubber focus stays on the thumb and out of pointer drags (${direction}, #231)`, async ({ browserName }, info) => {
+    const { context, readerPage: page } = await launchReader(direction === "rtl" ? rtlBook : book, {
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      const slider = page.getByRole("slider", { name: "Position in book" });
+      const thumb = slider.locator("[data-scrubber-thumb]");
+      await page.keyboard.press("Tab");
+      await slider.focus();
+      await expect(thumb).toHaveCSS("outline-style", "solid");
+      await expect(slider).toHaveCSS("outline-style", "none");
+      for (const fraction of [0, 0.5, 1]) {
+        const track = (await slider.boundingBox())!;
+        await page.mouse.move(track.x + track.width * 0.5, track.y + 52);
+        await page.mouse.down();
+        await page.mouse.move(track.x + track.width * fraction, track.y + 52);
+        await expect(slider).toBeFocused();
+        await expect(slider).toHaveCSS("outline-style", "none");
+        await expect(thumb).toHaveCSS("outline-style", "none");
+        await page.screenshot({ path: info.outputPath(`${browserName}-pointer-${fraction}.png`) });
+        await page.keyboard.press("Escape");
+        await page.mouse.up();
+        await expect(thumb).toHaveCSS("outline-style", "solid");
+        const bounds = (await thumb.boundingBox())!;
+        expect(bounds.x - 4).toBeGreaterThanOrEqual(0);
+        expect(bounds.x + bounds.width + 4).toBeLessThanOrEqual(320);
+        expect(bounds.y + bounds.height + 4).toBeLessThanOrEqual(900);
+      }
+      await page.emulateMedia({ forcedColors: "active" });
+      await expect(thumb).toHaveCSS("outline-style", "solid");
+      await page.screenshot({ path: info.outputPath("keyboard-forced-colors.png") });
+      await page.keyboard.press("Tab");
+      await expect(thumb).toHaveCSS("outline-style", "none");
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 async function waitForGates(page: Page, count: number): Promise<void> {
   await page.waitForFunction(
     (count) => Reflect.get(window, "__scrubberState").gates.length === count,
@@ -358,8 +398,9 @@ test("preview is readable at narrow widths and Escape leaves the book in place",
     const slider = page.getByRole("slider", { name: "Position in book" });
     await slider.focus();
     const before = await slider.getAttribute("aria-valuenow");
-    await expect(slider).toHaveCSS("outline-style", "solid");
-    await expect(slider).toHaveCSS("outline-width", "2px");
+    await expect(slider).toHaveCSS("outline-style", "none");
+    await expect(slider.locator("[data-scrubber-thumb]")).toHaveCSS("outline-style", "solid");
+    await expect(slider.locator("[data-scrubber-thumb]")).toHaveCSS("outline-width", "2px");
     const track = (await slider.boundingBox())!;
     expect(track.height).toBeGreaterThanOrEqual(44);
     await page.mouse.move(track.x + track.width * 0.5, track.y + track.height / 2);
