@@ -14,6 +14,7 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 - **A library on your device.** Import saved EPUBs, keep books together, and return to your saved reading position.
 - **A reading style that suits you.** Adjust text and reader themes, and choose pagination or scrolling for reflowable books. Fixed-layout books retain the publisher’s page design.
+- **Read wide tables without changing the page.** Use **Expand table** to open a separate [table viewer](table-viewer.md) with zoom and two-way scrolling.
 - **Find your way.** Use the table of contents, book search, reading-position control, and bookmarks to reach the passages that matter.
 - **Keep your thinking alongside the text.** Highlight passages, add notes, and revisit them with your bookmarks.
 - **Listen when the book includes narration.** Play embedded recorded narration with synchronized text highlighting; this depends on the EPUB’s supplied narration, not automatic text-to-speech.

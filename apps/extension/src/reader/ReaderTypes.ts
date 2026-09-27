@@ -208,6 +208,7 @@ export interface ReaderSnapshot {
    * hide itself immediately. */
   contentPointerActivityId: number;
   imageViewer: ImageViewerState | undefined;
+  tableViewer: import("./TableViewerContent.js").PreparedTable | undefined;
   selectionToolbar: SelectionToolbarState | undefined;
   activeHighlight: ActiveHighlightState | undefined;
   noteMarkers: readonly NoteMarkerState[];

@@ -16,7 +16,7 @@ type SettingEvent = {
 }[keyof DiagnosticSettings];
 
 export type DiagnosticSurface = "toc" | "annotations" | "search" | "details" | "inspector" |
-  "settings" | "typography" | "help" | "shortcuts" | "narration" | "image" |
+  "settings" | "typography" | "help" | "shortcuts" | "narration" | "image" | "table" |
   "selection" | "highlight" | "footnote" | "go-to";
 export interface DiagnosticSurfaceState {
   open: boolean;

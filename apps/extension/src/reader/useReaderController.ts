@@ -62,6 +62,8 @@ export interface UseReaderControllerResult {
   readInspectionFileText: (path: string) => Promise<string>;
   getInspectionFilePreviewUrl: (path: string, mediaType: string) => Promise<string>;
   closeImageViewer: () => void;
+  closeTableViewer: () => void;
+  reportTableViewerError: (error: unknown) => void;
   restoreContentFocus: () => void;
   getDiagnosticsText: () => string | undefined;
   addBookmark: () => Promise<Bookmark | undefined>;
@@ -409,6 +411,13 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     controller?.closeImageViewer();
   }, [controller]);
 
+  const closeTableViewer = useCallback(() => {
+    controller?.closeTableViewer();
+  }, [controller]);
+  const reportTableViewerError = useCallback((error: unknown) => {
+    controller?.reportTableViewerError(error);
+  }, [controller]);
+
   const restoreContentFocus = useCallback(() => {
     controller?.restoreContentFocus();
   }, [controller]);
@@ -584,6 +593,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     readInspectionFileText,
     getInspectionFilePreviewUrl,
     closeImageViewer,
+    closeTableViewer,
+    reportTableViewerError,
     restoreContentFocus,
     getDiagnosticsText,
     addBookmark,

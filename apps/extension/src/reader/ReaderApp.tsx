@@ -15,6 +15,7 @@ import { BookDetailsPanel } from "./components/BookDetailsPanel.js";
 import { GoToDialog } from "./components/GoToDialog.js";
 import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH, type InspectorViewMode } from "./components/EpubInspectorPanel.js";
 import { ImageViewer } from "./components/ImageViewer.js";
+import { TableViewer } from "./components/TableViewer.js";
 import { SelectionToolbar } from "./components/SelectionToolbar.js";
 import { NarrationControls } from "./components/NarrationControls.js";
 import { NarrationDiscoveryNotice } from "./components/NarrationDiscoveryNotice.js";
@@ -93,6 +94,8 @@ const ReaderAppInner: FC = () => {
     readInspectionFileText,
     getInspectionFilePreviewUrl,
     closeImageViewer,
+    closeTableViewer,
+    reportTableViewerError,
     restoreContentFocus,
     getDiagnosticsText,
     toggleBookmark,
@@ -232,7 +235,7 @@ const ReaderAppInner: FC = () => {
   const [openError, setOpenError] = useState<{ message: string; invalidEpub?: boolean } | null>(null);
   const welcome = useReadingWelcome(snapshot?.hasRenderedContent === true, help.view === undefined &&
     !snapshot?.isLoading && !snapshot?.error && !openError &&
-    !isInspectorOpen && goToMode === undefined && !snapshot?.imageViewer &&
+    !isInspectorOpen && goToMode === undefined && !snapshot?.imageViewer && !snapshot?.tableViewer &&
     activePanel === undefined && rightPanel === undefined && !isNarrationOpen &&
     toolbarMenu === undefined, help.openWelcome);
   useEffect(() => {
@@ -246,6 +249,7 @@ const ReaderAppInner: FC = () => {
       help: { open: help.view === "about" }, shortcuts: { open: help.view === "shortcuts" },
       narration: { open: isNarrationOpen },
       image: { open: snapshot.imageViewer !== undefined },
+      table: { open: snapshot.tableViewer !== undefined },
       selection: { open: snapshot.selectionToolbar !== undefined },
       highlight: { open: snapshot.activeHighlight !== undefined },
       footnote: { open: snapshot.footnotePopup !== undefined },
@@ -269,8 +273,9 @@ const ReaderAppInner: FC = () => {
     shortcutSettings.preferences.enabled, recordDiagnosticEvent]);
   useEffect(() => {
     setShortcutModalOpen((isInspectorOpen && inspectorView === "fullscreen") ||
-      goToMode !== undefined || help.view !== undefined || snapshot?.imageViewer !== undefined);
-  }, [isInspectorOpen, inspectorView, goToMode, help.view, snapshot?.imageViewer, setShortcutModalOpen]);
+      goToMode !== undefined || help.view !== undefined || snapshot?.imageViewer !== undefined ||
+      snapshot?.tableViewer !== undefined);
+  }, [isInspectorOpen, inspectorView, goToMode, help.view, snapshot?.imageViewer, snapshot?.tableViewer, setShortcutModalOpen]);
   // Shared between the toolbar and the progress scrubber (see
   // `useAutoHideChrome`'s doc comment) so both fade in/out together as
   // one unit of chrome, rather than each keeping its own independent
@@ -827,6 +832,7 @@ const ReaderAppInner: FC = () => {
             />
 
             <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
+            <TableViewer table={snapshot.tableViewer} onRequestClose={closeTableViewer} onError={reportTableViewerError} />
 
             <SelectionToolbar
               state={snapshot.selectionToolbar}

@@ -96,6 +96,10 @@ import type {
   SelectionToolbarState,
 } from "./ReaderTypes.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
+import { attachTableControls, updateTableControlLabels } from "./TableControls.js";
+import { prepareTableViewer } from "./TableViewerContent.js";
+import type { PreparedTable } from "./TableViewerContent.js";
+import { rememberImageSemantics } from "./ImageViewerSemantics.js";
 import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
 import { DEFAULT_LOCALE } from "../i18n/Locale.js";
 import { getTranslate } from "../i18n/LocaleContext.js";
@@ -285,6 +289,9 @@ export class ReaderController {
    * the usual auto-hide timeout. */
   private contentPointerActivityId = 0;
   private imageViewer: ImageViewerState | undefined;
+  private tableViewer: PreparedTable | undefined;
+  private tableViewerReturnFocusTarget: HTMLButtonElement | undefined;
+  private tableViewerFocusRevision = 0;
   /** Focus target to restore when the image viewer closes. */
   private imageViewerReturnFocusTarget: Element | undefined;
   private readonly highlights: HighlightManager;
@@ -761,6 +768,7 @@ export class ReaderController {
         announcementId: this.announcementId,
         contentPointerActivityId: this.contentPointerActivityId,
         imageViewer: this.imageViewer,
+        tableViewer: this.tableViewer,
         selectionToolbar: this.selectionToolbar,
         activeHighlight: this.activeHighlight,
         noteMarkers: this.highlightInteraction.noteMarkers,
@@ -1363,6 +1371,7 @@ export class ReaderController {
   public setTranslate(translate: Translate): void {
     this.translate = translate;
     this.setUpContentBoundaries();
+    for (const doc of this.allContentDocuments()) updateTableControlLabels(doc, translate("tableViewer.expand"));
   }
 
   /** Queues live-region text and bumps the id so repeated text is announced again. */
@@ -1596,7 +1605,7 @@ export class ReaderController {
       direction: this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr",
       viewMode: this.host instanceof ScrollContentHost ? "scroll" : "paginated",
       scope,
-      modalOpen: this.shortcutModalOpen || !!this.imageViewer,
+      modalOpen: this.shortcutModalOpen || !!this.imageViewer || !!this.tableViewer,
       canSwitchViewMode: !!this.containerEl && !this.operations.disposed &&
         (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ||
           this.host instanceof ScrollContentHost),
@@ -1635,7 +1644,7 @@ export class ReaderController {
   private dispatchArrowNavigation(direction: 1 | -1, chapter = false, document?: Document): void {
     // Focus may still belong to an iframe or the shell when the modal opens.
     // Guard at dispatch, not only at the dialog's React event boundary.
-    if (this.imageViewer) return;
+    if (this.imageViewer || this.tableViewer) return;
     const isPaginated =
       this.host instanceof PaginatedContentHost ||
       this.host instanceof SpreadPaginatedHost ||
@@ -1799,6 +1808,11 @@ export class ReaderController {
     };
 
     for (const iframeDocument of documents) {
+      if (!this.isFixedLayoutHost(this.host)) {
+        cleanups.push(attachTableControls(iframeDocument, this.translate?.("tableViewer.expand") ?? "Expand table",
+          (table, trigger) => this.openTableViewer(table, trigger),
+          () => this.contentDocumentViews().find(view => view.document === iframeDocument)?.page));
+      }
       cleanups.push(this.nativeReading.attach(iframeDocument));
       if (this.isFixedLayoutHost(this.host)) {
         const publish = () => this.publishFixedReadingPosition();
@@ -1900,6 +1914,7 @@ export class ReaderController {
         if (!isZoomableImage(img)) {
           return;
         }
+        rememberImageSemantics(img);
         if (!img.hasAttribute("role") || img.getAttribute("role") === "img") {
           img.setAttribute("data-ambra-image-zoom", "");
         }
@@ -1974,6 +1989,7 @@ export class ReaderController {
     }
 
     this.contentInteractionCleanup = () => {
+      this.closeTableViewer(false);
       this.boundaryCleanup?.();
       this.boundaryCleanup = undefined;
       for (const cleanup of cleanups) {
@@ -2431,6 +2447,7 @@ export class ReaderController {
   /** Opens the image viewer and remembers the source element so focus can
    * be restored on close. */
   public openImageViewer(src: string, alt: string, sourceElement: Element): void {
+    this.closeTableViewer(false);
     this.imageViewer = { src, alt };
     this.imageViewerReturnFocusTarget = sourceElement;
     this.notify();
@@ -2452,6 +2469,42 @@ export class ReaderController {
       this.focusReadingContent(iframeDocument, stillConnected ? returnTarget : undefined);
     }
     this.notify();
+  }
+
+  public openTableViewer(table: HTMLTableElement, trigger: HTMLButtonElement): void {
+    if (this.operations.disposed || this.isFixedLayoutHost(this.host)) return;
+    try {
+      const prepared = prepareTableViewer(table);
+      this.closeImageViewer();
+      this.tableViewer = prepared;
+      this.tableViewerFocusRevision++;
+      this.tableViewerReturnFocusTarget = trigger;
+      this.notify();
+    } catch (error) {
+      this.reportTableViewerError(error);
+    }
+  }
+
+  public closeTableViewer(restoreFocus = true): void {
+    const revision = ++this.tableViewerFocusRevision;
+    if (!this.tableViewer) return;
+    this.tableViewer = undefined;
+    const target = this.tableViewerReturnFocusTarget;
+    this.tableViewerReturnFocusTarget = undefined;
+    this.notify();
+    if (restoreFocus) queueMicrotask(() => {
+      // Let React remove the modal's focus trap before entering the book frame.
+      // A newer open, navigation or disposal cancels this pending restoration.
+      const frame = target?.ownerDocument.defaultView?.frameElement;
+      if (revision === this.tableViewerFocusRevision && !this.operations.disposed && target?.isConnected &&
+        (!frame || frame.isConnected) && this.allContentDocuments().includes(target.ownerDocument)) {
+        target.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  public reportTableViewerError(error: unknown): void {
+    this.reportTransientError(error, "open", this.translate("tableViewer.dialogAriaLabel"));
   }
 
   /** Restores managed focus to the current content document after a
@@ -2642,6 +2695,7 @@ export class ReaderController {
   /** Turns one page/spread, retaining at most one additional request while busy. */
   public async turnPage(direction: 1 | -1): Promise<void> {
     if (this.operations.disposed || this.isApplyingLayout) return;
+    this.closeTableViewer(false);
     if (this.isTurningPage || this.isLoadInFlight) {
       this.queuedTurn = direction;
       return;
@@ -4442,6 +4496,7 @@ export class ReaderController {
       history?: "jump" | "restore";
     } = {},
   ): Promise<boolean> {
+    this.closeTableViewer(false);
     if (options.history === "jump") await this.readingHistory?.settled();
     if (this.operations.disposed || !this.containerEl) {
       return false;
@@ -4796,6 +4851,7 @@ export class ReaderController {
   }
 
   public dispose(): void {
+    this.closeTableViewer(false);
     this.readingHistory?.dispose();
     this.narration.dispose();
     this.narrationReading.clear();
