@@ -10,10 +10,12 @@ const book = path.resolve(
 );
 
 async function totalPages(page: Page): Promise<number> {
-  const text = await page
-    .getByRole("slider", { name: "Position in book" })
-    .getAttribute("aria-valuetext");
-  return Number(text?.match(/of (\d+)/)?.[1]);
+  const slider = page.getByRole("slider", { name: "Position in book" });
+  await expect(slider).toHaveAttribute("aria-valuetext", /of [1-9]\d*/);
+  const text = await slider.getAttribute("aria-valuetext");
+  const total = Number(text?.match(/of (\d+)/)?.[1]);
+  expect(total, "disclosure page count is ready").toBeGreaterThan(0);
+  return total;
 }
 
 async function states(page: Page): Promise<boolean[]> {
