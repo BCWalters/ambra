@@ -29,6 +29,8 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 **Bookmarks on the progress bar** appear as small blue ribbons once book-wide pagination is ready. They update when text size or window size changes, and mirror for right-to-left books. The bar keeps its usual click, drag, and keyboard controls; use **Bookmarks and highlights** to browse saved bookmarks by name.
 
+Keyboard focus on the reading-position scrubber is shown by a ring around its thumb, not a box across the labels and track. Mouse and touch dragging retain focus without displaying the keyboard ring; using the keyboard brings it back.
+
 ## Return after a reading jump
 
 Use Chrome's **Back** and **Forward** buttons to revisit reading locations.

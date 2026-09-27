@@ -107,6 +107,20 @@ describe("ProgressScrubber", () => {
     });
   }
 
+  it("keeps drag focus without its keyboard ring and restores keyboard modality on keydown or blur", () => {
+    const { slider } = renderScrubber();
+    pointer(slider, "pointerdown");
+    expect(document.activeElement).toBe(slider);
+    expect(slider.hasAttribute("data-pointer-focus")).toBe(true);
+    act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(slider.hasAttribute("data-pointer-focus")).toBe(false);
+    pointer(slider, "pointerdown");
+    expect(slider.hasAttribute("data-pointer-focus")).toBe(true);
+    act(() => slider.blur());
+    expect(slider.hasAttribute("data-pointer-focus")).toBe(false);
+    pointer(slider, "pointercancel");
+  });
+
   it("shows counting status after reopening, but not during the initial appearance", () => {
     const countingSnapshot = { ...snapshot, bookPageIndex: 5, bookPageCount: undefined };
     renderScrubber({ snapshot: countingSnapshot });

@@ -25,9 +25,10 @@ const useStyles = makeStyles({
   },
   track: {
     outlineStyle: "none",
-    ":focus-visible": {
+    ":focus-visible:not([data-pointer-focus]) [data-scrubber-thumb]": {
       outline: "2px solid var(--colorNeutralForeground1, #242424)",
-      outlineOffset: "-2px",
+      outlineOffset: "2px",
+      "@media (forced-colors: active)": { outlineColor: "Highlight" },
     },
   },
   positionRow: {
@@ -146,6 +147,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     };
   }, [handlers.ref]);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const [pointerFocus, setPointerFocus] = useState(false);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const [dragFraction, setDragFraction] = useState<number | undefined>(undefined);
   const [pendingSeek, setPendingSeek] = useState<{
@@ -260,6 +262,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     // — see the effect below.
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
+    setPointerFocus(true);
     event.currentTarget.focus({ preventScroll: true });
     activePointerIdRef.current = event.pointerId;
     setDragFraction(fractionAt(event.clientX));
@@ -678,7 +681,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             releaseDrag();
           }
         }}
-        onKeyDown={handleKeyDown}
+        onKeyDown={event => {
+          setPointerFocus(false);
+          handleKeyDown(event);
+        }}
+        onBlur={() => setPointerFocus(false)}
+        data-pointer-focus={pointerFocus ? "" : undefined}
         className={styles.track}
         role="slider"
         tabIndex={0}
