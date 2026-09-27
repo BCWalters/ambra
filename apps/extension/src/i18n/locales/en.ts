@@ -452,6 +452,13 @@ export interface StringCatalog {
   "goTo.rangeValidation": string;
   "goTo.goButton": string;
   "imageViewer.dialogAriaLabel": string;
+  "tableViewer.dialogAriaLabel": string;
+  "tableViewer.expand": string;
+  "tableViewer.actualSize": string;
+  "tableViewer.controls": string;
+  "tableViewer.instructions": string;
+  "tableViewer.error": string;
+  "tableViewer.resourcesUnavailable": string;
   "imageViewer.zoomIn": string;
   "imageViewer.zoomOut": string;
   "imageViewer.fit": string;
@@ -850,6 +857,13 @@ export const en: StringCatalog = {
   "goTo.rangeValidation": "Enter a number between 1 and {max}.",
   "goTo.goButton": "Go",
   "imageViewer.dialogAriaLabel": "Image viewer",
+  "tableViewer.dialogAriaLabel": "Table viewer",
+  "tableViewer.expand": "Expand table",
+  "tableViewer.actualSize": "Actual size",
+  "tableViewer.controls": "Table zoom",
+  "tableViewer.instructions": "Scroll to explore the table. Use + and − to zoom, 0 for actual size, and Escape to close.",
+  "tableViewer.error": "The table could not be displayed. Close the viewer and try again.",
+  "tableViewer.resourcesUnavailable": "Some table images, fonts, or styles could not be loaded.",
   "imageViewer.zoomIn": "Zoom in",
   "imageViewer.zoomOut": "Zoom out",
   "imageViewer.fit": "Fit to window",

@@ -693,8 +693,8 @@ not an incorrect assumption that the primary chapter must always own the target.
 Arrows inside overflowing `pre` blocks intentionally scroll code; outer margins
 are used for page turns. This is not a claim of full vertical-writing support
 or that every oversized table cell fits. Confirmed paginated table content loss
-is covered separately by the opt-in #229 reproduction below; choosing its fix
-remains a visual policy question, but lost content is not treated as one.
+is covered separately by the opt-in #229 reproduction below. The table viewer
+regressions verify access without reflowing or resizing the original table.
 
 From the repository root, keep the extension, runtime, profiles and output
 isolated from other runs and the live extension:
@@ -765,10 +765,38 @@ AMBRA_E2E_HEADLESS=1 AMBRA_E2E_TABLE_REPRO=1 \
   --output "$RUN/table-results"
 ```
 
-Until fixed, this intentionally produces **four paginated failures and four
+This inline-only reproduction intentionally produces **four paginated failures and four
 Scroll-control passes**: both original fixtures and the table-only reduction
 are exercised twice in fresh profiles. Results include native-wheel screenshots,
-EPUB/source, every ancestor's overflow/scroll metrics, and page traversal.
+EPUB/source, every ancestor's overflow/scroll metrics, and page traversal. It
+does not open the viewer and is not the viewer fix's acceptance test.
+
+### Table viewer regression (#229)
+
+`tests/table-viewer.spec.ts` exercises the original three-column reduction in
+single-page, facing-spread, scroll and RTL configurations, an inherited-style
+24-row table with a nested table and local image, and the twelve-column stress
+fixture down to a 320px viewport. It uses native wheel input and checks that the
+complete far cell is visible, not merely present in the DOM. The suite also
+checks theme colors, keyboard focus across the frame boundary, Escape and
+focus restoration, zoom limits/reset, source-layout preservation, and modal
+navigation ownership. CI runs it against the packaged production extension.
+The paginated, scroll, RTL and styled-table checks keep native scrollbars visible
+(`showScrollbars: true`); Chromium's default headless scrollbar hiding would
+otherwise mask width loss from classic scrollbars. The styled-table test also
+changes the scrollbar width and verifies zero horizontal overflow and exact
+table centering after the viewport updates.
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
+  tests/table-viewer.spec.ts --output "$RUN/table-viewer-results"
+```
+
+Each case retains original synthetic EPUB/source and screenshots for visual
+review. The original table is intentionally not reflowed: use **Expand table**
+to inspect clipped cells in the isolated viewer. See the
+[table viewer guide](../../docs/user-guide/table-viewer.md) for supported
+controls and publisher-style limitations.
 
 ### One-click visual gallery
 
