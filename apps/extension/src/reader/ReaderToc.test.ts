@@ -5,6 +5,37 @@ import { ContentLoader, EpubContainer, LocatorResolver, NavPoint, PaginatedConte
 import { ReaderController } from "./ReaderController.js";
 
 describe("fragment-aware TOC locations (#202)", () => {
+  it("labels scrubber destinations by measured section pages, not the currently displayed subsection", () => {
+    const reader = Object.create(ReaderController.prototype) as ReaderController;
+    const alpha = new NavPoint("Alpha", "text.xhtml", "alpha", []);
+    const beta = new NavPoint("Beta", "text.xhtml", "beta", []);
+    const missing = new NavPoint("Missing", "text.xhtml", "missing", []);
+    Object.assign(reader, {
+      pkg: { spine: [{ manifestItem: { path: "front.xhtml" } }, { manifestItem: { path: "text.xhtml" } }] },
+      navigation: { toc: { items: [beta, alpha, missing] } },
+      chapterLabel: () => "Currently displayed section",
+      bookPagination: {
+        positionFor: (spine: number, page: number) => ({ currentPage: spine === 0 ? 1 : page + 3, totalPages: 20 }),
+        resolveGlobalPage: (page: number) => ({ spineIndex: page < 3 ? 0 : 1, pageIndexInItem: page - 3 }),
+        pageIndexForFragment: (_spine: number, fragment: string) => new Map([["alpha", 2], ["beta", 8]]).get(fragment),
+      },
+    });
+    expect(reader.previewSeek(0).chapterLabel).toBe("Start of Book");
+    expect(reader.previewSeek(4 / 20).chapterLabel).toBe("Start of Book");
+    expect(reader.previewSeek(5 / 20)).toEqual({
+      position: { kind: "page", current: 5, total: 20 }, chapterLabel: "Alpha",
+    });
+    expect(reader.previewSeek(10 / 20).chapterLabel).toBe("Alpha");
+    expect(reader.previewSeek(11 / 20).chapterLabel).toBe("Beta");
+    expect(reader.previewSeek(1).chapterLabel).toBe("Beta");
+    Object.assign(reader, { bookPagination: undefined, navigation: { toc: { items: [alpha, beta] } } });
+    expect(reader.previewSeek(0.75)).toEqual({
+      position: { kind: "chapter", current: 2, total: 2 }, chapterLabel: "Alpha",
+    });
+    Object.assign(reader, { navigation: { toc: { items: [] } } });
+    expect(reader.previewSeek(0.75).chapterLabel).toBe("Chapter 2");
+  });
+
   it("uses the nearest CFI, not TOC array order, and retains parent sections before their children", async () => {
     const bytes = await readFile(fileURLToPath(new NodeURL("../../../../packages/engine/test/fixtures/content-loader.epub", import.meta.url)));
     const loader = await ContentLoader.create(await EpubContainer.open(new Uint8Array(bytes)));
