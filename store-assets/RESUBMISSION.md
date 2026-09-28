@@ -1,5 +1,8 @@
 # Ambra 1.0.0 — manual Chrome Web Store resubmission
 
+> Historical 1.0.0 preparation. The owner reports that 1.0.0 is now approved
+> and published unlisted. Use [RELEASE-1.0.1.md](RELEASE-1.0.1.md) for the next update.
+
 **Status: source preparation, not a submitted or final-captured release.**
 This guide is a handoff for the owner, not authorization for an agent to operate
 the store. Do not access the Google dashboard, dispatch a store workflow, cancel

@@ -1,7 +1,7 @@
-# Ambra 1.0.0 Chrome Web Store listing notes
+# Ambra 1.0.1 Chrome Web Store listing notes
 
-Prepared for the existing listing's **manual, owner-only resubmission**.
-Follow [RESUBMISSION.md](RESUBMISSION.md); this file does not authorize a
+Prepared for the existing listing's **manual, owner-only update**.
+Follow [RELEASE-1.0.1.md](RELEASE-1.0.1.md); this file does not authorize a
 dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 ## Product
@@ -15,12 +15,12 @@ dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 ## Short description
 
-A polished, accessible EPUB3 reader for Chrome.
+Read, annotate, and explore EPUBs in Chrome with a personal library, flexible reading settings, and EPUB Inspector.
 
-Character count: 47. This read-only dashboard summary comes from the uploaded
+Approved for the next package (1.0.1); the published 1.0.0 summary is unchanged.
+
+Character count: 115. This read-only dashboard summary comes from the uploaded
 package's manifest `description`; it is not separately editable listing copy.
-Accessibility is not a certification; compatibility varies with the publication
-and assistive technology.
 
 ## Single purpose
 
@@ -28,50 +28,48 @@ Ambra lets users read and work with their EPUB library in Chrome: import and org
 
 ## Suggested full description
 
-Read comfortably. Keep your thinking alongside the text. Look deeper when you need to.
+Read your favorite books right in your browser. Adjust the reading experience to suit you, highlight passages, and take notes as you read.
 
-Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
+Authors and publishers can use the integrated EPUB Inspector to explore a book's files, inspect its content, and investigate issues without leaving the reader.
 
-MAKE ROOM FOR READING
+Ambra supports advanced EPUB3 features, including annotation import and export, and publisher-provided annotations.
 
-- Import saved EPUBs into an on-device library, browse covers, search and sort your collection, and return to your saved position.
-- Read reflowable and fixed-layout books in a dedicated full-tab reader. Adjust text, page width, brightness, and reader/page themes; choose pagination, a single-page view, or scrolling for reflowable books. Fixed-layout artwork keeps its page design.
+MAKE YOURSELF AT HOME
+
+Import your EPUBs, browse your library, and pick up where you left off. Adjust text size, page width, brightness, and page and reader themes. Choose paginated or scrolling reading for reflowable books, or enjoy fixed-layout publications with their original page design.
+
+Find your way with book search, the table of contents, bookmarks, and a reading-position slider. After jumping to another passage, use Chrome's Back and Forward buttons to retrace your steps.
+
+TAKE NOTES IN THE MARGINS
+
+Highlight passages, add notes, and bookmark places worth returning to. Export and import your annotations to back them up or share them separately from the book.
+
+Annotation exchange uses EPUB Annotations 1.0 JSON. Use the same book or edition for best results; compatibility with other tools varies.
+
+READ-ALONG BOOKS
+
+When a book includes recorded narration, listen with synchronized text highlighting. Ambra supports EPUB Media Overlays, which link the book's narration to its text. It plays narration supplied with the EPUB; it does not generate text-to-speech.
+
+EXPLORE WHAT'S INSIDE
+
+For curious readers, authors, and publishers, EPUB Inspector connects the reading experience with the files behind it. Browse metadata and publication resources, inspect highlighted source, preview supported media, and move between passages in the reader and their source.
+
+Inspector is read-only. It does not edit EPUBs or replace EPUBCheck or an accessibility audit.
+
+YOUR LIBRARY, ON YOUR DEVICE
+
+No account, ads, or analytics. Your books and reading data are stored in your Chrome profile, with no cloud sync.
+
+Ambra can import EPUB downloads from websites. For books missing a description, it may send the title, author, and ISBN to Open Library or Wikipedia to find a summary. There is currently no in-app opt-out for these lookups; see the privacy policy for details.
+
+Keep your original EPUBs and exported annotations as backups. Removing Ambra or clearing its data can remove your library.
+
+BEFORE YOU START
+
 - DRM-protected EPUBs are not supported.
-- Find passages with book search, the table of contents, bookmarks, and the reading-position control.
-- Use Chrome's native Back and Forward buttons to return after jumps from search, contents, bookmarks, notes, or links. Ordinary page turns and scrolling update the current stop rather than filling your history.
-- Listen to recorded narration with synchronized highlighting when the EPUB includes it. This is not automatic text-to-speech.
-
-KEEP YOUR NOTES
-
-- Highlight passages, add text notes, and bookmark places to revisit. Browse saved passages in the bookmarks and highlights panel; bookmark ribbons on the progress bar help you find your place once pagination is ready.
-- Export and import EPUB Annotations 1.0 JSON to back up or share annotations separately from the book. Use the same book or edition for best results; compatibility with other annotation tools varies.
-
-EXPLORE THE EPUB
-
-- Browse a publication's files, metadata, reading order, and resource inventory in EPUB Inspector.
-- Read highlighted source and preview supported images, audio, and video.
-- From the reader, locate a selected passage or current reading position in source, then use Show in book to return from a source element to the page.
-- Find supported static references to an image or stylesheet, with source snippets and line numbers.
-
-Inspector is read-only: it does not change your book, edit EPUBs, or replace EPUBCheck or an accessibility audit.
-
-HELP WHEN YOU NEED IT
-
-- Start with a short welcome to reading, and reopen reading tips from Help & About.
-- Open shared Help & About from the Library, reader Settings, or Book details. Settings groups appearance, reading modes, and language choices in keyboard-navigable flyouts.
-- See platform-specific keyboard shortcuts, including book search, bookmarks, page navigation, reading-mode selection, and the shortcut popup. You can disable Ambra shortcuts with one local preference.
-- Open the user guides on GitHub, review diagnostics before sharing them, and send feedback by email or GitHub issue. Diagnostics are not sent automatically.
-
-LOCAL-FIRST, WITH CLEAR NETWORK DISCLOSURES
-
-Your library stays in your browser profile. Ambra does not require an account or run analytics or ads. It can fetch EPUB downloads from websites for automatic import. When you open a book missing a description, it may send title, author, and ISBN to Open Library or Wikipedia for a summary. There is currently no in-app lookup opt-out; see the privacy policy for details.
-
-Keep original EPUBs and annotation exports as backups. Ambra has no cloud sync, and removing the extension or clearing its data can remove your local library. Different Chrome profiles or extension IDs do not automatically share books or notes.
-
-Designed for keyboard and screen-reader use. Compatibility varies by book, browser, and assistive technology. Ambra does not claim complete EPUB conformance or certified accessibility.
+- Keyboard navigation and screen-reader support are built into the reader; compatibility varies by publication, browser, and assistive technology.
 
 User guide: https://github.com/BCWalters/ambra/blob/main/docs/user-guide/README.md
-EPUB Inspector guide: https://github.com/BCWalters/ambra/blob/main/docs/user-guide/epub-inspector.md
 Source: https://github.com/BCWalters/ambra
 Privacy: https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md
 Feedback: AmbraEPUB@outlook.com
