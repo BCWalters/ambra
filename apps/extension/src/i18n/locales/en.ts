@@ -144,10 +144,12 @@ export interface StringCatalog {
   "library.onWeb": string;
   "library.findNextBook": string;
   "library.findNextBookDescription": string;
-  "library.exploreFreeBooks": string;
+  "library.exploreBooks": string;
   "library.standardEbooksDownload": string;
   "library.gutenbergDownload": string;
   "library.readBeyondDownload": string;
+  "library.ebooksComDescription": string;
+  "library.ebooksComDownload": string;
   "library.dismiss": string;
   "library.saveAs": string;
   "library.saveAsFailed": string;
@@ -578,11 +580,13 @@ export const en: StringCatalog = {
   "library.chooseEpubFiles": "Choose EPUB files...",
   "library.onWeb": "ON THE WEB",
   "library.findNextBook": "Find your next book",
-  "library.findNextBookDescription": "Explore trusted sources of free books",
-  "library.exploreFreeBooks": "Explore free books",
+  "library.findNextBookDescription": "Explore sources of free and paid books",
+  "library.exploreBooks": "Explore books",
   "library.standardEbooksDownload": "On a book’s page, choose “Advanced epub”.",
   "library.gutenbergDownload": "On a book’s page, choose an EPUB or EPUB3 download.",
   "library.readBeyondDownload": "Choose “Download” for an EPUB with audio, not “Read+Listen”.",
+  "library.ebooksComDescription": "DRM-free EPUBs available for purchase.",
+  "library.ebooksComDownload": "Choose a DRM-free EPUB edition and download it after purchase.",
   "library.dismiss": "Dismiss",
   "library.saveAs": "Save as…",
   "library.saveAsFailed": "Could not save a copy of this EPUB. {message}",
@@ -593,7 +597,7 @@ export const en: StringCatalog = {
   "library.cancelDownloadFailed": "Ambra stopped downloading, but could not confirm cancellation in Chrome. Open Chrome Downloads to check and cancel the original download.",
   "library.findBooks": "Find books",
   "library.discoveryTitle": "Find your next read",
-  "library.discoveryDescription": "Start with these free EPUB collections. Links open in a new tab.",
+  "library.discoveryDescription": "Browse free EPUB collections and books to buy. Links open in a new tab.",
   "library.gutenbergDescription": "A vast collection of free literature and classics.",
   "library.standardEbooksDescription": "Carefully edited classics with beautiful typography.",
   "library.readBeyondDescription": "Read along with recorded narration and synchronized text.",

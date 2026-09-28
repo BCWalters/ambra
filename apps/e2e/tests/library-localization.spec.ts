@@ -44,7 +44,7 @@ test("French Library localizes live, preserves toolbar order and persists across
     await page.getByRole("button", { name: t("library.removeBook", { title }), exact: true }).click();
     await expect(page.getByRole("heading", { name: t("library.emptyTitle") })).toBeVisible();
     await expect(page.getByRole("region", { name: t("library.discoveryTitle") })).toBeHidden();
-    await page.getByRole("button", { name: `${t("library.findNextBook")} ${t("library.exploreFreeBooks")}` }).click();
+    await page.getByRole("button", { name: `${t("library.findNextBook")} ${t("library.exploreBooks")}` }).click();
     await expect(page.getByRole("region", { name: t("library.discoveryTitle") })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: t("library.emptyTitle") })).toBeVisible();

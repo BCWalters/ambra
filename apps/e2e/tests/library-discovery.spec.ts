@@ -50,6 +50,7 @@ async function expectDiscovery(page: Page, importLabel = "Import EPUB") {
     ["Project Gutenberg", "https://www.gutenberg.org/ebooks/"],
     ["Standard Ebooks", "https://standardebooks.org/ebooks"],
     ["ReadBeyond", "https://www.readbeyond.it/ebooks.html"],
+    ["eBooks.com", "https://www.ebooks.com/drm-free-epub"],
   ]) {
     const link = discovery.getByRole("link", { name, exact: true });
     await expect(link).toHaveAttribute("href", href);
@@ -57,6 +58,9 @@ async function expectDiscovery(page: Page, importLabel = "Import EPUB") {
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
   }
   await expect(discovery).toContainText("Links open in a new tab");
+  await expect(discovery).toContainText("free EPUB collections and books to buy");
+  await expect(discovery).toContainText("DRM-free EPUBs available for purchase.");
+  await expect(discovery).toContainText("download it after purchase");
   await expect(discovery).toContainText("recorded narration and synchronized text");
   await expect(discovery).toContainText("Check each book's license");
   await expect(discovery.getByRole("listitem").first()).toContainText(
@@ -74,7 +78,7 @@ test("a failed first import retains both choices and the import card retries wit
   browserName: _browserName,
 }, testInfo) => {
   await withLibrary(testInfo, { width: 1000, height: 1050 }, async (page) => {
-    await page.getByRole("button", { name: "Find your next book Explore free books" }).click();
+    await page.getByRole("button", { name: "Find your next book Explore books" }).click();
     await page.locator('input[type="file"]').setInputFiles({
       name: "invalid.epub",
       mimeType: "application/epub+zip",
@@ -113,7 +117,7 @@ test("empty library offers equal cards, on-demand discovery and keyboard import 
     await expect(page.getByRole("toolbar").getByRole("button")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Find books", exact: true })).toHaveCount(0);
     const importFirst = page.getByRole("button", { name: "Bring a book Choose EPUB files..." });
-    const explore = page.getByRole("button", { name: "Find your next book Explore free books" });
+    const explore = page.getByRole("button", { name: "Find your next book Explore books" });
     const left = (await importFirst.boundingBox())!;
     const right = (await explore.boundingBox())!;
     expect(right.x).toBeGreaterThan(left.x);
@@ -139,6 +143,8 @@ test("empty library offers equal cards, on-demand discovery and keyboard import 
     await expect(page.getByRole("link", { name: "Project Gutenberg", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "ReadBeyond", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: "eBooks.com", exact: true })).toBeFocused();
     await page.screenshot({
       path: testInfo.outputPath("empty-library-desktop-expanded.png"),
       fullPage: true,
@@ -211,7 +217,7 @@ test("Find books stays available after imports and expands only on request with 
     await expect(page.getByRole("region", { name: "Find your next read" })).toBeHidden();
     await expect(page.getByRole("heading", { name: "What will you read first?" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Find your next book Explore free books" }).click();
+    await page.getByRole("button", { name: "Find your next book Explore books" }).click();
     await expectDiscovery(page, "Choose EPUB files...");
   });
 });
@@ -221,7 +227,7 @@ test("discovery fits a narrow library popup without horizontal scrolling", async
 }, testInfo) => {
   await withLibrary(testInfo, { width: 360, height: 600 }, async (page) => {
     const bring = page.getByRole("button", { name: "Bring a book Choose EPUB files..." });
-    const explore = page.getByRole("button", { name: "Find your next book Explore free books" });
+    const explore = page.getByRole("button", { name: "Find your next book Explore books" });
     const firstCard = (await bring.boundingBox())!;
     const secondCard = (await explore.boundingBox())!;
     expect(secondCard.y).toBeGreaterThan(firstCard.y + firstCard.height);

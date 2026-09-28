@@ -70,7 +70,7 @@ describe("Library localization and action order", () => {
     await render();
     expect(document.title).toBe(t("library.pageTitle"));
     expect(container.textContent).toContain(t("library.emptyTitle"));
-    const explore = button(`${t("library.findNextBook")} ${t("library.exploreFreeBooks")}`);
+    const explore = button(`${t("library.findNextBook")} ${t("library.exploreBooks")}`);
     expect(explore.getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector("main section")?.hasAttribute("hidden")).toBe(true);
     await act(async () => explore.click());
@@ -79,6 +79,12 @@ describe("Library localization and action order", () => {
     expect(container.textContent).toContain(t("library.standardEbooksDownload"));
     expect(container.textContent).toContain(t("library.gutenbergDownload"));
     expect(container.textContent).toContain(t("library.readBeyondDownload"));
+    expect(container.textContent).toContain(t("library.ebooksComDescription"));
+    expect(container.textContent).toContain(t("library.ebooksComDownload"));
+    const ebooksCom = container.querySelector<HTMLAnchorElement>('a[href="https://www.ebooks.com/drm-free-epub"]');
+    expect(ebooksCom?.textContent?.trim()).toBe("eBooks.com");
+    expect(ebooksCom?.target).toBe("_blank");
+    expect(ebooksCom?.rel).toBe("noopener noreferrer");
     expect(container.textContent).toContain(t("library.bookCount", { count: "0" }));
     expect(container.textContent).toContain(formatLibraryBytes(1536, locale));
     expect(container.querySelector('a[href="https://www.gutenberg.org/ebooks/"]')?.textContent?.trim()).toBe("Project Gutenberg");
@@ -129,7 +135,7 @@ describe("Library localization and action order", () => {
     expect(panel.hidden).toBe(false);
     expect(container.querySelectorAll("main button")).toHaveLength(2);
     expect([...panel.querySelectorAll("a")].map((link) => link.textContent?.trim())).toEqual([
-      "Standard Ebooks", "Project Gutenberg", "ReadBeyond",
+      "Standard Ebooks", "Project Gutenberg", "ReadBeyond", "eBooks.com",
     ]);
     await act(async () => explore!.click());
     expect(panel.hidden).toBe(true);
@@ -148,7 +154,7 @@ describe("Library localization and action order", () => {
     await render();
     expect(button("Bring a book Choose EPUB files...").disabled).toBe(true);
     expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
-    expect(button("Find your next book Explore free books").disabled).toBe(false);
+    expect(button("Find your next book Explore books").disabled).toBe(false);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Database unavailable");
   });
 
@@ -211,7 +217,7 @@ describe("Library localization and action order", () => {
 
   it("restores focus when a focused discovery link disappears with onboarding", async () => {
     await render();
-    await act(async () => button("Find your next book Explore free books").click());
+    await act(async () => button("Find your next book Explore books").click());
     container.querySelector<HTMLAnchorElement>('a[href="https://standardebooks.org/ebooks"]')!.focus();
     state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
     await render();
