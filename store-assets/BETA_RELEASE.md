@@ -1,6 +1,6 @@
 # Unlisted Chrome Web Store beta
 
-> **For the 1.0.0 update, use [RESUBMISSION.md](RESUBMISSION.md).** It is a
+> **For the 1.0.1 update, use [RELEASE-1.0.1.md](RELEASE-1.0.1.md).** It is a
 > manual, owner-only update of the existing listing. The automation reference
 > below is not authorization to dispatch a workflow, upload, cancel review,
 > submit, publish, or change visibility. Do not create another listing.

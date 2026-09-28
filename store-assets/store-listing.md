@@ -1,7 +1,7 @@
-# Ambra 1.0.0 Chrome Web Store listing notes
+# Ambra 1.0.1 Chrome Web Store listing notes
 
-Prepared for the existing listing's **manual, owner-only resubmission**.
-Follow [RESUBMISSION.md](RESUBMISSION.md); this file does not authorize a
+Prepared for the existing listing's **manual, owner-only update**.
+Follow [RELEASE-1.0.1.md](RELEASE-1.0.1.md); this file does not authorize a
 dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 ## Product
