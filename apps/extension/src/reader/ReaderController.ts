@@ -4112,15 +4112,39 @@ export class ReaderController {
       if (resolved) {
         return {
           position: { kind: "page", current: targetGlobalPage, total: totalPages },
-          chapterLabel: this.chapterLabel(resolved.spineIndex),
+          chapterLabel: this.seekChapterLabel(resolved.spineIndex, targetGlobalPage),
         };
       }
     }
     const { spineIndex: targetSpineIndex } = this.resolveSpineFraction(clamped);
     return {
       position: { kind: "chapter", current: targetSpineIndex + 1, total: this.pkg.spine.length },
-      chapterLabel: this.chapterLabel(targetSpineIndex),
+      chapterLabel: this.seekChapterLabel(targetSpineIndex),
     };
+  }
+
+  private seekChapterLabel(spineIndex: number, globalPage?: number): string {
+    const points = ReaderController.flattenLinkedNavPoints(this.navigation.toc.items);
+    const pages = globalPage === undefined ? undefined : this.computeTocPageNumbers();
+    let nearest: NavPoint | undefined;
+    let bestPage = -1;
+    let bestSpine = -1;
+    for (const point of points) {
+      const index = this.pkg.spine.findIndex(ref => ref.manifestItem.path === point.path);
+      if (index < 0 || index > spineIndex) continue;
+      if (pages && globalPage !== undefined) {
+        const page = point.target ? pages.get(point.target) : undefined;
+        if (page === undefined || page > globalPage || page < bestPage) continue;
+        bestPage = page;
+      } else {
+        // Coarse previews identify the first section of the destination file,
+        // never a subsection selected from the currently displayed page.
+        if (index < bestSpine || (index === spineIndex && bestSpine === spineIndex)) continue;
+        bestSpine = index;
+      }
+      nearest = point;
+    }
+    return nearest?.label ?? (points.length ? "Start of Book" : `Chapter ${spineIndex + 1}`);
   }
 
   /** Jumps to a whole-book fraction after the scrubber drag settles.
