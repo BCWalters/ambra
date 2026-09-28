@@ -8,10 +8,13 @@ import type {
 import { Caption1, makeStyles } from "@fluentui/react-components";
 import { BookmarkFilled } from "@fluentui/react-icons";
 import type { PreviewPosition, ReaderSnapshot } from "../ReaderTypes.js";
-import { BOOKMARK_COLOR, CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { BOOKMARK_COLOR, CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
+import { selectProgressMarkers, type ProgressMarkerData } from "../ProgressMarkers.js";
+import { DEFAULT_PROGRESS_MARKER_STYLE, type ProgressMarkerStyle } from "../ProgressMarkerStyle.js";
+import { ProgressMarkerLayer } from "./ProgressMarkerLayer.js";
 
 /** Smallest gap the drag preview popup is ever allowed from the browser
  * window's left/right edges — purely cosmetic breathing room, not a
@@ -47,6 +50,8 @@ export interface ProgressScrubberProps {
     "bookPageIndex" | "bookPageCount" | "spineIndex" | "spineLength" |
     "pageProgressionDirection" | "bookmarks" | "bookmarkProgress"
   >;
+  markerStyle?: ProgressMarkerStyle;
+  markerData?: ProgressMarkerData;
   /** Whether the scrubber should currently be shown — tied to the same
    * `useAutoHideChrome` state the toolbar uses (see `ReaderApp`), so the
    * two fade in and out together as one unit of chrome. */
@@ -126,12 +131,15 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   onPreview,
   onSeek,
   onSeekError,
+  markerStyle = DEFAULT_PROGRESS_MARKER_STYLE,
+  markerData,
 }) => {
   const chromeTheme = useChromeTheme();
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
   const styles = useStyles();
   const bookmarkCountId = useId();
+  const markerDescriptionId = useId();
   const [hasHidden, setHasHidden] = useState(!visible);
   useEffect(() => {
     if (!visible) setHasHidden(true);
@@ -147,6 +155,27 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     };
   }, [handlers.ref]);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (!track || markerStyle === "off") return;
+    const measure = () => setTrackWidth(track.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [markerStyle, snapshot.isFixedLayout, snapshot.viewMode]);
+  const markers = selectProgressMarkers(markerData ?? {
+    ready: false, chapters: [], sections: [], landmarks: [],
+  }, trackWidth);
+  const markerDetailLabel = markers.detail === "pending" ? undefined : t(markers.detail === "chapters" ? "scrubber.markerChapters"
+    : markers.detail === "sections" ? "scrubber.markerSections"
+    : markers.detail === "landmarks" ? "scrubber.markerLandmarksOnly"
+    : "scrubber.markerNoLandmarks");
+  const markerDescription = markers.detail === "pending" ? undefined : [
+    markerDetailLabel,
+    ...markers.landmarks.map(marker => `${t(marker.kind === "start" ? "scrubber.markerStart" : "scrubber.markerEnd")}: ${Math.round(marker.fraction * 100)}%`),
+  ].join(". ");
   const [pointerFocus, setPointerFocus] = useState(false);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const [dragFraction, setDragFraction] = useState<number | undefined>(undefined);
@@ -360,6 +389,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   }, [rtl, onPreview, onSeek, onSeekError]);
 
   const displayFraction = optimisticFraction ?? currentFraction(snapshot);
+  const trackHeight = markerStyle === "off" ? 4 : 10;
+  const sliderHeight = SCRUBBER_HEIGHT - 2;
+  const trackCenter = 29;
+  const trackTop = trackCenter - trackHeight / 2;
 
   // "Page X of Y" and "Z pages left in this chapter" — the reader's
   // actual current position, not tied to a drag at all (unlike
@@ -504,7 +537,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         right: 0,
         // The taller flag lane must not cover notices or panel controls.
         zIndex: 6,
-        padding: "0 20px 7px",
+        padding: "0 20px 1px",
         background: chromeTheme.background,
         backdropFilter: CHROME_BACKDROP_FILTER,
         WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
@@ -524,7 +557,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           className={styles.positionRow}
           style={{
             position: "absolute",
-            top: 5,
+            top: 2,
             left: 20,
             right: 20,
             alignItems: "baseline",
@@ -668,8 +701,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
       <span id={bookmarkCountId} hidden>
         {t("annotations.bookmarksTab")}: {snapshot.bookmarks.length}
       </span>
+      {markerStyle !== "off" && markerDescription && <span id={markerDescriptionId} hidden>{markerDescription}</span>}
       <div
         ref={trackRef}
+        data-progress-marker-style={markerStyle}
         onPointerDown={beginDrag}
         onLostPointerCapture={(event) => {
           if (event.pointerId !== activePointerIdRef.current) return;
@@ -691,7 +726,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         role="slider"
         tabIndex={0}
         aria-label={t("scrubber.positionInBook")}
-        aria-describedby={snapshot.bookmarks.length ? bookmarkCountId : undefined}
+        aria-describedby={[
+          snapshot.bookmarks.length ? bookmarkCountId : "",
+          markerStyle !== "off" && markerDescription ? markerDescriptionId : "",
+        ].filter(Boolean).join(" ") || undefined}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-orientation="horizontal"
@@ -704,7 +742,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         ].filter(Boolean).join(" - ")}
         style={{
           position: "relative",
-          height: 64,
+          height: sliderHeight,
           borderRadius: 8,
           display: "flex",
           alignItems: "center",
@@ -714,28 +752,32 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         }}
       >
         <div
+          data-scrubber-track=""
           style={{
             position: "absolute",
             left: 0,
             right: 0,
-            height: 4,
-            top: 52,
-            borderRadius: 2,
+            height: trackHeight,
+            top: trackTop,
+            borderRadius: trackHeight / 2,
             background: "var(--colorNeutralStroke2, rgba(0, 0, 0, 0.12))",
           }}
         />
         <div
+          data-scrubber-fill=""
           style={{
             position: "absolute",
             left: rtl ? "auto" : 0,
             right: rtl ? 0 : "auto",
             width: `${displayFraction * 100}%`,
-            height: 4,
-            top: 52,
-            borderRadius: 2,
+            height: trackHeight,
+            top: trackTop,
+            borderRadius: trackHeight / 2,
             background: chromeTheme.accentForeground,
           }}
         />
+        {markerStyle !== "off" && <ProgressMarkerLayer selection={markers} rtl={rtl}
+          currentFraction={displayFraction} trackTop={trackTop} trackHeight={trackHeight} />}
         {/* A separate flag lane keeps exact x positions, even under the thumb. */}
         {Array.from(new Set(snapshot.bookmarkProgress?.map(marker => marker.fraction))).map(fraction => (
           <BookmarkFilled
@@ -746,7 +788,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             style={{
               position: "absolute",
               left: `${(rtl ? 1 - fraction : fraction) * 100}%`,
-              top: 29,
+              top: 39,
               width: 14,
               height: 15,
               transform: "translateX(-50%)",
@@ -759,7 +801,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           style={{
             position: "absolute",
             left: `${(rtl ? 1 - displayFraction : displayFraction) * 100}%`,
-            top: 46,
+            top: trackCenter - 8,
             width: 16,
             height: 16,
             boxSizing: "border-box",

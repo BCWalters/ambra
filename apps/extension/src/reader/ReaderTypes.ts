@@ -9,10 +9,12 @@ import type {
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
+import type { ProgressMarkerStyle } from "./ProgressMarkerStyle.js";
 import type { SearchResultItem } from "./SearchCoordinator.js";
 import type { ViewMode } from "./ViewMode.js";
 import type { NarrationState } from "./MediaOverlayNarration.js";
 import type { BookmarkLocation, BookmarkProgressMarker } from "./BookmarkManager.js";
+import type { ProgressMarkerData } from "./ProgressMarkers.js";
 
 /** Plain data types describing `ReaderController`'s state and public
  * shapes, kept separate so consumers don't need to import the
@@ -171,6 +173,7 @@ export interface ReaderSnapshot {
   bookmarkLocations?: Readonly<Record<string, BookmarkLocation>>;
   /** Exact markers are available once the current layout has been measured. */
   bookmarkProgress?: readonly BookmarkProgressMarker[];
+  progressMarkers?: ProgressMarkerData;
   /** Font-size multiplier; always 1 for fixed-layout content. */
   fontScale: number;
   lineSpacing: number;
@@ -182,6 +185,7 @@ export interface ReaderSnapshot {
   brightness: number;
   chromeTheme: ChromeThemeChoice;
   pageTurnAnimationStyle: PageTurnAnimationStyle;
+  progressMarkerStyle: ProgressMarkerStyle;
   isLoading: boolean;
   loadingPhase?: "opening" | "navigating";
   error: string | undefined;

@@ -55,6 +55,7 @@ describe("Toolbar startup positioning (#175)", () => {
       onSetContentWidth: noop, onSetFontFamily: noop, onSetPageTheme: noop,
       onSetAlwaysShowOnePage: noop,
       onSetBrightness: noop, onSetChromeTheme: noop, onSetPageTurnAnimationStyle: noop,
+      onSetProgressMarkerStyle: noop,
       onOpenHelp: noop, visible: true,
       handlers: { onPointerEnter: noop, onPointerLeave: noop, onFocus: noop, onBlur: noop },
     };

@@ -19,7 +19,7 @@ for (const direction of ["ltr", "rtl"] as const) {
         await exposeReaderController(page);
         const slider = page.getByRole("slider", { name: "Position in book" });
         await expect(slider).toHaveAttribute("aria-valuetext", "Page 1 of 5");
-        await expect(page.getByText("Counting pages…", { exact: true })).toHaveCount(0);
+        await expect(page.getByText("Mapping your book…", { exact: true })).toHaveCount(0);
         for (let target = 2; target <= 5; target++) {
           await slider.focus();
           await slider.press(direction === "rtl" ? "ArrowLeft" : "ArrowRight");
@@ -68,7 +68,7 @@ for (const direction of ["ltr", "rtl"] as const) {
           await c.flushProgress();
         });
         await expect(page.locator("[data-bookmark-marker]")).toHaveCount(1);
-        await expect(slider).toHaveAccessibleDescription("Bookmarks: 1");
+        await expect(slider).toHaveAccessibleDescription("Bookmarks: 1 Chapters");
         await page.reload();
         await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
         await exposeReaderController(page);

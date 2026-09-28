@@ -221,6 +221,9 @@ export interface StringCatalog {
   "settings.slide": string;
   "settings.filmStrip": string;
   "settings.off": string;
+  "settings.progressLandmarks": string;
+  "settings.progressLandmarksShow": string;
+  "settings.progressLandmarksHide": string;
   "settings.brightness": string;
   "settings.readerTheme": string;
   "text.textMenuLabel": string;
@@ -268,6 +271,12 @@ export interface StringCatalog {
   "search.unpinSearchPanel": string;
   "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
+  "scrubber.markerChapters": string;
+  "scrubber.markerSections": string;
+  "scrubber.markerLandmarksOnly": string;
+  "scrubber.markerNoLandmarks": string;
+  "scrubber.markerStart": string;
+  "scrubber.markerEnd": string;
   "scrubber.seeking": string;
   "scrubber.bookmarked": string;
   "scrubber.pageOfTotal": string;
@@ -677,6 +686,9 @@ export const en: StringCatalog = {
   "settings.slide": "Slide",
   "settings.filmStrip": "Film strip",
   "settings.off": "Off",
+  "settings.progressLandmarks": "Progress landmarks",
+  "settings.progressLandmarksShow": "Show",
+  "settings.progressLandmarksHide": "Hide",
   "settings.brightness": "Brightness",
   "settings.readerTheme": "Reader theme",
   "text.textMenuLabel": "Text",
@@ -724,10 +736,16 @@ export const en: StringCatalog = {
   "search.unpinSearchPanel": "Unpin search panel",
   "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
+  "scrubber.markerChapters": "Chapters",
+  "scrubber.markerSections": "Top-level sections",
+  "scrubber.markerLandmarksOnly": "Reading landmarks only",
+  "scrubber.markerNoLandmarks": "No reliable reading landmarks",
+  "scrubber.markerStart": "Start of reading",
+  "scrubber.markerEnd": "End of reading (from back matter)",
   "scrubber.seeking": "Going to position…",
   "scrubber.bookmarked": "Bookmarked",
   "scrubber.pageOfTotal": "Page {current} of {total}",
-  "scrubber.countingPages": "Counting pages…",
+  "scrubber.countingPages": "Mapping your book…",
   "scrubber.chapterOfTotal": "Chapter {current} of {total}",
   "scrubber.pagesLeftInChapterOne": "1 page left in this chapter",
   "scrubber.pagesLeftInChapterOther": "{count} pages left in this chapter",

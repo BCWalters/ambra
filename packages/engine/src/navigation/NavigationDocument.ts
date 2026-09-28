@@ -42,6 +42,8 @@ export class NavPoint {
      * `"arrivée"` for a target of `chapter1.xhtml#arriv%C3%A9e`. */
     public readonly fragment: string | undefined,
     public readonly children: readonly NavPoint[],
+    /** Semantic roles on an EPUB navigation link, notably bodymatter/backmatter landmarks. */
+    public readonly epubTypes: readonly string[] = [],
   ) {}
 
   public get isLinked(): boolean {
@@ -167,7 +169,10 @@ export class NavigationDocument {
     const nestedOl = getFirstChildElementByNS(liEl, XHTML_NAMESPACE, "ol");
     const children = nestedOl ? NavigationDocument.parseOl(nestedOl, navDocPath) : [];
 
-    return new NavPoint(label, path, fragment, children);
+    const epubTypes = anchor
+      ? (getNamespacedAttribute(anchor, OPS_NAMESPACE, "type") ?? "").split(/\s+/).filter(Boolean)
+      : [];
+    return new NavPoint(label, path, fragment, children, epubTypes);
   }
 
   // ---- NCX fallback ----

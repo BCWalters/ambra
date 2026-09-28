@@ -32,6 +32,7 @@ import type { StringCatalog } from "../../i18n/locales/en.js";
 import { CHROME_THEMES } from "../chromeTheme.js";
 import type { ChromeThemeChoice } from "../chromeTheme.js";
 import type { PageTurnAnimationStyle } from "../PageTurnAnimationStyle.js";
+import { DEFAULT_PROGRESS_MARKER_STYLE, normalizeProgressMarkerStyle, type ProgressMarkerStyle } from "../ProgressMarkerStyle.js";
 import type { ViewMode } from "../ViewMode.js";
 import { DefaultableSlider } from "./DefaultableSlider.js";
 import type { DefaultableSliderProps } from "./DefaultableSlider.js";
@@ -93,6 +94,7 @@ export interface ReaderSettingsMenuActions {
   onSetBrightness: (brightness: number) => void;
   onSetChromeTheme: (theme: ChromeThemeChoice) => void;
   onSetPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
+  onSetProgressMarkerStyle: (style: ProgressMarkerStyle) => void;
   onOpenHelp?: (returnFocusTo: HTMLElement | null) => void;
 }
 
@@ -105,6 +107,7 @@ export interface ReaderSettingsMenuProps extends ReaderSettingsMenuActions, Read
   brightness: number;
   chromeTheme: ChromeThemeChoice;
   pageTurnAnimationStyle: PageTurnAnimationStyle;
+  progressMarkerStyle: ProgressMarkerStyle;
 }
 
 const PAGE_THEME_LABEL_KEYS: Readonly<Record<PageTheme, keyof StringCatalog>> = {
@@ -125,6 +128,11 @@ const ANIMATION_LABEL_KEYS: Readonly<Record<PageTurnAnimationStyle, keyof String
   none: "settings.off",
 };
 const ANIMATION_ORDER: readonly PageTurnAnimationStyle[] = ["slide", "scroll", "rotate", "none"];
+const PROGRESS_MARKER_LABEL_KEYS: Readonly<Record<ProgressMarkerStyle, keyof StringCatalog>> = {
+  upcoming: "settings.progressLandmarksShow",
+  off: "settings.progressLandmarksHide",
+};
+const PROGRESS_MARKER_ORDER: readonly ProgressMarkerStyle[] = ["upcoming", "off"];
 
 const MENU_TITLE_STYLE = {
   fontSize: 14,
@@ -387,11 +395,13 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
   pageTheme,
   chromeTheme,
   pageTurnAnimationStyle,
+  progressMarkerStyle = DEFAULT_PROGRESS_MARKER_STYLE,
   onSetViewMode,
   onSetBrightness,
   onSetPageTheme,
   onSetChromeTheme,
   onSetPageTurnAnimationStyle,
+  onSetProgressMarkerStyle,
   onOpenHelp,
 }) => {
   const t = useTranslation();
@@ -556,6 +566,31 @@ export const ReaderSettingsMenu: FC<ReaderSettingsMenuProps> = ({
                     disabled={viewMode === "scroll"}
                     secondaryContent={style === "rotate" ? t("settings.experimental") : undefined}>
                     {t(ANIMATION_LABEL_KEYS[style])}
+                  </MenuItemRadio>
+                ))}
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+          <MenuDivider />
+          <Menu
+            positioning={SUBMENU_POSITIONING}
+            persistOnItemClick
+            checkedValues={{ progressMarkerStyle: [progressMarkerStyle] }}
+            onCheckedValueChange={(_event, data) => {
+              if (data.name === "progressMarkerStyle")
+                onSetProgressMarkerStyle(normalizeProgressMarkerStyle(data.checkedItems[0]));
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <MenuItem secondaryContent={{ children: t(PROGRESS_MARKER_LABEL_KEYS[progressMarkerStyle]), style: { fontSize: 14 } }}>
+                {t("settings.progressLandmarks")}
+              </MenuItem>
+            </MenuTrigger>
+            <MenuPopover onFocusCapture={revealMenuFocus}>
+              <MenuList>
+                {PROGRESS_MARKER_ORDER.map((style) => (
+                  <MenuItemRadio key={style} name="progressMarkerStyle" value={style}>
+                    {t(PROGRESS_MARKER_LABEL_KEYS[style])}
                   </MenuItemRadio>
                 ))}
               </MenuList>

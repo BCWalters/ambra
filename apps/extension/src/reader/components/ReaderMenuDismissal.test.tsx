@@ -24,7 +24,7 @@ function Harness({ typography }: { typography: boolean }) {
     : <ReaderSettingsMenu {...controlled} isFixedLayout={false} viewMode="paginated"
         brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide" pageTheme="white" onSetPageTheme={noop}
         onSetViewMode={noop} onSetBrightness={noop} onSetChromeTheme={noop}
-        onSetPageTurnAnimationStyle={noop} />;
+        onSetPageTurnAnimationStyle={noop} progressMarkerStyle="off" onSetProgressMarkerStyle={noop} />;
 }
 
 beforeEach(() => {
@@ -58,7 +58,8 @@ it("dismisses the Settings tooltip before handing Escape ownership to its menu a
       <ReaderSettingsMenu isFixedLayout={false} viewMode="paginated"
         brightness={1} chromeTheme="silver" pageTurnAnimationStyle="slide" pageTheme="white" onSetPageTheme={noop}
         onSetViewMode={noop} onSetBrightness={noop} onSetChromeTheme={noop}
-        onSetPageTurnAnimationStyle={noop} onOpenHelp={() => setHelpOpen(true)} />
+        onSetPageTurnAnimationStyle={noop} progressMarkerStyle="off" onSetProgressMarkerStyle={noop}
+        onOpenHelp={() => setHelpOpen(true)} />
       <ModalFlyout open={helpOpen} title="Help" backgroundSolid="#fff" onRequestClose={closeHelp}>
         <button>Help content</button>
       </ModalFlyout>

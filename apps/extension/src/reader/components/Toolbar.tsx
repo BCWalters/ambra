@@ -140,6 +140,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetBrightness,
   onSetChromeTheme,
   onSetPageTurnAnimationStyle,
+  onSetProgressMarkerStyle,
   onOpenHelp,
   visible,
   handlers,
@@ -498,10 +499,12 @@ export const Toolbar: FC<ToolbarProps> = ({
           onSetPageTheme={onSetPageTheme}
           chromeTheme={snapshot.chromeTheme}
           pageTurnAnimationStyle={snapshot.pageTurnAnimationStyle}
+          progressMarkerStyle={snapshot.progressMarkerStyle ?? "upcoming"}
           onSetViewMode={onSetViewMode}
           onSetBrightness={onSetBrightness}
           onSetChromeTheme={onSetChromeTheme}
           onSetPageTurnAnimationStyle={onSetPageTurnAnimationStyle}
+          onSetProgressMarkerStyle={onSetProgressMarkerStyle}
           onOpenHelp={onOpenHelp}
         />
 

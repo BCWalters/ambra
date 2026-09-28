@@ -31,6 +31,12 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 Keyboard focus on the reading-position scrubber is shown by a ring around its thumb, not a box across the labels and track. Mouse and touch dragging retain focus without displaying the keyboard ring; using the keyboard brings it back.
 
+**Progress landmarks** in Settings offers **Show** (the default) or **Hide**.
+Chapter bands show the unread portion of the book, with darker front/back matter
+and a green start-of-reading indicator when the book declares those landmarks.
+Large TOCs fall back to top-level groups or reading landmarks only. Seeking is
+unchanged. See [progress landmarks](progress-landmarks.md).
+
 ## Return after a reading jump
 
 Use Chrome's **Back** and **Forward** buttons to revisit reading locations.

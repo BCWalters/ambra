@@ -81,6 +81,8 @@ import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE } from "./PageTurnAnimationStyle.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
+import { DEFAULT_PROGRESS_MARKER_STYLE, normalizeProgressMarkerStyle, type ProgressMarkerStyle } from "./ProgressMarkerStyle.js";
+import { resolveProgressMarkers } from "./ProgressMarkers.js";
 import type { ViewMode } from "./ViewMode.js";
 import type {
   ActiveHighlightState,
@@ -222,6 +224,7 @@ export class ReaderController {
    * page settings are; the shell reads it straight off the snapshot. */
   private chromeTheme: ChromeThemeChoice = DEFAULT_CHROME_THEME;
   private pageTurnAnimationStyle: PageTurnAnimationStyle = DEFAULT_PAGE_TURN_ANIMATION_STYLE;
+  private progressMarkerStyle: ProgressMarkerStyle = DEFAULT_PROGRESS_MARKER_STYLE;
   private spineIndex = 0;
   /** Active-operation geometry and typography remain stable across awaits;
    * newer requests are held in pendingLayout until that operation settles. */
@@ -595,7 +598,8 @@ export class ReaderController {
     const chromeChanged = this.brightness !== settings.brightness ||
       this.pageTheme !== settings.pageTheme ||
       this.chromeTheme !== settings.chromeTheme ||
-      this.pageTurnAnimationStyle !== settings.pageTurnAnimationStyle;
+      this.pageTurnAnimationStyle !== settings.pageTurnAnimationStyle ||
+      this.progressMarkerStyle !== settings.progressMarkerStyle;
     this.recordDiagnosticEvent({ kind: "setting", name: "viewMode",
       before: this.viewMode, after: viewMode, source: "preferences" });
     this.recordDiagnosticEvent({ kind: "setting", name: "brightness",
@@ -694,6 +698,7 @@ export class ReaderController {
       const bookPageIndex = bookWidePosition?.bookPageIndex;
       const bookPageCount = bookWidePosition?.bookPageCount;
       const requestedLayout = this.pendingLayout?.configuration ?? this.currentLayout();
+      const navigationPages = this.computeTocPageNumbers();
 
       this.cachedSnapshot = {
         hasRenderedContent: this.host !== undefined,
@@ -707,7 +712,10 @@ export class ReaderController {
         currentSpinePath: this.pkg.spine[this.spineIndex]?.manifestItem.path,
         firstSpinePath: this.pkg.spine[0]?.manifestItem.path,
         highlightedTocPath: this.tocHighlightPath(),
-        tocPageNumbers: this.computeTocPageNumbers(),
+        tocPageNumbers: navigationPages,
+        progressMarkers: this.progressMarkerStyle === "off" ? undefined : resolveProgressMarkers(
+          this.navigation.toc.items, this.navigation.landmarks?.items ?? [], navigationPages, bookPageCount,
+        ),
         // The default spine index is provisional until initial/resume loading
         // commits a host. Do not announce or display that placeholder chapter.
         currentChapterLabel: this.host ? this.chapterLabel(this.spineIndex) : "",
@@ -758,6 +766,7 @@ export class ReaderController {
         brightness: this.brightness,
         chromeTheme: this.chromeTheme,
         pageTurnAnimationStyle: this.pageTurnAnimationStyle,
+        progressMarkerStyle: this.progressMarkerStyle,
         isLoading: this.isLoading,
         loadingPhase: this.isLoading ? (this.host ? "navigating" : "opening") : undefined,
         error: this.error,
@@ -911,7 +920,9 @@ export class ReaderController {
       this.locatorResolver,
       new Map(this.pkg.spine.map((ref, index) => [
         index,
-        ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)
+        ReaderController.flattenLinkedNavPoints([
+          ...this.navigation.toc.items, ...(this.navigation.landmarks?.items ?? []),
+        ])
           .filter(point => point.path === ref.manifestItem.path && point.fragment)
           .map(point => point.fragment!),
       ])),
@@ -1479,7 +1490,9 @@ export class ReaderController {
         result.set(path, currentPage);
       }
     }
-    for (const point of ReaderController.flattenLinkedNavPoints(this.navigation.toc.items)) {
+    for (const point of ReaderController.flattenLinkedNavPoints([
+      ...this.navigation.toc.items, ...(this.navigation.landmarks?.items ?? []),
+    ])) {
       if (!point.fragment || point.target === undefined) continue;
       const spineIndex = this.pkg.spine.findIndex(ref => ref.manifestItem.path === point.path);
       const pageIndex = this.bookPagination.pageIndexForFragment(spineIndex, point.fragment);
@@ -2441,6 +2454,12 @@ export class ReaderController {
     this.recordDiagnosticEvent({ kind: "setting", name: "pageTurnAnimationStyle",
       before: this.pageTurnAnimationStyle, after: style, source: "reader-control" });
     await this.library.patchGlobalReadingSettings({ pageTurnAnimationStyle: style });
+    await this.refreshGlobalSettings();
+  }
+
+  public async setProgressMarkerStyle(style: ProgressMarkerStyle): Promise<void> {
+    if (this.operations.disposed) return;
+    await this.library.patchGlobalReadingSettings({ progressMarkerStyle: normalizeProgressMarkerStyle(style) });
     await this.refreshGlobalSettings();
   }
 
