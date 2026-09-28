@@ -112,9 +112,9 @@ for (const direction of ["ltr", "rtl"]) {
       await expect(slider).toHaveCSS("outline-style", "none");
       for (const fraction of [0, 0.5, 1]) {
         const track = (await slider.boundingBox())!;
-        await page.mouse.move(track.x + track.width * 0.5, track.y + 52);
+        await page.mouse.move(track.x + track.width * 0.5, track.y + 29);
         await page.mouse.down();
-        await page.mouse.move(track.x + track.width * fraction, track.y + 52);
+        await page.mouse.move(track.x + track.width * fraction, track.y + 29);
         await expect(slider).toBeFocused();
         await expect(slider).toHaveCSS("outline-style", "none");
         await expect(thumb).toHaveCSS("outline-style", "none");
@@ -409,7 +409,7 @@ test("preview is readable at narrow widths and Escape leaves the book in place",
     await expect(slider).toHaveAttribute("aria-valuetext", /^Page \d+ of \d+ - /);
     await expect(page.getByText("Preview", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Release to go here", { exact: true })).toHaveCount(0);
-    const popup = slider.locator("..").locator("span[title]").locator("..");
+    const popup = page.locator("[data-scrubber-preview]");
     await expect(popup).toBeVisible();
     await expect(popup.locator("span")).toHaveCount(2);
     await slider.press("Escape");

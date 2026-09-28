@@ -1,3 +1,5 @@
+import { CHROME_TOOLBAR_HEIGHT } from "../components/ChromeToolbarStyles.js";
+
 /** Shared visual constants for the reader's chrome (toolbar, TOC panel,
  * progress scrubber, Book Details panel) — kept in one place so all of
  * them stay visually consistent, and so "chrome should read as a
@@ -60,7 +62,7 @@ export const BOOKMARK_COLOR = "#0f6cbd";
  * differences would make a computed value an unreliable source of
  * truth — a plain constant kept in sync by hand is simpler and exact
  * enough for a fixed-size, non-user-resizable bar. */
-export const SCRUBBER_HEIGHT = 72;
+export const SCRUBBER_HEIGHT = CHROME_TOOLBAR_HEIGHT;
 
 /** The reader's own chrome color, as opposed to `PageTheme` (the book
  * *page's* background, picked in the font menu, renamed "Page Style" to

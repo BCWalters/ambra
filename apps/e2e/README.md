@@ -529,7 +529,7 @@ reuse, exact native reading entry, animated preparation, bounded queued margin
 clicks, and unknown global footers. An optional actual Proust pass measures all
 four animation modes and checks retained document/JS counts after repeated turns:
 
-While whole-book counts are unavailable, the scrubber shows "Counting pages…"
+While whole-book counts are unavailable, the scrubber shows "Mapping your book…"
 instead of a page total, including in its accessible value, only after its first
 hide/reveal cycle. It is suppressed on the initial book-opening appearance. Book startup uses
 "Getting your book ready…" and subsequent loading uses "Turning to your page…";

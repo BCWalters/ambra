@@ -2,6 +2,7 @@ import { ReadingTheme, type FontFamilyChoice, type PageTheme } from "@ambra/engi
 import { DEFAULT_CHROME_THEME, type ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { DEFAULT_PAGE_TURN_ANIMATION_STYLE, type PageTurnAnimationStyle } from "../reader/PageTurnAnimationStyle.js";
 import type { ViewMode } from "../reader/ViewMode.js";
+import { DEFAULT_PROGRESS_MARKER_STYLE, type ProgressMarkerStyle } from "../reader/ProgressMarkerStyle.js";
 
 /** Text and page options belong to a book, not to the next book opened. */
 export interface BookReadingSettings {
@@ -30,6 +31,7 @@ export interface GlobalReadingSettings {
   pageTheme: PageTheme;
   chromeTheme: ChromeThemeChoice;
   pageTurnAnimationStyle: PageTurnAnimationStyle;
+  progressMarkerStyle: ProgressMarkerStyle;
 }
 
 export const DEFAULT_GLOBAL_READING_SETTINGS: Readonly<GlobalReadingSettings> = {
@@ -38,4 +40,5 @@ export const DEFAULT_GLOBAL_READING_SETTINGS: Readonly<GlobalReadingSettings> = 
   pageTheme: ReadingTheme.DEFAULT_PAGE_THEME,
   chromeTheme: DEFAULT_CHROME_THEME,
   pageTurnAnimationStyle: DEFAULT_PAGE_TURN_ANIMATION_STYLE,
+  progressMarkerStyle: DEFAULT_PROGRESS_MARKER_STYLE,
 };

@@ -42,6 +42,7 @@ vi.mock("@fluentui/react-components", async (importOriginal) => {
       return (
         <button
           role="menuitemradio"
+          data-preference={name}
           aria-checked={menu.checkedValues?.[name]?.includes(value) ?? false}
           disabled={disabled}
           onClick={(event) => menu.onCheckedValueChange?.(event, { name, checkedItems: [value] })}
@@ -86,10 +87,12 @@ describe("reader preference menu contracts", () => {
       onSetPageTheme: vi.fn(),
       chromeTheme: "ambra",
       pageTurnAnimationStyle: "slide",
+      progressMarkerStyle: "upcoming",
       onSetViewMode: vi.fn(),
       onSetBrightness: vi.fn(),
       onSetChromeTheme: vi.fn(),
       onSetPageTurnAnimationStyle: vi.fn(),
+      onSetProgressMarkerStyle: vi.fn(),
     };
   });
 
@@ -115,6 +118,29 @@ describe("reader preference menu contracts", () => {
     expect(item).toBeDefined();
     act(() => item!.click());
     expect(onOpenHelp).toHaveBeenCalledWith(trigger);
+  });
+
+  it.each(["paginated", "scroll"] as const)("offers Show and Hide landmarks without changing %s mode or page turns", viewMode => {
+    act(() => root.render(<ReaderSettingsMenu {...settings} viewMode={viewMode} />));
+    const submenu = [...container.querySelectorAll('[role="menuitem"]')]
+      .find(item => item.textContent?.startsWith("Progress landmarks"));
+    expect(submenu).toBeDefined();
+    const choices = [...container.querySelectorAll<HTMLButtonElement>('[data-preference="progressMarkerStyle"]')];
+    expect(choices.map(item => item.textContent)).toEqual(["Show", "Hide"]);
+    expect(choices[0]!.getAttribute("aria-checked")).toBe("true");
+    for (const [index, style] of ["upcoming", "off"].entries()) {
+      expect(choices[index]!.disabled).toBe(false);
+      act(() => choices[index]!.click());
+      expect(settings.onSetProgressMarkerStyle).toHaveBeenLastCalledWith(style);
+    }
+    expect(settings.onSetViewMode).not.toHaveBeenCalled();
+    expect(settings.onSetPageTurnAnimationStyle).not.toHaveBeenCalled();
+    act(() => root.render(<ReaderSettingsMenu {...settings} viewMode={viewMode} progressMarkerStyle="off" />));
+    expect(radio("Hide").getAttribute("aria-checked")).toBe("true");
+    expect(radio("Show").getAttribute("aria-checked")).toBe("false");
+    act(() => root.render(<ReaderSettingsMenu {...settings} viewMode={viewMode} progressMarkerStyle="upcoming" />));
+    expect(radio("Show").getAttribute("aria-checked")).toBe("true");
+    expect(radio("Hide").getAttribute("aria-checked")).toBe("false");
   });
 
   it("routes font and page choices independently and reflects controlled values", () => {

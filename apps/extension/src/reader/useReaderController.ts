@@ -24,6 +24,7 @@ import type {
 import type { ViewMode } from "./ViewMode.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
+import type { ProgressMarkerStyle } from "./ProgressMarkerStyle.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
 export interface UseReaderControllerResult {
@@ -53,6 +54,7 @@ export interface UseReaderControllerResult {
   setBrightness: (brightness: number) => void;
   setChromeTheme: (theme: ChromeThemeChoice) => void;
   setPageTurnAnimationStyle: (style: PageTurnAnimationStyle) => void;
+  setProgressMarkerStyle: (style: ProgressMarkerStyle) => void;
   previewSeek: (fraction: number) => { position: PreviewPosition; chapterLabel: string };
   seekToFraction: (fraction: number, options?: { preserveFocus?: boolean }) => Promise<void>;
   getBookDetails: () => Promise<BookDetails | undefined>;
@@ -348,6 +350,13 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
+  const setProgressMarkerStyle = useCallback(
+    (style: ProgressMarkerStyle) => {
+      void controller?.setProgressMarkerStyle(style).catch(error => controller.reportActionFailure(error));
+    },
+    [controller],
+  );
+
   const setPageTurnAnimationStyle = useCallback(
     (style: PageTurnAnimationStyle) => {
       void controller?.setPageTurnAnimationStyle(style).catch(error => controller.reportActionFailure(error));
@@ -584,6 +593,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     setBrightness,
     setChromeTheme,
     setPageTurnAnimationStyle,
+    setProgressMarkerStyle,
     previewSeek,
     seekToFraction,
     getBookDetails,

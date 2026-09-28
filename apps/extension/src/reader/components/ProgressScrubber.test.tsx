@@ -59,7 +59,7 @@ describe("ProgressScrubber", () => {
     vi.useRealTimers();
   });
 
-  function renderScrubber(overrides: Partial<ProgressScrubberProps> = {}) {
+  function renderScrubber(overrides: Partial<ProgressScrubberProps> = {}, trackWidth = 100) {
     const onSeek = vi.fn(() => new Promise<void>(() => {}));
     const onSeekError = vi.fn();
     act(() =>
@@ -87,7 +87,7 @@ describe("ProgressScrubber", () => {
     slider.releasePointerCapture = vi.fn(() => {
       captured = false;
     });
-    slider.getBoundingClientRect = () => ({ left: 20, width: 100 }) as DOMRect;
+    slider.getBoundingClientRect = () => ({ left: 20, width: trackWidth }) as DOMRect;
     return { slider, onSeek, onSeekError };
   }
 
@@ -107,6 +107,145 @@ describe("ProgressScrubber", () => {
     });
   }
 
+  it("shows landmarks by default and hides them without changing focus, height, or keyboard seeking", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 64, width: 1000, height: 64,
+      toJSON() {},
+    });
+    const markerData = {
+      ready: true,
+      chapters: [{ target: "a", label: "A", fraction: 0.2 }, { target: "b", label: "B", fraction: 0.6 }],
+      sections: [],
+      landmarks: [{ kind: "start" as const, fraction: 0.1 }, { kind: "end" as const, fraction: 0.9 }],
+    };
+    const { slider, onSeek } = renderScrubber({ markerData }, 1000);
+    expect(slider.getAttribute("data-progress-marker-style")).toBe("upcoming");
+    expect(container.querySelectorAll("[data-upcoming-boundary]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-reading-landmark]")).toHaveLength(1);
+    expect(container.querySelector("[data-progress-markers]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(onSeek).toHaveBeenCalledWith(expect.closeTo(0.06, 6));
+    const hidden = renderScrubber({ markerStyle: "off", markerData }, 1000);
+    expect(container.querySelector("[data-progress-markers]")).toBeNull();
+    expect(hidden.slider.style.height).toBe("54px");
+    expect(hidden.slider.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  it.each(["ltr", "rtl"] as const)("shows upcoming chapter bands only beyond the thumb (%s)", (direction) => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 64, width: 1000, height: 64,
+      toJSON() {},
+    });
+    const markerData = {
+      ready: true,
+      chapters: [
+        { target: "a", label: "A", fraction: 0 },
+        { target: "b", label: "B", fraction: 0.2 },
+        { target: "c", label: "C", fraction: 0.6 },
+      ],
+      sections: [], landmarks: [],
+    };
+    const { slider, onSeek } = renderScrubber({
+      markerStyle: "upcoming", markerData,
+      snapshot: { ...snapshot, bookPageIndex: 35, pageProgressionDirection: direction },
+    }, 1000);
+    const bands = () => Array.from(container.querySelectorAll<HTMLElement>("[data-upcoming-band]"));
+    expect(container.querySelector<HTMLElement>("[data-scrubber-track]")?.style.height).toBe("10px");
+    expect(container.querySelector<HTMLElement>("[data-scrubber-fill]")?.style.width).toBe("35%");
+    expect(bands().map(band => parseFloat(band.style.width))).toEqual([25, 40]);
+    expect(bands().map(band => parseFloat(band.style.left))).toEqual(direction === "ltr" ? [35, 60] : [40, 0]);
+    expect(container.querySelectorAll("[data-chapter-marker]")).toHaveLength(0);
+    expect(container.querySelectorAll("[data-upcoming-boundary]")).toHaveLength(1);
+    expect(container.querySelector("[data-progress-markers]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+
+    pointer(slider, "pointerdown", { clientX: direction === "ltr" ? 770 : 270 });
+    expect(bands()).toHaveLength(1);
+    expect(parseFloat(bands()[0]!.style.width)).toBe(25);
+    expect(onSeek).not.toHaveBeenCalled();
+    pointer(slider, "pointercancel");
+    expect(bands()).toHaveLength(2);
+    act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onSeek).toHaveBeenCalledWith(1);
+    expect(bands()).toHaveLength(0);
+  });
+
+  it.each(["ltr", "rtl"] as const)("darkens unread back matter at the declared reading end (%s)", (direction) => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 64, width: 1000, height: 64,
+      toJSON() {},
+    });
+    const markerData = {
+      ready: true, chapters: [], sections: [],
+      landmarks: [{ kind: "start" as const, fraction: 0.1 }, { kind: "end" as const, fraction: 0.8 }],
+    };
+    for (const position of [70, 90]) {
+      const { slider } = renderScrubber({
+        markerStyle: "upcoming", markerData,
+        snapshot: { ...snapshot, bookPageIndex: position, pageProgressionDirection: direction },
+      }, 1000);
+      const band = container.querySelector<HTMLElement>("[data-reading-end-band]")!;
+      expect(band.style.opacity).toBe("0.64");
+      expect(parseFloat(band.style.left)).toBe(direction === "ltr" ? Math.max(position, 80) : 0);
+      expect(parseFloat(band.style.width)).toBeCloseTo(position === 70 ? 20 : 10);
+      expect(container.querySelectorAll("[data-upcoming-band]")).toHaveLength(1);
+      expect(container.querySelector('[data-reading-landmark="end"]')).toBeNull();
+      const start = container.querySelector<HTMLElement>('[data-reading-landmark="start"]')!;
+      expect(start.style.top).toBe("24px");
+      expect(start.style.height).toBe("10px");
+      expect(parseFloat(start.style.left)).toBe(direction === "ltr" ? 10 : 90);
+      expect(parseFloat(slider.style.height) + parseFloat(slider.parentElement!.style.paddingBottom) + 1)
+        .toBe(SCRUBBER_HEIGHT);
+    }
+  });
+
+  it.each(["ltr", "rtl"] as const)("colors front matter as one unread band matching back matter (%s)", direction => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1000, bottom: 64, width: 1000, height: 64,
+      toJSON() {},
+    });
+    for (const chapters of [[], [{ target: "a", label: "A", fraction: 0.2 }, { target: "b", label: "B", fraction: 0.5 }]]) {
+      const markerData = {
+        ready: true, chapters, sections: [],
+        landmarks: [{ kind: "start" as const, fraction: 0.1 }, { kind: "end" as const, fraction: 0.8 }],
+      };
+      for (const position of [0, 5, 10, 50]) {
+        renderScrubber({
+          markerStyle: "upcoming", markerData,
+          snapshot: { ...snapshot, bookPageIndex: position, pageProgressionDirection: direction },
+        }, 1000);
+        const front = container.querySelectorAll<HTMLElement>("[data-reading-start-band]");
+        expect(front).toHaveLength(position < 10 ? 1 : 0);
+        if (position < 10) {
+          const back = container.querySelector<HTMLElement>("[data-reading-end-band]")!;
+          expect(front[0]!.style.opacity).toBe(back.style.opacity);
+          expect(front[0]!.style.background).toBe(back.style.background);
+          expect(parseFloat(front[0]!.style.width)).toBeCloseTo(10 - position);
+          expect(parseFloat(front[0]!.style.left)).toBeCloseTo(direction === "ltr" ? position : 90);
+        }
+      }
+    }
+  });
+
+  it.each(["ltr", "rtl"] as const)("keeps upcoming bookmarks below the raised track within the same footer (%s)", direction => {
+    const { slider } = renderScrubber({
+      markerStyle: "upcoming",
+      snapshot: { ...snapshot, pageProgressionDirection: direction, bookmarkProgress: [{ id: "a", fraction: 0.25 }] },
+    });
+    const flag = container.querySelector<SVGElement>("[data-bookmark-marker]")!;
+    const thumb = container.querySelector<HTMLElement>("[data-scrubber-thumb]")!;
+    const track = container.querySelector<HTMLElement>("[data-scrubber-track]")!;
+    expect(track.style.top).toBe("24px");
+    expect(thumb.style.top).toBe("21px");
+    expect(flag.style.top).toBe("39px");
+    expect(flag.style.left).toBe(direction === "ltr" ? "25%" : "75%");
+    expect(parseFloat(flag.style.top)).toBeGreaterThan(parseFloat(thumb.style.top) + parseFloat(thumb.style.height));
+    expect(parseFloat(flag.style.top) + parseFloat(flag.style.height)).toBeLessThanOrEqual(parseFloat(slider.style.height));
+    expect(parseFloat(slider.style.height) + parseFloat(slider.parentElement!.style.paddingBottom) + 1)
+      .toBe(SCRUBBER_HEIGHT);
+  });
+
   it("keeps drag focus without its keyboard ring and restores keyboard modality on keydown or blur", () => {
     const { slider } = renderScrubber();
     pointer(slider, "pointerdown");
@@ -124,11 +263,11 @@ describe("ProgressScrubber", () => {
   it("shows counting status after reopening, but not during the initial appearance", () => {
     const countingSnapshot = { ...snapshot, bookPageIndex: 5, bookPageCount: undefined };
     renderScrubber({ snapshot: countingSnapshot });
-    expect(container.textContent).not.toContain("Counting pages");
+    expect(container.textContent).not.toContain("Mapping your book");
     expect(container.querySelector('[role="slider"]')?.getAttribute("aria-valuetext"))
       .toBe("6 pages left in this chapter");
     renderScrubber({ snapshot: countingSnapshot });
-    expect(container.textContent).not.toContain("Counting pages");
+    expect(container.textContent).not.toContain("Mapping your book");
     renderScrubber({ snapshot: countingSnapshot, visible: false });
     const { slider } = renderScrubber({
       snapshot: countingSnapshot,
@@ -137,18 +276,18 @@ describe("ProgressScrubber", () => {
         chapterLabel: "A long chapter title",
       }),
     });
-    expect(container.textContent).toContain("Counting pages…");
+    expect(container.textContent).toContain("Mapping your book…");
     expect(container.textContent).not.toContain("Page 5 of");
     expect(slider.getAttribute("aria-valuetext")).toBe(
-      "Counting pages… - 6 pages left in this chapter",
+      "Mapping your book… - 6 pages left in this chapter",
     );
     pointer(slider, "pointerdown");
     expect(slider.getAttribute("aria-valuetext")).toBe("Chapter 8 of 10 - A long chapter title");
-    expect(container.textContent).toContain("Counting pages…");
+    expect(container.textContent).toContain("Mapping your book…");
     pointer(slider, "pointercancel");
 
     renderScrubber();
-    expect(container.textContent).not.toContain("Counting pages…");
+    expect(container.textContent).not.toContain("Mapping your book…");
     expect(slider.getAttribute("aria-valuetext")).toBe("Page 5 of 100 - 6 pages left in this chapter");
   });
 
@@ -158,11 +297,11 @@ describe("ProgressScrubber", () => {
       snapshot: emptyCounts,
     });
     expect(slider.getAttribute("aria-valuetext")).toMatch(/^\d+%$/);
-    expect(container.textContent).not.toContain("Counting pages");
+    expect(container.textContent).not.toContain("Mapping your book");
     renderScrubber({ snapshot: emptyCounts, visible: false });
     renderScrubber({ snapshot: emptyCounts });
-    expect(slider.getAttribute("aria-valuetext")).toBe("Counting pages…");
-    expect(container.textContent).toContain("Counting pages…");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Mapping your book…");
+    expect(container.textContent).toContain("Mapping your book…");
     expect(container.textContent).not.toContain("pages left");
   });
 
@@ -172,7 +311,7 @@ describe("ProgressScrubber", () => {
     });
     expect(slider.getAttribute("aria-valuetext")).toBe("Page 1 of 5");
     expect(container.textContent).not.toContain("pages left");
-    expect(container.textContent).not.toContain("Counting pages");
+    expect(container.textContent).not.toContain("Mapping your book");
     act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect(onSeek).toHaveBeenCalledWith(0.4);
   });
@@ -313,9 +452,9 @@ describe("ProgressScrubber", () => {
     const { slider, onSeek } = renderScrubber({ visible: false });
     pointer(slider, "pointerdown");
     expect(document.activeElement).toBe(slider);
-    expect(slider.style.height).toBe("64px");
+    expect(slider.style.height).toBe("54px");
     expect(slider.parentElement!.style.zIndex).toBe("6");
-    expect(parseFloat(slider.style.height) + 7 + 1).toBe(SCRUBBER_HEIGHT);
+    expect(parseFloat(slider.style.height) + 1 + 1).toBe(SCRUBBER_HEIGHT);
     expect(slider.getAttribute("aria-valuetext")).toBe(
       "Page 80 of 100 - A long chapter title",
     );

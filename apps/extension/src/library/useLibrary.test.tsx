@@ -764,6 +764,18 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.settings).toEqual(latestSettings);
   });
 
+  it("persists landmark visibility globally and receives cross-reader changes", async () => {
+    await render();
+    const saved = { ...DEFAULT_GLOBAL_READING_SETTINGS, progressMarkerStyle: "off" as const };
+    db.methods.getGlobalReadingSettings.mockResolvedValue(saved);
+    await act(async () => latest.setSettings({ progressMarkerStyle: "off" }));
+    expect(db.methods.patchGlobalReadingSettings).toHaveBeenCalledExactlyOnceWith({ progressMarkerStyle: "off" });
+    expect(latest.settings.progressMarkerStyle).toBe("off");
+    db.methods.getGlobalReadingSettings.mockResolvedValue({ ...saved, progressMarkerStyle: "upcoming" });
+    await act(async () => db.methods.subscribePreferences.mock.calls[0]![0]());
+    expect(latest.settings.progressMarkerStyle).toBe("upcoming");
+  });
+
   it("retains saved settings on persistence failure and ignores setters after unmount", async () => {
     await render();
     db.methods.patchGlobalReadingSettings.mockRejectedValueOnce(new Error("Settings could not be saved"));

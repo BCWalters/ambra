@@ -29,7 +29,7 @@ async function expectFlagGeometry(page: Page) {
       const fraction = fractions[index]!;
       return {
         width: rect.width, height: rect.height,
-        gap: thumb.top - rect.bottom,
+        gap: rect.top - thumb.bottom,
         left: rect.left, right: rect.right, viewport: innerWidth,
         error: Math.abs(rect.left + rect.width / 2 - track.left - track.width *
           (snapshot.pageProgressionDirection === "rtl" ? 1 - fraction : fraction)),
@@ -70,7 +70,7 @@ for (const width of [320, 1400]) {
       const slider = page.getByRole("slider", { name: "Position in book" });
       await slider.focus();
       await expect(page.locator("[data-bookmark-marker]")).toHaveCount(2);
-      await expect(slider).toHaveAccessibleDescription("Bookmarks: 2");
+      await expect(slider).toHaveAccessibleDescription(/Bookmarks: 2(?:\s|$)/);
       await expect(slider).toHaveAttribute("aria-valuetext", /Bookmarked$/);
       await expectFlagGeometry(page);
       await page.screenshot({ path: info.outputPath(`overlap-${width}-${browserName}.png`) });
@@ -101,7 +101,7 @@ for (const width of [320, 1400]) {
         Reflect.set(window, "__restoreBookmarkSnapshot", () => { controller.snapshot = snapshot; });
         controller.notify();
       });
-      await expect(slider).toHaveAccessibleDescription("Bookmarks: 3");
+      await expect(slider).toHaveAccessibleDescription(/Bookmarks: 3(?:\s|$)/);
       await expect(page.locator("[data-bookmark-marker]")).toHaveCount(2);
       await expectFlagGeometry(page);
       await page.screenshot({ path: info.outputPath(`cluster-${width}.png`) });
@@ -250,7 +250,7 @@ for (const width of [900, 1400]) {
       const marks = page.locator("[data-bookmark-marker]");
       await expect(marks).toHaveCount(2);
       const slider = page.getByRole("slider", { name: "Position in book" });
-      await expect(slider).toHaveAccessibleDescription("Bookmarks: 2");
+      await expect(slider).toHaveAccessibleDescription(/Bookmarks: 2(?:\s|$)/);
 
       const positions = await page.evaluate(() => {
         const controller = Reflect.get(window, "__readerController");
@@ -288,7 +288,7 @@ for (const width of [900, 1400]) {
       await measured(page);
       await toggleBookmark(page, "Remove bookmark");
       await expect(marks).toHaveCount(1);
-      await expect(slider).toHaveAccessibleDescription("Bookmarks: 1");
+      await expect(slider).toHaveAccessibleDescription(/Bookmarks: 1(?:\s|$)/);
 
       await page.reload();
       await page.waitForFunction(() => [...document.querySelectorAll("iframe")]
@@ -296,7 +296,7 @@ for (const width of [900, 1400]) {
       await exposeReaderController(page);
       await measured(page);
       await expect(marks).toHaveCount(1);
-      await expect(slider).toHaveAccessibleDescription("Bookmarks: 1");
+      await expect(slider).toHaveAccessibleDescription(/Bookmarks: 1(?:\s|$)/);
     } finally {
       await context.close();
     }

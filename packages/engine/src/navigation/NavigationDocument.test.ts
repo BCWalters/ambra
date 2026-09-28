@@ -105,6 +105,20 @@ describe("NavigationDocument.load error handling", () => {
 });
 
 describe("NavigationDocument.parseNavDocument", () => {
+  it("retains semantic landmark tokens with an alternate EPUB namespace prefix", () => {
+    const xml = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:e="http://www.idpf.org/2007/ops">
+      <body><nav e:type="toc"><ol><li><a href="book.xhtml">Book</a></li></ol></nav>
+      <nav e:type="landmarks"><ol>
+        <li><a e:type="bodymatter chapter" href="book.xhtml#start">Read</a></li>
+        <li><a e:type="backmatter" href="book.xhtml#back">Afterword</a></li>
+      </ol></nav></body></html>`;
+    const navigation = NavigationDocument.parseNavDocument(xml, "nav.xhtml");
+    expect(navigation.landmarks?.items.map(point => point.epubTypes)).toEqual([
+      ["bodymatter", "chapter"], ["backmatter"],
+    ]);
+    expect(navigation.toc.items[0]?.epubTypes).toEqual([]);
+  });
+
   it.each([
     ["arriv%C3%A9e", "arrivée"],
     ["literal%2520id", "literal%20id"],

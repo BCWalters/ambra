@@ -85,6 +85,7 @@ const ReaderAppInner: FC = () => {
     setBrightness,
     setChromeTheme,
     setPageTurnAnimationStyle,
+    setProgressMarkerStyle,
     previewSeek,
     seekToFraction,
     getBookDetails,
@@ -747,6 +748,7 @@ const ReaderAppInner: FC = () => {
               onSetBrightness={setBrightness}
               onSetChromeTheme={setChromeTheme}
               onSetPageTurnAnimationStyle={setPageTurnAnimationStyle}
+              onSetProgressMarkerStyle={setProgressMarkerStyle}
               onOpenHelp={help.openHelp}
               visible={chromeVisible}
               handlers={chromeHandlers}
@@ -860,6 +862,8 @@ const ReaderAppInner: FC = () => {
 
             <ProgressScrubber
               snapshot={snapshot}
+              markerStyle={snapshot.progressMarkerStyle ?? "upcoming"}
+              markerData={snapshot.progressMarkers}
               visible={chromeVisible}
               handlers={chromeHandlers}
               onPreview={previewSeek}

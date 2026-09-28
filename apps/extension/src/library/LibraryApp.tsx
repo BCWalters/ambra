@@ -452,6 +452,7 @@ export const LibraryApp: FC = () => {
           onSetPageTheme={(pageTheme) => setSettings({ pageTheme })}
           onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
           onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
+          onSetProgressMarkerStyle={(progressMarkerStyle) => setSettings({ progressMarkerStyle })}
         />
         <Tooltip content={t("about.title")} relationship="label" {...toolbarTooltipProps("about")}>
           <Button

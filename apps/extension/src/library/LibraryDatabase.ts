@@ -4,6 +4,7 @@ import type { LocalePreference } from "../i18n/Locale.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { DEFAULT_BOOK_READING_SETTINGS, DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import type { BookReadingSettings, GlobalReadingSettings } from "./ReadingSettings.js";
+import { normalizeProgressMarkerStyle } from "../reader/ProgressMarkerStyle.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { createLibraryCover } from "./LibraryCover.js";
@@ -220,6 +221,7 @@ const GLOBAL_SETTING_KEYS = {
   pageTheme: PAGE_THEME_PREFERENCE_KEY,
   chromeTheme: CHROME_THEME_PREFERENCE_KEY,
   pageTurnAnimationStyle: PAGE_TURN_ANIMATION_STYLE_PREFERENCE_KEY,
+  progressMarkerStyle: "defaultProgressMarkerStyle",
 } satisfies Record<keyof GlobalReadingSettings, string>;
 
 function settingsFromPreferences<T extends object>(
@@ -744,16 +746,18 @@ export class LibraryDatabase {
   }
 
   public async getGlobalReadingSettings(): Promise<GlobalReadingSettings> {
-    return settingsFromPreferences(
+    const settings = settingsFromPreferences(
       DEFAULT_GLOBAL_READING_SETTINGS, GLOBAL_SETTING_KEYS,
       await this.getAll<PreferenceRecord>(PREFERENCES_STORE),
     );
+    return { ...settings, progressMarkerStyle: normalizeProgressMarkerStyle(settings.progressMarkerStyle) };
   }
 
   public async patchGlobalReadingSettings(patch: Partial<GlobalReadingSettings>): Promise<void> {
     await this.transaction(PREFERENCES_STORE, "readwrite", "Failed to save app settings.", (tx) => {
       for (const key of Object.keys(patch) as (keyof GlobalReadingSettings)[]) {
-        tx.objectStore(PREFERENCES_STORE).put({ key: GLOBAL_SETTING_KEYS[key], value: patch[key] });
+        const value = key === "progressMarkerStyle" ? normalizeProgressMarkerStyle(patch[key]) : patch[key];
+        tx.objectStore(PREFERENCES_STORE).put({ key: GLOBAL_SETTING_KEYS[key], value });
       }
     });
     this.preferencesChanged();
