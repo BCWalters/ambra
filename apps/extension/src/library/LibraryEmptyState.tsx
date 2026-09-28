@@ -114,7 +114,7 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImpor
         <span className={styles.eyebrow}>{t("library.onWeb")}</span>
         <span id={`${id}-discover-title`} className={styles.title}>{t("library.findNextBook")}</span>
         <span id={`${id}-discover-description`} className={styles.description}>{t("library.findNextBookDescription")}</span>
-        <span id={`${id}-discover-action`} className={styles.action}>{t("library.exploreFreeBooks")}</span>
+        <span id={`${id}-discover-action`} className={styles.action}>{t("library.exploreBooks")}</span>
       </button>
     </div>
     <div style={{ width: "100%", marginTop: expanded ? 20 : 0 }}>

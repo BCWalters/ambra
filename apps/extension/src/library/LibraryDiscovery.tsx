@@ -24,6 +24,12 @@ const SOURCES = [
     description: "library.readBeyondDescription" as const,
     download: "library.readBeyondDownload" as const,
   },
+  {
+    name: "eBooks.com",
+    href: "https://www.ebooks.com/drm-free-epub",
+    description: "library.ebooksComDescription" as const,
+    download: "library.ebooksComDownload" as const,
+  },
 ];
 
 /** The first-run choice card and the quieter populated-library entry share one panel. */
