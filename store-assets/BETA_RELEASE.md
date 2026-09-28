@@ -62,7 +62,7 @@ be forwarded.
       See the [optional native regression command](../README.md#optional-native-macos-accessibility-regression).
 - [ ] Capture screenshots of the actual clean merged candidate using the original
       synthetic books in [ASSETS.md](ASSETS.md). Verify
-      `dist/beta-release/artifacts/store-assets/asset-provenance.json` says `release`,
+      `dist/release/artifacts/store-assets/asset-provenance.json` says `release`,
       matches the clean source commit and package ZIP checksum, and records the captured
       candidate's hash. Final capture writes only that ignored handoff folder; it does
       not update the checked-in previews or require another commit. Preview captures
@@ -142,8 +142,8 @@ node --test .github/scripts/release.test.mjs
 node .github/scripts/package-extension.mjs
 ```
 
-The production bundle is isolated at `dist/beta-release/extension/`; upload
-`dist/beta-release/artifacts/ambra-<manifest-version>.zip`, not a ZIP of the
+The production bundle is isolated at `dist/release/extension/`; upload
+`dist/release/artifacts/ambra-<manifest-version>.zip`, not a ZIP of the
 repository or of a dev server's output. The artifact directory also contains
 `SHA256SUMS` and `release.json` recording version, source commit, and worktree
 status. Reject a dirty candidate for release.
@@ -153,7 +153,7 @@ texts. Version-pinned fallbacks are documented in [licenses/README.md](licenses/
 missing notices fail packaging rather than silently omitting attribution.
 
 After final packaging, capture the five store views into
-`dist/beta-release/artifacts/store-assets/` using [ASSETS.md](ASSETS.md).
+`dist/release/artifacts/store-assets/` using [ASSETS.md](ASSETS.md).
 That handoff folder also contains the icon, promo, and source/package-bound
 provenance; these store graphics are not added to the extension ZIP.
 The capture validates the candidate against the existing ZIP and never rewrites
@@ -169,7 +169,7 @@ After packaging, run the same focused browser gate locally without rebuilding
 over the candidate:
 
 ```sh
-AMBRA_E2E_EXTENSION_PATH="$PWD/dist/beta-release/extension" \
+AMBRA_E2E_EXTENSION_PATH="$PWD/dist/release/extension" \
   AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
   book-opening.spec.ts navigation-correctness.spec.ts settings-focus.spec.ts \
   reader-viewport-stability.spec.ts content-boundary-navigation.spec.ts \

@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { loadVerifiedArtifact } from "../../.github/scripts/upload-draft.mjs";
+import { artifactDir } from "../../.github/scripts/package-extension.mjs";
 
 const root = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const assets = path.join(root, "store-assets");
@@ -37,7 +38,7 @@ async function treeDigest(directory) {
 
 export async function captureOutputDirectory(releaseCapture, rootDirectory = root) {
   const relative = releaseCapture
-    ? "dist/beta-release/artifacts/store-assets"
+    ? "dist/release/artifacts/store-assets"
     : "store-assets/.generated/previews";
   let current = rootDirectory;
   for (const segment of relative.split("/")) {
@@ -85,7 +86,7 @@ export async function promoteCapture(capture, releaseCapture, rootDirectory = ro
 
 async function verifyPackagedCandidate(extension, sourceCommit) {
   const { metadata } = await loadVerifiedArtifact(sourceCommit);
-  const archive = path.join(root, "dist/beta-release/artifacts", metadata.archive);
+  const archive = path.join(artifactDir, metadata.archive);
   const names = execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" }).trim().split(/\r?\n/);
   const files = await candidateFiles(extension);
   if (JSON.stringify(names.toSorted()) !== JSON.stringify(files.toSorted())) {

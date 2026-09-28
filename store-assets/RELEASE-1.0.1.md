@@ -1,5 +1,11 @@
 # Ambra 1.0.1 submission preparation
 
+> The verified 1.0.1 handoff remains at `dist/beta-release/artifacts/`, as recorded
+> below. These commands describe its release commit. Subsequent tooling uses
+> `dist/release/`; see [the packaging reference](BETA_RELEASE.md) and
+> [asset instructions](ASSETS.md). Do not rebuild or relocate the 1.0.1 handoff
+> for this naming change.
+
 This is a manual, owner-only update of the existing Chrome Web Store listing.
 Version 1.0.0 is already approved and published unlisted, as reported by the
 owner. Preparation does not authorize a store upload, submission, publication,

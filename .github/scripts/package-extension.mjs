@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { writeNotices } from "./package-notices.mjs";
 
 export const root = fileURLToPath(new URL("../../", import.meta.url));
-export const releaseDir = path.join(root, "dist/beta-release");
+export const releaseDir = path.join(root, "dist/release");
 export const artifactDir = path.join(releaseDir, "artifacts");
 
 export function validVersion(version) {
@@ -97,9 +97,9 @@ export async function packageExtension() {
   // Reject redirected ancestors before Vite's --emptyOutDir can remove anything.
   for (const name of [
     "dist",
-    "dist/beta-release",
-    "dist/beta-release/extension",
-    "dist/beta-release/artifacts",
+    "dist/release",
+    "dist/release/extension",
+    "dist/release/artifacts",
   ]) {
     const candidate = path.join(root, name);
     try {

@@ -66,8 +66,8 @@ jobs:
           node-version: 24.18.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: beta-release-${{ github.sha }}
-          path: dist/beta-release/artifacts/
+          name: release-${{ github.sha }}
+          path: dist/release/artifacts/
       - name: Authenticate and upload verified draft
         env:
           CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}

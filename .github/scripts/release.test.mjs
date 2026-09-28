@@ -3,7 +3,14 @@ import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
-import { root, sha256, validVersion, validateBundle } from "./package-extension.mjs";
+import {
+  root,
+  releaseDir,
+  artifactDir,
+  sha256,
+  validVersion,
+  validateBundle,
+} from "./package-extension.mjs";
 import { dependencyNotices } from "./package-notices.mjs";
 import { publishUnlisted } from "./publish-unlisted.mjs";
 import { checkStatus, configuration, uploadDraft, verifyArtifact } from "./upload-draft.mjs";
@@ -31,6 +38,24 @@ test("release source versions agree with the Chrome manifest", async () => {
   );
   assert.ok(validVersion(versions[0]));
   assert.equal(new Set(versions).size, 1);
+});
+
+test("packaging and workflows use the release output and matching artifact names", async () => {
+  assert.equal(releaseDir, path.join(root, "dist/release"));
+  assert.equal(artifactDir, path.join(releaseDir, "artifacts"));
+  const ci = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  const upload = await readFile(path.join(root, ".github/workflows/beta-release.yml"), "utf8");
+  for (const workflow of [ci, upload]) {
+    assert.ok(workflow.includes("name: release-${{ github.sha }}"));
+    assert.ok(workflow.includes("path: dist/release/artifacts/"));
+    assert.ok(!workflow.includes("dist/beta-release"));
+    assert.ok(!workflow.includes("name: beta-release-"));
+  }
+  const candidates = [...ci.matchAll(/AMBRA_E2E_EXTENSION_PATH: (.+)/g)];
+  assert.ok(candidates.length > 0);
+  for (const [, candidate] of candidates) {
+    assert.equal(candidate.trim(), "${{ github.workspace }}/dist/release/extension");
+  }
 });
 
 test("dependency notices include installed texts and pinned overrides, failing closed on omissions", async () => {
@@ -86,7 +111,7 @@ test("release screenshots stay separate from ignored previews and package metada
     const preview = await captureOutputDirectory(false, directory);
     const output = await captureOutputDirectory(true, directory);
     assert.equal(preview, path.join(directory, "store-assets/.generated/previews"));
-    assert.equal(output, path.join(directory, "dist/beta-release/artifacts/store-assets"));
+    assert.equal(output, path.join(directory, "dist/release/artifacts/store-assets"));
     const historical = path.join(directory, "store-assets", image);
     await writeFile(historical, "historical tracked preview");
     await writeFile(path.join(capture, image), "ignored preview");

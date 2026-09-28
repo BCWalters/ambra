@@ -50,7 +50,7 @@ For a **preview**, against an already built isolated candidate:
 
 ```sh
 AMBRA_STORE_ALLOW_BROWSER=1 \
-  AMBRA_STORE_EXTENSION_PATH="$PWD/dist/beta-release/extension" \
+  AMBRA_STORE_EXTENSION_PATH="$PWD/dist/release/extension" \
   node store-assets/scripts/generate-images.mjs
 ```
 
@@ -60,7 +60,7 @@ Preview mode writes images and provenance to ignored
 These editorial previews are not release acceptance. Inspect them all before
 deciding the capture is ready; no raster commit is needed for script validation.
 
-For the final 1.0.0 capture, follow [RESUBMISSION.md](RESUBMISSION.md): first merge
+For future release captures, first merge
 the approved runtime fixes and source-version/materials update, then build the
 chosen clean `main` commit. The padded 128px source icon is already included. Prepare
 the original fixtures **before packaging**, and verify the worktree is still clean:
@@ -79,14 +79,18 @@ approved release process, then capture that exact already-packaged candidate:
 AMBRA_STORE_ALLOW_BROWSER=1 \
   AMBRA_STORE_RELEASE_CAPTURE=1 \
   AMBRA_STORE_SOURCE_SHA="$(git rev-parse HEAD)" \
-  AMBRA_STORE_EXTENSION_PATH="$PWD/dist/beta-release/extension" \
+  AMBRA_STORE_EXTENSION_PATH="$PWD/dist/release/extension" \
   node store-assets/scripts/generate-images.mjs
 ```
 
-**Final output is ignored `dist/beta-release/artifacts/store-assets/`, not the
+**Final output is ignored `dist/release/artifacts/store-assets/`, not the
 checked-in preview directory.** It contains all five screenshots, copies of
 `icon-store-128.png` and `promo-tile-440x280.png`, and its own `asset-provenance.json`.
 No final screenshot/provenance commit or recursive recapture is needed.
+
+The prepared 1.0.1 handoff remains at `dist/beta-release/artifacts/`; its files
+and provenance have not moved. The version-specific handoff documents preserve
+the paths used for those releases. New packaging and capture use `dist/release/`.
 
 Release capture requires `main`, a completely clean worktree, and an asserted
 SHA matching `HEAD`. It verifies the package metadata's clean source commit and
