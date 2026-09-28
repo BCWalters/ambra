@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ambra EPUB Reader",
   "short_name": "Ambra",
-  "description": "A polished, accessible EPUB3 reader for Chrome.",
+  "description": "Read, annotate, and explore EPUBs in Chrome with a personal library, flexible reading settings, and EPUB Inspector.",
   "version": "1.0.0",
   "icons": {
     "16": "icons/icon16.png",
