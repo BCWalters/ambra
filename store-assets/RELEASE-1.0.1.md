@@ -1,5 +1,9 @@
 # Ambra 1.0.1 submission preparation
 
+> Historical handoff. The owner confirms 1.0.1 is now live and Public.
+> Use [RELEASE-1.0.2.md](RELEASE-1.0.2.md) for the next update; preserve Public
+> visibility rather than the earlier Unlisted instructions below.
+
 This is a manual, owner-only update of the existing Chrome Web Store listing.
 Version 1.0.0 is already approved and published unlisted, as reported by the
 owner. Preparation does not authorize a store upload, submission, publication,

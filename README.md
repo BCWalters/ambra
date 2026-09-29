@@ -15,13 +15,13 @@ provided you retain the copyright and license notice. There is no
 non-commercial or friends-only restriction on the source code. Third-party
 materials retain their own licenses; see [notices and provenance](THIRD_PARTY_NOTICES.md).
 
-The first Chrome Web Store release is an **unlisted beta**: anyone with the
-installation URL can install it, but it does not appear in store search or browsing.
-No trusted-tester allowlist is required. Public source visibility, store listing
+Version **1.0.1 is live and Public** in the
+[Chrome Web Store](https://chromewebstore.google.com/detail/ambra-epub-reader/mcjkkebkhifgkkbahlcapjlnaihocogj),
+as confirmed by the owner. No trusted-tester allowlist is required. Public source visibility, store listing
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [beta release checklist](store-assets/BETA_RELEASE.md).
+and the [1.0.2 update checklist](store-assets/RELEASE-1.0.2.md).
 
 ## Structure
 
