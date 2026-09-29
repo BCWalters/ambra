@@ -110,7 +110,7 @@ export class PaginationEngine {
    * the same position-to-chunk lookup `ScrollViewEngine` uses) and passed
    * to `planPageBreaks` as a forced break point. */
   public static paginate(bodyElement: Element, pageHeight: number, anchor?: DomBreakPoint): Page[] {
-    const chunks = measureChunks(bodyElement);
+    const chunks = measureChunks(bodyElement, pageHeight);
     return this.plan(bodyElement, chunks, pageHeight, anchor);
   }
 
@@ -119,7 +119,7 @@ export class PaginationEngine {
     pageHeight: number,
     options?: IncrementalMeasurementOptions,
   ): Promise<Page[]> {
-    const chunks = await measureChunksIncrementally(bodyElement, options);
+    const chunks = await measureChunksIncrementally(bodyElement, options, pageHeight);
     options?.signal?.throwIfAborted();
     return this.plan(bodyElement, chunks, pageHeight);
   }

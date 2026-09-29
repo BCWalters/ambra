@@ -2,6 +2,8 @@
 
 In reflowable books, use **Expand table**, the small icon at a visible table’s upper edge, to open the **Table viewer** over your book. It dims the page without hiding it. Smaller tables stay centered; larger tables scroll within the available space. Nested tables share their outer table’s control. Fixed-layout pages retain their page-turn interaction and do not offer table expansion.
 
+Simple single-column text tables, such as some books’ contents lists, flow between pages one row at a time. These do not show **Expand table** when all their content fits through normal reading. Tables with complex structure, horizontal overflow, or a row taller than a page retain the viewer.
+
 ## Zoom and move around
 
 The viewer starts at **100%**. **Zoom in**, **Zoom out**, and **Actual size** scale the complete table, not its font size. Zoom ranges from 25% to 400%. Scroll horizontally and vertically with native scrollbars, a trackpad, touch, or the keyboard. Unmodified `+`, `−`, and `0` control viewer zoom; browser Ctrl/Cmd zoom shortcuts remain native.

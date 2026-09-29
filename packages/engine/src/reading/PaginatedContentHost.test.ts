@@ -85,6 +85,23 @@ describe("paginated viewport and animation paint clipping", () => {
     host.dispose();
   });
 
+  it("caps oversized content at the footer in normal, overlay and animation paths", () => {
+    const { host, body } = fixture();
+    Reflect.set(host, "pages", [
+      new Page(0, { node: body }, { node: body, offset: 1 }, 0, 1500),
+    ]);
+    host.goToPageIndex(0);
+    expect(host.element.style.clipPath).toBe("inset(80px 0 80px 0)");
+    const close = host.revealReaderOverlay();
+    expect(body.style.clipPath).toBe("polygon(0 0px, 100% 0px, 100% 740px, 0 740px)");
+    host.suppressClipPathForAnimation();
+    close();
+    expect(body.style.clipPath).toBe("polygon(0 0px, 100% 0px, 100% 740px, 0 740px)");
+    host.restoreNaturalHeight();
+    expect(host.element.style.clipPath).toBe("inset(80px 0 80px 0)");
+    host.dispose();
+  });
+
   it.each([0, 1])("moves page %i clipping inside the iframe without resizing or changing translation", page => {
     const { host, body } = fixture();
     host.goToPageIndex(page);

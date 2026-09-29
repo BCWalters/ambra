@@ -60,6 +60,7 @@ export { measureChunks, measureChunksIncrementally, isBlockLevel, isLeaf, isAtom
 export type { IncrementalMeasurementOptions } from "./layout/LineMeasurement.js";
 export type { PaginationSnapshot } from "./layout/PaginationSnapshot.js";
 export type { Chunk } from "./layout/LineMeasurement.js";
+export { measureSimpleTableRows } from "./layout/SimpleTable.js";
 export { globalTextOffsetToPosition, totalTextLength } from "./layout/DomTextWalker.js";
 export { ScrollViewEngine } from "./layout/ScrollViewEngine.js";
 export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } from "./layout/ScrollPositionTracker.js";

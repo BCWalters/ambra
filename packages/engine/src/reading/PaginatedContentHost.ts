@@ -430,9 +430,13 @@ export class PaginatedContentHost {
     // its painted output to exactly the page-content band regardless of
     // what the transform happens to place above/below it, independent of
     // how much natural gap the surrounding content has.
-    const bottom = Math.max(0, this.height - this.insetTop - page.height);
+    const bottom = Math.max(0, this.height - this.insetTop - this.visibleContentHeight(page.height));
     this.sandboxedHost.element.style.clipPath = `inset(${this.insetTop}px 0 ${bottom}px 0)`;
     if (this.readerOverlay || this.animationClip) this.applyInternalClip();
+  }
+
+  private visibleContentHeight(pageHeight: number): number {
+    return Math.max(0, Math.min(pageHeight, this.height - this.insetTop - this.insetBottom));
   }
 
   /** Top-layer UI escapes body clipping, but not the iframe's own clip. Give it
@@ -466,7 +470,7 @@ export class PaginatedContentHost {
     // The engine applies a translation (not scaling) to body. Convert the
     // existing viewport clip to its local coordinates without repagination.
     const top = this.insetTop - body.getBoundingClientRect().top;
-    const bottom = top + page.height;
+    const bottom = top + this.visibleContentHeight(page.height);
     body.style.setProperty("clip-path",
       `polygon(0 ${top}px, 100% ${top}px, 100% ${bottom}px, 0 ${bottom}px)`, "important");
   }

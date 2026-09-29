@@ -230,6 +230,26 @@ measurements. Run it with:
 AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e run test:e2e reflowable-animation-handoff.spec.ts
 ```
 
+## Simple contents-table pagination (#241)
+
+The measurement suite checks row-level pagination, viewer suppression, safe
+fallbacks, and footer clipping in single pages and spreads:
+
+```sh
+pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts
+```
+
+To also verify the reported Project Gutenberg Frankenstein contents table:
+
+```sh
+AMBRA_SIMPLE_TABLE_EPUB="$HOME/Downloads/pg84-images-3.epub" \
+  pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts \
+  --grep 'local contents table'
+```
+
+The local book remains outside the repository. That opt-in run disables traces
+and screenshots and checks all 28 links at multiple widths and font sizes.
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the

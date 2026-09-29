@@ -4,10 +4,12 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import type * as Engine from "../../../packages/engine/src/index.js";
+import type * as TableControls from "../../extension/src/reader/TableControls.js";
 
 declare global {
   interface Window {
     paginationEngine: typeof Engine;
+    tableControls: typeof TableControls;
   }
 }
 
@@ -15,7 +17,9 @@ const root = path.resolve(import.meta.dirname, "../../..");
 let code: string;
 
 // Local publication content must not end up in traces or screenshots.
-if (process.env.AMBRA_BREAK_INSIDE_EPUB) test.use({ trace: "off", screenshot: "off" });
+if (process.env.AMBRA_BREAK_INSIDE_EPUB || process.env.AMBRA_SIMPLE_TABLE_EPUB) {
+  test.use({ trace: "off", screenshot: "off" });
+}
 
 test.beforeAll(async () => {
   const require = createRequire(path.join(root, "apps/extension/package.json"));
@@ -29,6 +33,16 @@ test.beforeAll(async () => {
     },
   });
   code = (Array.isArray(bundle) ? bundle[0] : bundle).output.find(
+    (output: { type: string }) => output.type === "chunk",
+  ).code;
+  const controls = await build({
+    configFile: false, logLevel: "error",
+    build: {
+      write: false, minify: false,
+      lib: { entry: path.join(root, "apps/extension/src/reader/TableControls.ts"), formats: ["iife"], name: "tableControls" },
+    },
+  });
+  code += "\n" + (Array.isArray(controls) ? controls[0] : controls).output.find(
     (output: { type: string }) => output.type === "chunk",
   ).code;
 });
@@ -93,6 +107,315 @@ function book(content: string): string {
   const bytes = fs.readFileSync(output).toString("base64");
   fs.rmSync(directory, { recursive: true, force: true });
   return bytes;
+}
+
+test("simple contents tables paginate intact rows, suppress zoom, and preserve anchors", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:300px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.innerHTML = `<style>
+        body{margin:0;font:18px/24px Arial} p{margin:0}
+        table{margin:auto;border-spacing:0;width:180px} td{padding:2px}
+      </style><p>Contents</p><table id="contents"><tbody>${Array.from({ length: 28 }, (_, i) =>
+        `<tr><td><a id="link${i}" href="#target">Chapter ${i + 1}${i === 4 ? " with a longer title that wraps across lines" : ""}</a></td></tr>`).join("")}
+      </tbody></table><p id="target">After the contents</p>`;
+      const original = doc.body.innerHTML;
+      E.ReadingTheme.applyPageContentHeight(doc, 140);
+      const table = doc.querySelector("table")!;
+      const rows = E.measureSimpleTableRows(table, 140)!;
+      const pages = E.PaginationEngine.paginate(doc.body, 140);
+      const incremental = await E.PaginationEngine.paginateIncrementally(doc.body, 140, { timeSliceMs: 1 });
+      const parity = pages.length === incremental.length && pages.every((page, i) => {
+        const other = incremental[i]!;
+        return page.topY === other.topY && page.bottomY === other.bottomY &&
+          page.startBreak.node === other.startBreak.node && page.startBreak.offset === other.startBreak.offset;
+      });
+      const rowPages = rows.map(row => E.PaginationEngine.findPageForPosition(
+        pages, row.element.querySelector("a")!.firstChild!, 0, doc)!);
+      const fullyContained = rows.every((row, i) =>
+        row.top >= rowPages[i]!.topY && row.bottom <= rowPages[i]!.bottomY);
+      const paintedOnce = rows.every(row =>
+        pages.filter(page => row.top >= page.topY && row.bottom <= page.bottomY).length === 1);
+      const anchor = doc.querySelector("#link12")!.firstChild!;
+      const forced = E.PaginationEngine.paginate(doc.body, 140, { node: anchor, offset: 2 });
+      const anchored = E.PaginationEngine.findPageForPosition(forced, anchor, 2, doc)!;
+      const tableAnchorPage = E.PaginationEngine.findPageForPosition(pages, table, 0, doc)!;
+      const cleanup = window.tableControls.attachTableControls(doc, "Expand table", () => {}, () => pages[1]);
+      const controls = doc.querySelector("[data-ambra-table-controls]")!.shadowRoot!;
+      const noZoom = controls.querySelectorAll("button:popover-open").length === 0;
+      cleanup();
+      const originalUnchanged = original === doc.body.innerHTML;
+      // A fitting table stays whole even when there is insufficient room on the current page.
+      table.querySelectorAll("tr").forEach((row, i) => { if (i >= 3) row.remove(); });
+      doc.querySelector("p")!.style.height = "80px";
+      const shortRows = E.measureSimpleTableRows(table, 140)!;
+      const shortPages = E.PaginationEngine.paginate(doc.body, 140);
+      const shortPage = E.PaginationEngine.findPageForPosition(shortPages, table, 0, doc)!;
+      return {
+        count: rows.length, parity, fullyContained, paintedOnce, noZoom,
+        wrappedRow: rows[4]!.bottom - rows[4]!.top > rows[0]!.bottom - rows[0]!.top,
+        pages: new Set(rowPages.map(page => page.index)).size,
+        maxHeight: Math.max(...pages.map(page => page.height)),
+        anchorTop: anchored.topY === rows[12]!.top,
+        tableAnchor: tableAnchorPage.index === rowPages[0]!.index,
+        shortWhole: shortRows.every(row => row.top >= shortPage.topY && row.bottom <= shortPage.bottomY),
+        originalUnchanged,
+      };
+    });
+    expect(result.count).toBe(28);
+    expect(result.wrappedRow).toBe(true);
+    expect(result.parity).toBe(true);
+    expect(result.fullyContained).toBe(true);
+    expect(result.paintedOnce).toBe(true);
+    expect(result.noZoom).toBe(true);
+    expect(result.pages).toBeGreaterThan(1);
+    expect(result.maxHeight).toBeLessThanOrEqual(140);
+    expect(result.anchorTop).toBe(true);
+    expect(result.tableAnchor).toBe(true);
+    expect(result.shortWhole).toBe(true);
+    expect(result.originalUnchanged).toBe(true);
+  } finally { await session.close(); }
+});
+
+test("complex, overflowing and oversized-row tables retain atomic measurement and viewer controls", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:300px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      const cases = [
+        '<tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr>',
+        '<tr><td rowspan="2">A</td></tr><tr><td>B</td></tr>',
+        '<tr><td colspan="2">A</td></tr><tr><td>B</td></tr>',
+        '<caption>Data</caption><tr><td>A</td></tr><tr><td>B</td></tr>',
+        '<thead><tr><th>Heading</th></tr></thead><tbody><tr><td>A</td></tr><tr><td>B</td></tr></tbody>',
+        '<tr><td><table><tr><td>Nested</td></tr></table></td></tr><tr><td>B</td></tr>',
+        '<tr><td style="height:400px">Tall</td></tr><tr><td>B</td></tr>',
+        '<tr><td style="min-width:800px">Wide</td></tr><tr><td>B</td></tr>',
+        '<tr><td><span style="display:inline-block;width:5px;overflow:hidden">Clipped text</span></td></tr><tr><td>B</td></tr>',
+        '<tr><td><span style="position:relative;top:300px">Offset</span></td></tr><tr><td>B</td></tr>',
+        '<tr><td><img alt="Graphic" width="20" height="20"/></td></tr><tr><td>B</td></tr>',
+      ];
+      return cases.map(markup => {
+        doc.body.innerHTML = `<style>body{margin:0;font:18px/24px Arial}</style><table>${markup}</table>`;
+        E.ReadingTheme.applyPageContentHeight(doc, 140);
+        const table = doc.querySelector("table")!;
+        const eligible = !!E.measureSimpleTableRows(table, 140);
+        const chunks = E.measureChunks(doc.body, 140);
+        const pages = E.PaginationEngine.paginate(doc.body, 140);
+        const cleanup = window.tableControls.attachTableControls(doc, "Expand table", () => {}, () => pages[0]);
+        const viewer = doc.querySelector("[data-ambra-table-controls]")!.shadowRoot!
+          .querySelectorAll("button:popover-open").length;
+        cleanup();
+        return { markup, eligible, chunks: chunks.length, viewer };
+      });
+    });
+    for (const result of results) {
+      expect(result.eligible, result.markup).toBe(false);
+      expect(result.chunks, result.markup).toBe(1);
+      expect(result.viewer, result.markup).toBe(1);
+    }
+  } finally { await session.close(); }
+});
+
+test("table controls follow row-fit changes and scroll mode without exposing unnecessary zoom", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:300px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.innerHTML = '<style>body{margin:0}td{height:30px}</style><table><tr><td>A</td></tr><tr><td>B</td></tr></table>';
+      E.ReadingTheme.applyPageContentHeight(doc, 140);
+      const page = new E.Page(0, { node: doc.body }, { node: doc.body, offset: 2 }, 0, 200);
+      let paginated = true;
+      const cleanup = window.tableControls.attachTableControls(doc, "Expand table", () => {},
+        () => paginated ? page : undefined);
+      const button = doc.querySelector("[data-ambra-table-controls]")!.shadowRoot!.querySelector("button")!;
+      const hiddenInitially = !button.matches(":popover-open");
+      const row = doc.querySelector("td")!;
+      row.style.height = "160px";
+      const settle = () => new Promise<void>(resolve =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      await settle();
+      const fallbackShown = button.matches(":popover-open");
+      row.style.height = "30px";
+      await settle();
+      const hiddenAfterResize = !button.matches(":popover-open");
+      paginated = false;
+      E.ReadingTheme.applyPageContentHeight(doc, undefined);
+      doc.dispatchEvent(new Event("scroll"));
+      await settle();
+      const hiddenInScroll = !button.matches(":popover-open");
+      cleanup();
+      return { hiddenInitially, fallbackShown, hiddenAfterResize, hiddenInScroll };
+    });
+    expect(result).toEqual({
+      hiddenInitially: true, fallbackShown: true, hiddenAfterResize: true, hiddenInScroll: true,
+    });
+  } finally { await session.close(); }
+});
+
+test("simple-table row geometry is measured once and page planning performs no layout queries", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:300px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.innerHTML = `<table>${"<tr><td>Contents entry</td></tr>".repeat(1000)}</table>`;
+      // Instrument this document's realm, not the parent harness.
+      const elementPrototype = Object.getPrototypeOf(Object.getPrototypeOf(doc.body));
+      const rangePrototype = Object.getPrototypeOf(doc.createRange());
+      const box = elementPrototype.getBoundingClientRect;
+      const rects = rangePrototype.getClientRects;
+      let boxes = 0;
+      let ranges = 0;
+      elementPrototype.getBoundingClientRect = function () {
+        boxes++;
+        return box.call(this);
+      };
+      rangePrototype.getClientRects = function () {
+        ranges++;
+        return rects.call(this);
+      };
+      try {
+        const chunks = E.measureChunks(doc.body, 140);
+        const measurementBoxes = boxes;
+        const measurementRanges = ranges;
+        boxes = ranges = 0;
+        const pages = E.planPageBreaks(chunks, 140, { node: doc.body, offset: doc.body.childNodes.length });
+        return { chunks: chunks.length, pages: pages.length, measurementBoxes, measurementRanges,
+          planningBoxes: boxes, planningRanges: ranges };
+      } finally {
+        elementPrototype.getBoundingClientRect = box;
+        rangePrototype.getClientRects = rects;
+      }
+    });
+    expect(result.chunks).toBe(1000);
+    expect(result.pages).toBeGreaterThan(100);
+    expect(result.measurementBoxes).toBe(1001);
+    expect(result.measurementRanges).toBe(1000);
+    expect(result.planningBoxes).toBe(0);
+    expect(result.planningRanges).toBe(0);
+  } finally { await session.close(); }
+});
+
+for (const source of ["synthetic", "local"] as const) {
+  test(`${source} contents table paints all 28 links once in single pages and spreads (#241)`, async () => {
+    const file = process.env.AMBRA_SIMPLE_TABLE_EPUB;
+    test.skip(source === "local" && !file, "Set AMBRA_SIMPLE_TABLE_EPUB to pg84-images-3.epub.");
+    const bytes = source === "local" ? fs.readFileSync(file!).toString("base64") : book(
+      `<h2>Contents</h2><table style="margin:auto"><tbody>${Array.from({ length: 28 }, (_, i) =>
+        `<tr><td><a href="#end">Chapter ${i + 1}</a></td></tr>`).join("")}
+      </tbody></table><p id="end">After contents</p>`,
+    );
+    const session = await browser();
+    try {
+      const results = await session.page.evaluate(async bytes => {
+        const E = window.paginationEngine;
+        const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+          Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+        ));
+        const resolver = new E.ResourceUrlResolver(loader);
+        let spineIndex = -1;
+        for (let index = 0; index < loader.packageDocument.spine.length; index++) {
+          const parsed = await loader.loadSpineDocument(index);
+          if (Array.from(parsed.document.querySelectorAll("table")).some(table =>
+            table.querySelectorAll("tr").length === 28 && table.querySelectorAll("a[href]").length === 28)) {
+            spineIndex = index;
+            break;
+          }
+        }
+        if (spineIndex < 0) throw new Error("Expected a contents table with 28 linked rows.");
+        const results = [];
+        for (const [width, height, scale, spread] of [
+          [680, 900, 1, false], [480, 500, 1.5, false], [1400, 700, 1, true],
+        ] as const) {
+          const host = spread ? new E.SpreadPaginatedHost(width, height) : new E.PaginatedContentHost(width, height);
+          document.body.append(host.element);
+          const configure = (doc: Document) => E.ReadingTheme.applyFontScale(doc, scale);
+          if (host instanceof E.SpreadPaginatedHost) {
+            await host.openSpread(loader, resolver, {
+              first: { spineIndex, pageIndex: 0 }, second: { spineIndex, pageIndex: 1 },
+            }, configure);
+          } else await host.open(loader, resolver, spineIndex, undefined, configure);
+          const counts = Array<number>(28).fill(0);
+          let visibleViewers = 0;
+          let footerViolations = 0;
+          const pages = host.pageCount;
+          for (let pageIndex = 0; pageIndex < pages; pageIndex += spread ? 2 : 1) {
+            if (host instanceof E.SpreadPaginatedHost) {
+              host.tryGoToSpread({
+                first: { spineIndex, pageIndex },
+                ...(pageIndex + 1 < pages ? { second: { spineIndex, pageIndex: pageIndex + 1 } } : {}),
+              });
+            } else host.goToPageIndex(pageIndex);
+            const views = host instanceof E.SpreadPaginatedHost
+              ? host.documentViews()
+              : [{ ...host.currentPageAndDocument()!, revealOverlay: () => host.revealReaderOverlay() }];
+            for (const view of views) {
+              const doc = view.document;
+              const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+              const clip = frame.style.clipPath.match(/[\d.]+/g)!.map(Number);
+              const top = clip[0]!;
+              const bottom = height - clip[2]!;
+              const budget = Number.parseFloat(doc.documentElement.style.getPropertyValue(E.ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY));
+              if (bottom > top + budget + 0.1) footerViolations++;
+              const table = Array.from(doc.querySelectorAll("table")).find(table => table.rows.length === 28)!;
+              const links = table.querySelectorAll("a[href]");
+              links.forEach((link, index) => {
+                const range = doc.createRange();
+                range.selectNodeContents(link);
+                const rect = range.getBoundingClientRect();
+                if (rect.top >= top - 0.1 && rect.bottom <= bottom + 0.1) counts[index]!++;
+              });
+              const cleanup = window.tableControls.attachTableControls(doc, "Expand table", () => {}, () => view.page);
+              visibleViewers += doc.querySelector("[data-ambra-table-controls]")!.shadowRoot!
+                .querySelectorAll("button:popover-open").length;
+              cleanup();
+              if (!view.revealOverlay) throw new Error("Expected paginated overlay clipping.");
+              const clipCoordinates = () => doc.body.style.clipPath.slice(8, -1).split(",")
+                .map(point => Number.parseFloat(point.trim().split(/\s+/).at(-1)!));
+              const close = view.revealOverlay();
+              const polygon = clipCoordinates();
+              if (Math.abs((polygon[2]! - polygon[0]!) - (bottom - top)) > 0.1) footerViolations++;
+              close();
+              if (host instanceof E.PaginatedContentHost) {
+                host.suppressClipPathForAnimation();
+                const animation = clipCoordinates();
+                if (Math.abs((animation[2]! - animation[0]!) - (bottom - top)) > 0.1) footerViolations++;
+                host.restoreNaturalHeight();
+              }
+            }
+          }
+          results.push({ width, height, scale, spread, pages, counts, visibleViewers, footerViolations });
+          host.dispose();
+          host.element.remove();
+        }
+        resolver.dispose();
+        return results;
+      }, bytes);
+      for (const result of results) {
+        expect(result.pages, JSON.stringify(result)).toBeGreaterThan(1);
+        expect(result.counts, JSON.stringify(result)).toEqual(Array<number>(28).fill(1));
+        expect(result.visibleViewers).toBe(0);
+        expect(result.footerViolations).toBe(0);
+      }
+    } finally { await session.close(); }
+  });
 }
 
 for (const declaration of [
