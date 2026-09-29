@@ -1,15 +1,23 @@
 # Table viewer
 
-In reflowable books, use **Expand table**, the small icon at a visible table’s upper edge, to open the **Table viewer** over your book. Like the image viewer, it dims the page without hiding it, with a centered table surface and floating zoom controls. The surface follows the table’s width and height, including when zooming, so smaller tables remain centered without an empty area beside them; larger tables scroll within the available space. Nested tables share their outer table’s control. Fixed-layout pages retain their existing page-turn interaction and do not expose table controls.
+In reflowable books, use **Expand table**, the small icon at a visible table’s upper edge, to open the **Table viewer** over your book. It dims the page without hiding it. Smaller tables stay centered; larger tables scroll within the available space. Nested tables share their outer table’s control. Fixed-layout pages retain their page-turn interaction and do not offer table expansion.
+
+## Zoom and move around
 
 The viewer starts at **100%**. **Zoom in**, **Zoom out**, and **Actual size** scale the complete table, not its font size. Zoom ranges from 25% to 400%. Scroll horizontally and vertically with native scrollbars, a trackpad, touch, or the keyboard. Unmodified `+`, `−`, and `0` control viewer zoom; browser Ctrl/Cmd zoom shortcuts remain native.
 
-When system scrollbars occupy space, the viewer allows for their width rather than letting the vertical scrollbar clip a table that otherwise fits. The table itself remains centered; horizontal scrolling is retained for tables wider than the available area.
-
-**Close**, Escape, or clicking the dimmed background returns focus to the source control without changing the chapter or page. Clicking the table, its scrollbars, or zoom controls does not dismiss it. Tab stays within the viewer, including when focus is inside the table frame. Zoom resets on the next opening. Navigating away closes the viewer.
-
 Tab also reaches disclosures and overflowing code blocks inside table cells. Use arrow keys on a focused code block to scroll its contents without moving the reading page.
 
-The table remains selectable, semantic HTML in a script-disabled sandbox. Publisher styles, prepared local resource URLs, table IDs/header associations, captions, and the ancestor selector/inheritance context are retained. Only the table and its ancestor chain are copied; unrelated chapter content is not. Pagination transforms, clipping, and empty chapter-container width are removed in the copy. The table's rendered width is retained so fitting the viewer does not repeatedly shrink percentage-width tables. Current page-theme variables are retained. Selectors depending on omitted siblings cannot be reproduced in full.
+## Return to the book
 
-Links are read-only, form controls are disabled, and scripts, embedded browsing contexts, and active media are removed. Native details disclosures remain usable by pointer and keyboard inside the copy, without changing the source. Authored image roles and labels are preserved independently of the reading surface's image-zoom affordance. Network access, form submission, and navigation are blocked. Unavailable resources are reported rather than fetched remotely. Closing disposes the frame and its document URL; shared book resources remain owned by the reading session. The original table, reading layout, CFIs, and page count are not modified.
+**Close**, Escape, or clicking the dimmed background returns focus to the source control without changing the chapter or page. Clicking the table, its scrollbars, or zoom controls does not dismiss it. Tab stays within the viewer. Zoom resets on the next opening. Navigating away closes the viewer.
+
+## What the viewer preserves
+
+The table remains selectable HTML, retaining captions, header relationships, image labels, publisher styling, and your current page theme where supported. It is an isolated copy of the table, not the surrounding chapter, so styling that depends on omitted neighboring content may differ.
+
+Links are read-only, forms are disabled, and scripts, embedded browsing contexts, and active media are removed. Details disclosures remain usable with pointer or keyboard without changing the source table. Network access and navigation are blocked; unavailable resources are reported rather than fetched remotely.
+
+Opening or zooming the viewer does not modify the original table, your reading layout, saved locations, or page count.
+
+[Back to Reading tips](reading-tips.md#look-closer-at-images-and-tables) · [Back to the Ambra guide](README.md)

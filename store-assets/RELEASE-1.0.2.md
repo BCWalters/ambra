@@ -54,6 +54,15 @@ For the listing's **official website/homepage URL**, use:
 https://ambraepub.org/
 ```
 
+For the listing's **Support URL**, use the final guide page:
+
+```text
+https://ambraepub.org/en/docs/report-issues/
+```
+
+Deploy and check that page before submitting the store update. It offers issue
+reports and feature requests through GitHub, with email as an alternative.
+
 [store-listing.md](store-listing.md) contains the approved description with the
 two URL replacements. If the live dashboard prose differs, preserve that prose
 and replace its URLs rather than overwriting it wholesale from this file.
