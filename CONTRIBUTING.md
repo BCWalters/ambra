@@ -24,6 +24,16 @@ Do not run a production build over another process's live `apps/extension/dist`.
 Coordinate before restarting shared development processes. Browser tests use an
 isolated output directory; see the [browser-test guide](apps/e2e/README.md).
 
+## Finding real-book test candidates
+
+Before writing a one-off archive search, check the [EPUB discovery tools](scripts/README.md).
+`pnpm scan:epubs ~/Downloads` finds CSS break-avoid declarations;
+`--css`, `--tag`, and `--class` find other content features. Scanning is local and
+read-only, including inline styles, with full JSON results available for analysis.
+Treat results as candidates, not proof of rendered behavior. Do not commit or
+publish private EPUBs or unredacted library reports. Add new reusable detectors
+and original synthetic tests to the tool so future contributors can find them.
+
 ## Checks and pull requests
 
 1. Create a topic branch; do not push directly to `main`.

@@ -11,7 +11,9 @@
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm --filter @ambra/extension run dev",
-    "test": "pnpm -r run test",
+    "test": "pnpm run test:tools && pnpm -r run test",
+    "test:tools": "node --test scripts/*.test.mjs",
+    "scan:epubs": "node scripts/scan-epubs.mjs",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -20,9 +22,13 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fflate": "^0.8.2",
     "globals": "^17.12.0",
+    "parse5": "^8.0.0",
+    "postcss": "^8.5.28",
     "prettier": "^3.9.0",
     "typescript": "^6.0.0",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.70.0",
+    "yauzl": "^3.2.0"
   }
 }
