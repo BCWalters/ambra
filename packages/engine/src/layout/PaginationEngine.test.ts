@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planPageBreaks } from "./PaginationEngine.js";
-import type { Chunk } from "./LineMeasurement.js";
+import type { AvoidanceGroup, Chunk } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
 
 const END_OF_DOC: DomBreakPoint = { node: {} as Node, offset: 0 };
@@ -9,7 +9,83 @@ function chunk(top: number, bottom: number, breakNode: string): Chunk {
   return { top, bottom, breakBefore: { node: { name: breakNode } as unknown as Node } };
 }
 
+function grouped(chunks: Chunk[], group: AvoidanceGroup): Chunk[] {
+  return chunks.map(chunk => ({ ...chunk, avoidanceGroups: [...chunk.avoidanceGroups ?? [], group] }));
+}
+
 describe("planPageBreaks", () => {
+  it("moves a fitting avoidance box to the next page, including its border/padding bounds", () => {
+    const chunks = [
+      chunk(0, 60, "before"),
+      ...grouped([chunk(75, 95, "note-heading"), chunk(105, 125, "note-text")], { top: 70, bottom: 130 }),
+      chunk(140, 160, "after"),
+    ];
+    const pages = planPageBreaks(chunks, 100, END_OF_DOC);
+    expect(pages.map(page => [page.topY, page.bottomY])).toEqual([[0, 60], [70, 160]]);
+    expect(pages[0]!.endBreak).toBe(chunks[1]!.breakBefore);
+  });
+
+  it("keeps an exactly page-sized group together without an empty leading page", () => {
+    const chunks = grouped([chunk(10, 40, "heading"), chunk(50, 90, "body")], { top: 0, bottom: 100 });
+    expect(planPageBreaks(chunks, 100, END_OF_DOC).map(page => page.height)).toEqual([100]);
+  });
+
+  it("relaxes an oversized outer box but honors fitting nested boxes", () => {
+    const chunks = grouped([
+      chunk(0, 60, "before"),
+      ...grouped([chunk(60, 80, "heading"), chunk(80, 120, "body")], { top: 60, bottom: 120 }),
+      chunk(120, 180, "after"),
+    ], { top: 0, bottom: 180 });
+    const pages = planPageBreaks(chunks, 100, END_OF_DOC);
+    expect(pages.map(page => [page.topY, page.bottomY])).toEqual([[0, 60], [60, 120], [120, 180]]);
+  });
+
+  it("retains line-level fallback for a single oversized avoidance box", () => {
+    const chunks = grouped([
+      chunk(0, 40, "a"), chunk(40, 80, "b"), chunk(80, 120, "c"), chunk(120, 160, "d"),
+    ], { top: 0, bottom: 160 });
+    expect(planPageBreaks(chunks, 100, END_OF_DOC).map(page => page.height)).toEqual([80, 80]);
+  });
+
+  it("an anchor inside a fitting box wins without reserving its tail on the preceding page", () => {
+    const chunks = [
+      chunk(0, 40, "before"),
+      ...grouped([chunk(40, 60, "heading"), chunk(60, 90, "anchor")], { top: 35, bottom: 95 }),
+    ];
+    const pages = planPageBreaks(chunks, 100, END_OF_DOC, chunks[2]!.breakBefore);
+    expect(pages.map(page => [page.topY, page.bottomY])).toEqual([[0, 60], [60, 90]]);
+    expect(pages[1]!.startBreak).toBe(chunks[2]!.breakBefore);
+  });
+
+  it("honors sibling nested groups when an anchor relaxes their shared outer box", () => {
+    const chunks = grouped([
+      ...grouped([chunk(0, 20, "a"), chunk(20, 40, "b")], { top: 0, bottom: 40 }),
+      chunk(40, 60, "anchor"),
+      ...grouped([chunk(60, 80, "c"), chunk(80, 100, "d")], { top: 60, bottom: 100 }),
+    ], { top: 0, bottom: 100 });
+    expect(planPageBreaks(chunks, 50, END_OF_DOC, chunks[2]!.breakBefore)
+      .map(page => [page.topY, page.bottomY])).toEqual([[0, 40], [40, 60], [60, 100]]);
+  });
+
+  it("uses group bounds in nonvisual DOM order without losing positioned content", () => {
+    const chunks = grouped([
+      chunk(160, 200, "positioned-heading"), chunk(54, 270, "image"), chunk(220, 240, "caption"),
+    ], { top: 54, bottom: 270 });
+    expect(planPageBreaks(chunks, 700, END_OF_DOC).map(page => [page.topY, page.bottomY]))
+      .toEqual([[54, 270]]);
+  });
+
+  it("examines each group's bounds once, not once per candidate page boundary", () => {
+    let boundsReads = 0;
+    const group = {
+      get top() { boundsReads++; return 0; },
+      get bottom() { boundsReads++; return 100_000; },
+    };
+    const chunks = grouped(Array.from({ length: 10_000 }, (_, i) => chunk(i * 10, i * 10 + 10, `${i}`)), group);
+    expect(planPageBreaks(chunks, 100, END_OF_DOC)).toHaveLength(1000);
+    expect(boundsReads).toBe(2);
+  });
+
   it("returns no pages for an empty chunk list", () => {
     expect(planPageBreaks([], 100, END_OF_DOC)).toEqual([]);
   });

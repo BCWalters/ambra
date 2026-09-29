@@ -14,6 +14,9 @@ declare global {
 const root = path.resolve(import.meta.dirname, "../../..");
 let code: string;
 
+// Local publication content must not end up in traces or screenshots.
+if (process.env.AMBRA_BREAK_INSIDE_EPUB) test.use({ trace: "off", screenshot: "off" });
+
 test.beforeAll(async () => {
   const require = createRequire(path.join(root, "apps/extension/package.json"));
   const { build } = await import(require.resolve("vite"));
@@ -91,6 +94,309 @@ function book(content: string): string {
   fs.rmSync(directory, { recursive: true, force: true });
   return bytes;
 }
+
+for (const declaration of [
+  "page-break-inside:avoid", "break-inside:avoid", "break-inside:avoid-page",
+  "break-inside:auto", "break-inside:avoid-column",
+]) {
+  test(`pagination respects Note boxes: ${declaration}`, async () => {
+    const session = await browser();
+    try {
+      const result = await session.page.evaluate(async declaration => {
+        const E = window.paginationEngine;
+        const frame = document.createElement("iframe");
+        frame.style.cssText = "width:680px;height:200px";
+        document.body.append(frame);
+        const doc = frame.contentDocument!;
+        doc.open();
+        doc.write(`<style>
+          body { margin:0; font:16px/20px Arial } p,h2 { margin:0; font:inherit }
+          aside.note { padding:8px; border:2px solid; ${declaration} }
+        </style><p>Before one<br>Before two<br>Before three</p>
+        <aside class="note" id="note" role="note"><h2>Note</h2><p id="anchor">First line<br>Second line</p></aside>
+        <p>After the note</p><div style="height:1000px"></div>`);
+        doc.close();
+        const original = doc.body.innerHTML;
+        const note = doc.querySelector("#note")!;
+        const rect = note.getBoundingClientRect();
+        const chunks = E.measureChunks(doc.body);
+        const noteChunks = chunks.filter(chunk => note.contains(chunk.breakBefore.node));
+        const pages = E.PaginationEngine.paginate(doc.body, 100);
+        const incremental = await E.PaginationEngine.paginateIncrementally(doc.body, 100, { timeSliceMs: 1 });
+        const notePages = [...new Set(noteChunks.map(chunk =>
+          E.PaginationEngine.findPageForPosition(pages, chunk.breakBefore.node, chunk.breakBefore.offset ?? 0, doc)!.index))];
+        const notePage = pages[notePages[0]!]!;
+        const anchor = { node: doc.querySelector("#anchor")!.firstChild!, offset: 2 };
+        const anchored = E.PaginationEngine.paginate(doc.body, 100, anchor);
+        const anchoredPage = E.PaginationEngine.findPageForPosition(anchored, anchor.node, anchor.offset, doc)!;
+        const anchorChunk = E.findChunkForPosition(chunks, anchor.node, anchor.offset)!;
+        const scroll = E.ScrollViewEngine.prepare(doc.body);
+        scroll.restorePosition(anchor.node, anchor.offset);
+        return {
+          noteChunks: noteChunks.length, notePages,
+          coversBox: notePage.topY <= rect.top && notePage.bottomY >= rect.bottom,
+          sameBoundaries: pages.length === incremental.length && pages.every((page, i) => {
+            const other = incremental[i]!;
+            return page.topY === other.topY && page.bottomY === other.bottomY &&
+              page.startBreak.node === other.startBreak.node && page.startBreak.offset === other.startBreak.offset &&
+              page.endBreak.node === other.endBreak.node && page.endBreak.offset === other.endBreak.offset;
+          }),
+          anchorAtTop: anchoredPage.topY === anchorChunk.top,
+          scrollChunksUnchanged: scroll.measuredChunks.length === chunks.length &&
+            scroll.measuredChunks.every((chunk, i) => chunk.top === chunks[i]!.top && chunk.bottom === chunks[i]!.bottom),
+          scrollTop: doc.scrollingElement!.scrollTop, expectedScrollTop: anchorChunk.top,
+          unchanged: doc.body.innerHTML === original,
+        };
+      }, declaration);
+      expect(result.noteChunks).toBeGreaterThan(2);
+      expect(result.notePages).toHaveLength(declaration.endsWith("auto") || declaration.endsWith("avoid-column") ? 2 : 1);
+      if (result.notePages.length === 1) expect(result.coversBox).toBe(true);
+      expect(result.sameBoundaries).toBe(true);
+      expect(result.anchorAtTop).toBe(true);
+      expect(result.scrollChunksUnchanged).toBe(true);
+      expect(result.scrollTop).toBeCloseTo(result.expectedScrollTop, 0);
+      expect(result.unchanged).toBe(true);
+    } finally { await session.close(); }
+  });
+}
+
+test("oversized avoidance boxes retain nested notes and mixed inline runs", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:680px;height:200px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.open();
+      doc.write(`<style>body{margin:0;font:16px/20px Arial}p{margin:0}
+        section{break-inside:avoid-page}</style>
+        <section id="outer">Outer introduction<br>Second line<br>Third line
+          <section id="note">Inline note <em>heading</em><p>Nested paragraph<br>Second note line</p>Inline tail</section>
+          <p>${"Oversized paragraph line<br>".repeat(12)}</p>
+        </section><p>After outer</p>`);
+      doc.close();
+      const chunks = E.measureChunks(doc.body);
+      const pages = E.PaginationEngine.paginate(doc.body, 100);
+      const incremental = await E.PaginationEngine.paginateIncrementally(doc.body, 100, { timeSliceMs: 1 });
+      const note = doc.querySelector("#note")!;
+      const noteChunks = chunks.filter(chunk => note.contains(chunk.breakBefore.node));
+      const notePages = new Set(noteChunks.map(chunk =>
+        E.PaginationEngine.findPageForPosition(pages, chunk.breakBefore.node, chunk.breakBefore.offset ?? 0, doc)!.index));
+      return {
+        count: pages.length, noteChunkCount: noteChunks.length, notePageCount: notePages.size,
+        heights: pages.map(page => page.height),
+        exactCoverage: chunks.every(chunk => pages.filter(page =>
+          page.containsPosition(chunk.breakBefore.node, chunk.breakBefore.offset ?? 0, doc)).length === 1),
+        sync: pages.map(page => [page.topY, page.bottomY]),
+        incremental: incremental.map(page => [page.topY, page.bottomY]),
+      };
+    });
+    expect(result.count).toBeGreaterThan(3);
+    expect(result.noteChunkCount).toBeGreaterThanOrEqual(4);
+    expect(result.notePageCount).toBe(1);
+    expect(result.heights.every(height => height <= 100)).toBe(true);
+    expect(result.exactCoverage).toBe(true);
+    expect(result.incremental).toEqual(result.sync);
+  } finally { await session.close(); }
+});
+
+test("overflowing nested avoidance boxes keep their fitting parent intact without duplicate slices", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      document.body.innerHTML = `<style>
+        body{margin:0;font:16px/20px Arial}p{margin:0}
+        #outer{position:relative;height:50px;break-inside:avoid}
+        #inner{position:absolute;top:30px;height:80px;border:1px solid;break-inside:avoid}
+      </style><p>Before one<br>Before two<br>Before three<br>Before four</p>
+      <section id="outer"><p>Parent text</p><aside id="inner">Nested text</aside></section>`;
+      const outer = document.querySelector("#outer")!;
+      const inner = document.querySelector("#inner")!;
+      const outerRect = outer.getBoundingClientRect();
+      const innerRect = inner.getBoundingClientRect();
+      const chunks = E.measureChunks(document.body);
+      const pages = E.PaginationEngine.paginate(document.body, 150);
+      const incremental = await E.PaginationEngine.paginateIncrementally(document.body, 150, { timeSliceMs: 1 });
+      const groupChunks = chunks.filter(chunk => outer.contains(chunk.breakBefore.node));
+      return {
+        groupBounds: [outerRect.top, innerRect.bottom],
+        overflow: innerRect.bottom > outerRect.bottom,
+        sync: pages.map(page => [page.topY, page.bottomY]),
+        incremental: incremental.map(page => [page.topY, page.bottomY]),
+        groupPages: [...new Set(groupChunks.map(chunk =>
+          E.PaginationEngine.findPageForPosition(pages, chunk.breakBefore.node, chunk.breakBefore.offset ?? 0, document)!.index))],
+        paintedOnce: chunks.every(chunk => pages.filter(page =>
+          chunk.top < page.bottomY && chunk.bottom > page.topY).length === 1),
+      };
+    });
+    expect(result.overflow).toBe(true);
+    expect(result.groupBounds).toEqual([80, 192]);
+    expect(result.sync).toHaveLength(2);
+    expect(result.sync[1]).toEqual(result.groupBounds);
+    expect(result.sync[0]![1]).toBeLessThanOrEqual(result.sync[1]![0]!);
+    expect(result.groupPages).toEqual([1]);
+    expect(result.paintedOnce).toBe(true);
+    expect(result.incremental).toEqual(result.sync);
+  } finally { await session.close(); }
+});
+
+test("1600 short poetry groups measure one box each and never query layout while planning", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      document.body.innerHTML = `<style>body{margin:0;font:16px/20px Arial}p{margin:0}
+        div.groupLines{page-break-inside:avoid}</style>` +
+        Array.from({ length: 1600 }, (_, i) => `<div class="groupLines"><p>Verse ${i}</p><p>First short line<br>Second short line</p></div>`).join("");
+      const original = Element.prototype.getBoundingClientRect;
+      const originalRanges = Range.prototype.getClientRects;
+      let boxes = 0;
+      let ranges = 0;
+      Element.prototype.getBoundingClientRect = function () { boxes++; return original.call(this); };
+      Range.prototype.getClientRects = function () { ranges++; return originalRanges.call(this); };
+      try {
+        const chunks = E.measureChunks(document.body);
+        const measuredBoxes = boxes;
+        const measuredRanges = ranges;
+        const pages = E.planPageBreaks(chunks, 100, { node: document.body, offset: document.body.childNodes.length });
+        const planningBoxes = boxes - measuredBoxes;
+        const planningRanges = ranges - measuredRanges;
+        const style = document.body.querySelector("style")!;
+        const fixtureStyle = style.textContent!;
+        style.textContent = fixtureStyle + "div.groupLines{break-inside:auto}";
+        boxes = ranges = 0;
+        const baseline = E.measureChunks(document.body);
+        const baselineBoxes = boxes;
+        const baselineRanges = ranges;
+        // Timing excludes instrumentation and stylesheet/layout setup. Alternate
+        // order each pair so warmup, GC and scheduling do not favor one mode.
+        Element.prototype.getBoundingClientRect = original;
+        Range.prototype.getClientRects = originalRanges;
+        const samples = {
+          auto: { measurement: [] as number[], planning: [] as number[] },
+          avoid: { measurement: [] as number[], planning: [] as number[] },
+        };
+        for (let pair = 0; pair < 13; pair++) {
+          const order = pair % 2 ? ["avoid", "auto"] as const : ["auto", "avoid"] as const;
+          for (const mode of order) {
+            style.textContent = fixtureStyle + `div.groupLines{break-inside:${mode}}`;
+            void document.body.offsetHeight;
+            const start = performance.now();
+            const measured = E.measureChunks(document.body);
+            const measuredAt = performance.now();
+            E.planPageBreaks(measured, 100, { node: document.body, offset: document.body.childNodes.length });
+            const plannedAt = performance.now();
+            if (pair >= 3) {
+              samples[mode].measurement.push(measuredAt - start);
+              samples[mode].planning.push(plannedAt - measuredAt);
+            }
+          }
+        }
+        const summarize = (values: number[]) => {
+          const sorted = [...values].sort((a, b) => a - b);
+          return { medianMs: (sorted[4]! + sorted[5]!) / 2, p95Ms: sorted[Math.ceil(sorted.length * 0.95) - 1]! };
+        };
+        const benchmark = Object.fromEntries(Object.entries(samples).map(([mode, sample]) =>
+          [mode, { measurement: summarize(sample.measurement), planning: summarize(sample.planning) }]));
+        return { benchmark, warmupPairs: 3, measuredPairs: 10,
+          measuredBoxes, measuredRanges, planningBoxes,
+          planningRanges, baselineBoxes, baselineRanges,
+          unchangedChunks: baseline.length === chunks.length && baseline.every((chunk, i) =>
+            chunk.top === chunks[i]!.top && chunk.bottom === chunks[i]!.bottom &&
+            chunk.breakBefore.node === chunks[i]!.breakBefore.node && chunk.breakBefore.offset === chunks[i]!.breakBefore.offset),
+          chunks: chunks.length, pages: pages.length };
+      } finally {
+        Element.prototype.getBoundingClientRect = original;
+        Range.prototype.getClientRects = originalRanges;
+      }
+    });
+    console.log("avoidance operation counts and warmed alternating benchmark", JSON.stringify(result, null, 2));
+    expect(result.measuredBoxes).toBe(1600);
+    expect(result.planningBoxes).toBe(0);
+    expect(result.planningRanges).toBe(0);
+    expect(result.baselineBoxes).toBe(0);
+    expect(result.measuredRanges).toBe(result.baselineRanges);
+    expect(result.unchangedChunks).toBe(true);
+    expect(result.pages).toBe(1600);
+  } finally { await session.close(); }
+});
+
+test.describe("opt-in local avoidance verification", () => {
+  test("fitting aside.note boxes in a local EPUB remain on one rendered page", async () => {
+    const file = process.env.AMBRA_BREAK_INSIDE_EPUB;
+    test.skip(!file, "Set AMBRA_BREAK_INSIDE_EPUB to a local EPUB with aside.note boxes.");
+    const bytes = fs.readFileSync(file!).toString("base64");
+    const session = await browser();
+    let result;
+    try {
+      result = await session.page.evaluate(async bytes => {
+        const E = window.paginationEngine;
+        const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+          Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+        ));
+        const resolver = new E.ResourceUrlResolver(loader);
+        const original = E.PaginationEngine.paginate;
+        const counts = { notes: 0, fitting: 0, oversized: 0, split: 0, baselineSplit: 0, clipChecks: 0, clipped: 0 };
+        let fittingNotes: { element: Element; pageIndex: number }[] = [];
+        E.PaginationEngine.paginate = (body, height, anchor) => {
+          const pages = original.call(E.PaginationEngine, body, height, anchor);
+          const chunks = E.measureChunks(body);
+          const baseline = E.planPageBreaks(chunks.map(chunk => ({
+            top: chunk.top, bottom: chunk.bottom, breakBefore: chunk.breakBefore,
+          })), height, { node: body, offset: body.childNodes.length });
+          const pageIndices = (selected: typeof chunks, planned: typeof pages) => new Set(selected.map(chunk =>
+            E.PaginationEngine.findPageForPosition(planned, chunk.breakBefore.node, chunk.breakBefore.offset ?? 0, body.ownerDocument)!.index));
+          for (const note of body.querySelectorAll("aside.note")) {
+            if (!["avoid", "avoid-page"].includes(getComputedStyle(note).breakInside)) continue;
+            const selected = chunks.filter(chunk => note.contains(chunk.breakBefore.node));
+            if (!selected.length) continue;
+            counts.notes++;
+            const rect = note.getBoundingClientRect();
+            const top = Math.min(rect.top, ...selected.map(chunk => chunk.top));
+            const bottom = Math.max(rect.bottom, ...selected.map(chunk => chunk.bottom));
+            if (bottom - top > height) { counts.oversized++; continue; }
+            counts.fitting++;
+            const indices = pageIndices(selected, pages);
+            if (indices.size > 1) counts.split++;
+            if (pageIndices(selected, baseline).size > 1) counts.baselineSplit++;
+            fittingNotes.push({ element: note, pageIndex: indices.values().next().value! });
+          }
+          return pages;
+        };
+        try {
+          for (let index = 0; index < loader.packageDocument.spine.length; index++) {
+            fittingNotes = [];
+            const host = new E.PaginatedContentHost(680, 900);
+            document.body.append(host.element);
+            try {
+              await host.open(loader, resolver, index);
+              for (const note of fittingNotes) {
+                host.goToPageIndex(note.pageIndex);
+                const rect = note.element.getBoundingClientRect();
+                const clip = host.element.style.clipPath.match(/[\d.]+/g)!.map(Number);
+                counts.clipChecks++;
+                if (rect.top < clip[0]! - 0.1 || rect.bottom > 900 - clip[2]! + 0.1) counts.clipped++;
+              }
+            } finally { host.dispose(); host.element.remove(); }
+          }
+        } finally {
+          E.PaginationEngine.paginate = original;
+          resolver.dispose();
+        }
+        return counts;
+      }, bytes);
+    } finally { await session.close(); }
+    console.log("local EPUB avoidance counts (no publication content)", result);
+    expect(result.notes).toBeGreaterThan(0);
+    expect(result.fitting).toBeGreaterThan(0);
+    expect(result.split).toBe(0);
+    expect(result.clipChecks).toBe(result.fitting);
+    expect(result.clipped).toBe(0);
+  });
+});
 
 test("offscreen semantic headings do not crop images; visible absolute content still counts (LTR/RTL)", async () => {
   const session = await browser();
