@@ -25,8 +25,6 @@ lengths. Bands follow the thumb during seeking and mirror for right-to-left book
 - Blue bookmark ribbons remain in their own lane below the track, even when
   progress landmarks are hidden.
 
-The footer matches the 56-pixel top toolbar in both settings.
-
 The slider's accessible description reports available reading boundaries.
 While pagination finishes, the centered status reads "Mapping your book…".
 
@@ -38,21 +36,20 @@ Changing font size, window size, or layout can change both positions and detail.
 The seek popup uses the destination's measured TOC section, including when
 several chapters share one EPUB content file.
 
-The bar uses the TOC's leaf chapters first, then its top-level groups.
-Linked parent headings are not counted again as chapters. Where reading
-landmarks declare a range, TOC entries before the start or at/after the back
-matter are excluded from these candidates. A single wrapper around the reading
-work is ignored as a grouping level, even when it has front/back matter siblings.
-A level is shown when it has at most 100 distinct targets in reading order.
-There is no minimum gap: short chapters keep their actual positions, even if
-nearby ticks visually merge on a narrow screen. A flat TOC with more than 100
-targets is not sampled: its chapter marks are omitted. Missing targets or
-backwards navigation also prevent that level from being shown.
+The bar tries individual TOC chapters first, then broader top-level groups.
+Parent headings are not counted again as chapters, and declared front/back
+matter is kept separate from the main reading range. Very large TOCs may show
+groups or only reading landmarks rather than every chapter. Missing targets
+or entries out of reading order can also reduce the detail shown. Short chapters
+keep their actual positions, even when nearby marks visually merge on a narrow
+screen.
 
 Reading landmarks take priority over nearby chapter ticks. If the two reading
 boundaries themselves would overlap, only the start is shown.
 
-No title matching or first/last-file guesses are used. Books without EPUB3
-semantic landmarks (including NCX-only books) may therefore have chapter marks
-but no reading boundaries. An unspecified end is left unmarked rather than
-presenting a guess as fact. Fixed-layout positions use page-level precision.
+Reading boundaries come from the book's declared landmarks, not guesses based
+on chapter titles. Books without EPUB3 semantic landmarks (including NCX-only
+books) may therefore have chapter marks but no reading boundaries. An
+unspecified end is left unmarked. Fixed-layout positions use page-level precision.
+
+[Back to Book Navigation](book-navigation.md#move-along-the-progress-bar) · [Back to the Ambra guide](README.md)

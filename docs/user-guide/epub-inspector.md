@@ -35,4 +35,4 @@ The Inspector is a **read-only inspection and debugging aid**, not an EPUB edito
 
 Your imported EPUB remains unchanged by inspection. Use your authoring tools to make repairs and appropriate validation tools to check the result.
 
-[Back to the Ambra guide](README.md) · [Source and feedback](https://github.com/BCWalters/ambra)
+[Report Issues / Request Features](report-issues.md) · [Back to the Ambra guide](README.md) · [Source](https://github.com/BCWalters/ambra)
