@@ -135,6 +135,12 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
     await expect.poll(() => position(page)).toEqual(before);
     await page.reload();
     await expect(page.locator("iframe").first()).toBeAttached();
+    // The iframe mounts before the resumed book finishes loading.
+    await exposeReaderController(page);
+    await expect.poll(() => page.evaluate(() => {
+      const { hasRenderedContent, isLoading } = Reflect.get(window, "__readerController").snapshot();
+      return { hasRenderedContent, isLoading };
+    })).toEqual({ hasRenderedContent: true, isLoading: false });
     await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
     await expect(welcome(page)).toHaveCount(0);
     await reopen(page);
