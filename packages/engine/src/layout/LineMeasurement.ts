@@ -5,6 +5,7 @@ import {
   totalTextLength,
 } from "./DomTextWalker.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
+import { measureSimpleTableRows } from "./SimpleTable.js";
 
 /** A single indivisible unit of content for pagination purposes: either
  * one visual line of text within a "leaf" block element, or one whole
@@ -334,7 +335,7 @@ function hasReachedLine(
  * meaningfully exercised in a DOM-polyfill test environment like
  * happy-dom, which doesn't implement real layout.
  */
-function* chunkMeasurements(bodyElement: Element): Generator<Chunk | undefined> {
+function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator<Chunk | undefined> {
   const ownerDocument = bodyElement.ownerDocument;
   const viewportWidth = ownerDocument.documentElement.clientWidth;
 
@@ -357,6 +358,23 @@ function* chunkMeasurements(bodyElement: Element): Generator<Chunk | undefined> 
       return { ...chunk, avoidanceGroups: groups };
     };
     if (!("root" in leaf) && isAtomic(leaf)) {
+      if (leaf.localName === "table") {
+        const rows = measureSimpleTableRows(leaf as HTMLTableElement, pageHeight);
+        if (rows) {
+          // Keep fitting tables whole; the planner relaxes this group when oversized.
+          const tableGroup = { top: rows[0]!.top, bottom: rows[rows.length - 1]!.bottom };
+          for (const row of rows) {
+            const chunk = withGroups({
+              top: row.top, bottom: row.bottom,
+              breakBefore: row === rows[0]
+                ? { node: leaf.parentNode!, offset: Array.prototype.indexOf.call(leaf.parentNode!.childNodes, leaf) }
+                : { node: row.element, offset: 0 },
+            });
+            yield { ...chunk, avoidanceGroups: [...(chunk.avoidanceGroups ?? []), tableGroup] };
+          }
+          continue;
+        }
+      }
       if (paintsInViewport(leaf.getBoundingClientRect(), viewportWidth)) {
         yield withGroups(measureAtomicChunk(leaf));
       }
@@ -390,9 +408,11 @@ function paintsInViewport(rect: DOMRect, viewportWidth: number): boolean {
   return rect.height > 0 && (viewportWidth <= 0 || (rect.right > 0 && rect.left < viewportWidth));
 }
 
-export function measureChunks(bodyElement: Element): Chunk[] {
+/** A finite page budget retains the atomic fallback for tables with oversized
+ * rows. Scroll tracking has no page-height limit. */
+export function measureChunks(bodyElement: Element, pageHeight = Infinity): Chunk[] {
   const chunks: Chunk[] = [];
-  for (const chunk of chunkMeasurements(bodyElement)) {
+  for (const chunk of chunkMeasurements(bodyElement, pageHeight)) {
     if (chunk) chunks.push(chunk);
   }
   return chunks;
@@ -409,11 +429,12 @@ export interface IncrementalMeasurementOptions {
 export async function measureChunksIncrementally(
   bodyElement: Element,
   { signal, timeSliceMs = 8 }: IncrementalMeasurementOptions = {},
+  pageHeight = Infinity,
 ): Promise<Chunk[]> {
   signal?.throwIfAborted();
   const chunks: Chunk[] = [];
   let deadline = performance.now() + Math.max(1, timeSliceMs);
-  for (const chunk of chunkMeasurements(bodyElement)) {
+  for (const chunk of chunkMeasurements(bodyElement, pageHeight)) {
     signal?.throwIfAborted();
     if (chunk) chunks.push(chunk);
     if (performance.now() >= deadline) {

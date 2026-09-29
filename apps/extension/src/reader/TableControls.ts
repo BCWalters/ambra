@@ -1,4 +1,4 @@
-import { isReaderOwnedContent, markReaderOwnedContent } from "@ambra/engine";
+import { isReaderOwnedContent, markReaderOwnedContent, measureSimpleTableRows, ReadingTheme } from "@ambra/engine";
 import type { Page } from "@ambra/engine";
 
 export function updateTableControlLabels(doc: Document, label: string): void {
@@ -68,10 +68,15 @@ export function attachTableControls(
     const translation = page
       ? new DOMMatrixReadOnly(doc.defaultView!.getComputedStyle(doc.body).transform).m42 : 0;
     const top = page ? Math.max(0, page.topY + translation) : 0;
-    const bottom = page ? Math.min(height, page.bottomY + translation) : height;
+    const contentHeight = Number.parseFloat(doc.documentElement.style.getPropertyValue(
+      ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY,
+    ));
+    const budget = page && Number.isFinite(contentHeight) ? contentHeight : Infinity;
+    const bottom = page ? Math.min(height, page.bottomY + translation, top + budget) : height;
     for (const { table, button } of entries) {
+      const flowsNormally = measureSimpleTableRows(table, budget) !== undefined;
       const rect = table.getBoundingClientRect();
-      const visible = table.isConnected && rect.width > 0 && rect.height > 0 &&
+      const visible = !flowsNormally && table.isConnected && rect.width > 0 && rect.height > 0 &&
         rect.right > 0 && rect.left < width && rect.bottom > top && rect.top < bottom;
       if (visible) {
         const edge = doc.defaultView!.getComputedStyle(table).direction === "rtl"
