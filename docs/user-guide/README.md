@@ -1,4 +1,8 @@
-# Ambra — read comfortably, look deeper
+# Ambra - the best of EPUB books, right in your browser
+
+[![Alice's Adventures in Wonderland in Ambra: two pages with yellow and blue highlights, the reader toolbar, and chapter landmarks on the progress bar.](images/reading-alice.png)](images/reading-alice.png)
+
+Two-page reading with highlights and progress landmarks. [Alice’s Adventures in Wonderland](https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel), by Lewis Carroll, illustrated by John Tenniel. [Edition rights](https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel/text/uncopyright).
 
 Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome. For readers, it is a place to make books your own: adjust the reading experience, find passages, and keep your notes. For EPUB authors and publishers, it connects the book you see with the files behind it—making investigation and debugging easier without leaving the reader.
 
@@ -6,9 +10,7 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 > **Reading with a screen reader?** For continuous reading in a reflowable book, consider scrolling mode: **Alt+Shift+Page Down** (**Option+Shift+Page Down** on Mac). Return to pagination: **Alt+Shift+Page Up** (**Option+Shift+Page Up** on Mac).
 >
-> Mac laptops may require **Fn+Down/Up** for Page Down/Up, together with the other shortcut keys. These commands select a mode rather than toggle it and preserve your reading position. Fixed-layout books keep their fixed layout.
->
-> Choose whichever mode works for you. Screen-reader support is still being tested; feedback about your reading experience is welcome.
+> Mac laptops may require **Fn+Down/Up** for Page Down/Up, together with the other shortcut keys. Fixed-layout books keep their fixed layout.
 
 ## More room for reading
 
@@ -17,7 +19,7 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 - **Read wide tables without changing the page.** Use **Expand table** to open a separate [table viewer](table-viewer.md) with zoom and two-way scrolling.
 - **Find your way.** Use the table of contents, book search, reading-position control, and bookmarks to reach the passages that matter.
 - **Keep your thinking alongside the text.** Highlight passages, add notes, and revisit them with your bookmarks.
-- **Listen when the book includes narration.** Play embedded recorded narration with synchronized text highlighting; this depends on the EPUB’s supplied narration, not automatic text-to-speech.
+- **Listen when the book includes narration.** Enjoy [read-along books](read-along-books.md) with recorded narration and synchronized text highlighting.
 
 ## Keyboard shortcuts
 
