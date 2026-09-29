@@ -9,6 +9,11 @@ import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { createLibraryCover } from "./LibraryCover.js";
 
+export interface BookImportResult {
+  readonly id: string;
+  readonly outcome: "added" | "existing";
+}
+
 /** Orders two CFI strings by book reading order (see `EpubCfi.compare`),
  * falling back to `fallbackA - fallbackB` (each side's own `createdAt`)
  * if either CFI fails to parse — vanishingly unlikely for CFIs this app
@@ -370,11 +375,11 @@ export class LibraryDatabase {
     fileBlob: Blob,
     metadata: Omit<BookMetadata, "id" | "addedAt" | "contentHash">,
     coverBlob: Blob | undefined,
-  ): Promise<string> {
+  ): Promise<BookImportResult> {
     const contentHash = await hashBookFile(fileBlob);
     await this.indexLegacyBooks();
 
-    const id = await this.transaction<string>(
+    const result = await this.transaction<BookImportResult>(
       [BOOKS_STORE, FILES_STORE, COVERS_STORE],
       "readwrite",
       "Failed to import the book into the library.",
@@ -386,7 +391,7 @@ export class LibraryDatabase {
           matches.sort((a, b) => a.addedAt - b.addedAt || a.id.localeCompare(b.id));
           const existing = matches[0];
           if (existing) {
-            setResult(existing.id);
+            setResult({ id: existing.id, outcome: "existing" });
             return;
           }
           const id = crypto.randomUUID();
@@ -395,12 +400,12 @@ export class LibraryDatabase {
           if (coverBlob) {
             tx.objectStore(COVERS_STORE).add({ id, blob: coverBlob });
           }
-          setResult(id);
+          setResult({ id, outcome: "added" });
         };
       },
     );
     this.booksChanged();
-    return id;
+    return result;
   }
 
   /** Lazy, resumable migration: hash stored archives only when importing,

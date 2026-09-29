@@ -62,8 +62,8 @@ test("invalid EPUB errors use a specific headline, quiet details, and a centered
   }
   await alert.getByRole("button", { name: "Dismiss", exact: true }).click();
   await expect(alert).toHaveCount(0);
-  const id: string = await library.evaluate(() => Reflect.get(window, "__libraryDatabase")
-    .addBook(new Blob(["not a book"]), { title: "Invalid stored book", identifier: "bad" }, undefined));
+  const id: string = await library.evaluate(async () => (await Reflect.get(window, "__libraryDatabase")
+    .addBook(new Blob(["not a book"]), { title: "Invalid stored book", identifier: "bad" }, undefined)).id);
   const reader = await library.context().newPage();
   await reader.goto(new URL(`../reader/index.html?bookId=${id}`, library.url()).href);
   await expect(reader.getByRole("alert")).toContainText(headline);
@@ -117,7 +117,7 @@ test("book deletion rolls back every related store on abort, then deletes only t
     const db = Reflect.get(window, "__libraryDatabase");
     const ids: string[] = [];
     for (const title of ["Delete me", "Keep me"]) {
-      const id = await db.addBook(new Blob([title]), { title, identifier: title }, new Blob(["cover"]));
+      const { id } = await db.addBook(new Blob([title]), { title, identifier: title }, new Blob(["cover"]));
       ids.push(id);
       await db.saveProgress(id, "epubcfi(/6/2!/4/2/1:0)", 0.5);
       await db.addBookmark(id, "epubcfi(/6/2!/4/2/1:0)", title);

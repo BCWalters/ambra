@@ -95,6 +95,7 @@ export const zh: StringCatalog = {
   "library.importProcessing": "正在准备阅读 {fileName}…",
   "library.importSaving": "正在将 {fileName} 添加到书库…",
   "library.importComplete": "已将 {fileName} 添加到书库。",
+  "library.importAlreadyPresent": "{fileName} 已在你的书库中。",
   "library.importKeepOpen": "请保持书库打开。图书准备好后会显示在这里。",
   "library.readNow": "立即阅读",
   "library.readNowBook": "立即阅读：{title}",

@@ -53,7 +53,7 @@ async function seedCover(page: Page, type: "jpeg" | "svg" | "broken" = "jpeg", a
         : new Blob(["corrupt"], { type: "image/jpeg" });
     }
     const db = Reflect.get(window, "__libraryDatabase");
-    return await db.addBook(new Blob([archive ? new Uint8Array(archive) : type]), { title: "Cover test", creator: "Test", identifier: type }, blob) as string;
+    return (await db.addBook(new Blob([archive ? new Uint8Array(archive) : type]), { title: "Cover test", creator: "Test", identifier: type }, blob)).id as string;
   }, { type, archive: archive ? [...archive] : undefined });
 }
 
@@ -174,7 +174,7 @@ test("SVG thumbnails retain embedded JPEG artwork, vector shapes, and transparen
       <rect x="0" y="700" width="600" height="200" fill="teal"/>
     </svg>`;
     const db = Reflect.get(window, "__libraryDatabase");
-    const id = await db.addBook(new Blob(["embedded SVG"]), { title: "Artwork", identifier: "artwork" },
+    const { id } = await db.addBook(new Blob(["embedded SVG"]), { title: "Artwork", identifier: "artwork" },
       new Blob([source], { type: "image/svg+xml" }));
     const cover = await db.getLibraryCoverBlobs(id);
     const url = URL.createObjectURL(cover.card);
@@ -210,7 +210,7 @@ test("large still PNG cards are bounded and retain transparent pixels", async ({
     paint.fillRect(400, 600, 800, 1200);
     const original = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), "image/png"));
     const db = Reflect.get(window, "__libraryDatabase");
-    const id = await db.addBook(new Blob(["PNG"]), { title: "PNG", identifier: "png" }, original);
+    const { id } = await db.addBook(new Blob(["PNG"]), { title: "PNG", identifier: "png" }, original);
     const cover = await db.getLibraryCoverBlobs(id);
     const url = URL.createObjectURL(cover.card);
     try {

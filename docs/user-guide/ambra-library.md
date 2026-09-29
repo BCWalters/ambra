@@ -8,6 +8,8 @@ Choose **Bring a book → Choose EPUB files...** in an empty library, or **Impor
 
 If an import fails, the error includes the file name when available, so you can identify it when importing several books.
 
+Importing the same EPUB again shows **Already in your library**, with **Read now** to open the existing copy. Your reading position, bookmarks, and annotations stay unchanged. An EPUB with different file contents is added separately, even if its title is the same.
+
 ## Find new books on the web
 
 Choose **Find your next book → Explore books** in an empty library, or **Find books** once you have books. Sources open in a new tab:

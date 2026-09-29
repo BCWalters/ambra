@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { importBook } from "./BookImporter.js";
-import { LibraryDatabase } from "./LibraryDatabase.js";
+import { LibraryDatabase, type BookImportResult } from "./LibraryDatabase.js";
 import { LibrarySession, type LibraryBookViewModel } from "./LibrarySession.js";
 import { DEFAULT_LIBRARY_SORT } from "./LibrarySortOption.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
@@ -119,11 +119,11 @@ export function useLibrary(): UseLibraryResult {
     return activities;
   }, []);
 
-  const updateImport = useCallback((id: number, phase?: LibraryImportActivity["phase"], bookId?: string) => {
+  const updateImport = useCallback((id: number, phase?: LibraryImportActivity["phase"], result?: BookImportResult) => {
     setImportActivities((current) => phase
       ? current.map((entry) => entry.id === id ? {
         ...entry, phase, download: phase === "downloading" ? entry.download : undefined,
-        ...(bookId ? { bookId } : {}),
+        ...(result ? { bookId: result.id, outcome: result.outcome } : {}),
       } : entry)
       : current.filter((entry) => entry.id !== id));
   }, []);
@@ -226,17 +226,17 @@ export function useLibrary(): UseLibraryResult {
       if (!files.length) return;
       setError(undefined);
       const activities = startImports(files, "queued");
-      const saved: { activityId: number; bookId: string }[] = [];
+      const saved: { activityId: number; result: BookImportResult }[] = [];
       for (const [index, file] of files.entries()) {
         if (!ownsDatabase(db)) return;
         const activity = activities[index]!;
         updateImport(activity.id, "processing");
         try {
-          const bookId = await importBook(db, file, (phase) => {
+          const result = await importBook(db, file, (phase) => {
             if (ownsDatabase(db)) updateImport(activity.id, phase);
           });
           if (!ownsDatabase(db)) return;
-          saved.push({ activityId: activity.id, bookId });
+          saved.push({ activityId: activity.id, result });
         } catch (err) {
           if (ownsDatabase(db)) {
             updateImport(activity.id);
@@ -251,7 +251,7 @@ export function useLibrary(): UseLibraryResult {
         if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
       } finally {
         if (ownsDatabase(db)) {
-          for (const { activityId, bookId } of saved) updateImport(activityId, "complete", bookId);
+          for (const { activityId, result } of saved) updateImport(activityId, "complete", result);
         }
       }
     },
@@ -399,7 +399,7 @@ export function useLibrary(): UseLibraryResult {
     void (async () => {
       let importing = false;
       let imported = false;
-      let bookId: string | undefined;
+      let result: BookImportResult | undefined;
       try {
         if (!httpImportOrigins([importUrl])) {
           setError({ key: "library.downloadUnsupported", fileName: activity.fileName });
@@ -436,7 +436,7 @@ export function useLibrary(): UseLibraryResult {
         updateImport(activity.id, "processing");
         // importFiles reports errors without rejecting; only importBook's
         // persistence result can safely acknowledge this download handoff.
-        bookId = await importBook(db, file, (phase) => {
+        result = await importBook(db, file, (phase) => {
           if (!abort.signal.aborted && ownsDatabase(db)) updateImport(activity.id, phase);
         });
         if (abort.signal.aborted || !ownsDatabase(db)) return;
@@ -463,7 +463,7 @@ export function useLibrary(): UseLibraryResult {
         if (cancelDownloadRef.current === cancel) cancelDownloadRef.current = undefined;
         clearInterval(heartbeat);
         if (!abort.signal.aborted && ownsDatabase(db)) {
-          updateImport(activity.id, imported ? "complete" : undefined, imported ? bookId : undefined);
+          updateImport(activity.id, imported ? "complete" : undefined, imported ? result : undefined);
         }
         if (token && !userCancelled) {
           try {

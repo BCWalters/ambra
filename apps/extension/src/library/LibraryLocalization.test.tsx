@@ -64,6 +64,15 @@ describe("Library localization and action order", () => {
       entry.getAttribute("aria-labelledby")?.split(" ").map((id) => document.getElementById(id)?.textContent).join(" ") === label)!;
   }
 
+  it.each(SUPPORTED_LOCALES)("localizes the existing-book outcome in %s", async locale => {
+    language.locale = locale;
+    state.importActivities = [{ id: 1, fileName: "existing.epub", phase: "complete", outcome: "existing" }];
+    await render();
+    const expected = getTranslate(locale)("library.importAlreadyPresent", { fileName: "existing.epub" });
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(expected);
+    expect(CATALOGS[locale]["library.importAlreadyPresent"]).toBeTruthy();
+  });
+
   it.each(SUPPORTED_LOCALES)("localizes empty Library, discovery, About and storage in %s", async (locale) => {
     language.locale = locale;
     const t = getTranslate(locale);

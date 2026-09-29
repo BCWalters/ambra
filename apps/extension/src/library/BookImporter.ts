@@ -1,5 +1,5 @@
 import { ContentLoader, EpubContainer } from "@ambra/engine";
-import type { BookMetadata, LibraryDatabase } from "./LibraryDatabase.js";
+import type { BookImportResult, LibraryDatabase } from "./LibraryDatabase.js";
 
 export type BookImportPhase = "processing" | "saving";
 
@@ -14,7 +14,7 @@ export async function importBook(
   library: LibraryDatabase,
   file: File,
   onPhase?: (phase: BookImportPhase) => void,
-): Promise<BookMetadata["id"]> {
+): Promise<BookImportResult> {
   onPhase?.("processing");
   const buffer = await file.arrayBuffer();
   const container = await EpubContainer.open(buffer);

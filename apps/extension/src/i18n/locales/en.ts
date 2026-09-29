@@ -124,6 +124,7 @@ export interface StringCatalog {
   "library.importProcessing": string;
   "library.importSaving": string;
   "library.importComplete": string;
+  "library.importAlreadyPresent": string;
   "library.importKeepOpen": string;
   "library.readNow": string;
   "library.readNowBook": string;
@@ -570,6 +571,7 @@ export const en: StringCatalog = {
   "library.importProcessing": "Preparing {fileName} for reading…",
   "library.importSaving": "Adding {fileName} to your library…",
   "library.importComplete": "Added {fileName} to your library.",
+  "library.importAlreadyPresent": "{fileName} is already in your library.",
   "library.importKeepOpen": "Keep your library open. Your book will appear here when it’s ready.",
   "library.readNow": "Read now",
   "library.readNowBook": "Read now: {title}",
