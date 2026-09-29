@@ -54,6 +54,21 @@ it while another process owns the same live `apps/extension/dist`.
 `pnpm test`, `pnpm typecheck`, and `pnpm lint` run the workspace checks.
 Browser tests run separately; see [contributor setup](CONTRIBUTING.md).
 
+## Finding EPUBs to test a feature
+
+Use the local [EPUB discovery tools](scripts/README.md) to find books with
+particular CSS or markup without uploading or changing them:
+
+```sh
+pnpm scan:epubs ~/Downloads                 # page-break-inside / break-inside avoidance
+pnpm scan:epubs --tag table --tag math ~/Downloads
+pnpm scan:epubs --class note ~/Downloads
+```
+
+The scanner includes stylesheets, embedded styles, and inline style attributes.
+See the [tool guide](scripts/README.md) for custom CSS queries, JSON output,
+limitations, and instructions for adding detectors.
+
 ## Manually loading the extension in Chrome
 
 Load the built extension into Chrome to use the Library and reader.
