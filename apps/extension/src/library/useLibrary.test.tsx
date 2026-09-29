@@ -1,5 +1,5 @@
 import { act, StrictMode } from "react";
-import { ZipFormatError } from "@ambra/engine";
+import { PackageDocumentError, ZipFormatError } from "@ambra/engine";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryDatabase, type BookMetadata } from "./LibraryDatabase.js";
@@ -190,11 +190,39 @@ describe("useLibrary ownership and failures", () => {
     vi.mocked(importBook).mockRejectedValueOnce(new ZipFormatError("Not a valid ZIP archive"));
     await act(async () => latest.importFiles([new File(["bad"], "bad.epub")]));
     expect(latest.errorHeadline).toBe("Oh dear, that doesn't look like a valid EPUB file.");
-    expect(latest.error).toBe("Not a valid ZIP archive");
+    expect(latest.error).toBe("bad.epub: Not a valid ZIP archive");
     vi.mocked(importBook).mockRejectedValueOnce(new Error("Storage unavailable"));
     await act(async () => latest.importFiles([new File(["book"], "book.epub")]));
     expect(latest.errorHeadline).toBeUndefined();
-    expect(latest.error).toBe("Storage unavailable");
+    expect(latest.error).toBe("book.epub: Storage unavailable");
+    act(() => latest.dismissError());
+    expect(latest.error).toBeUndefined();
+    await act(async () => latest.importFiles([new File(["book"], "retry.epub")]));
+    expect(latest.error).toBeUndefined();
+  });
+
+  it("identifies a failed file even when a later file in the same batch succeeds", async () => {
+    await render();
+    const diagnostic = "OPF metadata at EPUB/content.opf is missing a required dc:title or dc:language.";
+    vi.mocked(importBook)
+      .mockResolvedValueOnce("first")
+      .mockRejectedValueOnce(new PackageDocumentError(diagnostic))
+      .mockResolvedValueOnce("last");
+    await act(async () => latest.importFiles([
+      new File(["ok"], "first.epub"),
+      new File(["bad"], "broken.epub"),
+      new File(["ok"], "last.epub"),
+    ]));
+    expect(latest.error).toBe(`broken.epub: ${diagnostic}`);
+    expect(latest.errorHeadline).toBe("Oh dear, that doesn't look like a valid EPUB file.");
+    expect(latest.importActivities.map(({ fileName }) => fileName)).toEqual(["first.epub", "last.epub"]);
+  });
+
+  it("retains diagnostics when the failed file has no name", async () => {
+    await render();
+    vi.mocked(importBook).mockRejectedValueOnce(new ZipFormatError("Missing ZIP directory"));
+    await act(async () => latest.importFiles([new File(["bad"], "")]));
+    expect(latest.error).toBe("Missing ZIP directory");
   });
 
   it("refreshes peer book changes and storage usage without replacing local import status", async () => {
@@ -577,14 +605,14 @@ describe("useLibrary ownership and failures", () => {
     await act(async () => first.resolve("1"));
     expect(latest.importActivities.find(({ fileName }) => fileName === "third.epub")?.phase).toBe("processing");
     await act(async () => { third.resolve("3"); await batch; });
-    expect(latest.error).toBe("Fourth book is malformed");
+    expect(latest.error).toBe("fourth.epub: Fourth book is malformed");
     expect(latest.importActivities.map(({ fileName, phase }) => [fileName, phase])).toEqual([
       ["book.epub", "downloading"], ["first.epub", "complete"], ["third.epub", "complete"],
     ]);
     expect(latest.canImport).toBe(true);
     await act(async () => response.resolve(new Response("epub")));
     expect(latest.importActivities.every(({ phase }) => phase === "complete")).toBe(true);
-    expect(latest.error).toBe("Fourth book is malformed");
+    expect(latest.error).toBe("fourth.epub: Fourth book is malformed");
   });
 
   it("keeps the status visible in the empty library without blocking manual import or moving focus", async () => {
@@ -636,6 +664,7 @@ describe("useLibrary ownership and failures", () => {
       setDirectImportUrl();
       await render();
       expect(latest.error).toBeTruthy();
+      expect(latest.error).toContain("book.epub");
       expect(latest.importActivities).toEqual([]);
       expect(latest.error).not.toContain("Failed to fetch");
       if (failure === "quota") expect(latest.error).toContain("storage");
@@ -647,6 +676,17 @@ describe("useLibrary ownership and failures", () => {
       }]);
     },
   );
+
+  it("names a downloaded invalid EPUB and preserves its specific headline and diagnostic", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("bad")));
+    vi.mocked(importBook).mockRejectedValueOnce(new ZipFormatError("Missing ZIP directory"));
+    setDirectImportUrl("https://example.com/broken-download.epub");
+    await render();
+    expect(latest.errorHeadline).toBe("Oh dear, that doesn't look like a valid EPUB file.");
+    expect(latest.error).toContain("broken-download.epub");
+    expect(latest.error).toContain("Missing ZIP directory");
+    expect(latest.error).toContain("Import EPUB");
+  });
 
   it.each(["permission", "api-unavailable", "unsupported"])(
     "does not fetch when access is unavailable: %s", async (reason) => {

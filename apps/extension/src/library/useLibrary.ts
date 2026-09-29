@@ -16,18 +16,20 @@ import { readLibraryDownload } from "./LibraryDownload.js";
 import { saveLibraryBookAs } from "./LibrarySaveAs.js";
 import { isInvalidEpubError } from "../EpubErrors.js";
 
-type LibraryError = string |
-  { key: keyof StringCatalog; params?: Record<string, string | number>; headline?: keyof StringCatalog } |
-  { detail: string; headline: keyof StringCatalog };
+type LibraryError = string | (
+  { key: keyof StringCatalog; params?: Record<string, string | number> } |
+  { detail: string }
+) & { headline?: keyof StringCatalog; fileName?: string };
 
 function describeLibraryStorageError(error: unknown, fileName?: string): LibraryError {
+  const detail = error instanceof Error ? error.message : String(error);
   if (isInvalidEpubError(error)) {
-    return { detail: error instanceof Error ? error.message : String(error), headline: "error.invalidEpubHeadline" };
+    return { detail, headline: "error.invalidEpubHeadline", fileName };
   }
   if (error instanceof DOMException && error.name === "QuotaExceededError") {
     return fileName ? { key: "library.importStorageFull", params: { fileName } } : { key: "library.storageFull" };
   }
-  return error instanceof Error ? error.message : String(error);
+  return fileName ? { detail, fileName } : detail;
 }
 
 export type { LibraryBookViewModel } from "./LibrarySession.js";
@@ -400,12 +402,12 @@ export function useLibrary(): UseLibraryResult {
       let bookId: string | undefined;
       try {
         if (!httpImportOrigins([importUrl])) {
-          setError({ key: "library.downloadUnsupported" });
+          setError({ key: "library.downloadUnsupported", fileName: activity.fileName });
           return;
         }
         if (!await hasImportHostAccess([importUrl])) {
           if (!abort.signal.aborted && ownsDatabase(db)) {
-            setError({ key: "library.downloadAccessDenied" });
+            setError({ key: "library.downloadAccessDenied", fileName: activity.fileName });
           }
           return;
         }
@@ -418,7 +420,7 @@ export function useLibrary(): UseLibraryResult {
         const response = await fetch(importUrl, { signal: abort.signal });
         if (!response.ok) {
           if (!abort.signal.aborted && ownsDatabase(db)) {
-            setError({ key: "library.downloadFailed", params: { status: response.status } });
+            setError({ key: "library.downloadFailed", params: { status: response.status }, fileName: activity.fileName });
           }
           return;
         }
@@ -444,15 +446,16 @@ export function useLibrary(): UseLibraryResult {
       } catch (err) {
         if (!abort.signal.aborted && ownsDatabase(db)) {
           if (imported || (err instanceof DOMException && err.name === "QuotaExceededError")) {
-            setError(describeLibraryStorageError(err));
+            setError(describeLibraryStorageError(err, imported ? undefined : activity.fileName));
           } else if (importing) {
             setError({
               key: "library.downloadImportFailed",
               params: { detail: err instanceof Error ? err.message : String(err) },
               headline: isInvalidEpubError(err) ? "error.invalidEpubHeadline" : undefined,
+              fileName: activity.fileName,
             });
           } else {
-            setError({ key: "library.downloadNetworkFailed" });
+            setError({ key: "library.downloadNetworkFailed", fileName: activity.fileName });
           }
         }
       } finally {
@@ -487,6 +490,10 @@ export function useLibrary(): UseLibraryResult {
   }, [db, canImport, ownsDatabase, refresh, refreshStorageUsage, startImports, updateImport]);
 
   const books = useMemo(() => sortBooks(rawBooks, sort, locale), [rawBooks, sort, locale]);
+  const errorMessage = typeof error === "string" || error === undefined ? error : "detail" in error ? error.detail : t(error.key, {
+    importLabel: t(books.length ? "library.importEpub" : "library.chooseEpubFiles"),
+    ...error.params,
+  });
 
   return {
     books,
@@ -496,10 +503,7 @@ export function useLibrary(): UseLibraryResult {
     dismissCompletedImports,
     cancelDownload,
     errorHeadline: typeof error === "object" && error.headline ? t(error.headline) : undefined,
-    error: typeof error === "string" || error === undefined ? error : "detail" in error ? error.detail : t(error.key, {
-      importLabel: t(books.length ? "library.importEpub" : "library.chooseEpubFiles"),
-      ...error.params,
-    }),
+    error: typeof error === "object" && error.fileName ? `${error.fileName}: ${errorMessage}` : errorMessage,
     dismissError,
     importFiles,
     removeBook,

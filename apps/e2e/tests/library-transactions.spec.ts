@@ -41,12 +41,14 @@ const test = base.extend<{ library: Page }>({
 test("invalid EPUB errors use a specific headline, quiet details, and a centered responsive Library card", async ({ library }, testInfo) => {
   const headline = "Oh dear, that doesn't look like a valid EPUB file.";
   const diagnostic = "Not a valid ZIP archive: End of Central Directory record not found.";
+  const fileName = `${"long-file-name-".repeat(8)}<not-a-book>&.epub`;
   await library.locator('input[type="file"]').setInputFiles({
-    name: "not-a-book.epub", mimeType: "application/epub+zip", buffer: Buffer.from("not a book"),
+    name: fileName, mimeType: "application/epub+zip", buffer: Buffer.from("not a book"),
   });
   const alert = library.getByRole("alert");
   await expect(alert).toContainText(headline);
-  const detail = alert.getByText(diagnostic, { exact: true });
+  const detail = alert.getByText(`${fileName}: ${diagnostic}`, { exact: true });
+  await expect(alert.locator("not-a-book")).toHaveCount(0);
   await expect(detail).toHaveCSS("font-size", "12px");
   await expect(detail).toHaveCSS("font-weight", "400");
   await expect(detail).toHaveCSS("color", "rgb(66, 66, 66)");
