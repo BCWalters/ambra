@@ -11,9 +11,8 @@ import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.
 import { ErrorDetails } from "./ErrorDetails.js";
 
 const GITHUB_REPO_URL = "https://github.com/BCWalters/ambra";
-const USER_GUIDE_URL = "https://github.com/BCWalters/ambra/blob/main/docs/user-guide/README.md";
-const PRIVACY_POLICY_URL =
-  "https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md";
+const USER_GUIDE_URL = "https://ambraepub.org/en/docs/";
+const PRIVACY_POLICY_URL = "https://ambraepub.org/en/privacy/";
 const EPUB_SPEC_URL = "https://www.w3.org/TR/epub-34/";
 const PUBLISHING_WG_URL = "https://www.w3.org/publishing/groups/publ-wg/";
 const REPORT_EMAIL = "AmbraEPUB@outlook.com";

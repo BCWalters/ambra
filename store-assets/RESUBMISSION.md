@@ -131,9 +131,10 @@ git status --porcelain
       Keep the existing name and category. The 47-character short description
       comes from the manifest. Do not market this as an early beta or claim NVDA,
       EPUB certification, text-to-speech, cloud sync, or no network access.
-- [ ] Verify the [canonical privacy policy](https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md)
-      is public without signing in and matches the candidate. No policy deployment
-      is needed beyond the merged repository file.
+- [ ] Verify the [canonical privacy policy](https://ambraepub.org/en/privacy/)
+      is public without signing in and matches the candidate. Its source remains
+      [privacy-policy.md](privacy-policy.md); approved changes require updating
+      the `BCWalters/ambra-site` source pin and deploying the website before submission.
 - [ ] Declare local EPUBs, metadata/covers, progress, bookmarks, notes, and
       preferences accurately. No Ambra account, analytics, advertising, or cloud
       sync does **not** mean no data leaves the device: automatic imports contact

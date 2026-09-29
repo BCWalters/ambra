@@ -69,9 +69,9 @@ BEFORE YOU START
 - DRM-protected EPUBs are not supported.
 - Keyboard navigation and screen-reader support are built into the reader; compatibility varies by publication, browser, and assistive technology.
 
-User guide: https://github.com/BCWalters/ambra/blob/main/docs/user-guide/README.md
+User guide: https://ambraepub.org/en/docs/
 Source: https://github.com/BCWalters/ambra
-Privacy: https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md
+Privacy: https://ambraepub.org/en/privacy/
 Feedback: AmbraEPUB@outlook.com
 
 ### Internal claim/review notes (not listing copy)
@@ -153,17 +153,21 @@ reaching those services; there is currently no in-app lookup opt-out.
 
 ## Privacy policy URL
 
-The public repository's rendered Markdown policy is the canonical policy.
+The official website hosts the canonical public policy URL.
 Paste this direct URL into the Chrome Web Store dashboard's privacy policy field:
 
-<https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md>
+<https://ambraepub.org/en/privacy/>
 
 Google's [privacy policy requirements](https://developer.chrome.com/docs/webstore/program-policies/privacy/)
-require an accessible policy link, not a separate website. Keep the repository
-public and the file at this stable path. Policy updates go through an Ambra PR
-and are visible at this URL after merge to `main`; no second deployment or HTML
-copy is required. Before submission, verify the rendered policy without signing
-in and check that its disclosures and effective date match the candidate.
+require an accessible policy link. [privacy-policy.md](privacy-policy.md) remains
+the source of truth in this public repository. The `BCWalters/ambra-site`
+website imports it from an immutable Ambra commit; do not edit a separate HTML
+copy. After an approved policy change merges, update the website's source pin
+and deploy it before publishing the changed behavior. Merging an Ambra PR alone
+does not update the website. Before submission, verify the hosted policy and
+user guide over HTTPS without signing in, and check that the policy's disclosures
+and effective date match the candidate. Updating these sources does not authorize
+a live dashboard change or extension submission.
 
 ## Release assets
 

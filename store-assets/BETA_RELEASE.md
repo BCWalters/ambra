@@ -81,10 +81,10 @@ be forwarded.
 - [ ] For the existing item's 1.0.0 resubmission, confirm it exceeds every
       uploaded/accepted version; otherwise approve a higher source version first.
       Do not create a new item or patch an archive to bypass a version conflict.
-- [ ] Set the privacy policy URL to the [canonical GitHub policy](https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md).
-      Confirm it is readable without signing in. This Markdown file is the single
-      source of truth; changes become live after an Ambra PR merges to `main`, with
-      no separate website deployment. Keep the repository public and the path stable.
+- [ ] Set the privacy policy URL to the [official hosted policy](https://ambraepub.org/en/privacy/).
+      Confirm it is readable without signing in. [privacy-policy.md](privacy-policy.md)
+      remains the source of truth; changes require an Ambra PR, a source-pin update
+      in `BCWalters/ambra-site`, and a website deployment before submission.
 - [ ] Complete the listing and privacy disclosures using
       [store-listing.md](store-listing.md), including all five permissions and broad
       HTTP/HTTPS host access. Describe automatic imports and metadata requests
