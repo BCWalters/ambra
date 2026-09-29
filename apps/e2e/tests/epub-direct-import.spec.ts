@@ -147,7 +147,12 @@ for (const mode of [
           continue;
         }
         server.releaseImport();
-        await expect(library.getByRole("status")).toContainText("Added");
+        await expect(library.getByRole("status")).toContainText(iteration === 0
+          ? "Added Ambra Long Content Test Fixture to your library."
+          : "Ambra Long Content Test Fixture is already in your library.");
+        await expect(library.getByRole("button", {
+          name: "Read now: Ambra Long Content Test Fixture", exact: true,
+        })).toBeEnabled();
         for (const mirror of mirrors) {
           await expect(mirror.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }))
             .toHaveCount(1);
