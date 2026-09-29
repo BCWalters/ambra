@@ -95,6 +95,7 @@ export const ru: StringCatalog = {
   "library.importProcessing": "Подготовка {fileName} к чтению…",
   "library.importSaving": "Добавление {fileName} в библиотеку…",
   "library.importComplete": "{fileName} добавлен в библиотеку.",
+  "library.importAlreadyPresent": "{fileName} уже есть в вашей библиотеке.",
   "library.importKeepOpen": "Не закрывайте библиотеку. Книга появится здесь, когда будет готова.",
   "library.readNow": "Читать сейчас",
   "library.readNowBook": "Читать сейчас: {title}",

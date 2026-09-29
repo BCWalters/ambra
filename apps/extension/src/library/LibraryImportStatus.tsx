@@ -2,7 +2,7 @@ import type { FC, RefObject } from "react";
 import { Body1, Button, Caption1, Tooltip } from "@fluentui/react-components";
 import { ArrowDownloadRegular, CheckmarkCircleRegular, DismissRegular } from "@fluentui/react-icons";
 import type { BookImportPhase } from "./BookImporter.js";
-import type { BookMetadata } from "./LibraryDatabase.js";
+import type { BookImportResult, BookMetadata } from "./LibraryDatabase.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { StringCatalog } from "../i18n/locales/en.js";
@@ -15,6 +15,7 @@ export interface LibraryImportActivity {
   readonly fileName: string;
   readonly phase: BookImportPhase | "queued" | "downloading" | "complete";
   readonly bookId?: string;
+  readonly outcome?: BookImportResult["outcome"];
   readonly download?: LibraryDownloadProgress;
 }
 
@@ -60,7 +61,7 @@ export const LibraryImportStatus: FC<{
       {/* Keep the live region mounted before import starts. Do not mark it busy:
           assistive technology must announce the intermediate stages too. */}
       <div role="status" aria-live="polite" aria-relevant="additions text">
-        {activities.map(({ id, fileName, phase, bookId, download }) => {
+        {activities.map(({ id, fileName, phase, bookId, outcome, download }) => {
           const book = bookId ? books.find((book) => book.id === bookId) : undefined;
           const title = book?.title;
           const fraction = download?.totalBytes ? download.receivedBytes / download.totalBytes : undefined;
@@ -83,7 +84,8 @@ export const LibraryImportStatus: FC<{
                 overflowWrap: "anywhere", minWidth: 0, gridColumn: (phase === "complete" && book) || phase === "downloading" ? "2" : "2 / -1",
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
               }}>
-                {t(PHASE_LABELS[phase], { fileName: title || fileName })}
+                {t(phase === "complete" && outcome === "existing"
+                  ? "library.importAlreadyPresent" : PHASE_LABELS[phase], { fileName: title || fileName })}
               </Body1>
               {phase === "downloading" && (
                 <Button size="small" appearance="secondary" style={{ gridColumn: 3, justifySelf: "end" }}

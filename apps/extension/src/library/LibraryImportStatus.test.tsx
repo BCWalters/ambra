@@ -52,6 +52,21 @@ describe("Library import feedback (#187)", () => {
     expect(container.querySelector('[aria-label^="Read now:"]')).toBeNull();
   });
 
+  it("treats an existing book as informational completion with Read now and dismissal", () => {
+    render([{ id: 1, fileName: "renamed.epub", bookId: "saved", phase: "complete", outcome: "existing" }]);
+    expect(container.textContent).toContain("An EPUB title is already in your library.");
+    expect(container.textContent).not.toContain("Added ");
+    expect(container.textContent).not.toContain("Keep your library open");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Read now: An EPUB title"]')!.click());
+    expect(onOpenBook).toHaveBeenCalledExactlyOnceWith("saved");
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Dismiss"]')!.click());
+    expect(onDismissCompleted).toHaveBeenCalledOnce();
+    render([{ id: 1, fileName: "renamed.epub", bookId: "saved", phase: "complete", outcome: "existing" }], []);
+    expect(container.textContent).toContain("renamed.epub is already in your library.");
+    expect(container.querySelector('[aria-label^="Read now:"]')).toBeNull();
+  });
+
   it("keeps active imports announced while successful items can be opened or dismissed", () => {
     render([
       { id: 1, fileName: "pending.epub", phase: "downloading" },

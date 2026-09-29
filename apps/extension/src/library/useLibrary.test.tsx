@@ -2,7 +2,7 @@ import { act, StrictMode } from "react";
 import { PackageDocumentError, ZipFormatError } from "@ambra/engine";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LibraryDatabase, type BookMetadata } from "./LibraryDatabase.js";
+import { LibraryDatabase, type BookImportResult, type BookMetadata } from "./LibraryDatabase.js";
 import { importBook } from "./BookImporter.js";
 import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { LibraryApp } from "./LibraryApp.js";
@@ -10,7 +10,11 @@ import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import { LocaleProvider, useLocale } from "../i18n/LocaleContext.js";
 import { EPUB_IMPORT_ACTIVE, EPUB_IMPORT_CANCEL, EPUB_IMPORT_RESULT } from "../epubImportHandoff.js";
 
-vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue("book") }));
+vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue({ id: "book", outcome: "added" }) }));
+
+function addedBook(id = "book"): BookImportResult {
+  return { id, outcome: "added" };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -70,7 +74,7 @@ describe("useLibrary ownership and failures", () => {
     vi.spyOn(LibraryDatabase, "estimateStorageUsage").mockResolvedValue(undefined);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cover");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    vi.mocked(importBook).mockReset().mockResolvedValue("book");
+    vi.mocked(importBook).mockReset().mockResolvedValue(addedBook());
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -205,9 +209,9 @@ describe("useLibrary ownership and failures", () => {
     await render();
     const diagnostic = "OPF metadata at EPUB/content.opf is missing a required dc:title or dc:language.";
     vi.mocked(importBook)
-      .mockResolvedValueOnce("first")
+      .mockResolvedValueOnce(addedBook("first"))
       .mockRejectedValueOnce(new PackageDocumentError(diagnostic))
-      .mockResolvedValueOnce("last");
+      .mockResolvedValueOnce(addedBook("last"));
     await act(async () => latest.importFiles([
       new File(["ok"], "first.epub"),
       new File(["bad"], "broken.epub"),
@@ -223,6 +227,33 @@ describe("useLibrary ownership and failures", () => {
     vi.mocked(importBook).mockRejectedValueOnce(new ZipFormatError("Missing ZIP directory"));
     await act(async () => latest.importFiles([new File(["bad"], "")]));
     expect(latest.error).toBe("Missing ZIP directory");
+  });
+
+  it("keeps new and existing outcomes distinct in a mixed batch and dismisses both", async () => {
+    await render();
+    vi.mocked(importBook)
+      .mockResolvedValueOnce(addedBook("new"))
+      .mockResolvedValueOnce({ id: "book", outcome: "existing" });
+    await act(async () => latest.importFiles([
+      new File(["new"], "new.epub"), new File(["existing"], "renamed.epub"),
+    ]));
+    expect(latest.importActivities.map(({ phase, bookId, outcome }) => ({ phase, bookId, outcome }))).toEqual([
+      { phase: "complete", bookId: "new", outcome: "added" },
+      { phase: "complete", bookId: "book", outcome: "existing" },
+    ]);
+    expect(latest.error).toBeUndefined();
+    act(() => latest.dismissCompletedImports());
+    expect(latest.importActivities).toEqual([]);
+  });
+
+  it("acknowledges an existing downloaded book as a successful handoff", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("existing")));
+    vi.mocked(importBook).mockResolvedValueOnce({ id: "book", outcome: "existing" });
+    setDirectImportUrl();
+    await render();
+    expect(latest.importActivities[0]).toMatchObject({ phase: "complete", bookId: "book", outcome: "existing" });
+    expect(latest.error).toBeUndefined();
+    expect(resultMessages()).toEqual([{ type: EPUB_IMPORT_RESULT, token: "handoff", imported: true }]);
   });
 
   it("refreshes peer book changes and storage usage without replacing local import status", async () => {
@@ -294,7 +325,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.canImport).toBe(true);
     expect(fetch).toHaveBeenCalledOnce();
     expect(importBook).toHaveBeenCalledOnce();
-    expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "complete", bookId: "book" }]);
+    expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "complete", bookId: "book", outcome: "added" }]);
     expect((fetch.mock.calls[0]?.[1].signal as AbortSignal).aborted).toBe(false);
     expect(discarded.methods.close).toHaveBeenCalledOnce();
   });
@@ -366,7 +397,7 @@ describe("useLibrary ownership and failures", () => {
 
   it("rejects a stale downloading action before React renders processing, and throughout saving and completion", async () => {
     const response = deferred<Response>();
-    const saving = deferred<string>();
+    const saving = deferred<BookImportResult>();
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
     setDirectImportUrl();
     await render();
@@ -383,14 +414,14 @@ describe("useLibrary ownership and failures", () => {
     act(() => vi.mocked(importBook).mock.calls[0]?.[2]?.("saving"));
     expect(latest.importActivities[0]?.phase).toBe("saving");
     expect(cancelDownload(id)).toBe(false);
-    await act(async () => saving.resolve("book"));
+    await act(async () => saving.resolve(addedBook()));
     expect(cancelDownload(id)).toBe(false);
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: EPUB_IMPORT_CANCEL }));
     expect(resultMessages()).toEqual([{ type: EPUB_IMPORT_RESULT, token: "handoff", imported: true }]);
   });
 
   it("does not cancel queued or processing imports chosen from the device", async () => {
-    const saving = deferred<string>();
+    const saving = deferred<BookImportResult>();
     vi.mocked(importBook).mockReturnValueOnce(saving.promise);
     await render();
     let importing!: Promise<void>;
@@ -400,7 +431,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.importActivities.map(({ phase }) => phase)).toEqual(["processing", "queued"]);
     for (const { id } of latest.importActivities) expect(latest.cancelDownload(id)).toBe(false);
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
-    await act(async () => { saving.resolve("book"); await importing; });
+    await act(async () => { saving.resolve(addedBook()); await importing; });
     expect(importBook).toHaveBeenCalledTimes(2);
   });
 
@@ -522,7 +553,7 @@ describe("useLibrary ownership and failures", () => {
   });
 
   it("acknowledges only after the book is persisted and strips handoff parameters", async () => {
-    const saving = deferred<string>();
+    const saving = deferred<BookImportResult>();
     vi.mocked(importBook).mockReturnValueOnce(saving.promise);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
     setDirectImportUrl();
@@ -531,7 +562,7 @@ describe("useLibrary ownership and failures", () => {
     expect(resultMessages()).toEqual([]);
     expect(window.location.search).toBe("?view=tab");
     expect(latest.importActivities).toEqual([{ id: 1, fileName: "book.epub", phase: "processing" }]);
-    await act(async () => saving.resolve("book"));
+    await act(async () => saving.resolve(addedBook()));
     expect(resultMessages()).toEqual([{
       type: EPUB_IMPORT_RESULT, token: "handoff", imported: true,
     }]);
@@ -541,7 +572,7 @@ describe("useLibrary ownership and failures", () => {
   it("shows downloading while headers and the entire body are pending, then processing and saving through refresh", async () => {
     const response = deferred<Response>();
     const body = deferred<Blob>();
-    const saving = deferred<string>();
+    const saving = deferred<BookImportResult>();
     const refreshing = deferred<BookMetadata[]>();
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
     vi.mocked(importBook).mockImplementationOnce((_db, _file, onPhase) => {
@@ -563,7 +594,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.importActivities[0]?.bookId).toBeUndefined();
     expect(resultMessages()).toEqual([]);
     db.methods.listBooks.mockReturnValueOnce(refreshing.promise);
-    await act(async () => saving.resolve("book"));
+    await act(async () => saving.resolve(addedBook()));
     expect(latest.importActivities[0]?.phase).toBe("saving");
     expect(resultMessages()).toEqual([]);
     await act(async () => refreshing.resolve([{ id: "book", title: "Saved" } as BookMetadata]));
@@ -577,9 +608,9 @@ describe("useLibrary ownership and failures", () => {
 
   it("keeps automatic and overlapping manual batches independently busy, including queued files and partial failure", async () => {
     const response = deferred<Response>();
-    const first = deferred<string>();
-    const second = deferred<string>();
-    const third = deferred<string>();
+    const first = deferred<BookImportResult>();
+    const second = deferred<BookImportResult>();
+    const third = deferred<BookImportResult>();
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
     vi.mocked(importBook)
       .mockReturnValueOnce(first.promise)
@@ -598,13 +629,13 @@ describe("useLibrary ownership and failures", () => {
       ["book.epub", "downloading"], ["first.epub", "processing"], ["third.epub", "queued"],
       ["fourth.epub", "queued"], ["second.epub", "processing"],
     ]);
-    await act(async () => { second.resolve("2"); await other; });
+    await act(async () => { second.resolve(addedBook("2")); await other; });
     act(() => latest.dismissCompletedImports());
     expect(latest.importActivities.map(({ fileName }) => fileName)).not.toContain("second.epub");
     expect(latest.importActivities[0]?.phase).toBe("downloading");
-    await act(async () => first.resolve("1"));
+    await act(async () => first.resolve(addedBook("1")));
     expect(latest.importActivities.find(({ fileName }) => fileName === "third.epub")?.phase).toBe("processing");
-    await act(async () => { third.resolve("3"); await batch; });
+    await act(async () => { third.resolve(addedBook("3")); await batch; });
     expect(latest.error).toBe("fourth.epub: Fourth book is malformed");
     expect(latest.importActivities.map(({ fileName, phase }) => [fileName, phase])).toEqual([
       ["book.epub", "downloading"], ["first.epub", "complete"], ["third.epub", "complete"],
@@ -746,14 +777,14 @@ describe("useLibrary ownership and failures", () => {
   });
 
   it("does not acknowledge success when the library closes during persistence", async () => {
-    const saving = deferred<string>();
+    const saving = deferred<BookImportResult>();
     vi.mocked(importBook).mockReturnValueOnce(saving.promise);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
     setDirectImportUrl();
     await render();
     act(() => root.unmount());
     mounted = false;
-    await act(async () => saving.resolve("book"));
+    await act(async () => saving.resolve(addedBook()));
     expect(resultMessages()).toEqual([{
       type: EPUB_IMPORT_RESULT, token: "handoff", imported: false,
     }]);

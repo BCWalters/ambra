@@ -95,6 +95,7 @@ export const ko: StringCatalog = {
   "library.importProcessing": "{fileName} 읽기 준비 중…",
   "library.importSaving": "{fileName}을(를) 라이브러리에 추가 중…",
   "library.importComplete": "{fileName}을(를) 라이브러리에 추가했습니다.",
+  "library.importAlreadyPresent": "{fileName}은(는) 이미 라이브러리에 있습니다.",
   "library.importKeepOpen": "라이브러리를 열어 두세요. 준비가 되면 여기에 책이 표시됩니다.",
   "library.readNow": "지금 읽기",
   "library.readNowBook": "지금 읽기: {title}",

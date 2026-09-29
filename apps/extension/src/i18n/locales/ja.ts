@@ -95,6 +95,7 @@ export const ja: StringCatalog = {
   "library.importProcessing": "{fileName} を読む準備をしています…",
   "library.importSaving": "{fileName} をライブラリに追加中…",
   "library.importComplete": "{fileName} をライブラリに追加しました。",
+  "library.importAlreadyPresent": "{fileName} はすでにライブラリにあります。",
   "library.importKeepOpen": "ライブラリを開いたままにしてください。準備ができると、ここに本が表示されます。",
   "library.readNow": "今すぐ読む",
   "library.readNowBook": "今すぐ読む：{title}",

@@ -95,6 +95,7 @@ export const es: StringCatalog = {
   "library.importProcessing": "Preparando {fileName} para leer…",
   "library.importSaving": "Añadiendo {fileName} a tu biblioteca…",
   "library.importComplete": "Se ha añadido {fileName} a tu biblioteca.",
+  "library.importAlreadyPresent": "{fileName} ya está en tu biblioteca.",
   "library.importKeepOpen": "Mantén tu biblioteca abierta. Tu libro aparecerá aquí cuando esté listo.",
   "library.readNow": "Leer ahora",
   "library.readNowBook": "Leer ahora: {title}",

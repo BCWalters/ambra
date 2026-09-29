@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentLoader, EpubContainer } from "@ambra/engine";
 import { importBook } from "./BookImporter.js";
-import type { LibraryDatabase } from "./LibraryDatabase.js";
+import type { BookImportResult, LibraryDatabase } from "./LibraryDatabase.js";
 
 vi.mock("@ambra/engine", () => ({
   EpubContainer: { open: vi.fn() },
@@ -11,11 +11,11 @@ vi.mock("@ambra/engine", () => ({
 describe("book import stages", () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it("reports processing through metadata/cover extraction, then saving until persistence resolves", async () => {
+  it.each(["added", "existing"] as const)("reports stages and returns the committed %s outcome", async outcome => {
     let resolveCover!: (bytes: Uint8Array) => void;
-    let resolveSave!: (id: string) => void;
+    let resolveSave!: (result: BookImportResult) => void;
     const cover = new Promise<Uint8Array>((resolve) => { resolveCover = resolve; });
-    const saved = new Promise<string>((resolve) => { resolveSave = resolve; });
+    const saved = new Promise<BookImportResult>((resolve) => { resolveSave = resolve; });
     const loadResourceBytes = vi.fn().mockReturnValue(cover);
     vi.mocked(ContentLoader.create).mockResolvedValue({ loadResourceBytes } as unknown as ContentLoader);
     vi.mocked(EpubContainer.open).mockResolvedValue({
@@ -38,8 +38,8 @@ describe("book import stages", () => {
     void result.then(() => { finished = true; });
     await Promise.resolve();
     expect(finished).toBe(false);
-    resolveSave("saved-book");
-    await expect(result).resolves.toBe("saved-book");
+    resolveSave({ id: "saved-book", outcome });
+    await expect(result).resolves.toEqual({ id: "saved-book", outcome });
   });
 
   it("propagates parsing and persistence failures rather than reporting completion", async () => {
