@@ -250,6 +250,26 @@ AMBRA_SIMPLE_TABLE_EPUB="$HOME/Downloads/pg84-images-3.epub" \
 The local book remains outside the repository. That opt-in run disables traces
 and screenshots and checks all 28 links at multiple widths and font sizes.
 
+## Inline image / line-break pagination (#249)
+
+The measurement suite checks that a zero-width `<br>` box following an inline
+image cannot repeat the image's bottom edge on the next page. It verifies
+complete, nonduplicated image coverage, visible back links, footer bounds,
+single pages and spreads, larger fonts, preserved blank-line spacing and
+anchors, synchronous/incremental parity, and unchanged scroll geometry.
+Ordinary inline text, icons, SVG, MathML and ruby retain their measurements.
+Geometry-read counts are bounded and page planning performs no layout queries.
+
+```sh
+pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#249'
+AMBRA_IMAGE_BREAK_EPUB="$HOME/Downloads/pg1260-images-3.epub" \
+  pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#249'
+```
+
+The optional local-book check covers all 14 final image wrappers in the reported
+Jane Eyre EPUB. The file stays outside the repository; traces and screenshots
+are disabled for this run.
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the

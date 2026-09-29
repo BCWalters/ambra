@@ -200,6 +200,36 @@ function measureAtomicChunk(element: Element): Chunk {
  * not a meaningful visual difference. */
 const LINE_TOLERANCE_PX = 1;
 
+function excludeOverlappingBreakRects(range: Range, rects: DOMRect[]): DOMRect[] {
+  const key = (rect: DOMRect): string => `${rect.left}:${rect.top}:${rect.right}:${rect.bottom}`;
+  const candidates = new Map<string, string>();
+  let previous: DOMRect | undefined;
+  for (const rect of rects) {
+    if (rect.width > 0) previous = rect;
+    else if (previous && rect.top >= previous.top && rect.top < previous.bottom &&
+      rect.bottom > previous.bottom) candidates.set(key(rect), key(previous));
+  }
+  const root = range.commonAncestorContainer;
+  if (candidates.size === 0 || root.nodeType !== 1) return rects;
+  const images = new Set(Array.from((root as Element).querySelectorAll("img"))
+    .filter(image => range.intersectsNode(image))
+    .map(image => key(image.getBoundingClientRect())));
+  for (const [rect, previous] of candidates) {
+    if (!images.has(previous)) candidates.delete(rect);
+  }
+  if (candidates.size === 0) return rects;
+
+  // An inline image's following BR can extend below its baseline while
+  // overlapping the image. That empty box must not start a second image slice.
+  const excluded = new Set<string>();
+  for (const br of (root as Element).querySelectorAll("br")) {
+    if (!range.intersectsNode(br)) continue;
+    const rect = br.getBoundingClientRect();
+    if (rect.width === 0 && candidates.has(key(rect))) excluded.add(key(rect));
+  }
+  return rects.filter(rect => rect.width !== 0 || !excluded.has(key(rect)));
+}
+
 /** Measures a text run's rendered lines (via `Range.getClientRects()`,
  * a real layout query — not an approximation) as one `Chunk` per visual
  * line, each with its exact DOM break position found by bisecting the
@@ -208,8 +238,11 @@ function* measureTextLeafChunks(
   fullRange: Range,
   textNodes: readonly Text[],
   viewportWidth: number,
+  pageHeight: number,
 ): Generator<Chunk | undefined> {
-  const lineRects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
+  const rects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
+  // Continuous-scroll tracking keeps its existing line geometry.
+  const lineRects = Number.isFinite(pageHeight) ? excludeOverlappingBreakRects(fullRange, rects) : rects;
 
   if (lineRects.length === 0) {
     return;
@@ -394,7 +427,7 @@ function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator
         range.selectNodeContents(leaf);
         textNodes = collectTextNodesOf(leaf);
       }
-      for (const chunk of measureTextLeafChunks(range, textNodes, viewportWidth)) {
+      for (const chunk of measureTextLeafChunks(range, textNodes, viewportWidth, pageHeight)) {
         yield chunk && withGroups(chunk);
       }
     }

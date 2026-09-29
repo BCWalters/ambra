@@ -17,7 +17,7 @@ const root = path.resolve(import.meta.dirname, "../../..");
 let code: string;
 
 // Local publication content must not end up in traces or screenshots.
-if (process.env.AMBRA_BREAK_INSIDE_EPUB || process.env.AMBRA_SIMPLE_TABLE_EPUB) {
+if (process.env.AMBRA_BREAK_INSIDE_EPUB || process.env.AMBRA_SIMPLE_TABLE_EPUB || process.env.AMBRA_IMAGE_BREAK_EPUB) {
   test.use({ trace: "off", screenshot: "off" });
 }
 
@@ -417,6 +417,239 @@ for (const source of ["synthetic", "local"] as const) {
     } finally { await session.close(); }
   });
 }
+
+for (const source of ["synthetic", "local"] as const) {
+  test(`${source} inline image before BR paints exactly once across pages and spreads (#249)`, async () => {
+    const file = process.env.AMBRA_IMAGE_BREAK_EPUB;
+    test.skip(source === "local" && !file, "Set AMBRA_IMAGE_BREAK_EPUB to pg1260-images-3.epub.");
+    const bytes = source === "local" ? fs.readFileSync(file!).toString("base64") : book(
+      '<div style="text-align:center"><img alt="Illustration" src="image.svg" style="height:1000px;width:auto"/>' +
+      '<br/><a id="back" href="#back">back</a></div>',
+    );
+    const session = await browser();
+    try {
+      const results = await session.page.evaluate(async bytes => {
+        const E = window.paginationEngine;
+        const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+          Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+        ));
+        const resolver = new E.ResourceUrlResolver(loader);
+        const wrappers: number[] = [];
+        for (let index = 0; index < loader.packageDocument.spine.length; index++) {
+          const { document: doc } = await loader.loadSpineDocument(index);
+          if (doc.querySelector("img") && doc.querySelector("br") && doc.body.textContent?.trim() === "back") {
+            wrappers.push(index);
+          }
+        }
+        const results = [];
+        try {
+          for (const [width, height, scale, spread] of [
+            [744, 767, 1, false], [680, 900, 1, false], [390, 700, 1, false],
+            [480, 500, 1.5, false], [1488, 767, 1, true], [1200, 600, 1.5, true],
+          ] as const) {
+            let duplicated = 0;
+            let missing = 0;
+            let linkFailures = 0;
+            let footerFailures = 0;
+            const failures: { imageHeight: number; slices: [number, number][] }[] = [];
+            for (const spineIndex of wrappers) {
+              const host = spread ? new E.SpreadPaginatedHost(width, height) : new E.PaginatedContentHost(width, height);
+              document.body.append(host.element);
+              try {
+                const configure = (doc: Document) => E.ReadingTheme.applyFontScale(doc, scale);
+                if (host instanceof E.SpreadPaginatedHost) {
+                  await host.openSpread(loader, resolver, {
+                    first: { spineIndex, pageIndex: 0 }, second: { spineIndex, pageIndex: 1 },
+                  }, configure);
+                } else await host.open(loader, resolver, spineIndex, undefined, configure);
+                const slices: [number, number][] = [];
+                let imageHeight = 0;
+                let links = 0;
+                for (let pageIndex = 0; pageIndex < host.pageCount; pageIndex += spread ? 2 : 1) {
+                  if (host instanceof E.SpreadPaginatedHost) {
+                    host.tryGoToSpread({
+                      first: { spineIndex, pageIndex },
+                      ...(pageIndex + 1 < host.pageCount ? { second: { spineIndex, pageIndex: pageIndex + 1 } } : {}),
+                    });
+                  } else host.goToPageIndex(pageIndex);
+                  const views = host instanceof E.SpreadPaginatedHost
+                    ? host.documentViews() : [host.currentPageAndDocument()!];
+                  for (const view of views) {
+                    const doc = view.document;
+                    const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+                    const clip = frame.style.clipPath.match(/[\d.]+/g)!.map(Number);
+                    const top = clip[0]!;
+                    const bottom = height - (clip[2] ?? clip[0]!);
+                    const budget = Number.parseFloat(doc.documentElement.style.getPropertyValue(E.ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY));
+                    if (bottom > top + budget + 0.1) footerFailures++;
+                    const image = doc.querySelector("img")!.getBoundingClientRect();
+                    imageHeight = image.height;
+                    const start = Math.max(0, top - image.top);
+                    const end = Math.min(image.height, bottom - image.top);
+                    if (end > start) slices.push([start, end]);
+                    const range = doc.createRange();
+                    range.selectNodeContents(doc.querySelector("a")!);
+                    const link = range.getBoundingClientRect();
+                    if (link.top >= top - 0.1 && link.bottom <= bottom + 0.1) links++;
+                  }
+                }
+                slices.sort((a, b) => a[0] - b[0]);
+                let end = 0;
+                for (const [start, bottom] of slices) {
+                  if (start < end - 0.1) duplicated++;
+                  if (start > end + 0.1) missing++;
+                  end = Math.max(end, bottom);
+                }
+                if (imageHeight <= 0 || Math.abs(end - imageHeight) > 0.1) {
+                  missing++;
+                  failures.push({ imageHeight, slices });
+                }
+                if (links !== 1) linkFailures++;
+              } finally { host.dispose(); host.element.remove(); }
+            }
+            results.push({ width, height, scale, spread, wrappers: wrappers.length, duplicated, missing, linkFailures, footerFailures, failures });
+          }
+        } finally { resolver.dispose(); }
+        return results;
+      }, bytes);
+      for (const result of results) {
+        expect(result.wrappers).toBe(source === "local" ? 14 : 1);
+        expect(result, JSON.stringify(result)).toMatchObject({
+          duplicated: 0, missing: 0, linkFailures: 0, footerFailures: 0,
+        });
+      }
+    } finally { await session.close(); }
+  });
+}
+
+test("overlapping BR measurement preserves blank lines, anchors and scroll geometry (#249)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      document.body.innerHTML = '<div id="wrapper" style="font:20px/30px serif">' +
+        '<img src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22200%22/%3E" ' +
+        'style="width:100px;height:200px" alt="Illustration"/><br id="overlap"/><br id="blank"/>' +
+        '<a id="back" href="#back">back</a></div>';
+      await document.querySelector("img")!.decode();
+      const root = document.body;
+      const before = root.innerHTML;
+      const scroll = E.measureChunks(root);
+      let boxes = 0;
+      let ranges = 0;
+      const bounds = Element.prototype.getBoundingClientRect;
+      const rects = Range.prototype.getClientRects;
+      Element.prototype.getBoundingClientRect = function () { boxes++; return bounds.call(this); };
+      Range.prototype.getClientRects = function () { ranges++; return rects.call(this); };
+      let chunks;
+      try { chunks = E.measureChunks(root, 200); }
+      finally { Element.prototype.getBoundingClientRect = bounds; Range.prototype.getClientRects = rects; }
+      const incremental = await E.measureChunksIncrementally(root, { timeSliceMs: 1 }, 200);
+      const pages = E.PaginationEngine.paginate(root, 200);
+      const link = document.querySelector("#back")!;
+      const position = chunks.at(-1)!.breakBefore;
+      const page = E.PaginationEngine.findPageForPosition(pages, position.node, position.offset ?? 0, document)!;
+      const resumed = E.PaginationEngine.paginate(root, 200, position);
+      const equal = (a: typeof chunks, b: typeof chunks) => a.length === b.length && a.every((c, i) =>
+        c.top === b[i]!.top && c.bottom === b[i]!.bottom &&
+        c.breakBefore.node === b[i]!.breakBefore.node && c.breakBefore.offset === b[i]!.breakBefore.offset);
+      const overlap = document.querySelector("#overlap")!.getBoundingClientRect();
+      return {
+        removed: scroll.length - chunks.length,
+        blankGap: link.getBoundingClientRect().top - document.querySelector("img")!.getBoundingClientRect().bottom,
+        removesOverlap: !chunks.some(c => c.top === overlap.top && c.bottom === overlap.bottom),
+        parity: equal(chunks, incremental),
+        scrollUnchanged: equal(scroll, E.measureChunks(root)),
+        domUnchanged: before === root.innerHTML,
+        linkPage: page.index,
+        resumedTop: resumed.find(p => p.containsPosition(position.node, position.offset ?? 0, document))!.topY,
+        linkTop: link.getBoundingClientRect().top,
+        boxes, ranges,
+      };
+    });
+    expect(result, JSON.stringify(result)).toMatchObject({
+      removed: 1, removesOverlap: true, parity: true,
+      scrollUnchanged: true, domUnchanged: true, linkPage: 1,
+    });
+    expect(result.resumedTop).toBe(result.linkTop);
+    expect(result.blankGap).toBeGreaterThan(30);
+    expect(result.boxes).toBeLessThanOrEqual(3);
+    expect(result.ranges).toBeLessThan(30);
+  } finally { await session.close(); }
+});
+
+test("ordinary inline content retains its geometry without extra box reads (#249)", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const results = [];
+      for (const content of [
+        "<p>First line<br><br>Third line<br></p>",
+        "<p>Words <em>with emphasis</em> and <strong>bold text</strong><br>Next line</p>",
+        '<p>Text <img alt="Icon" style="width:12px;height:12px"/> after icon<br>Next line</p>',
+        '<p>Text <svg width="12" height="12"><circle cx="6" cy="6" r="5"/></svg> after SVG<br>Next line</p>',
+        "<p>Math <math><mi>x</mi><mo>+</mo><mi>y</mi></math><br>Next line</p>",
+        "<p><ruby>base<rt>annotation</rt></ruby><br>Next line</p>",
+        "<p>Collapsed      whitespace <span></span><br>Next line</p>",
+      ]) {
+        document.body.innerHTML = `<div style="font:20px/30px serif;width:360px">${content}</div>`;
+        const baseline = E.measureChunks(document.body);
+        let boxes = 0;
+        const bounds = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function () { boxes++; return bounds.call(this); };
+        let chunks;
+        try { chunks = E.measureChunks(document.body, 200); }
+        finally { Element.prototype.getBoundingClientRect = bounds; }
+        results.push({
+          equal: chunks.length === baseline.length && chunks.every((c, i) =>
+            c.top === baseline[i]!.top && c.bottom === baseline[i]!.bottom &&
+            c.breakBefore.node === baseline[i]!.breakBefore.node && c.breakBefore.offset === baseline[i]!.breakBefore.offset),
+          boxes,
+        });
+      }
+      return results;
+    });
+    for (const [index, result] of results.entries()) expect(result, `case ${index}`).toEqual({ equal: true, boxes: 0 });
+  } finally { await session.close(); }
+});
+
+test("image-break geometry reads scale linearly and planning adds none (#249)", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const results = [];
+      for (const count of [20, 200]) {
+        document.body.innerHTML = Array.from({ length: count }, () =>
+          '<div style="font:20px/30px serif"><img style="width:100px;height:200px" ' +
+          'src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22200%22/%3E"/>' +
+          '<br/><a href="#end">back</a></div>').join("");
+        await Promise.all(Array.from(document.images, image => image.decode()));
+        let boxes = 0;
+        let ranges = 0;
+        const bounds = Element.prototype.getBoundingClientRect;
+        const rects = Range.prototype.getClientRects;
+        Element.prototype.getBoundingClientRect = function () { boxes++; return bounds.call(this); };
+        Range.prototype.getClientRects = function () { ranges++; return rects.call(this); };
+        try {
+          const chunks = E.measureChunks(document.body, 200);
+          const measuredBoxes = boxes;
+          const measuredRanges = ranges;
+          E.planPageBreaks(chunks, 200, { node: document.body, offset: document.body.childNodes.length });
+          results.push({ count, measuredBoxes, measuredRanges, planningBoxes: boxes - measuredBoxes, planningRanges: ranges - measuredRanges });
+        } finally { Element.prototype.getBoundingClientRect = bounds; Range.prototype.getClientRects = rects; }
+      }
+      return results;
+    });
+    for (const result of results) {
+      expect(result.measuredBoxes).toBe(2 * result.count);
+      expect(result.measuredRanges).toBeLessThanOrEqual(5 * result.count);
+      expect(result.planningBoxes).toBe(0);
+      expect(result.planningRanges).toBe(0);
+    }
+  } finally { await session.close(); }
+});
 
 for (const declaration of [
   "page-break-inside:avoid", "break-inside:avoid", "break-inside:avoid-page",
