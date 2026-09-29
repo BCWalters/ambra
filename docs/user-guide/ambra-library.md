@@ -6,6 +6,8 @@ Keep your EPUBs together and reopen a book at your saved reading position. Use t
 
 Choose **Bring a book → Choose EPUB files...** in an empty library, or **Import EPUB** once you have books. Select EPUB files from your device, then open a book to read. Use **Sort** to arrange your library.
 
+If an import fails, the error includes the file name when available, so you can identify it when importing several books.
+
 ## Find new books on the web
 
 Choose **Find your next book → Explore books** in an empty library, or **Find books** once you have books. Sources open in a new tab:
