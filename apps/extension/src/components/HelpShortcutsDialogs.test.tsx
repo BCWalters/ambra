@@ -103,11 +103,12 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     expect([...container.querySelectorAll("h3")].map((heading) => heading.textContent)).not.toContain(t("shortcuts.title"));
     expect(container.querySelector('a[href="mailto:AmbraEPUB@outlook.com"]')?.textContent).toBe(t("about.feedback"));
     expect(container.querySelector('a[href="https://github.com/BCWalters/ambra/issues"]')?.textContent).toBe(t("about.issues"));
-    const guide = container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra/blob/main/docs/user-guide/README.md"]');
+    const guide = container.querySelector<HTMLAnchorElement>('a[href="https://ambraepub.org/en/docs/"]');
     expect(guide?.textContent).toBe(t("about.userGuide"));
     expect(guide?.target).toBe("_blank");
     expect(guide?.rel).toBe("noreferrer");
-    expect(container.querySelector('a[href="https://github.com/BCWalters/ambra/blob/main/store-assets/privacy-policy.md"]')?.textContent).toBe(t("about.privacy"));
+    expect(container.querySelector('a[href="https://ambraepub.org/en/privacy/"]')?.textContent).toBe(t("about.privacy"));
+    expect(container.querySelector('a[href="https://github.com/BCWalters/ambra"]')?.textContent).toBe(t("about.sourceCode"));
     const standards = button(t("about.standards"));
     expect(standards.getAttribute("aria-expanded")).toBe("false");
     await click(t("about.standards"));
