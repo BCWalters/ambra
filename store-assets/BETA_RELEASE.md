@@ -1,9 +1,11 @@
 # Unlisted Chrome Web Store beta
 
-> **For the 1.0.1 update, use [RELEASE-1.0.1.md](RELEASE-1.0.1.md).** It is a
-> manual, owner-only update of the existing listing. The automation reference
-> below is not authorization to dispatch a workflow, upload, cancel review,
-> submit, publish, or change visibility. Do not create another listing.
+> **Historical Unlisted workflow. Version 1.0.1 is now live and Public, as
+> confirmed by the owner. Use [RELEASE-1.0.2.md](RELEASE-1.0.2.md) for the next
+> manual update.** Preserve Public visibility; do not follow the Unlisted
+> distribution steps below. The current packager marks candidates `PUBLIC`,
+> which the legacy Unlisted uploader rejects. Do not dispatch that workflow
+> or re-enable its visibility acknowledgment for this item.
 
 The source repository is public under MIT. The initial store listing is
 **Unlisted**: anyone with its URL can install, without an invitation or tester

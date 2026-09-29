@@ -157,7 +157,7 @@ export async function packageExtension() {
         commit,
         dirty,
         createdAt: new Date().toISOString(),
-        publication: "UNLISTED",
+        publication: "PUBLIC",
       },
       null,
       2,

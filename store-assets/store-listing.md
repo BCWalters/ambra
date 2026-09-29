@@ -1,23 +1,22 @@
-# Ambra 1.0.1 Chrome Web Store listing notes
+# Ambra 1.0.2 Chrome Web Store listing notes
 
 Prepared for the existing listing's **manual, owner-only update**.
-Follow [RELEASE-1.0.1.md](RELEASE-1.0.1.md); this file does not authorize a
+Follow [RELEASE-1.0.2.md](RELEASE-1.0.2.md); this file does not authorize a
 dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 ## Product
 
 - **Name**: Ambra EPUB Reader
 - **Category**: Productivity > Tools (the saved dashboard category).
-- **Distribution**: Unlisted. Anyone with the installation URL can install;
-  the listing does not appear in store search or browsing. Share the URL with
-  friends; no trusted-tester allowlist is required. Preserve the existing
-  visibility and regions. A Public launch requires a separate explicit decision.
+- **Distribution**: Public. The owner confirms version 1.0.1 is live and Public.
+  Preserve the existing listing, visibility, and regions.
 
 ## Short description
 
 Read, annotate, and explore EPUBs in Chrome with a personal library, flexible reading settings, and EPUB Inspector.
 
-Approved for the next package (1.0.1); the published 1.0.0 summary is unchanged.
+Unchanged from the published 1.0.1 package. For 1.0.2, keep the main description
+and existing images; only the guide/privacy URLs below change.
 
 Character count: 115. This read-only dashboard summary comes from the uploaded
 package's manifest `description`; it is not separately editable listing copy.
