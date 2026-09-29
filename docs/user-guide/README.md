@@ -2,8 +2,6 @@
 
 [![Alice's Adventures in Wonderland in Ambra: two pages with yellow and blue highlights, the reader toolbar, and chapter landmarks on the progress bar.](images/reading-alice.png)](images/reading-alice.png)
 
-Two-page reading with highlights and progress landmarks. [Alice’s Adventures in Wonderland](https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel), by Lewis Carroll, illustrated by John Tenniel. [Edition rights](https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel/text/uncopyright).
-
 Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome. For readers, it is a place to make books your own: adjust the reading experience, find passages, and keep your notes. For EPUB authors and publishers, it connects the book you see with the files behind it—making investigation and debugging easier without leaving the reader.
 
 **Here to explore how a book is built?** Meet the [EPUB Inspector](epub-inspector.md): source and content inspection, reading-to-source navigation, and reference finding in one place.
