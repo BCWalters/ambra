@@ -20,6 +20,14 @@ export interface Chunk {
   /** The DOM position immediately before this chunk — where a page
    * boundary would fall if pagination breaks right before it. */
   readonly breakBefore: { node: Node; offset?: number };
+  /** Shared bounds of authored break-inside avoidance boxes containing this
+   * chunk. Lines remain separate for oversized boxes and scroll tracking. */
+  readonly avoidanceGroups?: readonly AvoidanceGroup[];
+}
+
+export interface AvoidanceGroup {
+  readonly top: number;
+  readonly bottom: number;
 }
 
 /** Elements that are laid out as a block-level box but are never
@@ -43,7 +51,10 @@ const ATOMIC_TAG_NAMES = new Set([
 ]);
 
 function isBlockLevel(element: Element): boolean {
-  const display = getComputedStyle(element).display;
+  return isBlockDisplay(getComputedStyle(element).display);
+}
+
+function isBlockDisplay(display: string): boolean {
   return (
     display === "block" ||
     display === "list-item" ||
@@ -78,17 +89,45 @@ interface InlineRun {
 
 type Leaf = Element | InlineRun;
 
+interface MeasuredLeaf {
+  readonly leaf: Leaf;
+  readonly groups: readonly MutableAvoidanceGroup[];
+}
+
+interface MutableAvoidanceGroup {
+  top: number;
+  bottom: number;
+}
+
+function avoidanceGroups(
+  element: Element,
+  style: CSSStyleDeclaration,
+  parents: readonly MutableAvoidanceGroup[],
+): readonly MutableAvoidanceGroup[] {
+  // Chromium normalizes legacy page-break-inside: avoid to break-inside.
+  // Inline boxes and display:contents do not establish fragmentation boxes.
+  if (
+    (style.breakInside !== "avoid" && style.breakInside !== "avoid-page") ||
+    style.display === "inline" || style.display === "contents" || style.display === "none"
+  ) return parents;
+  const rect = element.getBoundingClientRect();
+  return [...parents, { top: rect.top, bottom: rect.bottom }];
+}
+
 /** Partition a container into non-overlapping block leaves and inline runs.
  * Keeping runs as DOM ranges preserves text around nested blocks without
  * wrapping/moving nodes or measuring a descendant twice. Atomic containers
  * (especially tables) must be recognized before descending into their blocks. */
-function* collectLeaves(root: Element): Generator<Leaf | undefined> {
+function* collectLeaves(
+  root: Element,
+  groups: readonly MutableAvoidanceGroup[],
+): Generator<MeasuredLeaf | undefined> {
   const nodes = Array.from(root.childNodes);
   let runStart = 0;
-  const inlineRun = (end: number): InlineRun | undefined => {
+  const inlineRun = (end: number): MeasuredLeaf | undefined => {
     const run = nodes.slice(runStart, end);
     if (run.some((node) => node.nodeType === 1 || node.textContent?.trim())) {
-      return { root, start: runStart, end };
+      return { leaf: { root, start: runStart, end }, groups };
     }
   };
   for (let index = 0; index < nodes.length; index++) {
@@ -101,11 +140,12 @@ function* collectLeaves(root: Element): Generator<Leaf | undefined> {
       runStart = index + 1;
       continue;
     }
-    const display = getComputedStyle(child).display;
+    const style = getComputedStyle(child);
+    const display = style.display;
     if (
       display !== "contents" &&
       child.checkVisibility() &&
-      !isBlockLevel(child) &&
+      !isBlockDisplay(display) &&
       !isAtomic(child) &&
       isLeaf(child)
     ) {
@@ -117,17 +157,20 @@ function* collectLeaves(root: Element): Generator<Leaf | undefined> {
     if (child.localName === "details" && !child.hasAttribute("open")) {
       const summary = Array.from(child.children).find((element) => element.localName === "summary");
       if (child.checkVisibility() && summary) {
-        if (isLeaf(summary)) yield summary;
-        else yield* collectLeaves(summary);
+        const childGroups = avoidanceGroups(child, style, groups);
+        const summaryGroups = avoidanceGroups(summary, getComputedStyle(summary), childGroups);
+        if (isLeaf(summary)) yield { leaf: summary, groups: summaryGroups };
+        else yield* collectLeaves(summary, summaryGroups);
       } else if (child.checkVisibility()) {
         // The browser supplies a default summary outside the authored DOM.
-        yield child;
+        yield { leaf: child, groups: avoidanceGroups(child, style, groups) };
       }
     } else if (display === "contents") {
-      yield* collectLeaves(child);
+      yield* collectLeaves(child, groups);
     } else if (child.checkVisibility()) {
-      if (isAtomic(child) || isLeaf(child)) yield child;
-      else yield* collectLeaves(child);
+      const childGroups = avoidanceGroups(child, style, groups);
+      if (isAtomic(child) || isLeaf(child)) yield { leaf: child, groups: childGroups };
+      else yield* collectLeaves(child, childGroups);
     }
     runStart = index + 1;
   }
@@ -295,12 +338,27 @@ function* chunkMeasurements(bodyElement: Element): Generator<Chunk | undefined> 
   const ownerDocument = bodyElement.ownerDocument;
   const viewportWidth = ownerDocument.documentElement.clientWidth;
 
-  for (const leaf of collectLeaves(bodyElement)) {
+  const groups = avoidanceGroups(bodyElement, getComputedStyle(bodyElement), []);
+  for (const measured of collectLeaves(bodyElement, groups)) {
     yield undefined;
-    if (!leaf) continue;
+    if (!measured) continue;
+    const { leaf, groups } = measured;
+    const withGroups = (chunk: Chunk): Chunk => {
+      if (groups.length === 0) return chunk;
+      // Propagate painted descendants' full boxes from inner to outer groups.
+      // Shared group bounds are complete before either planner consumes them.
+      let top = chunk.top;
+      let bottom = chunk.bottom;
+      for (let index = groups.length - 1; index >= 0; index--) {
+        const group = groups[index]!;
+        top = group.top = Math.min(group.top, top);
+        bottom = group.bottom = Math.max(group.bottom, bottom);
+      }
+      return { ...chunk, avoidanceGroups: groups };
+    };
     if (!("root" in leaf) && isAtomic(leaf)) {
       if (paintsInViewport(leaf.getBoundingClientRect(), viewportWidth)) {
-        yield measureAtomicChunk(leaf);
+        yield withGroups(measureAtomicChunk(leaf));
       }
     } else {
       const range = ownerDocument.createRange();
@@ -318,7 +376,9 @@ function* chunkMeasurements(bodyElement: Element): Generator<Chunk | undefined> 
         range.selectNodeContents(leaf);
         textNodes = collectTextNodesOf(leaf);
       }
-      yield* measureTextLeafChunks(range, textNodes, viewportWidth);
+      for (const chunk of measureTextLeafChunks(range, textNodes, viewportWidth)) {
+        yield chunk && withGroups(chunk);
+      }
     }
   }
 }

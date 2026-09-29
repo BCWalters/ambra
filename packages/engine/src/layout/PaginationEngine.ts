@@ -1,4 +1,4 @@
-import type { Chunk } from "./LineMeasurement.js";
+import type { AvoidanceGroup, Chunk } from "./LineMeasurement.js";
 import { measureChunks, measureChunksIncrementally } from "./LineMeasurement.js";
 import type { IncrementalMeasurementOptions } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
@@ -21,6 +21,9 @@ import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
  * overflow (this is what gives an oversized atomic element, e.g. an
  * image taller than a full page, its own page rather than being
  * cropped/scaled — see the `pagination-engine` design discussion).
+ * At an avoidance group's first chunk, reserve its full measured bounds if
+ * it fits on an empty page. Oversized groups relax to their original lines;
+ * fitting nested groups still apply. No DOM queries are made per boundary.
  *
  * `forcedBreakBefore`, if given, must be the exact `breakBefore` object of
  * one of `chunks` (compared by reference, not DOM position — resolving an
@@ -50,20 +53,36 @@ export function planPageBreaks(
   let pageStartBreak: DomBreakPoint = chunks[0]!.breakBefore;
   let pageBottom = chunks[0]!.top;
   let chunksOnCurrentPage = 0;
+  const seenGroups = new Set<AvoidanceGroup>();
+  // A navigation/relayout anchor outranks every containing avoidance box:
+  // do not reserve content beyond that forced boundary on the previous page.
+  const forcedGroups = new Set(forcedBreakBefore
+    ? chunks.find(chunk => chunk.breakBefore === forcedBreakBefore)?.avoidanceGroups
+    : undefined);
 
   for (const chunk of chunks) {
     const isForcedBreak = chunk.breakBefore === forcedBreakBefore;
-    const wouldBeHeight = Math.max(pageBottom, chunk.bottom) - Math.min(pageStartTop, chunk.top);
+    let top = chunk.top;
+    let bottom = chunk.bottom;
+    for (const group of chunk.avoidanceGroups ?? []) {
+      if (seenGroups.has(group)) continue;
+      seenGroups.add(group);
+      if (!forcedGroups.has(group) && group.bottom - group.top <= pageHeight) {
+        top = Math.min(top, group.top);
+        bottom = Math.max(bottom, group.bottom);
+      }
+    }
+    const wouldBeHeight = Math.max(pageBottom, bottom) - Math.min(pageStartTop, top);
     if ((wouldBeHeight > pageHeight || isForcedBreak) && chunksOnCurrentPage > 0) {
       pages.push(new Page(pages.length, pageStartBreak, chunk.breakBefore, pageStartTop, pageBottom));
-      pageStartTop = chunk.top;
+      pageStartTop = top;
       pageStartBreak = chunk.breakBefore;
-      pageBottom = chunk.top;
+      pageBottom = top;
       chunksOnCurrentPage = 0;
     }
     // Positioned publication content need not follow DOM order vertically.
-    pageStartTop = Math.min(pageStartTop, chunk.top);
-    pageBottom = Math.max(pageBottom, chunk.bottom);
+    pageStartTop = Math.min(pageStartTop, top);
+    pageBottom = Math.max(pageBottom, bottom);
     chunksOnCurrentPage++;
   }
 
