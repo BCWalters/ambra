@@ -42,6 +42,7 @@ for (const { width, scale, justify } of [
         <p class="edge-copy" style="margin:0;direction:${rtl ? "rtl" : "ltr"};text-align:${justify ? "justify" : rtl ? "right" : "left"}">
           ${"Original words describe a quiet garden, a nearby window, and a winding path. ".repeat(3)}
         </p>
+        <p class="edge-word" style="text-align:right;margin:0">Selection</p>
         <p class="edge-end" style="text-align:left;margin:20px 0">End.</p>
         <button style="display:block;width:100%;height:30px">A publication control</button>
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" style="display:block;margin-left:auto"><rect width="32" height="32" fill="blue"/></svg>
@@ -75,12 +76,12 @@ for (const { width, scale, justify } of [
         })!;
         const end = visible.querySelector(".edge-end")!.getBoundingClientRect();
         const copy = visible.querySelector(".edge-copy")!;
-        const walker = doc.createTreeWalker(copy, NodeFilter.SHOW_TEXT);
+        const walker = doc.createTreeWalker(visible.querySelector(".edge-word")!, NodeFilter.SHOW_TEXT);
         const range = doc.createRange();
         let glyph: { x: number; y: number } | undefined;
         while (walker.nextNode() && !glyph) {
           const node = walker.currentNode;
-          for (let offset = 0; offset < node.textContent!.length; offset++) {
+          for (let offset = 0; offset < node.textContent!.length && !glyph; offset++) {
             if (!/\p{L}/u.test(node.textContent![offset]!)) continue;
             range.setStart(node, offset); range.setEnd(node, offset + 1);
             for (const box of range.getClientRects()) {
@@ -92,6 +93,9 @@ for (const { width, scale, justify } of [
             }
           }
         }
+        range.selectNodeContents(visible.querySelector(".edge-word")!);
+        const word = range.getBoundingClientRect();
+        const selection = { x: pane.left + (word.left + word.right) / 2, y: pane.top + (word.top + word.bottom) / 2 };
         range.selectNodeContents(copy);
         const lines = Array.from(range.getClientRects()).filter(rect => rect.height > 0 && rect.top > clipTop + 1);
         const gapIndex = lines.findIndex((line, i) => i > 0 && line.top > lines[i - 1]!.bottom + 1);
@@ -103,7 +107,7 @@ for (const { width, scale, justify } of [
         const image = visible.querySelector("svg")!.getBoundingClientRect();
         return {
           blank: { x: pane.left + blankX, y: pane.top + (end.top + end.bottom) / 2 },
-          glyph, gap, blankX, bandStart: pane.width - edgeWidth, bodyRight: body.right - padding,
+          glyph, selection, gap, blankX, bandStart: pane.width - edgeWidth, bodyRight: body.right - padding,
           button: { x: pane.left + blankX, y: pane.top + (button.top + button.bottom) / 2 },
           image: { x: pane.left + image.right - 1, y: pane.top + (image.top + image.bottom) / 2 },
           count: Reflect.get(window, "__readerController").snapshot().pageCount,
@@ -115,6 +119,10 @@ for (const { width, scale, justify } of [
       expect(geometry.gap, JSON.stringify(geometry)).toBeDefined();
       await observeTurns(page);
       await page.mouse.dblclick(geometry.glyph!.x, geometry.glyph!.y);
+      expect(await turns(page)).toEqual([]);
+      // The edge probe may be beside the final caret; select from the word's
+      // interior rather than relying on platform-specific word-boundary snaps.
+      await page.mouse.dblclick(geometry.selection.x, geometry.selection.y);
       expect(await turns(page)).toEqual([]);
       expect(await page.evaluate(() => Array.from(document.querySelectorAll("iframe"))
         .some(frame => !!frame.contentDocument!.getSelection()?.toString().trim()))).toBe(true);
