@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FC } from "react";
 import {
   Body1,
@@ -10,6 +10,7 @@ import {
   MenuList,
   MenuPopover,
   MenuTrigger,
+  SearchBox,
   Spinner,
   Title2,
   Tooltip,
@@ -21,6 +22,7 @@ import {
   ArrowSortRegular,
   DocumentAddRegular,
   DeleteRegular,
+  GlobeRegular,
   InfoRegular,
   StorageRegular,
   WindowNewRegular,
@@ -34,6 +36,7 @@ import { LibraryImportError } from "./LibraryImportError.js";
 import { LibraryImportStatus } from "./LibraryImportStatus.js";
 import { LibraryEmptyState } from "./LibraryEmptyState.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
+import { filterLibraryBooks } from "./LibrarySearch.js";
 import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH, type InspectorViewMode } from "../reader/components/EpubInspectorPanel.js";
@@ -321,6 +324,18 @@ export const LibraryApp: FC = () => {
   const emptyImportRef = useRef<HTMLButtonElement | null>(null);
   const emptyStateRef = useRef<HTMLDivElement | null>(null);
   const libraryHeadingRef = useRef<HTMLDivElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const discoveryId = useId();
+  const resultsId = useId();
+  const hasQuery = query.trim().length > 0;
+  const visibleBooks = useMemo(() => filterLibraryBooks(books, query, locale), [books, query, locale]);
+  useEffect(() => {
+    if (!isLoading && books.length === 0) {
+      setQuery("");
+      setDiscoveryOpen(false);
+    }
+  }, [isLoading, books.length]);
   const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
   useLayoutEffect(() => {
     if (importInProgress && emptyStateRef.current?.contains(document.activeElement)) {
@@ -499,10 +514,49 @@ export const LibraryApp: FC = () => {
         ) : (
           <>
             <div style={{ marginBottom: 16 }}>
-              <LibraryDiscovery expandable />
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                <SearchBox
+                  value={query}
+                  onChange={(_event, data) => setQuery(data.value)}
+                  aria-label={t("library.search")}
+                  aria-controls={resultsId}
+                  placeholder={t("library.searchPlaceholder")}
+                  dismiss={{ "aria-label": t("library.clearSearch") }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && !event.nativeEvent.isComposing &&
+                        event.target instanceof HTMLInputElement && query) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setQuery("");
+                    }
+                  }}
+                  style={{ flex: "1 1 200px", minWidth: 0, maxWidth: 440 }}
+                />
+                <Button
+                  appearance="subtle"
+                  size="small"
+                  icon={<GlobeRegular />}
+                  aria-expanded={discoveryOpen}
+                  aria-controls={discoveryId}
+                  onClick={() => setDiscoveryOpen(!discoveryOpen)}
+                >
+                  {t("library.findBooks")}
+                </Button>
+              </div>
+              <div role="status" aria-label={t("library.search")} aria-atomic="true"
+                style={{ marginTop: hasQuery ? 8 : 0, color: "var(--colorNeutralForeground2, #333)", fontSize: 12 }}>
+                {hasQuery && t("library.searchResults", {
+                  shown: new Intl.NumberFormat(locale).format(visibleBooks.length),
+                  total: new Intl.NumberFormat(locale).format(books.length),
+                })}
+              </div>
+              <div style={{ marginTop: discoveryOpen ? 12 : 0 }}>
+                <LibraryDiscovery expanded={discoveryOpen} panelId={discoveryId} />
+              </div>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-              {books.map((book) => (
+            <div id={resultsId} style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+              {visibleBooks.length === 0 && <p style={{ margin: 0 }}>{t("library.searchNoResults")}</p>}
+              {visibleBooks.map((book) => (
                 <BookCard
                   key={book.id}
                   book={book}

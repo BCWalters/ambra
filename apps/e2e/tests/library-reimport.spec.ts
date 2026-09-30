@@ -167,7 +167,7 @@ test("renamed manual re-import preserves all stored data; changed archive bytes 
   const input = page.locator('input[type="file"]:enabled');
   await input.setInputFiles({ name: "original.epub", mimeType: "application/epub+zip", buffer });
   await imported(page, 1);
-  await expect(page.getByRole("status")).toContainText(`Added ${title} to your library.`);
+  await expect(page.getByTestId("library-import-status").getByRole("status")).toContainText(`Added ${title} to your library.`);
   const original = (await snapshot(page))[0]!.rows[0]!;
   await addUserData(page, original.id as string);
   const before = await snapshot(page);
@@ -177,8 +177,8 @@ test("renamed manual re-import preserves all stored data; changed archive bytes 
     buffer,
   });
   await imported(page, 2);
-  await expect(page.getByRole("status")).toContainText(`${title} is already in your library.`);
-  await expect(page.getByRole("status").getByRole("button", { name: `Read now: ${title}`, exact: true })).toBeEnabled();
+  await expect(page.getByTestId("library-import-status").getByRole("status")).toContainText(`${title} is already in your library.`);
+  await expect(page.getByTestId("library-import-status").getByRole("status").getByRole("button", { name: `Read now: ${title}`, exact: true })).toBeEnabled();
   expect(await snapshot(page)).toEqual(before);
   await expect(page.getByText(title, { exact: true })).toHaveCount(1);
 
@@ -192,7 +192,7 @@ test("renamed manual re-import preserves all stored data; changed archive bytes 
     buffer: Buffer.concat([revised, Buffer.from("revised")]),
   });
   await imported(page, 3);
-  await expect(page.getByRole("status")).toContainText(`Added ${title} to your library.`);
+  await expect(page.getByTestId("library-import-status").getByRole("status")).toContainText(`Added ${title} to your library.`);
   const after = await snapshot(page);
   expect(after[0]!.rows).toHaveLength(2);
   const other = after[0]!.rows.find((book) => book.id !== original.id)!;
@@ -230,7 +230,7 @@ test("direct web imports from changed URLs and names reuse the manual import, in
         const source = `http://127.0.0.1:${address.port}/${i === 0 ? "renamed" : "another-mirror"}.epub`;
         await tab.goto(`${url}&importUrl=${encodeURIComponent(source)}`);
         await imported(tab, 1);
-        await expect(tab.getByRole("status")).toContainText(`${title} is already in your library.`);
+        await expect(tab.getByTestId("library-import-status").getByRole("status")).toContainText(`${title} is already in your library.`);
         await expect(tab.getByText(title, { exact: true })).toHaveCount(1);
       }),
     );
@@ -262,9 +262,9 @@ test("simultaneous first imports in separate tabs create only one book", async (
   expect(state[0]!.rows).toHaveLength(1);
   expect(state[1]!.rows).toHaveLength(1);
   for (const tab of [page, second]) {
-    await expect(tab.getByRole("status")).toContainText(/Added .* to your library|is already in your library/);
+    await expect(tab.getByTestId("library-import-status").getByRole("status")).toContainText(/Added .* to your library|is already in your library/);
   }
-  const messages = await Promise.all([page, second].map(tab => tab.getByRole("status").innerText()));
+  const messages = await Promise.all([page, second].map(tab => tab.getByTestId("library-import-status").getByRole("status").innerText()));
   expect(messages.filter(message => message.includes("is already in your library"))).toHaveLength(1);
   expect(messages.filter(message => message.includes(`Added ${title}`))).toHaveLength(1);
 });
@@ -328,7 +328,7 @@ test("v5 migration retains existing IDs, duplicate records, and annotations", as
   await page.locator('input[type="file"]:enabled').setInputFiles(fixture);
   await imported(page, 1);
   const after = await snapshot(page);
-  await expect(page.getByRole("status")).toContainText("Legacy copy is already in your library.");
+  await expect(page.getByTestId("library-import-status").getByRole("status")).toContainText("Legacy copy is already in your library.");
   expect(after[0]!.rows).toHaveLength(2);
   for (const book of after[0]!.rows) {
     expect(book.contentHash).toMatch(/^[a-f0-9]{64}$/);

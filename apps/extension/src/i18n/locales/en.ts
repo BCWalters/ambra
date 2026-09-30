@@ -160,6 +160,11 @@ export interface StringCatalog {
   "library.cancelDownloadFile": string;
   "library.cancelDownloadFailed": string;
   "library.findBooks": string;
+  "library.search": string;
+  "library.searchPlaceholder": string;
+  "library.clearSearch": string;
+  "library.searchResults": string;
+  "library.searchNoResults": string;
   "library.discoveryTitle": string;
   "library.discoveryDescription": string;
   "library.gutenbergDescription": string;
@@ -607,6 +612,11 @@ export const en: StringCatalog = {
   "library.cancelDownloadFile": "Cancel download: {fileName}",
   "library.cancelDownloadFailed": "Ambra stopped downloading, but could not confirm cancellation in Chrome. Open Chrome Downloads to check and cancel the original download.",
   "library.findBooks": "Find books",
+  "library.search": "Search library",
+  "library.searchPlaceholder": "Search title or author",
+  "library.clearSearch": "Clear library search",
+  "library.searchResults": "{shown} of {total} books",
+  "library.searchNoResults": "No matching books. Try another title or author, or clear your search.",
   "library.discoveryTitle": "Find your next read",
   "library.discoveryDescription": "Browse free EPUB collections and books to buy. Links open in a new tab.",
   "library.gutenbergDescription": "A vast collection of free literature and classics.",

@@ -1,7 +1,7 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import type { FC } from "react";
-import { Button, Link } from "@fluentui/react-components";
-import { OpenRegular, SearchRegular } from "@fluentui/react-icons";
+import { Link } from "@fluentui/react-components";
+import { OpenRegular } from "@fluentui/react-icons";
 import { CHROME_BORDER } from "../reader/chromeTheme.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
 
@@ -34,38 +34,22 @@ const SOURCES = [
 
 /** The first-run choice card and the quieter populated-library entry share one panel. */
 export const LibraryDiscovery: FC<{
-  expandable?: boolean;
   expanded?: boolean;
   panelId?: string;
   importLabel?: string;
-}> = ({ expandable = false, expanded: controlledExpanded, panelId, importLabel }) => {
+}> = ({ expanded = true, panelId, importLabel }) => {
   const t = useTranslation();
-  const [expanded, setExpanded] = useState(false);
   const id = useId();
   const sectionId = panelId ?? `${id}-panel`;
-  const isExpanded = controlledExpanded ?? (!expandable || expanded);
 
   return (
     <div style={{ width: "100%", textAlign: "left" }}>
-      {expandable && (
-        <Button
-          appearance="subtle"
-          size="small"
-          icon={<SearchRegular />}
-          aria-expanded={expanded}
-          aria-controls={sectionId}
-          onClick={() => setExpanded(!expanded)}
-        >
-          {t("library.findBooks")}
-        </Button>
-      )}
       <section
         id={sectionId}
         aria-labelledby={`${id}-heading`}
-        hidden={!isExpanded}
+        hidden={!expanded}
         style={{
           maxWidth: 720,
-          marginTop: expandable ? 12 : 0,
           padding: 16,
           border: `1px solid ${CHROME_BORDER}`,
           borderRadius: 8,
