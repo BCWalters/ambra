@@ -100,6 +100,7 @@ jobs:
           svg-spine.spec.ts
           mixed-rendition-spreads.spec.ts
           pagination-measurement.spec.ts
+          responsive-images.spec.ts
           --workers=1
       - name: Keep bookmark panel review screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
