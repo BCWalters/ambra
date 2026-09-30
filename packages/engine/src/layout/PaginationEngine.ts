@@ -53,6 +53,7 @@ export function planPageBreaks(
   let pageStartBreak: DomBreakPoint = chunks[0]!.breakBefore;
   let pageBottom = chunks[0]!.top;
   let chunksOnCurrentPage = 0;
+  let previousFigure: DomPositionRange | undefined;
   let positions: Map<DomPositionRange, DomPositionRange[]> | undefined;
   const finishPage = (end: DomBreakPoint): void => {
     const overrides: PositionOverride[] | undefined = positions &&
@@ -68,7 +69,13 @@ export function planPageBreaks(
     : undefined);
 
   for (const chunk of chunks) {
-    const isForcedBreak = chunk.breakBefore === forcedBreakBefore;
+    const figure = chunk.positionOverride?.scope;
+    // Oversized atomic figures already occupied separate pages. Retain both
+    // outer boundaries so caption pages cannot shift unrelated content onto
+    // different breaks (including latent overlapping text elsewhere).
+    const atFigureEdge = figure !== previousFigure && (figure !== undefined || previousFigure !== undefined);
+    const isForcedBreak = chunk.breakBefore === forcedBreakBefore || atFigureEdge;
+    previousFigure = figure;
     let top = chunk.top;
     let bottom = chunk.bottom;
     for (const group of chunk.avoidanceGroups ?? []) {

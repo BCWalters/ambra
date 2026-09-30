@@ -167,6 +167,7 @@ function oversizedFigureParts(element: Element, pageHeight: number): readonly El
   if (Math.max(figure.bottom, visualBounds[visualBounds.length - 1]!.bottom) -
     Math.min(figure.top, visualBounds[0]!.top) <= pageHeight) return;
   const reordered = bounds[0] !== visualBounds[0];
+  if (reordered && figure.height <= pageHeight) return;
   if (caption && [caption, ...caption.querySelectorAll("*")].some(node =>
     ATOMIC_TAG_NAMES.has(node.localName) || !normalFlow(node, reordered) ||
     (reordered && (getComputedStyle(node).columnWidth !== "auto" ||
@@ -596,8 +597,10 @@ function* chunkMeasurements(
             const range = ownerDocument.createRange();
             range.setStart(start.node, start.offset! - 1);
             range.setEnd(start.node, start.offset!);
-            const rect = range.getBoundingClientRect();
-            if (rect.width > 0 && rect.top >= chunk.top && rect.bottom <= chunk.bottom) {
+            // A hyphenated letter can also expose the previous line's generated
+            // hyphen. Its final nonempty rectangle belongs to the letter itself.
+            const rect = Array.from(range.getClientRects()).reverse().find(rect => rect.width > 0 && rect.height > 0);
+            if (rect && rect.top >= chunk.top && rect.bottom <= chunk.bottom) {
               start = { node: start.node, offset: start.offset! - 1 };
             }
           }
