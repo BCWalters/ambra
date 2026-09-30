@@ -1,5 +1,9 @@
 # Ambra 1.0.3 manual store update
 
+> Historical preparation only: the owner explicitly skipped publishing 1.0.3.
+> Preserve its artifacts as a comparison baseline; use the
+> [1.0.4 checklist](RELEASE-1.0.4.md) for the next manual update instead.
+
 This update targets the existing Public Chrome Web Store item,
 `mcjkkebkhifgkkbahlcapjlnaihocogj`. The owner submitted 1.0.2 and requested a
 verified 1.0.3 ZIP and notes for manual upload. Preparation does not upload,

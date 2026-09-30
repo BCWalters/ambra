@@ -21,9 +21,9 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [1.0.3 update checklist](store-assets/RELEASE-1.0.3.md).
-The owner submitted 1.0.2; preparing 1.0.3 does not mean it has been uploaded,
-submitted, or published.
+and the [1.0.4 update checklist](store-assets/RELEASE-1.0.4.md).
+The owner submitted 1.0.2 and skipped publishing 1.0.3; preparing 1.0.4 does not
+mean it has been uploaded, submitted, or published.
 
 ## Structure
 
