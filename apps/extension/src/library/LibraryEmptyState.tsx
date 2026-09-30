@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type FC, type RefObject } from "react";
-import { Body1, Title2, makeStyles } from "@fluentui/react-components";
+import { Body1, Title2, makeStyles, mergeClasses } from "@fluentui/react-components";
 import { DocumentAddRegular, CompassNorthwestRegular } from "@fluentui/react-icons";
 import { LibraryEmptyIllustration } from "./LibraryEmptyIllustration.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
@@ -9,6 +9,7 @@ export interface LibraryEmptyStateProps {
   accent: string;
   canImport: boolean;
   onImport: () => void;
+  compact?: boolean;
   focusFallbackRef?: RefObject<HTMLButtonElement | null>;
   importButtonRef?: RefObject<HTMLButtonElement | null>;
 }
@@ -56,10 +57,19 @@ const useStyles = makeStyles({
   title: { fontSize: "20px", lineHeight: "26px", fontWeight: 600 },
   description: { fontSize: "14px", lineHeight: "20px" },
   action: { marginTop: "auto", paddingTop: "12px", fontWeight: 600 },
+  compactChoice: {
+    display: "grid",
+    gridTemplateColumns: "24px minmax(0, 1fr)",
+    columnGap: "12px",
+    rowGap: "4px",
+    padding: "12px",
+    "& > svg": { gridColumn: "1", gridRow: "1 / span 3", fontSize: "24px" },
+    "& > span": { gridColumn: "2" },
+  },
 });
 
 /** Two equally weighted entry points, only for a loaded, genuinely empty library. */
-export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport, focusFallbackRef, importButtonRef }) => {
+export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImport, onImport, compact = false, focusFallbackRef, importButtonRef }) => {
   const t = useTranslation();
   const styles = useStyles();
   const id = useId();
@@ -87,34 +97,35 @@ export const LibraryEmptyState: FC<LibraryEmptyStateProps> = ({ accent, canImpor
       alignItems: "center",
       textAlign: "center",
       maxWidth: 720,
-      margin: "12px auto 0",
+      margin: compact ? "0 auto" : "12px auto 0",
       gap: 4,
     }}
   >
-    <LibraryEmptyIllustration size={104} />
-    <Title2 as="h2" style={{ color: accent, margin: "8px 0 0" }}>
+    <LibraryEmptyIllustration size={compact ? 56 : 104} />
+    <Title2 as="h2" style={{ color: accent, margin: "8px 0 0",
+      fontSize: compact ? 20 : undefined, lineHeight: compact ? "28px" : undefined }}>
       {t("library.emptyTitle")}
     </Title2>
     <Body1 as="p" style={{ margin: "4px 0 0", color: "var(--colorNeutralForeground2, #333)" }}>
       {t("library.emptyDescription")}
     </Body1>
-    <div className={styles.choices}>
-      <button ref={importButtonRef} type="button" className={styles.choice} disabled={!canImport} onClick={onImport}
+    <div className={styles.choices} style={compact ? { marginTop: 12, gap: 12 } : undefined}>
+      <button ref={importButtonRef} type="button" className={mergeClasses(styles.choice, compact && styles.compactChoice)} disabled={!canImport} onClick={onImport}
         aria-labelledby={`${id}-import-title ${id}-import-action`} aria-describedby={`${id}-import-description`}>
         <DocumentAddRegular fontSize={28} aria-hidden="true" />
-        <span className={styles.eyebrow}>{t("library.fromDevice")}</span>
-        <span id={`${id}-import-title`} className={styles.title}>{t("library.bringBook")}</span>
+        <span className={styles.eyebrow} style={compact ? { display: "none" } : undefined}>{t("library.fromDevice")}</span>
+        <span id={`${id}-import-title`} className={styles.title} style={compact ? { fontSize: 18, lineHeight: "24px" } : undefined}>{t("library.bringBook")}</span>
         <span id={`${id}-import-description`} className={styles.description}>{t("library.bringBookDescription")}</span>
-        <span id={`${id}-import-action`} className={styles.action}>{t("library.chooseEpubFiles")}</span>
+        <span id={`${id}-import-action`} className={styles.action} style={compact ? { paddingTop: 4 } : undefined}>{t("library.chooseEpubFiles")}</span>
       </button>
-      <button type="button" className={styles.choice} aria-expanded={expanded} aria-controls={`${id}-discovery`}
+      <button type="button" className={mergeClasses(styles.choice, compact && styles.compactChoice)} aria-expanded={expanded} aria-controls={`${id}-discovery`}
         aria-labelledby={`${id}-discover-title ${id}-discover-action`} aria-describedby={`${id}-discover-description`}
         onClick={() => setExpanded(!expanded)}>
         <CompassNorthwestRegular fontSize={28} aria-hidden="true" />
-        <span className={styles.eyebrow}>{t("library.onWeb")}</span>
-        <span id={`${id}-discover-title`} className={styles.title}>{t("library.findNextBook")}</span>
+        <span className={styles.eyebrow} style={compact ? { display: "none" } : undefined}>{t("library.onWeb")}</span>
+        <span id={`${id}-discover-title`} className={styles.title} style={compact ? { fontSize: 18, lineHeight: "24px" } : undefined}>{t("library.findNextBook")}</span>
         <span id={`${id}-discover-description`} className={styles.description}>{t("library.findNextBookDescription")}</span>
-        <span id={`${id}-discover-action`} className={styles.action}>{t("library.exploreBooks")}</span>
+        <span id={`${id}-discover-action`} className={styles.action} style={compact ? { paddingTop: 4 } : undefined}>{t("library.exploreBooks")}</span>
       </button>
     </div>
     <div style={{ width: "100%", marginTop: expanded ? 20 : 0 }}>

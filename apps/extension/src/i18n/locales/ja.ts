@@ -131,6 +131,7 @@ export const ja: StringCatalog = {
   "library.cancelDownloadFile": "ダウンロードをキャンセル: {fileName}",
   "library.cancelDownloadFailed": "Ambra はダウンロードを停止しましたが、Chrome でのキャンセルを確認できませんでした。Chrome のダウンロードを開き、元のダウンロードを確認してキャンセルしてください。",
   "library.findBooks": "本を探す",
+  "library.fullLibrary": "ライブラリ全体",
   "library.search": "ライブラリを検索",
   "library.searchPlaceholder": "タイトルまたは著者を検索",
   "library.clearSearch": "ライブラリの検索をクリア",
