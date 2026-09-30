@@ -604,7 +604,12 @@ pnpm --filter @ambra/e2e exec playwright test disclosure-pagination.spec.ts disc
 ```
 
 These check exact rendered-line accounting in both directions, expanded/collapsed
-state, keyboard focus, and mode changes. To regenerate those small fixtures,
+state, keyboard focus, and mode changes. The held-load/queued-resize check samples
+visible frames inside the reader's main landmark and polls their complete width
+array atomically. Deterministic controls exclude background-estimator and
+transparent staging frames without relaxing the two-page spread assertion (#261).
+Use `--repeat-each=5` on `disclosure-interaction.spec.ts` to exercise the race checks
+repeatedly. To regenerate those small fixtures,
 run `node apps/e2e/scripts/generate-disclosure-fixture.mjs`.
 
 ## Bookmark cards (#213)
