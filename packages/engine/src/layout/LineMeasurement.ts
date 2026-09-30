@@ -6,6 +6,8 @@ import {
 } from "./DomTextWalker.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 import { measureSimpleTableRows } from "./SimpleTable.js";
+import type { DomBreakPoint, DomPositionRange, PositionOverride } from "./Page.js";
+import { compareDomPositions } from "./ScrollPositionTracker.js";
 
 /** A single indivisible unit of content for pagination purposes: either
  * one visual line of text within a "leaf" block element, or one whole
@@ -18,12 +20,13 @@ export interface Chunk {
    * so they reflect true layout position, not current scroll offset). */
   readonly top: number;
   readonly bottom: number;
-  /** The DOM position immediately before this chunk — where a page
-   * boundary would fall if pagination breaks right before it. */
+  /** The original-DOM reading anchor for this chunk's visual start.
+   * Reordered figures provide explicit membership separately. */
   readonly breakBefore: { node: Node; offset?: number };
   /** Shared bounds of authored break-inside avoidance boxes containing this
    * chunk. Lines remain separate for oversized boxes and scroll tracking. */
   readonly avoidanceGroups?: readonly AvoidanceGroup[];
+  readonly positionOverride?: PositionOverride;
 }
 
 export interface AvoidanceGroup {
@@ -96,7 +99,13 @@ interface InlineRun {
   readonly end: number;
 }
 
-type Leaf = Element | InlineRun;
+interface ReorderedFigure {
+  readonly figure: Element;
+  readonly parts: readonly Element[];
+  readonly illustration: Element;
+}
+
+type Leaf = Element | InlineRun | ReorderedFigure;
 
 interface MeasuredLeaf {
   readonly leaf: Leaf;
@@ -108,7 +117,7 @@ interface MutableAvoidanceGroup {
   bottom: number;
 }
 
-function oversizedFigureParts(element: Element, pageHeight: number): readonly Element[] | undefined {
+function oversizedFigureParts(element: Element, pageHeight: number): readonly Element[] | ReorderedFigure | undefined {
   if (element.localName !== "figure" || !Number.isFinite(pageHeight) ||
     element.parentElement?.closest("figure, table")) return;
   const children = Array.from(element.children).filter(child => !isReaderOwnedContent(child));
@@ -116,13 +125,18 @@ function oversizedFigureParts(element: Element, pageHeight: number): readonly El
   const illustrations = children.filter(child => child.localName !== "figcaption");
   if (captions.length > 1 || illustrations.length !== 1) return;
 
-  const normalFlow = (node: Element): boolean => {
+  const normalFlow = (node: Element, allowScripts = false): boolean => {
     const style = getComputedStyle(node);
     const replaced = node.localName === "img" || node.localName === "svg";
+    const script = allowScripts && (node.localName === "sub" || node.localName === "sup") &&
+      [style.left, style.right].every(value => value === "auto" || value === "0px") &&
+      [style.top, style.bottom].every(value => value === "auto" ||
+        (value.endsWith("px") && Math.abs(Number.parseFloat(value)) <= Number.parseFloat(style.fontSize)));
     return (style.display === "block" || style.display === "inline" || style.display === "contents" ||
+      (node === element && style.display === "table") ||
       (node.localName === "figcaption" && style.display === "table-caption")) &&
       (style.position === "static" || (style.position === "relative" &&
-        [style.top, style.right, style.bottom, style.left].every(value => value === "auto" || value === "0px"))) &&
+        (script || [style.top, style.right, style.bottom, style.left].every(value => value === "auto" || value === "0px")))) &&
       style.float === "none" && style.transform === "none" && style.writingMode === "horizontal-tb" &&
       (replaced || (style.overflowX === "visible" && style.overflowY === "visible" && style.clipPath === "none")) &&
       ["::before", "::after"].every(pseudo => {
@@ -145,16 +159,19 @@ function oversizedFigureParts(element: Element, pageHeight: number): readonly El
   const caption = captions[0];
   const parts = children.map(child => child === caption ? child : image);
   const bounds = parts.map(part => part.getBoundingClientRect());
+  const visualBounds = [...bounds].sort((a, b) => a.top - b.top);
   if (bounds.some(rect => rect.width <= 0 || rect.height <= 0) ||
-    bounds.some((rect, index) => index > 0 && rect.top < bounds[index - 1]!.bottom) ||
+    visualBounds.some((rect, index) => index > 0 && rect.top < visualBounds[index - 1]!.bottom) ||
     bounds[parts.indexOf(image)]!.height > pageHeight) return;
   const figure = element.getBoundingClientRect();
-  if (Math.max(figure.bottom, bounds[bounds.length - 1]!.bottom) -
-    Math.min(figure.top, bounds[0]!.top) <= pageHeight) return;
+  if (Math.max(figure.bottom, visualBounds[visualBounds.length - 1]!.bottom) -
+    Math.min(figure.top, visualBounds[0]!.top) <= pageHeight) return;
+  const reordered = bounds[0] !== visualBounds[0];
   if (caption && [caption, ...caption.querySelectorAll("*")].some(node =>
-    ATOMIC_TAG_NAMES.has(node.localName) || !normalFlow(node))) return;
-  // Only normal-flow, single-image groups split. Reordered captions, galleries,
-  // nested figures and authored clipping retain their original atomic behavior.
+    ATOMIC_TAG_NAMES.has(node.localName) || !normalFlow(node, reordered) ||
+    (reordered && (getComputedStyle(node).columnWidth !== "auto" ||
+      !["auto", "1"].includes(getComputedStyle(node).columnCount))))) return;
+  if (reordered) return { figure: element, parts, illustration: illustrations[0]! };
   return parts;
 }
 
@@ -230,7 +247,9 @@ function* collectLeaves(
     } else if (child.checkVisibility()) {
       const childGroups = avoidanceGroups(child, style, groups);
       const figureParts = oversizedFigureParts(child, pageHeight);
-      if (figureParts) {
+      if (figureParts && "figure" in figureParts) {
+        yield { leaf: figureParts, groups: childGroups };
+      } else if (figureParts) {
         for (const part of figureParts) {
           const partGroups = avoidanceGroups(part, getComputedStyle(part), childGroups);
           if (isAtomic(part, pageHeight) || isLeaf(part)) yield { leaf: part, groups: partGroups };
@@ -244,8 +263,7 @@ function* collectLeaves(
   yield inlineRun(nodes.length);
 }
 
-/** Measures a single atomic leaf as one unbreakable `Chunk`. */
-function measureAtomicChunk(element: Element, rect: DOMRect): Chunk {
+function positionBefore(element: Element): DomBreakPoint {
   const parent = element.parentNode;
   if (!parent) {
     throw new Error(
@@ -253,11 +271,12 @@ function measureAtomicChunk(element: Element, rect: DOMRect): Chunk {
     );
   }
   const index = Array.prototype.indexOf.call(parent.childNodes, element);
-  return {
-    top: rect.top,
-    bottom: rect.bottom,
-    breakBefore: { node: parent, offset: index },
-  };
+  return { node: parent, offset: index };
+}
+
+/** Measures a single atomic leaf as one unbreakable `Chunk`. */
+function measureAtomicChunk(element: Element, rect: DOMRect): Chunk {
+  return { top: rect.top, bottom: rect.bottom, breakBefore: positionBefore(element) };
 }
 
 function atomicBounds(element: Element, pageHeight: number, viewportWidth: number): DOMRect {
@@ -385,15 +404,35 @@ function* measureTextLeafChunks(
   textNodes: readonly Text[],
   viewportWidth: number,
   pageHeight: number,
+  reorderedCaption = false,
 ): Generator<Chunk | undefined> {
   const rects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
   // Continuous-scroll tracking keeps its existing line geometry.
-  const lineRects = Number.isFinite(pageHeight)
+  const lineRects = reorderedCaption ? yield* captionLineBands(rects) : Number.isFinite(pageHeight)
     ? yield* normalizeWrappingInlineRects(fullRange, excludeOverlappingBreakRects(fullRange, rects))
     : rects;
 
   if (lineRects.length === 0) {
     return;
+  }
+
+  /** Only used inside already-validated normal-flow captions. Union each physical
+   * line's inline boxes, including small raised/lowered scripts; DOM boundaries
+   * are then measured afresh rather than sorted alongside these rectangles. */
+  function* captionLineBands(rects: readonly DOMRect[]): Generator<undefined, DOMRect[]> {
+    const lines: DOMRect[] = [];
+    const ordered = [...rects].sort((a, b) => a.top - b.top);
+    for (let index = 0; index < ordered.length; index++) {
+      if (index % 64 === 0) yield undefined;
+      const rect = ordered[index]!;
+      const previous = lines.at(-1);
+      if (previous && rect.top < previous.bottom) {
+        const left = Math.min(previous.left, rect.left);
+        lines[lines.length - 1] = new DOMRect(left, previous.top,
+          Math.max(previous.right, rect.right) - left, Math.max(previous.bottom, rect.bottom) - previous.top);
+      } else lines.push(rect);
+    }
+    return lines;
   }
 
   // Reuse pre-collected text nodes during bisection rather than repeatedly
@@ -516,12 +555,17 @@ function hasReachedLine(
  * meaningfully exercised in a DOM-polyfill test environment like
  * happy-dom, which doesn't implement real layout.
  */
-function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator<Chunk | undefined> {
+function* chunkMeasurements(
+  bodyElement: Element, pageHeight: number, parents: readonly MutableAvoidanceGroup[] = [], includeRoot = false,
+  reorderedCaption = false,
+): Generator<Chunk | undefined> {
   const ownerDocument = bodyElement.ownerDocument;
   const viewportWidth = ownerDocument.documentElement.clientWidth;
 
-  const groups = avoidanceGroups(bodyElement, getComputedStyle(bodyElement), []);
-  for (const measured of collectLeaves(bodyElement, groups, pageHeight)) {
+  const groups = avoidanceGroups(bodyElement, getComputedStyle(bodyElement), parents);
+  const leaves = includeRoot && (isAtomic(bodyElement, pageHeight) || isLeaf(bodyElement))
+    ? [{ leaf: bodyElement, groups }] : collectLeaves(bodyElement, groups, pageHeight);
+  for (const measured of leaves) {
     yield undefined;
     if (!measured) continue;
     const { leaf, groups } = measured;
@@ -538,7 +582,75 @@ function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator
       }
       return { ...chunk, avoidanceGroups: groups };
     };
-    if (!("root" in leaf) && isAtomic(leaf, pageHeight)) {
+    if ("figure" in leaf) {
+      const parts: Chunk[][] = [];
+      for (const part of leaf.parts) {
+        const chunks: Chunk[] = [];
+        for (const chunk of chunkMeasurements(part, pageHeight, groups, true, part.localName === "figcaption")) {
+          yield undefined;
+          if (!chunk) continue;
+          let start = chunk.breakBefore;
+          // Prefix bisection reaches a line after including its first glyph.
+          // Explicit membership must include that glyph, not its trailing caret.
+          if (start.node.nodeType === 3 && (start.offset ?? 0) > 0) {
+            const range = ownerDocument.createRange();
+            range.setStart(start.node, start.offset! - 1);
+            range.setEnd(start.node, start.offset!);
+            const rect = range.getBoundingClientRect();
+            if (rect.width > 0 && rect.top >= chunk.top && rect.bottom <= chunk.bottom) {
+              start = { node: start.node, offset: start.offset! - 1 };
+            }
+          }
+          chunks.push({ ...chunk, breakBefore: start });
+        }
+        parts.push(chunks);
+      }
+      const orderedParts = [...parts].sort((a, b) => (a[0]?.top ?? 0) - (b[0]?.top ?? 0));
+      if (orderedParts.some((chunks, index) => index > 0 &&
+        chunks[0] && orderedParts[index - 1]!.at(-1) && chunks[0].top < orderedParts[index - 1]!.at(-1)!.bottom) ||
+        parts.some(chunks => chunks.length === 0 || chunks.some((chunk, index) => index > 0 &&
+        (chunk.top < chunks[index - 1]!.bottom ||
+          compareDomPositions(chunk.breakBefore, chunks[index - 1]!.breakBefore) <= 0)))) {
+        yield withGroups(measureAtomicChunk(leaf.figure, leaf.figure.getBoundingClientRect()));
+        continue;
+      }
+      const visual = orderedParts.flat();
+      const start = positionBefore(leaf.figure);
+      const scope: DomPositionRange = { start, end: { node: start.node, offset: (start.offset ?? 0) + 1 } };
+      const entries: { start: DomBreakPoint; chunk: Chunk }[] = [{ start, chunk: visual[0]! }];
+      for (let index = 0; index < parts.length; index++) {
+        const chunks = parts[index]!;
+        const part = leaf.parts[index]!;
+        const outer = part.localName === "figcaption" ? part : leaf.illustration;
+        const boundary = positionBefore(outer);
+        // The figure's own start targets its visually first part, not its first DOM child.
+        if ((boundary.offset ?? 0) > 0) entries.push({ start: boundary, chunk: chunks[0]! });
+        entries.push({ start: { node: outer, offset: 0 }, chunk: chunks[0]! });
+        for (const chunk of chunks) {
+          const previous = entries.at(-1)!;
+          if (compareDomPositions(chunk.breakBefore, previous.start) >= 0) {
+            entries.push({ start: chunk.breakBefore, chunk });
+          }
+        }
+      }
+      const ranges = new Map<Chunk, DomPositionRange[]>();
+      for (let index = 0; index < entries.length; index++) {
+        yield undefined;
+        const entry = entries[index]!;
+        const end = entries[index + 1]?.start ?? scope.end;
+        if (compareDomPositions(entry.start, end) >= 0) continue;
+        const owned = ranges.get(entry.chunk) ?? [];
+        owned.push({ start: entry.start, end });
+        ranges.set(entry.chunk, owned);
+      }
+      for (const chunk of visual) {
+        yield {
+          ...chunk,
+          breakBefore: chunk === visual[0] ? start : chunk.breakBefore,
+          positionOverride: { scope, ranges: ranges.get(chunk)! },
+        };
+      }
+    } else if (!("root" in leaf) && isAtomic(leaf, pageHeight)) {
       if (leaf.localName === "table") {
         const rows = measureSimpleTableRows(leaf as HTMLTableElement, pageHeight);
         if (rows) {
@@ -576,7 +688,7 @@ function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator
         range.selectNodeContents(leaf);
         textNodes = collectTextNodesOf(leaf);
       }
-      for (const chunk of measureTextLeafChunks(range, textNodes, viewportWidth, pageHeight)) {
+      for (const chunk of measureTextLeafChunks(range, textNodes, viewportWidth, pageHeight, reorderedCaption)) {
         yield chunk && withGroups(chunk);
       }
     }

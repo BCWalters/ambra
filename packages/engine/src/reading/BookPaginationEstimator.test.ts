@@ -7,6 +7,8 @@ import { ContentLoader } from "../content/ContentLoader.js";
 import { SpineItemRef } from "../container/PackageDocument.js";
 import { LocatorResolver } from "../locator/Locator.js";
 import { Page } from "../layout/Page.js";
+import { planPageBreaks } from "../layout/PaginationEngine.js";
+import type { Chunk } from "../layout/LineMeasurement.js";
 import { ReadingTheme } from "../rendering/ReadingTheme.js";
 import { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { BookPaginationEstimator } from "./BookPaginationEstimator.js";
@@ -70,6 +72,51 @@ describe("book-wide CFI page index", () => {
   function cfi(offset: number) {
     return locators.generate(0, nodes.get(0)!, offset).cfi;
   }
+
+  it("retains DOM-free figure membership for images, caption pages and legacy child offsets (#264)", async () => {
+    let points: { cfi: string; page: number }[] = [];
+    vi.mocked(PaginatedContentHost.prototype.open).mockImplementation(async function (this: PaginatedContentHost) {
+      const doc = document.implementation.createHTMLDocument();
+      doc.body.innerHTML = "<p>Before</p><figure><figcaption>abcdefgh</figcaption><div><svg></svg></div></figure><p>After</p>";
+      const figure = doc.querySelector("figure")!;
+      const caption = doc.querySelector("figcaption")!;
+      const text = caption.firstChild!;
+      const image = doc.querySelector("svg")!;
+      const scope = { start: { node: doc.body, offset: 1 }, end: { node: doc.body, offset: 2 } };
+      const middle = { node: text, offset: 4 };
+      const captionStart = { node: caption, offset: 0 };
+      const imageStart = { node: figure, offset: 1 };
+      const chunks: Chunk[] = [
+        { top: 0, bottom: 30, breakBefore: { node: doc.body, offset: 0 } },
+        { top: 30, bottom: 60, breakBefore: scope.start, positionOverride: { scope, ranges: [
+          { start: scope.start, end: captionStart }, { start: imageStart, end: scope.end },
+        ] } },
+        { top: 60, bottom: 90, breakBefore: captionStart, positionOverride: {
+          scope, ranges: [{ start: captionStart, end: middle }],
+        } },
+        { top: 90, bottom: 120, breakBefore: middle, positionOverride: {
+          scope, ranges: [{ start: middle, end: imageStart }],
+        } },
+        { top: 120, bottom: 150, breakBefore: { node: doc.body, offset: 2 } },
+      ];
+      Object.defineProperty(this.element, "contentDocument", { value: doc });
+      Reflect.set(this, "pages", planPageBreaks(chunks, 30, { node: doc.body, offset: 3 }));
+      points = ([
+        [doc.body, 1, 1], [figure, 0, 1], [figure, 1, 1], [image, 0, 1], [image.parentElement!, 0, 1],
+        [caption, 0, 2], [text, 0, 2], [text, 3, 2], [text, 4, 3], [text, 7, 3],
+        [doc.body, 2, 4],
+      ] as const).map(([node, offset, page]) => ({
+        cfi: locators.generate(0, node, offset).cfi, page,
+      }));
+    });
+    await run();
+    for (const point of points) expect(estimator.pageIndexForCfi(0, point.cfi), point.cfi).toBe(point.page);
+    expect(container.children).toHaveLength(0);
+    estimator.invalidateSpineItem(0);
+    expect(estimator.pageIndexForCfi(0, points[0]!.cfi)).toBeUndefined();
+    await run();
+    for (const point of points) expect(estimator.pageIndexForCfi(0, point.cfi), point.cfi).toBe(point.page);
+  });
 
   it("knows every fixed-layout page immediately, including overrides and after invalidation", async () => {
     for (const item of loader.packageDocument.spine) {

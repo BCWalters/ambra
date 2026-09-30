@@ -19,6 +19,50 @@ interface MeasuredSpineItem {
   pageStarts?: readonly string[];
   pageStartAncestors?: readonly (readonly number[])[];
   fragmentPages?: ReadonlyMap<string, number>;
+  figurePositions?: readonly FigurePositions[];
+}
+
+interface FigurePositions {
+  readonly rootCfi: string;
+  readonly starts: readonly {
+    readonly cfi: string;
+    readonly originalCfi: string;
+    readonly ancestors: readonly number[];
+    readonly pageIndex: number;
+  }[];
+}
+
+function ancestorIndices(node: Node): number[] {
+  const indices: number[] = [];
+  for (let child = node; child.parentElement; child = child.parentElement) {
+    indices.unshift(Array.prototype.indexOf.call(child.parentElement.childNodes, child));
+  }
+  return indices;
+}
+
+function compareMeasuredCfi(
+  startCfi: string, ancestors: readonly number[] | undefined, target: EpubCfi, cfi: string, originalCfi?: string,
+): number {
+  const start = EpubCfi.parse(startCfi);
+  const elementOffset = target.characterOffset !== undefined &&
+    (target.contentSteps.at(-1)?.index ?? 0) % 2 === 0;
+  const depth = target.contentSteps.length;
+  if (elementOffset && depth < start.contentSteps.length &&
+    target.packageSteps.length === start.packageSteps.length &&
+    target.packageSteps.every((step, index) => step.index === start.packageSteps[index]?.index) &&
+    target.contentSteps.every((step, index) => step.index === start.contentSteps[index]?.index)) {
+    const childIndex = ancestors?.[depth];
+    if (childIndex !== undefined) {
+      const comparison = childIndex - target.characterOffset!;
+      if (comparison !== 0) return comparison;
+      // Explicit figure ranges distinguish a parent boundary from its child's
+      // interior. Ordinary page starts retain their historical canonicalization.
+      return originalCfi !== undefined
+        ? (EpubCfi.compare(originalCfi, cfi) === 0 ? 0 : 1)
+        : (start.contentSteps.length === depth + 1 && (start.characterOffset ?? 0) === 0 ? 0 : 1);
+    }
+  }
+  return EpubCfi.compare(startCfi, cfi);
 }
 
 export type { BookPosition } from "./BookPagination.js";
@@ -63,6 +107,7 @@ export class BookPaginationEstimator {
   private pageStarts: (readonly string[] | undefined)[];
   private pageStartAncestors: (readonly (readonly number[])[] | undefined)[];
   private fragmentPages: (ReadonlyMap<string, number> | undefined)[];
+  private figurePositions: (readonly FigurePositions[] | undefined)[];
   private generation = 0;
   private activeRun: AbortController | undefined;
   private lastWidth: number | undefined;
@@ -87,6 +132,7 @@ export class BookPaginationEstimator {
     this.pageStarts = new Array(spine.length).fill(undefined);
     this.pageStartAncestors = new Array(spine.length).fill(undefined);
     this.fragmentPages = new Array(spine.length).fill(undefined);
+    this.figurePositions = new Array(spine.length).fill(undefined);
   }
 
   private initialPageCounts(): (number | undefined)[] {
@@ -146,6 +192,7 @@ export class BookPaginationEstimator {
       this.pageStarts = new Array(this.spine.length).fill(undefined);
       this.pageStartAncestors = new Array(this.spine.length).fill(undefined);
       this.fragmentPages = new Array(this.spine.length).fill(undefined);
+      this.figurePositions = new Array(this.spine.length).fill(undefined);
       this.lastWidth = width;
       this.lastHeight = height;
       this.lastFontScale = fontScale;
@@ -197,6 +244,7 @@ export class BookPaginationEstimator {
       this.pageStarts[spineIndex] = measured.pageStarts;
       this.pageStartAncestors[spineIndex] = measured.pageStartAncestors;
       this.fragmentPages[spineIndex] = measured.fragmentPages;
+      this.figurePositions[spineIndex] = measured.figurePositions;
       onProgress();
     }
   }
@@ -248,6 +296,7 @@ export class BookPaginationEstimator {
       const locatorResolver = this.locatorResolver;
       const pageStarts: string[] | undefined = locatorResolver ? [] : undefined;
       const pageStartAncestors: number[][] = [];
+      const figures = new Map<string, FigurePositions["starts"][number][]>();
       if (locatorResolver && pageStarts) {
         let deadline = performance.now() + 8;
         for (let index = 0; index < host.pageCount; index++) {
@@ -259,11 +308,26 @@ export class BookPaginationEstimator {
           const resolved = locatorResolver.resolveInDocument(
             locator, spineIndex, host.element.contentDocument!,
           );
-          const ancestors: number[] = [];
-          for (let child = resolved.node; child.parentElement; child = child.parentElement) {
-            ancestors.unshift(Array.prototype.indexOf.call(child.parentElement.childNodes, child));
+          pageStartAncestors.push(ancestorIndices(resolved.node));
+          for (const override of host.pagePositionOverrides(index) ?? []) {
+            const scopeStart = override.scope.start;
+            const figure = scopeStart.node.childNodes[scopeStart.offset ?? 0];
+            if (!figure) throw new Error(`Missing reordered figure in spine item ${spineIndex}.`);
+            const rootCfi = locatorResolver.generate(spineIndex, figure).cfi;
+            const positions = figures.get(rootCfi) ?? [];
+            for (const range of override.ranges) {
+              const point = range.start;
+              const locator = point.node === scopeStart.node && point.offset === scopeStart.offset
+                ? locatorResolver.generate(spineIndex, figure)
+                : locatorResolver.generateBoundary(spineIndex, point.node, point.offset);
+              const resolved = locatorResolver.resolveInDocument(locator, spineIndex, host.element.contentDocument!);
+              positions.push({
+                cfi: locator.cfi, originalCfi: locatorResolver.generate(spineIndex, point.node, point.offset).cfi,
+                ancestors: ancestorIndices(resolved.node), pageIndex: index,
+              });
+            }
+            figures.set(rootCfi, positions);
           }
-          pageStartAncestors.push(ancestors);
           if (performance.now() >= deadline) {
             await yieldToEventLoop();
             signal.throwIfAborted();
@@ -277,7 +341,11 @@ export class BookPaginationEstimator {
         const page = target ? host.pageIndexForPosition(target, 0) : undefined;
         if (page !== undefined) fragmentPages.set(fragment, page);
       }
-      return { pageCount: host.pageCount, pageStarts, pageStartAncestors, fragmentPages };
+      const figurePositions = Array.from(figures, ([rootCfi, starts]) => ({
+        rootCfi, starts: starts.sort((a, b) => EpubCfi.compare(a.cfi, b.cfi)),
+      }));
+      return { pageCount: host.pageCount, pageStarts, pageStartAncestors, fragmentPages,
+        figurePositions: figurePositions.length ? figurePositions : undefined };
     } finally {
       signal.removeEventListener("abort", disposeHost);
       disposeHost();
@@ -313,32 +381,28 @@ export class BookPaginationEstimator {
     const starts = this.pageStarts[spineIndex];
     if (!starts?.length) return undefined;
     const target = EpubCfi.parse(cfi);
-    const elementOffset = target.characterOffset !== undefined &&
-      (target.contentSteps.at(-1)?.index ?? 0) % 2 === 0;
+    for (const figure of this.figurePositions[spineIndex] ?? []) {
+      const root = EpubCfi.parse(figure.rootCfi);
+      if (root.packageSteps.length !== target.packageSteps.length ||
+        !root.packageSteps.every((step, index) => step.index === target.packageSteps[index]?.index) ||
+        !root.contentSteps.every((step, index) => step.index === target.contentSteps[index]?.index)) continue;
+      let page = figure.starts[0]!.pageIndex;
+      for (const start of figure.starts) {
+        if (compareMeasuredCfi(start.cfi, start.ancestors, target, cfi, start.originalCfi) > 0) break;
+        page = start.pageIndex;
+      }
+      return page;
+    }
     let low = 0;
     let high = starts.length;
     while (low < high) {
       const middle = Math.floor((low + high) / 2);
-      const start = EpubCfi.parse(starts[middle]!);
-      let comparison = EpubCfi.compare(starts[middle]!, cfi);
       // Saved bookmarks/resume CFIs can still address a parent's child offset.
       // Compare that offset with the measured descendant's real child index,
       // not CFI step numbers (which ignore whitespace, comments and controls).
       // Retaining only these ancestor indices keeps disposed measurement DOMs
       // collectible while supporting old and newly saved element-offset CFIs.
-      const depth = target.contentSteps.length;
-      if (elementOffset && depth < start.contentSteps.length &&
-        target.packageSteps.length === start.packageSteps.length &&
-        target.packageSteps.every((step, index) => step.index === start.packageSteps[index]?.index) &&
-        target.contentSteps.every((step, index) => step.index === start.contentSteps[index]?.index)) {
-        const childIndex = this.pageStartAncestors[spineIndex]?.[middle]?.[depth];
-        if (childIndex !== undefined) {
-          comparison = childIndex - target.characterOffset!;
-          if (comparison === 0) {
-            comparison = start.contentSteps.length === depth + 1 && (start.characterOffset ?? 0) === 0 ? 0 : 1;
-          }
-        }
-      }
+      const comparison = compareMeasuredCfi(starts[middle]!, this.pageStartAncestors[spineIndex]?.[middle], target, cfi);
       if (comparison <= 0) low = middle + 1;
       else high = middle;
     }
@@ -366,6 +430,7 @@ export class BookPaginationEstimator {
     this.pageStarts[spineIndex] = undefined;
     this.pageStartAncestors[spineIndex] = undefined;
     this.fragmentPages[spineIndex] = undefined;
+    this.figurePositions[spineIndex] = undefined;
   }
 
   /** Pauses pending work and releases its hidden host immediately, preserving

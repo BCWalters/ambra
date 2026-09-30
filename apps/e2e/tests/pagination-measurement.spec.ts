@@ -1072,6 +1072,446 @@ test("figure fragmentation preserves anchors, scrolling, DOM and incremental par
   } finally { await session.close(); }
 });
 
+test("reordered figure captions preserve exact coverage and original positions (#264)", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      const results = [];
+      for (const direction of ["ltr", "rtl"]) {
+        for (const captionSide of ["bottom", "top"]) {
+          for (const [width, font, budget] of [[420, 20, 220], [300, 30, 180]]) {
+            frame.style.cssText = `width:${width}px;height:500px`;
+            const caption = `<figcaption id="caption"><p>${"Original caption with an ".repeat(12)}<em>${"emphasized detail. ".repeat(12)}</em> H<sub>2</sub>O and x<sup>2</sup>.</p><p>${"Caption continues here. ".repeat(20)}</p></figcaption>`;
+            const image = '<div id="image-wrapper"><svg id="image" width="100" height="160"><rect width="100" height="160"/></svg></div>';
+            doc.body.innerHTML = `<style>
+              body{margin:0;font:${font}px/1.4 serif;direction:${direction}}
+              figure{display:table;margin:12px 0;width:95%;break-inside:avoid}
+              figcaption{display:table-caption;caption-side:${captionSide}}
+              p{margin:0} svg{display:block}
+              sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}
+              sub{bottom:-.25em} sup{top:-.5em}
+            </style><p id="before">Before.</p><figure id="figure">${captionSide === "bottom" ? caption + image : image + caption}</figure><p id="after">After.</p>`;
+            const original = doc.body.innerHTML;
+            const chunks = E.measureChunks(doc.body, budget);
+            const pages = E.PaginationEngine.paginate(doc.body, budget!);
+            const incremental = await E.PaginationEngine.paginateIncrementally(doc.body, budget!, { timeSliceMs: 1 });
+            const signature = (pages: readonly Engine.Page[]) => pages.map(page => ({
+              top: page.topY, bottom: page.bottomY, start: page.startBreak, end: page.endBreak,
+              positions: page.positionOverrides,
+            }));
+            const parity = pages.length === incremental.length && signature(pages).every((page, index) => {
+              const other = signature(incremental)[index]!;
+              return page.top === other.top && page.bottom === other.bottom &&
+                page.start.node === other.start.node && page.start.offset === other.start.offset &&
+                page.positions?.length === other.positions?.length;
+            });
+            const coverage = (top: number, bottom: number) => pages.reduce((total, page) =>
+              total + Math.max(0, Math.min(page.topY + Math.min(page.height, budget!), bottom) - Math.max(page.topY, top)), 0);
+            let badCoverage = 0;
+            let badPositions = 0;
+            const positionErrors = [];
+            let characters = 0;
+            const range = doc.createRange();
+            const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+            let text: Node | null;
+            while ((text = walker.nextNode())) {
+              if (text.parentElement?.closest("style")) continue;
+              for (let offset = 0; offset < text.textContent!.length; offset++) {
+                if (!text.textContent![offset]!.trim()) continue;
+                characters++;
+                range.setStart(text, offset);
+                range.setEnd(text, offset + 1);
+                const rect = range.getBoundingClientRect();
+                if (Math.abs(coverage(rect.top, rect.bottom) - rect.height) > 0.5) badCoverage++;
+                const owners = pages.filter(page => page.containsPosition(text!, offset, doc));
+                if (owners.length !== 1 || rect.top < owners[0]!.topY - 0.5 ||
+                  rect.bottom > owners[0]!.bottomY + 0.5) {
+                  badPositions++;
+                  positionErrors.push({ offset, text: text.textContent!.slice(offset, offset + 12),
+                    top: rect.top, bottom: rect.bottom, owners: owners.map(page => [page.index, page.topY, page.bottomY,
+                      page.startBreak.offset, page.endBreak.offset]) });
+                }
+              }
+            }
+            const imageRect = doc.getElementById("image")!.getBoundingClientRect();
+            const imagePage = pages.find(page => imageRect.top >= page.topY && imageRect.bottom <= page.bottomY)!;
+            const imageTargets = ["image", "image-wrapper"].every(id =>
+              E.PaginationEngine.findPageForPosition(pages, doc.getElementById(id)!, 0, doc) === imagePage);
+            const figure = doc.getElementById("figure")!;
+            const firstVisual = Math.min(imageRect.top, doc.getElementById("caption")!.getBoundingClientRect().top);
+            const figurePage = E.PaginationEngine.findPageForPosition(pages, figure, 0, doc)!;
+            const figureTarget = figurePage.topY <= firstVisual && figurePage.bottomY >= firstVisual;
+            let forcedFailures = 0;
+            for (const page of pages) {
+              const point = page.startBreak;
+              if (E.PaginationEngine.findPageForPosition(pages, point.node, point.offset ?? 0, doc) !== page) forcedFailures++;
+              const anchored = E.PaginationEngine.paginate(doc.body, budget!, point);
+              const found = E.PaginationEngine.findPageForPosition(anchored, point.node, point.offset ?? 0, doc)!;
+              if (found.startBreak.node !== point.node || found.startBreak.offset !== point.offset) forcedFailures++;
+            }
+            results.push({
+              direction, captionSide, width, pages: pages.length, characters, badCoverage, badPositions,
+              positionErrors,
+              imageCoverage: coverage(imageRect.top, imageRect.bottom), imageHeight: imageRect.height,
+              imageTargets, figureTarget, forcedFailures, parity, unchanged: original === doc.body.innerHTML,
+              mapped: chunks.some(chunk => chunk.positionOverride !== undefined),
+              scrollAtomic: E.measureChunks(doc.body).some(chunk =>
+                chunk.breakBefore.node === figure.parentNode &&
+                chunk.breakBefore.offset === Array.from(figure.parentNode!.childNodes).indexOf(figure)),
+            });
+          }
+        }
+      }
+      frame.remove();
+      return results;
+    });
+    for (const result of results) {
+      expect(result, JSON.stringify(result)).toMatchObject({
+        badCoverage: 0, badPositions: 0, imageTargets: true, figureTarget: true,
+        forcedFailures: 0, parity: true, unchanged: true, mapped: true, scrollAtomic: true,
+      });
+      expect(result.pages).toBeGreaterThan(3);
+      expect(result.characters).toBeGreaterThan(800);
+      expect(result.imageCoverage).toBe(result.imageHeight);
+    }
+  } finally { await session.close(); }
+});
+
+function reorderedFigureBook(captionSide = "bottom"): string {
+  const caption = `<figcaption id="caption" style="display:table-caption;caption-side:${captionSide}">
+    <p>${"This original caption describes a blue rectangle and must remain fully readable. ".repeat(12)}</p>
+    <p>${"Its final paragraph remains part of the same illustration. ".repeat(8)} END OF CAPTION.</p>
+  </figcaption>`;
+  const image = '<div id="image-wrapper"><svg id="image" xmlns="http://www.w3.org/2000/svg" width="120" height="200"><rect width="120" height="200" fill="blue"/></svg></div>';
+  return book(`<p id="before">Before the illustration.</p>
+    <figure id="figure" style="display:table;width:300px;margin:0;break-inside:avoid">${captionSide === "bottom" ? caption + image : image + caption}</figure>
+    <p id="after">After the illustration.</p>`);
+}
+
+test("reordered caption work remains cancellable and rejects multicolumn or overlapping parts (#264)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const fixture = `<figure style="display:table;width:280px"><figcaption style="display:table-caption;caption-side:bottom">${"A long original caption for cancellation. ".repeat(200)}</figcaption><svg width="100" height="160"><rect width="100" height="160"/></svg></figure>`;
+      document.body.style.cssText = "margin:0;font:20px/28px serif";
+      const conservative = [];
+      for (const style of ["column-count:2", "column-width:100px", "margin-top:-100px"]) {
+        document.body.innerHTML = fixture;
+        const caption = document.querySelector("figcaption")!;
+        caption.setAttribute("style", `${caption.getAttribute("style")};${style}`);
+        const chunks = E.measureChunks(document.body, 220);
+        conservative.push(chunks.length === 1 && !chunks[0]!.positionOverride);
+      }
+      document.body.innerHTML = fixture;
+      const controller = new AbortController();
+      const original = Range.prototype.getClientRects;
+      let reads = 0;
+      Range.prototype.getClientRects = function () {
+        if (++reads === 50) controller.abort();
+        return original.call(this);
+      };
+      try {
+        await E.measureChunksIncrementally(document.body, { signal: controller.signal, timeSliceMs: 1 }, 220);
+        return { aborted: false, reads, conservative };
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== "AbortError") throw error;
+        return { aborted: true, reads, conservative };
+      } finally { Range.prototype.getClientRects = original; }
+    });
+    expect(result).toEqual({ aborted: true, reads: 50, conservative: [true, true, true] });
+  } finally { await session.close(); }
+});
+
+for (const side of ["bottom", "top"]) {
+  test(`reordered ${side} captions retain CFIs through snapshots, reflow and background indexing (#264)`, async () => {
+    const session = await browser();
+    try {
+      const result = await session.page.evaluate(async bytes => {
+        const E = window.paginationEngine;
+        const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+          Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+        ));
+        const resolver = new E.ResourceUrlResolver(loader);
+        const locators = new E.LocatorResolver(loader.packageDocument, loader);
+        const configure = (doc: Document) => {
+          E.ReadingTheme.applyFontScale(doc, 1.5);
+          E.ReadingTheme.applyFontFamily(doc, E.ReadingTheme.DEFAULT_FONT_FAMILY);
+          E.ReadingTheme.applyLineSpacing(doc, E.ReadingTheme.DEFAULT_LINE_SPACING);
+          E.ReadingTheme.applyLetterSpacing(doc, E.ReadingTheme.DEFAULT_LETTER_SPACING);
+          E.ReadingTheme.applyContentWidth(doc, E.ReadingTheme.DEFAULT_CONTENT_WIDTH_EM);
+        };
+        const source = new E.PaginatedContentHost(480, 600);
+        const target = new E.PaginatedContentHost(480, 600);
+        const hidden = document.createElement("div");
+        hidden.style.cssText = "position:absolute;left:-10000px;top:0";
+        document.body.append(source.element, target.element, hidden);
+        const estimator = new E.BookPaginationEstimator(loader, resolver, loader.packageDocument.spine,
+          loader.packageDocument.metadata.renditionLayout, hidden, undefined, locators,
+          new Map([[0, ["figure", "caption", "image", "image-wrapper"]]]));
+        const original = E.PaginationEngine.paginate;
+        try {
+          await source.open(loader, resolver, 0, undefined, configure);
+          const doc = source.element.contentDocument!;
+          const points = ["figure", "caption", "image", "image-wrapper"].map(id => ({ node: doc.getElementById(id)!, offset: 0 }));
+          const positions: { node: Node; offset: number }[] = [...points];
+          for (let index = 0; index < source.pageCount; index++) {
+            const point = source.pageStartPosition(index)!;
+            positions.push({ node: point.node, offset: point.offset ?? 0 });
+          }
+          const walker = doc.createTreeWalker(doc.getElementById("caption")!, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            for (let offset = 0; offset < node.textContent!.length; offset++) {
+              if (node.textContent![offset]!.trim()) positions.push({ node, offset });
+            }
+          }
+          const cases = positions.map(point => ({
+            cfi: locators.generate(0, point.node, point.offset).cfi,
+            page: source.pageIndexForPosition(point.node, point.offset),
+          }));
+          const snapshot = JSON.parse(JSON.stringify(source.paginationSnapshot()));
+          const measuredPages = source.pageCount;
+          source.dispose();
+          source.element.remove();
+          let measurements = 0;
+          E.PaginationEngine.paginate = (...args) => {
+            measurements++;
+            return original.apply(E.PaginationEngine, args);
+          };
+          await target.open(loader, resolver, 0, undefined, configure, undefined, snapshot);
+          const reused = measurements === 0;
+          E.PaginationEngine.paginate = original;
+          const targetDoc = target.element.contentDocument!;
+          const mismatches = cases.filter(point => {
+            const resolved = locators.resolveInDocument(new E.Locator(point.cfi), 0, targetDoc);
+            return target.pageIndexForPosition(resolved.node, resolved.characterOffset ?? 0) !== point.page;
+          }).length;
+          await estimator.run(0, 480, 600, 1.5, E.ReadingTheme.DEFAULT_FONT_FAMILY,
+            E.ReadingTheme.DEFAULT_LINE_SPACING, E.ReadingTheme.DEFAULT_LETTER_SPACING,
+            E.ReadingTheme.DEFAULT_CONTENT_WIDTH_EM, () => {});
+          const indexed = cases.filter(point => estimator.pageIndexForCfi(0, point.cfi) !== point.page);
+          const fragments = points.every((point, index) =>
+            estimator.pageIndexForFragment(0, point.node.id) === cases[index]!.page);
+          const reflowCases = [cases[2]!, cases[Math.floor(cases.length / 2)]!, cases.at(-1)!];
+          let reflowFailures = 0;
+          for (const point of reflowCases) {
+            const resolved = locators.resolveInDocument(new E.Locator(point.cfi), 0, targetDoc);
+            const anchor = { node: resolved.node, offset: resolved.characterOffset ?? 0 };
+            target.goToPosition(anchor.node, anchor.offset);
+            for (const [width, scale] of [[680, 1], [480, 1.5]]) {
+              E.ReadingTheme.applyFontScale(targetDoc, scale!);
+              target.relayout(width!, 600, anchor);
+              if (!target.currentPageAndDocument()!.page.containsPosition(anchor.node, anchor.offset, targetDoc)) reflowFailures++;
+              const range = targetDoc.createRange();
+              if (anchor.node.nodeType === 3) {
+                range.setStart(anchor.node, anchor.offset);
+                range.setEnd(anchor.node, anchor.offset + 1);
+              } else range.selectNode(anchor.node);
+              const bounds = range.getBoundingClientRect();
+              const frameStyle = getComputedStyle(target.element);
+              const clip = frameStyle.clipPath.match(/inset\(([\d.]+)px 0px(?: ([\d.]+)px)?/);
+              const top = Number(clip?.[1] ?? 0);
+              const bottom = 600 - Number(clip?.[2] ?? clip?.[1] ?? 0);
+              if (bounds.top < top - 1 || bounds.bottom > bottom + 1) reflowFailures++;
+            }
+          }
+          return { reused, measuredPages, restoredPages: snapshot.pages.length, mismatches,
+            indexedFailures: indexed.length, indexedSample: indexed.slice(0, 2), fragments, reflowFailures,
+            backgroundFrames: hidden.children.length, cases: cases.length };
+        } finally {
+          E.PaginationEngine.paginate = original;
+          estimator.dispose();
+          for (const host of [source, target]) { host.dispose(); host.element.remove(); }
+          hidden.remove();
+          resolver.dispose();
+        }
+      }, reorderedFigureBook(side));
+      expect(result, JSON.stringify(result)).toMatchObject({
+        reused: true, mismatches: 0, indexedFailures: 0, fragments: true, reflowFailures: 0, backgroundFrames: 0,
+      });
+      expect(result.measuredPages).toBe(result.restoredPages);
+      expect(result.cases).toBeGreaterThan(1000);
+    } finally { await session.close(); }
+  });
+}
+
+test("incoming pages transfer forced anchors in one pass without exporting canonical snapshots (#264)", async () => {
+  const session = await browser();
+  try {
+    const bytes = book(Array.from({ length: 12 }, (_, index) =>
+      `<p id="p${index}">${"An original passage tests a forced reading boundary. ".repeat(20)}</p>`).join(""));
+    const result = await session.page.evaluate(async bytes => {
+      const E = window.paginationEngine;
+      const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+        Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+      ));
+      const resolver = new E.ResourceUrlResolver(loader);
+      const locators = new E.LocatorResolver(loader.packageDocument, loader);
+      const source = new E.PaginatedContentHost(680, 900);
+      const target = new E.PaginatedContentHost(680, 900);
+      document.body.append(source.element, target.element);
+      const sync = E.PaginationEngine.paginate;
+      const incremental = E.PaginationEngine.paginateIncrementally;
+      try {
+        await source.open(loader, resolver, 0);
+        source.goToPosition(source.element.contentDocument!.getElementById("p3")!.firstChild!, 100);
+        const signature = (host: Engine.PaginatedContentHost) => Array.from({ length: host.pageCount }, (_, index) => {
+          const point = host.pageStartPosition(index)!;
+          return locators.generateBoundary(0, point.node, point.offset).cfi;
+        }).join("\n");
+        const expected = signature(source);
+        let syncPasses = 0;
+        let incrementalPasses = 0;
+        E.PaginationEngine.paginate = (...args) => { syncPasses++; return sync.apply(E.PaginationEngine, args); };
+        E.PaginationEngine.paginateIncrementally = (...args) => {
+          incrementalPasses++;
+          return incremental.apply(E.PaginationEngine, args);
+        };
+        const results = [];
+        for (const options of [undefined, { timeSliceMs: 1 }]) {
+          await target.open(loader, resolver, 0, undefined, undefined, options, undefined, source.paginationAnchor());
+          results.push(signature(target) === expected && target.paginationSnapshot() === undefined &&
+            target.paginationAnchor()?.node.ownerDocument === target.element.contentDocument);
+        }
+        let rejectedInvalidAnchor = false;
+        try {
+          await target.open(loader, resolver, 0, undefined, undefined, undefined, undefined,
+            { node: source.element.contentDocument!.createElement("p"), offset: 0 });
+        } catch (error) {
+          if (!(error instanceof Error) || !error.message.includes("Cannot transfer the forced pagination anchor")) throw error;
+          rejectedInvalidAnchor = true;
+        }
+        return { results, syncPasses, incrementalPasses, rejectedInvalidAnchor,
+          sourceDeclinesSnapshot: source.paginationSnapshot() === undefined };
+      } finally {
+        E.PaginationEngine.paginate = sync;
+        E.PaginationEngine.paginateIncrementally = incremental;
+        for (const host of [source, target]) { host.dispose(); host.element.remove(); }
+        resolver.dispose();
+      }
+    }, bytes);
+    expect(result).toEqual({
+      results: [true, true], syncPasses: 1, incrementalPasses: 1,
+      rejectedInvalidAnchor: true, sourceDeclinesSnapshot: true,
+    });
+  } finally { await session.close(); }
+});
+
+for (const width of [680, 1100]) {
+  test(`packaged ${width}px reordered captions support page turns, bookmarks and resume (#264)`, async () => {
+    const filename = test.info().outputPath("reordered-figure.epub");
+    fs.writeFileSync(filename, Buffer.from(reorderedFigureBook(), "base64"));
+    const { context, readerPage } = await launchReader(filename, { viewport: { width, height: 900 } });
+    try {
+      await exposeReaderController(readerPage);
+      const sample = () => readerPage.getByRole("main").locator("iframe").evaluateAll(frames => {
+        const positions: number[] = [];
+        let expected = 0;
+        let partial = 0;
+        let imageCoverage = 0;
+        let imageHeight = 0;
+        for (const frame of frames) {
+          if (!(frame instanceof HTMLIFrameElement) ||
+            !frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+          const doc = frame.contentDocument!;
+          const caption = doc.getElementById("caption");
+          if (!caption) continue;
+          expected = caption.textContent!.replace(/\s/g, "").length;
+          const clip = getComputedStyle(frame).clipPath.match(/inset\(([\d.]+)px 0px(?: ([\d.]+)px)?/);
+          const top = Number(clip?.[1] ?? 0);
+          const bottom = frame.clientHeight - Number(clip?.[2] ?? clip?.[1] ?? 0);
+          const image = doc.getElementById("image")!.getBoundingClientRect();
+          imageHeight = image.height;
+          imageCoverage += Math.max(0, Math.min(bottom, image.bottom) - Math.max(top, image.top));
+          const walker = doc.createTreeWalker(caption, NodeFilter.SHOW_TEXT);
+          const range = doc.createRange();
+          let globalOffset = 0;
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            for (let offset = 0; offset < node.textContent!.length; offset++, globalOffset++) {
+              if (!node.textContent![offset]!.trim()) continue;
+              range.setStart(node, offset);
+              range.setEnd(node, offset + 1);
+              const rect = range.getBoundingClientRect();
+              if (rect.top >= top - 1 && rect.bottom <= bottom + 1) positions.push(globalOffset);
+              else if (Math.min(bottom, rect.bottom) - Math.max(top, rect.top) > 1) partial++;
+            }
+          }
+        }
+        return { positions: positions.sort((a, b) => a - b), expected, partial, imageCoverage, imageHeight };
+      });
+      for (const scale of [1, 1.5]) {
+        await readerPage.evaluate(async scale => {
+          const c = Reflect.get(window, "__readerController");
+          await c.setFontScale(scale);
+          await c.goToNavPoint({ path: c.pkg.spine[0].manifestItem.path, fragment: "figure" });
+        }, scale);
+        const first = await sample();
+        await readerPage.evaluate(async () => {
+          const c = Reflect.get(window, "__readerController");
+          await c.turnPage(1);
+          await c.turnPage(-1);
+        });
+        expect(await sample()).toEqual(first);
+        const counts = new Map<number, number>();
+        let imageCoverage = 0;
+        let finished = false;
+        for (let step = 0; step < 60; step++) {
+          const current = await sample();
+          expect(current.partial).toBe(0);
+          imageCoverage += current.imageCoverage;
+          for (const point of current.positions) counts.set(point, (counts.get(point) ?? 0) + 1);
+          const state = await readerPage.evaluate(() => {
+            const { pageIndex, secondPageIndex, pageCount } = Reflect.get(window, "__readerController").snapshot();
+            return { pageIndex, secondPageIndex, pageCount };
+          });
+          if (Math.max(state.pageIndex, state.secondPageIndex ?? 0) >= state.pageCount - 1) {
+            finished = true;
+            break;
+          }
+          await readerPage.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
+        }
+        expect(finished).toBe(true);
+        expect(counts.size).toBe(first.expected);
+        expect(Array.from(counts.values()).every(count => count === 1)).toBe(true);
+        expect(imageCoverage).toBe(first.imageHeight);
+      }
+      const captionCfi: string = await readerPage.evaluate(async () => {
+        const c = Reflect.get(window, "__readerController");
+        return (await c.addBookmark()).cfi;
+      });
+      await readerPage.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        return c.goToNavPoint({ path: c.pkg.spine[0].manifestItem.path, fragment: "image" });
+      });
+      expect(await readerPage.evaluate(() => Reflect.get(window, "__readerController").snapshot().isBookmarked)).toBe(false);
+      await readerPage.evaluate(async captionCfi => {
+        const c = Reflect.get(window, "__readerController");
+        await c.addBookmark();
+        await c.goToBookmark(captionCfi);
+      }, captionCfi);
+      expect(await readerPage.evaluate(() => {
+        const state = Reflect.get(window, "__readerController").snapshot();
+        return { bookmarked: state.isBookmarked, count: state.bookmarks.length };
+      })).toEqual({ bookmarked: true, count: 2 });
+      const beforeReload = await sample();
+      expect(beforeReload.positions.length).toBeGreaterThan(0);
+      await readerPage.evaluate(() => Reflect.get(window, "__readerController").flushProgress());
+      await readerPage.reload();
+      await readerPage.waitForFunction(() => [...document.querySelectorAll('[role="main"] iframe')].some(frame =>
+        frame instanceof HTMLIFrameElement && frame.contentDocument?.getElementById("caption")));
+      await exposeReaderController(readerPage);
+      await expect.poll(sample).toEqual(beforeReload);
+      expect(await readerPage.evaluate(() => Reflect.get(window, "__readerController").snapshot().isBookmarked)).toBe(true);
+    } finally { await context.close(); }
+  });
+}
+
 test("fitting figures and complex authored layouts retain atomic geometry (#257)", async () => {
   const session = await browser();
   try {
@@ -1090,7 +1530,7 @@ test("fitting figures and complex authored layouts retain atomic geometry (#257)
         `<figure><figure>${image}</figure>${caption}</figure>`,
         `<figure style="display:flex;flex-direction:column-reverse">${image}${caption}</figure>`,
         `<figure style="display:grid">${image}${caption}</figure>`,
-        `<figure style="display:table"><figcaption style="display:table-caption;caption-side:bottom">Caption.</figcaption>${image}</figure>`,
+        `<figure style="display:table"><figcaption style="display:table-caption;caption-side:bottom">Caption.</figcaption>${image.replace("height:200px", "height:60px")}</figure>`,
         `<figure style="height:100px;overflow:hidden">${image}${caption}</figure>`,
         `<figure style="clip-path:inset(10px)">${image}${caption}</figure>`,
         `<figure style="float:left">${image}${caption}</figure>`,

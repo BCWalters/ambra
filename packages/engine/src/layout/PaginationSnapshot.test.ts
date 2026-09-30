@@ -19,6 +19,42 @@ function fixture() {
 }
 
 describe("DOM-free pagination snapshots", () => {
+  it("restores disjoint position overrides in the new document and rejects invalid ranges (#264)", () => {
+    const source = fixture();
+    const target = fixture();
+    const scope = { start: { node: source.text, offset: 0 }, end: { node: source.text, offset: 15 } };
+    const pages = [
+      new Page(0, scope.start, { node: source.text, offset: 5 }, 0, 50, [{ scope, ranges: [
+        { start: scope.start, end: { node: source.text, offset: 5 } },
+        { start: { node: source.text, offset: 10 }, end: scope.end },
+      ] }]),
+      new Page(1, { node: source.text, offset: 5 }, scope.end, 50, 100, [{ scope, ranges: [
+        { start: { node: source.text, offset: 5 }, end: { node: source.text, offset: 10 } },
+      ] }]),
+    ];
+    const snapshot = snapshotPages(source.document, source.identity(), pages)!;
+    // happy-dom only supports Range.comparePoint in its global document.
+    document.documentElement.innerHTML = target.document.documentElement.innerHTML;
+    const text = document.querySelector("p")!.firstChild!;
+    const restored = restoreSnapshotPages(document, target.identity(), JSON.parse(JSON.stringify(snapshot)))!;
+    for (const [offset, index] of [[0, 0], [4, 0], [5, 1], [9, 1], [10, 0], [14, 0]]) {
+      expect(restored.filter(page => page.containsPosition(text, offset!, document))).toEqual([restored[index!]]);
+    }
+    expect(restored[0]!.positionOverrides![0]!.scope.start.node).toBe(text);
+    const override = snapshot.pages[0]!.positionOverrides![0]!;
+    for (const ranges of [
+      [{ start: { path: [999], offset: 0 }, end: override.scope.end }],
+      [{ start: override.scope.end, end: override.scope.start }],
+      [{ start: override.scope.start, end: { ...override.scope.end, offset: 16 } }],
+      [],
+    ]) {
+      const invalid = { ...snapshot, pages: [{
+        ...snapshot.pages[0]!, positionOverrides: [{ ...override, ranges }],
+      }] };
+      expect(restoreSnapshotPages(target.document, target.identity(), invalid)).toBeUndefined();
+    }
+  });
+
   it("round-trips through JSON into independent nodes without retaining the old document", () => {
     const source = fixture();
     const target = fixture();

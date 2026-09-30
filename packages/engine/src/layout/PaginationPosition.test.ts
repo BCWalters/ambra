@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { PaginationEngine, planPageBreaks } from "./PaginationEngine.js";
 import type { Chunk } from "./LineMeasurement.js";
+import { findChunkForPosition } from "./ScrollPositionTracker.js";
 
 beforeEach(() => {
   document.body.innerHTML = `<div class="chapter" id="chapter">
@@ -20,6 +21,47 @@ function chapterPages() {
 }
 
 describe("PaginationEngine.findPageForPosition", () => {
+  it("maps disjoint figure ranges without stealing image, caption, or surrounding positions (#264)", () => {
+    document.body.innerHTML = "<p>Before.</p><figure><figcaption>abcdefgh</figcaption><svg></svg></figure><p>After.</p>";
+    const figure = document.querySelector("figure")!;
+    const caption = document.querySelector("figcaption")!;
+    const text = caption.firstChild!;
+    const image = document.querySelector("svg")!;
+    const start = { node: document.body, offset: 1 };
+    const end = { node: document.body, offset: 2 };
+    const captionStart = { node: caption, offset: 0 };
+    const middle = { node: text, offset: 4 };
+    const imageStart = { node: figure, offset: 1 };
+    const scope = { start, end };
+    const chunks: Chunk[] = [
+      { top: 0, bottom: 30, breakBefore: { node: document.body.firstChild!, offset: 0 } },
+      { top: 30, bottom: 60, breakBefore: start, positionOverride: { scope, ranges: [
+        { start, end: captionStart }, { start: imageStart, end },
+      ] } },
+      { top: 60, bottom: 90, breakBefore: captionStart, positionOverride: {
+        scope, ranges: [{ start: captionStart, end: middle }],
+      } },
+      { top: 90, bottom: 120, breakBefore: middle, positionOverride: {
+        scope, ranges: [{ start: middle, end: imageStart }],
+      } },
+      { top: 120, bottom: 150, breakBefore: { node: document.body.lastChild!, offset: 0 } },
+    ];
+    const pages = planPageBreaks(chunks, 30, { node: document.body, offset: 3 });
+    for (const [node, offset, index] of [
+      [figure, 0, 1], [image, 0, 1], [figure, 1, 1], [caption, 0, 2],
+      [text, 0, 2], [text, 3, 2], [text, 4, 3], [text, 7, 3],
+      [document.body.firstChild!.firstChild!, 1, 0], [document.body.lastChild!.firstChild!, 1, 4],
+    ] as const) {
+      expect(pages.filter(page => page.containsPosition(node, offset, document))).toEqual([pages[index]]);
+      expect(PaginationEngine.findPageForPosition(pages, node, offset, document)).toBe(pages[index]);
+      expect(findChunkForPosition(chunks, node, offset)).toBe(chunks[index]);
+    }
+    const together = planPageBreaks(chunks, 100, { node: document.body, offset: 3 });
+    expect(together[0]!.containsPosition(image, 0, document)).toBe(true);
+    expect(together[0]!.containsPosition(text, 3, document)).toBe(true);
+    expect(together[0]!.containsPosition(text, 4, document)).toBe(false);
+  });
+
   it.each(["chapter", "empty-anchor"])("opens leading #%s on the first page, not the chapter's last (#152)", id => {
     // Gutenberg's Odyssey links BOOK II to the enclosing chapter div.
     // Both that boundary and its empty heading anchor precede the first
