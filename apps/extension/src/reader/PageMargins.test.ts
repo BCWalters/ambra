@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fixedLayoutEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
+import { outerEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
 
 describe("outer page margins", () => {
   it("excludes both content boundaries, content whitespace, and the entire gutter", () => {
@@ -16,32 +16,32 @@ describe("outer page margins", () => {
   describe("fixed-layout edge bands", () => {
     it("uses 8% of rendered page width and retains letterboxing", () => {
       const pages = [{ left: 50, right: 550 }];
-      expect(fixedLayoutEdgeSide(49, pages)).toBe(-1);
-      expect(fixedLayoutEdgeSide(89, pages)).toBe(-1);
-      expect(fixedLayoutEdgeSide(90, pages)).toBeUndefined();
-      expect(fixedLayoutEdgeSide(510, pages)).toBeUndefined();
-      expect(fixedLayoutEdgeSide(511, pages)).toBe(1);
-      expect(fixedLayoutEdgeSide(551, pages)).toBe(1);
+      expect(outerEdgeSide(49, pages)).toBe(-1);
+      expect(outerEdgeSide(89, pages)).toBe(-1);
+      expect(outerEdgeSide(90, pages)).toBeUndefined();
+      expect(outerEdgeSide(510, pages)).toBeUndefined();
+      expect(outerEdgeSide(511, pages)).toBe(1);
+      expect(outerEdgeSide(551, pages)).toBe(1);
     });
 
     it("caps each edge at 64 CSS pixels on wide pages", () => {
       const pages = [{ left: 0, right: 1600 }];
-      expect(fixedLayoutEdgeSide(63, pages)).toBe(-1);
-      expect(fixedLayoutEdgeSide(64, pages)).toBeUndefined();
-      expect(fixedLayoutEdgeSide(1536, pages)).toBeUndefined();
-      expect(fixedLayoutEdgeSide(1537, pages)).toBe(1);
+      expect(outerEdgeSide(63, pages)).toBe(-1);
+      expect(outerEdgeSide(64, pages)).toBeUndefined();
+      expect(outerEdgeSide(1536, pages)).toBeUndefined();
+      expect(outerEdgeSide(1537, pages)).toBe(1);
     });
 
     it("excludes inner edges and gutters regardless of reading order", () => {
       const pages = [{ left: 100, right: 600 }, { left: 620, right: 1120 }];
       for (const ordered of [pages, [...pages].reverse()]) {
-        expect(fixedLayoutEdgeSide(139, ordered)).toBe(-1);
-        expect(fixedLayoutEdgeSide(1081, ordered)).toBe(1);
+        expect(outerEdgeSide(139, ordered)).toBe(-1);
+        expect(outerEdgeSide(1081, ordered)).toBe(1);
         for (const x of [140, 590, 600, 610, 620, 630, 1080]) {
-          expect(fixedLayoutEdgeSide(x, ordered)).toBeUndefined();
+          expect(outerEdgeSide(x, ordered)).toBeUndefined();
         }
       }
-      expect(fixedLayoutEdgeSide(0, [])).toBeUndefined();
+      expect(outerEdgeSide(0, [])).toBeUndefined();
     });
   });
 
@@ -49,6 +49,15 @@ describe("outer page margins", () => {
     expect(outerMarginSide(20, [{ left: 30, right: 730 }])).toBe(-1);
     expect(outerMarginSide(740, [{ left: 30, right: 730 }])).toBe(1);
     expect(outerMarginSide(20, [])).toBeUndefined();
+  });
+
+  it("gives narrow reflowable panes a 44px eligible band without overlapping edges", () => {
+    const pages = [{ left: 0, right: 320 }];
+    expect(outerEdgeSide(43, pages, 44)).toBe(-1);
+    expect(outerEdgeSide(44, pages, 44)).toBeUndefined();
+    expect(outerEdgeSide(276, pages, 44)).toBeUndefined();
+    expect(outerEdgeSide(277, pages, 44)).toBe(1);
+    expect(outerEdgeSide(25, [{ left: 0, right: 50 }], 44)).toBeUndefined();
   });
 
   it("reads the actual body measure including reader padding, not text rectangles", () => {

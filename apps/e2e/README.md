@@ -590,8 +590,13 @@ chapter shortcuts, logical Space, taps, swipes, scrubber direction, page numbers
 and cross-chapter note placement in both single-page and spread layouts.
 
 `outer-margin-navigation.spec.ts` and `spread-gutter-navigation.spec.ts` enforce
-outer-margin-only reflowable taps (#182): content whitespace, inner page margins, gutters,
-and blank companion interiors never navigate. Coverage includes LTR/RTL,
+outer-margin reflowable taps (#182). A bounded hybrid edge band (#268) also
+accepts blank line-end/interline space: 8% of the physical outer pane, at least
+44px and at most 64px (never beyond half a pane). Existing wider real margins
+remain usable, with no change to publication layout or pagination. Text line
+rectangles, interactive content, images, native list markers, and generated
+labels retain ownership. Content outside the band, inner page margins, gutters,
+and blank companion interiors remain inert. Coverage includes LTR/RTL,
 cross-chapter spreads, all animation styles, and scaled fixed-layout artwork.
 Navigation fixtures use `outerMarginPoint` / `clickReadingPage` to derive targets
 from the rendered reading measure, not arbitrary content coordinates.
