@@ -108,6 +108,56 @@ interface MutableAvoidanceGroup {
   bottom: number;
 }
 
+function oversizedFigureParts(element: Element, pageHeight: number): readonly Element[] | undefined {
+  if (element.localName !== "figure" || !Number.isFinite(pageHeight) ||
+    element.parentElement?.closest("figure, table")) return;
+  const children = Array.from(element.children).filter(child => !isReaderOwnedContent(child));
+  const captions = children.filter(child => child.localName === "figcaption");
+  const illustrations = children.filter(child => child.localName !== "figcaption");
+  if (captions.length > 1 || illustrations.length !== 1) return;
+
+  const normalFlow = (node: Element): boolean => {
+    const style = getComputedStyle(node);
+    const replaced = node.localName === "img" || node.localName === "svg";
+    return (style.display === "block" || style.display === "inline" || style.display === "contents" ||
+      (node.localName === "figcaption" && style.display === "table-caption")) &&
+      (style.position === "static" || (style.position === "relative" &&
+        [style.top, style.right, style.bottom, style.left].every(value => value === "auto" || value === "0px"))) &&
+      style.float === "none" && style.transform === "none" && style.writingMode === "horizontal-tb" &&
+      (replaced || (style.overflowX === "visible" && style.overflowY === "visible" && style.clipPath === "none")) &&
+      ["::before", "::after"].every(pseudo => {
+        const content = getComputedStyle(node, pseudo).content;
+        return content === "none" || content === "normal";
+      });
+  };
+  const hasDirectText = (node: Element): boolean => Array.from(node.childNodes).some(child =>
+    (child.nodeType === 3 || child.nodeType === 4) && !!child.textContent?.trim());
+  if (!normalFlow(element) || hasDirectText(element)) return;
+  let image = illustrations[0]!;
+  while (image.localName !== "img" && image.localName !== "svg") {
+    if (!["a", "span", "div", "p", "picture"].includes(image.localName) || !normalFlow(image) || hasDirectText(image)) return;
+    const nested = Array.from(image.children).filter(child => !isReaderOwnedContent(child) &&
+      !(image.localName === "picture" && child.localName === "source"));
+    if (nested.length !== 1) return;
+    image = nested[0]!;
+  }
+  if (!normalFlow(image) || !image.checkVisibility()) return;
+  const caption = captions[0];
+  const parts = children.map(child => child === caption ? child : image);
+  const bounds = parts.map(part => part.getBoundingClientRect());
+  if (bounds.some(rect => rect.width <= 0 || rect.height <= 0) ||
+    bounds.some((rect, index) => index > 0 && rect.top < bounds[index - 1]!.bottom) ||
+    bounds[parts.indexOf(image)]!.height > pageHeight) return;
+  const figure = element.getBoundingClientRect();
+  if (Math.max(figure.bottom, bounds[bounds.length - 1]!.bottom) -
+    Math.min(figure.top, bounds[0]!.top) <= pageHeight) return;
+  if (caption && [caption, ...caption.querySelectorAll("*")].some(node =>
+    ATOMIC_TAG_NAMES.has(node.localName) || !normalFlow(node))) return;
+  // Only normal-flow, single-image groups split. Reordered captions, galleries,
+  // nested figures and authored clipping retain their original atomic behavior.
+  return parts;
+}
+
 function avoidanceGroups(
   element: Element,
   style: CSSStyleDeclaration,
@@ -179,7 +229,14 @@ function* collectLeaves(
       yield* collectLeaves(child, groups, pageHeight);
     } else if (child.checkVisibility()) {
       const childGroups = avoidanceGroups(child, style, groups);
-      if (isAtomic(child, pageHeight) || isLeaf(child)) yield { leaf: child, groups: childGroups };
+      const figureParts = oversizedFigureParts(child, pageHeight);
+      if (figureParts) {
+        for (const part of figureParts) {
+          const partGroups = avoidanceGroups(part, getComputedStyle(part), childGroups);
+          if (isAtomic(part, pageHeight) || isLeaf(part)) yield { leaf: part, groups: partGroups };
+          else yield* collectLeaves(part, partGroups, pageHeight);
+        }
+      } else if (isAtomic(child, pageHeight) || isLeaf(child)) yield { leaf: child, groups: childGroups };
       else yield* collectLeaves(child, childGroups, pageHeight);
     }
     runStart = index + 1;

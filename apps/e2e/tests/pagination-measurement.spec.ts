@@ -617,6 +617,250 @@ test("ordinary inline content retains its geometry without extra box reads (#249
   } finally { await session.close(); }
 });
 
+test("oversized simple figures expose the entire image and every caption character (#257)", async () => {
+  const caption = "Every word of this original illustration caption must remain accessible. ".repeat(35);
+  const session = await browser();
+  try {
+    for (const captionFirst of [false, true]) {
+      const image = '<div><a href="#after"><img id="illustration" src="image.svg" style="height:1000px;width:auto"/></a></div>';
+      const text = `<figcaption id="caption">${caption}</figcaption>`;
+      const bytes = book(`<figure style="break-inside:avoid;padding:5px;border:1px solid">${captionFirst ? text + image : image + text}</figure><p id="after">After the figure.</p>`);
+      const results = await session.page.evaluate(async bytes => {
+        const E = window.paginationEngine;
+        const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+          Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+        ));
+        const resolver = new E.ResourceUrlResolver(loader);
+        const results = [];
+        try {
+          for (const [width, height, scale] of [[680, 900, 1], [480, 600, 1.5]]) {
+            const host = new E.PaginatedContentHost(width!, height!);
+            document.body.append(host.element);
+            try {
+              await host.open(loader, resolver, 0, undefined, doc => E.ReadingTheme.applyFontScale(doc, scale!));
+              const doc = host.element.contentDocument!;
+              const transform = new DOMMatrixReadOnly(getComputedStyle(doc.body).transform).m42;
+              const image = doc.querySelector("#illustration")!.getBoundingClientRect();
+              const caption = doc.querySelector("#caption")!.firstChild!;
+              const range = doc.createRange();
+              const characters = [];
+              for (let offset = 0; offset < (caption.textContent?.length ?? 0); offset++) {
+                if (!caption.textContent![offset]!.trim()) continue;
+                range.setStart(caption, offset);
+                range.setEnd(caption, offset + 1);
+                const rect = range.getBoundingClientRect();
+                characters.push({ top: rect.top - transform, bottom: rect.bottom - transform, height: rect.height });
+              }
+              const budget = Number.parseFloat(doc.documentElement.style.getPropertyValue(E.ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY));
+              const windows: [number, number][] = [];
+              for (let index = 0; index < host.pageCount; index++) {
+                host.goToPageIndex(index);
+                const { page } = host.currentPageAndDocument()!;
+                windows.push([page.topY, page.topY + Math.min(page.height, budget)]);
+              }
+              const coverage = (top: number, bottom: number): number => windows.reduce((total, [start, end]) =>
+                total + Math.max(0, Math.min(end, bottom) - Math.max(start, top)), 0);
+              results.push({
+                width, scale, pages: host.pageCount,
+                imageHeight: image.height,
+                imageCovered: coverage(image.top - transform, image.bottom - transform),
+                characters: characters.length,
+                lostOrRepeated: characters.filter(rect => Math.abs(coverage(rect.top, rect.bottom) - rect.height) > 1).length,
+              });
+            } finally { host.dispose(); host.element.remove(); }
+          }
+        } finally { resolver.dispose(); }
+        return results;
+      }, bytes);
+      for (const result of results) {
+        expect(result.pages, JSON.stringify(result)).toBeGreaterThan(1);
+        expect(result.imageHeight).toBeGreaterThan(0);
+        expect(Math.abs(result.imageCovered - result.imageHeight), JSON.stringify(result)).toBeLessThanOrEqual(1);
+        expect(result.characters).toBeGreaterThan(1500);
+        expect(result.lostOrRepeated, JSON.stringify(result)).toBe(0);
+      }
+    }
+  } finally { await session.close(); }
+});
+
+test("figure fragmentation preserves anchors, scrolling, DOM and incremental parity in LTR/RTL (#257)", async () => {
+  const session = await browser();
+  try {
+    const rows = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:420px;height:400px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.style.cssText = "margin:0;font:20px/28px serif";
+      const image = '<img style="width:100px;height:200px" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22200%22/%3E">';
+      const variants = [
+        { content: image },
+        { content: `<div><a href="#after">\n<span>${image}</span>\n</a></div>` },
+        { content: `<p>${image.replace("width:100px;height:200px", "width:300px;height:100px")}</p>` },
+        { content: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="200"><rect width="100" height="200"/></svg>' },
+        { content: `<picture><source type="image/webp"/>${image}</picture>` },
+        { content: image, captionStyle: "display:table-caption;caption-side:bottom" },
+      ];
+      const results = [];
+      for (const { content, captionStyle } of variants) {
+        for (const direction of ["ltr", "rtl"]) {
+          doc.body.dir = direction;
+          doc.body.innerHTML = `<p>Before.</p><figure style="margin:15px;padding:6px;border:1px solid;break-inside:avoid">${content}<figcaption style="${captionStyle ?? ""}">${"An original caption with enough words to cross several pages. ".repeat(12)}</figcaption></figure><p id="after">After.</p>`;
+          await Promise.all(Array.from(doc.images, image => image.decode()));
+          const before = doc.body.innerHTML;
+          const figure = doc.querySelector("figure")!;
+          const caption = doc.querySelector("figcaption")!;
+          const rect = figure.getBoundingClientRect();
+          const scrolling = E.measureChunks(doc.body);
+          const scrollChunk = scrolling.find(chunk => chunk.breakBefore.node === doc.body && chunk.breakBefore.offset === 1)!;
+          const chunks = E.measureChunks(doc.body, 240);
+          const incremental = await E.measureChunksIncrementally(doc.body, { timeSliceMs: 1 }, 240);
+          const captionChunks = chunks.filter(chunk => caption.contains(chunk.breakBefore.node));
+          const target = captionChunks[Math.floor(captionChunks.length / 2)]!;
+          const pages = E.PaginationEngine.paginate(doc.body, 240, target.breakBefore);
+          const restored = E.PaginationEngine.findPageForPosition(
+            pages, target.breakBefore.node, target.breakBefore.offset ?? 0, doc,
+          )!;
+          const imageRect = doc.querySelector("img,svg")!.getBoundingClientRect();
+          const covered = pages.reduce((total, page) => total + Math.max(0,
+            Math.min(page.topY + Math.min(page.height, 240), imageRect.bottom) - Math.max(page.topY, imageRect.top),
+          ), 0);
+          results.push({
+            unchanged: before === doc.body.innerHTML,
+            scrolling: scrollChunk.top === rect.top && scrollChunk.bottom === rect.bottom,
+            parity: incremental.length === chunks.length && incremental.every((chunk, index) =>
+              chunk.top === chunks[index]!.top && chunk.bottom === chunks[index]!.bottom &&
+              chunk.breakBefore.node === chunks[index]!.breakBefore.node &&
+              chunk.breakBefore.offset === chunks[index]!.breakBefore.offset),
+            captionChunks: captionChunks.length,
+            anchor: restored.topY === target.top,
+            image: Math.abs(covered - imageRect.height) <= 1,
+          });
+        }
+      }
+      frame.remove();
+      return results;
+    });
+    expect(rows).toHaveLength(12);
+    for (const row of rows) {
+      expect(row.captionChunks).toBeGreaterThan(10);
+      expect(row).toMatchObject({ unchanged: true, scrolling: true, parity: true, anchor: true, image: true });
+    }
+  } finally { await session.close(); }
+});
+
+test("fitting figures and complex authored layouts retain atomic geometry (#257)", async () => {
+  const session = await browser();
+  try {
+    const rows = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:400px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.style.cssText = "margin:0;font:20px/28px serif";
+      const image = '<img style="width:100px;height:200px">';
+      const caption = '<figcaption>Caption.</figcaption>';
+      const variants = [
+        `<figure>${image.replace("height:200px", "height:60px")}${caption}</figure>`,
+        `<figure>${image}${image}${caption}</figure>`,
+        `<figure><figure>${image}</figure>${caption}</figure>`,
+        `<figure style="display:flex;flex-direction:column-reverse">${image}${caption}</figure>`,
+        `<figure style="display:grid">${image}${caption}</figure>`,
+        `<figure style="display:table"><figcaption style="display:table-caption;caption-side:bottom">Caption.</figcaption>${image}</figure>`,
+        `<figure style="height:100px;overflow:hidden">${image}${caption}</figure>`,
+        `<figure style="clip-path:inset(10px)">${image}${caption}</figure>`,
+        `<figure style="float:left">${image}${caption}</figure>`,
+        `<figure style="transform:translateY(10px)">${image}${caption}</figure>`,
+        `<figure>${image.replace("height:200px", "height:400px")}${caption}</figure>`,
+        `<figure>Authored prose outside the caption.${image}${caption}</figure>`,
+        `<figure>${image}<figcaption><table><tr><td>Caption table</td></tr></table></figcaption></figure>`,
+        `<figure class="generated">${image}${caption}</figure>`,
+      ];
+      const results = [];
+      for (const content of variants) {
+        doc.body.innerHTML = `<style>.generated::before{content:"Generated heading";display:block}</style>${content}`;
+        const scrolling = E.measureChunks(doc.body);
+        const paginated = E.measureChunks(doc.body, 220);
+        results.push(scrolling.length === paginated.length && scrolling.every((chunk, index) =>
+          chunk.top === paginated[index]!.top && chunk.bottom === paginated[index]!.bottom &&
+          chunk.breakBefore.node === paginated[index]!.breakBefore.node &&
+          chunk.breakBefore.offset === paginated[index]!.breakBefore.offset));
+      }
+      frame.remove();
+      return results;
+    });
+    expect(rows).toHaveLength(14);
+    for (const [index, unchanged] of rows.entries()) expect(unchanged, `case ${index}`).toBe(true);
+  } finally { await session.close(); }
+});
+
+test("simple figure measurement adds bounded box reads and no planning queries (#257)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      document.body.style.cssText = "font:20px/28px serif";
+      document.body.innerHTML = Array.from({ length: 100 }, () =>
+        '<figure><img style="width:80px;height:60px"><figcaption>Caption.</figcaption></figure>').join("");
+      let reads = 0;
+      for (const node of document.querySelectorAll("figure,img,figcaption")) {
+        const original = node.getBoundingClientRect.bind(node);
+        node.getBoundingClientRect = () => { reads++; return original(); };
+      }
+      const chunks = E.measureChunks(document.body, 60);
+      const measurement = reads;
+      E.planPageBreaks(chunks, 60, { node: document.body, offset: document.body.childNodes.length });
+      return { measurement, planning: reads - measurement };
+    });
+    expect(result).toEqual({ measurement: 400, planning: 0 });
+  } finally { await session.close(); }
+});
+
+for (const width of [680, 1100]) {
+  test(`packaged ${width}px reader exposes an oversized figure caption without footer bleed (#257)`, async () => {
+    const filename = test.info().outputPath("figure-caption.epub");
+    fs.writeFileSync(filename, Buffer.from(book(
+      '<figure><img id="figure-image" src="image.svg" style="height:1000px;width:auto"/><figcaption id="figure-caption">This original caption must remain readable below its illustration.</figcaption></figure>',
+    ), "base64"));
+    const { context, readerPage } = await launchReader(filename, { viewport: { width, height: 900 } });
+    try {
+      await exposeReaderController(readerPage);
+      for (const fragment of ["figure-image", "figure-caption"]) {
+        await readerPage.evaluate(fragment => {
+          const c = Reflect.get(window, "__readerController");
+          return c.goToNavPoint({ path: c.pkg.spine[0].manifestItem.path, fragment });
+        }, fragment);
+        await expect.poll(() => readerPage.getByRole("main").locator("iframe").evaluateAll((frames, fragment) => {
+          let expected = 0;
+          let covered = 0;
+          for (const frame of frames) {
+            if (!(frame instanceof HTMLIFrameElement) ||
+              !frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+            const doc = frame.contentDocument!;
+            const target = doc.getElementById(fragment)!;
+            const clip = getComputedStyle(frame).clipPath.match(/inset\(([\d.]+)px 0px(?: ([\d.]+)px)?/);
+            const top = Number(clip?.[1] ?? 0);
+            const bottom = frame.clientHeight - Number(clip?.[2] ?? clip?.[1] ?? 0);
+            const rects = [];
+            if (target.localName === "img") rects.push(target.getBoundingClientRect());
+            else {
+              const range = doc.createRange();
+              range.selectNodeContents(target);
+              rects.push(...range.getClientRects());
+            }
+            expected = rects.reduce((sum, rect) => sum + rect.height, 0);
+            covered += rects.reduce((sum, rect) =>
+              sum + Math.max(0, Math.min(bottom, rect.bottom) - Math.max(top, rect.top)), 0);
+          }
+          return expected > 0 && Math.abs(covered - expected) <= 1;
+        }, fragment)).toBe(true);
+      }
+    } finally { await context.close(); }
+  });
+}
+
 test("textless inline image wrappers include their painted images without changing scroll anchors (#258)", async () => {
   const session = await browser();
   try {
