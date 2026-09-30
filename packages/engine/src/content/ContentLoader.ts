@@ -5,6 +5,7 @@ import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
 import { getDescendantElementsByNS, getNamespacedAttributeName } from "../container/Xml.js";
 import type { EncryptionDocument } from "../encryption/EncryptionDocument.js";
 import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
+import { srcsetUrlRanges, type SrcsetUrlRange } from "./Srcset.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -47,6 +48,8 @@ export interface ResourceReference {
   readonly element: Element;
   readonly attributeName: string;
   readonly path: string;
+  /** A URL within a multi-candidate attribute, rather than its entire value. */
+  readonly attributeRange?: SrcsetUrlRange;
 }
 
 const RESOURCE_ATTRIBUTE_SELECTORS: readonly { selector: string; attribute: string }[] = [
@@ -189,8 +192,8 @@ export class ContentLoader {
     return this.loadResourceBytes(this.requireManifestItem(manifestId).path);
   }
 
-  /** Finds every resource reference (images, audio/video, stylesheets,
-   * embedded SVG images) within `contentDocument`, resolved to
+  /** Finds every resource reference (images including packaged srcset candidates,
+   * audio/video, stylesheets, embedded SVG images) within `contentDocument`, resolved to
    * archive-relative paths. Hyperlinks (`<a href>`) are deliberately
    * excluded — they're navigation, not embedded resources. */
   public findResourceReferences(contentDocument: ContentDocument): ResourceReference[] {
@@ -227,6 +230,24 @@ export function findResourceReferencesInDocument(
       if (reference) {
         references.push(reference);
       }
+    }
+  }
+
+  for (const element of Array.from(document.querySelectorAll("img[srcset], picture > source[srcset]"))) {
+    const srcset = element.getAttribute("srcset")!;
+    for (const range of srcsetUrlRanges(srcset)) {
+      const url = srcset.slice(range.start, range.end);
+      // Only packaged candidates use the archive resolver. Other schemes stay
+      // subject to the existing CSP; they must not alias an archive filename.
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) continue;
+      const { path: rawPath } = splitHrefFragment(url);
+      if (!rawPath) continue;
+      references.push({
+        element,
+        attributeName: "srcset",
+        path: resolveEpubPath(documentPath, rawPath),
+        attributeRange: { start: range.start, end: range.start + rawPath.length },
+      });
     }
   }
 

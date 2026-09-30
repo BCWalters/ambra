@@ -52,10 +52,15 @@ export class ContentDocumentAssembler {
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
 
     const references = findResourceReferencesInDocument(doc, contentDocument.manifestItem.path);
-    for (const reference of references) {
+    // Replace candidates from right to left so original URL offsets stay valid.
+    for (const reference of references.reverse()) {
       const url = resourceUrls.get(reference.path);
       if (url) {
-        reference.element.setAttribute(reference.attributeName, url);
+        const { element, attributeName, attributeRange } = reference;
+        const value = element.getAttribute(attributeName)!;
+        element.setAttribute(attributeName, attributeRange
+          ? value.slice(0, attributeRange.start) + url + value.slice(attributeRange.end)
+          : url);
       }
     }
 

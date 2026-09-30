@@ -80,6 +80,15 @@ headless mode with `AMBRA_E2E_HEADLESS=1`. This keeps validation from opening
 windows or interrupting someone testing the live extension. It still loads the
 real unpacked extension, not a web-only preview.
 
+`responsive-images.spec.ts` covers packaged `img` and `picture/source` candidates
+at 1x/2x display density, density/width descriptors, narrow/wide viewports, and
+paginated/scrolling/fixed-layout hosts. It checks image selection and decoding
+before pagination, complete image coverage, resolver caching/revocation, explicit
+missing-resource errors, and the actual extension import path. CI runs the
+synthetic cases without downloading books. Set `AMBRA_RESPONSIVE_IMAGE_EPUB` to a
+local compatible Standard Ebooks EPUB to additionally verify its title artwork;
+that opt-in run disables traces and screenshots to keep publication content local.
+
 For concurrent validation, set `AMBRA_E2E_EXTENSION_PATH` to a dedicated
 absolute build directory for both the build and test commands. This keeps
 one run's rebuild from replacing files used by another run's browser.
