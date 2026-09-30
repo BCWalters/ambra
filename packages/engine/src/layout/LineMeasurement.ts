@@ -74,12 +74,20 @@ function isLeaf(element: Element): boolean {
   return !Array.from(element.children).some((child) => !isReaderOwnedContent(child) && isBlockLevel(child));
 }
 
-function isAtomic(element: Element): boolean {
-  return (
+function isAtomic(element: Element, pageHeight = Infinity): boolean {
+  if (
     ATOMIC_TAG_NAMES.has(element.tagName.toLowerCase()) ||
     (element.localName === "details" && !element.hasAttribute("open")) ||
     totalTextLength(element) === 0
-  );
+  ) return true;
+  // Formatting whitespace must not hide a lone image behind an inline line box.
+  // Preserve fragmentation of galleries, explicit breaks and preformatted runs.
+  if (!Number.isFinite(pageHeight) || element.firstElementChild === null ||
+    element.querySelectorAll("img, svg").length !== 1 || element.querySelector("br")) return false;
+  const style = getComputedStyle(element);
+  return (style.whiteSpace === "normal" || style.whiteSpace === "nowrap") &&
+    (style.display === "inline" || isLeaf(element)) &&
+    collectTextNodesOf(element).every(node => !node.textContent?.trim());
 }
 
 interface InlineRun {
@@ -122,6 +130,7 @@ function avoidanceGroups(
 function* collectLeaves(
   root: Element,
   groups: readonly MutableAvoidanceGroup[],
+  pageHeight: number,
 ): Generator<MeasuredLeaf | undefined> {
   const nodes = Array.from(root.childNodes);
   let runStart = 0;
@@ -147,7 +156,7 @@ function* collectLeaves(
       display !== "contents" &&
       child.checkVisibility() &&
       !isBlockDisplay(display) &&
-      !isAtomic(child) &&
+      !isAtomic(child, pageHeight) &&
       isLeaf(child)
     ) {
       continue;
@@ -161,17 +170,17 @@ function* collectLeaves(
         const childGroups = avoidanceGroups(child, style, groups);
         const summaryGroups = avoidanceGroups(summary, getComputedStyle(summary), childGroups);
         if (isLeaf(summary)) yield { leaf: summary, groups: summaryGroups };
-        else yield* collectLeaves(summary, summaryGroups);
+        else yield* collectLeaves(summary, summaryGroups, pageHeight);
       } else if (child.checkVisibility()) {
         // The browser supplies a default summary outside the authored DOM.
         yield { leaf: child, groups: avoidanceGroups(child, style, groups) };
       }
     } else if (display === "contents") {
-      yield* collectLeaves(child, groups);
+      yield* collectLeaves(child, groups, pageHeight);
     } else if (child.checkVisibility()) {
       const childGroups = avoidanceGroups(child, style, groups);
-      if (isAtomic(child) || isLeaf(child)) yield { leaf: child, groups: childGroups };
-      else yield* collectLeaves(child, childGroups);
+      if (isAtomic(child, pageHeight) || isLeaf(child)) yield { leaf: child, groups: childGroups };
+      else yield* collectLeaves(child, childGroups, pageHeight);
     }
     runStart = index + 1;
   }
@@ -179,8 +188,7 @@ function* collectLeaves(
 }
 
 /** Measures a single atomic leaf as one unbreakable `Chunk`. */
-function measureAtomicChunk(element: Element): Chunk {
-  const rect = element.getBoundingClientRect();
+function measureAtomicChunk(element: Element, rect: DOMRect): Chunk {
   const parent = element.parentNode;
   if (!parent) {
     throw new Error(
@@ -193,6 +201,41 @@ function measureAtomicChunk(element: Element): Chunk {
     bottom: rect.bottom,
     breakBefore: { node: parent, offset: index },
   };
+}
+
+function atomicBounds(element: Element, pageHeight: number, viewportWidth: number): DOMRect {
+  const rect = element.getBoundingClientRect();
+  if (!Number.isFinite(pageHeight) || ATOMIC_TAG_NAMES.has(element.localName) ||
+    !element.querySelector("img, svg") || getComputedStyle(element).display !== "inline") return rect;
+
+  const hasBox = rect.width > 0 && paintsInViewport(rect, viewportWidth);
+  let top = hasBox ? rect.top : Infinity;
+  let bottom = hasBox ? rect.bottom : -Infinity;
+  let left = hasBox ? rect.left : Infinity;
+  let right = hasBox ? rect.right : -Infinity;
+  const pending = Array.from(element.children);
+  while (pending.length) {
+    const child = pending.pop()!;
+    const style = getComputedStyle(child);
+    if (style.display === "contents") {
+      for (const descendant of child.children) pending.push(descendant);
+      continue;
+    }
+    if (!child.checkVisibility()) continue;
+    const bounds = child.getBoundingClientRect();
+    if (bounds.width > 0 && paintsInViewport(bounds, viewportWidth)) {
+      top = Math.min(top, bounds.top);
+      bottom = Math.max(bottom, bounds.bottom);
+      left = Math.min(left, bounds.left);
+      right = Math.max(right, bounds.right);
+    }
+    // Inline wrappers have line boxes, not bounds enclosing their images.
+    // Other boxes keep their own bounds: descendants may be intentionally clipped.
+    if (!ATOMIC_TAG_NAMES.has(child.localName) && style.display === "inline") {
+      for (const descendant of child.children) pending.push(descendant);
+    }
+  }
+  return Number.isFinite(top) ? new DOMRect(left, top, right - left, bottom - top) : rect;
 }
 
 /** The vertical tolerance (in CSS pixels) within which two rects are
@@ -373,7 +416,7 @@ function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator
   const viewportWidth = ownerDocument.documentElement.clientWidth;
 
   const groups = avoidanceGroups(bodyElement, getComputedStyle(bodyElement), []);
-  for (const measured of collectLeaves(bodyElement, groups)) {
+  for (const measured of collectLeaves(bodyElement, groups, pageHeight)) {
     yield undefined;
     if (!measured) continue;
     const { leaf, groups } = measured;
@@ -390,7 +433,7 @@ function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator
       }
       return { ...chunk, avoidanceGroups: groups };
     };
-    if (!("root" in leaf) && isAtomic(leaf)) {
+    if (!("root" in leaf) && isAtomic(leaf, pageHeight)) {
       if (leaf.localName === "table") {
         const rows = measureSimpleTableRows(leaf as HTMLTableElement, pageHeight);
         if (rows) {
@@ -408,8 +451,9 @@ function* chunkMeasurements(bodyElement: Element, pageHeight: number): Generator
           continue;
         }
       }
-      if (paintsInViewport(leaf.getBoundingClientRect(), viewportWidth)) {
-        yield withGroups(measureAtomicChunk(leaf));
+      const bounds = atomicBounds(leaf, pageHeight, viewportWidth);
+      if (paintsInViewport(bounds, viewportWidth)) {
+        yield withGroups(measureAtomicChunk(leaf, bounds));
       }
     } else {
       const range = ownerDocument.createRange();
