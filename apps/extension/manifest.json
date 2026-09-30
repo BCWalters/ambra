@@ -3,7 +3,7 @@
   "name": "Ambra EPUB Reader",
   "short_name": "Ambra",
   "description": "Read, annotate, and explore EPUBs in Chrome with a personal library, flexible reading settings, and EPUB Inspector.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
