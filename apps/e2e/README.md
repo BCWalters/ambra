@@ -44,6 +44,22 @@ labels, import/removal updates, and the distinction between no matches and an
 empty library. It also verifies that search does not request remote book sites.
 The Library CI step runs this suite against the packaged extension.
 
+`library-compact.spec.ts` checks three-column cover geometry at 320/360px with
+native scrollbars, a single-row header in all nine languages, persistent
+full-library access, first-run discovery focus, and unchanged full-tab cover
+sizes. Compact mode scrolls its main region rather than hiding its controls
+behind the document scroll.
+
+The compact suite also opens the **actual Chrome action popup**, not just a
+Library tab resized to look like one. Chrome starts that surface at 25x25 while
+calculating its preferred size: viewport-relative minimum dimensions can leave
+it stuck there, and unconstrained root width can feed back into auto-sizing.
+The native popup retains explicit root/body width and minimum-height hints;
+ordinary tabs remove those hints and stay responsive. Inspect the real popup
+through `chrome.extension.getViews({ type: "popup" })`: it is not emitted as a
+normal Playwright page. Keep native sizing/scroll/footer checks in addition to
+the 320/360px viewport tests.
+
 ```sh
 # from the repo root
 pnpm --filter @ambra/e2e run test:e2e          # headless

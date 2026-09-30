@@ -2,6 +2,17 @@
 
 Keep your EPUBs together and reopen a book at your saved reading position. Use the library icon in the reader toolbar to return to your books.
 
+## Compact or full library
+
+The toolbar popup keeps its header and **Full library** button visible while
+you scroll through books or discovery links. Choose **Full library** at the
+bottom, or the expand icon in the header, to open a full browser tab with more
+room. Both actions are available before importing your first book.
+
+The compact grid fits three smaller covers across a typical popup. The full
+library retains larger covers; book titles and actions remain available in
+both views.
+
 ## Add a book from your device
 
 Choose **Bring a book → Choose EPUB files...** in an empty library, or **Import EPUB** once you have books. Select EPUB files from your device, then open a book to read. Use **Sort** to arrange your library.

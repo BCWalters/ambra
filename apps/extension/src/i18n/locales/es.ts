@@ -131,6 +131,7 @@ export const es: StringCatalog = {
   "library.cancelDownloadFile": "Cancelar descarga: {fileName}",
   "library.cancelDownloadFailed": "Ambra detuvo la descarga, pero no pudo confirmar la cancelación en Chrome. Abre las Descargas de Chrome para comprobar y cancelar la descarga original.",
   "library.findBooks": "Buscar libros",
+  "library.fullLibrary": "Biblioteca completa",
   "library.search": "Buscar en la biblioteca",
   "library.searchPlaceholder": "Buscar por título o autor",
   "library.clearSearch": "Borrar búsqueda de la biblioteca",

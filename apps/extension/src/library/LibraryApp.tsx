@@ -55,6 +55,15 @@ import { EPUB_TOOLTIP_STYLE } from "../components/EpubTextStyles.js";
 
 const SORT_GROUP_NAME = "librarySort";
 
+const useLibraryStyles = makeStyles({
+  heading: {
+    "@media (max-width: 600px)": { fontSize: "20px", lineHeight: "28px" },
+  },
+  importLabel: {
+    "@media (max-width: 600px)": { display: "none" },
+  },
+});
+
 const useBookCardStyles = makeStyles({
   cover: {
     transition: "border-color 120ms ease, box-shadow 120ms ease, filter 80ms ease",
@@ -76,11 +85,12 @@ const SORT_LABELS: Readonly<Record<LibrarySortOption, keyof StringCatalog>> = {
 
 const BookCard: FC<{
   book: LibraryBookViewModel;
+  compact: boolean;
   accent: string;
   onOpen: () => void;
   onDelete: () => void;
   onShowDetails: () => void;
-}> = ({ book, accent, onOpen, onDelete, onShowDetails }) => {
+}> = ({ book, compact, accent, onOpen, onDelete, onShowDetails }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const styles = useBookCardStyles();
@@ -104,7 +114,8 @@ const BookCard: FC<{
   return (
     <div
       style={{
-        width: 140,
+        width: compact ? "100%" : 140,
+        minWidth: 0,
         display: "flex",
         flexDirection: "column",
         gap: 4,
@@ -120,7 +131,7 @@ const BookCard: FC<{
         if (!event.altKey && !event.ctrlKey && !event.metaKey) setIsFocusVisible(true);
       }}
     >
-      <div style={{ position: "relative", width: 140, height: 200 }}>
+      <div style={{ position: "relative", width: compact ? "100%" : 140, height: compact ? undefined : 200 }}>
         <button
           className={styles.cover}
           type="button"
@@ -129,8 +140,10 @@ const BookCard: FC<{
             ? t("library.openBookProgress", { title: book.title, progress: formatLibraryProgress(progressPercent / 100, locale) })
             : t("library.openBook", { title: book.title })}
           style={{
-            width: 140,
-            height: 200,
+            width: compact ? "100%" : 140,
+            height: compact ? "auto" : 200,
+            aspectRatio: compact ? "7 / 10" : undefined,
+            overflow: compact ? "hidden" : undefined,
             padding: 0,
             border: `2px solid ${isActive ? accent : CHROME_BORDER}`,
             borderRadius: 4,
@@ -148,7 +161,7 @@ const BookCard: FC<{
         >
           {!book.cardCoverUrl && (
             <Body1 style={{
-              margin: 8, minWidth: 0, display: "-webkit-box", WebkitLineClamp: 6,
+              margin: 8, minWidth: 0, display: "-webkit-box", WebkitLineClamp: compact ? 4 : 6,
               WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere",
             }}>
               {book.title}
@@ -256,6 +269,7 @@ const BookCard: FC<{
       {book.creator && (
         <Body1 as="p" style={{
           margin: 0, color: "var(--colorNeutralForeground2, #333)", minWidth: 0,
+          fontSize: compact ? 12 : undefined, lineHeight: compact ? "16px" : undefined,
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
           overflow: "hidden", overflowWrap: "anywhere",
         }}>
@@ -344,6 +358,7 @@ export const LibraryApp: FC = () => {
   }, [importInProgress]);
   const palette = CHROME_THEMES[chromeTheme];
   const toolbarStyles = useChromeToolbarStyles();
+  const libraryStyles = useLibraryStyles();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [visibleToolbarTooltip, setVisibleToolbarTooltip] = useState<string>();
   // A toolbar tooltip's Escape handler must not intercept an open settings menu.
@@ -387,7 +402,9 @@ export const LibraryApp: FC = () => {
 
   return (
     <div style={{
-      minHeight: "100vh", background: palette.backgroundSolid, display: "flex", flexDirection: "column",
+      minHeight: isFullTab ? "100vh" : undefined, height: isFullTab ? undefined : "100dvh",
+      overflow: isFullTab ? undefined : "hidden",
+      background: palette.backgroundSolid, display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
     }}>
@@ -399,32 +416,39 @@ export const LibraryApp: FC = () => {
           display: "flex",
           alignItems: "center",
           gap: 4,
-          flexWrap: "wrap",
+          flexWrap: "nowrap",
+          flexShrink: 0,
           height: "auto",
-          minHeight: CHROME_TOOLBAR_HEIGHT,
+          minHeight: isFullTab ? CHROME_TOOLBAR_HEIGHT : 48,
           padding: "8px 10px",
           borderBottom: `1px solid ${CHROME_BORDER}`,
           boxShadow: CHROME_SHADOW,
         }}
       >
         <div ref={libraryHeadingRef} tabIndex={-1}>
-        <Title2 as="h1" style={{ margin: 0, color: palette.accentForeground, display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <AmbraMarkIcon size={24} />
+        <Title2 as="h1" className={libraryStyles.heading}
+          style={{ margin: 0, color: palette.accentForeground, display: "flex", alignItems: "center", gap: 6,
+            flexShrink: 0, fontSize: isFullTab ? undefined : 20, lineHeight: isFullTab ? undefined : "28px" }}>
+          <AmbraMarkIcon size={isFullTab ? 24 : 20} />
           Ambra
         </Title2>
         </div>
         <div style={{ flex: 1 }} />
         {books.length > 0 && <>
+        <Tooltip content={t("library.importEpub")} relationship="label" {...toolbarTooltipProps("import")}>
         <Button
           ref={toolbarImportRef}
           appearance="primary"
           size="small"
           icon={<DocumentAddRegular />}
+          aria-label={t("library.importEpub")}
+          style={{ minWidth: 0 }}
           disabled={!canImport}
           onClick={() => fileInputRef.current?.click()}
         >
-          {t("library.importEpub")}
+          {isFullTab && <span className={libraryStyles.importLabel}>{t("library.importEpub")}</span>}
         </Button>
+        </Tooltip>
         <Menu
           checkedValues={{ [SORT_GROUP_NAME]: [sort] }}
           onCheckedValueChange={(_event, data) => {
@@ -497,7 +521,10 @@ export const LibraryApp: FC = () => {
         />
       </div>
 
-      <main aria-label={t("library.pageTitle")} style={{ padding: 16, flex: 1 }}>
+      <main aria-label={t("library.pageTitle")} style={{
+        padding: isFullTab ? 16 : 12, flex: 1, minHeight: 0,
+        overflowY: isFullTab ? undefined : "auto",
+      }}>
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
           onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
           focusFallbackRef={books.length ? toolbarImportRef : emptyImportRef} focusBackupRef={libraryHeadingRef} />
@@ -507,7 +534,7 @@ export const LibraryApp: FC = () => {
           <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
         ) : books.length === 0 ? (
           <div ref={emptyStateRef} hidden={importInProgress}>
-            <LibraryEmptyState accent={palette.accentForeground} canImport={canImport}
+            <LibraryEmptyState accent={palette.accentForeground} canImport={canImport} compact={!isFullTab}
               focusFallbackRef={toolbarImportRef} importButtonRef={emptyImportRef}
               onImport={() => fileInputRef.current?.click()} />
           </div>
@@ -554,12 +581,17 @@ export const LibraryApp: FC = () => {
                 <LibraryDiscovery expanded={discoveryOpen} panelId={discoveryId} />
               </div>
             </div>
-            <div id={resultsId} style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
-              {visibleBooks.length === 0 && <p style={{ margin: 0 }}>{t("library.searchNoResults")}</p>}
+            <div id={resultsId} style={{
+              display: isFullTab ? "flex" : "grid", flexWrap: "wrap", gap: isFullTab ? 16 : 8,
+              gridTemplateColumns: isFullTab ? undefined : "repeat(auto-fill, minmax(88px, 1fr))",
+              alignItems: "start",
+            }}>
+              {visibleBooks.length === 0 && <p style={{ margin: 0, gridColumn: "1 / -1" }}>{t("library.searchNoResults")}</p>}
               {visibleBooks.map((book) => (
                 <BookCard
                   key={book.id}
                   book={book}
+                  compact={!isFullTab}
                   accent={palette.accent}
                   onOpen={() => openBook(book.id)}
                   onDelete={() => void removeBook(book.id)}
@@ -631,6 +663,16 @@ export const LibraryApp: FC = () => {
           reader with a very large library at least see roughly how much
           disk their book collection is using, the same way Chrome's own
           storage settings page would show it. */}
+      <footer style={{ flexShrink: 0, background: palette.backgroundSolid,
+        borderTop: !isFullTab || storageUsage ? `1px solid ${CHROME_BORDER}` : undefined }}>
+      {!isFullTab && (
+        <div style={{ padding: "8px 12px" }}>
+          <Button appearance="primary" icon={<WindowNewRegular />} onClick={openInFullTab}
+            aria-description={t("library.expand")} style={{ width: "100%" }}>
+            {t("library.fullLibrary")}
+          </Button>
+        </div>
+      )}
       {storageUsage && (
         <div
           style={{
@@ -638,7 +680,6 @@ export const LibraryApp: FC = () => {
             alignItems: "center",
             gap: 6,
             padding: "6px 16px",
-            borderTop: `1px solid ${CHROME_BORDER}`,
             color: "var(--colorNeutralForeground2, #333)",
             fontSize: 12,
           }}
@@ -653,6 +694,7 @@ export const LibraryApp: FC = () => {
           </span>
         </div>
       )}
+      </footer>
     </div>
   );
 };

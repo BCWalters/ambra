@@ -96,7 +96,7 @@ test.describe("Library card focus and long labels", () => {
       const coverTitle = cover.locator("span");
       const author = card.locator("p").filter({ hasText: creator });
       await expect(coverTitle).toHaveText(title);
-      await expect(coverTitle).toHaveCSS("-webkit-line-clamp", "6");
+      await expect(coverTitle).toHaveCSS("-webkit-line-clamp", "4");
       await expect(author).toHaveText(creator);
       await expect(author).toHaveCSS("-webkit-line-clamp", "2");
       const assertClamped = async (label: Locator) => {

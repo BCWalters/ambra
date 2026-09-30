@@ -131,6 +131,7 @@ export const ru: StringCatalog = {
   "library.cancelDownloadFile": "Отменить загрузку: {fileName}",
   "library.cancelDownloadFailed": "Ambra остановила загрузку, но не смогла подтвердить её отмену в Chrome. Откройте загрузки Chrome, чтобы проверить и отменить исходную загрузку.",
   "library.findBooks": "Найти книги",
+  "library.fullLibrary": "Полная библиотека",
   "library.search": "Поиск в библиотеке",
   "library.searchPlaceholder": "Поиск по названию или автору",
   "library.clearSearch": "Очистить поиск в библиотеке",

@@ -237,9 +237,11 @@ describe("Library localization and action order", () => {
     const title = `Title ${"unbroken".repeat(100)}`;
     const creator = `Creator ${"作者".repeat(100)}`;
     state.books = [{ id: "long-book", title, creator, identifiers: [] } as unknown as LibraryBookViewModel];
+    state.isFullTab = true;
     const markup = renderToStaticMarkup(<LibraryApp />);
     expect(markup).toContain("-webkit-line-clamp:6");
     expect(markup).toContain("-webkit-line-clamp:2");
+    state.isFullTab = false;
     await render();
     const cover = button(`Open ${title}`);
     const coverTitle = cover.querySelector<HTMLElement>("span")!;
