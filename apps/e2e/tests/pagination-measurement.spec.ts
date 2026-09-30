@@ -1406,6 +1406,248 @@ for (const side of ["bottom", "top"]) {
   });
 }
 
+test("cooperative foreground hosts preserve canonical snapshots and forced positions (#260)", async () => {
+  const session = await browser();
+  try {
+    const bytes = book(Array.from({ length: 40 }, (_, index) =>
+      `<p id="p${index}">${"An original passage exercises stable cooperative pagination. ".repeat(35)}</p>`).join(""));
+    const result = await session.page.evaluate(async bytes => {
+      const E = window.paginationEngine;
+      const loader = await E.ContentLoader.create(await E.EpubContainer.open(Uint8Array.from(atob(bytes), c => c.charCodeAt(0))));
+      const resolver = new E.ResourceUrlResolver(loader);
+      const locators = new E.LocatorResolver(loader.packageDocument, loader);
+      const hosts = Array.from({ length: 3 }, () => new E.PaginatedContentHost(480, 600));
+      for (const host of hosts) { host.element.style.position = "absolute"; host.element.style.left = "-10000px"; document.body.append(host.element); }
+      const [sync, cooperative, reused] = hosts;
+      const measure = E.PaginationEngine.paginateIncrementally;
+      let passes = 0;
+      E.PaginationEngine.paginateIncrementally = (...args) => { passes++; return measure.apply(E.PaginationEngine, args); };
+      const signature = (host: Engine.PaginatedContentHost) => Array.from({ length: host.pageCount }, (_, index) => {
+        const point = host.pageStartPosition(index)!;
+        return locators.generateBoundary(0, point.node, point.offset).cfi;
+      }).join("\n");
+      try {
+        const results = [];
+        for (const forceAnchor of [false, true]) {
+          await sync!.open(loader, resolver, 0);
+          sync!.goToPosition(sync!.element.contentDocument!.getElementById("p20")!.firstChild!, 10, forceAnchor);
+          await cooperative!.open(loader, resolver, 0, undefined, undefined, {
+            timeSliceMs: 1, retainSnapshot: true, forceAnchor,
+            position: doc => ({ node: doc.getElementById("p20")!.firstChild!, offset: 10 }),
+          });
+          results.push(signature(sync!) === signature(cooperative!) &&
+            sync!.currentPageIndex === cooperative!.currentPageIndex &&
+            !!cooperative!.paginationSnapshot() === !forceAnchor);
+          if (!forceAnchor) {
+            const before = passes;
+            await reused!.open(loader, resolver, 0, undefined, undefined,
+              { retainSnapshot: true, timeSliceMs: 1 }, cooperative!.paginationSnapshot());
+            results.push(before === passes && signature(reused!) === signature(cooperative!));
+          }
+        }
+        return { results, passes };
+      } finally {
+        E.PaginationEngine.paginateIncrementally = measure;
+        hosts.forEach(host => { host.dispose(); host.element.remove(); });
+        resolver.dispose();
+      }
+    }, bytes);
+    expect(result).toEqual({ results: [true, true, true], passes: 2 });
+  } finally { await session.close(); }
+});
+
+test("cooperative hosts discard disclosure-invalidated work and honor cancellation (#260)", async () => {
+  const session = await browser();
+  try {
+    const bytes = book(`<details><summary>Open original material</summary><p>${"Additional disclosed text. ".repeat(300)}</p></details>` +
+      Array.from({ length: 30 }, () => `<p>${"Original measurement text. ".repeat(100)}</p>`).join(""));
+    const result = await session.page.evaluate(async bytes => {
+      const E = window.paginationEngine;
+      const loader = await E.ContentLoader.create(await E.EpubContainer.open(Uint8Array.from(atob(bytes), c => c.charCodeAt(0))));
+      const resolver = new E.ResourceUrlResolver(loader);
+      const disclosures = new E.DisclosureState();
+      const locators = new E.LocatorResolver(loader.packageDocument, loader);
+      const cooperative = new E.PaginatedContentHost(480, 600);
+      const sync = new E.PaginatedContentHost(480, 600);
+      const staging = document.createElement("div");
+      staging.style.cssText = "display:flex;width:480px";
+      staging.append(cooperative.element);
+      document.body.append(staging, sync.element);
+      const original = E.PaginationEngine.paginateIncrementally;
+      let passes = 0;
+      E.PaginationEngine.paginateIncrementally = (...args) => {
+        if (++passes === 1) setTimeout(() => {
+          args[0].querySelector("details")!.open = true;
+          staging.style.width = "360px";
+        }, 0);
+        return original.apply(E.PaginationEngine, args);
+      };
+      const signature = (host: Engine.PaginatedContentHost) => Array.from({ length: host.pageCount }, (_, index) => {
+        const point = host.pageStartPosition(index)!;
+        return locators.generateBoundary(0, point.node, point.offset).cfi;
+      }).join("\n");
+      try {
+        await cooperative.open(loader, resolver, 0, disclosures, undefined, { timeSliceMs: 1, retainSnapshot: true });
+        await sync.open(loader, resolver, 0, disclosures);
+        const parity = signature(sync) === signature(cooperative);
+        const stablePasses = passes;
+        const abort = new AbortController();
+        E.PaginationEngine.paginateIncrementally = (...args) => {
+          setTimeout(() => abort.abort(), 0);
+          return original.apply(E.PaginationEngine, args);
+        };
+        let cancelled = false;
+        try { await cooperative.open(loader, resolver, 0, disclosures, undefined, { signal: abort.signal, timeSliceMs: 1 }); }
+        catch (error) {
+          if (!(error instanceof DOMException) || error.name !== "AbortError") throw error;
+          cancelled = true;
+        }
+        return { parity, stablePasses, cancelled, candidateWidth: cooperative.element.clientWidth };
+      } finally {
+        E.PaginationEngine.paginateIncrementally = original;
+        for (const host of [cooperative, sync]) { host.dispose(); host.element.remove(); }
+        staging.remove();
+        resolver.dispose();
+      }
+    }, bytes);
+    expect(result.parity).toBe(true);
+    expect(result.stablePasses).toBeGreaterThanOrEqual(2);
+    expect(result.cancelled).toBe(true);
+    expect(result.candidateWidth).toBe(480);
+  } finally { await session.close(); }
+});
+
+test("foreground measurement keeps animated and disclosure-started animation atomic (#260)", async () => {
+  const session = await browser();
+  try {
+    const text = Array.from({ length: 20 }, () =>
+      `<p>${"Original animation-control prose. ".repeat(100)}</p>`).join("");
+    const books = [
+      book(`<svg xmlns="http://www.w3.org/2000/svg" width="100" height="20">
+        <animate attributeName="height" values="20;180;20" dur="1s" repeatCount="indefinite"/>
+        <rect width="100" height="180" fill="blue"/></svg>${text}`),
+      book(`<style>@keyframes growth{from{height:20px}to{height:180px}}
+        details[open] .spacer{animation:growth 1s linear infinite}</style>
+        <details><summary>Show animated material</summary><div class="spacer"></div></details>${text}`),
+    ];
+    const results = await session.page.evaluate(async books => {
+      const E = window.paginationEngine;
+      const sync = E.PaginationEngine.paginate;
+      const incremental = E.PaginationEngine.paginateIncrementally;
+      const results = [];
+      try {
+        for (const bytes of books) {
+          const loader = await E.ContentLoader.create(await E.EpubContainer.open(Uint8Array.from(atob(bytes), c => c.charCodeAt(0))));
+          const resolver = new E.ResourceUrlResolver(loader);
+          const host = new E.PaginatedContentHost(480, 600);
+          document.body.append(host.element);
+          let syncPasses = 0, incrementalPasses = 0;
+          E.PaginationEngine.paginate = (...args) => { syncPasses++; return sync.apply(E.PaginationEngine, args); };
+          E.PaginationEngine.paginateIncrementally = (...args) => {
+            incrementalPasses++;
+            setTimeout(() => { args[0].querySelector("details")!.open = true; }, 0);
+            return incremental.apply(E.PaginationEngine, args);
+          };
+          try {
+            await host.open(loader, resolver, 0, undefined, undefined, { retainSnapshot: true, timeSliceMs: 1 });
+            results.push({ syncPasses, incrementalPasses, snapshot: !!host.paginationSnapshot() });
+          } finally { host.dispose(); host.element.remove(); resolver.dispose(); }
+        }
+      } finally {
+        E.PaginationEngine.paginate = sync;
+        E.PaginationEngine.paginateIncrementally = incremental;
+      }
+      return results;
+    }, books);
+    expect(results).toEqual([
+      { syncPasses: 1, incrementalPasses: 0, snapshot: false },
+      { syncPasses: 1, incrementalPasses: 1, snapshot: false },
+    ]);
+  } finally { await session.close(); }
+});
+
+test("packaged long chapter navigation yields to input and retires superseded hosts (#260)", async () => {
+  const filename = test.info().outputPath("large-original.epub");
+  fs.writeFileSync(filename, Buffer.from(book(Array.from({ length: 12 }, (_, index) =>
+    `<p id="p${index}">${"An original long paragraph follows the reader through a quiet invented landscape. ".repeat(350)}</p>`).join("")), "base64"));
+  const { context, readerPage: page } = await launchReader(filename, { viewport: { width: 480, height: 600 } });
+  try {
+    await exposeReaderController(page);
+    await page.evaluate(() => Reflect.get(window, "__readerController").setFontScale(1.5));
+    await page.evaluate(() => {
+      const button = document.createElement("button");
+      button.textContent = "Responsiveness test control";
+      button.style.cssText = "position:fixed;top:200px;left:0;z-index:10000";
+      button.onclick = () => Reflect.set(window, "__inputDuringPagination",
+        Reflect.get(window, "__readerController").isLoadInFlight);
+      document.body.append(button);
+    });
+    const navigation = page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const durations: number[] = [];
+      const observer = new PerformanceObserver(list => durations.push(...list.getEntries().map(entry => entry.duration)));
+      observer.observe({ type: "longtask" });
+      let last = performance.now(), maxGap = 0, ticks = 0;
+      const heartbeat = setInterval(() => {
+        const now = performance.now();
+        maxGap = Math.max(maxGap, now - last);
+        last = now;
+        ticks++;
+      }, 8);
+      try {
+        const started = performance.now();
+        const opened = await c.openSpineItem(0, { fragment: "p6" });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        return { opened, elapsed: performance.now() - started, maxGap, ticks,
+          largestTask: Math.max(0, ...durations), pageCount: c.snapshot().pageCount };
+      } finally { clearInterval(heartbeat); observer.disconnect(); }
+    });
+    const inputStarted = Date.now();
+    await page.getByRole("button", { name: "Responsiveness test control", exact: true }).click();
+    const inputMs = Date.now() - inputStarted;
+    const responsiveness = await navigation;
+    expect(await page.evaluate(() => Reflect.get(window, "__inputDuringPagination"))).toBe(true);
+    expect(inputMs).toBeLessThan(1000);
+    await page.getByRole("button", { name: "Responsiveness test control", exact: true }).evaluate(button => button.remove());
+    await test.info().attach("foreground-responsiveness", { body: JSON.stringify({ ...responsiveness, inputMs }), contentType: "application/json" });
+    expect(responsiveness.opened).toBe(true);
+    expect(responsiveness.pageCount).toBeGreaterThan(300);
+    expect(responsiveness.ticks).toBeGreaterThan(5);
+    expect(responsiveness.maxGap).toBeLessThan(500);
+    expect(responsiveness.largestTask).toBeLessThan(500);
+    const cancellation = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const previous = c.host;
+      const prototype = Object.getPrototypeOf(previous);
+      const measure = prototype.measureCooperatively;
+      let latest: Promise<boolean> | undefined;
+      let obsolete: HTMLIFrameElement | undefined;
+      let retainedVisible = false;
+      prototype.measureCooperatively = function(...args: unknown[]) {
+        const options = args[1] as Engine.PaginatedOpenOptions;
+        if (options.retainSnapshot && !obsolete) {
+          obsolete = this.element;
+          setTimeout(() => {
+            retainedVisible = c.host === previous && previous.element.isConnected;
+            latest = c.openSpineItem(0, { landOnPageIndex: 3 });
+          }, 0);
+        }
+        return measure.apply(this, args);
+      };
+      try {
+        const first = await c.openSpineItem(0);
+        const second = await latest;
+        return { first, second, retainedVisible, retired: obsolete?.isConnected === false,
+          page: c.snapshot().pageIndex, frames: c.containerEl.querySelectorAll("iframe").length, error: c.snapshot().error };
+      } finally { prototype.measureCooperatively = measure; }
+    });
+    expect(cancellation).toMatchObject({ first: false, second: true, retainedVisible: true, retired: true, page: 3, frames: 1 });
+    expect(cancellation.error).toBeUndefined();
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController")
+      .bookPagination.positionFor(0, 0).totalPages)).toBeGreaterThan(300);
+  } finally { await context.close(); }
+});
+
 test("incoming pages transfer forced anchors in one pass without exporting canonical snapshots (#264)", async () => {
   const session = await browser();
   try {

@@ -37,6 +37,7 @@ import type {
   PackageDocument,
   Page,
   PageTheme,
+  PaginatedOpenOptions,
   ReflowableSpread,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
@@ -361,6 +362,7 @@ export class ReaderController {
   /** Background-paginates the whole book for book-wide page numbers —
    * `undefined` until `mount` creates it. */
   private bookPagination: BookPaginationEstimator | undefined;
+  private foregroundPaginationOperation: ReaderOperation | undefined;
   /** An offscreen, zero-size-but-attached container `bookPagination`
    * mounts its measurement iframes into (a detached element doesn't lay
    * out in real browsers). Created in `mount`, torn down in `dispose`. */
@@ -936,7 +938,7 @@ export class ReaderController {
    * column's own width, not the whole pane — so the book-wide page
    * number agrees with what's on screen. */
   private refreshBookPagination(): void {
-    if (!this.bookPagination) {
+    if (!this.bookPagination || this.foregroundPaginationOperation) {
       return;
     }
     const measureWidth =
@@ -3215,7 +3217,8 @@ export class ReaderController {
     containerEl.appendChild(newEl);
 
     await newHost.open(this.contentLoader, this.resolver, this.spineIndex, this.disclosures,
-      (doc) => this.configureSpreadDocument(doc), undefined, oldHost.paginationSnapshot(), oldHost.paginationAnchor());
+      (doc) => this.configureSpreadDocument(doc), this.foregroundPagination(operation),
+      oldHost.paginationSnapshot(), oldHost.paginationAnchor());
     operation.check();
     newHost.goToPageIndex(targetIndex);
     newEl.style.opacity = "";
@@ -3236,6 +3239,38 @@ export class ReaderController {
     }
     const resolvedLayout = nextSpineItem.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
     return resolvedLayout !== "pre-paginated" && this.useReflowableSpread(this.width);
+  }
+
+  private foregroundPagination(operation: ReaderOperation, retainSnapshot = true): PaginatedOpenOptions {
+    if (this.foregroundPaginationOperation !== operation) {
+      this.foregroundPaginationOperation = operation;
+      this.bookPagination?.cancelPendingMeasurement();
+      void operation.settled.then(async () => {
+        while (!this.operations.disposed && this.operations.current &&
+          this.foregroundPaginationOperation === operation) {
+          await this.operations.current.settled;
+        }
+        if (!this.operations.disposed && this.foregroundPaginationOperation === operation) {
+          this.foregroundPaginationOperation = undefined;
+          if (this.host) this.refreshBookPagination();
+        }
+      });
+    }
+    return {
+      signal: operation.signal,
+      retainSnapshot,
+      // Messages avoid nested-timer clamping without boosted continuations
+      // starving normal timers and input-related application callbacks.
+      yieldControl: () => new Promise(resolve => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => {
+          channel.port1.close();
+          channel.port2.close();
+          resolve();
+        };
+        channel.port2.postMessage(undefined);
+      }),
+    };
   }
 
   private configureSpreadDocument(doc: Document): void {
@@ -3301,7 +3336,7 @@ export class ReaderController {
     this.ownCandidate(operation, probe, staging);
     try {
       await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
-        (doc) => this.configureSpreadDocument(doc));
+        (doc) => this.configureSpreadDocument(doc), this.foregroundPagination(operation, false));
       operation.check();
       return probe.pageCount;
     } finally {
@@ -3338,6 +3373,7 @@ export class ReaderController {
         (spineIndex) => this.host instanceof SpreadPaginatedHost
           ? this.host.paginationSnapshotFor(spineIndex)
           : undefined,
+        this.foregroundPagination(operation),
       );
       operation.check();
       host.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(host.primarySpineIndex)}`);
@@ -3372,7 +3408,7 @@ export class ReaderController {
       this.ownCandidate(operation, probe, staging);
       try {
         await probe.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
-          (doc) => this.configureSpreadDocument(doc));
+          (doc) => this.configureSpreadDocument(doc), this.foregroundPagination(operation, false));
         operation.check();
         const doc = probe.element.contentDocument!;
         if (options.bridgeCfi) {
@@ -3381,10 +3417,10 @@ export class ReaderController {
             spineIndex,
             doc,
           );
-          probe.goToPosition(resolved.node, resolved.characterOffset ?? 0, false);
+          probe.goToPageIndex(probe.pageIndexForPosition(resolved.node, resolved.characterOffset ?? 0) ?? 0);
         } else {
           const target = doc.getElementById(options.fragment!);
-          if (target) probe.goToPosition(target, 0, false);
+          if (target) probe.goToPageIndex(probe.pageIndexForPosition(target, 0) ?? 0);
         }
         pageIndex = probe.currentPageIndex;
       } finally {
@@ -4639,7 +4675,22 @@ export class ReaderController {
           this.ownCandidate(operation, host, stagingEl);
           if (host instanceof PaginatedContentHost) {
             await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
-              (doc) => this.configureSpreadDocument(doc));
+              (doc) => this.configureSpreadDocument(doc), {
+                ...this.foregroundPagination(operation),
+                forceAnchor: !options.preservePageBoundaries,
+                position: doc => {
+                  if (options.bridgeCfi) {
+                    const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), spineIndex, doc);
+                    return { node: resolved.node, offset: resolved.characterOffset ?? 0 };
+                  }
+                  if (options.fragment) {
+                    const target = doc.getElementById(options.fragment);
+                    if (!target) throw new Error(`The linked reading position #${options.fragment} was not found.`);
+                    return { node: target, offset: 0 };
+                  }
+                  return undefined;
+                },
+              });
           } else {
             await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures);
             applyDisplaySettings = true;
@@ -4756,10 +4807,14 @@ export class ReaderController {
           this.nativeReading.retain({ ...readingPosition, spineIndex: requestedSpineIndex });
         }
       } else if (options.bridgeCfi) {
-        this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
+        if (!(newHost instanceof PaginatedContentHost)) {
+          this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
+        }
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
       } else if (options.fragment) {
-        const focusTarget = this.goToFragment(options.fragment);
+        const focusTarget = newHost instanceof PaginatedContentHost
+          ? destinationDocument?.getElementById(options.fragment) ?? undefined
+          : this.goToFragment(options.fragment);
         this.setUpAccessibility(focusTarget, !options.automatic && !options.preserveFocus);
       } else {
         if (

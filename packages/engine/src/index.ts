@@ -93,6 +93,7 @@ export type { SmilNode, SmilTextRef, SmilAudioClip } from "./media-overlay/SmilD
 export { MediaOverlayPlayer, MediaOverlayError } from "./media-overlay/MediaOverlayPlayer.js";
 export type { MediaOverlayAudioHost, MediaOverlayClip } from "./media-overlay/MediaOverlayPlayer.js";
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
+export type { PaginatedOpenOptions } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";
 export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";

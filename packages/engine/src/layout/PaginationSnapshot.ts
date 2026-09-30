@@ -3,9 +3,14 @@ import { Page, type DomBreakPoint, type DomPositionRange, type PositionOverride 
 import { compareDomPositions } from "./ScrollPositionTracker.js";
 
 const DYNAMIC_LAYOUT_ELEMENTS = new Set([
-  "animate", "animatemotion", "animatetransform", "animatecolor", "set", "discard",
   "img", "image", "use", "video", "audio", "canvas", "iframe", "object", "embed",
 ]);
+
+export function hasPaginationAnimation(document: Document): boolean {
+  // SMIL is not included in the Web Animations API.
+  return !!document.getAnimations?.().length ||
+    document.querySelector("animate, animateMotion, animateTransform, animateColor, set, discard") !== null;
+}
 
 interface SerializedPosition {
   readonly path: readonly number[];
@@ -62,10 +67,10 @@ export function paginationIdentity(
   pageHeight: number,
   paint: BodyPaint,
 ): string | undefined {
-  if (document.fonts?.status === "loading" || document.getAnimations?.().length) return undefined;
+  if (document.fonts?.status === "loading" || hasPaginationAnimation(document)) return undefined;
   const authoredElements = Array.from(document.querySelectorAll("*")).filter(element => !isReaderOwnedContent(element));
-  // SMIL is absent from getAnimations(). External images/SVG references use
-  // opaque resource URLs: their animation and intrinsic-size stability cannot
+  // External images/SVG references use opaque resource URLs:
+  // their animation and intrinsic-size stability cannot
   // be established synchronously. Fall back instead of guessing from markup.
   if (authoredElements.some(element => DYNAMIC_LAYOUT_ELEMENTS.has(element.localName.toLowerCase()))) {
     return undefined;

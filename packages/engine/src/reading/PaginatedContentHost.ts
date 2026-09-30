@@ -9,11 +9,18 @@ import { PaginationEngine } from "../layout/PaginationEngine.js";
 import { mapDomPositionToDocument } from "../layout/DomPositionMapping.js";
 import type { IncrementalMeasurementOptions } from "../layout/LineMeasurement.js";
 import {
-  bodyPaint, paginationIdentity, restoreSnapshotPages, snapshotPages,
+  bodyPaint, hasPaginationAnimation, paginationIdentity, restoreSnapshotPages, snapshotPages,
   type BodyPaint, type PaginationSnapshot,
 } from "../layout/PaginationSnapshot.js";
 import { loadAssembledSpineItem } from "./SpineItemAssembler.js";
 import type { DisclosureState } from "./DisclosureState.js";
+
+export interface PaginatedOpenOptions extends IncrementalMeasurementOptions {
+  /** Retain canonical boundaries for subsequent owned foreground replacements. */
+  readonly retainSnapshot?: boolean;
+  readonly position?: (document: Document) => DomBreakPoint | undefined;
+  readonly forceAnchor?: boolean;
+}
 
 /**
  * Production content host for one spine item in paginated reflowable
@@ -69,6 +76,7 @@ export class PaginatedContentHost {
     this.sandboxedHost = new SandboxedContentHost(ownerDocument);
     this.sandboxedHost.element.style.width = `${width}px`;
     this.sandboxedHost.element.style.height = `${height}px`;
+    this.sandboxedHost.element.style.flexShrink = "0";
   }
 
   public get element(): HTMLIFrameElement {
@@ -116,8 +124,8 @@ export class PaginatedContentHost {
 
   /** Loads spine item `spineIndex`, applies disclosures and `configure`
    * before font readiness/first measurement, then displays its first page.
-   * `paginationOptions` opts isolated background hosts into cooperative work;
-   * foreground hosts omit it so layout cannot change between checkpoints.
+   * `paginationOptions` opts owned, hidden hosts into cooperative work.
+   * The caller must hold dimensions/settings stable and cancel stale work.
    * `snapshot` may supply DOM-free boundaries from an identical configured
    * document; any identity mismatch falls back to normal measurement.
    * `sourceAnchor` transfers an explicit boundary from an incoming page's
@@ -128,7 +136,7 @@ export class PaginatedContentHost {
     spineIndex: number,
     disclosures?: DisclosureState,
     configure?: (document: Document) => void,
-    paginationOptions?: IncrementalMeasurementOptions,
+    paginationOptions?: PaginatedOpenOptions,
     snapshot?: PaginationSnapshot,
     sourceAnchor?: DomBreakPoint,
   ): Promise<void> {
@@ -187,26 +195,59 @@ export class PaginatedContentHost {
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    if (!paginationOptions) {
+    if (!paginationOptions || paginationOptions.retainSnapshot) {
       this.sourceXhtml = assembledXhtml;
       this.measurementPaint = bodyPaint(iframeDocument);
       this.measurementIdentity = this.currentPaginationIdentity(iframeDocument);
     }
+    const position = paginationOptions?.position?.(iframeDocument);
+    this.forcedAnchor = paginationOptions?.forceAnchor === false ? undefined : position;
     if (sourceAnchor) {
       const sourceRoot = sourceAnchor.node.ownerDocument?.documentElement;
       this.forcedAnchor = sourceRoot && mapDomPositionToDocument(sourceAnchor, sourceRoot, iframeDocument.documentElement);
       if (!this.forcedAnchor) throw new Error("Cannot transfer the forced pagination anchor to the incoming document.");
-      this.measurementIdentity = undefined;
     }
+    if (this.forcedAnchor) this.measurementIdentity = undefined;
     this.pages = restoreSnapshotPages(iframeDocument, this.measurementIdentity, snapshot) ?? (paginationOptions
-      ? await PaginationEngine.paginateIncrementally(iframeDocument.body, this.pageContentHeight, paginationOptions, this.forcedAnchor)
+      ? await this.measureCooperatively(iframeDocument, paginationOptions)
       : PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor));
     signal?.throwIfAborted();
     this.measuredSnapshot = this.measurementIdentity
       ? snapshotPages(iframeDocument, this.measurementIdentity, this.pages)
       : undefined;
-    this.pageIndex = 0;
+    this.pageIndex = position
+      ? PaginationEngine.findPageForPosition(this.pages, position.node, position.offset ?? 0, iframeDocument)?.index ?? 0
+      : 0;
     this.showCurrentPage();
+  }
+
+  private async measureCooperatively(doc: Document, options: PaginatedOpenOptions): Promise<Page[]> {
+    for (;;) {
+      options.signal?.throwIfAborted();
+      // A disclosure can start an animation while invalidating a prior pass.
+      // Check every attempt, including SMIL outside the Web Animations API.
+      if (doc.fonts?.status === "loading" || hasPaginationAnimation(doc)) {
+        this.measurementIdentity = undefined;
+        return PaginationEngine.paginate(doc.body, this.pageContentHeight, this.forcedAnchor);
+      }
+      let changed = false;
+      const observer = new MutationObserver(() => { changed = true; });
+      const fontChange = (): void => { changed = true; };
+      observer.observe(doc.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+      doc.fonts?.addEventListener("loadingdone", fontChange);
+      try {
+        const pages = await PaginationEngine.paginateIncrementally(doc.body, this.pageContentHeight, options, this.forcedAnchor);
+        if (!changed && observer.takeRecords().length === 0) return pages;
+      } finally {
+        observer.disconnect();
+        doc.fonts?.removeEventListener("loadingdone", fontChange);
+      }
+      // Native disclosures synchronize across visible and staged documents.
+      // Never publish boundaries measured across two different open states.
+      this.refreshInsets(doc);
+      ReadingTheme.applyPageContentHeight(doc, this.pageContentHeight);
+      this.measurementIdentity = this.forcedAnchor ? undefined : this.currentPaginationIdentity(doc);
+    }
   }
 
   /** Serializable canonical boundaries for an identically configured fresh

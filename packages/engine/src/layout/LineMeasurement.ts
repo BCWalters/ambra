@@ -718,14 +718,15 @@ export function measureChunks(bodyElement: Element, pageHeight = Infinity): Chun
 export interface IncrementalMeasurementOptions {
   readonly signal?: AbortSignal;
   readonly timeSliceMs?: number;
+  readonly yieldControl?: () => Promise<void>;
 }
 
-/** Background-only measurement. The caller must keep this document's layout
- * stable until completion; foreground pagination deliberately remains atomic.
+/** Cooperative measurement. The caller must keep this document's layout
+ * stable until completion and discard work when its owner is cancelled.
  * Checkpoints include each bisection, not just each (potentially huge) leaf. */
 export async function measureChunksIncrementally(
   bodyElement: Element,
-  { signal, timeSliceMs = 8 }: IncrementalMeasurementOptions = {},
+  { signal, timeSliceMs = 8, yieldControl = () => new Promise<void>(resolve => setTimeout(resolve, 0)) }: IncrementalMeasurementOptions = {},
   pageHeight = Infinity,
 ): Promise<Chunk[]> {
   signal?.throwIfAborted();
@@ -735,7 +736,7 @@ export async function measureChunksIncrementally(
     signal?.throwIfAborted();
     if (chunk) chunks.push(chunk);
     if (performance.now() >= deadline) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await yieldControl();
       signal?.throwIfAborted();
       deadline = performance.now() + Math.max(1, timeSliceMs);
     }
