@@ -76,6 +76,7 @@ Keyboard and Chromium accessibility-tree tests do not establish exact VoiceOver
 or NVDA virtual-cursor behavior. Live assistive-technology testing remains
 pending; report the exact browser/OS/AT combination tested.
 
-Store updates follow the [1.0.2 checklist](store-assets/RELEASE-1.0.2.md).
-The MIT repository is public; version 1.0.1 is live on the Public Chrome Web Store
-listing, as confirmed by the owner. Preserve its visibility and existing item.
+Store updates follow the [1.0.3 checklist](store-assets/RELEASE-1.0.3.md).
+The MIT repository and Chrome Web Store listing are Public, as confirmed by the
+owner. Preserve the listing's visibility and existing item. Check the dashboard's
+current version and review status before uploading a new package.

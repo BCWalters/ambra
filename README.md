@@ -15,13 +15,15 @@ provided you retain the copyright and license notice. There is no
 non-commercial or friends-only restriction on the source code. Third-party
 materials retain their own licenses; see [notices and provenance](THIRD_PARTY_NOTICES.md).
 
-Version **1.0.1 is live and Public** in the
+Ambra is available on the **Public**
 [Chrome Web Store](https://chromewebstore.google.com/detail/ambra-epub-reader/mcjkkebkhifgkkbahlcapjlnaihocogj),
 as confirmed by the owner. No trusted-tester allowlist is required. Public source visibility, store listing
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [1.0.2 update checklist](store-assets/RELEASE-1.0.2.md).
+and the [1.0.3 update checklist](store-assets/RELEASE-1.0.3.md).
+The owner submitted 1.0.2; preparing 1.0.3 does not mean it has been uploaded,
+submitted, or published.
 
 ## Structure
 
