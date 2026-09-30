@@ -193,8 +193,8 @@ export class PaginatedContentHost {
       this.measurementIdentity = this.currentPaginationIdentity(iframeDocument);
     }
     if (sourceAnchor) {
-      const sourceBody = sourceAnchor.node.ownerDocument?.body;
-      this.forcedAnchor = sourceBody && mapDomPositionToDocument(sourceAnchor, sourceBody, iframeDocument.body);
+      const sourceRoot = sourceAnchor.node.ownerDocument?.documentElement;
+      this.forcedAnchor = sourceRoot && mapDomPositionToDocument(sourceAnchor, sourceRoot, iframeDocument.documentElement);
       if (!this.forcedAnchor) throw new Error("Cannot transfer the forced pagination anchor to the incoming document.");
       this.measurementIdentity = undefined;
     }

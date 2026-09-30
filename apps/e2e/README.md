@@ -344,6 +344,8 @@ Animated single-page replacements also preserve an explicitly forced pagination
 anchor. They remeasure with the mapped anchor rather than applying an anchored
 page index to a fresh natural layout; this is one measurement, not an additional
 layout pass. Canonical snapshots still decline export after anchor repagination.
+Transfer covers both descendant positions and document-root (bare-spine) CFIs;
+detached or otherwise unmappable anchors are rejected.
 
 ## Wrapping inline prose (#256)
 
