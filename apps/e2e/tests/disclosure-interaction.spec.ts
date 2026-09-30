@@ -25,21 +25,29 @@ async function readyTotalPages(page: Page): Promise<number> {
   return total!;
 }
 
-async function states(page: Page): Promise<boolean[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+async function readerFrameSnapshot(page: Page) {
+  // Estimator frames live outside main; staged hosts inside it use opacity: 0.
+  return page.getByRole("main").locator("iframe").evaluateAll((frames) =>
+    frames
       .filter(
-        (frame) =>
+        (frame): frame is HTMLIFrameElement =>
+          frame instanceof HTMLIFrameElement &&
           frame.getBoundingClientRect().width > 0 &&
-          getComputedStyle(frame).visibility !== "hidden",
+          frame.getBoundingClientRect().height > 0 &&
+          frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
       )
-      .flatMap((frame) =>
-        Array.from(
+      .map((frame) => ({
+        width: Math.round(frame.getBoundingClientRect().width),
+        disclosures: Array.from(
           frame.contentDocument?.querySelectorAll("details") ?? [],
           (details) => details.open,
         ),
-      ),
+      })),
   );
+}
+
+async function states(page: Page): Promise<boolean[]> {
+  return (await readerFrameSnapshot(page)).flatMap((frame) => frame.disclosures);
 }
 
 async function changeMode(page: Page, mode: "Scroll" | "Paginated"): Promise<void> {
@@ -53,12 +61,13 @@ async function changeMode(page: Page, mode: "Scroll" | "Paginated"): Promise<voi
 }
 
 async function visibleLines(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+  return page.getByRole("main").locator("iframe").evaluateAll((frames) =>
+    frames
       .filter(
-        (frame) =>
+        (frame): frame is HTMLIFrameElement =>
+          frame instanceof HTMLIFrameElement &&
           frame.getBoundingClientRect().width > 0 &&
-          getComputedStyle(frame).visibility !== "hidden",
+          frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
       )
       .flatMap((frame) => {
         const doc = frame.contentDocument!;
@@ -78,6 +87,52 @@ async function visibleLines(page: Page): Promise<string[]> {
       }),
   );
 }
+
+test("disclosure frame sampling excludes estimator and transparent staging frames", async () => {
+  const { context, readerPage: page } = await launchReader(book, {
+    viewport: { width: 1100, height: 900 },
+  });
+  try {
+    const expected = [
+      { width: 530, disclosures: [false] },
+      { width: 530, disclosures: [false] },
+    ];
+    await expect.poll(() => readerFrameSnapshot(page)).toEqual(expected);
+    const controls = await page.evaluate(async () => {
+      const frames: HTMLIFrameElement[] = [];
+      for (const kind of ["estimator", "staging"]) {
+        const container = document.createElement("div");
+        Object.assign(container.style, {
+          position: "fixed", left: "0", top: "0",
+          ...(kind === "estimator"
+            ? { width: "0", height: "0", overflow: "hidden" }
+            : { opacity: "0", pointerEvents: "none" }),
+        });
+        container.setAttribute("aria-hidden", "true");
+        const frame = document.createElement("iframe");
+        Object.assign(frame.style, { width: "530px", height: "900px", border: "0" });
+        const loaded = new Promise<void>((resolve) =>
+          frame.addEventListener("load", () => resolve(), { once: true }),
+        );
+        frame.srcdoc = "<details open><summary>Unpainted disclosure</summary></details>";
+        container.appendChild(frame);
+        (kind === "estimator" ? document.body : document.querySelector('[role="main"]')!)
+          .appendChild(container);
+        await loaded;
+        frames.push(frame);
+      }
+      return frames.map((frame) => ({
+        width: Math.round(frame.getBoundingClientRect().width),
+        visibility: getComputedStyle(frame).visibility,
+        open: frame.contentDocument!.querySelector("details")!.open,
+      }));
+    });
+    expect(controls).toEqual(Array(2).fill({ width: 530, visibility: "visible", open: true }));
+    expect(await readerFrameSnapshot(page)).toEqual(expected);
+  } finally {
+    await context.close();
+  }
+});
 
 for (const width of [760, 1400]) {
   test(`${width}px disclosure keyboard activation, collapse, and mode changes retain state and focus`, async () => {
@@ -239,13 +294,8 @@ test("a disclosure toggle during a held spread load shares the latest queued res
     await page.evaluate(() => Reflect.get(window, "__disclosureLoadGate").release());
     await expect.poll(() => states(page)).toEqual([true, true]);
     await expect.poll(() => totalPages(page)).toBeGreaterThan(collapsedTotal);
-    await expect.poll(() => page.locator("iframe").count()).toBe(2);
-    expect(
-      await page
-        .locator("iframe")
-        .evaluateAll((frames) =>
-          frames.map((frame) => Math.round(frame.getBoundingClientRect().width)),
-        ),
+    await expect.poll(async () =>
+      (await readerFrameSnapshot(page)).map((frame) => frame.width),
     ).toEqual([530, 530]);
     await expect(page.frameLocator("iframe").first().locator("summary")).toBeFocused();
     await page.frameLocator("iframe").first().locator("h1").click();
