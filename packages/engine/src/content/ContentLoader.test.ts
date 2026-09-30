@@ -61,6 +61,52 @@ describe("ContentLoader", () => {
   });
 
   describe("findResourceReferences", () => {
+    it("discovers density and width candidates on images and picture sources", () => {
+      const document = new DOMParser().parseFromString(
+        `<html xmlns="http://www.w3.org/1999/xhtml"><body>
+          <picture><source media="(min-width: 800px)" srcset="../images/wide.png 800w, ../images/wider.png 1600w"/>
+          <img src="../images/fallback.png" srcset="../images/one.png 1x, ../images/two.png 2x"/></picture>
+        </body></html>`,
+        "application/xhtml+xml",
+      );
+      const references = findResourceReferencesInDocument(document, "OEBPS/text/chapter.xhtml");
+      expect(references.map(ref => ref.path)).toEqual([
+        "OEBPS/images/fallback.png", "OEBPS/images/wide.png", "OEBPS/images/wider.png",
+        "OEBPS/images/one.png", "OEBPS/images/two.png",
+      ]);
+      for (const ref of references.filter(ref => ref.attributeName === "srcset")) {
+        expect(ref.attributeRange).toBeDefined();
+        const value = ref.element.getAttribute("srcset")!;
+        expect(value.slice(ref.attributeRange!.start, ref.attributeRange!.end)).toMatch(/^\.\.\/images\/\w+\.png$/);
+      }
+    });
+
+    it("keeps schemes, fragment-only candidates, and non-picture sources out of archive resolution", () => {
+      const document = new DOMParser().parseFromString(
+        `<html xmlns="http://www.w3.org/1999/xhtml"><body>
+          <img srcset="https://example.test/OEBPS/local.png 1x, //example.test/local.png 2x,
+            data:image/png;base64,AAAA 3x, blob:external 4x, #local 5x, local.png 6x"/>
+          <video><source srcset="not-an-image.png 1x"/></video>
+        </body></html>`,
+        "application/xhtml+xml",
+      );
+      expect(findResourceReferencesInDocument(document, "OEBPS/chapter.xhtml").map(ref => ref.path))
+        .toEqual(["OEBPS/local.png"]);
+    });
+
+    it("preserves commas, encoded filenames and fragment suffixes in candidate spans", () => {
+      const document = new DOMParser().parseFromString(
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body><img srcset="images/a,b.png 1x, images/100%25%23photo.svg#view 2x"/></body></html>',
+        "application/xhtml+xml",
+      );
+      const references = findResourceReferencesInDocument(document, "OEBPS/part#one/chapter.xhtml");
+      expect(references.map(ref => ref.path)).toEqual([
+        "OEBPS/part#one/images/a,b.png", "OEBPS/part#one/images/100%#photo.svg",
+      ]);
+      const ref = references[1]!;
+      expect(ref.element.getAttribute("srcset")!.slice(ref.attributeRange!.end)).toBe("#view 2x");
+    });
+
     it("preserves encoded delimiters in resource filenames and literal delimiters in the base path", () => {
       const document = new DOMParser().parseFromString(
         '<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="images/100%25%23photo.png"/></body></html>',
