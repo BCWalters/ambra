@@ -764,11 +764,30 @@ cannot be interrupted, so this is not a hard main-thread latency guarantee.
 The heartbeat regression starts at incremental measurement, after the browser's
 non-cooperative iframe parsing/initial layout; whole-run elapsed time is recorded
 separately. It does not claim an upper bound on document-startup latency.
-Foreground pagination remains synchronous against its live document.
+Foreground chapter opening, incoming-page preparation and spread probes now
+measure cooperatively in hidden, operation-owned hosts (#260). Completed
+background counts/CFIs are preserved while pending background measurement is
+paused, then resumed after foreground work settles. Foreground yields use
+short-lived message channels: nested timers add substantial clamping overhead,
+while boosted scheduler continuations can starve ordinary timers despite
+producing no long-task entries. Test real pointer input, heartbeat gaps, and
+long tasks together, not merely the duration of individual work slices.
 `PaginatedContentHost.open` accepts a fifth `configure(document)` argument,
 applied after disclosure state and before font readiness/initial measurement,
-and optional sixth incremental-measurement options for isolated background
-hosts only. Hosts must not change layout while incremental measurement runs.
+and optional sixth `PaginatedOpenOptions`. Foreground callers supply the owning
+operation's cancellation signal and opt into retaining canonical snapshots.
+An optional position resolver establishes fragment/CFI boundaries in the first
+measurement, avoiding a second synchronous pass after revealing the host.
+Dimensions and typography must stay fixed while a candidate measures; staged
+frames retain their explicit width even if a flex parent resizes. Native
+disclosure mutations invalidate the pass and are remeasured before publication;
+CSS/SMIL animation and font readiness are checked on every attempt, with
+unstable documents retaining atomic measurement.
+Existing in-place resize/typography reflow and narration jumps remain synchronous:
+this change does not yield while measuring a visible, mutable document.
+The #260 regressions verify exact canonical/forced boundaries, snapshot reuse,
+disclosure invalidation, latest-request-wins cancellation, background resumption,
+and input responsiveness while a large original chapter opens.
 `BookPaginationEstimator.cancelPendingMeasurement()` immediately retires pending
 work while preserving completed counts and CFIs; a later `run()` resumes by
 skipping those completed chapters. Cheap in-place turns need not cancel it.

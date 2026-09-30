@@ -1,7 +1,7 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import type { DomBreakPoint, Page } from "../layout/Page.js";
-import { PaginatedContentHost } from "./PaginatedContentHost.js";
+import { PaginatedContentHost, type PaginatedOpenOptions } from "./PaginatedContentHost.js";
 import type { DisclosureState } from "./DisclosureState.js";
 import type { ReflowablePagePosition, ReflowableSpread } from "./ReflowableSpreadPlanner.js";
 import type { ContentDocumentView } from "./ContentDocumentView.js";
@@ -153,6 +153,7 @@ export class SpreadPaginatedHost {
     configure?: (doc: Document) => void,
     disclosures?: DisclosureState,
     snapshotFor?: (spineIndex: number) => PaginationSnapshot | undefined,
+    paginationOptions?: PaginatedOpenOptions,
   ): Promise<void> {
     this.spread = spread;
     const snapshots = new Map<number, PaginationSnapshot>();
@@ -162,7 +163,7 @@ export class SpreadPaginatedHost {
     ] as const) {
       host.element.style.visibility = position ? "visible" : "hidden";
       if (!position) continue;
-      await host.open(loader, resolver, position.spineIndex, disclosures, configure, undefined,
+      await host.open(loader, resolver, position.spineIndex, disclosures, configure, paginationOptions,
         snapshots.get(position.spineIndex) ?? snapshotFor?.(position.spineIndex));
       const snapshot = host.paginationSnapshot();
       if (snapshot) snapshots.set(position.spineIndex, snapshot);
