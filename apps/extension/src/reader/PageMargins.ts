@@ -1,3 +1,5 @@
+import { isInteractiveContentTarget } from "@ambra/engine";
+
 export interface HorizontalBounds {
   left: number;
   right: number;
@@ -34,11 +36,38 @@ export function outerMarginSide(x: number, pages: readonly HorizontalBounds[]): 
   return undefined;
 }
 
-/** FXL artwork can fill the pane. Extend only the two physical outer
- * margins into 8% of the rendered page, capped at 64 CSS pixels. */
-export function fixedLayoutEdgeSide(x: number, pages: readonly HorizontalBounds[]): -1 | 1 | undefined {
+/** Extend only the two physical outer edges into 8% of the rendered page,
+ * capped at 64 CSS pixels. Callers retain ownership of content interactions. */
+export function outerEdgeSide(x: number, pages: readonly HorizontalBounds[], minimum = 0): -1 | 1 | undefined {
   return outerMarginSide(x, pages.map(page => {
-    const inset = Math.min((page.right - page.left) * 0.08, 64);
+    const width = page.right - page.left;
+    const inset = Math.min(width / 2, Math.max(minimum, Math.min(width * 0.08, 64)));
     return { left: page.left + inset, right: page.right - inset };
   }));
+}
+
+/** Probe only the nearest text node, not the publication tree. Full line
+ * rectangles protect ligatures and combining characters as well as words. */
+export function isReflowableEdgeWhitespace(doc: Document, x: number, y: number): boolean {
+  const target = doc.elementFromPoint(x, y);
+  if (!target || isInteractiveContentTarget(target) ||
+    target.closest("img, svg, math, canvas, video, audio, iframe, li")) return false;
+  for (let element: Element | null = target; element; element = element.parentElement) {
+    for (const pseudo of ["::before", "::after"]) {
+      const content = doc.defaultView!.getComputedStyle(element, pseudo).content;
+      if (content && !["none", "normal", '""', "''"].includes(content)) return false;
+    }
+  }
+  const caretRangeFromPoint = (doc as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  }).caretRangeFromPoint;
+  if (!caretRangeFromPoint) return false;
+  const caret = caretRangeFromPoint.call(doc, x, y);
+  if (!caret) return false;
+  if (caret.startContainer.nodeType !== 3) return true;
+  const line = doc.createRange();
+  line.selectNodeContents(caret.startContainer);
+  return !Array.from(line.getClientRects()).some(rect =>
+    rect.width > 0 && rect.height > 0 &&
+    x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
 }

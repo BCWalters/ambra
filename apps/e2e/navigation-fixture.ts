@@ -5,7 +5,11 @@ import type { TestInfo } from "@playwright/test";
 
 /** Original reflowable content with font-independent page boundaries.
  * Each atomic SVG is 600px tall: one fits, two cannot fit at a 900px viewport. */
-export function navigationFixture(info: TestInfo, chapterPages: number[]): string {
+export function navigationFixture(
+  info: TestInfo,
+  chapterPages: number[],
+  renderPage?: (chapter: number, page: number) => string,
+): string {
   const source = info.outputPath("navigation-source");
   fs.mkdirSync(path.join(source, "META-INF"), { recursive: true });
   fs.mkdirSync(path.join(source, "EPUB"));
@@ -18,6 +22,7 @@ export function navigationFixture(info: TestInfo, chapterPages: number[]): strin
     `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol>${chapterPages.map((_, i) => `<li><a href="c${i}.xhtml">Chapter ${i + 1}</a></li>`).join("")}</ol></nav></body></html>`);
   chapterPages.forEach((count, chapter) => {
     const pages = Array.from({ length: count }, (_, page) =>
+      renderPage?.(chapter, page) ??
       `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600" style="display:block"><text x="20" y="40" font-size="20">C${chapter + 1}Para ${page + 1}.</text></svg>`).join("");
     fs.writeFileSync(path.join(source, `EPUB/c${chapter}.xhtml`),
       `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter ${chapter + 1}</title></head><body>${pages}</body></html>`);

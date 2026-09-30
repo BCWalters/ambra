@@ -80,3 +80,15 @@ Store updates follow the [1.0.4 checklist](store-assets/RELEASE-1.0.4.md).
 The MIT repository and Chrome Web Store listing are Public, as confirmed by the
 owner. Preserve the listing's visibility and existing item. Check the dashboard's
 current version and review status before uploading a new package.
+
+### Release versioning
+
+Choose the version for the complete release, not for each individual PR:
+
+- A release with at least one new feature increments the minor version and
+  resets the patch version, for example `1.0.4` to `1.1.0`.
+- A release containing only bug fixes or improved content handling increments
+  the patch version, for example `1.1.0` to `1.1.1`.
+
+Keep the source version, extension manifest, release notes, and archive name
+consistent when preparing the validated release candidate.

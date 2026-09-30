@@ -58,7 +58,7 @@ import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
-import { fixedLayoutEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
+import { frameContentBounds, isReflowableEdgeWhitespace, outerEdgeSide, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { ReadingHistory } from "./ReadingHistory.js";
@@ -3507,7 +3507,7 @@ export class ReaderController {
     return () => target.removeEventListener("pointerdown", down);
   }
 
-  private marginSide(doc: Document, x: number): -1 | 1 | undefined {
+  private marginSide(doc: Document, x: number, y: number): -1 | 1 | undefined {
     const host = this.host;
     if (!host) return undefined;
     const views = this.contentDocumentViews(host);
@@ -3527,9 +3527,12 @@ export class ReaderController {
     const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null;
     const parentX = frame ? frame.getBoundingClientRect().left +
       x * frame.getBoundingClientRect().width / frame.clientWidth : x;
-    return host instanceof FixedSpreadHost
-      ? fixedLayoutEdgeSide(parentX, bounds)
-      : outerMarginSide(parentX, bounds);
+    if (host instanceof FixedSpreadHost) return outerEdgeSide(parentX, bounds);
+    const margin = outerMarginSide(parentX, bounds);
+    if (margin !== undefined) return margin;
+    if (!views.some(view => view.document === doc)) return undefined;
+    const edge = outerEdgeSide(parentX, frames.map(frame => frameContentBounds(frame)), 44);
+    return edge !== undefined && isReflowableEdgeWhitespace(doc, x, y) ? edge : undefined;
   }
 
   private dismissContentSelection(): boolean {
@@ -3790,8 +3793,8 @@ export class ReaderController {
       (this.isFixedLayoutHost(this.host) || !element.closest("img"));
   }
 
-  /** Only a tap that starts and ends in the same outer margin/FXL edge
-   * navigates. Native content interactions remain publication-owned. */
+  /** Both endpoints must be in the same outer margin or eligible edge space.
+   * Native content interactions remain publication-owned. */
   private handleContentClick(
     upEvent: PointerEvent,
     startX: number,
@@ -3808,8 +3811,8 @@ export class ReaderController {
       return;
     }
 
-    const side = this.marginSide(doc, startX);
-    if (side === undefined || this.marginSide(doc, upEvent.clientX) !== side) return;
+    const side = this.marginSide(doc, startX, startY);
+    if (side === undefined || this.marginSide(doc, upEvent.clientX, upEvent.clientY) !== side) return;
 
     // The caller passes `doc` directly because iframe events come from a
     // different `Node` realm, so `upEvent.target instanceof Node` would
@@ -3824,7 +3827,8 @@ export class ReaderController {
 
     // A tap on an existing highlight should open its popup, not also turn
     // the page out from under that interaction.
-    if (this.highlightInteraction.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
+    if (this.highlightInteraction.findHighlightAtPoint(doc, startX, startY) ||
+      this.highlightInteraction.findHighlightAtPoint(doc, upEvent.clientX, upEvent.clientY)) {
       return;
     }
 
