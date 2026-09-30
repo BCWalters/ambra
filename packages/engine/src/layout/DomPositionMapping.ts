@@ -1,4 +1,5 @@
 import type { DomBreakPoint } from "./Page.js";
+import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 import {
   childStepIndex,
   elementStepsFromRoot,
@@ -49,7 +50,16 @@ export function mapDomPositionToDocument(
     const { node, offset } = position;
     if (node.nodeType === ELEMENT_NODE) {
       const steps = elementStepsFromRoot(sourceRoot, node as Element);
-      return { node: resolveElementSteps(targetRoot, steps), offset };
+      const target = resolveElementSteps(targetRoot, steps);
+      if (offset === undefined) return { node: target, offset };
+      if (!Number.isInteger(offset) || offset < 0 || offset > node.childNodes.length) return undefined;
+      const authoredOffset = Array.from(node.childNodes).slice(0, offset).filter(child => !isReaderOwnedContent(child)).length;
+      const children = Array.from(target.childNodes).filter(child => !isReaderOwnedContent(child));
+      if (authoredOffset > children.length) return undefined;
+      const next = children[authoredOffset];
+      const previous = children[authoredOffset - 1];
+      return { node: target, offset: next ? Array.prototype.indexOf.call(target.childNodes, next)
+        : previous ? Array.prototype.indexOf.call(target.childNodes, previous) + 1 : 0 };
     }
     const parent = node.parentElement;
     if (!parent) {

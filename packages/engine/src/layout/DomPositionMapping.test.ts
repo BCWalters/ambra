@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import { mapDomPositionToDocument } from "./DomPositionMapping.js";
+import { markReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 
 function parseXhtmlFragment(html: string): Document {
   return new DOMParser().parseFromString(
@@ -10,6 +11,23 @@ function parseXhtmlFragment(html: string): Document {
 }
 
 describe("mapDomPositionToDocument", () => {
+  it("maps child offsets around reader-owned controls without shifting an authored anchor", () => {
+    const source = document.implementation.createHTMLDocument();
+    const target = document.implementation.createHTMLDocument();
+    source.body.innerHTML = target.body.innerHTML = "<p>Before.</p><figure><svg></svg></figure>";
+    const sourceControl = source.createElement("aside");
+    const targetControl = target.createElement("aside");
+    markReaderOwnedContent(sourceControl);
+    markReaderOwnedContent(targetControl);
+    source.body.prepend(sourceControl);
+    target.body.append(targetControl);
+    expect(mapDomPositionToDocument({ node: source.body, offset: 2 }, source.body, target.body))
+      .toEqual({ node: target.body, offset: 1 });
+    expect(mapDomPositionToDocument({ node: source.body, offset: 3 }, source.body, target.body))
+      .toEqual({ node: target.body, offset: 2 });
+    expect(mapDomPositionToDocument({ node: source.body, offset: 4 }, source.body, target.body)).toBeUndefined();
+  });
+
   it("maps a text-node position to the equivalent node/offset in a structurally-identical document", () => {
     const html = "<body><p>First paragraph.</p><p>Second paragraph here.</p></body>";
     const sourceDoc = parseXhtmlFragment(html);

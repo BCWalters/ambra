@@ -1,7 +1,7 @@
 import type { AvoidanceGroup, Chunk } from "./LineMeasurement.js";
 import { measureChunks, measureChunksIncrementally } from "./LineMeasurement.js";
 import type { IncrementalMeasurementOptions } from "./LineMeasurement.js";
-import type { DomBreakPoint } from "./Page.js";
+import type { DomBreakPoint, DomPositionRange, PositionOverride } from "./Page.js";
 import { Page } from "./Page.js";
 import { compareDomPositions, findChunkForPosition } from "./ScrollPositionTracker.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
@@ -53,6 +53,13 @@ export function planPageBreaks(
   let pageStartBreak: DomBreakPoint = chunks[0]!.breakBefore;
   let pageBottom = chunks[0]!.top;
   let chunksOnCurrentPage = 0;
+  let positions: Map<DomPositionRange, DomPositionRange[]> | undefined;
+  const finishPage = (end: DomBreakPoint): void => {
+    const overrides: PositionOverride[] | undefined = positions &&
+      Array.from(positions, ([scope, ranges]) => ({ scope, ranges }));
+    pages.push(new Page(pages.length, pageStartBreak, end, pageStartTop, pageBottom, overrides));
+    positions = undefined;
+  };
   const seenGroups = new Set<AvoidanceGroup>();
   // A navigation/relayout anchor outranks every containing avoidance box:
   // do not reserve content beyond that forced boundary on the previous page.
@@ -74,7 +81,7 @@ export function planPageBreaks(
     }
     const wouldBeHeight = Math.max(pageBottom, bottom) - Math.min(pageStartTop, top);
     if ((wouldBeHeight > pageHeight || isForcedBreak) && chunksOnCurrentPage > 0) {
-      pages.push(new Page(pages.length, pageStartBreak, chunk.breakBefore, pageStartTop, pageBottom));
+      finishPage(chunk.breakBefore);
       pageStartTop = top;
       pageStartBreak = chunk.breakBefore;
       pageBottom = top;
@@ -84,9 +91,21 @@ export function planPageBreaks(
     pageStartTop = Math.min(pageStartTop, top);
     pageBottom = Math.max(pageBottom, bottom);
     chunksOnCurrentPage++;
+    if (chunk.positionOverride) {
+      positions ??= new Map();
+      const { scope, ranges } = chunk.positionOverride;
+      const pageRanges = positions.get(scope) ?? [];
+      for (const bounds of ranges) {
+        const previous = pageRanges.at(-1);
+        if (previous?.end === bounds.start) {
+          pageRanges[pageRanges.length - 1] = { start: previous.start, end: bounds.end };
+        } else pageRanges.push(bounds);
+      }
+      positions.set(scope, pageRanges);
+    }
   }
 
-  pages.push(new Page(pages.length, pageStartBreak, endOfDocument, pageStartTop, pageBottom));
+  finishPage(endOfDocument);
   return pages;
 }
 
@@ -118,10 +137,11 @@ export class PaginationEngine {
     bodyElement: Element,
     pageHeight: number,
     options?: IncrementalMeasurementOptions,
+    anchor?: DomBreakPoint,
   ): Promise<Page[]> {
     const chunks = await measureChunksIncrementally(bodyElement, options, pageHeight);
     options?.signal?.throwIfAborted();
-    return this.plan(bodyElement, chunks, pageHeight);
+    return this.plan(bodyElement, chunks, pageHeight, anchor);
   }
 
   private static plan(

@@ -1,5 +1,6 @@
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
-import { Page, type DomBreakPoint } from "./Page.js";
+import { Page, type DomBreakPoint, type DomPositionRange, type PositionOverride } from "./Page.js";
+import { compareDomPositions } from "./ScrollPositionTracker.js";
 
 const DYNAMIC_LAYOUT_ELEMENTS = new Set([
   "animate", "animatemotion", "animatetransform", "animatecolor", "set", "discard",
@@ -11,6 +12,16 @@ interface SerializedPosition {
   readonly offset?: number;
 }
 
+interface SerializedRange {
+  readonly start: SerializedPosition;
+  readonly end: SerializedPosition;
+}
+
+interface SerializedOverride {
+  readonly scope: SerializedRange;
+  readonly ranges: readonly SerializedRange[];
+}
+
 /** Transferable layout data only: never retains a document, node or Range. */
 export interface PaginationSnapshot {
   readonly identity: string;
@@ -19,6 +30,7 @@ export interface PaginationSnapshot {
     readonly end: SerializedPosition;
     readonly top: number;
     readonly bottom: number;
+    readonly positionOverrides?: readonly SerializedOverride[];
   }[];
 }
 
@@ -142,12 +154,27 @@ export function snapshotPages(document: Document, identity: string, pages: reado
     authoredChildren(node).forEach((child, index) => visit(child, [...path, index]));
   };
   visit(document.documentElement, []);
+  const serializeRange = (bounds: DomPositionRange): SerializedRange | undefined => {
+    const start = serializePosition(paths, bounds.start);
+    const end = serializePosition(paths, bounds.end);
+    return start && end ? { start, end } : undefined;
+  };
   const serialized = [];
   for (const page of pages) {
     const start = serializePosition(paths, page.startBreak);
     const end = serializePosition(paths, page.endBreak);
     if (!start || !end) return undefined;
-    serialized.push({ start, end, top: page.topY, bottom: page.bottomY });
+    const positionOverrides: SerializedOverride[] = [];
+    for (const override of page.positionOverrides ?? []) {
+      const scope = serializeRange(override.scope);
+      const ranges = override.ranges.map(serializeRange);
+      if (!scope || ranges.some(range => !range)) return undefined;
+      positionOverrides.push({ scope, ranges: ranges.filter(range => range !== undefined) });
+    }
+    serialized.push({
+      start, end, top: page.topY, bottom: page.bottomY,
+      ...(positionOverrides.length ? { positionOverrides } : {}),
+    });
   }
   return { identity, pages: serialized };
 }
@@ -197,13 +224,33 @@ export function restoreSnapshotPages(
     return result;
   };
   const pages = [];
+  const resolveRange = (bounds: SerializedRange): DomPositionRange | undefined => {
+    const start = resolvePosition(document.documentElement, bounds.start, childrenOf);
+    const end = resolvePosition(document.documentElement, bounds.end, childrenOf);
+    return start && end && compareDomPositions(start, end) < 0 ? { start, end } : undefined;
+  };
   for (const page of snapshot.pages) {
     const start = resolvePosition(document.documentElement, page.start, childrenOf);
     const end = resolvePosition(document.documentElement, page.end, childrenOf);
     if (!start || !end || !Number.isFinite(page.top) || !Number.isFinite(page.bottom) || page.bottom < page.top) {
       return undefined;
     }
-    pages.push(new Page(pages.length, start, end, page.top, page.bottom));
+    const positionOverrides: PositionOverride[] = [];
+    for (const override of page.positionOverrides ?? []) {
+      const scope = resolveRange(override.scope);
+      if (!scope) return undefined;
+      const ranges: DomPositionRange[] = [];
+      for (const serialized of override.ranges) {
+        const range = resolveRange(serialized);
+        if (!range || compareDomPositions(range.start, scope.start) < 0 ||
+          compareDomPositions(range.end, scope.end) > 0) return undefined;
+        ranges.push(range);
+      }
+      if (!ranges.length) return undefined;
+      positionOverrides.push({ scope, ranges });
+    }
+    pages.push(new Page(pages.length, start, end, page.top, page.bottom,
+      positionOverrides.length ? positionOverrides : undefined));
   }
   return pages;
 }

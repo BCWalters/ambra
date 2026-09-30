@@ -314,9 +314,36 @@ AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test pagination-me
 ```
 
 Negative controls preserve complex figures: galleries, nested figures, floats,
-transforms, grid/flex layouts, reordered table captions, generated content and
+transforms, grid/flex layouts, generated content and
 author clipping. Those layouts are not made freely fragmentable by this fix.
 Measurement work is bounded; page planning performs no new layout queries.
+
+## CSS-reordered figure captions (#264)
+
+Oversized, single-image figures with non-overlapping image/caption regions can
+paginate in visual order, including `display:table` figures whose bottom caption
+precedes the image in the DOM. Fitting figures and scrolling retain their prior
+behavior. Publisher DOM, CSS, image sizing and accessibility order are unchanged.
+Normal-flow caption lines include emphasis and small raised/lowered scripts;
+multicolumn captions, overlapping regions, authored clipping, generated content,
+galleries, nested figures and grid/flex layouts remain outside this policy.
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#264'
+```
+
+Tests require exact-once character and image coverage, original DOM membership,
+end-exclusive boundaries, forced anchors, LTR/RTL, top/bottom captions, cooperative
+cancellation, fresh-document snapshot reuse, background CFI/fragment page numbers,
+font/viewport reflow, and packaged single/spread forward/back navigation, bookmark
+matching and reload/resume. Figure membership is transferred as explicit scoped
+DOM ranges, not inferred from a reversed start/end interval. Book-wide indexing
+retains only portable figure boundaries, never hidden measurement documents.
+
+Animated single-page replacements also preserve an explicitly forced pagination
+anchor. They remeasure with the mapped anchor rather than applying an anchored
+page index to a fresh natural layout; this is one measurement, not an additional
+layout pass. Canonical snapshots still decline export after anchor repagination.
 
 ## Wrapping inline prose (#256)
 

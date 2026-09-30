@@ -3,9 +3,10 @@ import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
 import { ReadingTheme } from "../rendering/ReadingTheme.js";
 import { makeOverflowingPreElementsFocusable } from "../rendering/PreOverflowFocusability.js";
-import type { DomBreakPoint } from "../layout/Page.js";
+import type { DomBreakPoint, PositionOverride } from "../layout/Page.js";
 import { Page } from "../layout/Page.js";
 import { PaginationEngine } from "../layout/PaginationEngine.js";
+import { mapDomPositionToDocument } from "../layout/DomPositionMapping.js";
 import type { IncrementalMeasurementOptions } from "../layout/LineMeasurement.js";
 import {
   bodyPaint, paginationIdentity, restoreSnapshotPages, snapshotPages,
@@ -52,6 +53,7 @@ export class PaginatedContentHost {
   private measurementPaint: BodyPaint | undefined;
   private measuredSnapshot: PaginationSnapshot | undefined;
   private sourceXhtml: string | undefined;
+  private forcedAnchor: DomBreakPoint | undefined;
   // Grown past `ReadingTheme.PAGE_INSET_TOP`/`PAGE_INSET_BOTTOM`'s own
   // fixed floor by `refreshInsets` whenever the current font scale/
   // line-spacing demands more room — see `ReadingTheme.insetsForLineHeight`'s
@@ -117,7 +119,9 @@ export class PaginatedContentHost {
    * `paginationOptions` opts isolated background hosts into cooperative work;
    * foreground hosts omit it so layout cannot change between checkpoints.
    * `snapshot` may supply DOM-free boundaries from an identical configured
-   * document; any identity mismatch falls back to normal measurement. */
+   * document; any identity mismatch falls back to normal measurement.
+   * `sourceAnchor` transfers an explicit boundary from an incoming page's
+   * predecessor, keeping animated turns on the same anchored page plan. */
   public async open(
     contentLoader: ContentLoader,
     resolver: ResourceUrlResolver,
@@ -126,6 +130,7 @@ export class PaginatedContentHost {
     configure?: (document: Document) => void,
     paginationOptions?: IncrementalMeasurementOptions,
     snapshot?: PaginationSnapshot,
+    sourceAnchor?: DomBreakPoint,
   ): Promise<void> {
     const signal = paginationOptions?.signal;
     signal?.throwIfAborted();
@@ -135,6 +140,7 @@ export class PaginatedContentHost {
     this.measurementPaint = undefined;
     this.measuredSnapshot = undefined;
     this.sourceXhtml = undefined;
+    this.forcedAnchor = undefined;
     const assembledXhtml = await loadAssembledSpineItem(contentLoader, resolver, spineIndex);
     signal?.throwIfAborted();
     await this.sandboxedHost.render(assembledXhtml);
@@ -186,9 +192,15 @@ export class PaginatedContentHost {
       this.measurementPaint = bodyPaint(iframeDocument);
       this.measurementIdentity = this.currentPaginationIdentity(iframeDocument);
     }
+    if (sourceAnchor) {
+      const sourceBody = sourceAnchor.node.ownerDocument?.body;
+      this.forcedAnchor = sourceBody && mapDomPositionToDocument(sourceAnchor, sourceBody, iframeDocument.body);
+      if (!this.forcedAnchor) throw new Error("Cannot transfer the forced pagination anchor to the incoming document.");
+      this.measurementIdentity = undefined;
+    }
     this.pages = restoreSnapshotPages(iframeDocument, this.measurementIdentity, snapshot) ?? (paginationOptions
-      ? await PaginationEngine.paginateIncrementally(iframeDocument.body, this.pageContentHeight, paginationOptions)
-      : PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight));
+      ? await PaginationEngine.paginateIncrementally(iframeDocument.body, this.pageContentHeight, paginationOptions, this.forcedAnchor)
+      : PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor));
     signal?.throwIfAborted();
     this.measuredSnapshot = this.measurementIdentity
       ? snapshotPages(iframeDocument, this.measurementIdentity, this.pages)
@@ -262,7 +274,17 @@ export class PaginatedContentHost {
     return this.pages[index]?.startBreak;
   }
 
-  /** The currently-displayed `Page` (its `[startBreak, endBreak)` range —
+  public pagePositionOverrides(index: number): readonly PositionOverride[] | undefined {
+    return this.pages[index]?.positionOverrides;
+  }
+
+  /** Animated replacements must keep the same forced boundary, not apply an
+   * anchored page index to a newly measured, unanchored chapter. */
+  public paginationAnchor(): DomBreakPoint | undefined {
+    return this.forcedAnchor;
+  }
+
+  /** The currently-displayed `Page` (including non-linear position membership —
    * see `Page.containsPosition`) paired with the live content document it
    * describes — for callers that need to test whether some other DOM
    * position (e.g. a saved bookmark's resolved CFI) falls on the page
@@ -299,7 +321,8 @@ export class PaginatedContentHost {
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, forceAnchor ? preserve : undefined);
+    this.forcedAnchor = forceAnchor ? preserve : undefined;
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor);
     if (preserve) {
       const found = PaginationEngine.findPageForPosition(
         this.pages,
@@ -386,7 +409,8 @@ export class PaginatedContentHost {
     iframeDocument.body.style.transform = "";
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, forceAnchor ? { node, offset } : undefined);
+    this.forcedAnchor = forceAnchor ? { node, offset } : undefined;
+    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor);
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
     if (found) {
       this.pageIndex = found.index;
@@ -514,6 +538,7 @@ export class PaginatedContentHost {
   }
 
   public dispose(): void {
+    this.forcedAnchor = undefined;
     this.measurementIdentity = undefined;
     this.measurementPaint = undefined;
     this.measuredSnapshot = undefined;

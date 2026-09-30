@@ -5,10 +5,37 @@ export interface DomBreakPoint {
   readonly offset?: number;
 }
 
+export interface DomPositionRange {
+  readonly start: DomBreakPoint;
+  readonly end: DomBreakPoint;
+}
+
+/** Within a CSS-reordered figure, visual membership supersedes DOM order. */
+export interface PositionOverride {
+  readonly scope: DomPositionRange;
+  readonly ranges: readonly DomPositionRange[];
+}
+
+export function containsDomPosition(
+  bounds: DomPositionRange, node: Node, offset: number, ownerDocument: Document,
+): boolean {
+  const range = ownerDocument.createRange();
+  try {
+    range.setStart(bounds.start.node, bounds.start.offset ?? 0);
+    range.setEnd(bounds.end.node, bounds.end.offset ?? 0);
+    return range.comparePoint(node, offset) === 0 &&
+      !(node === bounds.end.node && offset === (bounds.end.offset ?? 0));
+  } catch {
+    // Invalid or disconnected points cannot belong to this range.
+    return false;
+  }
+}
+
 /**
- * One paginated page: a `[startBreak, endBreak)` range over the content
- * document's linear DOM, plus the vertical extent (`topY`/`bottomY`) that
- * range occupies in the unpaginated single-column flow. The DOM itself is
+ * One paginated page: visual start/end anchors and a vertical paint interval.
+ * Ordinarily membership is the linear `[startBreak, endBreak)` DOM range;
+ * CSS-reordered figures supply explicit, potentially disjoint ranges.
+ * The DOM itself is
  * never modified or fragmented to produce this — a `Page` is purely a
  * *description* of a slice of the existing, fully linear document; see
  * `PaginationEngine`.
@@ -20,6 +47,7 @@ export class Page {
     public readonly endBreak: DomBreakPoint,
     public readonly topY: number,
     public readonly bottomY: number,
+    public readonly positionOverrides?: readonly PositionOverride[],
   ) {}
 
   public get height(): number {
@@ -42,36 +70,16 @@ export class Page {
     return -this.topY;
   }
 
-  /** True if the DOM position `(node, offset)` falls within this page's
-   * `[startBreak, endBreak)` range. `ownerDocument` must be the content
+  /** True if the DOM position `(node, offset)` belongs to this visual page.
+   * All membership ranges are end-exclusive. `ownerDocument` must be the content
    * document both breakpoints and `node` belong to (needed to construct
    * the `Range` used for the comparison). */
   public containsPosition(node: Node, offset: number, ownerDocument: Document): boolean {
-    const range = ownerDocument.createRange();
-    try {
-      range.setStart(this.startBreak.node, this.startBreak.offset ?? 0);
-      range.setEnd(this.endBreak.node, this.endBreak.offset ?? 0);
-      if (range.comparePoint(node, offset) !== 0) {
-        return false;
+    for (const override of this.positionOverrides ?? []) {
+      if (containsDomPosition(override.scope, node, offset, ownerDocument)) {
+        return override.ranges.some(bounds => containsDomPosition(bounds, node, offset, ownerDocument));
       }
-      // `Range.comparePoint` treats a point exactly at either boundary as
-      // "within" the range (returns 0) — it doesn't distinguish an
-      // inclusive start from an exclusive end. Two adjacent pages share
-      // their boundary point (one's `endBreak` is the next one's
-      // `startBreak`), so without this check both pages would claim it,
-      // and a caller that returns the first match (see
-      // `PaginationEngine.findPageForPosition`) would always resolve such
-      // a position to the earlier page — never the later one whose
-      // *start* it actually is. This was caught via real-Chromium
-      // resume-reading testing: a saved position at a page's exact start
-      // kept resolving one page early, and each reload compounded the
-      // drift by re-saving that (wrong) position.
-      return !(node === this.endBreak.node && offset === (this.endBreak.offset ?? 0));
-    } catch {
-      // comparePoint throws if `node` isn't in the same document/tree as
-      // the range's boundaries, or if the boundary points are invalid —
-      // in either case, this position isn't meaningfully "in" this page.
-      return false;
     }
+    return containsDomPosition({ start: this.startBreak, end: this.endBreak }, node, offset, ownerDocument);
   }
 }

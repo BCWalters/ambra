@@ -1,5 +1,5 @@
 import type { Chunk } from "./LineMeasurement.js";
-import type { DomBreakPoint } from "./Page.js";
+import { containsDomPosition, type DomBreakPoint, type DomPositionRange } from "./Page.js";
 
 /**
  * Orders two DOM boundary points. Returns a negative number if `a` comes
@@ -72,6 +72,19 @@ export function findChunkAtScrollOffset(chunks: readonly Chunk[], scrollTop: num
 export function findChunkForPosition(chunks: readonly Chunk[], node: Node, offset: number): Chunk | undefined {
   if (chunks[0]?.breakBefore.node.getRootNode() !== node.getRootNode()) {
     return undefined;
+  }
+  let scopes: Map<DomPositionRange, boolean> | undefined;
+  for (const chunk of chunks) {
+    const override = chunk.positionOverride;
+    if (!override) continue;
+    scopes ??= new Map();
+    const document = override.scope.start.node.ownerDocument!;
+    let inScope = scopes.get(override.scope);
+    if (inScope === undefined) {
+      inScope = containsDomPosition(override.scope, node, offset, document);
+      scopes.set(override.scope, inScope);
+    }
+    if (inScope && override.ranges.some(bounds => containsDomPosition(bounds, node, offset, document))) return chunk;
   }
   let result: Chunk | undefined;
   for (const chunk of chunks) {

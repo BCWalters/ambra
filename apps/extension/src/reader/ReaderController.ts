@@ -3215,7 +3215,7 @@ export class ReaderController {
     containerEl.appendChild(newEl);
 
     await newHost.open(this.contentLoader, this.resolver, this.spineIndex, this.disclosures,
-      (doc) => this.configureSpreadDocument(doc), undefined, oldHost.paginationSnapshot());
+      (doc) => this.configureSpreadDocument(doc), undefined, oldHost.paginationSnapshot(), oldHost.paginationAnchor());
     operation.check();
     newHost.goToPageIndex(targetIndex);
     newEl.style.opacity = "";
