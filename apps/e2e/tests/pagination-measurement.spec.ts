@@ -1098,6 +1098,14 @@ test("reordered figure captions preserve exact coverage and original positions (
             const original = doc.body.innerHTML;
             const chunks = E.measureChunks(doc.body, budget);
             const pages = E.PaginationEngine.paginate(doc.body, budget!);
+            const atomic = E.planPageBreaks(E.measureChunks(doc.body), budget!,
+              { node: doc.body, offset: doc.body.childNodes.length });
+            const surroundingWindowsSame = ["before", "after"].every(id => {
+              const node = doc.getElementById(id)!.firstChild!;
+              const oldPage = E.PaginationEngine.findPageForPosition(atomic, node, 0, doc)!;
+              const newPage = E.PaginationEngine.findPageForPosition(pages, node, 0, doc)!;
+              return oldPage.topY === newPage.topY && oldPage.bottomY === newPage.bottomY;
+            });
             const incremental = await E.PaginationEngine.paginateIncrementally(doc.body, budget!, { timeSliceMs: 1 });
             const signature = (pages: readonly Engine.Page[]) => pages.map(page => ({
               top: page.topY, bottom: page.bottomY, start: page.startBreak, end: page.endBreak,
@@ -1142,7 +1150,10 @@ test("reordered figure captions preserve exact coverage and original positions (
             const imageTargets = ["image", "image-wrapper"].every(id =>
               E.PaginationEngine.findPageForPosition(pages, doc.getElementById(id)!, 0, doc) === imagePage);
             const figure = doc.getElementById("figure")!;
-            const firstVisual = Math.min(imageRect.top, doc.getElementById("caption")!.getBoundingClientRect().top);
+            const leadingCaption = doc.createRange();
+            leadingCaption.setStart(doc.querySelector("#caption p")!.firstChild!, 0);
+            leadingCaption.setEnd(doc.querySelector("#caption p")!.firstChild!, 1);
+            const firstVisual = Math.min(imageRect.top, leadingCaption.getBoundingClientRect().top);
             const figurePage = E.PaginationEngine.findPageForPosition(pages, figure, 0, doc)!;
             const figureTarget = figurePage.topY <= firstVisual && figurePage.bottomY >= firstVisual;
             let forcedFailures = 0;
@@ -1158,6 +1169,7 @@ test("reordered figure captions preserve exact coverage and original positions (
               positionErrors,
               imageCoverage: coverage(imageRect.top, imageRect.bottom), imageHeight: imageRect.height,
               imageTargets, figureTarget, forcedFailures, parity, unchanged: original === doc.body.innerHTML,
+              surroundingWindowsSame,
               mapped: chunks.some(chunk => chunk.positionOverride !== undefined),
               scrollAtomic: E.measureChunks(doc.body).some(chunk =>
                 chunk.breakBefore.node === figure.parentNode &&
@@ -1173,6 +1185,7 @@ test("reordered figure captions preserve exact coverage and original positions (
       expect(result, JSON.stringify(result)).toMatchObject({
         badCoverage: 0, badPositions: 0, imageTargets: true, figureTarget: true,
         forcedFailures: 0, parity: true, unchanged: true, mapped: true, scrollAtomic: true,
+        surroundingWindowsSame: true,
       });
       expect(result.pages).toBeGreaterThan(3);
       expect(result.characters).toBeGreaterThan(800);
@@ -1184,13 +1197,66 @@ test("reordered figure captions preserve exact coverage and original positions (
 function reorderedFigureBook(captionSide = "bottom"): string {
   const caption = `<figcaption id="caption" style="display:table-caption;caption-side:${captionSide}">
     <p>${"This original caption describes a blue rectangle and must remain fully readable. ".repeat(12)}</p>
-    <p>${"Its final paragraph remains part of the same illustration. ".repeat(8)} END OF CAPTION.</p>
+    <p id="caption-end">${"Its final paragraph remains part of the same illustration. ".repeat(8)} END OF CAPTION.</p>
   </figcaption>`;
   const image = '<div id="image-wrapper"><svg id="image" xmlns="http://www.w3.org/2000/svg" width="120" height="200"><rect width="120" height="200" fill="blue"/></svg></div>';
   return book(`<p id="before">Before the illustration.</p>
     <figure id="figure" style="display:table;width:300px;margin:0;break-inside:avoid">${captionSide === "bottom" ? caption + image : image + caption}</figure>
     <p id="after">After the illustration.</p>`);
 }
+
+test("hyphenated caption letters retain exact membership and forced anchors (#264)", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:480px;height:600px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.documentElement.lang = "en";
+      const results = [];
+      const text = "This original demonstration caption describes a rectangular illustration. Every sentence should remain reachable when the reader restores its position. ".repeat(8);
+      for (const direction of ["ltr", "rtl"]) {
+        for (const manual of [true, false]) {
+          doc.body.innerHTML = `<style>
+            body{margin:0;font:27px/40.5px Georgia,serif;hyphens:${manual ? "manual" : "auto"};direction:${direction}}
+            figure{display:table;width:300px;margin:0 auto}
+            figcaption{display:table-caption;caption-side:bottom;padding:12px 0}
+            svg{display:block}
+          </style><figure><figcaption>${manual ? text.replace(/[a-z]{6,}/g, word => `${word.slice(0, 3)}\u00ad${word.slice(3)}`) : text}</figcaption><svg width="100" height="100"><rect width="100" height="100"/></svg></figure>`;
+          const caption = doc.querySelector("figcaption")!.firstChild!;
+          const range = doc.createRange();
+          let splitLetters = 0;
+          let wrongLine = 0;
+          for (let offset = 0; offset < caption.textContent!.length - 1; offset++) {
+            if (!/[a-z]/i.test(caption.textContent![offset]!)) continue;
+            range.setStart(caption, offset);
+            range.setEnd(caption, offset + 1);
+            const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+            const last = rects.at(-1);
+            if (!last || !rects.some(rect => rect.bottom < last.top)) continue;
+            splitLetters++;
+            const pages = E.PaginationEngine.paginate(doc.body, 420, { node: caption, offset });
+            const page = E.PaginationEngine.findPageForPosition(pages, caption, offset, doc)!;
+            if (Math.abs(page.topY - last.top) > 1 || page.startBreak.node !== caption ||
+              page.startBreak.offset !== offset) wrongLine++;
+            const following = E.PaginationEngine.paginate(doc.body, 420, { node: caption, offset: offset + 1 });
+            const owner = E.PaginationEngine.findPageForPosition(following, caption, offset, doc)!;
+            if (last.top < owner.topY - 1 || last.bottom > owner.bottomY + 1) wrongLine++;
+          }
+          results.push({ direction, manual, splitLetters, wrongLine });
+        }
+      }
+      frame.remove();
+      return results;
+    });
+    for (const result of results) {
+      if (result.manual) expect(result.splitLetters, JSON.stringify(result)).toBeGreaterThan(0);
+      expect(result.wrongLine, JSON.stringify(result)).toBe(0);
+    }
+  } finally { await session.close(); }
+});
 
 test("reordered caption work remains cancellable and rejects multicolumn or overlapping parts (#264)", async () => {
   const session = await browser();
@@ -1494,6 +1560,7 @@ for (const width of [680, 1100]) {
       }
       const captionCfi: string = await readerPage.evaluate(async () => {
         const c = Reflect.get(window, "__readerController");
+        await c.goToNavPoint({ path: c.pkg.spine[0].manifestItem.path, fragment: "caption-end" });
         return (await c.addBookmark()).cfi;
       });
       await readerPage.evaluate(() => {

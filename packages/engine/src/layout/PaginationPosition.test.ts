@@ -56,10 +56,23 @@ describe("PaginationEngine.findPageForPosition", () => {
       expect(PaginationEngine.findPageForPosition(pages, node, offset, document)).toBe(pages[index]);
       expect(findChunkForPosition(chunks, node, offset)).toBe(chunks[index]);
     }
-    const together = planPageBreaks(chunks, 100, { node: document.body, offset: 3 });
-    expect(together[0]!.containsPosition(image, 0, document)).toBe(true);
-    expect(together[0]!.containsPosition(text, 3, document)).toBe(true);
-    expect(together[0]!.containsPosition(text, 4, document)).toBe(false);
+    const together = planPageBreaks(chunks, 60, { node: document.body, offset: 3 });
+    expect(together[1]!.containsPosition(image, 0, document)).toBe(true);
+    expect(together[1]!.containsPosition(text, 3, document)).toBe(true);
+    expect(together[1]!.containsPosition(text, 4, document)).toBe(false);
+
+    const after = { ...chunks[4]!, bottom: 130 };
+    const endOfDocument = { node: document.body, offset: 3 };
+    const baseline = planPageBreaks([
+      chunks[0]!, { top: 30, bottom: 120, breakBefore: start }, after,
+    ], 80, endOfDocument);
+    const fragmented = planPageBreaks([...chunks.slice(0, 4), after], 80, endOfDocument);
+    for (const node of [document.body.firstChild!.firstChild!, document.body.lastChild!.firstChild!]) {
+      const oldPage = PaginationEngine.findPageForPosition(baseline, node, 0, document)!;
+      const newPage = PaginationEngine.findPageForPosition(fragmented, node, 0, document)!;
+      expect([newPage.topY, newPage.bottomY], "surrounding content keeps its original page windows")
+        .toEqual([oldPage.topY, oldPage.bottomY]);
+    }
   });
 
   it.each(["chapter", "empty-anchor"])("opens leading #%s on the first page, not the chapter's last (#152)", id => {

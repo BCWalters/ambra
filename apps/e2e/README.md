@@ -324,6 +324,10 @@ Oversized, single-image figures with non-overlapping image/caption regions can
 paginate in visual order, including `display:table` figures whose bottom caption
 precedes the image in the DOM. Fitting figures and scrolling retain their prior
 behavior. Publisher DOM, CSS, image sizing and accessibility order are unchanged.
+The original atomic figure itself must exceed the page budget; its outer page
+boundaries are preserved while new caption pages are inserted within them.
+Surrounding content therefore keeps its original page windows rather than being
+shifted onto different breaks by the extra caption content.
 Normal-flow caption lines include emphasis and small raised/lowered scripts;
 multicolumn captions, overlapping regions, authored clipping, generated content,
 galleries, nested figures and grid/flex layouts remain outside this policy.
@@ -346,6 +350,9 @@ page index to a fresh natural layout; this is one measurement, not an additional
 layout pass. Canonical snapshots still decline export after anchor repagination.
 Transfer covers both descendant positions and document-root (bare-spine) CFIs;
 detached or otherwise unmappable anchors are rejected.
+Explicit soft-hyphen and automatic-hyphenation cases cover LTR/RTL caption
+membership: a generated hyphen on the previous line must not move the next
+line's first letter or its saved anchor backward.
 
 ## Wrapping inline prose (#256)
 
