@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import type * as Engine from "../../../packages/engine/src/index.js";
 import type * as TableControls from "../../extension/src/reader/TableControls.js";
+import { launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
 
 declare global {
   interface Window {
@@ -17,7 +19,8 @@ const root = path.resolve(import.meta.dirname, "../../..");
 let code: string;
 
 // Local publication content must not end up in traces or screenshots.
-if (process.env.AMBRA_BREAK_INSIDE_EPUB || process.env.AMBRA_SIMPLE_TABLE_EPUB || process.env.AMBRA_IMAGE_BREAK_EPUB) {
+if (process.env.AMBRA_BREAK_INSIDE_EPUB || process.env.AMBRA_SIMPLE_TABLE_EPUB ||
+  process.env.AMBRA_IMAGE_BREAK_EPUB || process.env.AMBRA_LINKED_IMAGE_EPUB) {
   test.use({ trace: "off", screenshot: "off" });
 }
 
@@ -613,6 +616,224 @@ test("ordinary inline content retains its geometry without extra box reads (#249
     for (const [index, result] of results.entries()) expect(result, `case ${index}`).toEqual({ equal: true, boxes: 0 });
   } finally { await session.close(); }
 });
+
+test("textless inline image wrappers include their painted images without changing scroll anchors (#258)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:500px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.style.cssText = "margin:0;font:20px/28px serif";
+      const image = '<img style="width:150px;height:100px" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22100%22/%3E">';
+      const variants = [
+        image,
+        `<span><span>${image}</span></span>`,
+        `<span style="display:contents">${image}</span>`,
+        image.replace("width:150px", "display:block;width:150px"),
+        image + image,
+        `\n  ${image}\n `,
+        `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="100"><rect width="150" height="100"/></svg>`,
+      ];
+      const rows = [];
+      for (const { content, direction } of variants.flatMap(content =>
+        ["ltr", "rtl"].map(direction => ({ content, direction })))) {
+        doc.body.dir = direction;
+        doc.body.innerHTML = `<p style="height:180px">Before.</p><a id="wrapper" href="#after">${content}</a><p id="after">Following paragraph.</p>`;
+        await Promise.all(Array.from(doc.images, image => image.decode()));
+        const wrapper = doc.querySelector("#wrapper")!;
+        const before = doc.body.innerHTML;
+        const scroll = E.measureChunks(doc.body);
+        const sync = E.measureChunks(doc.body, 250);
+        const incremental = await E.measureChunksIncrementally(doc.body, { timeSliceMs: 1 }, 250);
+        const images = Array.from(wrapper.querySelectorAll("img, svg"));
+        const chunk = sync.find(chunk => chunk.breakBefore.node === doc.body && chunk.breakBefore.offset === 1)!;
+        const rect = wrapper.getBoundingClientRect();
+        const scrolling = scroll.find(chunk => chunk.breakBefore.node === doc.body && chunk.breakBefore.offset === 1);
+        const pages = E.PaginationEngine.paginate(doc.body, 250);
+        const position = chunk.breakBefore;
+        const page = E.PaginationEngine.findPageForPosition(pages, position.node, position.offset ?? 0, doc)!;
+        const resumed = E.PaginationEngine.paginate(doc.body, 250, position);
+        const resumedPage = E.PaginationEngine.findPageForPosition(resumed, position.node, position.offset ?? 0, doc)!;
+        rows.push({
+          covers: images.every(image => {
+            const bounds = image.getBoundingClientRect();
+            return chunk.top <= bounds.top && chunk.bottom >= bounds.bottom &&
+              chunk.top >= doc.querySelector("p")!.getBoundingClientRect().bottom;
+          }),
+          scrollUnchanged: rect.height === 0 ? !scrolling
+            : scrolling?.top === rect.top && scrolling?.bottom === rect.bottom,
+          parity: incremental.length === sync.length && incremental.every((chunk, i) =>
+            chunk.top === sync[i]!.top && chunk.bottom === sync[i]!.bottom &&
+            chunk.breakBefore.node === sync[i]!.breakBefore.node &&
+            chunk.breakBefore.offset === sync[i]!.breakBefore.offset),
+          sourceUnchanged: doc.body.innerHTML === before,
+          anchorPreserved: page.topY === resumedPage.topY && page.topY <= chunk.top,
+        });
+      }
+      frame.remove();
+      return rows;
+    });
+    expect(result).toHaveLength(14);
+    for (const row of result) expect(row).toEqual({
+      covers: true, scrollUnchanged: true, parity: true, sourceUnchanged: true, anchorPreserved: true,
+    });
+  } finally {
+    await session.close();
+  }
+});
+
+test("inline image measurement respects clipped boxes and bounds its extra work (#258)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:500px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.style.cssText = "margin:0;font:20px/28px serif";
+      doc.body.innerHTML = '<a href="#after"><span style="display:inline-block;overflow:hidden;height:24px;width:100px"><img style="width:100px;height:200px"></span></a><p id="after">After.</p>';
+      const clippedBox = doc.querySelector("span")!.getBoundingClientRect();
+      const clippedChunk = E.measureChunks(doc.body, 300)[0]!;
+      const clippedPreserved = clippedChunk.bottom <= Math.max(
+        clippedBox.bottom, doc.querySelector("a")!.getBoundingClientRect().bottom,
+      );
+      const controls = [
+        '<p>\n<img style="width:100px;height:100px"> \n<img style="width:100px;height:100px">\n</p>',
+        '<p style="white-space:pre">\n<img style="width:100px;height:100px">\n\n</p>',
+      ];
+      const fragmentationPreserved = controls.every(content => {
+        doc.body.innerHTML = content;
+        const scroll = E.measureChunks(doc.body);
+        const paginated = E.measureChunks(doc.body, 300);
+        return scroll.length === paginated.length && scroll.every((chunk, i) =>
+          chunk.top === paginated[i]!.top && chunk.bottom === paginated[i]!.bottom &&
+          chunk.breakBefore.node === paginated[i]!.breakBefore.node &&
+          chunk.breakBefore.offset === paginated[i]!.breakBefore.offset);
+      });
+      doc.body.innerHTML = Array.from({ length: 100 }, () =>
+        '<a href="#"><img style="width:40px;height:60px"></a><p>After.</p>').join("");
+      let reads = 0;
+      const nodes = Array.from(doc.querySelectorAll("a,img"));
+      for (const node of nodes) {
+        const original = node.getBoundingClientRect.bind(node);
+        node.getBoundingClientRect = () => { reads++; return original(); };
+      }
+      const chunks = E.measureChunks(doc.body, 300);
+      const measurementReads = reads;
+      E.planPageBreaks(chunks, 300, { node: doc.body, offset: doc.body.childNodes.length });
+      const planningReads = reads - measurementReads;
+      frame.remove();
+      return { clippedPreserved, fragmentationPreserved, measurementReads, planningReads };
+    });
+    expect(result.clippedPreserved).toBe(true);
+    expect(result.fragmentationPreserved).toBe(true);
+    expect(result.measurementReads).toBe(200);
+    expect(result.planningReads).toBe(0);
+  } finally {
+    await session.close();
+  }
+});
+
+for (const local of [false, true]) {
+  test(`${local ? "local" : "synthetic"} linked images paint completely exactly once (#258)`, async () => {
+    const filename = process.env.AMBRA_LINKED_IMAGE_EPUB;
+    test.skip(local && !filename, "Set AMBRA_LINKED_IMAGE_EPUB to Jane Eyre or a ReadBeyond EPUB.");
+    const bytes = local ? fs.readFileSync(filename!).toString("base64") : book(
+      '<p>Before the illustration.</p><a href="#after"><img src="image.svg" style="width:150px;height:100px"/></a><p id="after">Following paragraph.</p>',
+    );
+    const session = await browser();
+    try {
+      const result = await session.page.evaluate(async bytes => {
+        const E = window.paginationEngine;
+        const loader = await E.ContentLoader.create(await E.EpubContainer.open(Uint8Array.from(atob(bytes), c => c.charCodeAt(0))));
+        const resolver = new E.ResourceUrlResolver(loader);
+        const results = [];
+        try {
+          for (let spine = 0; spine < loader.packageDocument.spine.length; spine++) {
+            const source = await loader.loadSpineDocument(spine);
+            if (!Array.from(source.document.querySelectorAll("a")).some(a =>
+              !a.textContent?.trim() && a.querySelector("img") && !a.closest("table,figure"))) continue;
+            for (const [width, height, scale] of [[680, 900, 1], [480, 600, 1.5]]) {
+              const host = new E.PaginatedContentHost(width!, height!);
+              document.body.append(host.element);
+              try {
+                await host.open(loader, resolver, spine, undefined, doc => E.ReadingTheme.applyFontScale(doc, scale!));
+                const doc = host.element.contentDocument!;
+                const transform = new DOMMatrixReadOnly(getComputedStyle(doc.body).transform).m42;
+                const budget = Number.parseFloat(doc.documentElement.style.getPropertyValue(E.ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY));
+                const images = Array.from(doc.querySelectorAll("a")).filter(a =>
+                  !a.textContent?.trim() && !a.closest("table,figure")).flatMap(a =>
+                    Array.from(a.querySelectorAll("img"), image => {
+                      const r = image.getBoundingClientRect();
+                      return { top: r.top - transform, bottom: r.bottom - transform, height: r.height };
+                    }));
+                const windows: [number, number][] = [];
+                for (let page = 0; page < host.pageCount; page++) {
+                  host.goToPageIndex(page);
+                  const current = host.currentPageAndDocument()!;
+                  windows.push([current.page.topY, current.page.topY + Math.min(current.page.height, budget)]);
+                }
+                for (const image of images) {
+                  const covered = windows.reduce((total, [top, bottom]) =>
+                    total + Math.max(0, Math.min(bottom, image.bottom) - Math.max(top, image.top)), 0);
+                  results.push({ spine, width, height: image.height, covered });
+                }
+              } finally {
+                host.dispose(); host.element.remove();
+              }
+            }
+          }
+        } finally {
+          resolver.dispose();
+        }
+        return results;
+      }, bytes);
+      expect(result.length).toBeGreaterThan(0);
+      for (const image of result) {
+        expect(image.height).toBeGreaterThan(0);
+        expect(Math.abs(image.covered - image.height), JSON.stringify(image)).toBeLessThanOrEqual(1);
+      }
+    } finally {
+      await session.close();
+    }
+  });
+}
+
+for (const width of [680, 1100]) {
+  test(`packaged ${width}px reader paints the entire linked illustration above its footer (#258)`, async () => {
+    const bytes = book(
+      '<p>Before the illustration.</p><a href="#after">\n<span><img id="linked-picture" src="image.svg" style="width:150px;height:100px"/></span>\n</a><p id="after">Following paragraph.</p>',
+    );
+    const filename = test.info().outputPath("linked-image.epub");
+    fs.writeFileSync(filename, Buffer.from(bytes, "base64"));
+    const { context, readerPage } = await launchReader(filename, { viewport: { width, height: 900 } });
+    try {
+      await exposeReaderController(readerPage);
+      await readerPage.evaluate(() => {
+        const c = Reflect.get(window, "__readerController");
+        return c.goToNavPoint({ path: c.pkg.spine[0].manifestItem.path, fragment: "linked-picture" });
+      });
+      await expect.poll(() => readerPage.getByRole("main").locator("iframe").evaluateAll(frames =>
+        frames.filter((frame): frame is HTMLIFrameElement => frame instanceof HTMLIFrameElement &&
+          frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })).reduce((covered, frame) => {
+            const image = frame.contentDocument?.querySelector("#linked-picture");
+            if (!image) return covered;
+            const rect = image.getBoundingClientRect();
+            const clip = getComputedStyle(frame).clipPath.match(/inset\(([\d.]+)px 0px(?: ([\d.]+)px)?/);
+            const top = Number(clip?.[1] ?? 0);
+            const bottom = frame.clientHeight - Number(clip?.[2] ?? clip?.[1] ?? 0);
+            return covered + Math.max(0, Math.min(bottom, rect.bottom) - Math.max(top, rect.top));
+          }, 0),
+      )).toBe(100);
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test("image-break geometry reads scale linearly and planning adds none (#249)", async () => {
   const session = await browser();

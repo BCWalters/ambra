@@ -279,6 +279,27 @@ The optional local-book check covers all 14 final image wrappers in the reported
 Jane Eyre EPUB. The file stays outside the repository; traces and screenshots
 are disabled for this run.
 
+## Linked illustration measurement (#258)
+
+The measurement suite checks image-only inline links and nested wrappers in
+LTR/RTL, including formatting whitespace, SVG, `display:contents`, block images,
+saved anchors and synchronous/incremental parity. Paginated bounds include
+painted images rather than only the link's line box. Scrolling geometry and
+publisher clipping remain unchanged; preformatted runs and whitespace-separated
+galleries retain their existing fragmentation. Geometry reads are bounded and
+the planner makes no new layout queries. Packaged-reader checks cover single
+pages and spreads without painting illustrations into the footer.
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#258'
+AMBRA_E2E_HEADLESS=1 AMBRA_LINKED_IMAGE_EPUB="$HOME/Downloads/pg1260-images-3.epub" \
+  pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#258'
+```
+
+The optional local check also accepts a ReadBeyond EPUB. It checks image-only
+links outside tables/figures at two width/font profiles; private publication
+content is not copied into the repository and traces/screenshots are disabled.
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the
