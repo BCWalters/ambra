@@ -1359,24 +1359,34 @@ test("incoming pages transfer forced anchors in one pass without exporting canon
       const incremental = E.PaginationEngine.paginateIncrementally;
       try {
         await source.open(loader, resolver, 0);
-        source.goToPosition(source.element.contentDocument!.getElementById("p3")!.firstChild!, 100);
+        const doc = source.element.contentDocument!;
+        const rootLocator = locators.generate(0, doc.documentElement);
+        const root = locators.resolveInDocument(rootLocator, 0, doc);
+        const anchors = [
+          { node: doc.getElementById("p3")!.firstChild!, offset: 100 },
+          { node: root.node, offset: root.characterOffset ?? 0 },
+        ];
         const signature = (host: Engine.PaginatedContentHost) => Array.from({ length: host.pageCount }, (_, index) => {
           const point = host.pageStartPosition(index)!;
           return locators.generateBoundary(0, point.node, point.offset).cfi;
         }).join("\n");
-        const expected = signature(source);
         let syncPasses = 0;
         let incrementalPasses = 0;
-        E.PaginationEngine.paginate = (...args) => { syncPasses++; return sync.apply(E.PaginationEngine, args); };
         E.PaginationEngine.paginateIncrementally = (...args) => {
           incrementalPasses++;
           return incremental.apply(E.PaginationEngine, args);
         };
         const results = [];
-        for (const options of [undefined, { timeSliceMs: 1 }]) {
-          await target.open(loader, resolver, 0, undefined, undefined, options, undefined, source.paginationAnchor());
-          results.push(signature(target) === expected && target.paginationSnapshot() === undefined &&
-            target.paginationAnchor()?.node.ownerDocument === target.element.contentDocument);
+        for (const anchor of anchors) {
+          E.PaginationEngine.paginate = sync;
+          source.goToPosition(anchor.node, anchor.offset);
+          const expected = signature(source);
+          E.PaginationEngine.paginate = (...args) => { syncPasses++; return sync.apply(E.PaginationEngine, args); };
+          for (const options of [undefined, { timeSliceMs: 1 }]) {
+            await target.open(loader, resolver, 0, undefined, undefined, options, undefined, source.paginationAnchor());
+            results.push(signature(target) === expected && target.paginationSnapshot() === undefined &&
+              target.paginationAnchor()?.node.ownerDocument === target.element.contentDocument);
+          }
         }
         let rejectedInvalidAnchor = false;
         try {
@@ -1387,6 +1397,7 @@ test("incoming pages transfer forced anchors in one pass without exporting canon
           rejectedInvalidAnchor = true;
         }
         return { results, syncPasses, incrementalPasses, rejectedInvalidAnchor,
+          bareSpineCfi: E.EpubCfi.parse(rootLocator.cfi).contentSteps.length === 0,
           sourceDeclinesSnapshot: source.paginationSnapshot() === undefined };
       } finally {
         E.PaginationEngine.paginate = sync;
@@ -1396,7 +1407,7 @@ test("incoming pages transfer forced anchors in one pass without exporting canon
       }
     }, bytes);
     expect(result).toEqual({
-      results: [true, true], syncPasses: 1, incrementalPasses: 1,
+      results: [true, true, true, true], syncPasses: 2, incrementalPasses: 2, bareSpineCfi: true,
       rejectedInvalidAnchor: true, sourceDeclinesSnapshot: true,
     });
   } finally { await session.close(); }
