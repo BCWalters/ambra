@@ -617,6 +617,328 @@ test("ordinary inline content retains its geometry without extra box reads (#249
   } finally { await session.close(); }
 });
 
+test("wrapping inline spans paint every original character exactly once (#256)", async () => {
+  const content = Array.from({ length: 50 }, (_, index) =>
+    `<span>Marker ${index}. This original passage follows a quiet path through several invented sentences. Its words must appear only once as the reader turns each page. </span>`).join("");
+  const bytes = book(`<p id="prose">${content}</p>`);
+  const session = await browser();
+  try {
+    const rows = await session.page.evaluate(async bytes => {
+      const E = window.paginationEngine;
+      const loader = await E.ContentLoader.create(await E.EpubContainer.open(
+        Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
+      ));
+      const resolver = new E.ResourceUrlResolver(loader);
+      const results = [];
+      try {
+        for (const [width, height, scale] of [[680, 900, 1], [480, 600, 1.5]]) {
+          const host = new E.PaginatedContentHost(width!, height!);
+          document.body.append(host.element);
+          try {
+            await host.open(loader, resolver, 0, undefined, doc => E.ReadingTheme.applyFontScale(doc, scale!));
+            const doc = host.element.contentDocument!;
+            const transform = new DOMMatrixReadOnly(getComputedStyle(doc.body).transform).m42;
+            const walker = doc.createTreeWalker(doc.querySelector("#prose")!, NodeFilter.SHOW_TEXT);
+            const range = doc.createRange();
+            const characters = [];
+            while (walker.nextNode()) {
+              const node = walker.currentNode;
+              for (let offset = 0; offset < (node.textContent?.length ?? 0); offset++) {
+                if (!node.textContent![offset]!.trim()) continue;
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                characters.push({ top: rect.top - transform, bottom: rect.bottom - transform, height: rect.height });
+              }
+            }
+            const budget = Number.parseFloat(doc.documentElement.style.getPropertyValue(E.ReadingTheme.PAGE_CONTENT_HEIGHT_PROPERTY));
+            const windows: [number, number][] = [];
+            for (let index = 0; index < host.pageCount; index++) {
+              host.goToPageIndex(index);
+              const { page } = host.currentPageAndDocument()!;
+              windows.push([page.topY, page.topY + Math.min(page.height, budget)]);
+            }
+            const bad = characters.filter(rect => {
+              const covered = windows.reduce((sum, [start, end]) =>
+                sum + Math.max(0, Math.min(end, rect.bottom) - Math.max(start, rect.top)), 0);
+              return Math.abs(covered - rect.height) > 1;
+            });
+            results.push({ width, scale, pages: host.pageCount, characters: characters.length, lostOrRepeated: bad.length });
+          } finally { host.dispose(); host.element.remove(); }
+        }
+      } finally { resolver.dispose(); }
+      return results;
+    }, bytes);
+    for (const row of rows) {
+      expect(row.pages).toBeGreaterThan(3);
+      expect(row.characters).toBeGreaterThan(5000);
+      expect(row.lostOrRepeated, JSON.stringify(row)).toBe(0);
+    }
+  } finally { await session.close(); }
+});
+
+test("nested emphasis, links and bidi spans retain exact anchors and incremental parity (#256)", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:420px;height:500px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      const words = "Original words follow a quiet path across several lines of this paragraph. ";
+      const variants = [
+        Array.from({ length: 30 }, () => `<span>${words.repeat(3)}</span>`).join(""),
+        Array.from({ length: 30 }, () => `<span><em>${words}</em><a href="#prose">${words}</a>${words}</span>`).join(""),
+        Array.from({ length: 30 }, () => `<span>שלום עולם <bdi>${words.repeat(2)}</bdi> שלום עולם</span>`).join(""),
+      ];
+      const results = [];
+      for (const content of variants) {
+        for (const direction of ["ltr", "rtl"]) {
+          for (const [width, size] of [[420, 20], [620, 32]]) {
+            frame.style.width = `${width}px`;
+            doc.body.dir = direction;
+            doc.body.style.cssText = `margin:0;font:${size}px/${size! * 1.5}px serif`;
+            doc.body.innerHTML = `<p id="prose">${content}</p>`;
+            const before = doc.body.innerHTML;
+            const scrolling = E.measureChunks(doc.body);
+            const chunks = E.measureChunks(doc.body, 300);
+            const incremental = await E.measureChunksIncrementally(doc.body, { timeSliceMs: 1 }, 300);
+            const target = chunks[Math.floor(chunks.length / 2)]!;
+            const pages = E.PaginationEngine.paginate(doc.body, 300, target.breakBefore);
+            const restored = E.PaginationEngine.findPageForPosition(
+              pages, target.breakBefore.node, target.breakBefore.offset ?? 0, doc,
+            )!;
+            const originals = new Map<string, typeof chunks[number]>();
+            for (const chunk of scrolling) {
+              const key = `${chunk.top}:${chunk.bottom}`;
+              if (!originals.has(key)) originals.set(key, chunk);
+            }
+            results.push({
+              unchanged: before === doc.body.innerHTML,
+              oldBacktracking: scrolling.some((chunk, i) => i > 0 && chunk.top < scrolling[i - 1]!.top - 1),
+              disjoint: chunks.every((chunk, i) => i === 0 || chunk.top >= chunks[i - 1]!.bottom - 1),
+              fewer: chunks.length < scrolling.length,
+              anchors: chunks.every(chunk => {
+                const original = originals.get(`${chunk.top}:${chunk.bottom}`)!;
+                return chunk.breakBefore.node === original.breakBefore.node && chunk.breakBefore.offset === original.breakBefore.offset;
+              }),
+              parity: chunks.length === incremental.length && chunks.every((chunk, i) =>
+                chunk.top === incremental[i]!.top && chunk.bottom === incremental[i]!.bottom &&
+                chunk.breakBefore.node === incremental[i]!.breakBefore.node &&
+                chunk.breakBefore.offset === incremental[i]!.breakBefore.offset),
+              restored: restored.topY === target.top,
+            });
+          }
+        }
+      }
+      frame.remove();
+      return results;
+    });
+    expect(results).toHaveLength(12);
+    for (const [index, result] of results.entries()) expect(result, `case ${index}`).toEqual({
+      unchanged: true, oldBacktracking: true, disjoint: true, fewer: true,
+      anchors: true, parity: true, restored: true,
+    });
+  } finally { await session.close(); }
+});
+
+test("line normalization leaves ruby, math, images and positioned geometry unchanged (#256)", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      document.body.style.cssText = "width:360px;margin:0;font:20px/30px serif";
+      const words = "Original words occupy enough space to wrap this inline passage. ".repeat(8);
+      const variants = [
+        `<span>${words}</span><ruby>漢字<rt>かんじ</rt></ruby><span>${words}</span>`,
+        `<span>${words}</span><math xmlns="http://www.w3.org/1998/Math/MathML"><mfrac><mi>x</mi><mi>y</mi></mfrac></math><span>${words}</span>`,
+        `<span>${words}</span><img style="width:60px;height:60px"><span>${words}</span>`,
+        `<span>${words}</span><svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><rect width="60" height="60"/></svg><span>${words}</span>`,
+        `<span style="position:relative;top:10px">${words}</span><span>${words}</span>`,
+        `<span style="position:absolute;top:10px">${words}</span><span>${words}</span>`,
+        `<span style="display:inline-block;width:120px">${words}</span><span>${words}</span>`,
+        `<span>${words}</span><sup>${words}</sup><span>${words}</span>`,
+        `<span style="font-size:30px">${words}</span><span>${words}</span>`,
+      ];
+      const results = [];
+      for (const content of variants) {
+        document.body.innerHTML = `<p><span>${content}</span></p>`;
+        const scrolling = E.measureChunks(document.body);
+        const paginated = E.measureChunks(document.body, 300);
+        results.push(scrolling.length === paginated.length && scrolling.every((chunk, i) =>
+          chunk.top === paginated[i]!.top && chunk.bottom === paginated[i]!.bottom &&
+          chunk.breakBefore.node === paginated[i]!.breakBefore.node &&
+          chunk.breakBefore.offset === paginated[i]!.breakBefore.offset));
+      }
+      return results;
+    });
+    expect(results).toHaveLength(9);
+    for (const [index, unchanged] of results.entries()) expect(unchanged, `case ${index}`).toBe(true);
+  } finally { await session.close(); }
+});
+
+test("span normalization adds no range queries or material measurement overhead (#256)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      document.body.style.cssText = "width:620px;margin:0;font:20px/30px serif";
+      document.body.innerHTML = `<p>${Array.from({ length: 120 }, () =>
+        `<span>${"Original words make a long span-heavy paragraph for a paired measurement benchmark. ".repeat(3)}</span>`,
+      ).join("")}</p>`;
+      const original = Range.prototype.getClientRects;
+      let reads = 0;
+      Range.prototype.getClientRects = function () { reads++; return original.call(this); };
+      const measure = (height: number) => {
+        reads = 0;
+        const start = performance.now();
+        const chunks = E.measureChunks(document.body, height);
+        return { ms: performance.now() - start, reads, chunks: chunks.length };
+      };
+      try {
+        const legacy = [];
+        const normalized = [];
+        for (let index = 0; index < 8; index++) {
+          const a = index % 2 === 0 ? measure(Infinity) : undefined;
+          const b = measure(500);
+          const baseline = a ?? measure(Infinity);
+          if (index >= 3) { legacy.push(baseline); normalized.push(b); }
+        }
+        const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
+        return {
+          legacyMs: median(legacy.map(row => row.ms)),
+          normalizedMs: median(normalized.map(row => row.ms)),
+          legacyReads: legacy[0]!.reads,
+          normalizedReads: normalized[0]!.reads,
+          legacyChunks: legacy[0]!.chunks,
+          normalizedChunks: normalized[0]!.chunks,
+        };
+      } finally { Range.prototype.getClientRects = original; }
+    });
+    console.log(JSON.stringify({ spanNormalization: result }));
+    expect(result.normalizedChunks).toBeLessThan(result.legacyChunks);
+    expect(result.normalizedReads).toBeLessThanOrEqual(result.legacyReads);
+    expect(result.normalizedMs).toBeLessThanOrEqual(Math.max(result.legacyMs * 1.25, result.legacyMs + 5));
+  } finally { await session.close(); }
+});
+
+test("incremental pagination can cancel during the inline normalization scan (#256)", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(async () => {
+      const E = window.paginationEngine;
+      document.body.style.cssText = "width:360px;margin:0;font:20px/30px serif";
+      document.body.innerHTML = `<p>${Array.from({ length: 200 }, () =>
+        `<span>${"An original sentence wraps over several lines before the next span begins. ".repeat(3)}</span>`,
+      ).join("")}</p>`;
+      const controller = new AbortController();
+      const originalRects = Range.prototype.getClientRects;
+      const originalStyle = window.getComputedStyle;
+      let measuring = false;
+      let styles = 0;
+      Range.prototype.getClientRects = function () {
+        measuring = true;
+        return originalRects.call(this);
+      };
+      window.getComputedStyle = (element, pseudo) => {
+        if (measuring && element.localName === "span" && ++styles === 10) controller.abort();
+        return originalStyle.call(window, element, pseudo);
+      };
+      try {
+        await E.measureChunksIncrementally(document.body, { signal: controller.signal, timeSliceMs: 1 }, 300);
+        return { aborted: false, styles };
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== "AbortError") throw error;
+        return { aborted: true, styles };
+      } finally {
+        Range.prototype.getClientRects = originalRects;
+        window.getComputedStyle = originalStyle;
+      }
+    });
+    expect(result).toEqual({ aborted: true, styles: 10 });
+  } finally { await session.close(); }
+});
+
+for (const width of [680, 1100]) {
+  test(`packaged ${width}px reader paints wrapped prose once through forward/back turns and font changes (#256)`, async () => {
+    const passages = Array.from({ length: 40 }, (_, index) =>
+      `Marker ${index}. This original passage follows a quiet path through several invented sentences. Its words must appear only once across page turns. `);
+    const expected = passages.join("").replace(/\s/g, "").length;
+    const filename = test.info().outputPath("wrapped-prose.epub");
+    fs.writeFileSync(filename, Buffer.from(book(
+      `<p id="prose">${passages.map(text => `<span>${text}</span>`).join("")}</p>`,
+    ), "base64"));
+    const { context, readerPage } = await launchReader(filename, { viewport: { width, height: 900 } });
+    try {
+      await exposeReaderController(readerPage);
+      const sample = () => readerPage.getByRole("main").locator("iframe").evaluateAll(frames => {
+        const positions = [];
+        let partial = 0;
+        for (const frame of frames) {
+          if (!(frame instanceof HTMLIFrameElement) ||
+            !frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+          const doc = frame.contentDocument!;
+          const paragraph = doc.querySelector("#prose");
+          if (!paragraph) continue;
+          const clip = getComputedStyle(frame).clipPath.match(/inset\(([\d.]+)px 0px(?: ([\d.]+)px)?/);
+          const top = Number(clip?.[1] ?? 0);
+          const bottom = frame.clientHeight - Number(clip?.[2] ?? clip?.[1] ?? 0);
+          const walker = doc.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+          const range = doc.createRange();
+          let globalOffset = 0;
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            for (let offset = 0; offset < (node.textContent?.length ?? 0); offset++, globalOffset++) {
+              if (!node.textContent![offset]!.trim()) continue;
+              range.setStart(node, offset);
+              range.setEnd(node, offset + 1);
+              const rect = range.getBoundingClientRect();
+              if (rect.right <= 0 || rect.left >= frame.clientWidth) continue;
+              if (rect.top >= top - 1 && rect.bottom <= bottom + 1) positions.push(globalOffset);
+              else if (Math.min(bottom, rect.bottom) - Math.max(top, rect.top) > 1) partial++;
+            }
+          }
+        }
+        return { positions: positions.sort((a, b) => a - b), partial };
+      });
+      for (const scale of [1, 1.5]) {
+        await readerPage.evaluate(async scale => {
+          const c = Reflect.get(window, "__readerController");
+          await c.setFontScale(scale);
+          await c.goToNavPoint({ path: c.pkg.spine[0].manifestItem.path, fragment: "prose" });
+        }, scale);
+        const first = await sample();
+        await readerPage.evaluate(async () => {
+          const c = Reflect.get(window, "__readerController");
+          await c.turnPage(1);
+          await c.turnPage(-1);
+        });
+        expect(await sample()).toEqual(first);
+        const counts = new Map<number, number>();
+        let finished = false;
+        for (let step = 0; step < 80; step++) {
+          const current = await sample();
+          expect(current.partial).toBe(0);
+          for (const position of current.positions) counts.set(position, (counts.get(position) ?? 0) + 1);
+          const state = await readerPage.evaluate(() => {
+            const { pageIndex, secondPageIndex, pageCount } = Reflect.get(window, "__readerController").snapshot();
+            return { pageIndex, secondPageIndex, pageCount };
+          });
+          if (Math.max(state.pageIndex, state.secondPageIndex ?? 0) >= state.pageCount - 1) {
+            finished = true;
+            break;
+          }
+          await readerPage.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
+        }
+        expect(finished).toBe(true);
+        expect(counts.size).toBe(expected);
+        expect(Array.from(counts.values()).filter(count => count !== 1)).toEqual([]);
+      }
+    } finally { await context.close(); }
+  });
+}
+
 test("oversized simple figures expose the entire image and every caption character (#257)", async () => {
   const caption = "Every word of this original illustration caption must remain accessible. ".repeat(35);
   const session = await browser();
