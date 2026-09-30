@@ -318,6 +318,25 @@ transforms, grid/flex layouts, reordered table captions, generated content and
 author clipping. Those layouts are not made freely fragmentable by this fix.
 Measurement work is bounded; page planning performs no new layout queries.
 
+## Wrapping inline prose (#256)
+
+Chromium can report a wrapping span's line boxes and then report the same text
+bands again. Paginated measurement removes repeated bands only for baseline,
+normal-flow inline text when the first occurrences already form ordered,
+disjoint lines. It does not sort arbitrary geometry or change scrolling.
+Ruby, math, images, positioned content and ambiguous mixed-size bands retain
+their existing measurement path.
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#256'
+```
+
+Coverage includes exact original-character painting, nested emphasis/links,
+LTR/RTL and bidi, saved anchors, incremental parity/cancellation, and a paired
+span-heavy benchmark with no added range queries. Packaged single-page/spread
+checks traverse forward and backward at two font sizes and verify that every
+non-whitespace character appears exactly once.
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the

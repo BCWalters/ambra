@@ -300,6 +300,52 @@ function atomicBounds(element: Element, pageHeight: number, viewportWidth: numbe
  * not a meaningful visual difference. */
 const LINE_TOLERANCE_PX = 1;
 
+const BASELINE_INLINE_TEXT_TAGS = new Set([
+  "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "del", "em", "i",
+  "ins", "kbd", "mark", "q", "s", "samp", "small", "span", "strong",
+  "sub", "sup", "time", "u", "var", "wbr",
+]);
+
+function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generator<undefined, DOMRect[]> {
+  if (!rects.some((rect, index) => index > 0 && rect.top < rects[index - 1]!.top - LINE_TOLERANCE_PX)) return rects;
+  const root = range.commonAncestorContainer;
+  if (root.nodeType !== 1) return rects;
+  const rootStyle = getComputedStyle(root as Element);
+  if (rootStyle.writingMode !== "horizontal-tb" || rootStyle.position !== "static" ||
+    rootStyle.float !== "none" || rootStyle.transform !== "none") return rects;
+
+  const seen = new Set<string>();
+  const lines: DOMRect[] = [];
+  for (let index = 0; index < rects.length; index++) {
+    if (index % 64 === 0) yield undefined;
+    const rect = rects[index]!;
+    const key = `${rect.top}:${rect.bottom}`;
+    if (seen.has(key)) continue;
+    const previous = lines[lines.length - 1];
+    if (previous && rect.top < previous.bottom - LINE_TOLERANCE_PX) return rects;
+    seen.add(key);
+    lines.push(rect);
+  }
+
+  const walker = root.ownerDocument!.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: node => isReaderOwnedContent(node) || !range.intersectsNode(node)
+      ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  });
+  while (walker.nextNode()) {
+    yield undefined;
+    const element = walker.currentNode as Element;
+    if (!BASELINE_INLINE_TEXT_TAGS.has(element.localName)) return rects;
+    const style = getComputedStyle(element);
+    if (style.display !== "inline" || style.verticalAlign !== "baseline" ||
+      style.position !== "static" || style.float !== "none" ||
+      style.transform !== "none" || style.writingMode !== "horizontal-tb") return rects;
+  }
+  // Chromium can report all lines of a wrapping inline element, then the same
+  // lines again for its text. Keep the first occurrence only when the resulting
+  // text bands are already ordered and disjoint; never sort mixed geometry.
+  return lines;
+}
+
 function excludeOverlappingBreakRects(range: Range, rects: DOMRect[]): DOMRect[] {
   const key = (rect: DOMRect): string => `${rect.left}:${rect.top}:${rect.right}:${rect.bottom}`;
   const candidates = new Map<string, string>();
@@ -342,7 +388,9 @@ function* measureTextLeafChunks(
 ): Generator<Chunk | undefined> {
   const rects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
   // Continuous-scroll tracking keeps its existing line geometry.
-  const lineRects = Number.isFinite(pageHeight) ? excludeOverlappingBreakRects(fullRange, rects) : rects;
+  const lineRects = Number.isFinite(pageHeight)
+    ? yield* normalizeWrappingInlineRects(fullRange, excludeOverlappingBreakRects(fullRange, rects))
+    : rects;
 
   if (lineRects.length === 0) {
     return;
