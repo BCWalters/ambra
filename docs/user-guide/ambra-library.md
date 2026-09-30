@@ -10,9 +10,21 @@ If an import fails, the error includes the file name when available, so you can 
 
 Importing the same EPUB again shows **Already in your library**, with **Read now** to open the existing copy. Your reading position, bookmarks, and annotations stay unchanged. An EPUB with different file contents is added separately, even if its title is the same.
 
+## Search your library
+
+Use **Search title or author** above your books in either the compact library or
+the full library tab. Each word can match part of a title or author, in any order.
+Search ignores capitalization and accents in Latin-alphabet text; for example,
+`verne voyage` can find *Voyage au centre de la Terre* by Jules Verne.
+
+Results retain your selected sort order. Use the clear button or press **Escape**
+in the search field to show all your books again. Search only filters local
+library metadata: it does not search inside books or contact book websites.
+The query is temporary and is cleared when the library page closes or reloads.
+
 ## Find new books on the web
 
-Choose **Find your next book → Explore books** in an empty library, or **Find books** once you have books. Sources open in a new tab:
+Choose **Find your next book → Explore books** in an empty library, or the globe-marked **Find books** beside library search once you have books. Sources open in a new tab:
 
 - **Standard Ebooks:** choose **Advanced epub** for formatted classics.
 - **Project Gutenberg:** choose an **EPUB** or **EPUB3** download.

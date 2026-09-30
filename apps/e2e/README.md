@@ -38,6 +38,12 @@ every-iteration signal.
 
 ## Running it
 
+`library-search.spec.ts` covers local title/author filtering in compact and full
+libraries, retained sorting and book identity, clear/Escape focus, live French
+labels, import/removal updates, and the distinction between no matches and an
+empty library. It also verifies that search does not request remote book sites.
+The Library CI step runs this suite against the packaged extension.
+
 ```sh
 # from the repo root
 pnpm --filter @ambra/e2e run test:e2e          # headless
