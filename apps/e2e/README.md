@@ -300,6 +300,24 @@ The optional local check also accepts a ReadBeyond EPUB. It checks image-only
 links outside tables/figures at two width/font profiles; private publication
 content is not copied into the repository and traces/screenshots are disabled.
 
+## Oversized simple figures (#257)
+
+The measurement suite verifies that a single image and its caption can cross a
+page boundary when their normal-flow group exceeds the page budget. Fitting
+figures remain atomic. Long captions, caption-first groups, nested image links,
+picture/SVG content, padding, LTR/RTL, saved anchors and incremental parity are
+covered. Scrolling, source DOM, image sizing and footer clipping are unchanged.
+The packaged-reader cases cover single pages and spreads.
+
+```sh
+AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test pagination-measurement.spec.ts --grep '#257'
+```
+
+Negative controls preserve complex figures: galleries, nested figures, floats,
+transforms, grid/flex layouts, reordered table captions, generated content and
+author clipping. Those layouts are not made freely fragmentable by this fix.
+Measurement work is bounded; page planning performs no new layout queries.
+
 ## Library cover memory regression (#199)
 
 Library cards use persistent thumbnails bounded to 420 × 600 pixels (3× the
