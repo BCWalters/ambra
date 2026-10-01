@@ -227,6 +227,9 @@ save; clearing an existing note removes the note while retaining the highlight.
 Restore focus to the edit action, or Show if the updated item leaves the current
 filter. Render note text literally, including multiline text. Preserve the real
 annotation mutation/import/export lifecycle; the in-memory study is not storage.
+In the in-book highlight popup, Close stands alone in the header. Put the
+explicitly labelled Delete highlight action below the editor, separated by a
+divider, rather than beside Close or the note's Save/Cancel actions.
 
 ## 7. Read-along
 
