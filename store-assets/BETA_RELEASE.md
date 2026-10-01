@@ -1,7 +1,7 @@
 # Unlisted Chrome Web Store beta
 
 > **Historical Unlisted workflow. The listing is now Public, as
-> confirmed by the owner. Use [RELEASE-1.0.4.md](RELEASE-1.0.4.md) for the next
+> confirmed by the owner. Use [RELEASE-1.1.0.md](RELEASE-1.1.0.md) for the next
 > manual update.** Preserve Public visibility; do not follow the Unlisted
 > distribution steps below. The current packager marks candidates `PUBLIC`,
 > which the legacy Unlisted uploader rejects. Do not dispatch that workflow
