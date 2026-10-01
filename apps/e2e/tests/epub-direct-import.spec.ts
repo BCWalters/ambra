@@ -89,9 +89,9 @@ for (const mode of [
         const [record] = Object.values(await recoveryRecords(worker));
         const native = async () => (await nativeRecords()).find(item => item.id === record!.downloadId);
         await expect(library.getByTestId("library-import-status").getByRole("status")).toContainText("Downloading");
-        await expect(library.getByRole("heading", { name: "What will you read first?" })).toBeHidden();
-        await expect(library.getByRole("button", { name: /Bring a book/ })).toBeHidden();
-        await expect(library.getByRole("button", { name: /Find your next book/ })).toBeHidden();
+        await expect(library.getByRole("heading", { name: "No books yet", exact: true })).toBeHidden();
+        await expect(library.getByRole("button", { name: "Import EPUB", exact: true })).toBeEnabled();
+        await expect(library.getByRole("button", { name: "Find books", exact: true })).toBeVisible();
         // useLibrary strips the handoff parameters before its first ACTIVE.
         expect(new URL(library.url()).searchParams.has("importUrl")).toBe(false);
         if (mode === "replace-state") {
@@ -128,8 +128,8 @@ for (const mode of [
           await expect(cancel).toHaveCount(0);
           await expect(library.getByRole("progressbar")).toHaveCount(0);
           await expect(library.getByRole("alert")).toHaveCount(0);
-          await expect(library.getByRole("heading", { name: "What will you read first?" })).toBeVisible();
-          await expect(library.getByRole("button", { name: /Bring a book/ })).toBeFocused();
+          await expect(library.getByRole("heading", { name: "No books yet", exact: true })).toBeVisible();
+          await expect(library.getByRole("button", { name: "Import EPUB", exact: true })).toBeFocused();
           await expect(library.getByRole("button", { name: /^Open Ambra Long Content Test Fixture/ })).toHaveCount(0);
           await expect.poll(async () => await native()).toBeUndefined();
           await expect.poll(async () => Object.keys(await recoveryRecords(worker)).length).toBe(0);
@@ -169,12 +169,15 @@ for (const mode of [
         }
         expect(server.importRequests()).toBe(iteration + 1);
         if (mode === "repeat-held" && iteration === 2) {
-          await library.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }).hover();
-          await library.getByRole("button", { name: "Remove Ambra Long Content Test Fixture from library", exact: true }).click();
+          await library.getByRole("button", { name: "Ambra Long Content Test Fixture details", exact: true }).click();
+          await library.getByRole("dialog", { name: "Book details", exact: true })
+            .getByRole("button", { name: "Remove from library", exact: true }).click();
+          await library.getByRole("alertdialog", { name: "Remove from library?", exact: true })
+            .getByRole("button", { name: "Remove from library", exact: true }).click();
           for (const mirror of mirrors) {
             await expect(mirror.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }))
               .toHaveCount(0);
-            await expect(mirror.getByRole("heading", { name: "What will you read first?" })).toBeVisible();
+            await expect(mirror.getByRole("heading", { name: "No books yet", exact: true })).toBeVisible();
           }
           await mirrors[0]!.locator('input[type="file"]').setInputFiles(fixture);
           for (const peer of [mirrors[1]!, library]) {
@@ -360,7 +363,7 @@ for (const outcome of ["success", "unknown-size", "http-error"] as const) {
       await expect.poll(server.importRequests).toBe(1);
       const nativeRecords = () => worker.evaluate((url) => chrome.downloads.search({ url }), server.url);
       const status = library.getByTestId("library-import-status").getByRole("status");
-      const importButton = library.getByRole("button", { name: "Bring a book Choose EPUB files...", exact: true });
+      const importButton = library.getByRole("button", { name: "Import EPUB", exact: true });
       const focusAnchor = library.getByRole("button", { name: "Help & About", exact: true });
       const openBook = library.getByRole("button", { name: `Open ${title}`, exact: true });
       await expect(status).toContainText("Downloading test-book.epub");
@@ -403,7 +406,7 @@ for (const outcome of ["success", "unknown-size", "http-error"] as const) {
       await notification.screenshot({ path: testInfo.outputPath("download-animation.png") });
       await expect(openBook).toHaveCount(0);
       await expect(library.getByRole("button", { name: /^Read now:/ })).toHaveCount(0);
-      await expect(importButton).toBeHidden();
+      await expect(importButton).toBeEnabled();
       await focusAnchor.focus();
       expect((await nativeRecords())[0]?.state).toBe("in_progress");
       await expect.poll(async () => (await nativeRecords())[0]?.paused).toBe(true);
@@ -466,7 +469,7 @@ for (const outcome of ["success", "unknown-size", "http-error"] as const) {
       } else {
         server.rejectImport();
         await expect(library.getByRole("alert")).toContainText("403");
-        await expect(library.getByRole("alert")).toContainText("Choose EPUB files...");
+        await expect(library.getByRole("alert")).toContainText("Import EPUB");
         await expect(status).toBeEmpty();
         await expect(illustration).toHaveCount(0);
         await expect(openBook).toHaveCount(0);
@@ -658,7 +661,7 @@ for (const scenario of [
           }
         } else {
           server.releaseImport();
-          await expect(library.getByRole("alert")).toContainText("Choose EPUB files...");
+          await expect(library.getByRole("alert")).toContainText("Import EPUB");
           await expect(library.getByRole("alert")).not.toContainText("Failed to fetch");
           if (scenario === "parse") {
             await expect(library.getByRole("alert")).toContainText("Oh dear, that doesn't look like a valid EPUB file.");
