@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +24,8 @@ test.describe("Library page picks up the reader's chrome theme (issue #86 follow
       // Before ever touching the theme picker, the library reads the
       // Ambra default (see `DEFAULT_CHROME_THEME`) — not literally
       // untouched/unthemed.
-      await expect(heading).toHaveCSS("color", "rgb(122, 62, 0)"); // Accessible Ambra text accent.
+      const ambraRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+      await expect(heading).toHaveCSS("color", `rgb(${ambraRgb})`);
 
       await readerPage.getByRole("button", { name: "Settings" }).click();
       await readerPage.getByRole("menuitem", { name: /^Reader theme/ }).press("ArrowRight");
@@ -31,7 +33,8 @@ test.describe("Library page picks up the reader's chrome theme (issue #86 follow
       await readerPage.keyboard.press("Escape");
       await readerPage.keyboard.press("Escape");
       await libraryPage.reload();
-      await expect(heading).toHaveCSS("color", "rgb(64, 74, 89)"); // Accessible Silver text accent.
+      const silverRgb = getInterfaceTheme("silver", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+      await expect(heading).toHaveCSS("color", `rgb(${silverRgb})`);
     } finally {
       await context.close();
     }

@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -109,7 +110,8 @@ test("search uses accessible text emphasis and changing UI language updates the 
     await readerPage.getByRole("button", { name: "Search", exact: true }).click();
     await readerPage.getByRole("searchbox").fill("chapter");
     const match = readerPage.getByRole("navigation", { name: "Search" }).locator("strong").first();
-    await expect(match).toHaveCSS("color", "rgb(122, 62, 0)");
+    const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+    await expect(match).toHaveCSS("color", `rgb(${accentRgb})`);
     await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
     await readerPage.getByRole("menuitem", { name: /^Language/ }).click();
     await readerPage.getByRole("menuitemradio", { name: "Français", exact: true }).click();

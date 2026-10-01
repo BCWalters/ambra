@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader, type LaunchedReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 
 const fixture = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
 const description = "Save-as fixture description.";
@@ -82,7 +83,9 @@ test("reader saves its original stored filename and bytes without navigation or 
   const panel = page.getByRole("complementary", { name: "Book details", exact: true });
   const save = panel.getByRole("button", { name: "Save as…", exact: true });
   await expect(save).toHaveCSS("font-size", "12px");
-  await expect(save).toHaveCSS("color", "rgb(122, 62, 0)");
+  const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!
+    .map(hex => parseInt(hex, 16)).join(", ");
+  await expect(save).toHaveCSS("color", `rgb(${accentRgb})`);
   await panel.screenshot({ path: testInfo.outputPath("reader-save-as.png") });
   await save.focus();
   await expect(save).toBeFocused();
