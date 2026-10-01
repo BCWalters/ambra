@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { ReaderController } from "./ReaderController.js";
 import { outerMarginSide } from "./PageMargins.js";
-import { FixedSpreadHost } from "@ambra/engine";
+import { FixedSpreadHost, SpreadPaginatedHost } from "@ambra/engine";
+import { ReaderOperations } from "./ReaderOperation.js";
 
 function setup(rtl = false) {
   const controller = Object.create(ReaderController.prototype);
   Object.assign(controller, {
     pkg: { pageProgressionDirection: rtl ? "rtl" : "ltr" },
-    marginSide: (_doc: Document, x: number) => outerMarginSide(x, [{ left: 40, right: 760 }]),
+    marginSide: (_doc: Document, x: number, _y: number, parentX = x) =>
+      outerMarginSide(parentX, [{ left: 40, right: 760 }]),
     turnPage: vi.fn(),
     highlightInteraction: {
       hasVisibleSelection: vi.fn(() => false),
@@ -22,6 +24,96 @@ function setup(rtl = false) {
 }
 
 describe("ReaderController margin taps", () => {
+  it.each([false, true])("distinguishes paper motion from real swipes during a turn (RTL=%s)", rtl => {
+    const { controller } = setup(rtl);
+    Object.assign(controller, {
+      turnMargins: {},
+      operations: new ReaderOperations(),
+      dismissUiForPointer: () => false,
+      dismissContentSelection: () => false,
+    });
+    const cleanup = controller.setUpMarginClicks(document, document, true);
+    const pointer = (type: string, clientX: number, screenX: number) =>
+      new PointerEvent(type, {
+        pointerId: 1, pointerType: "mouse", button: 0,
+        clientX, clientY: 300, screenX, screenY: 400, bubbles: true,
+      });
+    try {
+      for (const projectedX of [1100, 20]) {
+        document.body.dispatchEvent(pointer("pointerdown", 780, 800));
+        document.body.dispatchEvent(pointer("pointerup", projectedX, 800));
+        expect(controller.turnPage.mock.calls).toEqual([[rtl ? -1 : 1]]);
+        controller.turnPage.mockClear();
+      }
+      document.body.dispatchEvent(pointer("pointerdown", 780, 800));
+      document.body.dispatchEvent(pointer("pointerup", 1100, 900));
+      expect(controller.turnPage.mock.calls).toEqual([[rtl ? 1 : -1]]);
+    } finally {
+      cleanup();
+      controller.gestureCleanup?.();
+      controller.operations.dispose();
+    }
+  });
+
+  it.each([false, true])("keeps settled spread margins throughout a turn and releases them afterward (RTL=%s)", async rtl => {
+    const { controller, tap } = setup(rtl);
+    delete controller.marginSide;
+    const frames = [document.createElement("iframe"), document.createElement("iframe")];
+    document.body.append(...frames);
+    const host = Object.create(SpreadPaginatedHost.prototype);
+    host.columnElement = (side: string) => frames[side === "left" ? 0 : 1];
+    let projected = false;
+    frames.forEach((frame, index) => {
+      Object.defineProperty(frame, "clientWidth", { value: 700 });
+      vi.spyOn(frame, "getBoundingClientRect").mockImplementation(() => {
+        const left = projected ? 700 + index * 350 : index * 700;
+        const width = projected ? 350 : 700;
+        return { left, right: left + width, width } as DOMRect;
+      });
+      frame.contentDocument!.body.style.padding = "0 40px";
+      vi.spyOn(frame.contentDocument!.body, "getBoundingClientRect")
+        .mockReturnValue({ left: 0, right: 700 } as DOMRect);
+    });
+    let finish!: () => void;
+    Object.assign(controller, {
+      host,
+      containerEl: document.createElement("div"),
+      contentDocumentViews: () => frames.map(frame => ({ document: frame.contentDocument! })),
+      operations: new ReaderOperations(),
+      diagnostics: { record: vi.fn() },
+      closeTableViewer: vi.fn(),
+      clearNavigationHighlights: vi.fn(),
+      applyPendingLayout: vi.fn(),
+      turnPageInternal: vi.fn(() => new Promise<void>(resolve => { finish = resolve; })),
+      turnPage: ReaderController.prototype.turnPage,
+    });
+    const turns = vi.spyOn(controller, "turnPage");
+    try {
+      const pending = controller.turnPage(1);
+      expect(controller.turnMargins).toBeDefined();
+      projected = true;
+      tap(700);
+      expect(turns).toHaveBeenCalledTimes(1);
+      expect(controller.queuedTurn).toBeUndefined();
+      expect(controller.marginSide(document, 20, 300)).toBe(-1);
+      expect(controller.marginSide(document, 1380, 300)).toBe(1);
+      finish();
+      await pending;
+      expect(controller.turnMargins).toBeUndefined();
+      expect(controller.marginSide(document, 700, 300)).toBe(-1);
+      const cancelled = controller.turnPage(1);
+      expect(controller.turnMargins).toBeDefined();
+      controller.operations.dispose();
+      expect(controller.turnMargins).toBeUndefined();
+      finish();
+      await cancelled;
+    } finally {
+      controller.operations.dispose();
+      frames.forEach(frame => frame.remove());
+      vi.restoreAllMocks();
+    }
+  });
+
   it.each([false, true])("maps physical outer edges into reading order (RTL=%s)", rtl => {
     const { controller, tap } = setup(rtl);
     tap(20);

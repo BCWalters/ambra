@@ -726,6 +726,11 @@ rectangles, interactive content, images, native list markers, and generated
 labels retain ownership. Content outside the band, inner page margins, gutters,
 and blank companion interiors remain inert. Coverage includes LTR/RTL,
 cross-chapter spreads, all animation styles, and scaled fixed-layout artwork.
+Animation-phase checks (#279) pause the actual CSS transitions and hold their
+safety deadline while a native pointer stays stationary. They verify both
+request counts and the final spread: gutters stay inert as the paper moves,
+while genuine outer-margin taps retain the bounded queued turn. Slowing
+`Element.animate()` does not control these CSS transitions.
 Navigation fixtures use `outerMarginPoint` / `clickReadingPage` to derive targets
 from the rendered reading measure, not arbitrary content coordinates.
 Fixed-layout artwork also accepts outer-edge taps (#206): 8% of each rendered
