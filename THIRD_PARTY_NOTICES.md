@@ -44,6 +44,14 @@ are documented in [store-assets/licenses](store-assets/licenses/README.md).
 
 ## External books and metadata
 
+The standalone [design prototype](docs/design-prototype/README.md) includes three
+unmodified Standard Ebooks cover SVGs, not their EPUBs or publication text.
+[Prototype credits](docs/design-prototype/credits.html) record exact sources,
+rights qualifications, and hashes. These reference assets are not MIT-relicensed
+or included in the extension build. The prototype also retains the MIT notice for
+its Fluent icon glyphs. Its other covers, prose, notes, and illustrative data are
+original demonstration material.
+
 Real books belong outside source control, normally in ignored
 `apps/e2e/real-books/`. Download availability does not grant redistribution rights.
 Public-domain status of a text does not settle rights in an edition's cover,
