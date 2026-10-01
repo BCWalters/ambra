@@ -100,6 +100,36 @@ function tap(target: EventTarget, x: number, pointerType = "mouse") {
 }
 
 describe("content clicks dismiss chrome before navigating", () => {
+  it.each(["single", "spread"] as const)("%s parent bands exclude controls and unrelated UI", mode => {
+    const { controller, container, doc } = setUp(mode);
+    const dismiss = vi.fn(() => false);
+    controller.setContentUiDismissal(dismiss);
+    const band = document.createElement("div");
+    band.setAttribute("data-ambra-page-band", "");
+    container.after(band);
+    const unrelated = document.createElement("aside");
+    container.after(unrelated);
+    cleanups.push(() => { band.remove(); unrelated.remove(); });
+    tap(band, 830);
+    expect(dismiss).toHaveBeenCalledExactlyOnceWith({ clientX: 830, clientY: 300 });
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+    dismiss.mockClear();
+    controller.turnPage.mockClear();
+    for (const role of ["button", "slider"]) {
+      const control = document.createElement("div");
+      control.setAttribute("role", role);
+      band.append(control);
+      tap(control, 830);
+    }
+    tap(unrelated, 830);
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(controller.turnPage).not.toHaveBeenCalled();
+
+    tap(doc.body, mode === "single" ? 850 : 420);
+    expect(dismiss).toHaveBeenLastCalledWith(undefined);
+    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
   it.each([
     ["#arriv%C3%A9e", 0, "arrivée"],
     ["next.xhtml#literal%2520id", 1, "literal%20id"],

@@ -195,7 +195,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       await seedReadingWelcomeAcknowledgement(library);
       await library.locator('input[type="file"]').setInputFiles(book);
       const opening = context.waitForEvent("page");
-      await library.getByRole("button", { name: /^Open / }).click({ force: true });
+      await library.getByRole("main").getByRole("button", { name: /^Open / }).click({ force: true });
       const page = await opening;
       await page.bringToFront();
       const expectChapters = async (chapters: string[]) => {

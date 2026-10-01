@@ -149,6 +149,17 @@ it("reveals actual controls and keyboard focus immediately after a content dismi
   expect(chrome.visible).toBe(true);
 });
 
+it("keeps repeated taps in chrome padding suppressed but reveals on a fresh approach", () => {
+  const surface = element.firstElementChild as HTMLElement;
+  surface.getBoundingClientRect = () => new DOMRect(0, 0, 800, 50);
+  act(() => { chrome.dismissForContent({ clientX: 60, clientY: 1 }); });
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 61, clientY: 2 })));
+  act(() => chrome.handlers.onPointerEnter({ clientX: 60, clientY: 1 }));
+  expect(chrome.visible).toBe(false);
+  act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 10, clientY: 2 })));
+  expect(chrome.visible).toBe(true);
+});
+
 it("consumes even a partially visible reveal, including the other chrome surface", () => {
   (element.firstElementChild as HTMLElement).style.opacity = "0";
   const scrubber = document.createElement("div");

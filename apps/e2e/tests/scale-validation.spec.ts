@@ -39,7 +39,7 @@ async function launch(book: string) {
     await seedReadingWelcomeAcknowledgement(library);
     const started = Date.now();
     await library.locator('input[type="file"]').setInputFiles(path.join(root, `${book}.epub`));
-    const open = library.getByRole("button", { name: /^Open / }).first();
+    const open = library.getByRole("main").getByRole("button", { name: /^Open / }).first();
     await open.waitFor({ timeout: 60_000 });
     const importMs = Date.now() - started;
     expect(importMs, "import must not become a minute-long operation").toBeLessThan(30_000);

@@ -112,7 +112,7 @@ for (const width of [760, 1400]) {
             path.join(fixtures, `${authoredOpen ? "authored-open" : "initially-closed"}.epub`),
           );
         const opening = context.waitForEvent("page");
-        await library.getByRole("button", { name: /^Open / }).click({ force: true });
+        await library.getByRole("main").getByRole("button", { name: /^Open / }).click({ force: true });
         const page = await opening;
         await page.bringToFront();
         const disclosure = page.frameLocator("iframe").first().locator("#long-disclosure");

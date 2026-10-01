@@ -131,7 +131,7 @@ export const ko: StringCatalog = {
   "library.cancelDownloadFile": "다운로드 취소: {fileName}",
   "library.cancelDownloadFailed": "Ambra가 다운로드를 중지했지만 Chrome에서 취소되었는지 확인하지 못했습니다. Chrome 다운로드를 열어 원래 다운로드를 확인하고 취소하세요.",
   "library.findBooks": "책 찾기",
-  "library.fullLibrary": "전체 라이브러리",
+  "library.fullLibrary": "새 탭에서 라이브러리 열기",
   "library.search": "라이브러리 검색",
   "library.searchPlaceholder": "제목 또는 저자 검색",
   "library.clearSearch": "라이브러리 검색 지우기",

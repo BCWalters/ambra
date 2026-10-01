@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { outerEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
+import { outerEdgeSide, frameContentBounds, outerMarginSide, reflowableContentBounds, reflowableEdgeSide } from "./PageMargins.js";
 
 describe("outer page margins", () => {
   it("excludes both content boundaries, content whitespace, and the entire gutter", () => {
@@ -51,13 +51,27 @@ describe("outer page margins", () => {
     expect(outerMarginSide(20, [])).toBeUndefined();
   });
 
-  it("gives narrow reflowable panes a 44px eligible band without overlapping edges", () => {
-    const pages = [{ left: 0, right: 320 }];
-    expect(outerEdgeSide(43, pages, 44)).toBe(-1);
-    expect(outerEdgeSide(44, pages, 44)).toBeUndefined();
-    expect(outerEdgeSide(276, pages, 44)).toBeUndefined();
-    expect(outerEdgeSide(277, pages, 44)).toBe(1);
-    expect(outerEdgeSide(25, [{ left: 0, right: 50 }], 44)).toBeUndefined();
+  it.each([[240, 64], [320, 64], [600, 120], [800, 160], [1600, 160]])(
+    "gives a %ipx reflowable pane a %ipx band", (width, band) => {
+      const pages = [{ left: 0, right: width }];
+      expect(reflowableEdgeSide(band - 1, pages)).toBe(-1);
+      expect(reflowableEdgeSide(band, pages)).toBeUndefined();
+      expect(reflowableEdgeSide(width - band, pages)).toBeUndefined();
+      expect(reflowableEdgeSide(width - band + 1, pages)).toBe(1);
+    },
+  );
+
+  it("keeps wider reflowable edges disjoint and excludes inner edges and gutters", () => {
+    const pages = [{ left: 100, right: 600 }, { left: 620, right: 1120 }];
+    for (const ordered of [pages, [...pages].reverse()]) {
+      expect(reflowableEdgeSide(199, ordered)).toBe(-1);
+      expect(reflowableEdgeSide(1021, ordered)).toBe(1);
+      for (const x of [200, 590, 600, 610, 620, 630, 1020]) {
+        expect(reflowableEdgeSide(x, ordered)).toBeUndefined();
+      }
+    }
+    expect(reflowableEdgeSide(25, [{ left: 0, right: 50 }])).toBeUndefined();
+    expect(reflowableEdgeSide(0, [])).toBeUndefined();
   });
 
   it("reads the actual body measure including reader padding, not text rectangles", () => {

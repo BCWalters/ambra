@@ -131,7 +131,7 @@ export const zh: StringCatalog = {
   "library.cancelDownloadFile": "取消下载：{fileName}",
   "library.cancelDownloadFailed": "Ambra 已停止下载，但无法确认 Chrome 中的取消操作。请打开 Chrome 下载页面，检查并取消原始下载。",
   "library.findBooks": "寻找书籍",
-  "library.fullLibrary": "完整书库",
+  "library.fullLibrary": "在新标签页中打开书库",
   "library.search": "搜索书库",
   "library.searchPlaceholder": "搜索书名或作者",
   "library.clearSearch": "清除书库搜索",

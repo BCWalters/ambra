@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefCallback } from "react";
 import { isInteractiveContentTarget } from "@ambra/engine";
+import type { ContentUiDismissal } from "./ReaderTypes.js";
 
 /** How long the toolbar stays visible after the most recent activity
  * before fading away. */
@@ -20,7 +21,7 @@ export interface AutoHideChrome {
   visible: boolean;
   /** Synchronously hides transient chrome before a content gesture starts.
    * Returns true only when that gesture dismissed visible chrome. */
-  dismissForContent: () => boolean;
+  dismissForContent: ContentUiDismissal;
   /** Hides chrome together with an outside-click dismissal of its open panel. */
   hide: () => void;
   /** Spread onto the toolbar's root element — keeps it visible while the
@@ -28,7 +29,7 @@ export interface AutoHideChrome {
    * schedules a fade once neither is true anymore. */
   handlers: {
     ref?: RefCallback<HTMLDivElement>;
-    onPointerEnter: () => void;
+    onPointerEnter: (event?: Pick<PointerEvent, "clientX" | "clientY">) => void;
     onPointerLeave: () => void;
     onFocus: () => void;
     onBlur: () => void;
@@ -75,12 +76,18 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
   const hoveredRef = useRef(false);
   const focusedRef = useRef(false);
   const suppressEdgeRevealRef = useRef(false);
+  const dismissedPointRef = useRef<Pick<PointerEvent, "clientX" | "clientY"> | undefined>(undefined);
   const timerRef = useRef<number | undefined>(undefined);
   const elementsRef = useRef(new Set<HTMLDivElement>());
   const registerElement = useCallback((element: HTMLDivElement | null) => {
     if (!element) return;
     elementsRef.current.add(element);
     return () => { elementsRef.current.delete(element); };
+  }, []);
+  const isRepeatedBandPoint = useCallback((event: Pick<PointerEvent, "clientX" | "clientY">): boolean => {
+    const point = dismissedPointRef.current;
+    return !!point && Math.abs(event.clientX - point.clientX) <= 10 &&
+      Math.abs(event.clientY - point.clientY) <= 10;
   }, []);
   useLayoutEffect(() => {
     pinnedRef.current = pinned;
@@ -98,7 +105,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     focusedRef.current = false;
     setVisible(false);
   }, []);
-  const dismissForContent = useCallback((): boolean => {
+  const dismissForContent = useCallback<ContentUiDismissal>(point => {
     if (pinnedRef.current) return false;
     // A reveal can commit between pointermove and pointerdown while its
     // opacity transition is still at zero. That chrome is not yet visible.
@@ -113,6 +120,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     // click for chrome whose visible state has actually reached the DOM.
     hide();
     suppressEdgeRevealRef.current = true;
+    dismissedPointRef.current = point;
     return dismissed;
   }, [hide]);
 
@@ -160,14 +168,15 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
         suppressEdgeRevealRef.current = false;
         return;
       }
-      // Repeated margin taps must not undo an explicit dismissal during its
-      // fade. Moving onto the actual controls still reveals them immediately.
-      if (suppressEdgeRevealRef.current && ![...elementsRef.current].some(element => {
-        const rect = element.getBoundingClientRect();
-        return element.isConnected && rect.width > 0 && rect.height > 0 &&
-          event.clientX >= rect.left && event.clientX < rect.right &&
-          event.clientY >= rect.top && event.clientY < rect.bottom;
-      })) return;
+      // A second tap in chrome padding must reach the page, even while the
+      // first tap's dismissal is fading. A fresh approach still reveals UI.
+      if (suppressEdgeRevealRef.current && (isRepeatedBandPoint(event) ||
+        ![...elementsRef.current].some(element => {
+          const rect = element.getBoundingClientRect();
+          return element.isConnected && rect.width > 0 && rect.height > 0 &&
+            event.clientX >= rect.left && event.clientX < rect.right &&
+            event.clientY >= rect.top && event.clientY < rect.bottom;
+        }))) return;
       reveal();
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -189,7 +198,7 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
       window.removeEventListener("resize", reveal);
       window.clearTimeout(timerRef.current);
     };
-  }, [pinned]);
+  }, [pinned, isRepeatedBandPoint]);
 
   // Only hides on a genuine *increment* of contentActivityId — never on
   // mount, and never on the id's very first defined value. The reader
@@ -219,7 +228,8 @@ export function useAutoHideChrome(pinned: boolean, contentActivityId?: number): 
     hide,
     handlers: {
       ref: registerElement,
-      onPointerEnter: () => {
+      onPointerEnter: event => {
+        if (event && suppressEdgeRevealRef.current && isRepeatedBandPoint(event)) return;
         hoveredRef.current = true;
         show();
         window.clearTimeout(timerRef.current);

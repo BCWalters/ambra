@@ -208,12 +208,14 @@ export const Toolbar: FC<ToolbarProps> = ({
           `onPointerEnter` alone would never fire again once the pointer
           drifted from the visible toolbar down into the page. */}
       <div
+        data-ambra-page-band
         onPointerEnter={handlers.onPointerEnter}
         style={{ position: "absolute", top: 0, left: 0, right: 0, height: 10, zIndex: 9 }}
       />
 
       <div
         ref={handlers.ref}
+        data-ambra-page-band
         className={mergeClasses(toolbarStyles.root, readerStyles.root)}
         onPointerEnter={handlers.onPointerEnter}
         onPointerLeave={handlers.onPointerLeave}

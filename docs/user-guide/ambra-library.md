@@ -4,8 +4,8 @@ Keep your EPUBs together and reopen a book at your saved reading position. Use t
 
 ## Compact or full library
 
-The toolbar popup keeps its header and **Full library** button visible while
-you scroll through books or discovery links. Choose **Full library** at the
+The toolbar popup keeps its header and **Open library in new tab** button visible while
+you scroll through books or discovery links. Choose **Open library in new tab** at the
 bottom, or the expand icon in the header, to open a full browser tab with more
 room. Both actions are available before importing your first book.
 

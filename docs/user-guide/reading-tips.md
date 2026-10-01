@@ -4,6 +4,8 @@
 
 In pagination, click or tap the outer margin to turn a page. Reading order reverses for right-to-left books. Fixed-layout books also accept taps near the outside page edge; the gap between pages does not turn them.
 
+Reflowable books also accept taps in blank space farther inside the outside page edges. These zones run through the full height of the reading pane, including above and below the text. The middle of the page and the gap between pages remain inactive; text, links, images, and visible reader controls keep their own behavior.
+
 If reader controls are showing, the first page-turning click hides them; click again to turn. Links, images, and text selection keep their own behavior.
 
 Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Space** for the previous page. See the [keyboard shortcuts](README.md#keyboard-shortcuts) for more options.

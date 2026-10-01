@@ -59,7 +59,7 @@ import { BookmarkManager } from "./BookmarkManager.js";
 import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
-import { frameContentBounds, isReflowableEdgeWhitespace, outerEdgeSide, outerMarginSide, reflowableContentBounds } from "./PageMargins.js";
+import { frameContentBounds, isReflowableEdgeWhitespace, outerEdgeSide, outerMarginSide, reflowableContentBounds, reflowableEdgeSide } from "./PageMargins.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { ReadingHistory } from "./ReadingHistory.js";
@@ -75,7 +75,7 @@ import { MediaOverlayNarration, type NarrationTarget } from "./MediaOverlayNarra
 import { NarrationReadingBridge } from "./NarrationReadingBridge.js";
 import { selectedReadingRange } from "./ReadingPosition.js";
 import { NativeReadingPosition, type NativeReadingPoint } from "./NativeReadingPosition.js";
-import type { NarrationAction } from "./ReaderTypes.js";
+import type { ContentUiDismissal, NarrationAction } from "./ReaderTypes.js";
 import { TransientReadingHighlight } from "./TransientReadingHighlight.js";
 import type { InspectorReference } from "./InspectorReferences.js";
 import { DEFAULT_CHROME_THEME } from "./chromeTheme.js";
@@ -813,12 +813,12 @@ export class ReaderController {
     this.notify();
   }
 
-  private dismissReaderUi: (() => boolean) | undefined;
+  private dismissReaderUi: ContentUiDismissal | undefined;
   private contentPointerDismissals: WeakMap<PointerEvent, boolean> | undefined;
 
   /** UI visibility belongs to the shell. The result is sampled at pointerdown,
    * before activity notifications can hide chrome or rebuild listeners. */
-  public setContentUiDismissal(dismiss: (() => boolean) | undefined): void {
+  public setContentUiDismissal(dismiss: ContentUiDismissal | undefined): void {
     this.dismissReaderUi = dismiss;
   }
 
@@ -826,7 +826,10 @@ export class ReaderController {
     const previous = this.contentPointerDismissals?.get(event);
     if (previous !== undefined) return previous;
     if (!this.dismissReaderUi || (event.pointerType === "mouse" && event.button !== 0)) return false;
-    const dismissed = this.dismissReaderUi();
+    const node = event.target as Node | null;
+    const point = this.containerEl && node?.ownerDocument === this.containerEl.ownerDocument
+      ? { clientX: event.clientX, clientY: event.clientY } : undefined;
+    const dismissed = this.dismissReaderUi(point);
     this.recordDiagnosticEvent({ kind: "ui-dismissal", consumed: dismissed });
     (this.contentPointerDismissals ??= new WeakMap()).set(event, dismissed);
     return dismissed;
@@ -3489,20 +3492,24 @@ export class ReaderController {
       this.beginDragPageTurn(event, iframeDocument);
     };
     iframeDocument.addEventListener("pointerdown", onPointerDown);
-    const containerCleanup = this.setUpBelowPageClickFallback();
+    const containerCleanup = this.setUpPageBandClicks();
     this.dragCleanup = () => {
       iframeDocument.removeEventListener("pointerdown", onPointerDown);
       containerCleanup();
     };
   }
 
-  /** Clipped top/bottom bands hit the container, but only their outer
-   * horizontal margins are navigation targets. */
-  private setUpBelowPageClickFallback(): () => void {
+  /** Include clipped space and decorative chrome bands, but never controls
+   * or panels beside the content pane. */
+  private setUpPageBandClicks(): () => void {
     const containerEl = this.containerEl;
-    return containerEl
-      ? this.setUpMarginClicks(containerEl, containerEl.ownerDocument)
-      : () => {};
+    if (!containerEl) return () => {};
+    return this.setUpMarginClicks(containerEl.parentElement ?? containerEl, containerEl.ownerDocument, false, start => {
+      const node = start.target as Node | null;
+      return !!node && (containerEl.contains(node) ||
+        node.nodeType === 1 && !!(node as Element).closest("[data-ambra-page-band]") &&
+        this.isPageTurnTarget(node));
+    });
   }
 
   /** Both chapter documents and the blank companion share the same
@@ -3510,7 +3517,7 @@ export class ReaderController {
   private setUpSpreadClickToNavigate(host: SpreadPaginatedHost): () => void {
     const cleanups = this.contentDocumentViews(host).map(({ document: doc }) =>
       this.setUpMarginClicks(doc, doc, true));
-    cleanups.push(this.setUpMarginClicks(host.element, host.element.ownerDocument));
+    cleanups.push(this.setUpPageBandClicks());
     return () => cleanups.forEach(cleanup => cleanup());
   }
 
@@ -3522,10 +3529,16 @@ export class ReaderController {
     return () => cleanups.forEach(cleanup => cleanup());
   }
 
-  private setUpMarginClicks(target: Document | HTMLElement, doc: Document, swipe = false): () => void {
+  private setUpMarginClicks(
+    target: Document | HTMLElement,
+    doc: Document,
+    swipe = false,
+    acceptsPointer?: (start: PointerEvent) => boolean,
+  ): () => void {
     const down = (event: Event): void => {
       const start = event as PointerEvent;
       if (start.pointerType === "mouse" && start.button !== 0) return;
+      if (acceptsPointer && !acceptsPointer(start)) return;
       if (target !== doc) {
         this.dismissUiForPointer(start);
         this.bumpContentActivity();
@@ -3566,8 +3579,9 @@ export class ReaderController {
     if (host instanceof FixedSpreadHost) return outerEdgeSide(parentX, bounds);
     const margin = outerMarginSide(parentX, bounds);
     if (margin !== undefined) return margin;
+    const edge = reflowableEdgeSide(parentX, frames.map(frame => frameContentBounds(frame)));
+    if (doc === this.containerEl?.ownerDocument) return edge;
     if (!views.some(view => view.document === doc)) return undefined;
-    const edge = outerEdgeSide(parentX, frames.map(frame => frameContentBounds(frame)), 44);
     return edge !== undefined && isReflowableEdgeWhitespace(doc, x, y) ? edge : undefined;
   }
 

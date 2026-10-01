@@ -46,6 +46,16 @@ export function outerEdgeSide(x: number, pages: readonly HorizontalBounds[], min
   }));
 }
 
+/** Reflowable whitespace uses wider, full-height bands; publication content
+ * still owns text, media, and controls inside those bands. */
+export function reflowableEdgeSide(x: number, pages: readonly HorizontalBounds[]): -1 | 1 | undefined {
+  return outerMarginSide(x, pages.map(page => {
+    const width = page.right - page.left;
+    const inset = Math.min(width / 2, Math.max(64, Math.min(width * 0.2, 160)));
+    return { left: page.left + inset, right: page.right - inset };
+  }));
+}
+
 /** Probe only the nearest text node, not the publication tree. Full line
  * rectangles protect ligatures and combining characters as well as words. */
 export function isReflowableEdgeWhitespace(doc: Document, x: number, y: number): boolean {
