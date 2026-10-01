@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import { useRef, type FC } from "react";
 import { Button, Slider, Tooltip } from "@fluentui/react-components";
 import { ArrowResetRegular } from "@fluentui/react-icons";
 import { useTranslation } from "../../i18n/LocaleContext.js";
@@ -59,11 +59,13 @@ export const DefaultableSlider: FC<DefaultableSliderProps> = ({
   const fraction = max === min ? 0 : (defaultValue - min) / (max - min);
   const isAtDefault = Math.abs(value - defaultValue) < DEFAULT_EPSILON;
   const t = useTranslation();
+  const sliderRef = useRef<HTMLInputElement>(null);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
       <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
         <Slider
+          ref={sliderRef}
           min={min}
           max={max}
           step={step}
@@ -94,7 +96,11 @@ export const DefaultableSlider: FC<DefaultableSliderProps> = ({
           size="small"
           icon={<ArrowResetRegular />}
           disabled={isAtDefault}
-          onClick={() => onChange(defaultValue)}
+          onClick={() => {
+            // Reset disables this button; keep focus on the control it changes.
+            sliderRef.current?.focus({ preventScroll: true });
+            onChange(defaultValue);
+          }}
           aria-label={t("settings.resetSliderToDefault", { label: ariaLabel })}
         />
       </Tooltip>

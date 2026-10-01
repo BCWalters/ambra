@@ -1,21 +1,42 @@
 # Ambra Library
 
-Keep your EPUBs together and reopen a book at your saved reading position. Use the library icon in the reader toolbar to return to your books.
+Keep your EPUBs together and reopen a book at your saved reading position.
 
 ## Compact or full library
 
-The toolbar popup keeps its header and **Open library in new tab** button visible while
-you scroll through books or discovery links. Choose **Open library in new tab** at the
-bottom, or the expand icon in the header, to open a full browser tab with more
-room. Both actions are available before importing your first book.
+The extension popup uses a compact cover-and-metadata list whose books scroll
+independently. **Find books** and **Import EPUB** remain above the collection,
+including when the library is empty. Choose **Open library in new tab** for a
+full browser tab with more room; this is available before your first import.
 
-The compact grid fits three smaller covers across a typical popup. The full
-library retains larger covers; book titles and actions remain available in
-both views.
+The full library uses larger covers and offers **Continue reading** when a
+previously opened book is available. Search and **Sort** stay together in both
+views. Covers preserve the original artwork without cropping it.
+
+## Browse your library while reading
+
+Choose **Library**, immediately after **Contents** in the reader toolbar, to open
+a left-side library panel. The collection loads when you first open the panel.
+Opening it, searching, or sorting does not reload the current book or change your
+reading position.
+
+- Choose the current book to close the panel and return to reading without a reload.
+- Choose another book to save your current position, then open that book in the
+  same reader tab. If saving fails, Ambra stays in the current book and reports
+  the problem.
+- Use **Close** or **Escape** to dismiss the panel, or **Open library in new tab**
+  for the full library. Opening another reader reference panel replaces this one.
+
+The panel retains its search and ongoing imports while temporarily closed.
+To remove the book currently open in this reader, open the full library and
+close its reader tab first.
 
 ## Add a book from your device
 
-Choose **Bring a book → Choose EPUB files...** in an empty library, or **Import EPUB** once you have books. Select EPUB files from your device, then open a book to read. Use **Sort** to arrange your library.
+Choose **Import EPUB**, whether the library is empty or populated. Select EPUB
+files from your device, then open a book to read. **Sort** offers **Date added
+(newest first)**, **Date added (oldest first)**, **Title (A–Z)**, and **Author (A–Z)**. The saved sort order is shared
+by the full library, popup, and in-reader panel.
 
 If an import fails, the error includes the file name when available, so you can identify it when importing several books.
 
@@ -23,8 +44,8 @@ Importing the same EPUB again shows **Already in your library**, with **Read now
 
 ## Search your library
 
-Use **Search title or author** above your books in either the compact library or
-the full library tab. Each word can match part of a title or author, in any order.
+Use **Search title or author** above your books in the compact library, full
+library tab, or reader panel. Each word can match part of a title or author, in any order.
 Search ignores capitalization and accents in Latin-alphabet text; for example,
 `verne voyage` can find *Voyage au centre de la Terre* by Jules Verne.
 
@@ -35,7 +56,10 @@ The query is temporary and is cleared when the library page closes or reloads.
 
 ## Find new books on the web
 
-Choose **Find your next book → Explore books** in an empty library, or the globe-marked **Find books** beside library search once you have books. Sources open in a new tab:
+Choose **Find books** above the collection, including in an empty library. In the
+full library, this opens a centered dialog; **Close** or **Escape** dismisses it.
+From the compact popup or reader panel, it opens the full library in a new tab
+with discovery already open. Source links open in a new tab:
 
 - **Standard Ebooks:** choose **Advanced epub** for formatted classics.
 - **Project Gutenberg:** choose an **EPUB** or **EPUB3** download.
@@ -49,6 +73,12 @@ To save a library book to your device, open **Book details → Publication detai
 ## Check book details
 
 Open **Book details** for a description, or expand **Publication details** for rights and accessibility information. The [EPUB Inspector](epub-inspector.md) lets you explore the original metadata and files.
+
+**Remove from library** is at the bottom of Book details. You can also press
+**Delete** or **Backspace** on a focused book to request removal. Confirmation
+names the book and initially focuses **Cancel**. Removal deletes that library
+copy's saved position, bookmarks, highlights, and notes, not the original EPUB
+on your device.
 
 Ambra is available in the [Chrome Web Store](https://chromewebstore.google.com/detail/ambra-epub-reader/mcjkkebkhifgkkbahlcapjlnaihocogj). See the official [privacy policy](https://ambraepub.org/en/privacy/) for privacy details.
 

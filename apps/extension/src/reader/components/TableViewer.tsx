@@ -5,6 +5,7 @@ import { DismissRegular, ZoomInRegular, ZoomOutRegular } from "@fluentui/react-i
 import { makeOverflowingPreElementsFocusable, SandboxedContentHost } from "@ambra/engine";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { PreparedTable } from "../TableViewerContent.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 export interface TableViewerProps {
   table: PreparedTable | undefined;
@@ -19,6 +20,7 @@ const OpenTableViewer: FC<TableViewerProps & { table: PreparedTable }> = ({
   table, onRequestClose, onError,
 }) => {
   const t = useTranslation();
+  const chromeTheme = useChromeTheme();
   const dialog = useRef<HTMLDivElement>(null);
   const mount = useRef<HTMLDivElement>(null);
   const close = useRef<HTMLButtonElement>(null);
@@ -219,11 +221,10 @@ const OpenTableViewer: FC<TableViewerProps & { table: PreparedTable }> = ({
       onClick={event => { if (event.target === event.currentTarget) onRequestClose(); }}
       style={{ position: "absolute", inset: 0, zIndex: 20, display: "grid",
         gridTemplateRows: "64px minmax(0, 1fr) auto", paddingBottom: 16, boxSizing: "border-box",
-        minWidth: 0, overflow: "hidden", background: "rgba(10, 8, 6, 0.82)", color: "#f5f0e8" }}>
-      <Button ref={close} appearance="subtle" size="large" icon={<DismissRegular />}
+        minWidth: 0, overflow: "hidden", background: "rgba(10, 8, 6, 0.82)" }}>
+      <Button ref={close} appearance="secondary" size="large" icon={<DismissRegular />}
         aria-label={t("highlight.close")} onClick={onRequestClose}
-        style={{ position: "absolute", top: 16, right: 16, color: "#f5f0e8",
-          background: "rgba(255, 255, 255, 0.08)" }} />
+        style={{ position: "absolute", top: 16, right: 16 }} />
       <div onClick={event => { if (event.target === event.currentTarget) onRequestClose(); }}
         style={{ gridRow: 2, minHeight: 0, minWidth: 0, marginBottom: 16,
           display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -234,16 +235,18 @@ const OpenTableViewer: FC<TableViewerProps & { table: PreparedTable }> = ({
             transform: `translateX(${inlineOffset}px)`,
             background: "#fff", borderRadius: 4, boxShadow: "0 8px 40px rgba(0, 0, 0, 0.5)" }}>
           <div ref={mount} style={{ width: "100%", height: "100%" }} />
-          {loading && <Spinner label={t("reader.loading")} style={{ position: "absolute", inset: 0 }} />}
+          {loading && <Spinner label={t("reader.loading")} style={{ position: "absolute", inset: 0,
+            background: chromeTheme.surface, color: chromeTheme.text }} />}
         </div>
       </div>
-      <div style={{ gridRow: 3, justifySelf: "center", maxWidth: "calc(100% - 16px)" }}>
+      <div style={{ gridRow: 3, justifySelf: "center", maxWidth: "calc(100% - 16px)",
+        background: chromeTheme.surface, color: chromeTheme.text, borderRadius: 12 }}>
       {failure && <p role="alert">{t("tableViewer.error")}</p>}
       {resourcesUnavailable && <p role="alert">{t("tableViewer.resourcesUnavailable")}</p>}
       <div role="group" aria-label={t("tableViewer.controls")}
         style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "center",
-          padding: 8, borderRadius: 12, background: "rgba(20, 18, 16, 0.96)",
-          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.3)" }}>
+          padding: 8, borderRadius: 12, background: chromeTheme.surface,
+          boxShadow: chromeTheme.shadow }}>
         <Button appearance="transparent" icon={<ZoomOutRegular />} aria-label={t("imageViewer.zoomOut")}
           disabled={scale <= 0.25} style={{ color: "inherit", opacity: scale <= 0.25 ? 0.4 : 1 }}
           onClick={() => setScale(value => Math.max(0.25, value - 0.25))} />

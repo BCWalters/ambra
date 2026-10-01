@@ -117,8 +117,11 @@ describe("Shell accessibility semantics", () => {
         onExport={vi.fn()} onImportFile={vi.fn()} open pinned
         onTogglePin={vi.fn()} onRequestClose={vi.fn()} scrubberVisible={false} />,
     ));
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
-      .find((tab) => tab.textContent?.startsWith("Highlights"))!.click());
+    await act(async () => {
+      const filter = container.querySelector("select")!;
+      filter.value = "highlights";
+      filter.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     const publisherLabel = [...container.querySelectorAll("span")].find((entry) =>
       entry.textContent === text && entry.style.overflowWrap === "anywhere")!;
     expect(publisherLabel.style.overflow).toBe("hidden");

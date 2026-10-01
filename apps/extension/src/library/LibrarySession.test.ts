@@ -29,6 +29,13 @@ describe("LibrarySession", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it("exposes saved recency even when no reliable completion fraction is available", async () => {
+    const db = makeDatabase();
+    db.getAllProgress.mockResolvedValue(new Map([[book.id, { bookId: book.id, updatedAt: 123, cfi: "saved", fractionComplete: undefined }]]));
+    const session = new LibrarySession(db as unknown as LibraryDatabase);
+    expect((await session.refresh())?.[0]).toMatchObject({ lastReadAt: 123, progressFraction: undefined });
+    session.dispose();
+  });
   it("does not publish an older refresh after a newer deletion", async () => {
     const db = makeDatabase();
     const cover = deferred<LibraryCoverBlobs>();

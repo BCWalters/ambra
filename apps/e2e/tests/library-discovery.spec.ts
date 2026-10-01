@@ -1,260 +1,113 @@
-import { chromium, expect, test } from "@playwright/test";
-import type { BrowserContext, Page, TestInfo } from "@playwright/test";
+import { chromium, expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXTENSION_PATH } from "../harness.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const BOOK = path.resolve(here, "../fixtures/long-content.epub");
-const SECOND_BOOK = path.resolve(here, "../fixtures/two-chapter.epub");
+const BOOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/long-content.epub");
 
-async function withLibrary(
-  testInfo: TestInfo,
-  viewport: { width: number; height: number },
-  run: (page: Page, context: BrowserContext) => Promise<void>,
-) {
+async function withLibrary(testInfo: TestInfo, width: number, run: (page: Page, context: BrowserContext) => Promise<void>) {
   const profile = testInfo.outputPath("profile");
   const context = await chromium.launchPersistentContext(profile, {
     headless: process.env.AMBRA_E2E_HEADLESS === "1",
     ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
-    viewport,
+    viewport: { width, height: width < 600 ? 480 : 900 },
     args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
   });
   try {
-    const externalRequests: string[] = [];
-    await context.route(/^https?:\/\//, async (route) => {
-      externalRequests.push(route.request().url());
-      await route.abort();
-    });
+    const requests: string[] = [];
+    await context.route(/^https?:\/\//, async (route) => { requests.push(route.request().url()); await route.abort(); });
     await context.setOffline(true);
-    const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
     const page = await context.newPage();
-    await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html${viewport.width >= 600 ? "?view=tab" : ""}`);
-    await expect(page.getByRole("heading", { name: "What will you read first?" })).toBeVisible();
+    await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html${width >= 600 ? "?view=tab" : ""}`);
+    await expect(page.getByRole("heading", { name: "No books yet" })).toBeVisible();
     await run(page, context);
-    expect(
-      externalRequests,
-      "Discovery must not fetch, scrape, or prefetch remote book sites",
-    ).toEqual([]);
+    expect(requests, "Discovery must not fetch or prefetch external sites").toEqual([]);
   } finally {
     await context.close();
     await fs.rm(profile, { recursive: true, force: true });
   }
 }
 
-async function expectDiscovery(page: Page, importLabel = "Import EPUB") {
-  const discovery = page.getByRole("region", { name: "Find your next read" });
-  await expect(discovery).toBeVisible();
+async function expectDiscovery(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Find books", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
   for (const [name, href] of [
-    ["Project Gutenberg", "https://www.gutenberg.org/ebooks/"],
     ["Standard Ebooks", "https://standardebooks.org/ebooks"],
+    ["Project Gutenberg", "https://www.gutenberg.org/ebooks/"],
     ["ReadBeyond", "https://www.readbeyond.it/ebooks.html"],
     ["eBooks.com", "https://www.ebooks.com/drm-free-epub"],
   ]) {
-    const link = discovery.getByRole("link", { name, exact: true });
-    await expect(link).toHaveAttribute("href", href);
+    const link = dialog.getByRole("link", { name, exact: true });
+    await expect(link).toHaveAttribute("href", href!);
     await expect(link).toHaveAttribute("target", "_blank");
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
   }
-  await expect(discovery).toContainText("Links open in a new tab");
-  await expect(discovery).toContainText("free EPUB collections and books to buy");
-  await expect(discovery).toContainText("DRM-free EPUBs available for purchase.");
-  await expect(discovery).toContainText("download it after purchase");
-  await expect(discovery).toContainText("recorded narration and synchronized text");
-  await expect(discovery).toContainText("Check each book's license");
-  await expect(discovery.getByRole("listitem").first()).toContainText(
-    "EPUB download (not Kindle or PDF)",
-  );
-  await expect(discovery.getByRole("listitem").nth(1)).toContainText("If it downloads instead");
-  await expect(discovery.getByRole("listitem").nth(1)).toContainText(importLabel);
-  await expect(discovery.getByRole("listitem").nth(1)).toContainText(".epub");
-  await expect(discovery).toContainText("Advanced epub");
-  await expect(discovery).toContainText("EPUB or EPUB3");
-  await expect(discovery).toContainText("not “Read+Listen”");
+  await expect(dialog).toContainText("Links open in a new tab");
+  await expect(dialog).toContainText("Check each book's license");
+  await expect(dialog).toContainText("recorded narration and synchronized text");
+  await expect(dialog).toContainText("DRM-free EPUBs available for purchase.");
+  await expect(dialog.getByRole("listitem").nth(1)).toContainText("Import EPUB");
+  return dialog;
 }
 
-test("a failed first import retains both choices and the import card retries with a local EPUB", async ({
-  browserName: _browserName,
-}, testInfo) => {
-  await withLibrary(testInfo, { width: 1000, height: 1050 }, async (page) => {
-    await page.getByRole("button", { name: "Find your next book Explore books" }).click();
-    await page.locator('input[type="file"]').setInputFiles({
-      name: "invalid.epub",
-      mimeType: "application/epub+zip",
-      buffer: Buffer.from("not an EPUB"),
-    });
-    const alert = page.getByRole("alert");
-    await expect(alert).toContainText("Oh dear, that doesn't look like a valid EPUB file.");
-    await expectDiscovery(page, "Choose EPUB files...");
-    await page.screenshot({
-      path: testInfo.outputPath("invalid-first-import.png"),
-      fullPage: true,
-    });
-    await alert.getByRole("button", { name: "Dismiss" }).click();
-    await expect(alert).toBeHidden();
-    const chooserPromise = page.waitForEvent("filechooser");
-    await page.getByRole("button", { name: "Bring a book Choose EPUB files..." }).press("Enter");
-    const chooser = await chooserPromise;
-    await chooser.setFiles(BOOK);
-    await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Find books", exact: true })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    await expect(alert).toBeHidden();
-  });
-});
-
-test("empty library offers equal cards, on-demand discovery and keyboard import without network", async ({
-  browserName: _browserName,
-}, testInfo) => {
-  await withLibrary(testInfo, { width: 1000, height: 900 }, async (page) => {
-    const discovery = page.getByRole("region", { name: "Find your next read" });
-    await expect(discovery).toBeHidden();
-    await expect(page.getByRole("toolbar").getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Sort library" })).toHaveCount(0);
-    await expect(page.getByRole("toolbar").getByRole("button")).toHaveCount(2);
-    await expect(page.getByRole("button", { name: "Find books", exact: true })).toHaveCount(0);
-    const importFirst = page.getByRole("button", { name: "Bring a book Choose EPUB files..." });
-    const explore = page.getByRole("button", { name: "Find your next book Explore books" });
-    const left = (await importFirst.boundingBox())!;
-    const right = (await explore.boundingBox())!;
-    expect(right.x).toBeGreaterThan(left.x);
-    expect(right.y).toBe(left.y);
-    expect(right.width).toBe(left.width);
-    expect(right.height).toBe(left.height);
-    await expect(page.getByRole("main").getByRole("button")).toHaveCount(2);
-    await page.screenshot({ path: testInfo.outputPath("empty-library-desktop.png"), fullPage: true });
-    await importFirst.focus();
-    expect(await importFirst.evaluate((node) => getComputedStyle(node).outlineStyle)).toBe("solid");
-    await page.keyboard.press("Tab");
-    await expect(explore).toBeFocused();
-    await explore.press("Enter");
-    await expect(explore).toHaveAttribute("aria-expanded", "true");
-    await expect(explore).toBeFocused();
-    await expectDiscovery(page, "Choose EPUB files...");
-    await expect(importFirst).toBeVisible();
-    expect((await discovery.boundingBox())!.y).toBeGreaterThan(right.y + right.height);
-    await expect(discovery).toHaveAttribute("id", (await explore.getAttribute("aria-controls"))!);
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Standard Ebooks", exact: true })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Project Gutenberg", exact: true })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "ReadBeyond", exact: true })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "eBooks.com", exact: true })).toBeFocused();
-    await page.screenshot({
-      path: testInfo.outputPath("empty-library-desktop-expanded.png"),
-      fullPage: true,
-    });
-    await explore.focus();
-    await explore.press("Space");
-    await expect(discovery).toBeHidden();
-    await expect(explore).toBeFocused();
-
-    await importFirst.focus();
-    const chooserPromise = page.waitForEvent("filechooser");
-    await page.keyboard.press("Enter");
-    const chooser = await chooserPromise;
-    await chooser.setFiles(BOOK);
-    await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(1);
-    await expect(page.getByRole("heading", { name: "Ambra", exact: true }).locator("..")).toBeFocused();
-    await expect(page.getByRole("button", { name: "Sort library" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Read now:/ })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Find your next read" })).toBeHidden();
-    await expect(page.getByRole("button", { name: "Find books", exact: true })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-  });
-});
-
-test("Find books stays available after imports and expands only on request with Enter and Space", async ({
-  browserName: _browserName,
-}, testInfo) => {
-  await withLibrary(testInfo, { width: 1000, height: 800 }, async (page) => {
-    await page.locator('input[type="file"]').setInputFiles(BOOK);
-    const findBooks = page.getByRole("button", { name: "Find books", exact: true });
-    await expect(findBooks).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByRole("link", { name: "Project Gutenberg", exact: true })).toBeHidden();
-    await page.screenshot({ path: testInfo.outputPath("one-book-collapsed.png"), fullPage: true });
-    await findBooks.focus();
-    await page.keyboard.press("Enter");
-    await expect(findBooks).toHaveAttribute("aria-expanded", "true");
+test("empty full library keeps normal actions, opens centered discovery and restores focus on Escape", async ({ browserName: _browserName }, info) => {
+  await withLibrary(info, 1000, async (page) => {
+    const find = page.getByRole("button", { name: "Find books", exact: true });
+    await expect(find).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("contentinfo")).not.toContainText("0 books");
+    await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
+    await find.click();
+    const dialog = await expectDiscovery(page);
+    const box = (await dialog.boundingBox())!;
+    expect(Math.abs(box.x + box.width / 2 - 500)).toBeLessThan(2);
+    await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(find).toBeFocused();
+    await find.click();
     await expectDiscovery(page);
-    const panelId = await findBooks.getAttribute("aria-controls");
-    await expect(page.getByRole("region", { name: "Find your next read" })).toHaveAttribute(
-      "id",
-      panelId!,
-    );
-    await expect(findBooks).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Standard Ebooks", exact: true })).toBeFocused();
-    await page.screenshot({ path: testInfo.outputPath("one-book-expanded.png"), fullPage: true });
-    await findBooks.focus();
-    await page.keyboard.press("Space");
-    await expect(findBooks).toHaveAttribute("aria-expanded", "false");
-    await expect(findBooks).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("main").getByRole("button", { name: /^Open / }).first()).toBeFocused();
-
-    await page.locator('input[type="file"]').setInputFiles(SECOND_BOOK);
-    await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(2);
-    await expect(findBooks).toHaveAttribute("aria-expanded", "false");
-    await findBooks.click();
-    await expectDiscovery(page);
-    await page.reload();
-    await expect(findBooks).toHaveAttribute("aria-expanded", "false");
-
-    for (let remaining = 2; remaining > 0; remaining--) {
-      const remove = page.getByRole("button", { name: /^Remove .* from library$/ }).first();
-      await remove.focus();
-      await remove.press("Enter");
-      await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(remaining - 1);
-    }
-    await expect(page.getByRole("region", { name: "Find your next read" })).toBeHidden();
-    await expect(page.getByRole("heading", { name: "What will you read first?" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Find your next book Explore books" }).click();
-    await expectDiscovery(page, "Choose EPUB files...");
+    await page.mouse.click(4, 4);
+    await expect(dialog).toBeHidden();
+    await expect(find).toBeFocused();
   });
 });
 
-test("discovery fits a narrow library popup without horizontal scrolling", async ({
-  browserName: _browserName,
-}, testInfo) => {
-  await withLibrary(testInfo, { width: 360, height: 600 }, async (page) => {
-    const bring = page.getByRole("button", { name: "Bring a book Choose EPUB files..." });
-    const explore = page.getByRole("button", { name: "Find your next book Explore books" });
-    const firstCard = (await bring.boundingBox())!;
-    const secondCard = (await explore.boundingBox())!;
-    expect(secondCard.y).toBeGreaterThan(firstCard.y + firstCard.height);
-    expect(secondCard.x).toBe(firstCard.x);
-    await expect(page.getByRole("toolbar").getByRole("button")).toHaveCount(3);
-    await page.screenshot({ path: testInfo.outputPath("empty-library-narrow.png"), fullPage: true });
-    await explore.click();
-    await expectDiscovery(page, "Choose EPUB files...");
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
-    const first = await page
-      .getByRole("link", { name: "Standard Ebooks", exact: true })
-      .boundingBox();
-    const second = await page
-      .getByRole("link", { name: "Project Gutenberg", exact: true })
-      .boundingBox();
-    expect(second!.y).toBeGreaterThan(first!.y);
-    await page.screenshot({
-      path: testInfo.outputPath("empty-library-narrow-expanded.png"),
-      fullPage: true,
+for (const width of [320, 360]) {
+  test(`${width}px compact discovery opens the full library with the modal already open`, async ({ browserName: _browserName }, info) => {
+    await withLibrary(info, width, async (page, context) => {
+      const opened = context.waitForEvent("page");
+      await page.getByRole("button", { name: "Find books", exact: true }).click();
+      const full = await opened;
+      await expect(full).toHaveURL(/\?view=tab&discover=1$/);
+      await expectDiscovery(full);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Open library in new tab", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && scrollY === 0)).toBe(true);
     });
-    await page.locator('input[type="file"]').setInputFiles(BOOK);
+  });
+}
+
+test("failed imports retain the single normal Import action, retry succeeds and discovery remains available", async ({ browserName: _browserName }, info) => {
+  await withLibrary(info, 1000, async (page) => {
+    await page.locator('input[type="file"]').setInputFiles({ name: "invalid.epub", mimeType: "application/epub+zip", buffer: Buffer.from("not an EPUB") });
+    await expect(page.getByRole("alert")).toContainText("doesn't look like a valid EPUB");
     await page.getByRole("button", { name: "Find books", exact: true }).click();
     await expectDiscovery(page);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
-    await page.screenshot({
-      path: testInfo.outputPath("one-book-narrow-expanded.png"),
-      fullPage: true,
-    });
+    await page.keyboard.press("Escape");
+    await page.getByRole("alert").getByRole("button", { name: "Dismiss", exact: true }).click();
+    const choosing = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Import EPUB", exact: true }).press("Enter");
+    await (await choosing).setFiles(BOOK);
+    await expect(page.locator("[data-library-collection] [data-book-open]")).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Find books", exact: true }).click();
+    await expectDiscovery(page);
   });
 });

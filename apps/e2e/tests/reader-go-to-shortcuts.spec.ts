@@ -180,7 +180,7 @@ test("A late Go to exit preserves the shortcut guide's focus and accessibility o
   }
 });
 
-test("A late Go to exit preserves a newly opened Settings menu and its focus", async ({ browserName }, info) => {
+test("A late Go to exit preserves the Ambra settings dialog and Page theme focus", async ({ browserName }, info) => {
   expect(browserName).toBe("chromium");
   const { context, readerPage: page } = await launchReader(navigationFixture(info, [3, 4]));
   try {
@@ -201,15 +201,20 @@ test("A late Go to exit preserves a newly opened Settings menu and its focus", a
     await expect(dialog(page, "Percentage")).toHaveCount(0);
     await page.waitForFunction(() => Reflect.has(window, "__finishGoToExit"));
     await page.mouse.move(10, 2);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    const menu = page.getByRole("menu");
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
+    await trigger.click();
+    const settings = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+    const pageTheme = settings.getByRole("combobox", { name: "Page theme", exact: true });
+    await expect(settings).toBeVisible();
+    await expect(pageTheme).toBeFocused();
     await page.evaluate(() => Reflect.get(window, "__finishGoToExit")());
     await finishModalMotion(page);
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem").first()).toBeFocused();
-    await menu.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await expect(pageTheme).toBeFocused();
+    await pageTheme.press("Escape");
+    await expect(settings).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await page.getByRole("button", { name: "Help & About", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Help & About", exact: true })).toBeVisible();
   } finally {
     await context.close();

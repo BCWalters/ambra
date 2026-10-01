@@ -1,5 +1,16 @@
 import { isReaderOwnedContent, markReaderOwnedContent, measureSimpleTableRows, ReadingTheme } from "@ambra/engine";
 import type { Page } from "@ambra/engine";
+import { getInterfaceCssVariables, getInterfaceTheme, type InterfaceTheme } from "@ambra/shell/theme";
+
+export function updateTableControlTheme(doc: Document, palette: InterfaceTheme): void {
+  const root = Array.from(doc.querySelectorAll<HTMLElement>("[data-ambra-table-controls]"))
+    .find(isReaderOwnedContent);
+  if (!root) return;
+  for (const [key, value] of Object.entries(getInterfaceCssVariables(palette))) {
+    root.style.setProperty(key, value);
+  }
+  root.style.setProperty("color-scheme", palette.appearance, "important");
+}
 
 export function updateTableControlLabels(doc: Document, label: string): void {
   const root = Array.from(doc.querySelectorAll<HTMLElement>("[data-ambra-table-controls]"))
@@ -16,6 +27,7 @@ export function attachTableControls(
   label: string,
   open: (table: HTMLTableElement, trigger: HTMLButtonElement) => void,
   visiblePage?: () => Page | undefined,
+  palette: InterfaceTheme = getInterfaceTheme("ambra", "light"),
 ): () => void {
   const tables = Array.from(doc.querySelectorAll("table")).filter(table =>
     !table.parentElement?.closest("table") && !isReaderOwnedContent(table));
@@ -30,11 +42,18 @@ export function attachTableControls(
     :host { all: initial; }
     button { all: initial; position: fixed; margin: 0; box-sizing: border-box;
       width: 28px; height: 28px; display: none; place-items: center;
-      border: 1px solid CanvasText; border-radius: 4px; background: Canvas;
-      color: CanvasText; cursor: zoom-in; font: 20px/1 system-ui; }
+      border: 1px solid var(--ambraControlBorder); border-radius: 4px; background: var(--ambraSurface);
+      color: var(--ambraAccentForeground); cursor: zoom-in; font: 20px/1 system-ui; }
     button::backdrop { display: none; }
     button:popover-open { display: grid; }
-    button:focus-visible { outline: 3px solid Highlight; outline-offset: 1px; }
+    button:hover { background: var(--ambraHover); }
+    button:active { background: var(--ambraSelected); }
+    button:focus-visible { outline: 3px solid var(--ambraFocus); outline-offset: 2px;
+      box-shadow: 0 0 0 2px var(--ambraSurface); }
+    @media (forced-colors: active) {
+      button { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+      button:focus-visible { outline-color: Highlight; box-shadow: none; }
+    }
   `;
   shadow.append(style);
   const entries = tables.map(table => {
@@ -58,6 +77,7 @@ export function attachTableControls(
     return { table, button };
   });
   doc.body.append(root);
+  updateTableControlTheme(doc, palette);
   let frame = 0;
   let disposed = false;
   const update = (): void => {

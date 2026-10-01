@@ -37,8 +37,10 @@ async function measured(page: Page): Promise<void> {
 
 async function openPanel(page: Page): Promise<void> {
   await page.mouse.move(10, 2);
-  await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
-  await expect(page.getByRole("navigation", { name: "Bookmarks and highlights" })).toBeVisible();
+  await page.getByRole("button", { name: "Annotations", exact: true }).click();
+  const panel = page.getByRole("navigation", { name: "Annotations", exact: true });
+  await expect(panel).toBeVisible();
+  await panel.getByRole("combobox", { name: "Show", exact: true }).selectOption("bookmarks");
 }
 
 interface BookmarkView {
@@ -90,7 +92,9 @@ for (const width of [1400, 320]) {
       expect(new Set(initial.map(bookmark => bookmark.title))).toEqual(new Set(chapterTitles));
       expect(initial[0]!.label).toBe("Legacy personal label — Page 999");
       await openPanel(page);
-      const panel = page.getByRole("navigation", { name: "Bookmarks and highlights" });
+      const panel = page.getByRole("navigation", { name: "Annotations", exact: true });
+      const show = panel.getByRole("combobox", { name: "Show", exact: true });
+      await expect(show.locator('option[value="bookmarks"]')).toHaveText("Bookmarks (3)");
       const cards = panel.locator("[data-bookmark-card]");
       await expect(cards).toHaveCount(3);
       for (const [index, bookmark] of initial.entries()) {
@@ -136,13 +140,13 @@ for (const width of [1400, 320]) {
       if (width === 1400) {
         const paneWidth = await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().paneWidth);
         const panelWidth = (await panel.boundingBox())!.width;
-        await panel.getByRole("button", { name: "Pin bookmarks and highlights panel", exact: true }).click();
+        await panel.getByRole("button", { name: "Pin annotations panel", exact: true }).click();
         await expect.poll(() => page.evaluate(() =>
           Reflect.get(window, "__readerController").snapshot().paneWidth)).toBe(paneWidth - panelWidth);
         await measured(page);
         const pinned = await bookmarkViews(page);
         await expect(cards.locator("[data-bookmark-page]")).toHaveText(pinned.map(bookmark => `Page ${bookmark.page}`));
-        await panel.getByRole("button", { name: "Unpin bookmarks and highlights panel", exact: true }).click();
+        await panel.getByRole("button", { name: "Unpin annotations panel", exact: true }).click();
         await expect.poll(() => page.evaluate(() =>
           Reflect.get(window, "__readerController").snapshot().paneWidth)).toBe(paneWidth);
         await measured(page);
@@ -198,7 +202,9 @@ for (const width of [1400, 320]) {
       await remove.first().focus();
       await page.keyboard.press("Enter");
       await expect(cards).toHaveCount(0);
-      await expect(panel.getByRole("tabpanel")).toBeFocused();
+      await expect(show).toBeFocused();
+      await expect(show).toHaveValue("bookmarks");
+      await expect(show.locator('option[value="bookmarks"]')).toHaveText("Bookmarks (0)");
       await expect(panel.getByText(/No bookmarks yet/)).toBeVisible();
     } finally {
       await context.close();
@@ -225,7 +231,7 @@ test("publisher bookmarks keep measured page metadata and read-only navigation (
     await card.locator("[data-bookmark-link]").focus();
     await page.keyboard.press("Enter");
     await measured(page);
-    await expect(page.getByRole("navigation", { name: "Bookmarks and highlights" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Annotations", exact: true })).toBeHidden();
     expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().bookPageIndex))
       .toBe(embedded.location.page.number);
     await page.evaluate(() => {

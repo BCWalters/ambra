@@ -2,7 +2,7 @@ import type { FC } from "react";
 import { Tooltip } from "@fluentui/react-components";
 import { NoteFilled } from "@fluentui/react-icons";
 import type { NoteMarkerState } from "../ReaderTypes.js";
-import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
+import { CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 
@@ -49,10 +49,10 @@ export const NoteMarkers: FC<NoteMarkersProps> = ({ markers, onSelect }) => {
               width: 18,
               height: 18,
               borderRadius: "50%",
-              border: `1px solid ${CHROME_BORDER}`,
+              border: `1px solid ${chromeTheme.controlBorder}`,
               boxShadow: CHROME_SHADOW,
               background: chromeTheme.backgroundSolid,
-              color: chromeTheme.accent,
+              color: chromeTheme.accentForeground,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

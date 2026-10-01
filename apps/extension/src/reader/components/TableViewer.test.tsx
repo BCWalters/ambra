@@ -4,6 +4,8 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TableViewer } from "./TableViewer.js";
 import type { PreparedTable } from "../TableViewerContent.js";
+import { ChromeThemeProvider } from "../ChromeThemeContext.js";
+import { getInterfaceTheme } from "@ambra/shell/theme";
 
 const surfaces = vi.hoisted(() => ({ list: [] as Array<{ element: HTMLIFrameElement; dispose: ReturnType<typeof vi.fn> }>,
   fail: false }));
@@ -19,6 +21,10 @@ vi.mock("@ambra/engine", async importOriginal => ({
     async render() {
       if (surfaces.fail) throw new Error("load failed");
       this.element.contentDocument!.body.innerHTML = "<table><tbody><tr><td>Cell</td></tr></tbody></table>";
+      // happy-dom's iframe Document lacks the browser's images collection.
+      Object.defineProperty(this.element.contentDocument!, "images", {
+        get: () => this.element.contentDocument!.querySelectorAll("img"),
+      });
     }
   },
 }));
@@ -62,6 +68,33 @@ describe("TableViewer", () => {
     act(() => { target.dispatchEvent(event); });
     return event;
   };
+
+  it("repaints control chrome without remounting or altering the publication document and zoom", async () => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    vi.spyOn(window, "matchMedia").mockReturnValue(media);
+    let dark = false;
+    vi.spyOn(media, "matches", "get").mockImplementation(() => dark);
+    let original = "";
+    for (const appearance of ["light", "dark"] as const) {
+      act(() => { dark = appearance === "dark"; media.dispatchEvent(new Event("change")); });
+      for (const theme of ["ambra", "silver", "green", "blue", "purple"] as const) {
+        await act(async () => root.render(<ChromeThemeProvider theme={theme}>
+          <TableViewer table={table} onRequestClose={onRequestClose} onError={onError} />
+        </ChromeThemeProvider>));
+        expect(surfaces.list).toHaveLength(1);
+        if (!original) {
+          act(() => button("Zoom in").click());
+          original = surfaces.list[0]!.element.contentDocument!.documentElement.outerHTML;
+        }
+        const controls = container.querySelector<HTMLElement>('[role="group"]')!;
+        expect(controls.style.background).toBe(getInterfaceTheme(theme, appearance).surface);
+        expect(controls.parentElement!.style.color).toBe(getInterfaceTheme(theme, appearance).text);
+        expect(surfaces.list[0]!.element.contentDocument!.documentElement.outerHTML).toBe(original);
+        expect(container.querySelector("output")!.textContent).toBe("125%");
+        expect(onError).not.toHaveBeenCalled();
+      }
+    }
+  });
 
   it("isolates semantic content, starts at actual size, clamps zoom and resets on reopen", async () => {
     await render();

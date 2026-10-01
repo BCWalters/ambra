@@ -15,9 +15,9 @@ type SettingEvent = {
   }
 }[keyof DiagnosticSettings];
 
-export type DiagnosticSurface = "toc" | "annotations" | "search" | "details" | "inspector" |
+export type DiagnosticSurface = "toc" | "library" | "annotations" | "search" | "details" | "inspector" |
   "settings" | "typography" | "help" | "shortcuts" | "narration" | "image" | "table" |
-  "selection" | "highlight" | "footnote" | "go-to";
+  "selection" | "highlight" | "footnote" | "go-to" | "bookmark-chooser";
 export interface DiagnosticSurfaceState {
   open: boolean;
   pinned?: boolean;

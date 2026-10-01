@@ -33,7 +33,9 @@ export const BookMetadataText: FC<{
 }> = ({ value, name, kind = "detail", small, heading, style }) => {
   const t = useTranslation();
   const id = useId();
-  const summary = useMemo(() => metadataTextSummary(value, kind), [value, kind]);
+  const summary = useMemo(() => heading
+    ? { preview: value, expanded: value }
+    : metadataTextSummary(value, kind), [value, kind, heading]);
   const [expandedValue, setExpandedValue] = useState<string>();
   const expanded = expandedValue === value;
   const ValueText = heading ? Body1Strong : small ? Caption1 : Body1;

@@ -46,8 +46,7 @@ async function position(page: Page) {
 
 async function reopen(page: Page) {
   await page.mouse.move(10, 10);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+  await page.getByRole("button", { name: "Help & About", exact: true }).click();
   await page.getByRole("button", { name: "Reading tips", exact: true }).click();
   await expect(welcome(page)).toBeVisible();
 }
@@ -58,8 +57,7 @@ for (const width of [1100, 320]) {
     const app = await launchReader(book, { viewport: { width, height: 850 } });
     try {
       const page = app.readerPage;
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+      await page.getByRole("button", { name: "Help & About", exact: true }).click();
       const help = page.getByRole("dialog", { name: "Help & About", exact: true });
       const tips = help.getByRole("button", { name: "Reading tips", exact: true });
       const shortcuts = help.getByRole("button", { name: "Show keyboard shortcuts", exact: true });
@@ -67,7 +65,10 @@ for (const width of [1100, 320]) {
       await expect(tips).toBeVisible();
       await expect(guide).toHaveAttribute("target", "_blank");
       await expect(help).toBeInViewport({ ratio: 1 });
-      const boxes = await Promise.all([tips, shortcuts, guide].map(item => item.boundingBox()));
+      await expect.poll(() => help.evaluate(element =>
+        element.getAnimations({ subtree: true }).every(animation => animation.playState === "finished"),
+      )).toBe(true);
+      const boxes = await Promise.all([guide, tips, shortcuts].map(item => item.boundingBox()));
       for (let index = 0; index < boxes.length; index++) {
         const box = boxes[index]!;
         expect(box.height).toBeGreaterThanOrEqual(40);
@@ -75,11 +76,11 @@ for (const width of [1100, 320]) {
         expect(box.x + box.width).toBeLessThanOrEqual(width);
         if (index > 0) expect(box.y).toBeGreaterThanOrEqual(boxes[index - 1]!.y + boxes[index - 1]!.height);
       }
-      await tips.focus();
+      await guide.focus();
+      await page.keyboard.press("Tab");
+      await expect(tips).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(shortcuts).toBeFocused();
-      await page.keyboard.press("Tab");
-      await expect(guide).toBeFocused();
       await page.screenshot({ path: info.outputPath(`help-actions-${width}.png`) });
       await tips.click();
       await expect(welcome(page)).toBeVisible();
@@ -141,7 +142,7 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
       const { hasRenderedContent, isLoading } = Reflect.get(window, "__readerController").snapshot();
       return { hasRenderedContent, isLoading };
     })).toEqual({ hasRenderedContent: true, isLoading: false });
-    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ambra settings", exact: true })).toBeVisible();
     await expect(welcome(page)).toHaveCount(0);
     await reopen(page);
     await page.screenshot({ path: info.outputPath("welcome-reopened.png") });

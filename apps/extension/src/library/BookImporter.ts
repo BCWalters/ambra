@@ -3,15 +3,21 @@ import type { BookImportResult, LibraryDatabase } from "./LibraryDatabase.js";
 
 export type BookImportPhase = "processing" | "saving";
 
+const COVER_IMAGE_MEDIA_TYPES = new Set([
+  "image/jpeg", "image/png", "image/gif", "image/svg+xml",
+  "image/webp", "image/avif", "image/bmp",
+]);
+
 /**
  * Parses `file` with the real engine (just enough to read metadata and
  * find a cover image — it never renders the book) and adds it to
- * `library`. Kept as a standalone function rather than a `LibraryDatabase`
+ * `library`. Prefers EPUB3 cover-image, then a supported image referenced
+ * by EPUB2 cover metadata. Kept as a standalone function rather than a `LibraryDatabase`
  * method since it depends on the engine, while the database class itself
  * deliberately doesn't (it's just IndexedDB plumbing).
  */
 export async function importBook(
-  library: LibraryDatabase,
+  library: Pick<LibraryDatabase, "addBook">,
   file: File,
   onPhase?: (phase: BookImportPhase) => void,
 ): Promise<BookImportResult> {
@@ -21,7 +27,18 @@ export async function importBook(
   const pkg = await container.getPackageDocument();
 
   let coverBlob: Blob | undefined;
-  const coverItem = pkg.manifest.find((item) => item.hasProperty("cover-image"));
+  let coverItem = pkg.manifest.find((item) => item.hasProperty("cover-image"));
+  if (!coverItem) {
+    const coverId = pkg.metadata.metaEntries.find((entry) => entry.key === "cover" && entry.refines === undefined)?.value;
+    if (coverId) {
+      const declaredCover = pkg.getManifestItem(coverId);
+      if (declaredCover && COVER_IMAGE_MEDIA_TYPES.has(declaredCover.mediaType)) {
+        coverItem = declaredCover;
+      } else {
+        console.warn("Ambra ignored a cover declaration that does not reference a supported image.", coverId);
+      }
+    }
+  }
   if (coverItem) {
     const contentLoader = await ContentLoader.create(container);
     const bytes = await contentLoader.loadResourceBytes(coverItem.path);

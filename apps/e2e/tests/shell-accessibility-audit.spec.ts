@@ -1,46 +1,57 @@
-import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
+import { getChromeTheme } from "../../extension/src/reader/chromeTheme.js";
 
 const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/two-chapter.epub");
 
 // These assertions cover DOM focus and browser accessibility semantics, not
 // VoiceOver's independent spoken/browse cursor or actual announcements.
-for (const tooltipName of [undefined, "Sort library", "Help & About", "Expand library into a full browser tab"]) {
-  test(`Library Language selection closes one submenu level with Escape at 320px (${tooltipName ?? "pointer"})`, async () => {
-    const { context, libraryPage: page } = await launchReader(book, { viewport: { width: 320, height: 600 } });
+const settingsEntries = [
+  ...[undefined, "Sort library", "Ambra settings", "Help & About", "Open library in new tab"]
+    .map(entryName => ({ surface: "Library", entryName })),
+  { surface: "Reader", entryName: "Help & About" },
+];
+for (const { surface, entryName } of settingsEntries) {
+  test(`${surface} Language selection closes Ambra settings and restores focus at 320px (${entryName ?? "pointer"})`, async () => {
+    const { context, libraryPage, readerPage } = await launchReader(book, { viewport: { width: 320, height: 600 } });
+    const page = surface === "Library" ? libraryPage : readerPage;
     try {
       await page.bringToFront();
-      const trigger = page.getByRole("button", { name: "Settings", exact: true });
-      if (tooltipName) {
-        await page.getByRole("button", { name: tooltipName, exact: true }).hover();
-        await expect(page.getByRole("tooltip", { name: tooltipName, exact: true })).toBeVisible();
+      if (surface === "Reader") await page.mouse.move(10, 2);
+      const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
+      const tooltipName = entryName === "Ambra settings" || entryName === "Help & About" ? entryName : undefined;
+      if (entryName) {
+        const entry = page.getByRole("button", { name: entryName, exact: true });
+        await expect(entry).toBeVisible();
+        await entry.hover();
+        if (tooltipName) await expect(page.getByRole("tooltip", { name: tooltipName, exact: true })).toBeVisible();
         await trigger.press("Enter");
       } else {
         await trigger.click();
       }
       expect(await page.getByRole("tooltip").count()).toBe(0);
-      const language = page.getByRole("menuitem", { name: /^Language/ });
-      await language.press("ArrowRight");
-      const english = page.getByRole("menuitemradio", { name: "English", exact: true });
-      if (tooltipName) await english.press("Enter");
-      else await english.click();
-      await expect(english).toHaveAttribute("aria-checked", "true");
+      const dialog = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+      const language = dialog.getByRole("combobox", { name: "Language", exact: true });
+      await language.focus();
+      if (entryName) {
+        // Native type-ahead also works in macOS headless Chromium, where
+        // arrow keys do not drive the operating system's select popup.
+        await language.press("e");
+      } else {
+        await language.selectOption("en");
+      }
+      await expect(language).toHaveValue("en");
       expect(await page.getByRole("tooltip").count()).toBe(0);
       await page.mouse.move(0, 0);
-      await english.press("Escape");
-      await expect(language).toBeFocused();
-      await expect(page.getByRole("menu")).toHaveCount(1);
-      await expect(page.getByRole("menu", { name: /^Language/ })).toBeHidden();
       await language.press("Escape");
       await expect(trigger).toBeFocused();
-      await expect(page.getByRole("menu")).toHaveCount(0);
-      if (tooltipName) {
-        await page.getByRole("button", { name: tooltipName, exact: true }).hover();
-        await expect(page.getByRole("tooltip", { name: tooltipName, exact: true })).toBeVisible();
+      await expect(dialog).toBeHidden();
+      if (entryName) {
+        await page.getByRole("button", { name: entryName, exact: true }).hover();
+        if (tooltipName) await expect(page.getByRole("tooltip", { name: tooltipName, exact: true })).toBeVisible();
       }
     } finally {
       await context.close();
@@ -48,49 +59,42 @@ for (const tooltipName of [undefined, "Sort library", "Help & About", "Expand li
   });
 }
 
-test("Settings exposes named flyout menus, checked rows and focus in Chromium's accessibility tree", async () => {
+test("Ambra settings exposes named native choices, selected values and focus in Chromium's accessibility tree", async () => {
   const { context, readerPage: page } = await launchReader(book, { forceAccessibility: true });
   try {
-    const trigger = page.getByRole("button", { name: "Settings", exact: true });
+    const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
     await trigger.focus();
     await trigger.press("Enter");
-    const menu = page.getByRole("menu", { name: "Settings", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Ambra settings", exact: true });
     const cdp = await context.newCDPSession(page);
     for (const [name, names] of [
       ["Page theme", ["White", "Sepia", "Dark"]],
       ["Reading mode", ["Paginated", "Scroll"]],
     ] as const) {
-      const parent = menu.getByRole("menuitem", { name: new RegExp(`^${name}`) });
-      await parent.press("ArrowRight");
-      await expect(parent).toHaveAttribute("aria-expanded", "true");
-      const submenu = page.getByRole("menu", { name: new RegExp(`^${name}`) });
+      const choice = dialog.getByRole("combobox", { name, exact: true });
       const selected = name === "Page theme" ? "Sepia" : "Paginated";
-      const choice = submenu.getByRole("menuitemradio", { name: selected, exact: true });
       await choice.focus();
-      await choice.press("Enter");
-      await expect(choice).toHaveAttribute("aria-checked", "true");
+      await choice.selectOption(selected.toLowerCase());
+      await expect(choice).toHaveValue(selected.toLowerCase());
+      await expect(choice.locator("option")).toHaveText([...names]);
       const { nodes } = await cdp.send("Accessibility.getFullAXTree");
       const exposed = nodes.filter(node => !node.ignored);
-      const submenuNode = exposed.find(node => node.role?.value === "menu" && String(node.name?.value).startsWith(name));
-      expect(submenuNode).toBeDefined();
+      const dialogNode = exposed.find(node => node.role?.value === "dialog" && node.name?.value === "Ambra settings");
+      expect(dialogNode).toBeDefined();
       const byId = new Map(nodes.map(node => [node.nodeId, node]));
-      const radios = exposed.filter(node => node.role?.value === "menuitemradio" && names.some(name => name === node.name?.value));
-      expect(radios.map(node => node.name?.value)).toEqual([...names]);
-      for (const radio of radios) {
-        const ancestors: string[] = [];
-        for (let node = byId.get(radio.nodeId); node?.parentId; node = byId.get(node.parentId)) ancestors.push(node.parentId);
-        expect(ancestors).toContain(submenuNode!.nodeId);
-        const properties = new Map(radio.properties?.map(property => [property.name, property.value.value]));
-        expect(properties.get("checked")).toBe(["Sepia", "Paginated"].includes(radio.name?.value) ? "true" : "false");
-        if (radio.name?.value === selected) expect(properties.get("focused")).toBe(true);
-      }
-      await choice.press("Escape");
-      await expect(parent).toBeFocused();
-      await expect(submenu).toBeHidden();
+      const control = exposed.find(node => node.role?.value === "combobox" && node.name?.value === name);
+      expect(control).toBeDefined();
+      expect(control!.value?.value).toBe(selected);
+      const ancestors: string[] = [];
+      for (let node = control; node?.parentId; node = byId.get(node.parentId)) ancestors.push(node.parentId);
+      expect(ancestors).toContain(dialogNode!.nodeId);
+      const properties = new Map(control!.properties?.map(property => [property.name, property.value.value]));
+      expect(properties.get("focused")).toBe(true);
+      await expect(choice).toBeFocused();
     }
     await cdp.detach();
     await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
+    await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
   } finally {
     await context.close();
@@ -103,8 +107,9 @@ test("Library exposes structure and supports keyboard-only modal entry and retur
     await libraryPage.bringToFront();
     await expect(libraryPage.getByRole("main", { name: "Ambra — Library" })).toBeVisible();
     const heading = libraryPage.getByRole("heading", { name: "Ambra", level: 1, exact: true });
-    const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
-    await expect(heading).toHaveCSS("color", `rgb(${accentRgb})`);
+    const appearance = await libraryPage.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const accent = getChromeTheme("ambra", appearance).accentForeground;
+    await expect(heading).toHaveCSS("color", `rgb(${accent.slice(1).match(/../g)!.map(part => Number.parseInt(part, 16)).join(", ")})`);
     const cover = libraryPage.getByRole("main").getByRole("button", { name: /^Open / }).first();
     await cover.focus();
     await cover.press("Tab");
@@ -125,7 +130,7 @@ test("Library exposes structure and supports keyboard-only modal entry and retur
   }
 });
 
-test("Search status and empty annotation tabpanels remain named and keyboard reachable", async () => {
+test("Search status and empty annotation filters remain named and keyboard reachable", async () => {
   const { context, readerPage } = await launchReader(book);
   try {
     await readerPage.getByRole("button", { name: "Search", exact: true }).click();
@@ -136,18 +141,18 @@ test("Search status and empty annotation tabpanels remain named and keyboard rea
     await expect(search.getByRole("status").locator("p")).toHaveCSS("opacity", "1");
     await input.press("Escape");
     await expect(search).toBeHidden();
-    await readerPage.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
-    const bookmarks = readerPage.getByRole("tab", { name: "Bookmarks", exact: true });
-    await bookmarks.focus();
-    await bookmarks.press("ArrowRight");
-    const highlights = readerPage.getByRole("tab", { name: "Highlights", exact: true });
-    await expect(highlights).toBeFocused();
-    await highlights.press("Enter");
-    await expect(highlights).toHaveAttribute("aria-selected", "true");
-    const panel = readerPage.getByRole("tabpanel", { name: "Highlights", exact: true });
+    await readerPage.getByRole("button", { name: "Annotations", exact: true }).click();
+    const annotations = readerPage.getByRole("navigation", { name: "Annotations", exact: true });
+    const filter = annotations.getByRole("combobox", { name: "Show", exact: true });
+    await filter.focus();
+    await filter.press("h");
+    await expect(filter).toBeFocused();
+    await expect(filter).toHaveValue("highlights");
+    await expect(filter.locator("option")).toHaveText(["All annotations (0)", "Highlights (0)", "Notes (0)", "Bookmarks (0)"]);
+    const panel = annotations.getByRole("region", { name: "Annotations", exact: true });
     await expect(panel).toContainText("No highlights");
-    await highlights.press("Tab");
-    await expect(panel).toBeFocused();
+    await filter.press("Tab");
+    await expect(annotations.getByRole("button", { name: "Export your bookmarks and highlights to a file", exact: true })).toBeFocused();
   } finally {
     await context.close();
   }
@@ -203,13 +208,12 @@ test("root overflow containment preserves native book and long flyout scrolling"
       element.scrollTo(301, 88);
       return { x: element.scrollLeft, y: element.scrollTop };
     })).toEqual({ x: 0, y: 0 });
-    await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
-    await readerPage.getByRole("menuitem", { name: /^Reading mode/ }).press("ArrowRight");
-    const scroll = readerPage.getByRole("menuitemradio", { name: "Scroll", exact: true });
-    await scroll.click();
-    await expect(scroll).toHaveAttribute("aria-checked", "true");
+    await readerPage.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    const scroll = readerPage.getByRole("dialog", { name: "Ambra settings", exact: true })
+      .getByRole("combobox", { name: "Reading mode", exact: true });
+    await scroll.selectOption("scroll");
+    await expect(scroll).toHaveValue("scroll");
     await scroll.press("Escape");
-    await readerPage.keyboard.press("Escape");
     await expect.poll(() => readerPage.evaluate(() => {
       const doc = document.querySelector("iframe")?.contentDocument;
       return !!doc?.scrollingElement && doc.scrollingElement.scrollHeight > doc.scrollingElement.clientHeight;

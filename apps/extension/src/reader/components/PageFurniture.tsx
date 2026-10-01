@@ -3,9 +3,9 @@ import { Caption1 } from "@fluentui/react-components";
 import { BookmarkFilled } from "@fluentui/react-icons";
 import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { ReaderSnapshot } from "../ReaderTypes.js";
-import { HEADER_TEXT_TOP_OFFSET } from "../furnitureLayout.js";
+import { HEADER_TEXT_TOP_OFFSET, PAGE_FURNITURE_TEXT_OPACITY } from "../furnitureLayout.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
-import { BOOKMARK_COLOR } from "../chromeTheme.js";
+import { getPageBookmarkColor } from "@ambra/shell/theme";
 
 export interface PageFurnitureProps {
   snapshot: ReaderSnapshot;
@@ -87,7 +87,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
   const foreground = ReadingTheme.PAGE_THEMES[snapshot.pageTheme].foreground;
   const textStyle = {
     color: foreground,
-    opacity: 0.55,
+    opacity: PAGE_FURNITURE_TEXT_OPACITY,
     margin: 0,
   } as const;
 
@@ -280,7 +280,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
                     width: BOOKMARK_RIBBON_SIZE,
                     height: BOOKMARK_RIBBON_SIZE,
                     zIndex: 5,
-                    color: BOOKMARK_COLOR,
+                    color: getPageBookmarkColor(snapshot.chromeTheme, snapshot.pageTheme === "dark" ? "dark" : "light"),
                     filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35))",
                     pointerEvents: "none",
                   }}

@@ -33,12 +33,14 @@ describe.each(["popup", "panel"] as const)("%s note persistence", (surface) => {
   let container: HTMLDivElement;
   const onSetNote = vi.fn<(id: string, note: string | undefined) => Promise<boolean>>();
   const onDismiss = vi.fn();
+  const onRemove = vi.fn();
   const noop = () => {};
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     onSetNote.mockReset();
     onDismiss.mockReset();
+    onRemove.mockReset();
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -58,7 +60,7 @@ describe.each(["popup", "panel"] as const)("%s note persistence", (surface) => {
             state={{ highlight, left: 400, top: 400 }}
             onSetNote={onSetNote}
             onSetStyle={noop}
-            onRemove={noop}
+            onRemove={onRemove}
             onDismiss={onDismiss}
           />
         ) : (
@@ -84,10 +86,6 @@ describe.each(["popup", "panel"] as const)("%s note persistence", (surface) => {
       ),
     );
     if (surface === "panel") {
-      const tab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
-        (button) => button.textContent?.includes("Highlights"),
-      )!;
-      act(() => tab.click());
       const edit = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
         /^(Edit|Add) note:/.test(button.getAttribute("aria-label") ?? ""),
       )!;
@@ -116,6 +114,25 @@ describe.each(["popup", "panel"] as const)("%s note persistence", (surface) => {
   function expectClosed() {
     if (surface === "popup") expect(onDismiss).toHaveBeenCalledOnce();
     else expect(container.querySelector("textarea")).toBeNull();
+  }
+
+  if (surface === "popup") {
+    it("keeps explicit deletion below the editor and separate from non-destructive Close", () => {
+      render();
+      const remove = button("Delete highlight");
+      const textarea = container.querySelector("textarea")!;
+      expect(textarea.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const close = container.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!;
+      act(() => close.click());
+      expect(onRemove).not.toHaveBeenCalled();
+      expect(onSetNote).not.toHaveBeenCalled();
+      expect(onDismiss).toHaveBeenCalledOnce();
+      onDismiss.mockClear();
+      act(() => remove.click());
+      expect(onRemove).toHaveBeenCalledExactlyOnceWith(original.id);
+      expect(onDismiss).toHaveBeenCalledOnce();
+      expect(onSetNote).not.toHaveBeenCalled();
+    });
   }
 
   it("Escape cancels only the note editor", () => {

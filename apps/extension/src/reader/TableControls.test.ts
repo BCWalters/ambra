@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CfiStep, isReaderOwnedContent, LocatorResolver, Page } from "@ambra/engine";
-import { attachTableControls, updateTableControlLabels } from "./TableControls.js";
+import { attachTableControls, updateTableControlLabels, updateTableControlTheme } from "./TableControls.js";
+import { getInterfaceTheme } from "@ambra/shell/theme";
 
 const originalPopover = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "showPopover");
 afterEach(() => {
@@ -10,6 +11,34 @@ afterEach(() => {
 });
 
 describe("table controls", () => {
+  it("updates only reader-owned control roots for all themes/appearances, preserving publication styles and CFIs", () => {
+    document.body.innerHTML = '<section style="color:blue"><table><tbody><tr><td style="background:yellow">Data</td></tr></tbody></table></section>';
+    const section = document.querySelector("section")!;
+    const original = section.outerHTML;
+    const rootStyle = document.documentElement.getAttribute("style");
+    const bodyStyle = document.body.getAttribute("style");
+    const cleanup = attachTableControls(document, "Expand table", vi.fn());
+    const root = document.querySelector<HTMLElement>("[data-ambra-table-controls]")!;
+    const button = root.shadowRoot!.querySelector("button")!;
+    for (const appearance of ["light", "dark"] as const) {
+      for (const choice of ["ambra", "silver", "green", "blue", "purple"] as const) {
+        const palette = getInterfaceTheme(choice, appearance);
+        updateTableControlTheme(document, palette);
+        expect(root.style.getPropertyValue("--ambraAccentForeground")).toBe(palette.accentForeground);
+        expect(root.style.getPropertyValue("--ambraSurface")).toBe(palette.surface);
+        expect(root.style.getPropertyValue("--ambraFocus")).toBe(palette.focus);
+        expect(root.style.colorScheme).toBe(appearance);
+        expect(root.shadowRoot!.querySelector("button")).toBe(button);
+        expect(section.outerHTML).toBe(original);
+        expect(document.documentElement.getAttribute("style")).toBe(rootStyle);
+        expect(document.body.getAttribute("style")).toBe(bodyStyle);
+      }
+    }
+    expect(root.shadowRoot!.querySelector("style")!.textContent).toContain("forced-colors: active");
+    expect(root.shadowRoot!.querySelector("style")!.textContent).toContain("outline-color: Highlight");
+    cleanup();
+  });
+
   it("adds one ignored control per outer table without mutating tables or their ancestors", () => {
     document.body.innerHTML = "<section><table><tbody><tr><td>Outer<table><tbody><tr><td>Nested</td></tr></tbody></table></td></tr></tbody></table></section>";
     const section = document.querySelector("section")!;

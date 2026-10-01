@@ -120,25 +120,28 @@ test("book taps dismiss preferences and unpinned panels without click-through or
   try {
     await exposeReaderController(page);
     await settled(page);
-    for (const name of ["Settings", "Text and page options"]) {
+    for (const name of ["Ambra settings", "Text and page options"]) {
       await reveal(page, await readingPoint(page));
       const before = await position(page);
       await page.getByRole("button", { name, exact: true }).click();
-      await expect(page.getByRole("menu")).toBeVisible();
+      const surface = name === "Ambra settings"
+        ? page.getByRole("dialog", { name, exact: true })
+        : page.getByRole("menu");
+      await expect(surface).toBeVisible();
       const frame = await page.locator("iframe").first().boundingBox();
       if (!frame) throw new Error("Reading frame has no visible bounds");
       const point = { x: frame.x + frame.width - 8, y: frame.y + frame.height * 0.45 };
       expect(
         await page.evaluate((point) => document.elementFromPoint(point.x, point.y)?.tagName, point),
       ).toBe("IFRAME");
-      if (name === "Settings") {
+      if (name === "Ambra settings") {
         await page.mouse.move(point.x, point.y);
-        // Exercise a menu that outlives the chrome's 2.5-second idle timer.
+        // Exercise settings that outlive the chrome's 2.5-second idle timer.
         await page.waitForTimeout(3000);
-        await expect(page.getByRole("menu")).toBeVisible();
+        await expect(surface).toBeVisible();
       }
       await page.mouse.click(point.x, point.y);
-      await expect(page.getByRole("menu")).toBeHidden();
+      await expect(surface).toBeHidden();
       await settled(page);
       expect(await position(page)).toEqual(before);
       await page.mouse.click(point.x, point.y);
@@ -146,7 +149,7 @@ test("book taps dismiss preferences and unpinned panels without click-through or
       await settled(page);
     }
 
-    for (const name of ["Book details", "Show contents", "Search"]) {
+    for (const name of ["Book details", "Show contents", "Annotations", "Search"]) {
       await reveal(page, await readingPoint(page));
       const before = await position(page);
       await page.getByRole("button", { name, exact: true }).click();
@@ -175,8 +178,7 @@ test("Help and its nested shortcut guide dismiss directly to reading on a backdr
     for (const shortcuts of [false, true]) {
       await reveal(page, await readingPoint(page));
       const before = await position(page);
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+      await page.getByRole("button", { name: "Help & About", exact: true }).click();
       const help = page.getByRole("dialog", { name: "Help & About", exact: true });
       await expect(help).toBeVisible();
       if (shortcuts) {
@@ -200,6 +202,48 @@ test("Help and its nested shortcut guide dismiss directly to reading on a backdr
   }
 });
 
+test("reference tasks replace each other while Contents and Annotations share pin state and Search keeps its own", async () => {
+  const { context, readerPage: page } = await launchReader(fixture("two-chapter"), {
+    viewport: { width: 1400, height: 900 },
+  });
+  try {
+    await exposeReaderController(page);
+    await settled(page);
+    const contents = page.getByRole("navigation", { name: "Table of contents", exact: true });
+    const annotations = page.getByRole("navigation", { name: "Annotations", exact: true });
+    const search = page.getByRole("navigation", { name: "Search", exact: true });
+    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await expect(contents).toBeVisible();
+    await contents.getByRole("button", { name: "Pin contents panel", exact: true }).click();
+    await settled(page);
+
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    await expect(contents).toBeHidden();
+    await expect(annotations).toBeVisible();
+    await expect(annotations.getByRole("button", { name: "Unpin annotations panel", exact: true })).toBeVisible();
+    await expect(annotations.getByRole("combobox", { name: "Show", exact: true })).toHaveValue("all");
+    await settled(page);
+    const pane = await page.getByRole("main").boundingBox();
+    const annotationBounds = await annotations.boundingBox();
+    expect(annotationBounds!.x).toBeGreaterThanOrEqual(pane!.x + pane!.width - 1);
+
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(annotations).toBeHidden();
+    await expect(contents).toBeHidden();
+    await expect(search).toBeVisible();
+    await expect(search.getByRole("button", { name: "Pin search panel", exact: true })).toBeVisible();
+    await search.getByRole("button", { name: "Pin search panel", exact: true }).click();
+    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(contents.getByRole("button", { name: "Unpin contents panel", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(contents).toBeHidden();
+    await expect(search.getByRole("button", { name: "Unpin search panel", exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
 test("pinned contents keeps chrome visible without consuming ordinary page taps", async () => {
   const { context, readerPage: page } = await launchReader(fixture("two-chapter"), {
     viewport: { width: 1400, height: 900 },
@@ -218,6 +262,109 @@ test("pinned contents keeps chrome visible without consuming ordinary page taps"
       page.getByRole("button", { name: "Unpin contents panel", exact: true }),
     ).toBeVisible();
     await expect(toolbar(page)).toHaveCSS("pointer-events", "auto");
+  } finally {
+    await context.close();
+  }
+});
+
+for (const panel of [
+  { name: "Table of contents", toggle: "Show contents", pin: "contents" },
+  { name: "Annotations", toggle: "Annotations", pin: "annotations" },
+  { name: "Search", toggle: "Search", pin: "search" },
+]) {
+  test(`${panel.name}: narrow layout overlays without forgetting the pin preference or moving focus`, async () => {
+    const { context, readerPage: page } = await launchReader(fixture("two-chapter"), {
+      viewport: { width: 1000, height: 900 },
+    });
+    try {
+      await exposeReaderController(page);
+      await settled(page);
+      await page.getByRole("button", { name: panel.toggle, exact: true }).click();
+      const reference = page.getByRole("navigation", { name: panel.name, exact: true });
+      await reference.getByRole("button", { name: `Pin ${panel.pin} panel`, exact: true }).click();
+      await expect(reference).toHaveCSS("position", "relative");
+      const panelWidth = await reference.evaluate(element => element.getBoundingClientRect().width);
+      const threshold = Math.ceil(panelWidth + 320);
+      const readingPane = page.getByRole("main");
+      const focusTarget = panel.pin === "search"
+        ? reference.getByRole("searchbox")
+        : panel.pin === "annotations"
+          ? reference.getByRole("combobox", { name: "Show", exact: true })
+          : reference;
+      if (panel.pin === "search") await focusTarget.fill("chapter");
+      if (panel.pin === "annotations") await focusTarget.selectOption("bookmarks");
+      await focusTarget.focus();
+
+      await page.setViewportSize({ width: threshold - 1, height: 900 });
+      await expect(reference).toHaveCSS("position", "absolute");
+      await expect(reference).toBeVisible();
+      await expect(focusTarget).toBeFocused();
+      await settled(page);
+      expect(await readingPane.evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(320);
+      const unavailable = reference.getByRole("button", { name: `Pin ${panel.pin} panel`, exact: true });
+      await expect(unavailable).toHaveAttribute("aria-disabled", "true");
+      await unavailable.focus();
+      await expect(unavailable).toBeFocused();
+      await expect(unavailable).toHaveAccessibleDescription(/at least 320 px for the book/);
+      await unavailable.press("Enter");
+      await expect(reference).toHaveCSS("position", "absolute");
+
+      await page.setViewportSize({ width: threshold, height: 900 });
+      await expect(reference).toHaveCSS("position", "relative");
+      const restoredPin = reference.getByRole("button", { name: `Unpin ${panel.pin} panel`, exact: true });
+      await expect(restoredPin).toBeFocused();
+      await settled(page);
+      expect(await readingPane.evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(320);
+      if (panel.pin === "search") await expect(focusTarget).toHaveValue("chapter");
+      if (panel.pin === "annotations") await expect(focusTarget).toHaveValue("bookmarks");
+
+      await restoredPin.click();
+      await page.setViewportSize({ width: threshold - 1, height: 900 });
+      await expect(unavailable).toHaveAttribute("aria-disabled", "true");
+      await page.setViewportSize({ width: 1000, height: 900 });
+      await expect(reference).toHaveCSS("position", "absolute");
+      await expect(unavailable).toBeEnabled();
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("reference docking uses the row left by the Inspector dock, not the viewport width", async () => {
+  const { context, readerPage: page } = await launchReader(fixture("two-chapter"), {
+    viewport: { width: 1400, height: 900 },
+  });
+  try {
+    await exposeReaderController(page);
+    await settled(page);
+    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    const contents = page.getByRole("navigation", { name: "Table of contents", exact: true });
+    await contents.getByRole("button", { name: "Pin contents panel", exact: true }).click();
+    await page.getByRole("button", { name: "Book details", exact: true }).click();
+    await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
+    const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+    await inspector.getByRole("button", { name: "Dock left", exact: true }).click();
+    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await expect(contents).toHaveCSS("position", "relative");
+    await contents.focus();
+
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await expect(contents).toHaveCSS("position", "absolute");
+    await expect(contents).toBeFocused();
+    const panelWidth = await contents.evaluate(element => element.getBoundingClientRect().width);
+    const available = await page.locator("[data-ambra-reference-row]").evaluate(element => element.getBoundingClientRect().width);
+    expect(available).toBeLessThan(panelWidth + 320);
+    expect(1000).toBeGreaterThan(panelWidth + 320);
+    await settled(page);
+    expect(await page.getByRole("main").evaluate(element => element.getBoundingClientRect().width)).toBeCloseTo(available, 0);
+
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await expect(contents).toHaveCSS("position", "relative");
+    await expect(contents).toBeFocused();
+    await expect(contents.getByRole("button", { name: "Unpin contents panel", exact: true })).toBeVisible();
+    await expect(inspector).toBeVisible();
+    await settled(page);
+    expect(await page.getByRole("main").evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThanOrEqual(320);
   } finally {
     await context.close();
   }

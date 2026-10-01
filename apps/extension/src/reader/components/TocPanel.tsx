@@ -7,7 +7,7 @@ import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHR
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
-import { useTranslation } from "../../i18n/LocaleContext.js";
+import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 
 /** Depth-first search for the first *linked* entry in a TOC tree (in
@@ -45,6 +45,8 @@ interface NavTreeProps {
 }
 
 const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNumbers, accent }) => {
+  const t = useTranslation();
+  const { locale } = useLocale();
   if (items.length === 0) {
     return null;
   }
@@ -61,6 +63,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                 type="button"
                 onClick={() => onSelect(item)}
                 aria-current={isCurrent ? "location" : undefined}
+                aria-label={pageNumber === undefined ? undefined : `${item.label}, ${t("toc.pageNumber", { page: new Intl.NumberFormat(locale).format(pageNumber) })}`}
                 style={{
                   display: "flex",
                   alignItems: "baseline",
@@ -96,8 +99,8 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   {item.label}
                 </span>
                 {pageNumber !== undefined && (
-                  <Caption1 as="span" style={{ flexShrink: 0, color: "var(--colorNeutralForeground2, #333)", fontWeight: 400 }}>
-                    {pageNumber}
+                  <Caption1 as="span" aria-hidden="true" style={{ flexShrink: 0, color: "var(--colorNeutralForeground2, #333)", fontWeight: 400, fontVariantNumeric: "tabular-nums" }}>
+                    {new Intl.NumberFormat(locale).format(pageNumber)}
                   </Caption1>
                 )}
               </button>
@@ -109,8 +112,6 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
                   padding: "7px 10px",
                   paddingLeft: 10 + depth * 16,
                   color: "var(--colorNeutralForeground2, #333)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.02em",
                 }}
               >
                 <span style={{ minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>
@@ -157,6 +158,8 @@ export interface TocPanelProps {
    * top of the content pane instead, auto-dismissing on selection, an
    * outside click, or Escape. */
   pinned: boolean;
+  /** Available layout can fit this panel plus the minimum reading width. */
+  canPin?: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
   onOutsideClick?: () => void;
@@ -202,6 +205,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   onSelect,
   open,
   pinned,
+  canPin = true,
   onTogglePin,
   onRequestClose,
   onOutsideClick,
@@ -211,6 +215,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   const navRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
+  const { locale } = useLocale();
 
   useEffect(() => {
     if (!open || pinned) {
@@ -238,7 +243,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   // specific descendant keeps this robust across which tab happens to be
   // active. See `useFocusOnOpen` for why this isn't just a plain
   // `.focus()` call in a `useEffect`.
-  useFocusOnOpen(navRef, open && !pinned);
+  useFocusOnOpen(navRef, open);
 
   return (
     <>
@@ -259,6 +264,7 @@ export const TocPanel: FC<TocPanelProps> = ({
       )}
 
       <nav
+        data-ambra-reference-panel="toc"
         ref={navRef}
         tabIndex={-1}
         aria-label={t("toc.tableOfContents")}
@@ -276,9 +282,12 @@ export const TocPanel: FC<TocPanelProps> = ({
           // there in the first place.
           top: pinned ? 0 : CHROME_TOOLBAR_HEIGHT,
           left: 0,
-          bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
+          bottom: pinned ? 0
+            : `calc(${scrubberVisible ? SCRUBBER_HEIGHT : 8}px + var(--ambra-narration-height, 0px))`,
           zIndex: 8,
           width: 300,
+          maxWidth: "100%",
+          boxSizing: "border-box",
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
@@ -305,11 +314,14 @@ export const TocPanel: FC<TocPanelProps> = ({
             borderBottom: `1px solid ${CHROME_BORDER}`,
           }}
         >
-          <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
+          <Body1 as="h2" style={{ flex: 1, fontWeight: 600, margin: 0 }}>
             {t("toc.contents")}
           </Body1>
-          <Tooltip content={pinned ? t("toc.unpinContentsPanel") : t("toc.pinContentsPanel")} relationship="label">
+          <Tooltip content={!canPin ? t("reader.pinUnavailable") : pinned ? t("toc.unpinContentsPanel") : t("toc.pinContentsPanel")} relationship={canPin ? "label" : "description"}>
             <Button
+              aria-label={pinned ? t("toc.unpinContentsPanel") : t("toc.pinContentsPanel")}
+              aria-description={!canPin ? t("reader.pinUnavailable") : undefined}
+              disabledFocusable={!canPin}
               appearance="subtle"
               size="small"
               icon={pinned ? <PinOffRegular /> : <PinRegular />}
@@ -322,12 +334,13 @@ export const TocPanel: FC<TocPanelProps> = ({
             </Tooltip>
           )}
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 6px" }}>
           {firstSpinePath !== undefined && findFirstLinkedPath(items) !== firstSpinePath && (
             <button
               type="button"
               onClick={() => onSelect(new NavPoint(t("toc.startOfBook"), firstSpinePath, undefined, []))}
               aria-current={currentPath === firstSpinePath ? "location" : undefined}
+              aria-label={pageNumbers.get(firstSpinePath) === undefined ? undefined : `${t("toc.startOfBook")}, ${t("toc.pageNumber", { page: new Intl.NumberFormat(locale).format(pageNumbers.get(firstSpinePath)!) })}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -336,7 +349,7 @@ export const TocPanel: FC<TocPanelProps> = ({
                 width: "100%",
                 background: currentPath === firstSpinePath ? CHROME_SELECTED_BACKGROUND : "none",
                 border: "none",
-                borderLeft: `3px solid ${currentPath === firstSpinePath ? chromeTheme.accent : "transparent"}`,
+                borderLeft: `3px solid ${currentPath === firstSpinePath ? chromeTheme.accentForeground : "transparent"}`,
                 borderRadius: 6,
                 color:
                   currentPath === firstSpinePath
@@ -367,8 +380,8 @@ export const TocPanel: FC<TocPanelProps> = ({
                 {t("toc.startOfBook")}
               </span>
               {pageNumbers.get(firstSpinePath) !== undefined && (
-                <Caption1 as="span" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400 }}>
-                  {pageNumbers.get(firstSpinePath)}
+                <Caption1 as="span" aria-hidden="true" style={{ flexShrink: 0, opacity: 0.6, fontWeight: 400, fontVariantNumeric: "tabular-nums" }}>
+                  {new Intl.NumberFormat(locale).format(pageNumbers.get(firstSpinePath)!)}
                 </Caption1>
               )}
             </button>
@@ -379,7 +392,7 @@ export const TocPanel: FC<TocPanelProps> = ({
             onSelect={onSelect}
             depth={0}
             pageNumbers={pageNumbers}
-            accent={chromeTheme.accent}
+            accent={chromeTheme.accentForeground}
           />
         </div>
       </nav>

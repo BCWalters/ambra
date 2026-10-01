@@ -26,7 +26,7 @@ for (const width of [360, 1200]) {
       await readerPage.close();
       if (width > 600) await page.goto(`${page.url()}?view=tab`);
       await page.locator('input[type="file"]').setInputFiles(SECOND);
-      const covers = page.getByRole("main").getByRole("button", { name: /^Open / });
+      const covers = page.locator("[data-library-collection]").getByRole("button", { name: /^Open / });
       await expect(covers).toHaveCount(2);
       await page.getByRole("button", { name: "Sort library", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
@@ -41,11 +41,20 @@ for (const width of [360, 1200]) {
       await page.screenshot({ path: testInfo.outputPath(`library-search-${width}.png`), fullPage: true });
 
       const find = page.getByRole("button", { name: "Find books", exact: true });
-      await find.click();
-      await expect(page.getByRole("region", { name: "Find your next read" })).toBeVisible();
+      if (width > 600) {
+        await find.click();
+        await expect(page.getByRole("dialog", { name: "Find books", exact: true })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(find).toBeFocused();
+      } else {
+        const opened = context.waitForEvent("page");
+        await find.click();
+        const discovery = await opened;
+        await expect(discovery.getByRole("dialog", { name: "Find books", exact: true })).toBeVisible();
+        await discovery.close();
+      }
       await expect(search).toHaveValue("  LoVELace   long  ");
       await expect(covers).toHaveCount(1);
-      await find.click();
       await search.dispatchEvent("keydown", { key: "Escape", isComposing: true });
       await expect(search).toHaveValue("  LoVELace   long  ");
       await search.press("Escape");
@@ -58,7 +67,7 @@ for (const width of [360, 1200]) {
       await expect(covers).toHaveCount(0);
       await expect(page.getByRole("status").filter({ hasText: "0 of 2 books" })).toBeVisible();
       await expect(page.getByText("No matching books.", { exact: false })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "What will you read first?" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Clear library search", exact: true }).click();
       await expect(search).toBeFocused();
@@ -91,17 +100,20 @@ test("active library searches follow imports and removals without confusing no m
     await page.locator('input[type="file"]').setInputFiles(SECOND);
     await expect(covers).toHaveCount(1);
     await expect(page.getByRole("status").filter({ hasText: "1 of 2 books" })).toBeVisible();
-    const remove = page.getByRole("button", { name: /^Remove .* from library$/ });
-    await remove.focus();
-    await remove.press("Enter");
+    await covers.press("Delete");
+    const confirmation = page.getByRole("alertdialog");
+    await confirmation.getByRole("button", { name: "Remove from library", exact: true }).click();
+    await expect(confirmation).toBeHidden();
     await expect(covers).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: "0 of 1 books" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "What will you read first?" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
     await search.fill("long");
-    await remove.focus();
-    await remove.press("Enter");
+    await covers.press("Backspace");
+    await expect(confirmation).toContainText(TITLE);
+    await confirmation.getByRole("button", { name: "Remove from library", exact: true }).click();
+    await expect(confirmation).toBeHidden();
     await expect(search).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "What will you read first?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No books yet" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles(SECOND);
     await expect(search).toHaveValue("");
     await expect(covers).toHaveCount(1);
@@ -114,10 +126,8 @@ test("library search relabels live in French without changing its query, and cle
   const { context, libraryPage: page } = await launchReader(FIRST, { viewport: { width: 360, height: 750 } });
   try {
     await page.getByRole("searchbox", { name: "Search library" }).fill("lovelace");
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("menuitem", { name: /^Language\b/ }).click();
-    await page.getByRole("menuitemradio", { name: "Français", exact: true }).click();
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
     await page.keyboard.press("Escape");
     const t = getTranslate("fr");
     const search = page.getByRole("searchbox", { name: t("library.search") });

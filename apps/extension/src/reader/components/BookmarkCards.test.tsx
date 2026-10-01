@@ -74,16 +74,16 @@ describe("Bookmark cards", () => {
     expect(document.activeElement).toBe(links()[0]);
     act(() => { removeButtons()[0]!.focus(); removeButtons()[0]!.click(); });
     render({ bookmarks: [] });
-    expect(document.activeElement?.getAttribute("role")).toBe("tabpanel");
+    expect(document.activeElement).toBe(container.querySelector("select"));
   });
 
   it("does not steal focus if the reader moves elsewhere while a deletion is pending", () => {
     render();
     act(() => { removeButtons()[0]!.focus(); removeButtons()[0]!.click(); });
-    const tab = container.querySelector<HTMLButtonElement>('[role="tab"]')!;
-    act(() => tab.focus());
+    const filter = container.querySelector("select")!;
+    act(() => filter.focus());
     render({ bookmarks: bookmarks.slice(1) });
-    expect(document.activeElement).toBe(tab);
+    expect(document.activeElement).toBe(filter);
   });
 
   it("gives publisher bookmarks a page badge and separate navigation, never a remove action", () => {

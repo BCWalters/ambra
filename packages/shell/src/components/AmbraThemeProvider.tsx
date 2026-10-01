@@ -20,6 +20,7 @@ const useStyles = makeStyles({
   light: { colorScheme: "light" },
   dark: { colorScheme: "dark" },
   root: {
+    // Controls with their own focus indicator take precedence over this fallback.
     ":where(&) :where(:focus-visible)": {
       outline: "2px solid var(--ambraFocus)",
       outlineOffset: "2px",

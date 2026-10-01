@@ -13,8 +13,8 @@ import {
   BookInformationRegular,
   BookmarkFilled,
   BookmarkRegular,
-  HeadphonesRegular,
   LibraryRegular,
+  QuestionCircleRegular,
   ReadingListRegular,
   SearchRegular,
   TextBulletListRegular,
@@ -29,8 +29,9 @@ import {
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
-import { ReaderSettingsMenu, TypographyMenu } from "./ReaderPreferencesMenus.js";
+import { TypographyMenu } from "./ReaderPreferencesMenus.js";
 import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
+import { AmbraSettingsPopover } from "../../components/AmbraSettingsPopover.js";
 import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
 import { useCommandPresentation } from "../../shortcuts/useCommandPresentation.js";
 
@@ -42,6 +43,18 @@ const useReaderToolbarStyles = makeStyles({
       "--ambra-toolbar-gap": "2px",
       "--ambra-toolbar-cluster-gap": "0px",
     },
+    "@container reader-pane (max-width: 480px)": {
+      "--ambra-toolbar-gap": "2px",
+      "--ambra-toolbar-cluster-gap": "0px",
+    },
+  },
+  navigationLabel: {
+    "@media (max-width: 800px)": { display: "none" },
+    "@container reader-pane (max-width: 800px)": { display: "none" },
+  },
+  navigationButton: {
+    "@media (max-width: 800px)": { minWidth: "28px", paddingInline: "4px" },
+    "@container reader-pane (max-width: 800px)": { minWidth: "28px", paddingInline: "4px" },
   },
   titleButton: {
     ":focus-visible": {
@@ -54,14 +67,13 @@ const useReaderToolbarStyles = makeStyles({
 export type ReaderToolbarMenu = "typography" | "settings";
 
 export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuActions {
+  onOpenHelp: (returnFocusTo: HTMLElement | null) => void;
+  isHelpOpen: boolean;
   openMenu: ReaderToolbarMenu | undefined;
   onOpenMenuChange: (menu: ReaderToolbarMenu | undefined) => void;
   snapshot: ReaderSnapshot;
-  /** Navigates away from the reader back to the library page (issue
-   * #112) — plain navigation of the reader's own tab, not opening a
-   * second tab alongside it (see `libraryFullTabUrl` in
-   * `navigation.ts`). */
-  onBackToLibrary: () => void;
+  isLibraryOpen: boolean;
+  onToggleLibrary: () => void;
   isTocOpen: boolean;
   onToggleToc: () => void;
   isSearchOpen: boolean;
@@ -71,7 +83,6 @@ export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuA
   isDetailsOpen: boolean;
   onToggleDetails: () => void;
   onToggleBookmark: () => void;
-  onListen?: () => void;
   /** Whether the toolbar should currently be shown, and the pointer/
    * focus handlers that keep it visible — lifted up into `ReaderApp` (see
    * `useAutoHideChrome`) rather than owned here, so `ProgressScrubber`
@@ -118,7 +129,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   openMenu,
   onOpenMenuChange,
   snapshot,
-  onBackToLibrary,
+  isLibraryOpen,
+  onToggleLibrary,
   isTocOpen,
   onToggleToc,
   isSearchOpen,
@@ -128,7 +140,6 @@ export const Toolbar: FC<ToolbarProps> = ({
   isDetailsOpen,
   onToggleDetails,
   onToggleBookmark,
-  onListen,
   onSetViewMode,
   onSetFontScale,
   onSetLineSpacing,
@@ -142,6 +153,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onSetPageTurnAnimationStyle,
   onSetProgressMarkerStyle,
   onOpenHelp,
+  isHelpOpen,
   visible,
   handlers,
 }) => {
@@ -176,7 +188,10 @@ export const Toolbar: FC<ToolbarProps> = ({
   const titleGroupRef = useRef<HTMLDivElement | null>(null);
   const measureRef = useRef<HTMLDivElement | null>(null);
   const middleWrapperRef = useRef<HTMLDivElement | null>(null);
+  const detailsButtonRef = useRef<HTMLButtonElement | null>(null);
   const [canCenterTitle, setCanCenterTitle] = useState(false);
+  const [hasTitleRoom, setHasTitleRoom] = useState(false);
+  const [helpTooltipVisible, setHelpTooltipVisible] = useState(false);
 
   useLayoutEffect(() => {
     const middleEl = middleWrapperRef.current;
@@ -186,6 +201,11 @@ export const Toolbar: FC<ToolbarProps> = ({
     }
     const check = (): void => {
       setCanCenterTitle(measureEl.scrollWidth <= middleEl.clientWidth);
+      const hasRoom = middleEl.clientWidth >= 80;
+      if (!hasRoom && titleGroupRef.current?.contains(document.activeElement)) {
+        detailsButtonRef.current?.focus({ preventScroll: true });
+      }
+      setHasTitleRoom(hasRoom);
     };
     check();
     const observer = new ResizeObserver(check);
@@ -249,31 +269,24 @@ export const Toolbar: FC<ToolbarProps> = ({
             : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
         }}
       >
-        <Tooltip content={t("toolbar.backToLibrary")} relationship="label">
-          <Button appearance="subtle" size="small" icon={<LibraryRegular />} onClick={onBackToLibrary} />
-        </Tooltip>
-
         <Tooltip content={isTocOpen ? t("toolbar.hideContents") : t("toolbar.showContents")} relationship="label">
           <ToggleButton
+            className={readerStyles.navigationButton}
             appearance="subtle"
             size="small"
             checked={isTocOpen}
             icon={<TextBulletListRegular />}
             onClick={onToggleToc}
-          />
+          >
+            <span className={readerStyles.navigationLabel}>{t("toolbar.showContents")}</span>
+          </ToggleButton>
         </Tooltip>
 
-        <Tooltip
-          content={isAnnotationsOpen ? t("toolbar.hideBookmarksAndHighlights") : t("toolbar.bookmarksAndHighlights")}
-          relationship="label"
-        >
-          <ToggleButton
-            appearance="subtle"
-            size="small"
-            checked={isAnnotationsOpen}
-            icon={<ReadingListRegular />}
-            onClick={onToggleAnnotations}
-          />
+        <Tooltip content={t("toolbar.backToLibrary")} relationship="label">
+          <ToggleButton className={readerStyles.navigationButton} appearance="subtle" size="small" icon={<LibraryRegular />}
+            checked={isLibraryOpen} onClick={onToggleLibrary}>
+            <span className={readerStyles.navigationLabel}>{t("toolbar.backToLibrary")}</span>
+          </ToggleButton>
         </Tooltip>
 
         {/* Book title + current chapter, sharing one flexible region: the
@@ -307,6 +320,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             alignSelf: "stretch",
             position: "relative",
             overflow: "hidden",
+            visibility: hasTitleRoom ? "visible" : "hidden",
           }}
         >
           <div
@@ -448,13 +462,19 @@ export const Toolbar: FC<ToolbarProps> = ({
             shortcut), and "Go to Page…"/"Go to Percentage…" are keyboard
             commands rather than toolbar or Book Details controls. */}
 
-        {/* Search now stands on its own, separated by a gap from the
-            Text/Settings/Details cluster that follows (issue #78) —
-            previously grouped tightly alongside them, which read as
-            "one more settings-ish button" even though searching the
-            book isn't a settings/configuration action at all. Text
-            options, Settings, and Book Details stay grouped closely
-            together immediately after, per the same explicit direction. */}
+        <Tooltip
+          content={isAnnotationsOpen ? t("toolbar.hideBookmarksAndHighlights") : t("toolbar.bookmarksAndHighlights")}
+          relationship="label"
+        >
+          <ToggleButton
+            appearance="subtle"
+            size="small"
+            checked={isAnnotationsOpen}
+            icon={<ReadingListRegular />}
+            onClick={onToggleAnnotations}
+          />
+        </Tooltip>
+
         <Tooltip
           content={searchShortcut.shortcutLabel ? `${searchLabel} (${searchShortcut.shortcutLabel})` : searchLabel}
           relationship="description"
@@ -490,31 +510,46 @@ export const Toolbar: FC<ToolbarProps> = ({
           />
         )}
 
-        <ReaderSettingsMenu
+        <AmbraSettingsPopover
           open={openMenu === "settings"}
-          onOpenChange={open => onOpenMenuChange(open ? "settings" : undefined)}
-          showReadingModeShortcuts
+          onOpenChange={open => {
+            if (open) setHelpTooltipVisible(false);
+            onOpenMenuChange(open ? "settings" : undefined);
+          }}
+          readingFirst
           isFixedLayout={snapshot.isFixedLayout}
-          viewMode={snapshot.viewMode}
-          brightness={snapshot.brightness}
-          pageTheme={snapshot.pageTheme}
-          onSetPageTheme={onSetPageTheme}
-          chromeTheme={snapshot.chromeTheme}
-          pageTurnAnimationStyle={snapshot.pageTurnAnimationStyle}
-          progressMarkerStyle={snapshot.progressMarkerStyle ?? "upcoming"}
-          onSetViewMode={onSetViewMode}
-          onSetBrightness={onSetBrightness}
-          onSetChromeTheme={onSetChromeTheme}
-          onSetPageTurnAnimationStyle={onSetPageTurnAnimationStyle}
-          onSetProgressMarkerStyle={onSetProgressMarkerStyle}
-          onOpenHelp={onOpenHelp}
+          settings={{
+            viewMode: snapshot.viewMode, brightness: snapshot.brightness,
+            pageTheme: snapshot.pageTheme, chromeTheme: snapshot.chromeTheme,
+            pageTurnAnimationStyle: snapshot.pageTurnAnimationStyle,
+            progressMarkerStyle: snapshot.progressMarkerStyle ?? "upcoming",
+          }}
+          onChange={patch => {
+            if (patch.viewMode !== undefined) onSetViewMode(patch.viewMode);
+            if (patch.brightness !== undefined) onSetBrightness(patch.brightness);
+            if (patch.pageTheme !== undefined) onSetPageTheme(patch.pageTheme);
+            if (patch.chromeTheme !== undefined) onSetChromeTheme(patch.chromeTheme);
+            if (patch.pageTurnAnimationStyle !== undefined) onSetPageTurnAnimationStyle(patch.pageTurnAnimationStyle);
+            if (patch.progressMarkerStyle !== undefined) onSetProgressMarkerStyle(patch.progressMarkerStyle);
+          }}
         />
+
+        <Tooltip content={t("settings.helpAbout")} relationship="label"
+          visible={helpTooltipVisible && !isHelpOpen && openMenu !== "settings"}
+          onVisibleChange={(_event, data) => setHelpTooltipVisible(data.visible && !isHelpOpen && openMenu !== "settings")}>
+          <Button appearance="subtle" size="small" icon={<QuestionCircleRegular />}
+            onClick={event => {
+              setHelpTooltipVisible(false);
+              onOpenHelp(event.currentTarget);
+            }} />
+        </Tooltip>
 
         <Tooltip
           content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}
           relationship="label"
         >
           <ToggleButton
+            ref={detailsButtonRef}
             appearance="subtle"
             size="small"
             checked={isDetailsOpen}
@@ -522,19 +557,6 @@ export const Toolbar: FC<ToolbarProps> = ({
             onClick={onToggleDetails}
           />
         </Tooltip>
-
-        {onListen && (
-          <Tooltip content={t("narration.listen")} relationship="label">
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<HeadphonesRegular />}
-              aria-label={t("narration.listen")}
-              onClick={onListen}
-              style={{ marginLeft: "var(--ambra-toolbar-cluster-gap)" }}
-            />
-          </Tooltip>
-        )}
 
         {/* Bookmark stands alone at the far right, set apart from the
             Text/Settings/Details group with some extra breathing room

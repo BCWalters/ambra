@@ -124,12 +124,11 @@ for (const style of ["slide", "rotate", "scroll"] as const) {
     });
     try {
       if (style !== "slide") {
-        await page.getByRole("button", { name: "Settings" }).click();
-        await page.getByRole("menuitem", { name: /^Page turn/ }).click();
-        await page
-          .getByRole("menuitemradio", { name: style === "rotate" ? /Page flip/ : /Film strip/ })
-          .click();
-        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+        const animation = page.getByRole("dialog", { name: "Ambra settings", exact: true })
+          .getByRole("combobox", { name: "Page turn", exact: true });
+        await animation.selectOption(style);
+        await expect(animation).toHaveValue(style);
         await page.keyboard.press("Escape");
       }
       await exposeReaderController(page);

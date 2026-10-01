@@ -7,13 +7,7 @@ import { exposeReaderController } from "../reader-controller.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FXL_SPREAD_LTR_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr.epub");
 
-/** A plain, manual mousedown/mouseup (rather than Playwright's own
- * `locator.click()`, which — confirmed via direct investigation while
- * writing this suite — hangs indefinitely against this toolbar's
- * `Tooltip`-wrapped `MenuTrigger` button specifically, seemingly an
- * actionability/stability check that never resolves against its hover
- * transition, unrelated to anything this session's own fixed-layout
- * work touches) reliably opens/operates the reader's Settings menu. */
+/** Explicit pointer events avoid the animated toolbar's hover-stability checks. */
 async function manualClick(page: Page, x: number, y: number): Promise<void> {
   await page.mouse.move(x, y);
   await page.waitForTimeout(30);
@@ -26,18 +20,16 @@ async function setPageTurnAnimationStyle(
   readerPage: Page,
   style: "rotate" | "slide" | "scroll" | "none",
 ): Promise<void> {
-  const settingsButton = readerPage.getByRole("button", { name: "Settings" });
+  const settingsButton = readerPage.getByRole("button", { name: "Ambra settings", exact: true });
   const box = (await settingsButton.boundingBox())!;
   await manualClick(readerPage, box.x + box.width / 2, box.y + box.height / 2);
   await readerPage.waitForTimeout(150);
-  await readerPage.getByRole("menuitem", { name: /^Page turn/ }).click();
-  const label = { rotate: "Page flip", slide: "Slide", scroll: "Film strip", none: "Off" }[style];
-  const item = readerPage.getByRole("menuitemradio", { name: new RegExp(label) });
-  const itemBox = (await item.boundingBox())!;
-  await manualClick(readerPage, itemBox.x + itemBox.width / 2, itemBox.y + itemBox.height / 2);
-  await readerPage.waitForTimeout(100);
+  const settings = readerPage.getByRole("dialog", { name: "Ambra settings", exact: true });
+  const animation = settings.getByRole("combobox", { name: "Page turn", exact: true });
+  await animation.selectOption(style);
+  await expect(animation).toHaveValue(style);
   await readerPage.keyboard.press("Escape");
-  await readerPage.keyboard.press("Escape");
+  await expect(settings).toBeHidden();
   await readerPage.waitForTimeout(100);
 }
 

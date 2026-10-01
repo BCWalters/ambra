@@ -1,7 +1,7 @@
-import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test as base, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { EXTENSION_PATH } from "../harness.js";
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 
 const test = base.extend<{ library: Page }>({
   library: async ({ playwright }, use, testInfo) => {
@@ -15,7 +15,7 @@ const test = base.extend<{ library: Page }>({
       worker ??= await context.waitForEvent("serviceworker");
       const page = await context.newPage();
       await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
-      await expect(page.getByText("What will you read first?", { exact: true })).toBeVisible();
+      await expect(page.getByText("No books yet", { exact: true })).toBeVisible();
       // Exercise the mounted production database without a test-only export.
       await page.evaluate(() => {
         for (const element of document.querySelectorAll("*")) {
@@ -52,12 +52,13 @@ test("invalid EPUB errors use a specific headline, quiet details, and a centered
   await expect(alert.locator("not-a-book")).toHaveCount(0);
   await expect(detail).toHaveCSS("font-size", "12px");
   await expect(detail).toHaveCSS("font-weight", "400");
-  const subduedRgb = getInterfaceTheme("ambra", "light").textSubdued.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+  const subduedRgb = getInterfaceTheme("ambra", "light").textSubdued.match(/\w\w/g)!
+    .map(hex => parseInt(hex, 16)).join(", ");
   await expect(detail).toHaveCSS("color", `rgb(${subduedRgb})`);
   for (const width of [1920, 360]) {
     await library.setViewportSize({ width, height: 900 });
     const bounds = await alert.boundingBox();
-    expect(bounds!.width).toBe(Math.min(600, width - 32));
+    expect(bounds!.width).toBe(Math.min(600, width - 48));
     expect(Math.abs(bounds!.x - (width - bounds!.width) / 2)).toBeLessThan(1);
     expect(await library.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await alert.screenshot({ path: testInfo.outputPath(`invalid-epub-library-${width}.png`) });

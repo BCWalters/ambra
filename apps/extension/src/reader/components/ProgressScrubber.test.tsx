@@ -4,6 +4,8 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoHideChrome } from "../useAutoHideChrome.js";
 import { SCRUBBER_HEIGHT } from "../chromeTheme.js";
+import { BOOKMARK_ROW_HEIGHT } from "../BookmarkGroups.js";
+import { ReadingTheme } from "@ambra/engine";
 import { ProgressScrubber, type ProgressScrubberProps } from "./ProgressScrubber.js";
 
 const snapshot = {
@@ -33,6 +35,10 @@ function Harness() {
         })}
         onSeek={async () => {}}
         onSeekError={() => {}}
+        onGoToBookmark={() => {}}
+        onShowBookmarks={() => {}}
+        bookmarkChooserDismissRequest={0}
+        onBookmarkChooserOpenChange={() => {}}
       />
       <button>Outside chrome</button>
     </>
@@ -46,6 +52,9 @@ describe("ProgressScrubber", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 100, bottom: 72, width: 100, height: 72, toJSON() {},
+    });
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -62,6 +71,8 @@ describe("ProgressScrubber", () => {
   function renderScrubber(overrides: Partial<ProgressScrubberProps> = {}, trackWidth = 100) {
     const onSeek = vi.fn(() => new Promise<void>(() => {}));
     const onSeekError = vi.fn();
+    const onGoToBookmark = vi.fn();
+    const onShowBookmarks = vi.fn();
     act(() =>
       root.render(
         <ProgressScrubber
@@ -74,6 +85,10 @@ describe("ProgressScrubber", () => {
           })}
           onSeek={onSeek}
           onSeekError={onSeekError}
+          onGoToBookmark={onGoToBookmark}
+          onShowBookmarks={onShowBookmarks}
+          bookmarkChooserDismissRequest={0}
+          onBookmarkChooserOpenChange={() => {}}
           {...overrides}
         />,
       ),
@@ -88,7 +103,13 @@ describe("ProgressScrubber", () => {
       captured = false;
     });
     slider.getBoundingClientRect = () => ({ left: 20, width: trackWidth }) as DOMRect;
-    return { slider, onSeek, onSeekError };
+    return { slider, onSeek, onSeekError, onGoToBookmark, onShowBookmarks };
+  }
+
+  function footerHeight(slider: HTMLElement) {
+    const position = container.querySelector<HTMLElement>("[data-scrubber-current-position]")!;
+    return parseFloat(slider.style.height) + BOOKMARK_ROW_HEIGHT +
+      parseFloat(position.style.height) + parseFloat(slider.parentElement!.style.paddingBottom) + 1;
   }
 
   function pointer(slider: HTMLElement, type: string, init: PointerEventInit = {}) {
@@ -128,7 +149,7 @@ describe("ProgressScrubber", () => {
     expect(onSeek).toHaveBeenCalledWith(expect.closeTo(0.06, 6));
     const hidden = renderScrubber({ markerStyle: "off", markerData }, 1000);
     expect(container.querySelector("[data-progress-markers]")).toBeNull();
-    expect(hidden.slider.style.height).toBe("54px");
+    expect(hidden.slider.style.height).toBe("26px");
     expect(hidden.slider.hasAttribute("aria-describedby")).toBe(false);
   });
 
@@ -192,11 +213,10 @@ describe("ProgressScrubber", () => {
       expect(container.querySelectorAll("[data-upcoming-band]")).toHaveLength(1);
       expect(container.querySelector('[data-reading-landmark="end"]')).toBeNull();
       const start = container.querySelector<HTMLElement>('[data-reading-landmark="start"]')!;
-      expect(start.style.top).toBe("24px");
+      expect(start.style.top).toBe("8px");
       expect(start.style.height).toBe("10px");
       expect(parseFloat(start.style.left)).toBe(direction === "ltr" ? 10 : 90);
-      expect(parseFloat(slider.style.height) + parseFloat(slider.parentElement!.style.paddingBottom) + 1)
-        .toBe(SCRUBBER_HEIGHT);
+      expect(footerHeight(slider)).toBe(SCRUBBER_HEIGHT);
     }
   });
 
@@ -228,22 +248,28 @@ describe("ProgressScrubber", () => {
     }
   });
 
-  it.each(["ltr", "rtl"] as const)("keeps upcoming bookmarks below the raised track within the same footer (%s)", direction => {
-    const { slider } = renderScrubber({
+  it.each(["ltr", "rtl"] as const)("keeps clickable bookmarks in a separate fixed lane below the track (%s)", direction => {
+    const bookmark = { id: "a", bookId: "book", cfi: "saved-cfi", label: "Chapter", createdAt: 0 };
+    const { slider, onSeek, onGoToBookmark } = renderScrubber({
       markerStyle: "upcoming",
-      snapshot: { ...snapshot, pageProgressionDirection: direction, bookmarkProgress: [{ id: "a", fraction: 0.25 }] },
+      snapshot: {
+        ...snapshot, bookmarks: [bookmark], pageProgressionDirection: direction,
+        bookmarkProgress: [{ id: "a", fraction: 0.25 }],
+      },
     });
-    const flag = container.querySelector<SVGElement>("[data-bookmark-marker]")!;
+    const flag = container.querySelector<HTMLButtonElement>("[data-bookmark-marker]")!;
     const thumb = container.querySelector<HTMLElement>("[data-scrubber-thumb]")!;
     const track = container.querySelector<HTMLElement>("[data-scrubber-track]")!;
-    expect(track.style.top).toBe("24px");
-    expect(thumb.style.top).toBe("21px");
-    expect(flag.style.top).toBe("39px");
+    expect(track.style.top).toBe("8px");
+    expect(thumb.style.top).toBe("5px");
     expect(flag.style.left).toBe(direction === "ltr" ? "25%" : "75%");
-    expect(parseFloat(flag.style.top)).toBeGreaterThan(parseFloat(thumb.style.top) + parseFloat(thumb.style.height));
-    expect(parseFloat(flag.style.top) + parseFloat(flag.style.height)).toBeLessThanOrEqual(parseFloat(slider.style.height));
-    expect(parseFloat(slider.style.height) + parseFloat(slider.parentElement!.style.paddingBottom) + 1)
-      .toBe(SCRUBBER_HEIGHT);
+    expect(slider.contains(flag)).toBe(false);
+    expect(slider.nextElementSibling?.hasAttribute("data-bookmark-lane")).toBe(true);
+    expect(footerHeight(slider)).toBe(SCRUBBER_HEIGHT);
+    expect(SCRUBBER_HEIGHT).toBeLessThanOrEqual(ReadingTheme.PAGE_INSET_BOTTOM);
+    act(() => flag.click());
+    expect(onGoToBookmark).toHaveBeenCalledExactlyOnceWith(bookmark);
+    expect(onSeek).not.toHaveBeenCalled();
   });
 
   it("keeps drag focus without its keyboard ring and restores keyboard modality on keydown or blur", () => {
@@ -282,13 +308,25 @@ describe("ProgressScrubber", () => {
       "Mapping your book… - 6 pages left in this chapter",
     );
     pointer(slider, "pointerdown");
-    expect(slider.getAttribute("aria-valuetext")).toBe("Chapter 8 of 10 - A long chapter title");
+    expect(slider.getAttribute("aria-valuetext")).toBe(
+      `${slider.getAttribute("aria-valuenow")}% · Mapping your book… - A long chapter title`,
+    );
+    expect(container.textContent).not.toContain("Chapter 8 of 10");
     expect(container.textContent).toContain("Mapping your book…");
     pointer(slider, "pointercancel");
 
     renderScrubber();
     expect(container.textContent).not.toContain("Mapping your book…");
-    expect(slider.getAttribute("aria-valuetext")).toBe("Page 5 of 100 - 6 pages left in this chapter");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Page 5 of 100 · 5% - 6 pages left in this chapter");
+  });
+
+  it("omits a missing authored section label from the seek announcement", () => {
+    const { slider } = renderScrubber({
+      onPreview: () => ({ position: { kind: "page", current: 8, total: 100 }, chapterLabel: "" }),
+    });
+    pointer(slider, "pointerdown");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Page 8 of 100");
+    pointer(slider, "pointercancel");
   });
 
   it("uses an accessible percentage initially and counting status on reopen when no counts exist", () => {
@@ -309,14 +347,14 @@ describe("ProgressScrubber", () => {
     const { slider, onSeek } = renderScrubber({
       snapshot: { ...snapshot, isFixedLayout: true, viewMode, bookPageIndex: 1, bookPageCount: 5 },
     });
-    expect(slider.getAttribute("aria-valuetext")).toBe("Page 1 of 5");
+    expect(slider.getAttribute("aria-valuetext")).toBe("Page 1 of 5 · 20%");
     expect(container.textContent).not.toContain("pages left");
     expect(container.textContent).not.toContain("Mapping your book");
     act(() => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect(onSeek).toHaveBeenCalledWith(0.4);
   });
 
-  it.each(["ltr", "rtl"] as const)("shows deduplicated %s bookmark marks without adding focus stops", direction => {
+  it.each(["ltr", "rtl"] as const)("groups distinct %s same-page bookmarks into one reachable flag", direction => {
     const bookmark = { id: "a", bookId: "book", cfi: "", label: "Chapter", createdAt: 0 };
     const { slider } = renderScrubber({
       snapshot: {
@@ -329,18 +367,23 @@ describe("ProgressScrubber", () => {
         ],
       },
     });
-    const markers = container.querySelectorAll<SVGElement>("[data-bookmark-marker]");
+    const markers = container.querySelectorAll<HTMLButtonElement>("[data-bookmark-marker]");
     expect(markers).toHaveLength(1);
     expect(markers[0]!.style.left).toBe(direction === "rtl" ? "75%" : "25%");
-    expect(markers[0]!.style.pointerEvents).toBe("none");
-    expect(markers[0]!.getAttribute("aria-hidden")).toBe("true");
-    expect(container.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    expect(markers[0]!.getAttribute("data-bookmark-count")).toBe("2");
+    expect(markers[0]!.getAttribute("aria-label")).toBe("2 bookmarks — choose a destination");
+    expect(markers[0]!.tabIndex).toBe(0);
+    expect(markers[0]!.hasAttribute("aria-hidden")).toBe(false);
     expect(document.getElementById(slider.getAttribute("aria-describedby")!)?.textContent)
       .toBe("Bookmarks: 2");
   });
 
   it("removes stale marks while layout is being measured and after deletion", () => {
-    renderScrubber({ snapshot: { ...snapshot, bookmarkProgress: [{ id: "a", fraction: 0.5 }] } });
+    renderScrubber({ snapshot: {
+      ...snapshot,
+      bookmarks: [{ id: "a", bookId: "book", cfi: "saved", label: "Chapter", createdAt: 0 }],
+      bookmarkProgress: [{ id: "a", fraction: 0.5 }],
+    } });
     expect(container.querySelector("[data-bookmark-marker]")).not.toBeNull();
     renderScrubber({ snapshot: { ...snapshot, bookmarkProgress: undefined } });
     expect(container.querySelector("[data-bookmark-marker]")).toBeNull();
@@ -433,6 +476,10 @@ describe("ProgressScrubber", () => {
         onPreview={() => ({ position: { kind: "page", current: 1, total: 10 }, chapterLabel: "" })}
         onSeek={async () => {}}
         onSeekError={() => {}}
+        onGoToBookmark={() => {}}
+        onShowBookmarks={() => {}}
+        bookmarkChooserDismissRequest={0}
+        onBookmarkChooserOpenChange={() => {}}
       />,
     ));
     render("scroll");
@@ -452,9 +499,9 @@ describe("ProgressScrubber", () => {
     const { slider, onSeek } = renderScrubber({ visible: false });
     pointer(slider, "pointerdown");
     expect(document.activeElement).toBe(slider);
-    expect(slider.style.height).toBe("54px");
+    expect(slider.style.height).toBe("26px");
     expect(slider.parentElement!.style.zIndex).toBe("6");
-    expect(parseFloat(slider.style.height) + 1 + 1).toBe(SCRUBBER_HEIGHT);
+    expect(footerHeight(slider)).toBe(SCRUBBER_HEIGHT);
     expect(slider.getAttribute("aria-valuetext")).toBe(
       "Page 80 of 100 - A long chapter title",
     );

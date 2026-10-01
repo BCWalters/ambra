@@ -1,4 +1,4 @@
-import { expect, test, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -17,6 +17,62 @@ function directionalFixture(info: TestInfo, counts: number[], rtl: boolean) {
     });
   }
   return book;
+}
+
+async function holdTurnAtStart(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const controller = Reflect.get(window, "__readerController");
+    const browserWindow: Window = window;
+    const nativeFrame = window.requestAnimationFrame;
+    const nativeTimeout = browserWindow.setTimeout;
+    const animations: Animation[] = [];
+    const deadlines: (() => void)[] = [];
+    const requests: number[] = [];
+    const turn = controller.turnPage;
+    controller.turnPage = function (direction: number) {
+      requests.push(direction);
+      return turn.call(this, direction);
+    };
+    Reflect.set(window, "__gutterRequests", requests);
+    Reflect.set(window, "__gutterAnimations", animations);
+    // Hold the owned transition's safety deadline as well as its CSS clock.
+    browserWindow.setTimeout = (handler, timeout, ...args) => {
+      if (controller.isAnimatingPageTurn && timeout === 600 && typeof handler === "function") {
+        deadlines.push(() => handler(...args));
+        return -deadlines.length;
+      }
+      return nativeTimeout.call(window, handler, timeout, ...args);
+    };
+    window.requestAnimationFrame = callback => nativeFrame.call(window, time => {
+      callback(time);
+      if (animations.length || !controller.isAnimatingPageTurn) return;
+      const transitions = document.getAnimations().filter(animation =>
+        animation instanceof CSSTransition && animation.effect?.getTiming().duration === 380);
+      if (!transitions.some(animation =>
+        animation instanceof CSSTransition && animation.transitionProperty === "transform")) return;
+      for (const animation of transitions) {
+        animation.pause();
+        animation.currentTime = 0;
+        animations.push(animation);
+      }
+    });
+    Reflect.set(window, "__releaseGutterTurn", async () => {
+      window.requestAnimationFrame = nativeFrame;
+      browserWindow.setTimeout = nativeTimeout;
+      for (const animation of animations) animation.finish();
+      for (const deadline of deadlines) deadline();
+      await Reflect.get(window, "__gutterPendingTurn");
+    });
+    Reflect.set(window, "__gutterPendingTurn", controller.turnPage(1));
+  });
+  await page.waitForFunction(() => Reflect.get(window, "__gutterAnimations").length > 0);
+}
+
+async function setTurnPhase(page: Page, time: number): Promise<void> {
+  await page.evaluate(async time => {
+    for (const animation of Reflect.get(window, "__gutterAnimations") as Animation[]) animation.currentTime = time;
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  }, time);
 }
 
 for (const rtl of [false, true]) {
@@ -135,56 +191,49 @@ for (const rtl of [false, true]) {
   }
 
   for (const style of ["slide", "rotate", "scroll"]) {
-    test(`${rtl ? "RTL" : "LTR"} ${style}: a gutter tap during animation requests no navigation (#182)`, async () => {
-      const { context, readerPage: page } = await launchReader(
-        directionalFixture(test.info(), [16], rtl), { viewport: { width: 1400, height: 900 } },
-      );
-      try {
-        await exposeReaderController(page);
-        await page.evaluate(async animationStyle => {
-          const controller = Reflect.get(window, "__readerController");
-          await controller.setPageTurnAnimationStyle(animationStyle);
-          await controller.openSpineItem(0, { landOnPageIndex: 2 });
-        }, style);
-        await page.mouse.move(700, 350);
-        await expect(page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
-          .locator("..")).toHaveCSS("opacity", "0");
-        await page.evaluate(() => {
-          const controller = Reflect.get(window, "__readerController");
-          const requests: number[] = [];
-          const originalTurn = controller.turnPage;
-          controller.turnPage = function (direction: number) {
-            requests.push(direction);
-            return originalTurn.call(this, direction);
-          };
-          Reflect.set(window, "__gutterRequests", requests);
-          const animate = Element.prototype.animate;
-          const animations: Animation[] = [];
-          Reflect.set(window, "__gutterNativeAnimate", animate);
-          Reflect.set(window, "__gutterAnimations", animations);
-          Element.prototype.animate = function (...args) {
-            const animation = animate.apply(this, args);
-            animation.playbackRate = 0.02;
-            animations.push(animation);
-            return animation;
-          };
-          Reflect.set(window, "__gutterPendingTurn", controller.turnPage(1));
-        });
-        await page.waitForFunction(() => Reflect.get(window, "__readerController").isAnimatingPageTurn);
-        await page.mouse.click(700, 350);
-        expect(await page.evaluate(() => Reflect.get(window, "__gutterRequests")))
-          .toEqual([1]);
-        await page.evaluate(async () => {
-          Element.prototype.animate = Reflect.get(window, "__gutterNativeAnimate");
-          for (const animation of Reflect.get(window, "__gutterAnimations") as Animation[]) animation.finish();
-          await Reflect.get(window, "__gutterPendingTurn");
-        });
-        await page.waitForFunction(() => !Reflect.get(window, "__readerController").isTurningPage);
-        expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().pageIndex))
-          .toBeGreaterThan(2);
-      } finally {
-        await context.close();
-      }
-    });
+    for (const target of ["gutter", "outer margin"] as const) {
+      test(`${rtl ? "RTL" : "LTR"} ${style}: phase-controlled ${target} taps preserve turn ownership (#279)`, async () => {
+        const { context, readerPage: page } = await launchReader(
+          directionalFixture(test.info(), [16], rtl), { viewport: { width: 1400, height: 900 } },
+        );
+        try {
+          await exposeReaderController(page);
+          await page.evaluate(async animationStyle => {
+            const controller = Reflect.get(window, "__readerController");
+            await controller.setPageTurnAnimationStyle(animationStyle);
+            await controller.openSpineItem(0, { landOnPageIndex: 2 });
+          }, style);
+          await page.mouse.move(700, 350);
+          await expect(page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
+            .locator("..")).toHaveCSS("opacity", "0");
+          const point = target === "gutter" ? { x: 700, y: 350 }
+            : await outerMarginPoint(page, rtl ? "left" : "right");
+          await holdTurnAtStart(page);
+          await page.mouse.move(point.x, point.y);
+          await page.mouse.down();
+          await setTurnPhase(page, 180);
+          await page.mouse.up();
+          if (target === "gutter") {
+            // Also reject a tap that begins after the paper has rotated/moved.
+            await page.mouse.click(point.x, point.y);
+          }
+          expect(await page.evaluate(() => Reflect.get(window, "__readerController").isAnimatingPageTurn)).toBe(true);
+          expect(await page.evaluate(() => Reflect.get(window, "__gutterRequests")))
+            .toEqual(target === "gutter" ? [1] : [1, 1]);
+          await page.evaluate(() => Reflect.get(window, "__releaseGutterTurn")());
+          await page.waitForFunction(() => !Reflect.get(window, "__readerController").isTurningPage);
+          const first = target === "gutter" ? 4 : 6;
+          expect(await page.evaluate(() => Reflect.get(window, "__readerController").host.positions)).toEqual({
+            first: { spineIndex: 0, pageIndex: first },
+            second: { spineIndex: 0, pageIndex: first + 1 },
+          });
+          // An accepted outer-margin request is replayed once by the bounded queue.
+          expect(await page.evaluate(() => Reflect.get(window, "__gutterRequests")))
+            .toEqual(target === "gutter" ? [1] : [1, 1, 1]);
+        } finally {
+          await context.close();
+        }
+      });
+    }
   }
 }

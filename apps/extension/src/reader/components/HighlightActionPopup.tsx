@@ -126,37 +126,17 @@ const OpenHighlightActionPopup: FC<HighlightActionPopupProps & { state: ActiveHi
         overflowY: "auto",
         boxSizing: "border-box",
         background: chromeTheme.backgroundSolid,
+        color: chromeTheme.text,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
       }}
     >
-      {/* Always open into "edit" mode (issue #97) — the color swatches
-          and note field below are both immediately visible and usable,
-          not gated behind a color-dot/note-icon toggle the reader has
-          to find and click first. Delete/close still get their own
-          row, pushed to the far right by `marginLeft: auto` on their
-          wrapping span. The highlighted text itself is deliberately not
-          repeated here anymore — it's already visible, highlighted, in
-          the book right behind this popup, so echoing it back was pure
-          redundancy. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <HighlightStylePicker value={highlight.style} onChange={(style) => onSetStyle(highlight.id, style)} />
-        <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-          <Tooltip content={t("highlight.deleteHighlight")} relationship="label">
-            <Button
-              appearance="subtle"
-              size="small"
-              icon={<DeleteRegular />}
-              onClick={() => {
-                onRemove(highlight.id);
-                onDismiss();
-              }}
-            />
-          </Tooltip>
-          <Tooltip content={t("highlight.close")} relationship="label">
-            <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={onDismiss} />
-          </Tooltip>
-        </span>
+        <Tooltip content={t("highlight.close")} relationship="label">
+          <Button appearance="subtle" size="small" icon={<DismissRegular />}
+            style={{ marginLeft: "auto" }} onClick={onDismiss} />
+        </Tooltip>
       </div>
 
       <HighlightNoteEditor
@@ -169,6 +149,15 @@ const OpenHighlightActionPopup: FC<HighlightActionPopupProps & { state: ActiveHi
         autoFocus
         rows={4}
       />
+      <div style={{ borderTop: `1px solid ${CHROME_BORDER}`, paddingTop: 8 }}>
+        <Button appearance="subtle" size="small" icon={<DeleteRegular />}
+          onClick={() => {
+            onRemove(highlight.id);
+            onDismiss();
+          }}>
+          {t("highlight.deleteHighlight")}
+        </Button>
+      </div>
     </div>
   );
 };

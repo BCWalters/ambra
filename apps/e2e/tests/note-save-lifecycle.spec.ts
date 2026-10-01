@@ -51,29 +51,76 @@ test("annotation actions are explicit and inline note editing keeps focus and dr
       return bounds.left >= 0 && bounds.right <= innerWidth;
     })).toBe(true);
     await selection.getByRole("button", { name: "Yellow", exact: true }).click();
-    await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
-    const panel = page.getByRole("navigation", { name: "Bookmarks and highlights", exact: true });
-    await panel.getByRole("tab", { name: /Highlights/ }).click();
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    const panel = page.getByRole("navigation", { name: "Annotations", exact: true });
+    const show = panel.getByRole("combobox", { name: "Show", exact: true });
+    await show.selectOption("highlights");
     const addNote = panel.getByRole("button", { name: /^Add note:/ });
     await expect(addNote).toHaveText("Add note");
+    await expect(panel.getByRole("textbox")).toHaveCount(0);
+    await expect(panel.getByText("Your note", { exact: true })).toHaveCount(0);
     await addNote.click();
     const textarea = panel.getByRole("textbox", { name: "Add a note…" });
+    const save = panel.getByRole("button", { name: "Save", exact: true });
     await expect(textarea).toBeFocused();
+    await expect(save).toBeDisabled();
+    await textarea.fill("   ");
+    await expect(save).toBeDisabled();
     await textarea.fill("Still thinking");
     await addNote.click();
     await expect(textarea).toHaveValue("Still thinking");
     await expect(textarea).toBeFocused();
+    const editorBounds = await textarea.evaluate(element => {
+      const editor = element.closest(".fui-Textarea")!.getBoundingClientRect();
+      const card = element.closest("li")!;
+      return {
+        width: editor.width,
+        cardWidth: card.getBoundingClientRect().width,
+        aboveQuotation: editor.bottom <= card.querySelector("blockquote")!.getBoundingClientRect().top,
+      };
+    });
+    expect(editorBounds.width).toBeGreaterThanOrEqual(editorBounds.cardWidth - 24);
+    expect(editorBounds.aboveQuotation).toBe(true);
+    await show.selectOption("bookmarks");
+    await expect(textarea).toBeHidden();
+    await show.selectOption("highlights");
+    await expect(textarea).toHaveValue("Still thinking");
+    await expect(textarea).toBeFocused();
+    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await expect(panel).toBeHidden();
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    await expect(show).toHaveValue("highlights");
+    await expect(textarea).toHaveValue("Still thinking");
+    await textarea.focus();
+    await textarea.dispatchEvent("keydown", { key: "Escape", isComposing: true });
+    await expect(textarea).toBeFocused();
+    await expect(textarea).toHaveValue("Still thinking");
     await textarea.press("Escape");
     await expect(textarea).toBeHidden();
     await expect(panel).toBeVisible();
     await expect(addNote).toBeFocused();
     await addNote.click();
-    await textarea.fill("My note is separate from the highlighted quotation.");
-    await panel.getByRole("button", { name: "Save", exact: true }).click();
+    await textarea.fill("Discard this draft");
+    await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(textarea).toBeHidden();
+    await expect(addNote).toBeFocused();
+    await addNote.click();
+    await expect(textarea).toHaveValue("");
+    const note = "My note is separate from the highlighted quotation.\n<script>Literal note text.</script>";
+    await textarea.fill(note);
+    await save.click();
     const editNote = panel.getByRole("button", { name: /^Edit note:/ });
     await expect(editNote).toHaveText("Edit note");
     await expect(editNote).toBeFocused();
-    await expect(panel.getByText("My note is separate from the highlighted quotation.", { exact: true })).toBeVisible();
+    const ownWords = panel.getByText(note, { exact: true });
+    await expect(ownWords).toBeVisible();
+    expect(await ownWords.textContent()).toBe(note);
+    await expect(ownWords).toHaveCSS("white-space", "pre-wrap");
+    await expect(panel.locator("script")).toHaveCount(0);
+    await expect(panel.getByText("Your note", { exact: true })).toBeVisible();
+    await expect(show.locator("option")).toHaveText([
+      "All annotations (1)", "Highlights (1)", "Notes (1)", "Bookmarks (0)",
+    ]);
     await expect.poll(() => panel.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
     await page.screenshot({ path: testInfo.outputPath("annotations-polish.png") });
   } finally {
@@ -91,9 +138,10 @@ for (const surface of ["popup", "panel"] as const) {
         await page.getByRole("button", { name: "Add note", exact: true }).click();
       } else {
         await page.getByRole("button", { name: "Yellow", exact: true }).click();
-        await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
-        await page.getByRole("tab", { name: /Highlights/ }).click();
-        await page.getByRole("button", { name: /^Add note:/ }).click();
+        await page.getByRole("button", { name: "Annotations", exact: true }).click();
+        const panel = page.getByRole("navigation", { name: "Annotations", exact: true });
+        await panel.getByRole("combobox", { name: "Show", exact: true }).selectOption("highlights");
+        await panel.getByRole("button", { name: /^Add note:/ }).click();
       }
 
       await page.evaluate(() => {
@@ -117,7 +165,7 @@ for (const surface of ["popup", "panel"] as const) {
       const editor =
         surface === "popup"
           ? page.getByRole("dialog", { name: "Highlight options", exact: true })
-          : page.getByRole("navigation", { name: "Bookmarks and highlights", exact: true });
+          : page.getByRole("navigation", { name: "Annotations", exact: true });
       const textarea = editor.getByRole("textbox", { name: "Add a note…" });
       const save = editor.getByRole("button", { name: "Save", exact: true });
       const draft = "  Draft must survive quota  ";
@@ -141,18 +189,24 @@ for (const surface of ["popup", "panel"] as const) {
       const readNotes = () =>
         page.evaluate(async () => {
           const controller = Reflect.get(window, "__readerController");
-          const highlight = controller.snapshot().highlights[0];
-          const persisted = (await controller.library.listHighlightsForBook(highlight.bookId)).find(
+          const highlights = controller.snapshot().highlights;
+          const highlight = highlights[0];
+          const stored = await controller.library.listHighlightsForBook(highlight.bookId);
+          const persisted = stored.find(
             (entry: { id: string }) => entry.id === highlight.id,
           );
-          return { cached: highlight.note ?? null, persisted: persisted.note ?? null };
+          return { cached: highlight.note ?? null, persisted: persisted.note ?? null,
+            cachedCount: highlights.length, storedCount: stored.length };
         });
-      await expect.poll(readNotes).toEqual({ cached: draft.trim(), persisted: draft.trim() });
+      await expect.poll(readNotes).toEqual({
+        cached: draft.trim(), persisted: draft.trim(), cachedCount: 1, storedCount: 1,
+      });
 
       if (surface === "popup") {
         await page.getByRole("button", { name: "This highlight has a note", exact: true }).click();
       } else {
-        await page.getByRole("button", { name: /^Edit note:/ }).click();
+        await editor.getByRole("combobox", { name: "Show", exact: true }).selectOption("notes");
+        await editor.getByRole("button", { name: /^Edit note:/ }).click();
       }
       await expect(textarea).toHaveValue(draft.trim());
       await textarea.fill("   ");
@@ -160,7 +214,18 @@ for (const surface of ["popup", "panel"] as const) {
       await save.click();
       await releaseSave(page, true);
       await expect(textarea).toBeHidden();
-      await expect.poll(readNotes).toEqual({ cached: null, persisted: null });
+      await expect.poll(readNotes).toEqual({ cached: null, persisted: null, cachedCount: 1, storedCount: 1 });
+      if (surface === "panel") {
+        const show = editor.getByRole("combobox", { name: "Show", exact: true });
+        await expect(show).toBeFocused();
+        await expect(show).toHaveValue("notes");
+        await expect(show.locator("option")).toHaveText([
+          "All annotations (1)", "Highlights (1)", "Notes (0)", "Bookmarks (0)",
+        ]);
+        await expect(editor.getByText("No notes yet.", { exact: true })).toBeVisible();
+        await show.selectOption("highlights");
+        await expect(editor.getByRole("button", { name: /^Add note:/ })).toBeVisible();
+      }
     } finally {
       await context.close();
     }

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { contentStressCases, generateContentStressFixture } from "../content-stress-fixtures.js";
+import { getChromeTheme } from "../../extension/src/reader/chromeTheme.js";
 
 const generator = fileURLToPath(
   new URL("../scripts/generate-wide-table-repro.mjs", import.meta.url),
@@ -386,13 +387,13 @@ test("table viewer follows page themes and leaves the source unchanged across op
   try {
     await exposeReaderController(page);
     for (const theme of ["Dark", "Sepia", "White"]) {
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
-      await page.getByRole("menuitem", { name: /^Page theme/ }).click();
-      const option = page.getByRole("menuitemradio", { name: theme, exact: true });
-      await option.click();
-      await expect(option).toHaveAttribute("aria-checked", "true");
+      await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+      const option = page.getByRole("combobox", { name: "Page theme", exact: true });
+      await option.selectOption({ label: theme });
+      await expect(option).toHaveValue(theme.toLowerCase());
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
+      await expect(option).toBeHidden();
       await expect(page.getByRole("menu")).toHaveCount(0);
       const before = await sourceSnapshot(page);
       await expandButton(page).click();
@@ -418,6 +419,52 @@ test("table viewer follows page themes and leaves the source unchanged across op
     await expect(dialog.locator("output")).toHaveText("100%");
     await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
     await expect(dialog).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});
+
+test("interface theme and browser appearance update viewer/injected controls without altering publication content", async () => {
+  const { context, readerPage: page } = await launchReader(minimalBook(test.info().outputPath("fixture")), {
+    viewport: { width: 760, height: 900 },
+  });
+  const asRgb = (hex: string) => `rgb(${hex.slice(1).match(/../g)!.map(part => Number.parseInt(part, 16)).join(", ")})`;
+  try {
+    await exposeReaderController(page);
+    await expect.poll(async () => (await sourceSnapshot(page)).pages).toBeGreaterThan(0);
+    const before = await sourceSnapshot(page);
+    await expandButton(page).click();
+    const dialog = page.getByRole("dialog", { name: "Table viewer", exact: true });
+    const table = dialog.frameLocator("iframe").getByRole("table");
+    await expect(table).toBeVisible();
+    await dialog.getByRole("button", { name: "Zoom in", exact: true }).click();
+    const original = await table.evaluate(element => element.outerHTML);
+    const injected = page.frameLocator("iframe:not([data-ambra-table-viewer])").first()
+      .getByRole("button", { name: "Expand table", exact: true, includeHidden: true }).first();
+    for (const appearance of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: appearance });
+      for (const choice of ["ambra", "silver", "green", "blue", "purple"] as const) {
+        await page.evaluate(choice => Reflect.get(window, "__readerController").setChromeTheme(choice), choice);
+        const palette = getChromeTheme(choice, appearance);
+        await expect(dialog.getByRole("group")).toHaveCSS("background-color", asRgb(palette.surface));
+        await expect(dialog.getByRole("group")).toHaveCSS("color", asRgb(palette.text));
+        await expect(dialog.locator("output")).toHaveText("125%");
+        await expect(injected).toHaveCSS("color", asRgb(palette.accentForeground));
+        await expect(injected).toHaveCSS("background-color", asRgb(palette.surface));
+        expect(await table.evaluate(element => element.outerHTML)).toBe(original);
+        expect(await sourceSnapshot(page)).toEqual(before);
+      }
+    }
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    expect(await sourceSnapshot(page)).toEqual(before);
+    await page.emulateMedia({ forcedColors: "active" });
+    await expandButton(page).focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(expandButton(page)).toBeFocused();
+    await expect(expandButton(page)).toHaveCSS("outline-style", "solid");
+    await expect(expandButton(page)).toHaveCSS("outline-width", "3px");
   } finally {
     await context.close();
   }

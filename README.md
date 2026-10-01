@@ -35,10 +35,17 @@ This is a pnpm workspace monorepo:
   parsing, layout, pagination, CFI locators). Vanilla TypeScript, **zero runtime
   dependencies** — built entirely on native browser APIs (`DecompressionStream`,
   `DOMParser`). This package must never depend on React or any UI framework.
-- [`packages/shell`](./packages/shell) — shared React/Fluent UI theme provider.
+- [`packages/shell`](./packages/shell) — semantic interface palettes and shared
+  React/Fluent UI providers, including portal styling and browser-driven
+  light/dark appearance. The pure `@ambra/shell/theme` entry avoids importing
+  React components into non-JSX consumers.
 - [`apps/extension`](./apps/extension) — the Manifest V3 Chrome extension that wires the
   engine and shell together: background service worker, library popup, and the
   full-tab reader page, including the toolbar, panels, library, and settings UI.
+  The shared `AmbraSettingsPopover` owns the app-wide settings surface;
+  `ReaderPreferencesMenus` presents per-book Book options. The reader lazily
+  mounts its Library panel and offers automatic, initially-paused read-along
+  controls when the book has recorded narration.
 - [Design system](docs/design-system.md) and [interactive prototype](docs/design-prototype/README.md)
   — approved target UX and a standalone review reference, separate from shipped
   extension behavior.
@@ -220,14 +227,19 @@ AMBRA_E2E_EXTENSION_PATH="$PWD/dist/history-test-build" AMBRA_E2E_HEADLESS=1 \
 
 ## Reading preferences
 
-**Settings** owns the global **Page theme** control: a flyout with three visual samples
-above the directly accessible **Brightness** slider, using the existing `text.pageStyle` translation key.
+**Ambra settings** is the shared gear popover in the Library and reader.
+**Interface theme** preserves Ambra, Silver, Green, Blue and Purple; interface
+light/dark follows browser appearance. **Reading preferences** contains the
+independent **Page theme** choice (White, Sepia, Dark), **Brightness**, **Reading
+mode**, **Page turn**, and **Progress landmarks**. This section starts expanded
+in the reader and collapsed in the Library.
 `GlobalReadingSettings.pageTheme` applies across books. Legacy
 `defaultPageTheme` supplies the initial global theme when present; otherwise
 it defaults to white. Saved per-book page themes are no longer used.
 
 `BookReadingSettings` owns typography and `alwaysShowOnePage` (default `false`),
-not `pageTheme`. The **Always show one page** checkbox in the book's **Page**
+not `pageTheme`. **Book options** (Aa) exposes these per-book choices. The
+**Always show one page** checkbox in its **Page**
 menu forces a single centered page for reflowable paginated content, including
 reflowable sections of mixed-layout books. It does not change fixed-layout
 pages or scrolling, which already uses a centered, width-limited reading area.
@@ -238,8 +250,8 @@ See the [user guide](docs/user-guide/README.md) for a feature overview and
 [EPUB Inspector](docs/user-guide/epub-inspector.md) for integrated publication
 inspection and debugging.
 
-Open **Settings → Help & About** or the **Help & About** footer in **Book details**
-while reading, or **Help & About** in the
+Open the **Help & About** question-mark control in the reader toolbar, the
+**Help & About** footer in reader **Book details**, or **Help & About** in the
 Library. It includes the user guide, keyboard shortcuts, diagnostics, and feedback
 by email or GitHub. No GitHub account is needed to send email.
 
@@ -344,21 +356,24 @@ pre-beta validation gate.
 
 ## Recorded narration
 
-Narrated books show a nonmodal discovery notice until you choose **Listen now**
-or **Not now**. That choice is remembered per book. Opening the notice never
-starts audio or moves keyboard focus. Playback uses a compact control strip with
-a themed speed menu; the X at the far right pauses and closes it.
-
-Books with EPUB Media Overlays offer **Listen** in the reader toolbar. The playback
-strip supports pause/resume, previous/next authored passage, and playback speed.
+Books with supported EPUB Media Overlays automatically show **Read along**
+below the reading area, initially paused. Opening a book does not start audio.
+There is no separate Listen toolbar button or narration discovery notice.
+The controls support pause/resume, previous/next authored passage, and playback speed.
 Narration highlights its current passage and follows it across pages and chapters,
 without moving keyboard focus.
+
+**Collapse read-along controls** leaves a compact strip with play/pause;
+collapsing does not pause playback. **Expand read-along controls** restores the
+larger controls. Collapse is temporary reader-session state, not a persisted
+preference, and controls return expanded on reload. Books without supported
+narration do not show the strip.
 
 Manual page, contents, scrubber, or scroll navigation keeps audio playing but stops
 automatic following. **Return to narration** reveals the current audio passage without
 seeking; **Listen from this page** starts at the displayed passage, changing to
 **Listen from selection** when book text is selected.
-Closing the strip pauses playback. Unnarrated front matter advances to the next
+Use **Pause narration** to pause playback. Unnarrated front matter advances to the next
 narrated linear section; the reader does not silently substitute text-to-speech.
 
 The first version supports recorded audio in reflowable and fixed-layout books,

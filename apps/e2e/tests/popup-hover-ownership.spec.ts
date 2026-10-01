@@ -67,6 +67,7 @@ async function clickHighlight(page: Page) {
 for (const { width, zoom } of [
   { width: 900, zoom: 1 },
   { width: 360, zoom: 1 },
+  { width: 320, zoom: 1 },
   { width: 1280, zoom: 2 },
 ]) {
   test(`${width}px ${zoom * 100}%: first-line annotation popup owns edge hover so inline delete stays reachable (#221)`, async () => {
@@ -96,8 +97,15 @@ for (const { width, zoom } of [
       await clickHighlight(page);
       await expect(popup(page)).toBeVisible();
       const remove = popup(page).getByRole("button", { name: "Delete highlight", exact: true });
+      const close = popup(page).getByRole("button", { name: "Close", exact: true });
+      const closeBounds = (await close.boundingBox())!;
+      expect(closeBounds.y).toBeLessThan(96);
+      await page.mouse.move(closeBounds.x + closeBounds.width / 2, closeBounds.y + closeBounds.height / 2);
+      await expect(toolbar(page)).toHaveCSS("pointer-events", "none");
+      await expect(progress(page)).toHaveCSS("pointer-events", "none");
       const bounds = (await remove.boundingBox())!;
-      expect(bounds.y).toBeLessThan(96);
+      expect(bounds.y - closeBounds.y - closeBounds.height).toBeGreaterThanOrEqual(48);
+      await expect(remove).toHaveText("Delete highlight");
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
       await expect(toolbar(page)).toHaveCSS("pointer-events", "none");
       await expect(progress(page)).toHaveCSS("pointer-events", "none");
@@ -296,7 +304,7 @@ test("bottom-edge narration controls and their portalled menu do not summon the 
   try {
     await exposeReaderController(page);
     await page.mouse.move(350, 2);
-    await page.getByRole("button", { name: "Listen", exact: true }).click();
+    await page.getByRole("button", { name: "Play narration", exact: true }).click();
     const controls = page.getByRole("region", { name: "Narration controls" });
     await expect(controls).toBeVisible();
     const speed = controls.getByRole("button", { name: /^Narration speed/ });

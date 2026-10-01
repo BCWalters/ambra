@@ -23,6 +23,16 @@ describe("shared Book Details metadata rows", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("preserves the complete wrapping Book details title without a disclosure or truncated accessible name", () => {
+    const title = "ALongBookTitleWithoutSpaces".repeat(30);
+    act(() => root.render(<BookMetadataText value={title} name="Title" kind="identity" heading />));
+    const heading = container.querySelector("h2")!;
+    expect(heading.textContent).toBe(title);
+    expect(heading.style.overflowWrap).toBe("anywhere");
+    expect(heading.style.whiteSpace).toBe("pre-wrap");
+    expect(container.querySelector("button")).toBeNull();
+  });
+
   it("abbreviates long identifiers but allows their bounded expanded value to wrap", () => {
     const value = "urn:example:" + "longidentifier".repeat(30);
     act(() => root.render(<BookDetailRow label="Identifier" value={value} />));

@@ -4,7 +4,7 @@ import { LibraryDatabase, type BookImportResult } from "./LibraryDatabase.js";
 import { LibrarySession, type LibraryBookViewModel } from "./LibrarySession.js";
 import { DEFAULT_LIBRARY_SORT } from "./LibrarySortOption.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
-import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, openLibraryTab, openReaderTab } from "../navigation.js";
+import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, libraryFullTabUrl, openLibraryTab, openReaderTab } from "../navigation.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS, type GlobalReadingSettings } from "./ReadingSettings.js";
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
@@ -58,9 +58,10 @@ export interface UseLibraryResult {
    * `LibraryImportError`) without otherwise affecting the library. */
   dismissError: () => void;
   importFiles: (files: readonly File[]) => Promise<void>;
-  removeBook: (id: string) => Promise<void>;
+  removeBook: (id: string) => Promise<boolean>;
   openBook: (id: string) => void;
   saveBookAs: (id: string) => Promise<void>;
+  getBookFileSize?: (id: string) => Promise<number | undefined>;
   /** App-global settings, shared live with open readers. */
   chromeTheme: ChromeThemeChoice;
   settings: GlobalReadingSettings;
@@ -74,7 +75,7 @@ export interface UseLibraryResult {
    * `LibraryApp` uses this to hide its own "open in a new tab" button
    * once there's no smaller popup left to expand out of. */
   isFullTab: boolean;
-  openInFullTab: () => void;
+  openInFullTab: (discovery?: boolean) => void;
   /** See `StorageUsageEstimate` — `undefined` until the first estimate
    * resolves (or permanently, if the browser doesn't support it). */
   storageUsage: StorageUsageEstimate | undefined;
@@ -106,6 +107,7 @@ export function useLibrary(): UseLibraryResult {
   const [settings, setSettingsState] = useState<GlobalReadingSettings>(DEFAULT_GLOBAL_READING_SETTINGS);
   const settingsRevision = useRef(0);
   const [sort, setSortState] = useState<LibrarySortOption>(DEFAULT_LIBRARY_SORT);
+  const sortRevision = useRef(0);
   const [storageUsage, setStorageUsage] = useState<StorageUsageEstimate | undefined>(undefined);
   const sessionRef = useRef<LibrarySession | undefined>(undefined);
   const canImport = db !== null && !isLoading;
@@ -153,6 +155,12 @@ export function useLibrary(): UseLibraryResult {
     if (ownsDatabase(database) && revision === settingsRevision.current) setSettingsState(saved);
   }, [ownsDatabase]);
 
+  const refreshSort = useCallback(async (database: LibraryDatabase): Promise<void> => {
+    const revision = ++sortRevision.current;
+    const saved = await database.getDefaultLibrarySort();
+    if (ownsDatabase(database) && revision === sortRevision.current) setSortState(saved ?? DEFAULT_LIBRARY_SORT);
+  }, [ownsDatabase]);
+
   useEffect(() => {
     let cancelled = false;
     let session: LibrarySession | undefined;
@@ -171,7 +179,7 @@ export function useLibrary(): UseLibraryResult {
         setDb(database);
         refreshStorageUsage();
         unsubscribe = database.subscribePreferences(() => {
-          void refreshSettings(database).catch((err) => {
+          void Promise.all([refreshSettings(database), refreshSort(database)]).catch((err) => {
             if (!cancelled) setError(describeLibraryStorageError(err));
           });
         });
@@ -182,11 +190,8 @@ export function useLibrary(): UseLibraryResult {
             if (!cancelled) setError(describeLibraryStorageError(err));
           });
         });
-        const [, savedSort] = await Promise.all([
-          refreshSettings(database), database.getDefaultLibrarySort(),
-        ]);
+        await Promise.all([refreshSettings(database), refreshSort(database)]);
         if (cancelled) return;
-        if (savedSort) setSortState(savedSort);
         await refresh(database);
       } catch (err) {
         if (!cancelled) {
@@ -205,7 +210,7 @@ export function useLibrary(): UseLibraryResult {
       if (sessionRef.current === session) sessionRef.current = undefined;
       session?.dispose();
     };
-  }, [refresh, refreshStorageUsage, refreshSettings]);
+  }, [refresh, refreshStorageUsage, refreshSettings, refreshSort]);
 
   const setSettings = useCallback((patch: Partial<GlobalReadingSettings>): void => {
     if (!db || !ownsDatabase(db) || isLoading) return;
@@ -259,16 +264,16 @@ export function useLibrary(): UseLibraryResult {
   );
 
   const removeBook = useCallback(
-    async (id: string): Promise<void> => {
+    async (id: string): Promise<boolean> => {
       if (!db || !ownsDatabase(db)) {
-        return;
+        return false;
       }
       setError(undefined);
       try {
         await db.deleteBook(id);
       } catch (err) {
         if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
-        return;
+        return false;
       }
       try {
         await refresh(db);
@@ -276,6 +281,7 @@ export function useLibrary(): UseLibraryResult {
       } catch (err) {
         if (ownsDatabase(db)) setError(describeLibraryStorageError(err));
       }
+      return true;
     },
     [db, ownsDatabase, refresh, refreshStorageUsage],
   );
@@ -290,6 +296,7 @@ export function useLibrary(): UseLibraryResult {
 
   const setSort = useCallback(
     (next: LibrarySortOption): void => {
+      sortRevision.current++;
       setSortState(next);
       if (db && ownsDatabase(db)) {
         void db.setDefaultLibrarySort(next).catch((err) => {
@@ -300,9 +307,17 @@ export function useLibrary(): UseLibraryResult {
     [db, ownsDatabase],
   );
 
-  const openInFullTab = useCallback((): void => {
-    void openLibraryTab();
+  const openInFullTab = useCallback((discovery = false): void => {
+    const open = discovery
+      ? chrome.tabs.create({ url: `${libraryFullTabUrl()}&discover=1` })
+      : openLibraryTab();
+    void open.catch((err: unknown) => setError(describeLibraryStorageError(err)));
   }, []);
+
+  const getBookFileSize = useCallback(async (id: string): Promise<number | undefined> => {
+    if (!db || !ownsDatabase(db)) return undefined;
+    return (await db.getBookFile(id))?.size;
+  }, [db, ownsDatabase]);
 
   const saveBookAs = useCallback(async (id: string): Promise<void> => {
     if (!db || !ownsDatabase(db)) {
@@ -491,7 +506,7 @@ export function useLibrary(): UseLibraryResult {
 
   const books = useMemo(() => sortBooks(rawBooks, sort, locale), [rawBooks, sort, locale]);
   const errorMessage = typeof error === "string" || error === undefined ? error : "detail" in error ? error.detail : t(error.key, {
-    importLabel: t(books.length ? "library.importEpub" : "library.chooseEpubFiles"),
+    importLabel: t("library.importEpub"),
     ...error.params,
   });
 
@@ -509,6 +524,7 @@ export function useLibrary(): UseLibraryResult {
     removeBook,
     openBook,
     saveBookAs,
+    getBookFileSize,
     chromeTheme: settings.chromeTheme,
     settings,
     setSettings,

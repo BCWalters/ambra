@@ -45,6 +45,8 @@ function setUp(mode: Mode, commonFirst = true) {
   Object.assign(controller, {
     diagnostics: new DiagnosticsLog(),
     host,
+    chromeTheme: "ambra",
+    browserAppearance: "light",
     containerEl: container,
     width: 900,
     height: 700,

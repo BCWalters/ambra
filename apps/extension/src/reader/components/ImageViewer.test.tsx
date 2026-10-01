@@ -4,6 +4,8 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ImageViewer } from "./ImageViewer.js";
 import type { ImageViewerProps } from "./ImageViewer.js";
+import { ChromeThemeProvider } from "../ChromeThemeContext.js";
+import { getInterfaceTheme } from "@ambra/shell/theme";
 
 vi.mock("../../i18n/LocaleContext.js", () => ({
   useTranslation: () => (key: string) =>
@@ -34,7 +36,36 @@ describe("ImageViewer", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("updates viewer controls with browser appearance/theme without resetting zoom or recoloring artwork", () => {
+    const image = { src: "image.png", alt: "Illustration" };
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    vi.spyOn(window, "matchMedia").mockReturnValue(media);
+    let dark = false;
+    vi.spyOn(media, "matches", "get").mockImplementation(() => dark);
+    for (const appearance of ["light", "dark"] as const) {
+      act(() => { dark = appearance === "dark"; media.dispatchEvent(new Event("change")); });
+      for (const theme of ["ambra", "silver", "green", "blue", "purple"] as const) {
+        act(() => root.render(<ChromeThemeProvider theme={theme}>
+          <ImageViewer image={image} onRequestClose={onRequestClose} />
+        </ChromeThemeProvider>));
+        const palette = getInterfaceTheme(theme, appearance);
+        const controls = container.querySelector<HTMLElement>('[role="group"]')!;
+        expect(controls.style.background).toBe(palette.surface);
+        expect(controls.style.color).toBe(palette.text);
+        expect(container.querySelector("img")!.style.backgroundColor).toBe("#fff");
+        expect(container.querySelector("img")!.style.filter).toBe("");
+        expect(container.querySelector("img")!.getAttribute("src")).toBe(image.src);
+        expect(container.querySelector("output")!.textContent).toBe(theme === "ambra" && appearance === "light" ? "100%" : "125%");
+        if (theme === "ambra" && appearance === "light") {
+          loadImage(120, 120);
+          act(() => button("Zoom in").click());
+        }
+      }
+    }
   });
 
   function render(image: ImageViewerProps["image"] = { src: "image.png", alt: "Illustration" }) {

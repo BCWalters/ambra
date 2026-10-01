@@ -5,65 +5,61 @@ import { exposeReaderController } from "../reader-controller.js";
 
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 
-test("settings flyouts separate arrow focus from selection and restore focus one menu level at a time", async () => {
+test("native settings commit keyboard choices, retain dialog focus and restore their trigger on Escape", async () => {
   const { context, readerPage: page } = await launchReader(book);
   try {
-    const trigger = page.getByRole("button", { name: "Settings", exact: true });
+    const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
     await trigger.focus();
     await trigger.press("Enter");
-    const menu = page.getByRole("menu", { name: "Settings", exact: true });
-    const themeParent = menu.getByRole("menuitem", { name: /^Page theme/ });
-    await themeParent.press("ArrowRight");
-    const theme = page.getByRole("menu", { name: /^Page theme/ });
-    const white = theme.getByRole("menuitemradio", { name: "White", exact: true });
-    const sepia = theme.getByRole("menuitemradio", { name: "Sepia", exact: true });
-    const dark = theme.getByRole("menuitemradio", { name: "Dark", exact: true });
-    await expect(white).toHaveAttribute("aria-checked", "true");
-    await white.focus();
-    for (const [previous, next] of [[white, sepia], [sepia, dark]] as const) {
-      await previous.press("ArrowDown");
-      await expect(next).toBeFocused();
-      await expect(previous).toHaveAttribute("aria-checked", "true");
-      await expect(next).toHaveAttribute("aria-checked", "false");
-      await next.press("Enter");
-      await expect(next).toHaveAttribute("aria-checked", "true");
-      await expect(page.getByRole("menu")).toHaveCount(2);
+    const dialog = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+    const theme = dialog.getByRole("combobox", { name: "Page theme", exact: true });
+    const brightness = dialog.getByRole("slider", { name: "Brightness", exact: true });
+    await expect(theme).toBeFocused();
+    await expect(theme).toHaveValue("white");
+    // Native type-ahead commits keyboard choices even where headless Chromium
+    // cannot drive the OS select popup with arrow keys.
+    for (const value of ["sepia", "dark"]) {
+      await theme.press(value[0]!);
+      await expect(theme).toBeFocused();
+      await expect(theme).toHaveValue(value);
+      await expect(dialog).toBeVisible();
+      // Leaving and returning resets native type-ahead's multi-letter prefix.
+      await theme.press("Tab");
+      await expect(brightness).toBeFocused();
+      await brightness.press("Shift+Tab");
+      await expect(theme).toBeFocused();
     }
-    await dark.press("Escape");
-    await expect(themeParent).toBeFocused();
-    await expect(themeParent).toContainText("Dark");
-    const modeParent = menu.getByRole("menuitem", { name: /^Reading mode/ });
-    await modeParent.press("ArrowRight");
-    const mode = page.getByRole("menu", { name: /^Reading mode/ });
-    const paginated = mode.getByRole("menuitemradio", { name: "Paginated", exact: true });
-    const scroll = mode.getByRole("menuitemradio", { name: "Scroll", exact: true });
-    await paginated.focus();
-    await paginated.press("ArrowDown");
-    await expect(scroll).toBeFocused();
-    await expect(paginated).toHaveAttribute("aria-checked", "true");
-    await scroll.press("Space");
-    await expect(scroll).toHaveAttribute("aria-checked", "true");
-    await expect(menu.getByRole("menuitem", { name: /^Page turn/ })).toBeDisabled();
-    await scroll.press("ArrowUp");
-    await expect(paginated).toBeFocused();
-    await paginated.press("Enter");
-    await expect(paginated).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("menu")).toHaveCount(2);
-    await paginated.press("Escape");
-    await expect(modeParent).toBeFocused();
-    await expect(modeParent).toContainText("Paginated");
-    await modeParent.press("Tab");
-    await expect(menu).toBeHidden();
-    await expect(page.getByRole("button", { name: "Book details", exact: true })).toBeFocused();
+    await theme.press("Tab");
+    await expect(dialog.getByRole("slider", { name: "Brightness", exact: true })).toBeFocused();
+    const mode = dialog.getByRole("combobox", { name: "Reading mode", exact: true });
+    await mode.focus();
+    await mode.press("s");
+    await expect(mode).toHaveValue("scroll");
+    await expect(mode).toBeFocused();
+    await expect(dialog.getByRole("combobox", { name: "Page turn", exact: true })).toBeDisabled();
+    await mode.press("Shift+Tab");
+    await expect(brightness).toBeFocused();
+    await brightness.press("Tab");
+    await expect(mode).toBeFocused();
+    await mode.press("p");
+    await expect(mode).toHaveValue("paginated");
+    await expect(mode).toBeFocused();
+    await expect(dialog.getByRole("combobox", { name: "Page turn", exact: true })).toBeEnabled();
+    await mode.press("Tab");
+    await expect(dialog.getByRole("combobox", { name: "Page turn", exact: true })).toBeFocused();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await trigger.press("Tab");
+    await expect(page.getByRole("button", { name: "Help & About", exact: true })).toBeFocused();
     await trigger.focus();
     await trigger.press("Enter");
-    await themeParent.press("ArrowRight");
-    await expect(dark).toHaveAttribute("aria-checked", "true");
-    await dark.press("Escape");
-    await expect(themeParent).toBeFocused();
-    await themeParent.press("Escape");
+    await expect(theme).toBeFocused();
+    await expect(theme).toHaveValue("dark");
+    await theme.press("Escape");
     await expect(trigger).toBeFocused();
-    await expect(menu).toBeHidden();
+    await expect(dialog).toBeHidden();
   } finally {
     await context.close();
   }
@@ -219,20 +215,20 @@ test("font, responsive columns and reading mode preserve shell focus, while expl
     }
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("menuitem", { name: /^Reading mode/ }).press("ArrowRight");
+    await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    const mode = page.getByRole("dialog", { name: "Ambra settings", exact: true })
+      .getByRole("combobox", { name: "Reading mode", exact: true });
     for (const name of ["Scroll", "Paginated"]) {
       await rememberPosition(page);
-      const mode = page.getByRole("menuitemradio", { name, exact: true });
-      await mode.click();
-      await expect(mode).toHaveAttribute("aria-checked", "true");
+      await mode.focus();
+      await mode.selectOption(name.toLowerCase());
+      await expect(mode).toHaveValue(name.toLowerCase());
       await settled(page);
       await expect(mode).toBeFocused();
       await expectPositionVisible(page);
     }
     await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
-    const settings = page.getByRole("button", { name: "Settings", exact: true });
+    const settings = page.getByRole("button", { name: "Ambra settings", exact: true });
     await settings.focus();
     await page.evaluate(async () => {
       const c = Reflect.get(window, "__readerController");

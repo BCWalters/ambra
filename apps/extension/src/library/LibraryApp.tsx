@@ -1,387 +1,126 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, FC } from "react";
-import { useBrowserAppearance } from "@ambra/shell";
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FC } from "react";
 import {
-  Body1,
-  Button,
-  Menu,
-  MenuGroup,
-  MenuGroupHeader,
-  MenuItemRadio,
-  MenuList,
-  MenuPopover,
-  MenuTrigger,
-  SearchBox,
-  Spinner,
-  Title2,
-  Tooltip,
-  type TooltipProps,
-  makeStyles,
-  useRestoreFocusTarget,
+  Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle,
+  SearchBox, Spinner, Title2, Tooltip, useRestoreFocusSource, useRestoreFocusTarget,
 } from "@fluentui/react-components";
-import {
-  ArrowSortRegular,
-  DocumentAddRegular,
-  DeleteRegular,
-  GlobeRegular,
-  InfoRegular,
-  StorageRegular,
-  WindowNewRegular,
-} from "@fluentui/react-icons";
-import { useLibrary } from "./useLibrary.js";
-import type { LibraryBookViewModel } from "./useLibrary.js";
+import { DocumentAddRegular, GlobeRegular, QuestionCircleRegular, WindowNewRegular } from "@fluentui/react-icons";
+import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { useLibraryInspector } from "./useLibraryInspector.js";
-import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
 import { LibraryImportStatus } from "./LibraryImportStatus.js";
 import { LibraryEmptyState } from "./LibraryEmptyState.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
+import { LibraryBookCard } from "./LibraryBookCard.js";
+import { LibrarySortMenu } from "./LibrarySortMenu.js";
 import { filterLibraryBooks } from "./LibrarySearch.js";
-import { CHROME_BORDER, CHROME_SHADOW, getChromeTheme } from "../reader/chromeTheme.js";
-import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
+import { CHROME_BORDER } from "../reader/chromeTheme.js";
+import { ChromeThemeProvider, useChromeTheme } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH, type InspectorViewMode } from "../reader/components/EpubInspectorPanel.js";
 import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
 import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.js";
+import { CenteredDialog } from "../components/CenteredDialog.js";
+import { AmbraSettingsPopover } from "../components/AmbraSettingsPopover.js";
 import { useHelpDialogs } from "../components/useHelpDialogs.js";
 import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
 import { matchReaderCommand } from "../shortcuts/ReaderCommands.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
-import { CHROME_TOOLBAR_HEIGHT, useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
-import { ReaderSettingsMenu } from "../reader/components/ReaderPreferencesMenus.js";
+import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
-import type { StringCatalog } from "../i18n/locales/en.js";
-import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
-import { EPUB_TOOLTIP_STYLE } from "../components/EpubTextStyles.js";
+import { formatLibraryBytes } from "./LibraryFormatting.js";
 
-const SORT_GROUP_NAME = "librarySort";
+export interface EmbeddedLibraryOptions {
+  open: boolean;
+  onActivateBook: (bookId: string) => void;
+  currentBookId?: string | undefined;
+}
 
-const useLibraryStyles = makeStyles({
-  heading: {
-    "@media (max-width: 600px)": { fontSize: "20px", lineHeight: "28px" },
-  },
-  importLabel: {
-    "@media (max-width: 600px)": { display: "none" },
-  },
-});
+export interface LibraryAppProps {
+  embedded?: EmbeddedLibraryOptions | undefined;
+}
 
-const useBookCardStyles = makeStyles({
-  cover: {
-    transition: "border-color 120ms ease, box-shadow 120ms ease, filter 80ms ease",
-    ":active": {
-      filter: "brightness(0.88)",
-    },
-    "@media (prefers-reduced-motion: reduce)": {
-      transition: "none",
-    },
-  },
-});
-
-const SORT_LABELS: Readonly<Record<LibrarySortOption, keyof StringCatalog>> = {
-  dateAddedDesc: "library.sortNewest",
-  dateAddedAsc: "library.sortOldest",
-  titleAsc: "library.sortTitle",
-  authorAsc: "library.sortAuthor",
-};
-
-const BookCard: FC<{
-  book: LibraryBookViewModel;
-  compact: boolean;
-  accent: string;
-  onOpen: () => void;
-  onDelete: () => void;
-  onShowDetails: () => void;
-}> = ({ book, compact, accent, onOpen, onDelete, onShowDetails }) => {
+const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibraryOptions | undefined }> = ({ library, embedded }) => {
   const t = useTranslation();
   const { locale } = useLocale();
-  const styles = useBookCardStyles();
-  const restoreFocusTarget = useRestoreFocusTarget();
-  // Opening a reader tab retains pointer focus on its cover. Only keyboard
-  // focus should keep its actions visible after the pointer leaves (#173).
-  // Track the whole card so moving focus between cover/actions keeps them
-  // available, independently of hover.
-  const [isHovered, setIsHovered] = useState(false);
-  const [isFocusVisible, setIsFocusVisible] = useState(false);
-  const isActive = isHovered || isFocusVisible;
-
-  // Rounds to whole percent and only ever shows up once a book has
-  // *some* recorded progress — an untouched book (or one whose progress
-  // predates `fractionComplete`, or was last saved in scroll mode) has
-  // nothing meaningful to show, so the bar/label are omitted entirely
-  // rather than rendering a misleading "0%".
-  const progressPercent =
-    book.progressFraction !== undefined ? Math.round(book.progressFraction * 100) : undefined;
-
-  return (
-    <div
-      style={{
-        width: compact ? "100%" : 140,
-        minWidth: 0,
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onFocusCapture={(event) => setIsFocusVisible(event.target.matches(":focus-visible"))}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setIsFocusVisible(false);
-      }}
-      onPointerDownCapture={() => setIsFocusVisible(false)}
-      onKeyDownCapture={(event) => {
-        if (!event.altKey && !event.ctrlKey && !event.metaKey) setIsFocusVisible(true);
-      }}
-    >
-      <div style={{ position: "relative", width: compact ? "100%" : 140, height: compact ? undefined : 200 }}>
-        <button
-          className={styles.cover}
-          type="button"
-          onClick={onOpen}
-          aria-label={progressPercent !== undefined
-            ? t("library.openBookProgress", { title: book.title, progress: formatLibraryProgress(progressPercent / 100, locale) })
-            : t("library.openBook", { title: book.title })}
-          style={{
-            width: compact ? "100%" : 140,
-            height: compact ? "auto" : 200,
-            aspectRatio: compact ? "7 / 10" : undefined,
-            overflow: compact ? "hidden" : undefined,
-            padding: 0,
-            border: `2px solid ${isActive ? accent : CHROME_BORDER}`,
-            borderRadius: 4,
-            background: book.cardCoverUrl
-              ? `center / cover no-repeat url(${book.cardCoverUrl})`
-              : "var(--colorNeutralBackground3, #eee)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            font: "inherit",
-            boxShadow: isActive ? `0 2px 10px ${accent}66` : "none",
-          }}
-        >
-          {!book.cardCoverUrl && (
-            <Body1 style={{
-              margin: 8, minWidth: 0, display: "-webkit-box", WebkitLineClamp: compact ? 4 : 6,
-              WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere",
-            }}>
-              {book.title}
-            </Body1>
-          )}
-        </button>
-        {/* A thin reading-progress bar along the cover's bottom edge,
-            Apple-Books-style — deliberately not a text overlay on the
-            cover art itself (would fight with the artwork/title
-            fallback text above). Purely decorative (`aria-hidden`): the
-            percentage is already in the cover button's own
-            `aria-label` above for anyone who can't see the bar. */}
-        {progressPercent !== undefined && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              left: 2,
-              right: 2,
-              bottom: 2,
-              height: 3,
-              borderRadius: 2,
-              background: "rgba(0, 0, 0, 0.25)",
-              overflow: "hidden",
-              pointerEvents: "none",
-            }}
-          >
-            <div
-              style={{
-                width: `${progressPercent}%`,
-                height: "100%",
-                background: accent,
-              }}
-            />
-          </div>
-        )}
-        {/* A themed icon-only "i" button (issue #105) — same hover-reveal
-            idiom as the trash can, mirrored to the opposite (top-left)
-            corner so the two never compete for the same spot. Opens the
-            read-only Book Details flyout (`BookDetailsFlyout`). */}
-        <Tooltip content={{ children: t("library.bookDetails", { title: book.title }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
-          <Button
-            {...restoreFocusTarget}
-            appearance="secondary"
-            size="small"
-            icon={<InfoRegular />}
-            onClick={onShowDetails}
-            aria-label={t("library.bookDetails", { title: book.title })}
-            style={{
-              position: "absolute",
-              top: 6,
-              left: 6,
-              minWidth: 0,
-              width: 28,
-              height: 28,
-              padding: 0,
-              borderRadius: "50%",
-              border: `1px solid ${CHROME_BORDER}`,
-              boxShadow: CHROME_SHADOW,
-              opacity: isActive ? 1 : 0,
-              pointerEvents: isActive ? "auto" : "none",
-              transition: "opacity 120ms ease",
-            }}
-          />
-        </Tooltip>
-        {/* A themed icon-only trash can (issue: library styling should
-            align with the reader's own chrome instead of a plain generic
-            text button) — only ever revealed on hover/focus of this card
-            (see `isActive`), a click target big enough for touch/mouse
-            but unobtrusive the rest of the time. This button is a
-            sibling of the cover button in the DOM, not nested inside it
-            (buttons can't nest), so a click here never reaches `onOpen`
-            at all. */}
-        <Tooltip content={{ children: t("library.removeBook", { title: book.title }), style: EPUB_TOOLTIP_STYLE }} relationship="label">
-          <Button
-            appearance="secondary"
-            size="small"
-            icon={<DeleteRegular />}
-            onClick={onDelete}
-            aria-label={t("library.removeBook", { title: book.title })}
-            style={{
-              position: "absolute",
-              top: 6,
-              right: 6,
-              minWidth: 0,
-              width: 28,
-              height: 28,
-              padding: 0,
-              borderRadius: "50%",
-              border: `1px solid ${CHROME_BORDER}`,
-              boxShadow: CHROME_SHADOW,
-              opacity: isActive ? 1 : 0,
-              pointerEvents: isActive ? "auto" : "none",
-              transition: "opacity 120ms ease",
-            }}
-          />
-        </Tooltip>
-      </div>
-      <Body1
-        as="p"
-        style={{ margin: 0, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-      >
-        {book.title}
-      </Body1>
-      {book.creator && (
-        <Body1 as="p" style={{
-          margin: 0, color: "var(--colorNeutralForeground2, #333)", minWidth: 0,
-          fontSize: compact ? 12 : undefined, lineHeight: compact ? "16px" : undefined,
-          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-          overflow: "hidden", overflowWrap: "anywhere",
-        }}>
-          {book.creator}
-        </Body1>
-      )}
-    </div>
-  );
-};
-
-/** Library page: a grid of imported books (cover, title, author), import
- * via file picker, delete, sort, and "open" (launches the full-tab
- * reader for that book — see `navigation.ts`). Backed by
- * `LibraryDatabase` (IndexedDB), all local-only in v1.
- *
- * Also the extension's own toolbar popup (`manifest.json`'s
- * `default_popup`) — small and fixed-size there, which is fine for a
- * handful of books but cramped for a real library, so this same page
- * can also open as its own full browser tab (`openInFullTab`/
- * `isFullTab`, see `navigation.ts`'s `openLibraryTab`).
- *
- * Themed with the same "Reader Theme" chosen in the reader's own
- * Settings menu (issue #86 follow-up — `useLibrary`'s `chromeTheme`,
- * read from the same shared `LibraryDatabase` preference the reader
- * itself reads on open) — this page previously had no theme awareness
- * at all, so picking any reader theme besides the default still left
- * the library reading as a second, totally undecorated app the instant
- * a reader left the book itself. The page background, cover hover/focus
- * accent, and every action button now share the reader chrome's own
- * visual language (`CHROME_BORDER`/`CHROME_SHADOW`, the same subtle-
- * icon-button-with-tooltip idiom the toolbar uses) rather than a full
- * re-skin of every Fluent control — enough for the choice to feel like
- * a whole-app identity without needing to fight Fluent's own default
- * component styling. */
-export const LibraryApp: FC = () => {
-  const t = useTranslation();
-  const { locale } = useLocale();
-  useEffect(() => { document.title = t("library.pageTitle"); }, [t]);
-  const restoreAboutFocus = useRestoreFocusTarget();
+  const isEmbedded = embedded !== undefined;
+  const active = embedded?.open ?? true;
+  useEffect(() => { if (!isEmbedded) document.title = t("library.pageTitle"); }, [t, isEmbedded]);
   const {
-    books,
-    isLoading,
-    canImport,
-    importActivities,
-    dismissCompletedImports,
-    cancelDownload,
-    error,
-    errorHeadline,
-    dismissError,
-    importFiles,
-    removeBook,
-    openBook,
-    saveBookAs,
-    chromeTheme,
-    settings,
-    setSettings,
-    sort,
-    setSort,
-    isFullTab,
-    openInFullTab,
-    storageUsage,
-    openInspectionSession,
-  } = useLibrary();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const toolbarImportRef = useRef<HTMLButtonElement | null>(null);
-  const emptyImportRef = useRef<HTMLButtonElement | null>(null);
-  const emptyStateRef = useRef<HTMLDivElement | null>(null);
-  const libraryHeadingRef = useRef<HTMLDivElement | null>(null);
+    books, isLoading, canImport, importActivities, dismissCompletedImports, cancelDownload,
+    error, errorHeadline, dismissError, importFiles, removeBook, saveBookAs, getBookFileSize,
+    settings, setSettings, sort, setSort, openInFullTab, storageUsage, openInspectionSession,
+  } = library;
+  const isFullTab = !isEmbedded && library.isFullTab;
+  const openBook = embedded?.onActivateBook ?? library.openBook;
+  const CollectionContainer = isEmbedded ? "div" : "main";
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolbarImportRef = useRef<HTMLButtonElement>(null);
+  const libraryHeadingRef = useRef<HTMLDivElement>(null);
+  const collectionRef = useRef<HTMLDivElement>(null);
+  const removeCancelRef = useRef<HTMLButtonElement>(null);
+  const restoreAboutFocus = useRestoreFocusTarget();
+  const restoreDiscoveryFocus = useRestoreFocusTarget();
+  const restoreRemoveFocus = useRestoreFocusSource();
   const [query, setQuery] = useState("");
-  const [discoveryOpen, setDiscoveryOpen] = useState(false);
-  const discoveryId = useId();
+  const [discoveryOpen, setDiscoveryOpen] = useState(() =>
+    new URLSearchParams(window.location.search).get("discover") === "1");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpTooltip, setHelpTooltip] = useState(false);
+  const [detailsBookId, setDetailsBookId] = useState<string>();
+  const [removeBookId, setRemoveBookId] = useState<string>();
+  const [currentBookRemovalOpen, setCurrentBookRemovalOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const pendingRemovalFocus = useRef<{ removed: string; next?: string } | undefined>(undefined);
   const resultsId = useId();
+  const importStatusId = useId();
   const hasQuery = query.trim().length > 0;
   const visibleBooks = useMemo(() => filterLibraryBooks(books, query, locale), [books, query, locale]);
-  useEffect(() => {
-    if (!isLoading && books.length === 0) {
-      setQuery("");
-      setDiscoveryOpen(false);
-    }
-  }, [isLoading, books.length]);
-  const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
-  useLayoutEffect(() => {
-    if (importInProgress && emptyStateRef.current?.contains(document.activeElement)) {
-      libraryHeadingRef.current?.focus();
-    }
-  }, [importInProgress]);
-  const palette = getChromeTheme(chromeTheme, useBrowserAppearance());
-  const toolbarStyles = useChromeToolbarStyles();
-  const libraryStyles = useLibraryStyles();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [visibleToolbarTooltip, setVisibleToolbarTooltip] = useState<string>();
-  // A toolbar tooltip's Escape handler must not intercept an open settings menu.
-  const toolbarTooltipProps = (name: string): Pick<TooltipProps, "visible" | "onVisibleChange"> => ({
-    visible: visibleToolbarTooltip === name && !settingsOpen,
-    onVisibleChange: (_event, data) => setVisibleToolbarTooltip((current) =>
-      data.visible && !settingsOpen ? name : current === name ? undefined : current),
-  });
-  const [detailsBookId, setDetailsBookId] = useState<string | undefined>(undefined);
+  const continueBook = useMemo(() => books.filter((book) => book.lastReadAt !== undefined)
+    .reduce<(typeof books)[number] | undefined>((latest, book) =>
+      !latest || (book.lastReadAt ?? 0) > (latest.lastReadAt ?? 0) ? book : latest, undefined), [books]);
   const detailsBook = books.find((book) => book.id === detailsBookId);
+  const removalBook = books.find((book) => book.id === removeBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
   const [inspectorView, setInspectorView] = useState<InspectorViewMode>("popover");
   const help = useHelpDialogs();
   const shortcuts = useShortcutPreferences();
+  const palette = useChromeTheme();
+  const toolbarStyles = useChromeToolbarStyles();
+  const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
+  const isBookOpenDisabled = (bookId: string): boolean =>
+    isEmbedded && importInProgress && bookId !== embedded.currentBookId;
+
   useEffect(() => {
+    if (!isLoading && books.length === 0) setQuery("");
+  }, [isLoading, books.length]);
+  useEffect(() => {
+    if (active) return;
+    setDetailsBookId(undefined);
+    setRemoveBookId(undefined);
+    setCurrentBookRemovalOpen(false);
+  }, [active]);
+  useEffect(() => { if (removeBookId) removeCancelRef.current?.focus(); }, [removeBookId]);
+  useEffect(() => {
+    const pending = pendingRemovalFocus.current;
+    if (!pending || books.some((book) => book.id === pending.removed) || removing) return;
+    pendingRemovalFocus.current = undefined;
+    if (!active) return;
+    const frame = requestAnimationFrame(() => {
+      const next = [...(collectionRef.current?.querySelectorAll<HTMLButtonElement>("[data-book-open]") ?? [])]
+        .find((button) => button.dataset.bookOpen === pending.next);
+      const nextControl = next?.disabled
+        ? next.closest("[data-library-book]")?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+        : next;
+      (nextControl ?? toolbarImportRef.current ?? libraryHeadingRef.current)?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [books, removing, active]);
+  useEffect(() => {
+    if (isEmbedded) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen) return;
+      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen || discoveryOpen || settingsOpen || removeBookId) return;
       const command = matchReaderCommand(event, document, {
-        preferences: shortcuts.preferences,
-        platform: shortcuts.platform,
-        commands: ["showKeyboardShortcuts"],
-        scope: "shell",
+        preferences: shortcuts.preferences, platform: shortcuts.platform, commands: ["showKeyboardShortcuts"], scope: "shell",
       });
       if (command === "showKeyboardShortcuts") {
         event.preventDefault();
@@ -390,312 +129,202 @@ export const LibraryApp: FC = () => {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [shortcuts.ready, shortcuts.preferences, shortcuts.platform, help.view, help.openShortcuts, detailsBookId, inspector.isOpen]);
+  }, [shortcuts.ready, shortcuts.preferences, shortcuts.platform, help.view, help.openShortcuts,
+    detailsBookId, inspector.isOpen, discoveryOpen, settingsOpen, removeBookId, isEmbedded]);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const files = event.target.files;
-    if (!files || files.length === 0) {
+  const requestRemove = (id: string): void => {
+    if (id === embedded?.currentBookId) {
+      setCurrentBookRemovalOpen(true);
       return;
     }
+    setRemoveBookId(id);
+  };
+  const cancelRemove = (): void => {
+    if (removing) return;
+    setRemoveBookId(undefined);
+  };
+  const confirmRemove = async (): Promise<void> => {
+    if (!removalBook || removing) return;
+    if (removalBook.id === embedded?.currentBookId) {
+      setRemoveBookId(undefined);
+      setCurrentBookRemovalOpen(true);
+      return;
+    }
+    const index = visibleBooks.findIndex((book) => book.id === removalBook.id);
+    const next = visibleBooks[index + 1] ?? visibleBooks[index - 1];
+    pendingRemovalFocus.current = { removed: removalBook.id, ...(next ? { next: next.id } : {}) };
+    setRemoving(true);
+    const removed = await removeBook(removalBook.id);
+    if (removed) setDetailsBookId(undefined);
+    else pendingRemovalFocus.current = undefined;
+    setRemoveBookId(undefined);
+    setRemoving(false);
+  };
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const files = event.target.files;
+    if (!files?.length) return;
     void importFiles(Array.from(files));
     event.target.value = "";
   };
 
   return (
-    <ChromeThemeProvider theme={chromeTheme}>
     <div style={{
-      minHeight: isFullTab ? "100vh" : undefined, height: isFullTab ? undefined : "100dvh",
-      overflow: isFullTab ? undefined : "hidden",
-      background: palette.backgroundSolid, display: "flex", flexDirection: "column",
+      minWidth: 0, minHeight: isFullTab ? "100vh" : 0, height: isEmbedded ? "100%" : isFullTab ? undefined : "100dvh",
+      overflow: isFullTab ? undefined : isEmbedded ? "auto" : "hidden",
+      background: palette.backgroundSolid, color: "var(--colorNeutralForeground1)", display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
     }}>
-      <div
-        className={toolbarStyles.root}
-        role="toolbar"
-        aria-label={t("library.toolbar")}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          flexWrap: "nowrap",
-          flexShrink: 0,
-          height: "auto",
-          minHeight: isFullTab ? CHROME_TOOLBAR_HEIGHT : 48,
-          padding: "8px 10px",
-          borderBottom: `1px solid ${CHROME_BORDER}`,
-          boxShadow: CHROME_SHADOW,
-        }}
-      >
+      {!isEmbedded && <header className={toolbarStyles.root} role="toolbar" aria-label={t("library.toolbar")}
+        style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
+          flexShrink: 0, borderBottom: `1px solid ${CHROME_BORDER}` }}>
         <div ref={libraryHeadingRef} tabIndex={-1}>
-        <Title2 as="h1" className={libraryStyles.heading}
-          style={{ margin: 0, color: palette.accentForeground, display: "flex", alignItems: "center", gap: 6,
-            flexShrink: 0, fontSize: isFullTab ? undefined : 20, lineHeight: isFullTab ? undefined : "28px" }}>
-          <AmbraMarkIcon size={isFullTab ? 24 : 20} />
-          Ambra
-        </Title2>
+          <Title2 as="h1" style={{ margin: 0, color: palette.accentForeground, display: "flex", alignItems: "center", gap: 8,
+            fontSize: isFullTab ? 24 : 20, lineHeight: "28px" }}>
+            <AmbraMarkIcon size={24} /> Ambra
+          </Title2>
         </div>
         <div style={{ flex: 1 }} />
-        {books.length > 0 && <>
-        <Tooltip content={t("library.importEpub")} relationship="label" {...toolbarTooltipProps("import")}>
-        <Button
-          ref={toolbarImportRef}
-          appearance="primary"
-          size="small"
-          icon={<DocumentAddRegular />}
-          aria-label={t("library.importEpub")}
-          style={{ minWidth: 0 }}
-          disabled={!canImport}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {isFullTab && <span className={libraryStyles.importLabel}>{t("library.importEpub")}</span>}
-        </Button>
+        <AmbraSettingsPopover settings={settings} onChange={setSettings} disabled={isLoading}
+          onOpenChange={(open) => { setSettingsOpen(open); if (open) setHelpTooltip(false); }} />
+        <Tooltip content={t("about.title")} relationship="label" visible={helpTooltip && !help.view && !settingsOpen}
+          onVisibleChange={(_event, data) => setHelpTooltip(data.visible && !help.view && !settingsOpen)}>
+          <Button {...restoreAboutFocus} appearance="subtle" icon={<QuestionCircleRegular />}
+            onClick={(event) => { setHelpTooltip(false); help.openHelp(event.currentTarget); }} aria-label={t("about.title")}>
+            {isFullTab && t("about.title")}
+          </Button>
         </Tooltip>
-        <Menu
-          checkedValues={{ [SORT_GROUP_NAME]: [sort] }}
-          onCheckedValueChange={(_event, data) => {
-            if (data.name === SORT_GROUP_NAME) {
-              setSort(data.checkedItems[0] as LibrarySortOption);
-            }
-          }}
-        >
-          <MenuTrigger disableButtonEnhancement>
-            <Tooltip content={t("library.sort")} relationship="label" {...toolbarTooltipProps("sort")}>
-              <Button appearance="subtle" size="small" icon={<ArrowSortRegular />} aria-label={t("library.sort")} />
-            </Tooltip>
-          </MenuTrigger>
-          <MenuPopover>
-            <MenuList>
-              <MenuGroup>
-                <MenuGroupHeader>{t("library.sortBy")}</MenuGroupHeader>
-                {(Object.keys(SORT_LABELS) as LibrarySortOption[]).map((option) => (
-                  <MenuItemRadio key={option} name={SORT_GROUP_NAME} value={option}>
-                    {t(SORT_LABELS[option])}
-                  </MenuItemRadio>
-                ))}
-              </MenuGroup>
-            </MenuList>
-          </MenuPopover>
-        </Menu>
+      </header>}
 
-        <span role="separator" aria-orientation="vertical" style={{ height: 20, borderLeft: `1px solid ${CHROME_BORDER}`, margin: "0 4px" }} />
-        </>}
-        <ReaderSettingsMenu
-          {...settings}
-          onOpenChange={(open) => {
-            setSettingsOpen(open);
-            setVisibleToolbarTooltip(undefined);
-          }}
-          disabled={isLoading || !canImport}
-          isFixedLayout={false}
-          onSetViewMode={(viewMode) => setSettings({ viewMode })}
-          onSetBrightness={(brightness) => setSettings({ brightness })}
-          onSetPageTheme={(pageTheme) => setSettings({ pageTheme })}
-          onSetChromeTheme={(chromeTheme) => setSettings({ chromeTheme })}
-          onSetPageTurnAnimationStyle={(pageTurnAnimationStyle) => setSettings({ pageTurnAnimationStyle })}
-          onSetProgressMarkerStyle={(progressMarkerStyle) => setSettings({ progressMarkerStyle })}
-        />
-        <Tooltip content={t("about.title")} relationship="label" {...toolbarTooltipProps("about")}>
-          <Button
-            {...restoreAboutFocus}
-            appearance="subtle"
-            size="small"
-            icon={<InfoRegular />}
-            onClick={(event) => help.openHelp(event.currentTarget)}
-            aria-label={t("about.title")}
-          />
-        </Tooltip>
-
-        {!isFullTab && (
-          <Tooltip content={t("library.expand")} relationship="label" {...toolbarTooltipProps("expand")}>
-            <Button appearance="subtle" size="small" icon={<WindowNewRegular />} onClick={openInFullTab}
-              aria-label={t("library.expand")} />
-          </Tooltip>
-        )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".epub"
-          multiple
-          disabled={!canImport}
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-        />
+      <div style={{ padding: isFullTab ? "20px 24px 0" : "12px 12px 0", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+          <Button {...restoreDiscoveryFocus} appearance="secondary" icon={<GlobeRegular />} aria-haspopup="dialog"
+            onClick={() => isFullTab ? setDiscoveryOpen(true) : openInFullTab(true)}>
+            {t("library.findBooks")}
+          </Button>
+          <Button ref={toolbarImportRef} appearance="primary" icon={<DocumentAddRegular />}
+            disabled={!canImport} onClick={() => fileInputRef.current?.click()}>
+            {t("library.importEpub")}
+          </Button>
+        </div>
+        <input ref={fileInputRef} type="file" accept=".epub" multiple disabled={!canImport} style={{ display: "none" }} onChange={handleFileChange} />
       </div>
 
-      <main aria-label={t("library.pageTitle")} style={{
-        padding: isFullTab ? 16 : 12, flex: 1, minHeight: 0,
-        overflowY: isFullTab ? undefined : "auto",
-      }}>
+      <CollectionContainer aria-label={t("library.pageTitle")} style={{ padding: isFullTab ? "0 24px 24px" : "0 12px 12px",
+        // At high zoom, the outer embedded surface scrolls instead of collapsing the collection away.
+        flex: 1, minHeight: isEmbedded ? 160 : 0, overflowY: isFullTab ? undefined : "auto" }}>
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
           onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
-          focusFallbackRef={books.length ? toolbarImportRef : emptyImportRef} focusBackupRef={libraryHeadingRef} />
+          isBookOpenDisabled={isBookOpenDisabled} busyMessageId={importStatusId}
+          focusFallbackRef={toolbarImportRef} focusBackupRef={libraryHeadingRef} />
         {error && <LibraryImportError message={error} headline={errorHeadline} onDismiss={dismissError} />}
-
-        {isLoading ? (
-          <Spinner label={t("library.loading")} style={{ marginTop: 16 }} />
-        ) : books.length === 0 ? (
-          <div ref={emptyStateRef} hidden={importInProgress}>
-            <LibraryEmptyState accent={palette.accentForeground} canImport={canImport} compact={!isFullTab}
-              focusFallbackRef={toolbarImportRef} importButtonRef={emptyImportRef}
-              onImport={() => fileInputRef.current?.click()} />
-          </div>
+        {isLoading ? <Spinner label={t("library.loading")} style={{ marginTop: 16 }} /> : books.length === 0 ? (
+          !importInProgress && <LibraryEmptyState accent={palette.accentForeground} compact={!isFullTab} />
         ) : (
           <>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                <SearchBox
-                  value={query}
-                  onChange={(_event, data) => setQuery(data.value)}
-                  aria-label={t("library.search")}
-                  aria-controls={resultsId}
-                  placeholder={t("library.searchPlaceholder")}
-                  dismiss={{ "aria-label": t("library.clearSearch") }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape" && !event.nativeEvent.isComposing &&
-                        event.target instanceof HTMLInputElement && query) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setQuery("");
-                    }
-                  }}
-                  style={{ flex: "1 1 200px", minWidth: 0, maxWidth: 440 }}
-                />
-                <Button
-                  appearance="subtle"
-                  size="small"
-                  icon={<GlobeRegular />}
-                  aria-expanded={discoveryOpen}
-                  aria-controls={discoveryId}
-                  onClick={() => setDiscoveryOpen(!discoveryOpen)}
-                >
-                  {t("library.findBooks")}
-                </Button>
-              </div>
-              <div role="status" aria-label={t("library.search")} aria-atomic="true"
-                style={{ marginTop: hasQuery ? 8 : 0, color: "var(--colorNeutralForeground2, #333)", fontSize: 12 }}>
-                {hasQuery && t("library.searchResults", {
-                  shown: new Intl.NumberFormat(locale).format(visibleBooks.length),
-                  total: new Intl.NumberFormat(locale).format(books.length),
-                })}
-              </div>
-              <div style={{ marginTop: discoveryOpen ? 12 : 0 }}>
-                <LibraryDiscovery expanded={discoveryOpen} panelId={discoveryId} />
-              </div>
+            {isFullTab && continueBook && !hasQuery && (
+              <section aria-label={t("library.continueReading")} style={{ marginBottom: 24 }}>
+                <h2 style={{ fontSize: 20, fontFamily: "Georgia, serif", fontWeight: 400 }}>{t("library.continueReading")}</h2>
+                <div style={{ maxWidth: 420 }}>
+                  <LibraryBookCard book={continueBook} compact onOpen={() => openBook(continueBook.id)}
+                    onRequestRemove={() => requestRemove(continueBook.id)} onShowDetails={() => setDetailsBookId(continueBook.id)} />
+                </div>
+              </section>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 12,
+              position: isFullTab ? undefined : "sticky", top: 0, zIndex: 1, background: palette.backgroundSolid }}>
+              <SearchBox value={query} onChange={(_event, data) => setQuery(data.value)}
+                aria-label={t("library.search")} aria-controls={resultsId} placeholder={t("library.searchPlaceholder")}
+                dismiss={{ "aria-label": t("library.clearSearch") }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && !event.nativeEvent.isComposing && event.target instanceof HTMLInputElement && query) {
+                    event.preventDefault(); event.stopPropagation(); setQuery("");
+                  }
+                }} style={{ flex: 1, minWidth: 0, maxWidth: 440 }} />
+              <LibrarySortMenu sort={sort} onChange={setSort} active={active} />
             </div>
-            <div id={resultsId} style={{
-              display: isFullTab ? "flex" : "grid", flexWrap: "wrap", gap: isFullTab ? 16 : 8,
-              gridTemplateColumns: isFullTab ? undefined : "repeat(auto-fill, minmax(88px, 1fr))",
-              alignItems: "start",
-            }}>
-              {visibleBooks.length === 0 && <p style={{ margin: 0, gridColumn: "1 / -1" }}>{t("library.searchNoResults")}</p>}
+            <div role="status" aria-label={t("library.search")} aria-atomic="true" style={{ fontSize: 12,
+              color: "var(--colorNeutralForeground2)", marginBottom: hasQuery ? 12 : 0 }}>
+              {hasQuery && t("library.searchResults", { shown: new Intl.NumberFormat(locale).format(visibleBooks.length),
+                total: new Intl.NumberFormat(locale).format(books.length) })}
+            </div>
+            <div ref={collectionRef} id={resultsId} data-library-collection style={{ display: "flex", flexDirection: isFullTab ? "row" : "column",
+              flexWrap: isFullTab ? "wrap" : undefined, gap: isFullTab ? 24 : 0, alignItems: "start" }}>
+              {visibleBooks.length === 0 && <p style={{ margin: 0 }}>{t("library.searchNoResults")}</p>}
               {visibleBooks.map((book) => (
-                <BookCard
-                  key={book.id}
-                  book={book}
-                  compact={!isFullTab}
-                  accent={palette.accent}
+                <LibraryBookCard key={book.id} book={book} compact={!isFullTab} current={book.id === embedded?.currentBookId} active={active}
+                  openDisabled={isBookOpenDisabled(book.id)}
+                  openDescriptionId={isBookOpenDisabled(book.id) ? importStatusId : undefined}
                   onOpen={() => openBook(book.id)}
-                  onDelete={() => void removeBook(book.id)}
-                  onShowDetails={() => setDetailsBookId(book.id)}
-                />
+                  onRequestRemove={() => requestRemove(book.id)} onShowDetails={() => setDetailsBookId(book.id)} />
               ))}
             </div>
           </>
         )}
-      </main>
+      </CollectionContainer>
 
-      <BookDetailsFlyout
-        book={detailsBook}
-        inspectorOpen={inspector.isOpen}
-        onRequestClose={() => setDetailsBookId(undefined)}
-        onSaveAs={saveBookAs}
-        accent={palette.accent}
-        accentForeground={palette.accentForeground}
-        backgroundSolid={palette.backgroundSolid}
+      <CenteredDialog open={isFullTab && discoveryOpen} title={t("library.findBooks")} onRequestClose={() => setDiscoveryOpen(false)}>
+        <LibraryDiscovery />
+      </CenteredDialog>
+      <BookDetailsFlyout book={active ? detailsBook : undefined} inspectorOpen={inspector.isOpen}
+        onRequestClose={() => setDetailsBookId(undefined)} onSaveAs={saveBookAs} onGetFileSize={getBookFileSize}
+        onRemove={detailsBook ? () => requestRemove(detailsBook.id) : undefined}
+        accent={palette.actionBackground} accentForeground={palette.accentForeground} backgroundSolid={palette.backgroundSolid}
         onOpenInspector={isFullTab ? inspector.open : undefined}
-        inspectionError={inspector.error ? { message: inspector.error, onDismiss: inspector.close } : undefined}
-      />
+        inspectionError={inspector.error ? { message: inspector.error, onDismiss: inspector.close } : undefined} />
 
-        <HelpAboutFlyout
-          open={help.view === "about"}
-          focusShortcutsOnOpen={help.focusShortcutsOnOpen}
-          onRequestClose={help.close}
-          onAfterClose={help.afterClose}
-          backgroundSolid={palette.backgroundSolid}
-          accentForeground={palette.accentForeground}
-          onOpenKeyboardShortcuts={help.openShortcutsFromHelp}
-        />
-        <KeyboardShortcutsDialog
-          open={help.view === "shortcuts"}
-          onRequestClose={help.close}
-          onAfterClose={help.afterClose}
-        />
-        <EpubInspectorPanel
-          open={inspector.isOpen}
-          viewMode={inspectorView}
-          onViewModeChange={setInspectorView}
-          onOpenChange={(open) => { if (!open) inspector.close(); }}
-          data={inspector.data}
-          fileName={detailsBook?.fileName}
-          onFindReferences={(path) => {
-            if (!inspector.session) {
-              return Promise.reject(new Error(t("library.inspectorNotReady")));
-            }
-            return inspector.session.findReferences(path);
-          }}
-          onReadFile={(path) => {
-            if (!inspector.session) {
-              return Promise.reject(new Error(t("library.inspectorNotReady")));
-            }
-            return inspector.session.readInspectionFileText(path);
-          }}
-          onGetPreviewUrl={(path, mediaType) => {
-            if (!inspector.session) {
-              return Promise.reject(new Error(t("library.inspectorNotReady")));
-            }
-            return inspector.session.getInspectionFilePreviewUrl(path, mediaType);
-          }}
-        />
+      <CenteredDialog open={active && currentBookRemovalOpen} title={t("library.removeTitle")}
+        onRequestClose={() => setCurrentBookRemovalOpen(false)}>
+        <p>{t("library.currentBookRemoval")}</p>
+        <Button appearance="secondary" icon={<WindowNewRegular />} onClick={() => openInFullTab()}>{t("library.fullLibrary")}</Button>
+      </CenteredDialog>
+      <Dialog open={active && !!removalBook} modalType="alert" onOpenChange={(_event, data) => { if (!data.open) cancelRemove(); }}>
+        <DialogSurface {...restoreRemoveFocus} style={{ maxWidth: "calc(100vw - 24px)", boxSizing: "border-box" }}>
+          <DialogBody>
+            <DialogTitle>{t("library.removeTitle")}</DialogTitle>
+            <DialogContent style={{ overflowWrap: "anywhere" }}>
+              <p>{t("library.removeConfirm", { title: removalBook?.title ?? "" })}</p>
+              <p>{t("library.removeConsequences")}</p>
+            </DialogContent>
+            <DialogActions fluid>
+              <Button ref={removeCancelRef} disabled={removing} onClick={cancelRemove}>{t("annotations.cancelNote")}</Button>
+              <Button appearance="primary" disabled={removing} onClick={() => void confirmRemove()}
+                style={{ background: "var(--colorPaletteRedBackground3)", color: "var(--colorNeutralForegroundOnBrand)" }}>
+                {t("library.removeAction")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
 
-      {/* Purely informational (see `LibraryDatabase.estimateStorageUsage`'s
-          doc comment on why this is never an enforced limit) — lets a
-          reader with a very large library at least see roughly how much
-          disk their book collection is using, the same way Chrome's own
-          storage settings page would show it. */}
-      <footer style={{ flexShrink: 0, background: palette.backgroundSolid,
-        borderTop: !isFullTab || storageUsage ? `1px solid ${CHROME_BORDER}` : undefined }}>
-      {!isFullTab && (
-        <div style={{ padding: "8px 12px" }}>
-          <Button appearance="primary" icon={<WindowNewRegular />} onClick={openInFullTab}
-            aria-description={t("library.expand")} style={{ width: "100%" }}>
-            {t("library.fullLibrary")}
-          </Button>
-        </div>
-      )}
-      {storageUsage && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 16px",
-            color: "var(--colorNeutralForeground2, #333)",
-            fontSize: 12,
-          }}
-        >
-          <StorageRegular fontSize={14} />
-          <span>
-            {t("library.bookCount", { count: new Intl.NumberFormat(locale).format(books.length) })} ·{" "}
-            {storageUsage.quotaBytes !== undefined
-              ? t("library.storageUsedOf", { used: formatLibraryBytes(storageUsage.usageBytes, locale),
-                available: formatLibraryBytes(storageUsage.quotaBytes, locale) })
-              : t("library.storageUsed", { used: formatLibraryBytes(storageUsage.usageBytes, locale) })}
-          </span>
-        </div>
-      )}
+      {!isEmbedded && <>
+        <HelpAboutFlyout open={help.view === "about"} focusShortcutsOnOpen={help.focusShortcutsOnOpen}
+          onRequestClose={help.close} onAfterClose={help.afterClose} backgroundSolid={palette.backgroundSolid}
+          accentForeground={palette.accentForeground} onOpenKeyboardShortcuts={help.openShortcutsFromHelp} />
+        <KeyboardShortcutsDialog open={help.view === "shortcuts"} onRequestClose={help.close} onAfterClose={help.afterClose} />
+        <EpubInspectorPanel open={inspector.isOpen} viewMode={inspectorView} onViewModeChange={setInspectorView}
+          onOpenChange={(open) => { if (!open) inspector.close(); }} data={inspector.data} fileName={detailsBook?.fileName}
+          onFindReferences={(path) => inspector.session ? inspector.session.findReferences(path) : Promise.reject(new Error(t("library.inspectorNotReady")))}
+          onReadFile={(path) => inspector.session ? inspector.session.readInspectionFileText(path) : Promise.reject(new Error(t("library.inspectorNotReady")))}
+          onGetPreviewUrl={(path, mediaType) => inspector.session ? inspector.session.getInspectionFilePreviewUrl(path, mediaType) : Promise.reject(new Error(t("library.inspectorNotReady")))} />
+      </>}
+
+      <footer style={{ flexShrink: 0, background: palette.backgroundSolid, borderTop: `1px solid ${CHROME_BORDER}`, padding: "8px 12px" }}>
+        {books.length > 0 && <div style={{ fontSize: 12, color: "var(--colorNeutralForeground2)", marginBottom: isFullTab ? 0 : 8 }}>
+          {t("library.bookCount", { count: new Intl.NumberFormat(locale).format(books.length) })}
+          {storageUsage && <> · {storageUsage.quotaBytes !== undefined
+            ? t("library.storageUsedOf", { used: formatLibraryBytes(storageUsage.usageBytes, locale), available: formatLibraryBytes(storageUsage.quotaBytes, locale) })
+            : t("library.storageUsed", { used: formatLibraryBytes(storageUsage.usageBytes, locale) })}</>}
+        </div>}
+        {!isFullTab && <Button appearance="secondary" icon={<WindowNewRegular />} onClick={() => openInFullTab()}
+          style={{ width: "100%" }}>{t("library.fullLibrary")}</Button>}
       </footer>
     </div>
-    </ChromeThemeProvider>
   );
+};
+
+export const LibraryApp: FC<LibraryAppProps> = ({ embedded }) => {
+  const library = useLibrary();
+  if (embedded) return <LibrarySurface library={library} embedded={embedded} />;
+  return <ChromeThemeProvider theme={library.chromeTheme}><LibrarySurface library={library} /></ChromeThemeProvider>;
 };

@@ -51,7 +51,7 @@ describe("book import stages", () => {
     expect(addBook).not.toHaveBeenCalled();
     expect(phases.mock.calls).toEqual([["processing"]]);
     vi.mocked(EpubContainer.open).mockResolvedValue({
-      getPackageDocument: vi.fn().mockResolvedValue({ metadata: {}, manifest: [] }),
+      getPackageDocument: vi.fn().mockResolvedValue({ metadata: { metaEntries: [] }, manifest: [] }),
     } as unknown as EpubContainer);
     phases.mockClear();
     await expect(importBook({ addBook } as unknown as LibraryDatabase, file, phases)).rejects.toThrow("Full");

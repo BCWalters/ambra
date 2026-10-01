@@ -38,6 +38,7 @@ export interface UseReaderControllerResult {
   snapshot: ReaderSnapshot | undefined;
   contentHostRef: RefObject<HTMLDivElement | null>;
   openBook: (buffer: ArrayBuffer, bookId: string, library: LibraryDatabase) => Promise<void>;
+  flushProgress: () => Promise<void>;
   turnPage: (direction: 1 | -1) => void;
   narrationAction: (action: NarrationAction) => void;
   setNarrationRate: (rate: number) => void;
@@ -256,6 +257,9 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
 
   const narrationAction = useCallback((action: NarrationAction) => {
     void controller?.performNarrationAction(action);
+  }, [controller]);
+  const flushProgress = useCallback(async () => {
+    await controller?.flushProgress(true);
   }, [controller]);
   const setNarrationRate = useCallback((rate: number) => controller?.setNarrationRate(rate), [controller]);
   const dismissNarrationNotice = useCallback(() => controller?.dismissNarrationNotice(), [controller]);
@@ -580,6 +584,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     snapshot,
     contentHostRef,
     openBook,
+    flushProgress,
     turnPage,
     goToChapter,
     goToNavPoint,

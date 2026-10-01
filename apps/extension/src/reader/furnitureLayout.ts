@@ -21,3 +21,6 @@
  * height (see `Toolbar.tsx`) — the two are tuned together so the toolbar
  * always fully covers this text, never partially. */
 export const HEADER_TEXT_TOP_OFFSET = 14;
+
+/** Keeps small running text above 4.5:1 on every supported reading-page background. */
+export const PAGE_FURNITURE_TEXT_OPACITY = 0.7;

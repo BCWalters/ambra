@@ -12,16 +12,14 @@ test("French Library localizes live, preserves toolbar order and persists across
   try {
     const detailsLabel = await page.getByRole("button", { name: / details$/ }).getAttribute("aria-label");
     const title = detailsLabel!.slice(0, -" details".length);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("menuitem", { name: /^Language\b/ }).click();
-    await page.getByRole("menuitemradio", { name: "Français", exact: true }).click();
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
     await page.keyboard.press("Escape");
     const t = getTranslate("fr");
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
     await expect(page).toHaveTitle(t("library.pageTitle"));
     const toolbar = page.getByRole("toolbar", { name: t("library.toolbar") });
-    const names = [t("library.importEpub"), t("library.sort"), t("toolbar.settings"), t("about.title"), t("library.expand")];
+    const names = [t("settings.ambraTitle"), t("about.title")];
     await expect(toolbar.getByRole("button")).toHaveCount(names.length);
     for (let index = 0; index < names.length; index++) {
       await expect(toolbar.getByRole("button").nth(index)).toHaveAccessibleName(names[index]!);
@@ -29,6 +27,8 @@ test("French Library localizes live, preserves toolbar order and persists across
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.getByRole("button", { name: t("about.title"), exact: true }).click();
     const about = page.getByRole("dialog", { name: t("about.title") });
+    await expect(about.getByText(t("about.description"))).toBeHidden();
+    await about.getByRole("button", { name: t("about.aboutAmbra"), exact: true }).click();
     await expect(about.getByText(t("about.description"))).toBeVisible();
     await expect(about.getByRole("link", { name: t("about.feedback") })).toHaveAttribute("href", "mailto:AmbraEPUB@outlook.com");
     await expect(about.getByRole("button", { name: t("about.copyDiagnostics") })).toBeVisible();
@@ -39,13 +39,17 @@ test("French Library localizes live, preserves toolbar order and persists across
     const details = page.getByRole("dialog", { name: t("toolbar.bookDetails") });
     await expect(details.getByText(title, { exact: true })).toBeVisible();
     await expect(details.getByRole("button", { name: t("bookDetails.publicationDetails") })).toBeVisible();
-    await details.getByRole("button", { name: t("highlight.close"), exact: true }).click();
-    await page.getByText(title, { exact: true }).last().hover();
-    await page.getByRole("button", { name: t("library.removeBook", { title }), exact: true }).click();
+    await details.getByRole("button", { name: t("library.removeAction"), exact: true }).click();
+    const confirm = page.getByRole("alertdialog", { name: t("library.removeTitle") });
+    await expect(confirm.getByRole("button", { name: t("annotations.cancelNote"), exact: true })).toBeFocused();
+    await confirm.getByRole("button", { name: t("library.removeAction"), exact: true }).click();
     await expect(page.getByRole("heading", { name: t("library.emptyTitle") })).toBeVisible();
     await expect(page.getByRole("region", { name: t("library.discoveryTitle") })).toBeHidden();
-    await page.getByRole("button", { name: `${t("library.findNextBook")} ${t("library.exploreBooks")}` }).click();
-    await expect(page.getByRole("region", { name: t("library.discoveryTitle") })).toBeVisible();
+    const opened = context.waitForEvent("page");
+    await page.getByRole("button", { name: t("library.findBooks"), exact: true }).click();
+    const full = await opened;
+    await expect(full.getByRole("dialog", { name: t("library.findBooks"), exact: true })).toBeVisible();
+    await full.close();
     await page.reload();
     await expect(page.getByRole("heading", { name: t("library.emptyTitle") })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({

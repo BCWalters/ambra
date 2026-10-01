@@ -1,3 +1,31 @@
+import { isReaderOwnedContent, markReaderOwnedContent } from "@ambra/engine";
+import type { InterfaceTheme } from "@ambra/shell/theme";
+
+export function updateImageControlTheme(doc: Document, palette: InterfaceTheme): void {
+  const style = Array.from(doc.querySelectorAll<HTMLStyleElement>("style[data-ambra-image-controls]"))
+    .find(isReaderOwnedContent);
+  if (!style) return;
+  style.textContent = `
+    img[data-ambra-image-zoom]:focus-visible {
+      outline: 2px solid ${palette.focus} !important; outline-offset: 2px !important;
+      box-shadow: 0 0 0 2px ${palette.surface} !important;
+    }
+    @media (forced-colors: active) {
+      img[data-ambra-image-zoom]:focus-visible { outline-color: Highlight !important; box-shadow: none !important; }
+    }
+  `;
+}
+
+/** Only the reader's image-button focus affordance is styled, never artwork or publication roots. */
+export function attachImageControlTheme(doc: Document, palette: InterfaceTheme): () => void {
+  const style = doc.createElement("style");
+  style.dataset.ambraImageControls = "";
+  markReaderOwnedContent(style);
+  doc.head.append(style);
+  updateImageControlTheme(doc, palette);
+  return () => style.remove();
+}
+
 interface ImageSemantics {
   role: string | null;
   label: string | null;
