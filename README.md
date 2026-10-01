@@ -39,6 +39,9 @@ This is a pnpm workspace monorepo:
 - [`apps/extension`](./apps/extension) — the Manifest V3 Chrome extension that wires the
   engine and shell together: background service worker, library popup, and the
   full-tab reader page, including the toolbar, panels, library, and settings UI.
+- [Design system](docs/design-system.md) and [interactive prototype](docs/design-prototype/README.md)
+  — approved target UX and a standalone review reference, separate from shipped
+  extension behavior.
 
 ## Getting started
 

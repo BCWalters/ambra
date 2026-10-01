@@ -59,6 +59,20 @@ The engine is dependency-free and UI-framework-independent. Put React/UI
 dependencies in the shell or extension. Prefer clear responsibilities and small
 changes over unrelated refactors.
 
+## UX and design system
+
+Use the [approved design system](docs/design-system.md) and
+[standalone review prototype](docs/design-prototype/README.md) for extension UI
+work. They describe the target UX, not features already shipped. The
+[phased roadmap](https://github.com/BCWalters/ambra/issues/289) tracks migration;
+preserve existing capabilities and document intentional behavior changes.
+Prototype omissions are not permission to remove production functionality.
+
+Documentation-only edits do not require local extension builds or release
+packages. The prototype has an optional isolated verifier for changes to its
+interactions. Existing required PR checks still apply; do not bypass branch
+protection or release validation to publish design references.
+
 ## Reporting issues safely
 
 Include Chrome/OS versions, Ambra version, layout/settings, expected versus actual
