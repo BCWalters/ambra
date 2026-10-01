@@ -101,9 +101,10 @@ test("active library searches follow imports and removals without confusing no m
     await expect(covers).toHaveCount(1);
     await expect(page.getByRole("status").filter({ hasText: "1 of 2 books" })).toBeVisible();
     await covers.press("Delete");
-    const confirmation = page.getByRole("alertdialog");
+    const confirmation = page.getByRole("alertdialog", { includeHidden: true });
     await confirmation.getByRole("button", { name: "Remove from library", exact: true }).click();
-    await expect(confirmation).toBeHidden();
+    // Removal keys remain modal-owned until the exiting surface unmounts.
+    await expect(confirmation).toHaveCount(0);
     await expect(covers).toHaveCount(0);
     await expect(page.getByRole("status").filter({ hasText: "0 of 1 books" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
@@ -111,7 +112,7 @@ test("active library searches follow imports and removals without confusing no m
     await covers.press("Backspace");
     await expect(confirmation).toContainText(TITLE);
     await confirmation.getByRole("button", { name: "Remove from library", exact: true }).click();
-    await expect(confirmation).toBeHidden();
+    await expect(confirmation).toHaveCount(0);
     await expect(search).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "No books yet" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles(SECOND);
