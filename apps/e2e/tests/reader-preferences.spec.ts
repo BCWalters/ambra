@@ -213,6 +213,8 @@ test("highlight colors are one Tab stop with wrapping arrow selection and unchan
     });
     await page.getByRole("button", { name: "Add note", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Highlight options", exact: true });
+    const note = dialog.getByPlaceholder("Add a note…");
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
     const group = dialog.getByRole("radiogroup", { name: "Highlight color" });
     const yellow = group.getByRole("radio", { name: "Yellow", exact: true });
     await yellow.focus();
@@ -232,10 +234,12 @@ test("highlight colors are one Tab stop with wrapping arrow selection and unchan
     await expect(green).toHaveAttribute("aria-checked", "true");
     await expect(group.locator('[tabindex="0"]')).toHaveCount(1);
     await green.press("Tab");
-    await expect(
-      dialog.getByRole("button", { name: "Delete highlight", exact: true }),
-    ).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
+    await expect(close).toBeFocused();
+    await close.press("Tab");
+    await expect(note).toBeFocused();
+    await note.press("Shift+Tab");
+    await expect(close).toBeFocused();
+    await close.press("Shift+Tab");
     await expect(green).toBeFocused();
     await green.press("Space");
     await expect(green).toHaveAttribute("aria-checked", "true");
@@ -243,8 +247,19 @@ test("highlight colors are one Tab stop with wrapping arrow selection and unchan
       "aria-valuenow",
       position!,
     );
-    await dialog.getByPlaceholder("Add a note…").fill("Keyboard color note");
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await note.fill("Keyboard color note");
+    await note.press("Tab");
+    const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+    const save = dialog.getByRole("button", { name: "Save", exact: true });
+    const remove = dialog.getByRole("button", { name: "Delete highlight", exact: true });
+    await expect(cancel).toBeFocused();
+    await cancel.press("Tab");
+    await expect(save).toBeFocused();
+    await save.press("Tab");
+    await expect(remove).toBeFocused();
+    await remove.press("Shift+Tab");
+    await expect(save).toBeFocused();
+    await save.press("Enter");
     await expect(dialog).toBeHidden();
     await page.getByRole("button", { name: "This highlight has a note", exact: true }).click();
     await expect(dialog.getByRole("radio", { name: "Green", exact: true })).toHaveAttribute(
