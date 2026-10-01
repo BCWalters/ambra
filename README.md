@@ -21,10 +21,11 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [1.1.0 update checklist](store-assets/RELEASE-1.1.0.md).
-The feature release adds library search and compact-library improvements alongside
-reader responsiveness and content fixes. Preparing its package does not mean it
-has been uploaded, submitted, or published.
+and the [1.1.1 update checklist](store-assets/RELEASE-1.1.1.md).
+This patch clarifies the library's new-tab action and widens page-turn targets
+through the full reading-pane height. It retains the search, compact-library,
+responsiveness, and content improvements from 1.1.0. Preparing its package does
+not mean it has been uploaded, submitted, or published.
 
 ## Structure
 
