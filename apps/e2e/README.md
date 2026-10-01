@@ -60,6 +60,13 @@ through `chrome.extension.getViews({ type: "popup" })`: it is not emitted as a
 normal Playwright page. Keep native sizing/scroll/footer checks in addition to
 the 320/360px viewport tests.
 
+`reader-save-as.spec.ts` installs its deterministic description response through
+`launchReader`'s `beforeBookImport` hook: enrichment starts during reader opening,
+so routing after `launchReader` returns is too late. It waits for the supplied
+description before measuring Save-as traffic. Keep the strict zero-network
+assertion for the save operation; do not ignore late Wikipedia requests or
+depend on real lookup services completing first.
+
 ```sh
 # from the repo root
 pnpm --filter @ambra/e2e run test:e2e          # headless
