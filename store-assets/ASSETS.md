@@ -18,6 +18,34 @@ extension, or package/upload a release.
   original text and covers, complete descriptions, local resources, fixed ZIP
   timestamps, and MIT rights metadata. No personal or third-party books are used.
 
+## Classic-book screenshot inputs
+
+The refreshed five-scene capture requires this **explicit network opt-in**:
+
+```sh
+python3 store-assets/scripts/prepare-assets.py --classics
+```
+
+[classic-sources.json](classic-sources.json) pins 15 Project Gutenberg EPUBs
+and one Tenniel illustration by SHA-256. Downloads are cached in ignored
+`.generated/classics-sources/`; every reuse verifies the pin. Missing inputs
+are downloaded only in this mode. A changed source fails closed: review it and
+update its pin deliberately, rather than accepting new bytes automatically.
+The default command remains offline and prepares the historical original demos;
+it is not the input for the refreshed capture.
+
+The script preserves the classics' text, metadata, and rights notices, replacing
+cover image bytes with original Ambra typographic artwork. It checks every
+prepared archive and XML document and records source/output hashes in ignored
+`.generated/books.json`. Alice is a documented custom reading copy: Carroll's
+PG11 text plus Tenniel's “Alice meets the Caterpillar” from PG114, inserted at
+the start of chapter V. PG11 alone is not that illustrated edition.
+
+The sources declare **public domain in the USA**, not worldwide public-domain
+clearance. See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for source credits and limits.
+No complete book, cached download, personal library, or generated reading copy
+is committed, packaged with the extension, or uploaded as a release asset.
+
 The [official icon guidance](https://developer.chrome.com/docs/webstore/images)
 requires the 128px icon inside the submitted ZIP. The
 [manifest reference](https://developer.chrome.com/docs/extensions/reference/manifest/icons)
@@ -60,13 +88,13 @@ Preview mode writes images and provenance to ignored
 These editorial previews are not release acceptance. Inspect them all before
 deciding the capture is ready; no raster commit is needed for script validation.
 
-For the final 1.0.0 capture, follow [RESUBMISSION.md](RESUBMISSION.md): first merge
+For a final release capture, first merge
 the approved runtime fixes and source-version/materials update, then build the
 chosen clean `main` commit. The padded 128px source icon is already included. Prepare
-the original fixtures **before packaging**, and verify the worktree is still clean:
+the classic reading copies **before packaging**, and verify the worktree is still clean:
 
 ```sh
-python3 store-assets/scripts/prepare-assets.py
+python3 store-assets/scripts/prepare-assets.py --classics
 git status --porcelain
 ```
 
@@ -107,15 +135,20 @@ cross-platform pixel identity.
 
 | Image                                 | Intended real UI                                            |
 | ------------------------------------- | ----------------------------------------------------------- |
-| `screenshot-library-1280x800.png`     | Original demo covers and the book-details panel             |
-| `screenshot-reader-1280x800.png`      | Original prose and reading controls                         |
-| `screenshot-annotations-1280x800.png` | Actual saved highlight, note, bookmark, and export controls |
-| `screenshot-inspector-1280x800.png`   | Actual EPUB source in Inspector                             |
+| `screenshot-reader-1280x800.png`      | Alice chapter V, complete Tenniel illustration, three annotations, mapped progress |
+| `screenshot-library-1280x800.png`     | Fifteen varied original covers, including Jane Eyre, Dickens, and three French editions |
+| `screenshot-inspector-1280x800.png`   | Right-docked Inspector locating the current Alice passage in real source |
+| `screenshot-annotations-1280x800.png` | Pinned overflowing notes panel, three page annotations, and a saved meaningful note popup |
 | `screenshot-shortcuts-1280x800.png`   | Platform-specific shortcut reference opened through Help    |
 
 The fresh-profile capture acknowledges the real first-reading welcome before
 photographing the reader. Annotation controls, menus, and Help are opened through
-the real UI; selection is limited to original fixture prose. No application text,
+the real UI; selection is limited to the prepared Alice text. Ten original notes
+and three bookmarks are saved through those controls. Capture waits for stable
+book-wide page mapping, checks the complete illustration and visible annotation
+markers, verifies real notes-panel overflow, and decodes all 15 covers.
+Upload in **reader, library, Inspector, annotations, shortcuts** order.
+No application text,
 styles, library data, or welcome preferences are replaced behind the UI.
 
 All captures must be 1280×800, full bleed, square-cornered, and legible. The small
@@ -132,6 +165,7 @@ The five checked-in screenshots and their `asset-provenance.json` are historical
 original-book **previews**, not the 1.0.0 release assets. New previews stay in the
 ignored directory, so no tracked screenshot/provenance churn is necessary.
 Historical library/reader screenshots with third-party samples retain
-their [attributions](ATTRIBUTIONS.md). The new generated prose, covers, and original
-screenshots are Ambra project material under MIT. For a release upload, use only
+their [attributions](ATTRIBUTIONS.md). The new covers and commentary are original
+Ambra material under MIT; incorporated classic text and Tenniel art retain their
+own rights status, not an MIT relicensing. For a release upload, use only
 the reviewed images and provenance from the ignored final-output directory above.

@@ -1,8 +1,47 @@
 # Current and historical screenshot attributions
 
-## Current original demonstration screenshots
+## Refreshed classic-book screenshots
 
-The current five `screenshot-*-1280x800.png` images use only original Ambra
+The refreshed capture uses the checksum-pinned sources in
+[classic-sources.json](classic-sources.json). All 15 EPUBs declare “Public domain
+in the USA.” This is not a worldwide public-domain determination. Project
+Gutenberg's [permissions policy](https://www.gutenberg.org/policy/permission.html#quotes-and-extracts-from-project-gutenberg-items)
+permits quotes/extracts, including commercial use; its
+[trademark rules](https://www.gutenberg.org/policy/license.html#using-the-project-gutenberg-trademark)
+still apply. No author, illustrator, or source organization endorses Ambra.
+
+| Work | Creator and source |
+| --- | --- |
+| *Alice's Adventures in Wonderland* | Lewis Carroll; [PG11](https://www.gutenberg.org/ebooks/11) |
+| “Alice meets the Caterpillar” | John Tenniel (1820–1914); illustration 15 in [PG114](https://www.gutenberg.org/ebooks/114), [source GIF](https://www.gutenberg.org/files/114/114-h/images/alice15a.gif) |
+| *Jane Eyre: An Autobiography* | Charlotte Brontë; [PG1260](https://www.gutenberg.org/ebooks/1260), EPUB 3 edition. Source also credits illustrator F. H. Townsend (1868–1920); his illustrations are not displayed in these scenes. |
+| *Pride and Prejudice*, *Emma*, *Sense and Sensibility* | Jane Austen; [PG1342](https://www.gutenberg.org/ebooks/1342), [PG158](https://www.gutenberg.org/ebooks/158), [PG161](https://www.gutenberg.org/ebooks/161) |
+| *Great Expectations*, *A Tale of Two Cities* | Charles Dickens; [PG1400](https://www.gutenberg.org/ebooks/1400), [PG98](https://www.gutenberg.org/ebooks/98) |
+| *Wuthering Heights* | Emily Brontë; [PG768](https://www.gutenberg.org/ebooks/768) |
+| *Moby-Dick* | Herman Melville; [PG2701](https://www.gutenberg.org/ebooks/2701) |
+| *Frankenstein* | Mary Wollstonecraft Shelley; [PG84](https://www.gutenberg.org/ebooks/84) |
+| *Dracula* | Bram Stoker; [PG345](https://www.gutenberg.org/ebooks/345) |
+| *Dr. Jekyll and Mr. Hyde* | Robert Louis Stevenson; [PG43](https://www.gutenberg.org/ebooks/43) |
+| *Les Misérables*, Tome I: Fantine | Victor Hugo; French edition [PG17489](https://www.gutenberg.org/ebooks/17489), not the complete multi-volume novel |
+| *Vingt mille lieues sous les mers* | Jules Verne; French edition [PG5097](https://www.gutenberg.org/ebooks/5097) |
+| *Les Trois Mousquetaires* | Alexandre Dumas; French edition [PG13951](https://www.gutenberg.org/ebooks/13951), whose metadata also credits Auguste Maquet |
+
+The source text and notices remain intact in ignored local reading copies.
+All visible covers are new Ambra typographic artwork, not publisher covers or
+trade dress. Alice is an explicitly customized combination of PG11 text and
+PG114 art: the Caterpillar illustration is inserted at the start of chapter V.
+The current PG11 download alone does not contain that Tenniel illustration.
+The ten reading notes are original commentary.
+
+Original artwork, notes, and software remain MIT-licensed Ambra contributions;
+this does not relicense the incorporated text or illustration. No full EPUBs
+are committed, included in the extension ZIP, or part of the screenshot handoff.
+Preserve these source credits with the refreshed listing materials. Consult the
+ignored capture provenance for exact source hashes and preview/release status.
+
+## Historical original demonstration screenshots
+
+The five checked-in `screenshot-*-1280x800.png` preview images use only original Ambra
 demonstration publications: *The Quiet Observatory*, *Small Wonders*, and
 *The Floating Garden*. Text, covers, and screenshots are Ambra project material
 under the repository's MIT license. They contain no personal library or imported
