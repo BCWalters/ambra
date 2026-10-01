@@ -254,6 +254,7 @@ export class ReaderController {
    * pagination state. One additional request can wait for the active turn. */
   private isTurningPage = false;
   private queuedTurn: 1 | -1 | undefined;
+  private turnMargins: ReturnType<ReaderController["pageMargins"]> | undefined;
   private readonly operations = new ReaderOperations();
   private readingHistory: ReadingHistory | undefined;
   private pendingLayout: PendingLayout | undefined;
@@ -2756,6 +2757,11 @@ export class ReaderController {
     const operation = this.operations.begin();
     this.diagnostics.record(`turnPage direction=${direction}`);
     try {
+      const margins = this.pageMargins();
+      this.turnMargins = margins;
+      operation.own(() => {
+        if (this.turnMargins === margins) this.turnMargins = undefined;
+      });
       await this.turnPageInternal(direction, operation);
     } catch (error) {
       if (this.operations.owns(operation)) {
@@ -3569,20 +3575,27 @@ export class ReaderController {
         this.dismissUiForPointer(start);
         this.bumpContentActivity();
       }
+      const turning = this.turnMargins !== undefined;
+      const startParentX = turning ? this.pageClientX(doc, start.clientX) : 0;
+      const startSide = turning ? this.marginSide(doc, start.clientX, start.clientY) : undefined;
       this.onGestureRelease(target, start, up => {
-        if (swipe && Math.abs(up.clientX - start.clientX) > 60 &&
-          Math.abs(up.clientY - start.clientY) < 50 && doc.getSelection()?.isCollapsed !== false) {
-          void this.turnPage(this.physicalDirection(up.clientX < start.clientX ? 1 : -1));
+        // A moving iframe changes client coordinates under a stationary pointer.
+        const deltaX = turning ? up.screenX - start.screenX : up.clientX - start.clientX;
+        const deltaY = turning ? up.screenY - start.screenY : up.clientY - start.clientY;
+        if (swipe && Math.abs(deltaX) > 60 &&
+          Math.abs(deltaY) < 50 && doc.getSelection()?.isCollapsed !== false) {
+          void this.turnPage(this.physicalDirection(deltaX < 0 ? 1 : -1));
           return;
         }
-        this.handleContentClick(up, start.clientX, start.clientY, doc);
+        this.handleContentClick(up, start.clientX, start.clientY, doc,
+          turning ? { side: startSide, deltaX, deltaY, parentX: startParentX + deltaX } : undefined);
       });
     };
     target.addEventListener("pointerdown", down);
     return () => target.removeEventListener("pointerdown", down);
   }
 
-  private marginSide(doc: Document, x: number, y: number): -1 | 1 | undefined {
+  private pageMargins() {
     const host = this.host;
     if (!host) return undefined;
     const views = this.contentDocumentViews(host);
@@ -3599,15 +3612,28 @@ export class ReaderController {
         views[0]?.document;
       return frameContentBounds(frame, contentDoc ? reflowableContentBounds(contentDoc) : undefined);
     });
+    return { host, bounds, edges: frames.map(frame => frameContentBounds(frame)) };
+  }
+
+  private pageClientX(doc: Document, x: number): number {
     const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null;
-    const parentX = frame ? frame.getBoundingClientRect().left +
-      x * frame.getBoundingClientRect().width / frame.clientWidth : x;
-    if (host instanceof FixedSpreadHost) return outerEdgeSide(parentX, bounds);
-    const margin = outerMarginSide(parentX, bounds);
+    if (!frame) return x;
+    const rect = frame.getBoundingClientRect();
+    return rect.left + x * rect.width / frame.clientWidth;
+  }
+
+  private marginSide(doc: Document, x: number, y: number, parentX = this.pageClientX(doc, x)): -1 | 1 | undefined {
+    const host = this.host;
+    if (!host) return undefined;
+    // Turning paper must not turn the physical gutter into an outer margin.
+    const margins = this.turnMargins?.host === host ? this.turnMargins : this.pageMargins();
+    if (!margins) return undefined;
+    if (host instanceof FixedSpreadHost) return outerEdgeSide(parentX, margins.bounds);
+    const margin = outerMarginSide(parentX, margins.bounds);
     if (margin !== undefined) return margin;
-    const edge = reflowableEdgeSide(parentX, frames.map(frame => frameContentBounds(frame)));
+    const edge = reflowableEdgeSide(parentX, margins.edges);
     if (doc === this.containerEl?.ownerDocument) return edge;
-    if (!views.some(view => view.document === doc)) return undefined;
+    if (!this.contentDocumentViews(host).some(view => view.document === doc)) return undefined;
     return edge !== undefined && isReflowableEdgeWhitespace(doc, x, y) ? edge : undefined;
   }
 
@@ -3629,6 +3655,7 @@ export class ReaderController {
     // Native pointerdown clears selection before pointerup can inspect it.
     if (this.dismissContentSelection()) return;
     if (this.isFixedLayoutHost(this.host) && !this.isPageTurnTarget(start.target)) return;
+    const turning = this.turnMargins !== undefined;
     const cleanup = (): void => {
       target.removeEventListener("pointerup", listener);
       target.removeEventListener("pointercancel", listener);
@@ -3639,8 +3666,8 @@ export class ReaderController {
       if (pointer.pointerId !== start.pointerId) return;
       cleanup();
       if (dismissedUi &&
-        Math.abs(pointer.clientX - start.clientX) <= ReaderController.CLICK_MOVEMENT_TOLERANCE &&
-        Math.abs(pointer.clientY - start.clientY) <= ReaderController.CLICK_MOVEMENT_TOLERANCE) return;
+        Math.abs(turning ? pointer.screenX - start.screenX : pointer.clientX - start.clientX) <= ReaderController.CLICK_MOVEMENT_TOLERANCE &&
+        Math.abs(turning ? pointer.screenY - start.screenY : pointer.clientY - start.clientY) <= ReaderController.CLICK_MOVEMENT_TOLERANCE) return;
       if (event.type === "pointerup" && !this.operations.disposed) release(pointer);
     };
     this.gestureCleanup = cleanup;
@@ -3876,10 +3903,11 @@ export class ReaderController {
     startX: number,
     startY: number,
     doc: Document,
+    turningGesture?: { side: -1 | 1 | undefined; deltaX: number; deltaY: number; parentX: number },
   ): void {
     if (this.isApplyingLayout) return;
-    const deltaX = Math.abs(upEvent.clientX - startX);
-    const deltaY = Math.abs(upEvent.clientY - startY);
+    const deltaX = Math.abs(turningGesture ? turningGesture.deltaX : upEvent.clientX - startX);
+    const deltaY = Math.abs(turningGesture ? turningGesture.deltaY : upEvent.clientY - startY);
     if (
       deltaX > ReaderController.CLICK_MOVEMENT_TOLERANCE ||
       deltaY > ReaderController.CLICK_MOVEMENT_TOLERANCE
@@ -3887,8 +3915,8 @@ export class ReaderController {
       return;
     }
 
-    const side = this.marginSide(doc, startX, startY);
-    if (side === undefined || this.marginSide(doc, upEvent.clientX, upEvent.clientY) !== side) return;
+    const side = turningGesture ? turningGesture.side : this.marginSide(doc, startX, startY);
+    if (side === undefined || this.marginSide(doc, upEvent.clientX, upEvent.clientY, turningGesture?.parentX) !== side) return;
 
     // The caller passes `doc` directly because iframe events come from a
     // different `Node` realm, so `upEvent.target instanceof Node` would
