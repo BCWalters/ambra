@@ -305,6 +305,11 @@ Do not relax popup alignment thresholds or remove toolbar motion to compensate
 for a locator disappearing mid-poll: the last sampled offset may simply be an
 in-animation value. Retain the visibility, viewport, and settled-geometry checks.
 
+Before sending another shortcut guarded by modal ownership, wait for the exiting
+surface to unmount: use `includeHidden: true` and `toHaveCount(0)`. A normal role
+locator with `toBeHidden()` can pass as soon as `aria-hidden` changes, while the
+dialog is still present and correctly blocks the next removal key.
+
 On macOS headless Chromium, arrow keys may not drive the operating system's
 native select popup, even in plain HTML. Native type-ahead (for example `s` for
 Sepia or `e` for English) exercises real keyboard selection without replacing it
