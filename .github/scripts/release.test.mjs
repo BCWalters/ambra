@@ -33,6 +33,23 @@ test("release source versions agree with the Chrome manifest", async () => {
   assert.equal(new Set(versions).size, 1);
 });
 
+test("classic screenshot inputs pin fifteen distinct books, three French editions, and Tenniel art", async () => {
+  const sources = JSON.parse(await readFile(path.join(root, "store-assets/classic-sources.json"), "utf8"));
+  assert.equal(sources.books.length, 15);
+  assert.equal(new Set(sources.books.map((book) => book.id)).size, 15);
+  assert.equal(new Set(sources.books.map((book) => book.slug)).size, 15);
+  assert.equal(sources.books.filter((book) => book.language === "fr").length, 3);
+  for (const book of sources.books) {
+    assert.match(book.sha256, /^[a-f0-9]{64}$/);
+    assert.match(book.slug, /^[a-z-]+$/);
+    assert.equal(book.format, "epub3.images");
+    assert.ok(book.title && book.creator);
+  }
+  for (const id of [11, 1260, 1400, 98]) assert.ok(sources.books.some((book) => book.id === id));
+  assert.match(sources.illustration.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(sources.illustration.url, "https://www.gutenberg.org/files/114/114-h/images/alice15a.gif");
+});
+
 test("dependency notices include installed texts and pinned overrides, failing closed on omissions", async () => {
   const directory = path.join(root, "dist", `release-notices-tests-${process.pid}`);
   const dependencyPath = path.join(directory, "node_modules/example");

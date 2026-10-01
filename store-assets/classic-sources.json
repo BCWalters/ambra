@@ -1,0 +1,27 @@
+{
+  "books": [
+    {"id": 11, "slug": "alice-in-wonderland", "title": "Alice's Adventures in Wonderland", "creator": "Lewis Carroll", "language": "en", "format": "epub3.images", "sha256": "12cbc3610260503383ad7ecf800beb0d885a6011e15900b2bf61cecfc571d6c8"},
+    {"id": 1260, "slug": "jane-eyre", "title": "Jane Eyre", "creator": "Charlotte Brontë", "language": "en", "format": "epub3.images", "sha256": "9aad147af2f0e824765fbcf20eb91625a1847dd07c22a2a7664eb2c96b18cdb2"},
+    {"id": 1342, "slug": "pride-and-prejudice", "title": "Pride and Prejudice", "creator": "Jane Austen", "language": "en", "format": "epub3.images", "sha256": "2897764671a164d2fd637c920beec515040b7af3b72bc885b71ad319071ea21b"},
+    {"id": 158, "slug": "emma", "title": "Emma", "creator": "Jane Austen", "language": "en", "format": "epub3.images", "sha256": "b16e23d029de59d91db7adcaa94f346cc0cda9ade1a46f3014cb0c06de90f194"},
+    {"id": 161, "slug": "sense-and-sensibility", "title": "Sense and Sensibility", "creator": "Jane Austen", "language": "en", "format": "epub3.images", "sha256": "5ce67ec097720148157d6a2a2c172899ed3057c3da1d3817043517753cf2251e"},
+    {"id": 1400, "slug": "great-expectations", "title": "Great Expectations", "creator": "Charles Dickens", "language": "en", "format": "epub3.images", "sha256": "19c25f1df730e109777720dc2af437a3538bcee3059c9f8cde215c9afa29efe5"},
+    {"id": 98, "slug": "a-tale-of-two-cities", "title": "A Tale of Two Cities", "creator": "Charles Dickens", "language": "en", "format": "epub3.images", "sha256": "15701b1310e0c8cfb39162f803b126feefd8309c74707a63e1a32dbfe733af3f"},
+    {"id": 768, "slug": "wuthering-heights", "title": "Wuthering Heights", "creator": "Emily Brontë", "language": "en", "format": "epub3.images", "sha256": "c7fb69ff35960dad0b596ec36d808c439770f4c1bae1934bc5b0f7fc6e76d857"},
+    {"id": 2701, "slug": "moby-dick", "title": "Moby-Dick", "creator": "Herman Melville", "language": "en", "format": "epub3.images", "sha256": "21078430c9d034326635f4d57ce436c278956b148357903973aaee949a4598ec"},
+    {"id": 84, "slug": "frankenstein", "title": "Frankenstein", "creator": "Mary Shelley", "language": "en", "format": "epub3.images", "sha256": "2c29669a2cc1a726d6264178a2e8e86529208fd61ef92ca627b1612b2d98b2bd"},
+    {"id": 345, "slug": "dracula", "title": "Dracula", "creator": "Bram Stoker", "language": "en", "format": "epub3.images", "sha256": "e967124bd09c0172dcfe0a0be1ff8fa5c7a4ba0cf0f888652e6cf58a9e899b6d"},
+    {"id": 43, "slug": "jekyll-and-hyde", "title": "Dr. Jekyll and Mr. Hyde", "creator": "Robert Louis Stevenson", "language": "en", "format": "epub3.images", "sha256": "7c2fed3b2be4221e371eda26cf01cec8d4d63f25714e69655944c99b124ca7b3"},
+    {"id": 17489, "slug": "les-miserables-fantine", "title": "Les Misérables: Tome I, Fantine", "creator": "Victor Hugo", "language": "fr", "format": "epub3.images", "sha256": "07316c83c56abcdb74657d10e31f5bca574df25e49e82ebfe26ad2a5f328abb0"},
+    {"id": 5097, "slug": "vingt-mille-lieues", "title": "Vingt mille lieues sous les mers", "creator": "Jules Verne", "language": "fr", "format": "epub3.images", "sha256": "f84bd709e8b64ac5b21ac65e99079713245f938f81d6496e13eda5749f5e26df"},
+    {"id": 13951, "slug": "les-trois-mousquetaires", "title": "Les Trois Mousquetaires", "creator": "Alexandre Dumas", "language": "fr", "format": "epub3.images", "sha256": "9290105cefad414bf0a404b44ab2612e80197232b9a21b0e74aa1789477dafbd"}
+  ],
+  "illustration": {
+    "file": "alice15a.gif",
+    "url": "https://www.gutenberg.org/files/114/114-h/images/alice15a.gif",
+    "source": "https://www.gutenberg.org/ebooks/114",
+    "creator": "John Tenniel (1820–1914)",
+    "title": "Illustration 15: Alice meets the Caterpillar",
+    "sha256": "1829e0bf84f1d79cbf2cb18e90ad481cbb014af00a6371c010790a7b79e481f7"
+  }
+}

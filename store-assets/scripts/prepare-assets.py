@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Generate original demo EPUBs, the padded store icon, and the promo tile.
+"""Prepare store artwork and original demos, or explicitly requested classics.
 
 Uses the existing Pillow installation; never starts a browser or builds Ambra.
 """
 from io import BytesIO
 import argparse
+import hashlib
 import json
 from pathlib import Path
+import posixpath
 import textwrap
+from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 import zipfile
@@ -120,13 +123,143 @@ def make_epub(slug, title, background, accent, chapter, description):
             info.compress_type = zipfile.ZIP_STORED if name == "mimetype" else zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
             archive.writestr(info, data)
-    with zipfile.ZipFile(destination) as archive:
-        assert archive.testzip() is None
-        assert archive.infolist()[0].filename == "mimetype"
-        assert archive.infolist()[0].compress_type == zipfile.ZIP_STORED
-        for name in archive.namelist():
-            if name.endswith((".xml", ".opf", ".xhtml")):
-                ElementTree.fromstring(archive.read(name))
+
+def pinned_source(url, filename, checksum):
+    cache = GENERATED / "classics-sources"
+    cache.mkdir(exist_ok=True)
+    destination = cache / filename
+    if destination.exists():
+        data = destination.read_bytes()
+    else:
+        request = Request(url, headers={"User-Agent": "Ambra-store-asset-preparation"})
+        with urlopen(request, timeout=60) as response:
+            data = response.read()
+    if hashlib.sha256(data).hexdigest() != checksum:
+        raise RuntimeError(f"Source checksum mismatch: {url}. Review the source before changing its pin.")
+    if not destination.exists():
+        destination.write_bytes(data)
+    return data
+
+
+def classic_cover(book, index, media_type):
+    palettes = [
+        ("#173f45", "#ddb564"), ("#513a52", "#e8bea4"), ("#284b38", "#d6bf87"),
+        ("#3d4f6b", "#e3c09f"), ("#5c4131", "#ecd09b"), ("#473727", "#e2ac64"),
+        ("#254d5b", "#dcb397"), ("#443e65", "#c4c6a6"), ("#193e60", "#aacad1"),
+        ("#354b39", "#d7be67"), ("#551f2c", "#e2b397"), ("#263b43", "#dbb695"),
+        ("#263d58", "#e1ae70"), ("#165058", "#9fceb8"), ("#693d35", "#e7c995"),
+    ]
+    background, accent = palettes[index % len(palettes)]
+    image = Image.new("RGB", (600, 900), background)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((28, 28, 571, 871), outline=accent, width=2)
+    if index % 3 == 0:
+        for offset in range(5):
+            draw.arc((-180, 365 + offset * 36, 780, 1025 + offset * 36), 188, 350, fill=accent, width=3)
+    elif index % 3 == 1:
+        for offset in range(4):
+            draw.ellipse((100 + offset * 48, 530 + offset * 26, 340 + offset * 48, 770 + offset * 26), outline=accent, width=3)
+    else:
+        for offset in range(6):
+            draw.line((75 + offset * 75, 570, 225 + offset * 40, 825), fill=accent, width=4)
+    draw.text((55, 64), "CLASSICS", font=font(20, True), fill=accent)
+    y = 126
+    for line in textwrap.wrap(book["title"], width=17):
+        draw.text((52, y), line, font=font(49, True), fill="#fff9ed")
+        y += 62
+    draw.line((55, y + 24, 400, y + 24), fill=accent, width=2)
+    for line in textwrap.wrap(book["creator"], width=24):
+        draw.text((55, y + 54), line, font=font(28), fill=accent)
+        y += 36
+    output = BytesIO()
+    image.save(output, format={"image/jpeg": "JPEG", "image/png": "PNG"}[media_type], quality=95, optimize=True)
+    return output.getvalue()
+
+
+def prepare_classics():
+    sources = json.loads((ASSETS / "classic-sources.json").read_text())
+    art = sources["illustration"]
+    art_bytes = pinned_source(art["url"], art["file"], art["sha256"])
+    opf_ns = "http://www.idpf.org/2007/opf"
+    dc_ns = "http://purl.org/dc/elements/1.1/"
+    xhtml_ns = "http://www.w3.org/1999/xhtml"
+    prepared = []
+    for index, book in enumerate(sources["books"]):
+        url = f'https://www.gutenberg.org/ebooks/{book["id"]}.{book["format"]}'
+        original = pinned_source(url, f'{book["id"]}.epub', book["sha256"])
+        with zipfile.ZipFile(BytesIO(original)) as archive:
+            entries = {name: archive.read(name) for name in archive.namelist()}
+        container = ElementTree.fromstring(entries["META-INF/container.xml"])
+        package_path = next(node.attrib["full-path"] for node in container.iter() if node.tag.endswith("rootfile"))
+        package = ElementTree.fromstring(entries[package_path])
+        metadata = package.find(f"{{{opf_ns}}}metadata")
+        rights = [node.text for node in metadata.findall(f"{{{dc_ns}}}rights")]
+        if "Public domain in the USA." not in rights:
+            raise RuntimeError(f"Unverified rights statement in {book['slug']}")
+        language = metadata.findtext(f"{{{dc_ns}}}language")
+        if language != book["language"]:
+            raise RuntimeError(f"Unexpected source language in {book['slug']}: {language}")
+        title = metadata.findtext(f"{{{dc_ns}}}title")
+        manifest = package.find(f"{{{opf_ns}}}manifest")
+        cover_id = next((node.attrib.get("content") for node in metadata if node.attrib.get("name") == "cover"), None)
+        cover_item = next((item for item in manifest if "cover-image" in item.attrib.get("properties", "").split()
+                           or item.attrib.get("id") == cover_id), None)
+        if cover_item is None or cover_item.attrib["media-type"] not in ("image/jpeg", "image/png"):
+            raise RuntimeError(f"Missing supported source cover in {book['slug']}")
+        directory = posixpath.dirname(package_path)
+        cover_path = posixpath.normpath(posixpath.join(directory, cover_item.attrib["href"]))
+        entries[cover_path] = classic_cover(book, index, cover_item.attrib["media-type"])
+        details = {
+            "file": f'{book["slug"]}.epub', "title": title, "language": language,
+            "source": f'https://www.gutenberg.org/ebooks/{book["id"]}',
+            "sourceSha256": book["sha256"], "rights": rights,
+            "cover": "Original Ambra typographic artwork, MIT; replaces the source cover image.",
+        }
+        if book["id"] == 11:
+            chapter_path = next(name for name, data in entries.items()
+                                if name.endswith(".xhtml") and b'<a id="chap05"' in data)
+            chapter = ElementTree.fromstring(entries[chapter_path])
+            chapter_body = next(node for node in chapter.iter() if node.attrib.get("class") == "chapter")
+            figure = ElementTree.Element(f"{{{xhtml_ns}}}figure", {
+                "id": "ambra-tenniel-caterpillar",
+                "style": "float:right;width:34%;max-width:220px;margin:0 0 1em 1.2em",
+            })
+            ElementTree.SubElement(figure, f"{{{xhtml_ns}}}img", {
+                "src": art["file"], "alt": "Alice looks up at the Caterpillar on a mushroom, by John Tenniel",
+                "style": "display:block;width:100%;height:auto",
+            })
+            chapter_body.insert(1, figure)
+            ElementTree.register_namespace("", xhtml_ns)
+            entries[chapter_path] = ElementTree.tostring(chapter, encoding="utf-8", xml_declaration=True)
+            entries[posixpath.join(directory, art["file"])] = art_bytes
+            ElementTree.SubElement(manifest, f"{{{opf_ns}}}item", {
+                "id": "ambra-tenniel", "href": art["file"], "media-type": "image/gif",
+            })
+            ElementTree.register_namespace("", opf_ns)
+            ElementTree.register_namespace("dc", dc_ns)
+            entries[package_path] = ElementTree.tostring(package, encoding="utf-8", xml_declaration=True)
+            details["illustration"] = art
+            details["readerChapter"] = chapter_path
+            details["editionNote"] = "Custom combination of PG11 text and PG114 Tenniel art; PG11 alone is not this illustrated edition."
+        destination = GENERATED / details["file"]
+        with zipfile.ZipFile(destination, "w") as archive:
+            for name, data in entries.items():
+                info = zipfile.ZipInfo(name, date_time=(2026, 9, 30, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_STORED if name == "mimetype" else zipfile.ZIP_DEFLATED
+                archive.writestr(info, data)
+        details["sha256"] = hashlib.sha256(destination.read_bytes()).hexdigest()
+        with zipfile.ZipFile(destination) as archive:
+            if archive.testzip() is not None:
+                raise RuntimeError(f"Invalid prepared archive: {destination.name}")
+            first = archive.infolist()[0]
+            if first.filename != "mimetype" or first.compress_type != zipfile.ZIP_STORED:
+                raise RuntimeError(f"Invalid EPUB mimetype entry: {destination.name}")
+            for name in archive.namelist():
+                if name.endswith((".xml", ".opf", ".xhtml", ".ncx")):
+                    ElementTree.fromstring(archive.read(name))
+        prepared.append(details)
+    (GENERATED / "books.json").write_text(json.dumps(prepared, indent=2, ensure_ascii=False) + "\n")
+    print(f"Prepared {len(prepared)} pinned classic reading copies with original covers. No browser started.")
 
 
 def store_icon(original):
@@ -144,6 +277,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--update-extension-icon", action="store_true",
                         help="Also synchronize the packaged 128px icon; leave 16px/48px unchanged.")
+    parser.add_argument("--classics", action="store_true",
+                        help="Prepare pinned public-domain classic reading copies; download missing sources explicitly.")
     args = parser.parse_args()
     GENERATED.mkdir(exist_ok=True)
     original = Image.open(ROOT / "apps/extension/public/icons/icon128.png").convert("RGBA")
@@ -162,6 +297,10 @@ def main():
     draw.text((150, 148), "Read. Annotate.", font=font(22), fill="#efd9ad")
     draw.text((150, 181), "Explore your EPUBs.", font=font(21), fill="#efd9ad")
     promo.save(ASSETS / "promo-tile-440x280.png", optimize=True)
+
+    if args.classics:
+        prepare_classics()
+        return
 
     for book in BOOKS:
         make_epub(*book)
