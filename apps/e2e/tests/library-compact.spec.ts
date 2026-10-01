@@ -50,6 +50,7 @@ async function expectFixedChrome(page: Page, locale: Locale, height: number) {
   const full = page.getByRole("button", { name: t("library.fullLibrary"), exact: true });
   await expect(full).toBeVisible();
   await expect(full).toHaveAccessibleDescription(t("library.expand"));
+  expect(await full.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   const footer = (await page.getByRole("contentinfo").boundingBox())!;
   expect(footer.y + footer.height).toBeLessThanOrEqual(height + 1);
   expect((await full.boundingBox())!.y).toBeGreaterThanOrEqual(footer.y);
@@ -65,8 +66,8 @@ for (const width of [320, 360]) {
     });
     try {
       await seedLayoutMetadata(page);
-      await expect(page.getByRole("button", { name: /^Open / })).toHaveCount(12);
-      const firstRows = await page.getByRole("button", { name: /^Open / }).evaluateAll((nodes) =>
+      await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(12);
+      const firstRows = await page.getByRole("main").getByRole("button", { name: /^Open / }).evaluateAll((nodes) =>
         nodes.slice(0, 4).map((node) => {
           const { x, y, width, height } = node.getBoundingClientRect();
           return { x, y, width, height };
@@ -167,7 +168,7 @@ test("native Chrome action popup has stable preferred dimensions and keeps navig
       chrome.extension.getViews({ type: "popup" })[0]!.document.querySelector<HTMLButtonElement>("footer button")!.click());
     const full = await opened;
     await expect(full).toHaveURL(/\?view=tab$/);
-    await expect(full.getByRole("button", { name: /^Open / })).toHaveCount(12);
+    await expect(full.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(12);
   } finally {
     await context.close();
   }
@@ -190,7 +191,7 @@ test("first-run discovery keeps a visible full-library action without covering l
       await expectFixedChrome(page, "en", 600);
       await page.screenshot({ path: testInfo.outputPath("compact-first-run-discovery.png") });
       const opened = page.context().waitForEvent("page");
-      await page.getByRole("button", { name: "Full library", exact: true }).click();
+      await page.getByRole("button", { name: "Open library in new tab", exact: true }).click();
       const full = await opened;
       await expect(full).toHaveURL(/\?view=tab$/);
       await expect(full.getByRole("heading", { name: "What will you read first?" })).toBeVisible();

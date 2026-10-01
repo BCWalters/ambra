@@ -68,8 +68,9 @@ for (const { width, scale, justify } of [
         const clipTop = Number(frame.style.clipPath.match(/inset\(([\d.]+)px/)?.[1] ?? 0);
         const body = doc.body.getBoundingClientRect();
         const padding = parseFloat(doc.defaultView!.getComputedStyle(doc.body).paddingRight);
-        const edgeWidth = Math.max(44, Math.min(pane.width * 0.08, 64));
-        const blankX = body.right - padding - 0.5;
+        const oldEdgeWidth = Math.max(44, Math.min(pane.width * 0.08, 64));
+        const edgeWidth = Math.max(64, Math.min(pane.width * 0.2, 160));
+        const blankX = pane.width - (oldEdgeWidth + edgeWidth) / 2;
         const visible = Array.from(doc.querySelectorAll("section")).find(section => {
           const box = section.querySelector(".edge-end")!.getBoundingClientRect();
           return box.top > 140 && box.bottom < 750;
@@ -107,7 +108,8 @@ for (const { width, scale, justify } of [
         const image = visible.querySelector("svg")!.getBoundingClientRect();
         return {
           blank: { x: pane.left + blankX, y: pane.top + (end.top + end.bottom) / 2 },
-          glyph, selection, gap, blankX, bandStart: pane.width - edgeWidth, bodyRight: body.right - padding,
+          glyph, selection, gap, blankX, bandStart: pane.width - edgeWidth,
+          oldBandStart: pane.width - oldEdgeWidth, bodyRight: body.right - padding,
           button: { x: pane.left + blankX, y: pane.top + (button.top + button.bottom) / 2 },
           image: { x: pane.left + image.right - 1, y: pane.top + (image.top + image.bottom) / 2 },
           count: Reflect.get(window, "__readerController").snapshot().pageCount,
@@ -115,6 +117,7 @@ for (const { width, scale, justify } of [
       });
       expect(geometry.blankX).toBeLessThan(geometry.bodyRight);
       expect(geometry.blankX).toBeGreaterThan(geometry.bandStart);
+      expect(geometry.blankX).toBeLessThan(geometry.oldBandStart);
       expect(geometry.glyph, JSON.stringify(geometry)).toBeDefined();
       expect(geometry.gap, JSON.stringify(geometry)).toBeDefined();
       await observeTurns(page);
@@ -148,8 +151,66 @@ for (const { width, scale, justify } of [
   });
 }
 
+for (const width of [360, 1100]) for (const rtl of [false, true]) {
+  test(`${width}px ${rtl ? "RTL" : "LTR"}: wider edges navigate through the full-height reading pane`, async () => {
+    const book = navigationFixture(test.info(), [12], (_chapter, index) =>
+      `<section style="height:600px;break-inside:avoid"><p>Original passage ${index}.</p></section>`);
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width, height: 900 } });
+    try {
+      await exposeReaderController(page);
+      await page.evaluate(async rtl => {
+        const c = Reflect.get(window, "__readerController");
+        c.pkg.pageProgressionDirection = rtl ? "rtl" : "ltr";
+        await c.setPageTurnAnimationStyle("none");
+        await c.openSpineItem(0, { landOnPageIndex: 4 });
+      }, rtl);
+      await settle(page);
+      await observeTurns(page);
+      const toolbar = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ }).locator("..");
+      const geometry = await page.evaluate(() => {
+        const frames = Array.from(document.querySelectorAll("iframe"))
+          .map(frame => frame.getBoundingClientRect()).sort((a, b) => a.left - b.left);
+        const points = [frames[0]!, frames.at(-1)!].map((pane, index) => {
+          const oldBand = Math.max(44, Math.min(pane.width * 0.08, 64));
+          const band = Math.max(64, Math.min(pane.width * 0.2, 160));
+          const inset = (oldBand + band) / 2;
+          return { x: index ? pane.right - inset : pane.left + inset, inset, oldBand, band };
+        });
+        return { points, spread: Reflect.get(window, "__readerController").snapshot().isSpread };
+      });
+      expect(geometry.spread).toBe(width === 1100);
+      await test.info().attach("full-height-edge-geometry", {
+        body: JSON.stringify(geometry), contentType: "application/json",
+      });
+      const expected: number[] = [];
+      for (const [index, point] of geometry.points.entries()) {
+        expect(point.inset).toBeGreaterThan(point.oldBand);
+        expect(point.inset).toBeLessThan(point.band);
+        for (const y of [1, 60, 450, 825, 899]) {
+          await page.evaluate(() =>
+            Reflect.get(window, "__readerController").openSpineItem(0, { landOnPageIndex: 4 }));
+          await settle(page);
+          await page.mouse.move(20, 20);
+          await expect(toolbar).toHaveCSS("opacity", "1");
+          await page.mouse.move(width / 2, 1);
+          await expect(page.getByRole("tooltip")).toBeHidden();
+          await page.mouse.click(point.x, y);
+          await expect(toolbar, `dismissal at x=${point.x}, y=${y}`).toHaveCSS("pointer-events", "none");
+          expect(await turns(page), "visible chrome consumes the first tap").toEqual(expected);
+          await page.mouse.click(point.x, y);
+          await settle(page);
+          expected.push((index ? 1 : -1) * (rtl ? -1 : 1));
+          expect(await turns(page), `x=${point.x}, y=${y}`).toEqual(expected);
+        }
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 for (const rtl of [false, true]) {
-  test(`single ${rtl ? "RTL" : "LTR"}: content whitespace and measure boundaries are not tap zones`, async () => {
+  test(`single ${rtl ? "RTL" : "LTR"}: content beyond the expanded bands stays inert`, async () => {
     const { context, readerPage: page } = await launchReader(navigationFixture(test.info(), [8]), {
       viewport: { width: 800, height: 900 },
     });
@@ -178,16 +239,19 @@ for (const rtl of [false, true]) {
         body: JSON.stringify(bounds), contentType: "application/json",
       });
       await observeTurns(page);
-      for (const x of [bounds.left + 1, bounds.left + 30, bounds.right - 30, bounds.right - 1]) {
+      const band = Math.max(64, Math.min(bounds.pane.width * 0.2, 160));
+      const leftBoundary = Math.max(bounds.left, bounds.pane.left + band);
+      const rightBoundary = Math.min(bounds.right, bounds.pane.right - band);
+      for (const x of [leftBoundary + 1, leftBoundary + 30, rightBoundary - 30, rightBoundary - 1]) {
         await page.mouse.click(x, 350);
         await page.mouse.click(x, 740);
         expect(await turns(page)).toEqual([]);
       }
 
       // A small release drift from content into the margin is not a margin tap.
-      await page.mouse.move(bounds.right - 2, 740);
+      await page.mouse.move(rightBoundary - 2, 740);
       await page.mouse.down();
-      await page.mouse.move(bounds.right + 2, 740);
+      await page.mouse.move(rightBoundary + 2, 740);
       await page.mouse.up();
       expect(await turns(page)).toEqual([]);
       const right = await outerMarginPoint(page, "right");

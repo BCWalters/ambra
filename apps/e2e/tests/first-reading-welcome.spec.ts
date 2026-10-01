@@ -149,10 +149,10 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
     await expect(welcome(page)).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe("IFRAME");
     await app.libraryPage.locator('input[type="file"]').setInputFiles(otherBook);
-    await expect(app.libraryPage.getByRole("button", { name: /^Open /i })).toHaveCount(2);
+    await expect(app.libraryPage.getByRole("main").getByRole("button", { name: /^Open /i })).toHaveCount(2);
     const firstUrl = page.url();
     await page.close();
-    await app.libraryPage.getByRole("button", { name: /^Open /i }).first().click();
+    await app.libraryPage.getByRole("main").getByRole("button", { name: /^Open /i }).first().click();
     await expect.poll(() => app.context.pages().filter(p => p.url().includes("/reader/")).length).toBe(1);
     const nextReader = app.context.pages().find(p => p.url().includes("/reader/"))!;
     await expect(nextReader.locator("iframe").first()).toBeAttached();

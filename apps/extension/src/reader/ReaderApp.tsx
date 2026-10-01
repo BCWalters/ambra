@@ -290,8 +290,8 @@ const ReaderAppInner: FC = () => {
   );
 
   useEffect(() => {
-    setContentUiDismissal(() => {
-      const dismissedChrome = dismissForContent();
+    setContentUiDismissal(point => {
+      const dismissedChrome = dismissForContent(point);
       const dismissedMenu = toolbarMenuRef.current !== undefined;
       if (dismissedMenu) {
         // Fluent restores a closing menu's focus to its trigger if focus is

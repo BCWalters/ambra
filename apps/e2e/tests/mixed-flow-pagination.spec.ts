@@ -119,7 +119,7 @@ for (const width of [760, 1400]) {
       await seedReadingWelcomeAcknowledgement(library);
       await library.locator('input[type="file"]').setInputFiles(book);
       const opening = context.waitForEvent("page");
-      await library.getByRole("button", { name: /^Open / }).click({ force: true });
+      await library.getByRole("main").getByRole("button", { name: /^Open / }).click({ force: true });
       const page = await opening;
       await page.bringToFront();
       await expect.poll(async () => (await paintedMarkers(page)).position).toMatch(/Page 1 of \d+/);

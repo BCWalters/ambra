@@ -17,6 +17,7 @@ import type {
   InspectorReaderBridge,
   NarrationAction,
   PreviewPosition,
+  ContentUiDismissal,
   ReaderSnapshot,
   ReaderShortcutActions,
   ReadOnlyAnnotationView,
@@ -30,7 +31,7 @@ import type { Translate } from "../i18n/LocaleContext.js";
 export interface UseReaderControllerResult {
   recordDiagnosticEvent: (event: DiagnosticEvent) => void;
   recordDiagnosticSurfaces: (surfaces: DiagnosticSurfaces) => void;
-  setContentUiDismissal: (dismiss: (() => boolean) | undefined) => void;
+  setContentUiDismissal: (dismiss: ContentUiDismissal | undefined) => void;
   setShortcutActions: (actions: ReaderShortcutActions) => void;
   setShortcutPreferences: (preferences: ShortcutPreferences, platform: ShortcutPlatform) => void;
   setShortcutModalOpen: (open: boolean) => void;
@@ -111,14 +112,14 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   const shortcutActions = useRef<ReaderShortcutActions | undefined>(undefined);
   const shortcutPreferences = useRef<{ preferences: ShortcutPreferences; platform: ShortcutPlatform } | undefined>(undefined);
   const shortcutModalOpen = useRef(false);
-  const contentUiDismissal = useRef<(() => boolean) | undefined>(undefined);
+  const contentUiDismissal = useRef<ContentUiDismissal | undefined>(undefined);
   const recordDiagnosticEvent = useCallback((event: DiagnosticEvent) => {
     ownedController.current?.recordDiagnosticEvent(event);
   }, []);
   const recordDiagnosticSurfaces = useCallback((surfaces: DiagnosticSurfaces) => {
     ownedController.current?.recordDiagnosticSurfaces(surfaces);
   }, []);
-  const setContentUiDismissal = useCallback((dismiss: (() => boolean) | undefined) => {
+  const setContentUiDismissal = useCallback((dismiss: ContentUiDismissal | undefined) => {
     contentUiDismissal.current = dismiss;
     ownedController.current?.setContentUiDismissal(dismiss);
   }, []);

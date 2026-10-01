@@ -526,6 +526,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   return (
     <div
       ref={registerBar}
+      data-ambra-page-band
       onPointerEnter={handlers.onPointerEnter}
       onPointerLeave={handlers.onPointerLeave}
       onFocus={handlers.onFocus}

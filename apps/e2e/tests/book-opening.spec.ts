@@ -37,7 +37,7 @@ for (const fullLibrary of [true, false]) {
         `chrome-extension://${extensionId}/src/library/index.html${fullLibrary ? "?view=tab" : ""}`,
       );
       await libraryPage.emulateMedia({ reducedMotion: "no-preference" });
-      const open = libraryPage.getByRole("button", { name: /^Open / }).first();
+      const open = libraryPage.getByRole("main").getByRole("button", { name: /^Open / }).first();
       await open.hover();
       await libraryPage.mouse.down();
       await expect(open).toHaveCSS("filter", "brightness(0.88)");

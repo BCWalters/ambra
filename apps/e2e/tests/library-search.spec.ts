@@ -26,7 +26,7 @@ for (const width of [360, 1200]) {
       await readerPage.close();
       if (width > 600) await page.goto(`${page.url()}?view=tab`);
       await page.locator('input[type="file"]').setInputFiles(SECOND);
-      const covers = page.getByRole("button", { name: /^Open / });
+      const covers = page.getByRole("main").getByRole("button", { name: /^Open / });
       await expect(covers).toHaveCount(2);
       await page.getByRole("button", { name: "Sort library", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
@@ -85,7 +85,7 @@ test("active library searches follow imports and removals without confusing no m
   const { context, libraryPage: page } = await launchReader(FIRST);
   try {
     const search = page.getByRole("searchbox", { name: "Search library" });
-    const covers = page.getByRole("button", { name: /^Open / });
+    const covers = page.getByRole("main").getByRole("button", { name: /^Open / });
     await search.fill("two-chapter");
     await expect(covers).toHaveCount(0);
     await page.locator('input[type="file"]').setInputFiles(SECOND);

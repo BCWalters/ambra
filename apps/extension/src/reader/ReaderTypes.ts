@@ -26,6 +26,8 @@ export type PreviewPosition =
 
 export type NarrationAction = "start" | "toggle" | "previous" | "next" | "return" | "here" | "close";
 
+export type ContentUiDismissal = (point?: Pick<PointerEvent, "clientX" | "clientY">) => boolean;
+
 /** What the Book Details panel shows. */
 export interface BookDetails {
   readonly title: string;

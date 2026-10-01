@@ -613,7 +613,7 @@ export const en: StringCatalog = {
   "library.cancelDownloadFile": "Cancel download: {fileName}",
   "library.cancelDownloadFailed": "Ambra stopped downloading, but could not confirm cancellation in Chrome. Open Chrome Downloads to check and cancel the original download.",
   "library.findBooks": "Find books",
-  "library.fullLibrary": "Full library",
+  "library.fullLibrary": "Open library in new tab",
   "library.search": "Search library",
   "library.searchPlaceholder": "Search title or author",
   "library.clearSearch": "Clear library search",

@@ -103,7 +103,7 @@ test("Library exposes structure and supports keyboard-only modal entry and retur
     await expect(libraryPage.getByRole("main", { name: "Ambra — Library" })).toBeVisible();
     const heading = libraryPage.getByRole("heading", { name: "Ambra", level: 1, exact: true });
     await expect(heading).toHaveCSS("color", "rgb(122, 62, 0)");
-    const cover = libraryPage.getByRole("button", { name: /^Open / }).first();
+    const cover = libraryPage.getByRole("main").getByRole("button", { name: /^Open / }).first();
     await cover.focus();
     await cover.press("Tab");
     const details = libraryPage.getByRole("button", { name: / details$/ }).first();

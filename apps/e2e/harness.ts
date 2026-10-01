@@ -119,7 +119,7 @@ export async function launchReader(
     await options.beforeBookImport?.(libraryPage);
     await fileInput.setInputFiles(bookPath);
 
-    const openButton = libraryPage.getByRole("button", { name: /^Open /i }).first();
+    const openButton = libraryPage.getByRole("main").getByRole("button", { name: /^Open /i }).first();
     await openButton.waitFor({ timeout: 20_000 });
     const [readerPage] = await Promise.all([
       context.waitForEvent("page", { timeout: 15_000 }),

@@ -625,8 +625,14 @@ and cross-chapter note placement in both single-page and spread layouts.
 
 `outer-margin-navigation.spec.ts` and `spread-gutter-navigation.spec.ts` enforce
 outer-margin reflowable taps (#182). A bounded hybrid edge band (#268) also
-accepts blank line-end/interline space: 8% of the physical outer pane, at least
-44px and at most 64px (never beyond half a pane). Existing wider real margins
+accepts blank line-end/interline space: 20% of the physical outer pane, at least
+64px and at most 160px (never beyond half a pane). These same bands extend
+through clipped top/bottom space to the full height of the content pane,
+including the top reveal strip and empty chrome padding, without claiming
+toolbar controls or pinned panels. Native-pointer checks exercise both sides
+from the first to the last viewport pixel in single-page and spread LTR/RTL.
+Visible chrome consumes the first tap; a repeated tap in the same blank band
+then turns rather than re-revealing chrome. Existing wider real margins
 remain usable, with no change to publication layout or pagination. Text line
 rectangles, interactive content, images, native list markers, and generated
 labels retain ownership. Content outside the band, inner page margins, gutters,

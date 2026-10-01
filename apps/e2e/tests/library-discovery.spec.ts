@@ -97,7 +97,7 @@ test("a failed first import retains both choices and the import card retries wit
     await page.getByRole("button", { name: "Bring a book Choose EPUB files..." }).press("Enter");
     const chooser = await chooserPromise;
     await chooser.setFiles(BOOK);
-    await expect(page.getByRole("button", { name: /^Open / })).toHaveCount(1);
+    await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Find books", exact: true })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -159,7 +159,7 @@ test("empty library offers equal cards, on-demand discovery and keyboard import 
     await page.keyboard.press("Enter");
     const chooser = await chooserPromise;
     await chooser.setFiles(BOOK);
-    await expect(page.getByRole("button", { name: /^Open / })).toHaveCount(1);
+    await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(1);
     await expect(page.getByRole("heading", { name: "Ambra", exact: true }).locator("..")).toBeFocused();
     await expect(page.getByRole("button", { name: "Sort library" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Read now:/ })).toBeVisible();
@@ -198,10 +198,10 @@ test("Find books stays available after imports and expands only on request with 
     await expect(findBooks).toHaveAttribute("aria-expanded", "false");
     await expect(findBooks).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: /^Open / }).first()).toBeFocused();
+    await expect(page.getByRole("main").getByRole("button", { name: /^Open / }).first()).toBeFocused();
 
     await page.locator('input[type="file"]').setInputFiles(SECOND_BOOK);
-    await expect(page.getByRole("button", { name: /^Open / })).toHaveCount(2);
+    await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(2);
     await expect(findBooks).toHaveAttribute("aria-expanded", "false");
     await findBooks.click();
     await expectDiscovery(page);
@@ -212,7 +212,7 @@ test("Find books stays available after imports and expands only on request with 
       const remove = page.getByRole("button", { name: /^Remove .* from library$/ }).first();
       await remove.focus();
       await remove.press("Enter");
-      await expect(page.getByRole("button", { name: /^Open / })).toHaveCount(remaining - 1);
+      await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(remaining - 1);
     }
     await expect(page.getByRole("region", { name: "Find your next read" })).toBeHidden();
     await expect(page.getByRole("heading", { name: "What will you read first?" })).toBeVisible();

@@ -38,7 +38,7 @@ test("first-open narration notice neither steals focus nor autoplays; dismissal 
     await expect(page.getByRole("button", { name: "Listen", exact: true })).toBeVisible();
 
     await libraryPage.locator('input[type="file"]').setInputFiles(path.join(fixtures, "media-overlay/fixed-layout.epub"));
-    await expect(libraryPage.getByRole("button", { name: /^Open / })).toHaveCount(2);
+    await expect(libraryPage.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(2);
     const secondTab = context.waitForEvent("page");
     await libraryPage.getByRole("button", { name: "Open Synthetic narration fixed-layout", exact: true }).click();
     const secondReader = await secondTab;
@@ -77,7 +77,7 @@ test("unacknowledged notices survive reopening and plain books have none", async
     await page.reload();
     await expect(notice(page)).toBeVisible();
     await libraryPage.locator('input[type="file"]').setInputFiles(path.join(fixtures, "long-content.epub"));
-    await expect(libraryPage.getByRole("button", { name: /^Open / })).toHaveCount(2);
+    await expect(libraryPage.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(2);
     const nextTab = context.waitForEvent("page");
     await libraryPage.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }).click();
     const plain = await nextTab;
