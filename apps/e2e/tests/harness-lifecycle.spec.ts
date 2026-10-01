@@ -70,7 +70,16 @@ class StubContext extends EventEmitter {
     return {
       goto: async () => {},
       locator: () => this.input,
-      getByRole: () => this.input,
+      getByRole: (role: string) => {
+        expect(role).toBe("main");
+        return {
+          getByRole: (role: string, options: { name: RegExp }) => {
+            expect(role).toBe("button");
+            expect(options).toEqual({ name: /^Open /i });
+            return this.input;
+          },
+        };
+      },
       evaluate: async () => {
         this.preferenceSeedCount++;
         if (this.preferenceSeedFailure) throw this.preferenceSeedFailure;
