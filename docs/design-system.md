@@ -160,6 +160,8 @@ Do not reclassify a preference because of where its control appears. Reader Ambr
 settings leads with expanded Reading preferences and focuses Page theme; library
 and popup lead with interface preferences and initially collapse Reading
 preferences. This changes presentation only, not values or persistence.
+Opening settings dismisses the neighboring Help tooltip immediately and keeps it
+hidden while settings owns focus; the first Escape belongs to settings.
 
 Help leads with the guide, keyboard shortcuts, issue reporting, feedback, and
 privacy-conscious diagnostic copying. About/version/privacy/source/credits is a

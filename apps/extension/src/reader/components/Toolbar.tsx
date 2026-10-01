@@ -512,7 +512,10 @@ export const Toolbar: FC<ToolbarProps> = ({
 
         <AmbraSettingsPopover
           open={openMenu === "settings"}
-          onOpenChange={open => onOpenMenuChange(open ? "settings" : undefined)}
+          onOpenChange={open => {
+            if (open) setHelpTooltipVisible(false);
+            onOpenMenuChange(open ? "settings" : undefined);
+          }}
           readingFirst
           isFixedLayout={snapshot.isFixedLayout}
           settings={{
@@ -532,8 +535,8 @@ export const Toolbar: FC<ToolbarProps> = ({
         />
 
         <Tooltip content={t("settings.helpAbout")} relationship="label"
-          visible={helpTooltipVisible && !isHelpOpen}
-          onVisibleChange={(_event, data) => setHelpTooltipVisible(data.visible && !isHelpOpen)}>
+          visible={helpTooltipVisible && !isHelpOpen && openMenu !== "settings"}
+          onVisibleChange={(_event, data) => setHelpTooltipVisible(data.visible && !isHelpOpen && openMenu !== "settings")}>
           <Button appearance="subtle" size="small" icon={<QuestionCircleRegular />}
             onClick={event => {
               setHelpTooltipVisible(false);

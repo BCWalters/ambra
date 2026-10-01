@@ -9,11 +9,18 @@ const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixt
 
 // These assertions cover DOM focus and browser accessibility semantics, not
 // VoiceOver's independent spoken/browse cursor or actual announcements.
-for (const entryName of [undefined, "Sort library", "Ambra settings", "Help & About", "Open library in new tab"]) {
-  test(`Library Language selection closes Ambra settings and restores focus at 320px (${entryName ?? "pointer"})`, async () => {
-    const { context, libraryPage: page } = await launchReader(book, { viewport: { width: 320, height: 600 } });
+const settingsEntries = [
+  ...[undefined, "Sort library", "Ambra settings", "Help & About", "Open library in new tab"]
+    .map(entryName => ({ surface: "Library", entryName })),
+  { surface: "Reader", entryName: "Help & About" },
+];
+for (const { surface, entryName } of settingsEntries) {
+  test(`${surface} Language selection closes Ambra settings and restores focus at 320px (${entryName ?? "pointer"})`, async () => {
+    const { context, libraryPage, readerPage } = await launchReader(book, { viewport: { width: 320, height: 600 } });
+    const page = surface === "Library" ? libraryPage : readerPage;
     try {
       await page.bringToFront();
+      if (surface === "Reader") await page.mouse.move(10, 2);
       const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
       const tooltipName = entryName === "Ambra settings" || entryName === "Help & About" ? entryName : undefined;
       if (entryName) {

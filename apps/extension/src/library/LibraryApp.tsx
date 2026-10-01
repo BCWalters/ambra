@@ -186,9 +186,9 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
         </div>
         <div style={{ flex: 1 }} />
         <AmbraSettingsPopover settings={settings} onChange={setSettings} disabled={isLoading}
-          onOpenChange={setSettingsOpen} />
-        <Tooltip content={t("about.title")} relationship="label" visible={helpTooltip && !help.view}
-          onVisibleChange={(_event, data) => setHelpTooltip(data.visible && !help.view)}>
+          onOpenChange={(open) => { setSettingsOpen(open); if (open) setHelpTooltip(false); }} />
+        <Tooltip content={t("about.title")} relationship="label" visible={helpTooltip && !help.view && !settingsOpen}
+          onVisibleChange={(_event, data) => setHelpTooltip(data.visible && !help.view && !settingsOpen)}>
           <Button {...restoreAboutFocus} appearance="subtle" icon={<QuestionCircleRegular />}
             onClick={(event) => { setHelpTooltip(false); help.openHelp(event.currentTarget); }} aria-label={t("about.title")}>
             {isFullTab && t("about.title")}
