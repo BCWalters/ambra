@@ -434,6 +434,39 @@ test("artifact validation binds hash, clean source commit, ZIP, and release meta
   assert.throws(() => verifyArtifact(release, bytes, "wrong", release.commit), /integrity/);
 });
 
+test("Public screenshot verification requires explicit policy and never weakens Unlisted defaults", () => {
+  const release = {
+    version: "1.1.0",
+    archive: "ambra-1.1.0.zip",
+    sha256: sha256(bytes),
+    commit: "a".repeat(40),
+    dirty: false,
+    publication: "PUBLIC",
+  };
+  const sums = `${release.sha256}  ${release.archive}\n`;
+  verifyArtifact(release, bytes, sums, release.commit, "PUBLIC");
+  assert.throws(() => verifyArtifact(release, bytes, sums, release.commit), /integrity/);
+  for (const change of [
+    { publication: "UNLISTED" },
+    { publication: "TRUSTED_TESTERS_ONLY" },
+    { dirty: true },
+    { commit: "b".repeat(40) },
+    { archive: "../secret.zip" },
+    { sha256: "0".repeat(64) },
+  ]) {
+    assert.throws(
+      () => verifyArtifact({ ...release, ...change }, bytes, sums, release.commit, "PUBLIC"),
+      /integrity/,
+    );
+  }
+  assert.throws(() => verifyArtifact(release, Buffer.from("tampered"), sums, release.commit, "PUBLIC"), /integrity/);
+  assert.throws(() => verifyArtifact(release, bytes, "wrong", release.commit, "PUBLIC"), /integrity/);
+  assert.throws(
+    () => verifyArtifact({ ...release, publication: "UNKNOWN" }, bytes, sums, release.commit, "UNKNOWN"),
+    /integrity/,
+  );
+});
+
 test("store preflight allows PUBLISHED but rejects unknown, tester-only, active submissions, and old versions", () => {
   checkStatus({ name }, "0.0.2", name);
   checkStatus(

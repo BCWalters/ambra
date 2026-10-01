@@ -121,6 +121,9 @@ SHA matching `HEAD`. It verifies the package metadata's clean source commit and
 ZIP checksum, then compares every captured candidate file byte-for-byte against
 that ZIP before and after capture. Final provenance records the source SHA,
 candidate-tree hash, ZIP filename/checksum, manifest version, and asset hashes.
+Capture explicitly requires `PUBLIC` package metadata. The shared integrity
+verifier still defaults to `UNLISTED` for the historical uploader; screenshot
+validation does not authorize uploads or relax that uploader's publication guard.
 It does not change the ZIP, `SHA256SUMS`, or `release.json`; output guards reject
 redirected/symlink directories and filenames outside the store-asset allowlist.
 There is no arbitrary output-directory override.

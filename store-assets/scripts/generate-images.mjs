@@ -153,7 +153,7 @@ export async function promoteCapture(capture, releaseCapture, rootDirectory = ro
 }
 
 async function verifyPackagedCandidate(extension, sourceCommit) {
-  const { metadata } = await loadVerifiedArtifact(sourceCommit);
+  const { metadata } = await loadVerifiedArtifact(sourceCommit, "PUBLIC");
   const archive = path.join(root, "dist/beta-release/artifacts", metadata.archive);
   const names = execFileSync("unzip", ["-Z1", archive], { encoding: "utf8" }).trim().split(/\r?\n/);
   const files = await candidateFiles(extension);
