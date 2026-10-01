@@ -33,14 +33,15 @@ export function configuration(env) {
   };
 }
 
-export function verifyArtifact(metadata, bytes, sums, expectedCommit) {
+export function verifyArtifact(metadata, bytes, sums, expectedCommit, expectedPublication = "UNLISTED") {
   if (
     !validVersion(metadata.version) ||
     metadata.archive !== `ambra-${metadata.version}.zip` ||
     !/^[a-f0-9]{64}$/.test(metadata.sha256) ||
     metadata.sha256 !== sha256(bytes) ||
     sums !== `${metadata.sha256}  ${metadata.archive}\n` ||
-    metadata.publication !== "UNLISTED" ||
+    !["UNLISTED", "PUBLIC"].includes(expectedPublication) ||
+    metadata.publication !== expectedPublication ||
     metadata.dirty !== false ||
     !/^[a-f0-9]{40}$/.test(metadata.commit) ||
     metadata.commit !== expectedCommit ||
@@ -188,14 +189,14 @@ export async function uploadDraft({
   );
 }
 
-export async function loadVerifiedArtifact(expectedCommit) {
+export async function loadVerifiedArtifact(expectedCommit, expectedPublication = "UNLISTED") {
   const metadata = JSON.parse(await readFile(path.join(artifactDir, "release.json"), "utf8"));
   if (!validVersion(metadata.version) || metadata.archive !== `ambra-${metadata.version}.zip`) {
     throw new Error("Invalid release archive name.");
   }
   const bytes = await readFile(path.join(artifactDir, metadata.archive));
   const sums = await readFile(path.join(artifactDir, "SHA256SUMS"), "utf8");
-  verifyArtifact(metadata, bytes, sums, expectedCommit);
+  verifyArtifact(metadata, bytes, sums, expectedCommit, expectedPublication);
   return { metadata, bytes };
 }
 
