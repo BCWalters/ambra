@@ -1,5 +1,6 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { strToU8, zipSync } from "fflate";
 import { EXTENSION_PATH } from "../harness.js";
 
 const test = base.extend<{ library: Page }>({
@@ -34,6 +35,77 @@ const test = base.extend<{ library: Page }>({
     } finally { await context.close(); }
   },
 });
+
+for (const modernCover of [false, true]) {
+  test(modernCover
+    ? "EPUB3 cover-image takes precedence over EPUB2 cover metadata through real import"
+    : "EPUB2 metadata cover IDs produce decoded library and details images through real import", async ({ library }) => {
+    const title = modernCover ? "Original cover precedence fixture" : "Original EPUB2 cover fixture";
+    const legacySvg = '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="360" viewBox="0 0 240 360"><rect width="240" height="360" fill="teal"/></svg>';
+    const modernSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160" viewBox="0 0 320 160"><rect width="320" height="160" fill="#ff8800"/></svg>';
+    const archive = zipSync({
+      mimetype: strToU8("application/epub+zip"),
+      "META-INF/container.xml": strToU8(`<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+        <rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
+      </container>`),
+      "EPUB/package.opf": strToU8(`<package xmlns="http://www.idpf.org/2007/opf" version="${modernCover ? "3.0" : "2.0"}" unique-identifier="uid">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+          <dc:identifier id="uid">urn:ambra:metadata-cover-${modernCover}</dc:identifier>
+          <dc:title>${title}</dc:title><dc:language>en</dc:language>
+          <dc:description>Original synthetic cover import regression.</dc:description>
+          <meta name="cover" content="id-1333544245392521156"/>
+        </metadata>
+        <manifest>
+          <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+          <item id="id-1333544245392521156" href="../images/legacy.svg" media-type="image/svg+xml"/>
+          ${modernCover ? '<item id="modern" href="../images/modern.svg" media-type="image/svg+xml" properties="cover-image"/>' : ""}
+        </manifest>
+        <spine><itemref idref="chapter"/></spine>
+      </package>`),
+      "EPUB/chapter.xhtml": strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Original chapter</title></head><body><p>Original synthetic content.</p></body></html>'),
+      "images/legacy.svg": strToU8(legacySvg),
+      ...(modernCover ? { "images/modern.svg": strToU8(modernSvg) } : {}),
+    }, { level: 0 });
+    const input = library.locator('input[type="file"]');
+    await expect(input).toBeEnabled();
+    await input.setInputFiles({ name: "metadata-cover.epub", mimeType: "application/epub+zip", buffer: Buffer.from(archive) });
+    const collection = library.locator("[data-library-collection]");
+    const card = collection.getByRole("button", { name: `Open ${title}`, exact: true });
+    const cardImage = card.locator("img");
+    await expect(cardImage).toBeVisible();
+    await expect(cardImage).toHaveCSS("object-fit", "contain");
+    expect(await cardImage.evaluate(async (image: HTMLImageElement) => {
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      return { dimensions: [image.naturalWidth, image.naturalHeight],
+        pixel: [...context.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data] };
+    })).toEqual(modernCover
+      ? { dimensions: [420, 210], pixel: [255, 136, 0, 255] }
+      : { dimensions: [400, 600], pixel: [0, 128, 128, 255] });
+    const id = await card.evaluate((element) => element.closest<HTMLElement>("[data-library-book]")!.dataset.libraryBook!);
+    const stored = await library.evaluate(async (id) => {
+      const db = Reflect.get(window, "__libraryDatabase");
+      const original = await db.getBookFile(id);
+      const cover = await db.getCoverBlob(id);
+      return { archive: [...new Uint8Array(await original.arrayBuffer())], cover: await cover.text(), mediaType: cover.type };
+    }, id);
+    expect(stored.archive).toEqual([...archive]);
+    expect(stored.cover).toBe(modernCover ? modernSvg : legacySvg);
+    expect(stored.mediaType).toBe("image/svg+xml");
+    await collection.getByRole("button", { name: `${title} details`, exact: true }).click();
+    const original = library.getByRole("dialog", { name: "Book details", exact: true }).locator("img");
+    await expect(original).toBeVisible();
+    expect(await original.evaluate(async (image: HTMLImageElement) => {
+      await image.decode();
+      return [image.naturalWidth, image.naturalHeight];
+    })).toEqual(modernCover ? [320, 160] : [240, 360]);
+    await expect(library.getByRole("alert")).toHaveCount(0);
+  });
+}
 
 async function seedCover(page: Page, type: "jpeg" | "svg" | "broken" = "jpeg", archive?: Uint8Array) {
   return page.evaluate(async ({ type, archive }) => {
