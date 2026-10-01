@@ -84,7 +84,7 @@ test("legacy covers get persistent bounded card images while details retain orig
     };
   });
   await library.reload();
-  const card = library.getByRole("button", { name: /^Open Cover test/ });
+  const card = library.locator("[data-library-collection]").getByRole("button", { name: /^Open Cover test/ });
   await expect(card).toBeVisible();
   expect(await library.evaluate(() => Reflect.get(window, "__coverDecodes"))).toBe(0);
   expect(await card.evaluate(async (element) => {
@@ -128,7 +128,7 @@ test("viewBox-only SVG cards render correctly, preserve originals, and corrupt J
   const warnings: string[] = [];
   library.on("console", (message) => { if (message.type() === "warning") warnings.push(message.text()); });
   await library.reload();
-  const card = library.getByRole("button", { name: /^Open Cover test/ });
+  const card = library.locator("[data-library-collection]").getByRole("button", { name: /^Open Cover test/ });
   await expect(card).toHaveText("Cover test");
   expect(warnings.filter((message) => message.includes("book title"))).toHaveLength(1);
   await library.reload();
@@ -278,7 +278,7 @@ for (const failure of ["quota", "abort", "read-only"] as const) {
     const warnings: string[] = [];
     library.on("console", (message) => { if (message.type() === "warning") warnings.push(message.text()); });
     await library.reload();
-    const card = library.getByRole("button", { name: /^Open Cover test/ });
+    const card = library.locator("[data-library-collection]").getByRole("button", { name: /^Open Cover test/ });
     await expect(card).toBeVisible();
     await expect(library.getByRole("alert")).toHaveCount(0);
     expect(warnings.some((message) => message.includes("temporary cover"))).toBe(true);
