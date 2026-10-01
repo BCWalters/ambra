@@ -412,7 +412,7 @@ test("fixed-layout narration highlights the secondary spread document without mo
     await expect
       .poll(async () => (await visibleFrames(page)).map((frame) => frame.heading))
       .toEqual(["Narrated chapter 1", "Narrated chapter 2"]);
-    await expect(position(page)).toHaveCount(0);
+    await expect(position(page)).toHaveCount(1);
     await listen(page);
     const speed = speedButton(page);
     await setSpeed(page, 0.75);
