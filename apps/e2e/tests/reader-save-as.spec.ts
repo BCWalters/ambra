@@ -6,9 +6,16 @@ import { launchReader, type LaunchedReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const fixture = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
+const description = "Save-as fixture description.";
 const test = base.extend<{ reader: LaunchedReader }>({
   reader: async ({ browserName: _browserName }, use) => {
-    const reader = await launchReader(fixture);
+    const reader = await launchReader(fixture, {
+      beforeBookImport: async (library) => {
+        await library.context().route("https://openlibrary.org/**", (route) => route.fulfill({
+          json: { docs: [{ key: "/works/ambra-save-as-fixture" }], description },
+        }));
+      },
+    });
     try {
       await exposeReaderController(reader.readerPage);
       await reader.readerPage.evaluate(async () => {
@@ -18,6 +25,7 @@ const test = base.extend<{ reader: LaunchedReader }>({
       await reader.readerPage.getByRole("button", { name: "Book details", exact: true }).click();
       const panel = reader.readerPage.getByRole("complementary", { name: "Book details", exact: true });
       await expect(panel).toBeVisible();
+      await expect(panel.getByText(description, { exact: true })).toBeVisible();
       await expect(panel.getByRole("button", { name: "Save as…", exact: true })).toBeHidden();
       await panel.getByRole("button", { name: "Publication details", exact: true }).click();
       await expect(panel.getByText("long-content.epub", { exact: true })).toBeVisible();
