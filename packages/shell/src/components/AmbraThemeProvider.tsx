@@ -20,14 +20,14 @@ const useStyles = makeStyles({
   light: { colorScheme: "light" },
   dark: { colorScheme: "dark" },
   root: {
-    "& :focus-visible": {
+    ":where(&) :where(:focus-visible)": {
       outline: "2px solid var(--ambraFocus)",
       outlineOffset: "2px",
       // A solid backing keeps the outer indicator legible over arbitrary cover art.
       boxShadow: "0 0 0 2px var(--ambraSurface)",
     },
     "@media (forced-colors: active)": {
-      "& :focus-visible": { outlineColor: "Highlight", boxShadow: "none" },
+      ":where(&) :where(:focus-visible)": { outlineColor: "Highlight", boxShadow: "none" },
     },
     "@media (prefers-reduced-motion: reduce)": {
       "& *, & *::before, & *::after": {

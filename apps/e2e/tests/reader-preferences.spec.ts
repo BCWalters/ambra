@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,8 @@ for (const surface of ["reader", "library"] as const) {
       await expect(title).toHaveCSS("font-size", "14px");
       await expect(title).toHaveCSS("font-weight", "600");
       await expect(title).toHaveCSS("opacity", "1");
-      await expect(title).toHaveCSS("color", "rgb(36, 36, 36)");
+      const textRgb = getInterfaceTheme("ambra", "light").text.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+      await expect(title).toHaveCSS("color", `rgb(${textRgb})`);
       for (const name of ["Page theme", "Brightness", "Reading mode", "Reader theme", "Page turn"]) {
         const label = menu.getByText(name, { exact: true });
         await expect(label).toHaveCSS("font-size", "14px");

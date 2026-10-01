@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
@@ -126,7 +127,8 @@ for (const width of [320, 1400]) {
       await page.mouse.move(track.x + track.width - 0.1, track.y + track.height - 10);
       await page.mouse.down();
       await expect(page.locator("[data-bookmark-status]")).toHaveText("Bookmarked");
-      await expect(page.locator("[data-bookmark-status]")).toHaveCSS("color", "rgb(36, 36, 36)");
+      const textRgb = getInterfaceTheme("ambra", "light").text.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+      await expect(page.locator("[data-bookmark-status]")).toHaveCSS("color", `rgb(${textRgb})`);
       await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("color", "rgb(15, 108, 189)");
       await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("width", "18px");
       await expect(page.locator("[data-bookmark-status] svg")).toHaveCSS("height", "18px");
