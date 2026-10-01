@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Menu, MenuItem, MenuList, MenuPopover, MenuTrigger } from "@fluentui/react-components";
@@ -7,6 +7,7 @@ import { useReaderController, type UseReaderControllerResult } from "./useReader
 import type { ReaderSnapshot } from "./ReaderTypes.js";
 import type { ToolbarProps } from "./components/Toolbar.js";
 import type { ProgressScrubberProps } from "./components/ProgressScrubber.js";
+import type { ReaderLibraryPanel } from "./components/ReaderLibraryPanel.js";
 
 const realMenu = vi.hoisted(() => ({ enabled: false }));
 const welcomePreference = vi.hoisted(() => ({ version: 1, acknowledge: vi.fn() }));
@@ -31,6 +32,7 @@ vi.mock("./components/Toolbar.js", () => ({
       onFocus={realMenu.enabled ? props.handlers.onFocus : undefined}
       onBlur={realMenu.enabled ? props.handlers.onBlur : undefined}>
       <button onClick={props.onToggleToc}>toc</button>
+      <button onClick={props.onToggleLibrary}>library</button>
       <button onClick={props.onToggleAnnotations}>annotations</button>
       <button onClick={props.onToggleSearch}>search</button>
       <button onClick={props.onToggleDetails}>details</button>
@@ -44,22 +46,73 @@ vi.mock("./components/Toolbar.js", () => ({
     </div>
   ),
 }));
+vi.mock("./components/ReaderLibraryPanel.js", () => ({
+  ReaderLibraryPanel: (props: ComponentProps<typeof ReaderLibraryPanel>) => (
+    <aside data-testid="reader-library" hidden={!props.open}>
+      <button data-testid="current-book" onClick={() => props.onActivateBook(props.currentBookId!)}>Current book</button>
+      <button data-testid="other-book" onClick={() => props.onActivateBook("other book")}>Other book</button>
+      <button data-testid="next-book" onClick={() => props.onActivateBook("next book")}>Next book</button>
+      <button data-testid="close-library" onClick={props.onRequestClose}>Close library</button>
+    </aside>
+  ),
+}));
 vi.mock("./components/PageFurniture.js", () => ({ PageFurniture: () => null }));
 vi.mock("./components/ProgressScrubber.js", () => ({
   ProgressScrubber: (props: ProgressScrubberProps) =>
-    <button data-testid="seek" onClick={() => void props.onSeek(0.3)}>Seek</button>,
+    <>
+      <button data-testid="seek" onClick={() => void props.onSeek(0.3)}>Seek</button>
+      <button data-testid="bookmark-chooser" data-dismiss-request={props.bookmarkChooserDismissRequest}
+        onClick={() => props.onBookmarkChooserOpenChange(true)}>Bookmark chooser</button>
+      <button data-testid="show-bookmarks" onClick={props.onShowBookmarks}>Show all bookmarks</button>
+    </>,
 }));
 
 let root: Root;
 let container: HTMLDivElement;
 let bridge: UseReaderControllerResult;
 let dismiss: (() => boolean) | undefined;
+let availableRowWidth: number;
+let measuredPanelWidths: Record<string, number>;
+const resizeObservers = new Set<TestResizeObserver>();
+
+class TestResizeObserver implements ResizeObserver {
+  readonly targets = new Set<Element>();
+  constructor(private readonly callback: ResizeObserverCallback) { resizeObservers.add(this); }
+  observe(target: Element) { this.targets.add(target); }
+  unobserve(target: Element) { this.targets.delete(target); }
+  disconnect() { this.targets.clear(); resizeObservers.delete(this); }
+  notify() { this.callback([], this); }
+}
+
+async function resizeReferenceRow(width: number) {
+  availableRowWidth = width;
+  await act(async () => {
+    for (const observer of resizeObservers) {
+      if ([...observer.targets].some(target => target.hasAttribute("data-ambra-reference-row"))) observer.notify();
+    }
+  });
+}
 
 beforeEach(async () => {
   welcomePreference.version = 1;
   welcomePreference.acknowledge.mockReset();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("chrome", { runtime: { getManifest: () => ({ version: "1.0.0" }) } });
+  availableRowWidth = 1200;
+  measuredPanelWidths = { toc: 300, annotations: 300, search: 300 };
+  resizeObservers.clear();
+  vi.stubGlobal("ResizeObserver", TestResizeObserver);
+  const getBounds = Element.prototype.getBoundingClientRect;
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    if (this.hasAttribute("data-ambra-reference-row")) return new DOMRect(0, 0, availableRowWidth, 900);
+    const panel = this.getAttribute("data-ambra-reference-panel");
+    if (panel) return new DOMRect(0, 0, measuredPanelWidths[panel]!, 900);
+    return getBounds.call(this);
+  });
+  vi.stubGlobal("chrome", { runtime: {
+    getManifest: () => ({ version: "1.0.0" }),
+    getURL: (path: string) => `chrome-extension://test/${path}`,
+  } });
+  vi.spyOn(window.location, "assign").mockImplementation(() => {});
   const animate = Element.prototype.animate;
   vi.spyOn(Element.prototype, "animate").mockImplementation(function (this: Element, keyframes, options) {
     const animation = animate.call(this, keyframes, options);
@@ -83,6 +136,7 @@ beforeEach(async () => {
     } as unknown as ReaderSnapshot,
     contentHostRef: { current: null },
     openBook: vi.fn(async () => {}),
+    flushProgress: vi.fn(async () => {}),
     setContentUiDismissal: vi.fn(callback => { dismiss = callback; }),
     setShortcutActions: vi.fn(),
     setShortcutPreferences: vi.fn(),
@@ -98,6 +152,8 @@ beforeEach(async () => {
     refreshBookmarks: vi.fn(async () => {}),
     getBookDetails: vi.fn(async () => undefined),
     seekToFraction: vi.fn(async () => {}),
+    narrationAction: vi.fn(),
+    setNarrationRate: vi.fn(),
     dismissFootnotePopup: vi.fn(),
     dismissActiveHighlight: vi.fn(),
   } as unknown as UseReaderControllerResult;
@@ -122,6 +178,32 @@ it("uses book preparation copy before the first snapshot", async () => {
   await act(async () => root.render(<ReaderApp />));
   expect(container.textContent).toContain("Getting your book ready…");
   expect(container.textContent).not.toContain("Loading…");
+});
+
+it("automatically exposes paused read-along without autoplay, focus stealing, or a discovery notice", async () => {
+  const focus = container.querySelector<HTMLButtonElement>('[data-testid="toolbar"] button')!;
+  act(() => focus.focus());
+  bridge.snapshot = {
+    ...bridge.snapshot!,
+    narrationNoticeVisible: true,
+    narration: {
+      available: true, status: "idle", following: true, rate: 1,
+      hasPrevious: false, hasNext: true, hasTarget: false,
+    },
+  };
+  await act(async () => root.render(<ReaderApp />));
+  expect(container.querySelector('[data-narration-controls]')).not.toBeNull();
+  expect(container.querySelector('button[aria-label="Play narration"]')).not.toBeNull();
+  expect(bridge.narrationAction).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(focus);
+  const collapse = container.querySelector<HTMLButtonElement>('button[aria-label="Collapse read-along controls"]')!;
+  await act(async () => collapse.click());
+  expect(container.querySelector('[data-narration-controls]')?.getAttribute("data-collapsed")).toBe("true");
+  expect(container.querySelector('button[aria-label="Expand read-along controls"]')).toBe(collapse);
+  expect(bridge.narrationAction).not.toHaveBeenCalled();
+  const play = container.querySelector<HTMLButtonElement>('button[aria-label="Play narration"]')!;
+  await act(async () => play.click());
+  expect(bridge.narrationAction).toHaveBeenCalledExactlyOnceWith("toggle");
 });
 
 it("offers welcome only after content commits without an error, even while totals are unknown", async () => {
@@ -306,14 +388,230 @@ it("keeps pinned chrome visible and does not charge reading clicks for dismissin
   }));
 });
 
-it("keeps chrome for a remaining panel when the other panel's backdrop closes", async () => {
+it.each(
+  ["toc", "library", "annotations", "search", "details"].flatMap(from =>
+    ["toc", "library", "annotations", "search", "details"].filter(to => to !== from).map(to => [from, to])),
+)("replaces the %s reference panel with %s across both sides", async (from, to) => {
+  await openPanel(from!);
+  await openPanel(to!);
+  expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    [from!]: expect.objectContaining({ open: false }),
+    [to!]: expect.objectContaining({ open: true }),
+  }));
+});
+
+it("loads Library on first use and keeps its component mounted when another panel replaces it", async () => {
+  expect(container.querySelector('[data-testid="reader-library"]')).toBeNull();
+  await openPanel("library");
+  const library = container.querySelector('[data-testid="reader-library"]')!;
+  expect(library.hasAttribute("hidden")).toBe(false);
+  await openPanel("toc");
+  expect(container.querySelector('[data-testid="reader-library"]')).toBe(library);
+  expect(library.hasAttribute("hidden")).toBe(true);
+});
+
+it("returns to the current book without reloading or replacing its reading state", async () => {
+  await openPanel("library");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="current-book"]')!.click());
+  expect(bridge.flushProgress).not.toHaveBeenCalled();
+  expect(window.location.assign).not.toHaveBeenCalled();
+  expect(bridge.restoreContentFocus).toHaveBeenCalled();
+  expect(container.querySelector('[data-testid="reader-library"]')!.hasAttribute("hidden")).toBe(true);
+});
+
+it("awaits saved reading position and only activates the latest requested book in the same tab", async () => {
+  let finishSave!: () => void;
+  vi.mocked(bridge.flushProgress).mockImplementation(() => new Promise(resolve => { finishSave = resolve; }));
+  await openPanel("library");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="other-book"]')!.click());
+  const finishFirstSave = finishSave;
+  expect(window.location.assign).not.toHaveBeenCalled();
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="next-book"]')!.click());
+  await act(async () => finishFirstSave());
+  expect(window.location.assign).not.toHaveBeenCalled();
+  await act(async () => finishSave());
+  expect(window.location.assign).toHaveBeenCalledExactlyOnceWith(
+    "chrome-extension://test/src/reader/index.html?bookId=next%20book",
+  );
+});
+
+it("reports a position-save failure and retains the current book instead of navigating away", async () => {
+  vi.mocked(bridge.flushProgress).mockRejectedValue(new Error("The reading position could not be saved."));
+  await openPanel("library");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="other-book"]')!.click());
+  expect(window.location.assign).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("The reading position could not be saved.");
+  expect(container.querySelector('[data-testid="reader-library"]')!.hasAttribute("hidden")).toBe(false);
+});
+
+it("logs a superseded save failure without showing an obsolete activation error", async () => {
+  let failSave!: (error: Error) => void;
+  const error = new Error("An older checkpoint failed.");
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.mocked(bridge.flushProgress).mockImplementation(() => new Promise((_resolve, reject) => { failSave = reject; }));
+  await openPanel("library");
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="other-book"]')!.click());
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="current-book"]')!.click());
+  await act(async () => failSave(error));
+  expect(window.location.assign).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain(error.message);
+  expect(log).toHaveBeenCalledWith("Could not save reading position for a superseded Library request.", error);
+});
+
+it("shares the Contents/Annotations pin preference without applying it to Search", async () => {
+  await openPanel("toc");
+  const pin = container.querySelector<HTMLButtonElement>('button[aria-label="Pin contents panel"]')!;
+  await act(async () => pin.click());
+  await openPanel("annotations");
+  expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    toc: { open: false, pinned: false },
+    annotations: { open: true, pinned: true },
+  }));
+  await openPanel("search");
+  expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    annotations: { open: false, pinned: false },
+    search: { open: true, pinned: false },
+  }));
+  await openPanel("toc");
+  expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    toc: { open: true, pinned: true },
+    search: { open: false, pinned: false },
+  }));
+});
+
+it("falls back at the measured 320px reading threshold and restores the shared pin choice without refocusing", async () => {
+  await openPanel("toc");
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Pin contents panel"]')!.click());
+  const panel = container.querySelector<HTMLElement>('[data-ambra-reference-panel="toc"]')!;
+  const focus = container.querySelector<HTMLButtonElement>('[data-testid="toolbar"] button')!;
+  act(() => focus.focus());
+  await resizeReferenceRow(620);
+  expect(panel.style.position).toBe("relative");
+  expect(document.activeElement).toBe(focus);
+  await resizeReferenceRow(619);
+  expect(panel.style.position).toBe("absolute");
+  expect(panel.style.visibility).toBe("visible");
+  expect(document.activeElement).toBe(focus);
+  const unavailable = panel.querySelector<HTMLButtonElement>('button[aria-label="Pin contents panel"]')!;
+  expect(unavailable.getAttribute("aria-disabled")).toBe("true");
+  await act(async () => unavailable.click());
+  await resizeReferenceRow(620);
+  expect(panel.style.position).toBe("relative");
+  expect(panel.querySelector('button[aria-label="Unpin contents panel"]')).not.toBeNull();
+  await openPanel("annotations");
+  const annotations = container.querySelector<HTMLElement>('[data-ambra-reference-panel="annotations"]')!;
+  expect(annotations.style.position).toBe("relative");
+  await resizeReferenceRow(619);
+  await openPanel("annotations");
+  await resizeReferenceRow(620);
+  expect(annotations.style.visibility).toBe("hidden");
+  await openPanel("annotations");
+  expect(annotations.style.position).toBe("relative");
+});
+
+it("observes the available row when loading finishes and disconnects when the layout is removed", async () => {
+  const readySnapshot = bridge.snapshot;
+  bridge.snapshot = undefined;
+  await act(async () => root.render(<ReaderApp />));
+  expect([...resizeObservers].some(observer =>
+    [...observer.targets].some(target => target.hasAttribute("data-ambra-reference-row")))).toBe(false);
+  await resizeReferenceRow(619);
+  bridge.snapshot = readySnapshot;
+  await act(async () => root.render(<ReaderApp />));
+  await openPanel("toc");
+  expect(container.querySelector('button[aria-label="Pin contents panel"]')!.getAttribute("aria-disabled")).toBe("true");
+  const observer = [...resizeObservers].find(observer =>
+    [...observer.targets].some(target => target.hasAttribute("data-ambra-reference-row")))!;
+  expect(observer.targets.size).toBe(4);
+  await resizeReferenceRow(620);
+  expect(container.querySelector('button[aria-label="Pin contents panel"]')!.getAttribute("aria-disabled")).not.toBe("true");
+});
+
+it("uses each measured panel width and available row width rather than the window or a fixed breakpoint", async () => {
+  vi.stubGlobal("innerWidth", 1600);
+  measuredPanelWidths = { toc: 284, annotations: 316, search: 348 };
+  await resizeReferenceRow(636);
+  await openPanel("toc");
+  expect(container.querySelector('button[aria-label="Pin contents panel"]')!.getAttribute("aria-disabled")).not.toBe("true");
+  await openPanel("annotations");
+  expect(container.querySelector('button[aria-label="Pin annotations panel"]')!.getAttribute("aria-disabled")).not.toBe("true");
+  await openPanel("search");
+  expect(container.querySelector('button[aria-label="Pin search panel"]')!.getAttribute("aria-disabled")).toBe("true");
+  await resizeReferenceRow(668);
+  expect(container.querySelector('button[aria-label="Pin search panel"]')!.getAttribute("aria-disabled")).not.toBe("true");
+  measuredPanelWidths.search = 349;
+  await resizeReferenceRow(668);
+  expect(container.querySelector('button[aria-label="Pin search panel"]')!.getAttribute("aria-disabled")).toBe("true");
+});
+
+it("retains Search's independent pin preference, input and results across an available-row reduction", async () => {
+  bridge.snapshot = {
+    ...bridge.snapshot!,
+    searchQuery: "words",
+    searchResults: [{ spineIndex: 0, cfi: "found", chapterLabel: "Chapter", before: "before", match: "words", after: "after" }],
+  };
+  await act(async () => root.render(<ReaderApp />));
+  await openPanel("search");
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Pin search panel"]')!.click());
+  const panel = container.querySelector<HTMLElement>('[data-ambra-reference-panel="search"]')!;
+  const input = panel.querySelector("input")!;
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "unsent draft");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+  });
+  await resizeReferenceRow(500);
+  expect(panel.style.position).toBe("absolute");
+  expect(input.value).toBe("unsent draft");
+  expect(panel.textContent).toContain("beforewordsafter");
+  expect(document.activeElement).toBe(input);
+  await resizeReferenceRow(1000);
+  expect(panel.style.position).toBe("relative");
+  expect(document.activeElement).toBe(input);
+  await openPanel("toc");
+  expect(container.querySelector<HTMLElement>('[data-ambra-reference-panel="toc"]')!.style.position).toBe("absolute");
+  await openPanel("search");
+  expect(panel.style.position).toBe("relative");
+  expect(input.value).toBe("unsent draft");
+});
+
+it("hides chrome after dismissing the sole replacement reference panel", async () => {
   await openPanel("toc");
   await openPanel("details");
   const details = container.querySelector('aside[aria-label="Book details"]')!;
   const backdrop = details.previousElementSibling as HTMLElement;
   await act(async () => backdrop.click());
-  expect(chromeVisible()).toBe(true);
+  expect(chromeVisible()).toBe(false);
   expect(dismiss?.()).toBe(false);
+});
+
+it("dismisses a bookmark chooser and chrome in the first content gesture", async () => {
+  const chooser = container.querySelector<HTMLButtonElement>('[data-testid="bookmark-chooser"]')!;
+  await act(async () => chooser.click());
+  expect(chromeVisible()).toBe(true);
+  await act(async () => { expect(dismiss?.()).toBe(true); });
+  expect(chooser.dataset.dismissRequest).toBe("1");
+  expect(bridge.restoreContentFocus).toHaveBeenCalled();
+  expect(chromeVisible()).toBe(false);
+  expect(dismiss?.()).toBe(false);
+});
+
+it("opens and refocuses the Bookmarks filter from the dense bookmark fallback", async () => {
+  const all = container.querySelector<HTMLButtonElement>('[data-testid="show-bookmarks"]')!;
+  await act(async () => all.click());
+  expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    annotations: { open: true, pinned: false },
+  }));
+  const filter = container.querySelector<HTMLSelectElement>('select')!;
+  expect(filter.value).toBe("bookmarks");
+  expect(document.activeElement).toBe(filter);
+  act(() => {
+    filter.value = "all";
+    filter.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await act(async () => all.click());
+  expect(filter.value).toBe("bookmarks");
+  expect(document.activeElement).toBe(filter);
 });
 
 it("retains keyboard panel dismissal and focus restoration", async () => {
@@ -328,7 +626,7 @@ it("retains keyboard panel dismissal and focus restoration", async () => {
 
 it("hides chrome with Help's modal backdrop instead of charging another reading click", async () => {
   await openPanel("help");
-  const backdrop = document.querySelector<HTMLElement>(".fui-OverlayDrawer__backdrop")!;
+  const backdrop = document.querySelector<HTMLElement>(".fui-DialogSurface__backdrop")!;
   expect(backdrop).not.toBeNull();
   await act(async () => backdrop.click());
   expect(chromeVisible()).toBe(false);

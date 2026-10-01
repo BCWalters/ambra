@@ -3,6 +3,7 @@ import { URL as NodeURL, fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ContentLoader, EpubContainer, LocatorResolver, NavPoint, PaginatedContentHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
+import { getTranslate } from "../i18n/translate.js";
 
 describe("fragment-aware TOC locations (#202)", () => {
   it("labels scrubber destinations by measured section pages, not the currently displayed subsection", () => {
@@ -11,6 +12,7 @@ describe("fragment-aware TOC locations (#202)", () => {
     const beta = new NavPoint("Beta", "text.xhtml", "beta", []);
     const missing = new NavPoint("Missing", "text.xhtml", "missing", []);
     Object.assign(reader, {
+      translate: getTranslate("en"),
       pkg: { spine: [{ manifestItem: { path: "front.xhtml" } }, { manifestItem: { path: "text.xhtml" } }] },
       navigation: { toc: { items: [beta, alpha, missing] } },
       chapterLabel: () => "Currently displayed section",
@@ -20,8 +22,8 @@ describe("fragment-aware TOC locations (#202)", () => {
         pageIndexForFragment: (_spine: number, fragment: string) => new Map([["alpha", 2], ["beta", 8]]).get(fragment),
       },
     });
-    expect(reader.previewSeek(0).chapterLabel).toBe("Start of Book");
-    expect(reader.previewSeek(4 / 20).chapterLabel).toBe("Start of Book");
+    expect(reader.previewSeek(0).chapterLabel).toBe("Start of book");
+    expect(reader.previewSeek(4 / 20).chapterLabel).toBe("Start of book");
     expect(reader.previewSeek(5 / 20)).toEqual({
       position: { kind: "page", current: 5, total: 20 }, chapterLabel: "Alpha",
     });
@@ -33,7 +35,7 @@ describe("fragment-aware TOC locations (#202)", () => {
       position: { kind: "chapter", current: 2, total: 2 }, chapterLabel: "Alpha",
     });
     Object.assign(reader, { navigation: { toc: { items: [] } } });
-    expect(reader.previewSeek(0.75).chapterLabel).toBe("Chapter 2");
+    expect(reader.previewSeek(0.75).chapterLabel).toBe("");
   });
 
   it("uses the nearest CFI, not TOC array order, and retains parent sections before their children", async () => {
@@ -50,6 +52,7 @@ describe("fragment-aware TOC locations (#202)", () => {
     const reader = Object.create(ReaderController.prototype) as ReaderController;
     let node: Node = document.querySelector("p")!.firstChild!;
     Object.assign(reader, {
+      translate: getTranslate("en"),
       pkg, spineIndex: 0, locatorResolver: new LocatorResolver(pkg, loader),
       navigation: { toc: { items: [beta, alpha, detail, missing] } },
       tocLocations: new WeakMap(),
@@ -64,7 +67,15 @@ describe("fragment-aware TOC locations (#202)", () => {
     node = document.getElementById("beta")!.firstChild!;
     expect(label()).toBe("Beta");
     node = document.body;
-    expect(label()).toBe("Start of Book");
+    expect(label()).toBe("Start of book");
+    Object.assign(reader, { translate: getTranslate("fr") });
+    expect(label()).toBe(getTranslate("fr")("toc.startOfBook"));
+    Object.assign(reader, { navigation: { toc: { items: [] } } });
+    expect(label()).toBe("");
+    const frame = globalThis.document.createElement("iframe");
+    Object.assign(reader, { host: { element: frame } });
+    reader["updateContentTitle"]();
+    expect(frame.title).toBe(pkg.metadata.title);
   });
 
   it("maps temporary fragment-anchored pages back to natural whole-book numbering", () => {

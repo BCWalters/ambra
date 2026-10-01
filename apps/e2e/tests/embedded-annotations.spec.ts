@@ -13,14 +13,12 @@ const EMBEDDED_ANNOTATIONS_EPUB = path.resolve(here, "..", "fixtures", "embedded
  * `OEBPS/annotations.json`, built by hand for this fixture using a real
  * CFI generated from this exact book's own `ch1.xhtml`; its one
  * annotation has `motivation: "bookmarking"`). Confirms the reader
- * merges it directly into the Bookmarks tab (issue #116 — a dedicated
- * third "Notes" tab used to hold these, but routinely didn't fit the
- * panel's fixed width alongside "Bookmarks"/"Highlights" for what's
- * usually zero or one item), tagged distinctly from the reader's own
+ * includes it in both All annotations and the Bookmarks filter,
+ * tagged distinctly from the reader's own
  * bookmarks, shows the annotation's own note text as its label, and
  * that selecting it actually navigates there without an error.
  */
-test("a publisher-embedded, bookmark-shaped annotation merges into the Bookmarks tab with a read-only treatment", async () => {
+test("a publisher-embedded bookmark appears in Annotations and its Bookmarks filter with read-only treatment", async () => {
   const { context, readerPage } = await launchReader(EMBEDDED_ANNOTATIONS_EPUB, {
     viewport: { width: 900, height: 900 },
   });
@@ -33,18 +31,19 @@ test("a publisher-embedded, bookmark-shaped annotation merges into the Bookmarks
     // toolbar panel from a freshly-loaded page does.
     await readerPage.mouse.move(450, 20);
     await readerPage.waitForTimeout(150);
-    await readerPage.getByRole("button", { name: "Bookmarks and highlights" }).click();
+    await readerPage.getByRole("button", { name: "Annotations", exact: true }).click();
+    const panel = readerPage.getByRole("navigation", { name: "Annotations", exact: true });
+    const show = panel.getByRole("combobox", { name: "Show", exact: true });
 
-    // No separate "Notes" tab at all any more — just the usual two.
-    await expect(readerPage.getByRole("tab")).toHaveCount(2);
-    await expect(readerPage.getByRole("tab", { name: /Notes/ })).toHaveCount(0);
+    await expect(panel.getByRole("tab")).toHaveCount(0);
+    await expect(show).toHaveValue("all");
+    await expect(show.locator("option")).toHaveText([
+      "All annotations (1)", "Highlights (0)", "Notes (0)", "Bookmarks (1)",
+    ]);
 
-    // The Bookmarks tab is selected by default and its count includes
-    // the embedded annotation even though the reader has no bookmarks
-    // of their own yet.
-    await expect(readerPage.getByRole("tab", { name: "Bookmarks (1)" })).toBeVisible();
-
-    const noteRow = readerPage.getByRole("button", { name: /this chapter introduces the fox/ });
+    const noteRow = panel.getByRole("button", { name: /this chapter introduces the fox/ });
+    await expect(noteRow).toBeVisible();
+    await show.selectOption("bookmarks");
     await expect(noteRow).toBeVisible();
     // Tagged distinctly from a real bookmark, and has no remove button —
     // there's nothing here for the reader to delete (it lives in the
@@ -59,6 +58,8 @@ test("a publisher-embedded, bookmark-shaped annotation merges into the Bookmarks
     // `ReaderController.goToCfi`) and the book is still showing real
     // content.
     expect(await currentPageLabel(readerPage)).not.toBeNull();
+    await expect(panel).toBeHidden();
+    await expect(readerPage.getByRole("alert")).toHaveCount(0);
   } finally {
     await context.close();
   }

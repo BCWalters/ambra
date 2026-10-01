@@ -94,6 +94,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
         padding: "6px 8px",
         borderRadius: 10,
         background: chromeTheme.backgroundSolid,
+        color: chromeTheme.text,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
         width: "max-content",
@@ -115,7 +116,7 @@ export const SelectionToolbar: FC<SelectionToolbarProps> = ({ state, onPick, onA
                   width: 28,
                   height: 28,
                   borderRadius: "50%",
-                  border: "1px solid rgba(0, 0, 0, 0.15)",
+                  border: `1px solid ${chromeTheme.controlBorder}`,
                   cursor: "pointer",
                   padding: 0,
                   background:

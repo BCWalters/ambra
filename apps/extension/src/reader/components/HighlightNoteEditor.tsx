@@ -15,6 +15,8 @@ export interface HighlightNoteEditorProps {
   onSaved: () => void;
   onCancel: () => void;
   autoFocus?: boolean;
+  /** Hidden reference panels retain drafts without taking keyboard focus. */
+  active?: boolean;
   rows?: number;
 }
 
@@ -27,20 +29,23 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
   onSaved,
   onCancel,
   autoFocus = false,
+  active = true,
   rows,
 }) => {
   const t = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const requestRef = useRef(0);
   const pendingRef = useRef(false);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const [pending, setPending] = useState(false);
   const [saveError, setSaveError] = useState<string>();
   const errorId = useId();
   const isEmptyAddition = !hasExistingNote && value.trim() === "";
 
   useEffect(() => {
-    if (autoFocus) textareaRef.current?.focus();
-  }, [autoFocus]);
+    if (autoFocus && active) textareaRef.current?.focus();
+  }, [autoFocus, active]);
 
   useLayoutEffect(
     () => () => {
@@ -67,17 +72,19 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
     setPending(false);
     setSaveError(failureMessage);
     if (saved) onSaved();
-    else textareaRef.current?.focus({ preventScroll: true });
+    else if (activeRef.current) textareaRef.current?.focus({ preventScroll: true });
   };
 
   return (
     <div
       aria-busy={pending}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.nativeEvent.isComposing) {
-          event.preventDefault();
+        if (event.key === "Escape") {
           event.stopPropagation();
-          onCancel();
+          if (!event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
+            event.preventDefault();
+            onCancel();
+          }
         }
       }}
     >

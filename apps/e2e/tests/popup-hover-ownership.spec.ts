@@ -296,7 +296,7 @@ test("bottom-edge narration controls and their portalled menu do not summon the 
   try {
     await exposeReaderController(page);
     await page.mouse.move(350, 2);
-    await page.getByRole("button", { name: "Listen", exact: true }).click();
+    await page.getByRole("button", { name: "Play narration", exact: true }).click();
     const controls = page.getByRole("region", { name: "Narration controls" });
     await expect(controls).toBeVisible();
     const speed = controls.getByRole("button", { name: /^Narration speed/ });

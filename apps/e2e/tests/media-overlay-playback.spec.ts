@@ -86,7 +86,7 @@ async function visibleFrames(page: Page) {
 
 async function listen(page: Page) {
   await page.mouse.move(350, 2);
-  await button(page, "Listen").click();
+  await button(page, "Play narration").click();
   await expect(controls(page)).toBeVisible();
   await expect(button(page, "Pause narration")).toBeVisible();
   await expect.poll(async () => (await audioState(page)).paused).toBe(false);
@@ -116,10 +116,11 @@ test("plain books do not offer recorded narration", async () => {
   }
 });
 
-test("real audio advances, pause/resume preserves its point, speed and close work", async () => {
+test("real audio advances, pause/resume preserves its point, and collapse keeps playback and speed", async () => {
   const { readerPage: page, context } = await launchReader(narrated);
   try {
-    await expect(controls(page)).toHaveCount(0);
+    await expect(controls(page)).toBeVisible();
+    expect((await audioState(page)).paused).toBe(true);
     await listen(page);
     await expect.poll(() => highlighted(page)).toContain("c1-p1");
     await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(0.2);
@@ -136,8 +137,11 @@ test("real audio advances, pause/resume preserves its point, speed and close wor
     await button(page, "Play narration").click();
     await expect.poll(async () => (await audioState(page)).paused).toBe(false);
     expect((await audioState(page)).time).toBeGreaterThanOrEqual(pausedAt);
-    await button(page, "Close narration").click();
-    await expect(controls(page)).toHaveCount(0);
+    await button(page, "Collapse read-along controls").click();
+    await expect(controls(page)).toHaveAttribute("data-collapsed", "true");
+    expect((await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).rate).toBe(1.5);
+    await button(page, "Pause narration").click();
     expect((await audioState(page)).paused).toBe(true);
     const closedAt = (await audioState(page)).time;
     await page.waitForTimeout(250);
@@ -187,7 +191,7 @@ test("clip boundaries follow pages and chapters without stealing control focus",
   }
 });
 
-test("opening Listen starts at the displayed narrated passage, not the book beginning", async () => {
+test("Play starts at the displayed narrated passage, not the book beginning", async () => {
   const { readerPage: page, context } = await launchReader(narrated);
   try {
     await toc(page, "Chapter 2 passage 2");
@@ -256,7 +260,7 @@ for (const browsing of ["page", "contents", "scrubber"] as const) {
   });
 }
 
-test("a real audio decode error is shown and can be closed without unhandled errors", async () => {
+test("a real audio decode error stays explicit in compact controls without unhandled errors", async () => {
   const { readerPage: page, context } = await launchReader(
     path.join(fixtures, "media-overlay/invalid-audio.epub"),
   );
@@ -264,21 +268,22 @@ test("a real audio decode error is shown and can be closed without unhandled err
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.mouse.move(350, 2);
-    await button(page, "Listen").click();
+    await button(page, "Play narration").click();
     await expect(controls(page).getByRole("status")).toHaveText("Narration could not be played.");
     await expect.poll(async () => (await audioState(page)).error).not.toBeNull();
     expect((await audioState(page)).paused).toBe(true);
     await expect(button(page, "Play narration")).toBeVisible();
-    await button(page, "Close narration").click();
-    await expect(controls(page)).toHaveCount(0);
+    await button(page, "Collapse read-along controls").click();
+    await expect(controls(page)).toHaveAttribute("data-collapsed", "true");
+    await expect(controls(page).getByRole("status")).toHaveText("Narration could not be played.");
     expect(errors).toEqual([]);
   } finally {
     await context.close();
   }
 });
 
-for (const action of ["Pause narration", "Close narration"]) {
-  test(`${action} cancels an in-flight real audio resource load`, async () => {
+for (const action of ["expanded pause", "collapsed pause", "collapse without pausing"]) {
+  test(`${action} preserves the intended in-flight audio loading behavior`, async () => {
     const { readerPage: page, context } = await launchReader(narrated);
     try {
       await exposeReaderController(page);
@@ -302,16 +307,19 @@ for (const action of ["Pause narration", "Close narration"]) {
         };
       });
       await page.mouse.move(350, 2);
-      await button(page, "Listen").click();
+      await button(page, "Play narration").click();
       await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").entered);
-      await button(page, action).click();
+      if (action !== "expanded pause") await button(page, "Collapse read-along controls").click();
+      if (action !== "collapse without pausing") await button(page, "Pause narration").click();
       await page.evaluate(() => Reflect.get(window, "__narrationLoadGate").release());
       await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").released);
       await page.waitForTimeout(200);
-      expect((await audioState(page)).paused).toBe(true);
-      if (action === "Close narration") {
-        await expect(controls(page)).toHaveCount(0);
+      if (action === "collapse without pausing") {
+        await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+        await expect(controls(page)).toHaveAttribute("data-collapsed", "true");
+        await expect(button(page, "Pause narration")).toBeVisible();
       } else {
+        expect((await audioState(page)).paused).toBe(true);
         await expect(button(page, "Play narration")).toBeVisible();
         await button(page, "Play narration").click();
         await expect.poll(async () => (await audioState(page)).paused).toBe(false);
@@ -364,11 +372,9 @@ test("scroll mode native wheel browsing keeps audio playing and Return restores 
   const { readerPage: page, context } = await launchReader(narrated);
   try {
     await page.mouse.move(350, 2);
-    await button(page, "Settings").click();
-    await page.getByRole("menuitem", { name: /^Reading mode/ }).click();
-    await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
-    await page.keyboard.press("Escape");
+    await button(page, "Ambra settings").click();
+    await page.getByRole("combobox", { name: "Reading mode", exact: true }).selectOption("scroll");
+    await expect(page.getByRole("combobox", { name: "Reading mode", exact: true })).toHaveValue("scroll");
     await page.keyboard.press("Escape");
     await expect(position(page)).toHaveCount(0);
     await listen(page);

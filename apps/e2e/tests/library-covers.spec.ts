@@ -14,7 +14,7 @@ const test = base.extend<{ library: Page }>({
       worker ??= await context.waitForEvent("serviceworker");
       const page = await context.newPage();
       await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
-      await expect(page.getByText("What will you read first?", { exact: true })).toBeVisible();
+      await expect(page.getByText("No books yet", { exact: true })).toBeVisible();
       await page.evaluate(() => {
         for (const element of document.querySelectorAll("*")) {
           const key = Object.keys(element).find((name) => name.startsWith("__reactFiber$"));
@@ -89,7 +89,7 @@ test("legacy covers get persistent bounded card images while details retain orig
   expect(await library.evaluate(() => Reflect.get(window, "__coverDecodes"))).toBe(0);
   expect(await card.evaluate(async (element) => {
     const image = new Image();
-    image.src = getComputedStyle(element).backgroundImage.slice(5, -2);
+    image.src = element.querySelector("img")!.src;
     await image.decode();
     return [image.naturalWidth, image.naturalHeight];
   })).toEqual([400, 600]);
@@ -286,7 +286,7 @@ for (const failure of ["quota", "abort", "read-only"] as const) {
     expect(before.saved).toBe(false);
     expect(await card.evaluate(async (element) => {
       const image = new Image();
-      image.src = getComputedStyle(element).backgroundImage.slice(5, -2);
+      image.src = element.querySelector("img")!.src;
       await image.decode();
       return [image.naturalWidth, image.naturalHeight];
     })).toEqual([400, 600]);

@@ -24,7 +24,7 @@ test("diagnostics identify panel/dialog modes and settings, and copy all 500 ret
       return c?.host && !c.isLoadInFlight && !c.isTurningPage && !c.isApplyingLayout && !c.pendingLayout;
     });
     for (const [name, surface] of [
-      ["Show contents", "toc"], ["Bookmarks and highlights", "annotations"],
+      ["Show contents", "toc"], ["Annotations", "annotations"],
       ["Search", "search"], ["Book details", "details"],
     ] as const) {
       await reveal(page);
@@ -49,8 +49,7 @@ test("diagnostics identify panel/dialog modes and settings, and copy all 500 ret
     await expect.poll(() => report(page)).toContain('setting requested name="brightness" before=1 after=0.8');
 
     await reveal(page);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Help & About", exact: true }).click();
+    await page.getByRole("button", { name: "Help & About", exact: true }).click();
     const help = page.getByRole("dialog", { name: "Help & About", exact: true });
     await expect(help).toBeVisible();
     await expect.poll(() => report(page)).toContain("surface help opened");

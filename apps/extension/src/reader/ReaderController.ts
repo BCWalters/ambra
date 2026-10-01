@@ -99,10 +99,11 @@ import type {
   SelectionToolbarState,
 } from "./ReaderTypes.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
-import { attachTableControls, updateTableControlLabels } from "./TableControls.js";
+import { attachTableControls, updateTableControlLabels, updateTableControlTheme } from "./TableControls.js";
 import { prepareTableViewer } from "./TableViewerContent.js";
 import type { PreparedTable } from "./TableViewerContent.js";
-import { rememberImageSemantics } from "./ImageViewerSemantics.js";
+import { attachImageControlTheme, rememberImageSemantics, updateImageControlTheme } from "./ImageViewerSemantics.js";
+import { getInterfaceTheme } from "@ambra/shell/theme";
 import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
 import { DEFAULT_LOCALE } from "../i18n/Locale.js";
 import { getTranslate } from "../i18n/LocaleContext.js";
@@ -370,6 +371,7 @@ export class ReaderController {
 
   private readonly listeners = new Set<() => void>();
   private preferencesCleanup: (() => void) | undefined;
+  private appearanceCleanup: (() => void) | undefined;
   private preferencesRevision = 0;
   private cachedSnapshot: ReaderSnapshot | undefined;
   /** Lazily created by `getBookDetails`, revoked in `dispose`. */
@@ -412,7 +414,9 @@ export class ReaderController {
     this.inspectionSession = new EpubInspectionSession(contentLoader, pkg, rootFilePath);
     this.inspectionReading = new InspectorReadingBridge(contentLoader, locatorResolver, pkg, {
       documents: () => this.contentDocumentViews(),
-      currentPosition: () => this.host?.currentPosition(),
+      currentPosition: () => this.isFixedLayoutHost(this.host)
+        ? this.nativeReading.current() ?? this.host?.currentPosition()
+        : this.host?.currentPosition(),
       isDisposed: () => this.operations.disposed,
       focus: (document, element) => {
         this.accessibility.focusContent(document, element);
@@ -432,7 +436,7 @@ export class ReaderController {
     });
     this.searchCoordinator = new SearchCoordinator(contentLoader, locatorResolver, pkg.spine, {
       goToCfi: (cfi) => this.goToCfi(cfi, "that search result"),
-      chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
+      chapterLabel: (spineIndex) => this.chapterLabel(spineIndex) || this.pkg.metadata.title,
       repaintHighlight: () => this.highlightInteraction.applySearchHighlightToCurrentHost(),
       notify: () => this.notify(),
     });
@@ -444,9 +448,11 @@ export class ReaderController {
         if (this.host instanceof SpreadPaginatedHost) return this.host.pageIndex;
         return undefined;
       },
-      spineIndex: () => this.spineIndex,
+      spineIndex: () => this.isFixedLayoutHost(this.host)
+        ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
+        : this.spineIndex,
       spineIndexForCfi: (cfi) => this.pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps),
-      chapterLabel: (spineIndex) => this.chapterLabel(spineIndex),
+      chapterLabel: (spineIndex) => this.chapterLabel(spineIndex) || this.pkg.metadata.title,
       announce: (translationKey) => this.announce(this.translate(translationKey)),
       reportError: (err) => this.reportTransientError(err, "save", "that bookmark"),
       notify: () => this.notify(),
@@ -488,6 +494,10 @@ export class ReaderController {
       },
       notify: () => this.notify(),
     });
+    const appearance = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateAppearance = (): void => this.refreshContentControlTheme();
+    appearance.addEventListener("change", updateAppearance);
+    this.appearanceCleanup = () => appearance.removeEventListener("change", updateAppearance);
   }
 
   /** Opens a book from its raw bytes. `bookId`/`library` persist and
@@ -613,8 +623,10 @@ export class ReaderController {
     this.recordDiagnosticEvent({ kind: "setting", name: "pageTurnAnimationStyle",
       before: this.pageTurnAnimationStyle, after: settings.pageTurnAnimationStyle, source: "preferences" });
     const pageThemeChanged = this.pageTheme !== settings.pageTheme;
+    const interfaceThemeChanged = this.chromeTheme !== settings.chromeTheme;
     Object.assign(this, settings);
     if (pageThemeChanged) this.applyPageThemeToHost();
+    if (interfaceThemeChanged) this.refreshContentControlTheme();
     if (!this.containerEl) {
       this.viewMode = viewMode;
     } else if (viewMode !== (this.pendingLayout?.configuration.viewMode ?? this.viewMode)) {
@@ -1027,7 +1039,7 @@ export class ReaderController {
   /** Resolves the current position to a CFI and persists it as reading
    * progress. Called after every navigation settles; also exposed as
    * `flushProgress` for the reader page to call on visibility/unload. */
-  private async saveProgress(): Promise<void> {
+  private async saveProgress(throwOnError = false): Promise<void> {
     const native = this.nativeReading.current();
     const position = native ?? this.host?.currentPosition();
     if (!position) {
@@ -1042,7 +1054,8 @@ export class ReaderController {
       if (!this.isApplyingLayout && !this.isLoadInFlight) this.readingHistory?.update(locator.cfi);
       await this.library.saveProgress(this.bookId, locator.cfi,
         native ? this.nativeBookFraction(native) : this.currentBookFraction());
-    } catch {
+    } catch (error) {
+      if (throwOnError) throw error;
       // Best-effort: resume-reading is a convenience, not something
       // that should surface an error mid-navigation.
     }
@@ -1060,8 +1073,8 @@ export class ReaderController {
       ? Math.max(0, Math.min(1, position.currentPage / position.totalPages)) : undefined;
   }
 
-  public flushProgress(): Promise<void> {
-    return this.saveProgress();
+  public flushProgress(throwOnError = false): Promise<void> {
+    return this.saveProgress(throwOnError);
   }
 
   public async addBookmark(): Promise<Bookmark | undefined> {
@@ -1144,7 +1157,7 @@ export class ReaderController {
       views.push({
         id: annotation.id,
         cfi,
-        label: note && note.length > 0 ? note : this.chapterLabel(spineIndex),
+        label: note && note.length > 0 ? note : this.chapterLabel(spineIndex) || this.pkg.metadata.title,
         note,
         kind: classifyReadOnlyAnnotationKind(annotation.motivation, isRange),
         location: cfiSpineIndex === undefined
@@ -1396,16 +1409,14 @@ export class ReaderController {
     this.announcementId++;
   }
 
-  /** Human-readable chapter label for `spineIndex`, from the nearest
-   * preceding TOC entry, falling back to "Start of Book" or a generic
-   * "Chapter N". */
+  /** Authored section label; spine items do not imply numbered chapters. */
   private chapterLabel(spineIndex: number): string {
     const nearest = this.nearestPrecedingNavPoint(spineIndex);
     if (nearest) {
       return nearest.label;
     }
     const hasAnyToc = ReaderController.flattenLinkedNavPoints(this.navigation.toc.items).length > 0;
-    return hasAnyToc ? "Start of Book" : `Chapter ${spineIndex + 1}`;
+    return hasAnyToc ? this.translate("toc.startOfBook") : "";
   }
 
   /** Flattens linked TOC entries in document order. */
@@ -1558,7 +1569,7 @@ export class ReaderController {
   }
 
   private updateContentTitle(): void {
-    const title = `${this.pkg.metadata.title} — ${this.chapterLabel(this.spineIndex)}`;
+    const title = [this.pkg.metadata.title, this.chapterLabel(this.spineIndex)].filter(Boolean).join(" — ");
     if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
       this.host.setTitle(title);
     } else if (this.host) {
@@ -1791,6 +1802,19 @@ export class ReaderController {
   /** Intercepts in-content links for reader navigation, opens external
    * URIs in a new tab, and wires zoomable images for click and keyboard
    * activation across all active content documents. */
+  private contentControlTheme() {
+    return getInterfaceTheme(this.chromeTheme, window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+
+  private refreshContentControlTheme(): void {
+    if (this.operations.disposed) return;
+    const palette = this.contentControlTheme();
+    for (const doc of this.allContentDocuments()) {
+      updateTableControlTheme(doc, palette);
+      updateImageControlTheme(doc, palette);
+    }
+  }
+
   private setUpContentInteraction(): void {
     if (this.host) this.host.element.style.pointerEvents = "";
     this.setUpContentBoundaries();
@@ -1829,7 +1853,9 @@ export class ReaderController {
       if (!this.isFixedLayoutHost(this.host)) {
         cleanups.push(attachTableControls(iframeDocument, this.translate?.("tableViewer.expand") ?? "Expand table",
           (table, trigger) => this.openTableViewer(table, trigger),
-          () => this.contentDocumentViews().find(view => view.document === iframeDocument)?.page));
+          () => this.contentDocumentViews().find(view => view.document === iframeDocument)?.page,
+          this.contentControlTheme()));
+        cleanups.push(attachImageControlTheme(iframeDocument, this.contentControlTheme()));
       }
       cleanups.push(this.nativeReading.attach(iframeDocument));
       if (this.isFixedLayoutHost(this.host)) {
@@ -3379,7 +3405,7 @@ export class ReaderController {
         this.foregroundPagination(operation),
       );
       operation.check();
-      host.setTitle(`${this.pkg.metadata.title} — ${this.chapterLabel(host.primarySpineIndex)}`);
+      host.setTitle([this.pkg.metadata.title, this.chapterLabel(host.primarySpineIndex)].filter(Boolean).join(" — "));
       return host;
     } catch (error) {
       host.dispose();
@@ -4217,7 +4243,7 @@ export class ReaderController {
       }
       nearest = point;
     }
-    return nearest?.label ?? (points.length ? "Start of Book" : `Chapter ${spineIndex + 1}`);
+    return nearest?.label ?? (points.length ? this.translate("toc.startOfBook") : "");
   }
 
   /** Jumps to a whole-book fraction after the scrubber drag settles.
@@ -4973,6 +4999,7 @@ export class ReaderController {
     this.narrationReading.clear();
     this.navigationSpotlight.clear();
     this.preferencesCleanup?.();
+    this.appearanceCleanup?.();
     if (this.operations.disposed) return;
     this.operations.dispose();
     this.gestureCleanup?.();

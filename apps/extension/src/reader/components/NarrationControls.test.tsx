@@ -46,7 +46,8 @@ describe("NarrationControls", () => {
       onReturnToNarration: vi.fn(),
       onListenFromHere: vi.fn(),
       onRateChange: vi.fn(),
-      onClose: vi.fn(),
+      collapsed: false,
+      onCollapsedChange: vi.fn(),
     };
     container = document.createElement("div");
     container.style.width = "360px";
@@ -61,11 +62,12 @@ describe("NarrationControls", () => {
     vi.restoreAllMocks();
   });
 
-  function render(state: Partial<NarrationState> = {}, focusOnOpen = false, hasSelection = false) {
+  function render(state: Partial<NarrationState> = {}, focusOnOpen = false, hasSelection = false, collapsed = false) {
     act(() => root.render(
       <FluentProvider theme={webLightTheme}>
         <ChromeThemeProvider theme="blue">
-          <NarrationControls state={{ ...initial, ...state }} {...callbacks} focusOnOpen={focusOnOpen} hasSelection={hasSelection} />
+          <NarrationControls state={{ ...initial, ...state }} {...callbacks} collapsed={collapsed}
+            focusOnOpen={focusOnOpen} hasSelection={hasSelection} />
         </ChromeThemeProvider>
       </FluentProvider>,
     ));
@@ -78,19 +80,20 @@ describe("NarrationControls", () => {
     return match!;
   }
 
-  it("wires passage, playback, and close controls without a native select or audio seek slider", () => {
+  it("wires passage, playback, and collapse controls without a native select or audio seek slider", () => {
     render();
     for (const [name, callback] of [
       ["Previous narrated passage", callbacks.onPrevious],
       ["Play narration", callbacks.onPlayPause],
       ["Next narrated passage", callbacks.onNext],
-      ["Close narration", callbacks.onClose],
+      ["Collapse read-along controls", callbacks.onCollapsedChange],
     ] as const) {
       act(() => button(name).click());
       expect(callback).toHaveBeenCalledOnce();
     }
     expect(container.querySelector('select, [role="slider"], input[type="range"]')).toBeNull();
-    expect(button("Close narration").querySelector('svg')).not.toBeNull();
+    expect(button("Collapse read-along controls").querySelector('svg')).not.toBeNull();
+    expect(callbacks.onCollapsedChange).toHaveBeenCalledWith(true);
   });
 
   it("offers a themed speed menu with the current rate checked and updates through the callback", async () => {
@@ -139,7 +142,7 @@ describe("NarrationControls", () => {
     });
     expect(speed.getAttribute("aria-expanded")).not.toBe("true");
     expect(document.activeElement).toBe(speed);
-    expect(callbacks.onClose).not.toHaveBeenCalled();
+    expect(callbacks.onCollapsedChange).not.toHaveBeenCalled();
     expect(callbacks.onRateChange).not.toHaveBeenCalled();
   });
 
@@ -264,7 +267,7 @@ describe("NarrationControls", () => {
     expect(container.querySelector("script")).toBeNull();
   });
 
-  it("keeps all commands in one compact adaptive row without moving focus", () => {
+  it("separates position commands from a centered primary transport row without moving focus", () => {
     const focused = document.activeElement;
     render();
     const region = container.querySelector("section")!;
@@ -280,47 +283,63 @@ describe("NarrationControls", () => {
     const commands = container.querySelector<HTMLElement>("[data-narration-commands]")!;
     expect(commands.style.gridTemplateColumns).toBe("minmax(0, 1fr) auto");
     expect(commands.style.minHeight).toBe("28px");
-    expect(commands.querySelectorAll("button")).toHaveLength(7);
-    expect(commands.lastElementChild).toBe(button("Close narration"));
+    expect(commands.querySelectorAll("button")).toHaveLength(4);
+    expect(commands.lastElementChild).toBe(button("Collapse read-along controls"));
+    expect(commands.textContent).toContain("Read along");
     const primary = container.querySelector<HTMLElement>("[data-narration-primary-commands]")!;
-    expect(primary.style.flexWrap).toBe("wrap");
-    expect(primary.querySelectorAll("button")).toHaveLength(6);
-    expect(region.querySelectorAll(":scope > div")).toHaveLength(2);
+    expect(primary.style.justifyContent).toBe("center");
+    expect(primary.querySelectorAll("button")).toHaveLength(3);
+    expect(button("Play narration").style.height).toBe("40px");
     for (const name of ["Return to narration", "Listen from this page"]) {
       const action = button(name);
-      expect(action.parentElement).toBe(primary);
+      expect(commands.contains(action)).toBe(true);
+      expect(primary.contains(action)).toBe(false);
       expect(action.querySelector("svg")).not.toBeNull();
-      expect(getComputedStyle(action).borderTopStyle).toBe("solid");
       expect(getComputedStyle(action).whiteSpace).toBe("nowrap");
-      expect(getComputedStyle(action).borderRadius).toBe("999px");
     }
     const css = Array.from(document.styleSheets)
       .flatMap(sheet => Array.from(sheet.cssRules, rule => rule.cssText)).join("\n");
     expect(css).toContain("@container narration (max-width: 720px)");
     expect(css).toMatch(/@container narration \(max-width: 720px\)[^{]*\{[^}]*display: none/);
     expect(document.activeElement).toBe(focused);
-    const swatch = document.createElement("span");
-    swatch.style.background = CHROME_THEMES.blue.accentForeground;
-    swatch.style.color = "#fff";
-    expect(button("Play narration").style.background).toBe(swatch.style.background);
-    expect(button("Play narration").style.color).toBe(swatch.style.color);
+    expect(getComputedStyle(button("Play narration")).backgroundColor).toBe(CHROME_THEMES.blue.actionBackground);
+    expect(getComputedStyle(button("Play narration")).color).toBe(CHROME_THEMES.blue.actionForeground);
+  });
+
+  it("retains compact playback when collapsed and never treats collapse or expansion as a playback command", () => {
+    render({ status: "playing" });
+    const collapse = button("Collapse read-along controls");
+    act(() => { collapse.focus(); collapse.click(); });
+    expect(callbacks.onCollapsedChange).toHaveBeenCalledExactlyOnceWith(true);
+    expect(callbacks.onPlayPause).not.toHaveBeenCalled();
+    render({ status: "playing" }, false, false, true);
+    expect(container.querySelector("[data-narration-primary-commands]")).toBeNull();
+    expect(container.querySelectorAll("button")).toHaveLength(2);
+    expect(button("Pause narration").style.height).toBe("28px");
+    expect(document.activeElement).toBe(button("Expand read-along controls"));
+    expect(button("Expand read-along controls")).toBe(collapse);
+    act(() => button("Expand read-along controls").click());
+    expect(callbacks.onCollapsedChange).toHaveBeenLastCalledWith(false);
+    expect(callbacks.onPlayPause).not.toHaveBeenCalled();
+    act(() => button("Pause narration").click());
+    expect(callbacks.onPlayPause).toHaveBeenCalledOnce();
   });
 
   it("focuses playback only on explicit open, never again on narration updates", () => {
     render({ status: "loading" }, true);
     expect(document.activeElement).toBe(button("Pause narration"));
-    act(() => button("Close narration").focus());
+    act(() => button("Collapse read-along controls").focus());
     render({ status: "playing", hasPrevious: false }, true);
-    expect(document.activeElement).toBe(button("Close narration"));
+    expect(document.activeElement).toBe(button("Collapse read-along controls"));
     render({ status: "paused", following: false }, true);
-    expect(document.activeElement).toBe(button("Close narration"));
+    expect(document.activeElement).toBe(button("Collapse read-along controls"));
   });
 
   it("does not treat later focusOnOpen changes as an explicit open", () => {
     render();
-    act(() => button("Close narration").focus());
+    act(() => button("Collapse read-along controls").focus());
     render({ status: "playing" }, true);
-    expect(document.activeElement).toBe(button("Close narration"));
+    expect(document.activeElement).toBe(button("Collapse read-along controls"));
   });
 
   it("hides controls for books without narration", () => {
@@ -338,7 +357,7 @@ describe("NarrationControls", () => {
       expect(button(t("narration.next")).disabled).toBe(false);
       expect(button(t("narration.return"))).toBeDefined();
       expect(button(t("narration.listenFromPage"))).toBeDefined();
-      expect(button(t("narration.close"))).toBeDefined();
+      expect(button(t("narration.collapse"))).toBeDefined();
       expect(button(`${t("narration.speed")}: 1×`)).toBeDefined();
       expect(container.querySelector('[role="status"]')!.textContent).toBe(t("narration.browsing"));
       render({ following: false }, false, true);

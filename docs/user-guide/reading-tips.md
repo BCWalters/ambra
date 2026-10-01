@@ -12,19 +12,37 @@ Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Spa
 
 ## Choose pagination or scrolling
 
-Open **Settings → Reading mode** to choose pagination or scrolling for reflowable books. Scrolling can be useful for continuous screen-reader reading. Fixed-layout books retain the publisher’s layout.
+Open **Ambra settings → Reading preferences → Reading mode** to choose pagination
+or scrolling for reflowable books. Scrolling can be useful for continuous
+screen-reader reading. Fixed-layout books retain the publisher’s layout.
 
 Use **Alt+Shift+Page Down** for scrolling or **Alt+Shift+Page Up** for pagination (**Option** instead of Alt on Mac).
 
 ## Adjust the reading appearance
 
-- **Book options:** adjust typography and page width for reflowable text. **Book default** preserves publisher typography.
-- **Page → Always show one page:** use one centered page instead of a two-page spread for reflowable pagination. This choice is saved per book.
-- **Settings → Reader theme:** change the reader interface’s appearance.
-- **Settings → Page theme:** choose **White**, **Sepia**, or **Dark** across books. Illustrations retain their styling, and fixed-layout artwork is not recolored.
-- **Settings → Brightness:** adjust brightness.
-- **Settings → Page turn:** choose the page-turn effect.
-- **Settings → Language:** choose the interface language.
+**Book options** (Aa) applies to the current book. Adjust typography and page
+width for reflowable text; **Book default** preserves publisher typography.
+Under **Page → Always show one page**, choose one centered page instead of a
+two-page spread for reflowable pagination. Typography and this layout choice
+are saved per book.
+
+**Ambra settings** (gear) is shared across the reader, full library, and popup:
+
+- **Interface theme:** choose **Ambra** (default), **Silver**, **Green**, **Blue**,
+  or **Purple**. Light or dark interface appearance follows the browser; there is
+  no separate app light/dark setting.
+- **Language:** choose the interface language.
+- **Reading preferences → Page theme:** choose **White**, **Sepia**, or **Dark**
+  across books, independently of the interface theme. Illustrations retain
+  their styling, and fixed-layout artwork is not recolored.
+- **Reading preferences → Brightness:** adjust brightness.
+- **Reading preferences → Reading mode:** choose pagination or scrolling.
+- **Reading preferences → Page turn:** choose the page-turn effect.
+- **Reading preferences → Progress landmarks:** show or hide the progress
+  track's chapter bands and reading landmarks.
+
+Reading preferences starts expanded in the reader and collapsed in the library.
+These are transient settings popovers, not panels that stay beside the page.
 
 ## Look closer at images and tables
 

@@ -33,9 +33,11 @@ export const LibraryImportStatus: FC<{
   onOpenBook: (id: string) => void;
   onDismissCompleted: () => void;
   onCancelDownload: (id: number) => boolean;
+  isBookOpenDisabled?: (bookId: string) => boolean;
+  busyMessageId?: string;
   focusFallbackRef?: RefObject<HTMLButtonElement | null>;
   focusBackupRef?: RefObject<HTMLElement | null>;
-}> = ({ activities, books, onOpenBook, onDismissCompleted, onCancelDownload, focusFallbackRef, focusBackupRef }) => {
+}> = ({ activities, books, onOpenBook, onDismissCompleted, onCancelDownload, isBookOpenDisabled, busyMessageId, focusFallbackRef, focusBackupRef }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const busy = activities.some(({ phase }) => phase !== "complete");
@@ -106,6 +108,8 @@ export const LibraryImportStatus: FC<{
               )}
               {phase === "complete" && book && (
                 <Button size="small" appearance="primary" style={{ gridColumn: 3, justifySelf: "end" }}
+                  disabled={isBookOpenDisabled?.(book.id) ?? false}
+                  aria-describedby={isBookOpenDisabled?.(book.id) ? busyMessageId : undefined}
                   aria-label={t("library.readNowBook", { title: title || fileName })}
                   onClick={() => onOpenBook(book.id)}>
                   {t("library.readNow")}
@@ -128,7 +132,7 @@ export const LibraryImportStatus: FC<{
             </div>
           );
         })}
-        {busy && <Caption1 as="p" block style={{ margin: "6px 0 0" }}>{t("library.importKeepOpen")}</Caption1>}
+        {busy && <Caption1 id={busyMessageId} as="p" block style={{ margin: "6px 0 0" }}>{t("library.importKeepOpen")}</Caption1>}
       </div>
     </div>
   );

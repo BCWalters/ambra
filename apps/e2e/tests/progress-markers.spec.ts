@@ -53,17 +53,16 @@ async function launch(info: TestInfo, kind: ProgressMarkerFixture, rtl = false, 
 
 async function chooseStyle(page: Page, style: Style) {
   await page.mouse.move(300, 2);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("menuitem", { name: /^Progress landmarks/ }).press("ArrowRight");
-  const submenu = page.getByRole("menu").last();
-  await expect(submenu.getByRole("menuitemradio")).toHaveCount(2);
-  for (const name of ["Show", "Hide"]) {
-    await expect(submenu.getByRole("menuitemradio", { name, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+  const reading = settings.locator("details");
+  if (!await reading.evaluate(element => (element as HTMLDetailsElement).open)) {
+    await reading.locator("summary").click();
   }
-  const choice = submenu.getByRole("menuitemradio", { name: style === "off" ? "Hide" : "Show", exact: true });
-  await choice.click();
-  await expect(choice).toHaveAttribute("aria-checked", "true");
-  await page.keyboard.press("Escape");
+  const choice = settings.getByRole("combobox", { name: "Progress landmarks", exact: true });
+  await expect(choice.locator("option")).toHaveText(["Show", "Hide"]);
+  await choice.selectOption(style);
+  await expect(choice).toHaveValue(style);
   await page.keyboard.press("Escape");
 }
 

@@ -65,7 +65,7 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
   test("the expand button opens the library as its own full tab, which then hides that same button", async () => {
     const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
-      const expandButton = libraryPage.getByRole("button", { name: "Expand library into a full browser tab" });
+      const expandButton = libraryPage.getByRole("button", { name: "Open library in new tab", exact: true });
       await expect(expandButton).toBeVisible();
 
       const [fullTabPage] = await Promise.all([context.waitForEvent("page"), expandButton.click()]);
@@ -73,27 +73,27 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
       await fullTabPage.waitForTimeout(500);
 
       expect(fullTabPage.url()).toContain("?view=tab");
-      await expect(fullTabPage.getByRole("button", { name: "Expand library into a full browser tab" })).toHaveCount(0);
+      await expect(fullTabPage.getByRole("button", { name: "Open library in new tab", exact: true })).toHaveCount(0);
       // The rest of the page still works normally in the full tab.
-      await expect(fullTabPage.getByText(LONG_CONTENT_TITLE, { exact: true })).toBeVisible();
+      await expect(fullTabPage.locator("[data-library-collection]").getByRole("button", { name: new RegExp(`^Open ${LONG_CONTENT_TITLE}`) })).toBeVisible();
     } finally {
       await context.close();
     }
   });
 
-  test("the remove (trash) button removes a book from the grid", async () => {
+  test("focused-book Delete confirms before removing a book", async () => {
     const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
       const cover = libraryPage.getByRole("button", { name: `Open ${LONG_CONTENT_TITLE}`, exact: true });
       await expect(cover).toBeVisible();
-      // The trash button is only interactive while its card is
-      // hovered/focused (see `BookCard`'s `isActive` — `pointer-events:
-      // none` otherwise), matching real usage.
-      await cover.hover();
-      await libraryPage.getByRole("button", { name: /^Remove .* from library$/ }).click();
-      await libraryPage.waitForTimeout(500);
+      await cover.press("Delete");
+      const confirm = libraryPage.getByRole("alertdialog");
+      await expect(confirm.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+      await expect(cover).toHaveCount(1);
+      await confirm.getByRole("button", { name: "Remove from library", exact: true }).click();
       await expect(cover).toHaveCount(0);
-      await expect(libraryPage.getByText("What will you read first?", { exact: false })).toBeVisible();
+      await expect(libraryPage.getByRole("heading", { name: "No books yet" })).toBeVisible();
+      await expect(libraryPage.getByRole("button", { name: "Import EPUB", exact: true })).toBeFocused();
     } finally {
       await context.close();
     }

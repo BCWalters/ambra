@@ -4,6 +4,7 @@ import { Button, Tooltip, useModalAttributes } from "@fluentui/react-components"
 import { DismissRegular, ZoomInRegular, ZoomOutRegular } from "@fluentui/react-icons";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import type { ImageViewerState } from "../ReaderTypes.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 export interface ImageViewerProps {
   /** `undefined` when the viewer should be closed. Unlike `TocPanel`/
@@ -30,6 +31,7 @@ const OpenImageViewer: FC<{
   image: ImageViewerState;
   onRequestClose: () => void;
 }> = ({ image, onRequestClose }) => {
+  const chromeTheme = useChromeTheme();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -174,7 +176,7 @@ const OpenImageViewer: FC<{
             position: "absolute",
             inset: 0,
             overflow: "auto",
-            colorScheme: "dark",
+            colorScheme: chromeTheme.appearance,
             overscrollBehavior: "contain",
             touchAction: "none",
           }}
@@ -247,7 +249,7 @@ const OpenImageViewer: FC<{
       <Tooltip content={t("highlight.close")} relationship="label">
         <Button
           ref={closeButtonRef}
-          appearance="subtle"
+          appearance="secondary"
           size="large"
           icon={<DismissRegular />}
           onClick={(event) => {
@@ -261,8 +263,6 @@ const OpenImageViewer: FC<{
             position: "absolute",
             top: 16,
             right: 16,
-            color: "#f5f0e8",
-            background: "rgba(255, 255, 255, 0.08)",
           }}
         />
       </Tooltip>
@@ -282,9 +282,9 @@ const OpenImageViewer: FC<{
           gap: 8,
           padding: 8,
           borderRadius: 12,
-          background: "rgba(20, 18, 16, 0.96)",
-          color: "#f5f0e8",
-          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.3)",
+          background: chromeTheme.surface,
+          color: chromeTheme.text,
+          boxShadow: chromeTheme.shadow,
         }}
       >
         <Tooltip content={t("imageViewer.zoomOut")} relationship="label">

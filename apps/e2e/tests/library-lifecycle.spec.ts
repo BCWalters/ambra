@@ -39,19 +39,23 @@ test("failed deletion stays visible, preserves the stored book, and can be retri
     };
   });
   const cover = library.getByRole("button", { name: /^Open Ambra Long Content/ });
-  await cover.hover();
-  await library.getByRole("button", { name: /^Remove .* from library$/ }).click();
+  await cover.press("Delete");
+  await library.getByRole("alertdialog").getByRole("button", { name: "Remove from library", exact: true }).click();
   await expect(library.getByRole("alert")).toContainText("aborted");
   await expect(cover).toBeVisible();
   await library.reload();
   await expect(cover).toBeVisible();
-  await cover.hover();
-  await library.getByRole("button", { name: /^Remove .* from library$/ }).click();
-  await expect(library.getByText("What will you read first?", { exact: true })).toBeVisible();
+  await cover.press("Delete");
+  await library.getByRole("alertdialog").getByRole("button", { name: "Remove from library", exact: true }).click();
+  await expect(library.getByText("No books yet", { exact: true })).toBeVisible();
   await expect(library.getByRole("alert")).toHaveCount(0);
 });
 
 test("inspector open failures return to details with a visible error and support retry", async ({ library }) => {
+  await library.getByRole("button", { name: /Test Fixture details$/ }).click();
+  const details = library.getByRole("dialog", { name: "Book details", exact: true });
+  // Details now reads the stored file lazily for its size; inject only after that read settles.
+  await expect(details.getByText("EPUB file size", { exact: true })).toBeVisible();
   await library.evaluate(() => {
     for (const element of document.querySelectorAll("*")) {
       const key = Object.keys(element).find((name) => name.startsWith("__reactFiber$"));
@@ -71,23 +75,21 @@ test("inspector open failures return to details with a visible error and support
     }
     throw new Error("Mounted database not found");
   });
-  await library.getByRole("button", { name: /^Open Ambra Long Content/ }).hover();
-  await library.getByRole("button", { name: /Test Fixture details$/ }).click();
-  const details = library.getByRole("dialog", { name: "Book details", exact: true });
   const openInspector = details.getByRole("button", { name: "EPUB Inspector" });
   await openInspector.click();
   await expect(details.getByRole("alert")).toContainText("Inspection file read failed");
   await expect(library.getByRole("dialog", { name: "EPUB Inspector", exact: true })).toBeHidden();
+  await expect(openInspector).toBeFocused();
   await openInspector.click();
   await expect(library.getByRole("tab", { name: /Files/ })).toBeVisible();
   await library.keyboard.press("Escape");
+  await expect(library.getByRole("dialog", { name: "EPUB Inspector", exact: true })).toBeHidden();
   await expect(details).toBeVisible();
   await expect(openInspector).toBeFocused();
   await expect(details.getByRole("alert")).toHaveCount(0);
 });
 
 test("standalone Inspector docks beside the Library without a hidden modal blocking it", async ({ library }) => {
-  await library.getByRole("button", { name: /^Open Ambra Long Content/ }).hover();
   await library.getByRole("button", { name: /Test Fixture details$/ }).click();
   const details = library.getByRole("dialog", { name: "Book details", exact: true });
   await details.getByRole("button", { name: "EPUB Inspector" }).click();
@@ -154,11 +156,11 @@ base("import controls wait for a withheld database open before accepting the fir
     await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
     await expect.poll(() => page.evaluate(() => Reflect.get(window, "__heldLibraryOpens") ?? 0)).toBeGreaterThan(0);
     const input = page.locator('input[type="file"]');
-    const button = page.getByRole("button", { name: "Bring a book Choose EPUB files...", exact: true });
+    const button = page.getByRole("button", { name: "Import EPUB", exact: true });
     await expect(input).toBeDisabled();
-    await expect(button).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "What will you read first?" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(0);
+    await expect(button).toBeDisabled();
+    await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(1);
     await page.evaluate(() => Reflect.get(window, "__releaseLibraryOpen")());
     await expect(input).toBeEnabled();
     await expect(button).toBeEnabled();

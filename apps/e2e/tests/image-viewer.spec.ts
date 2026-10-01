@@ -2,6 +2,8 @@ import { expect, test, type Locator } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentPageLabel, launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
+import { getChromeTheme } from "../../extension/src/reader/chromeTheme.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,12 +25,13 @@ for (const format of ["svg", "png"] as const) {
       path.resolve(here, "../fixtures/footnote.epub"),
     );
     try {
+      await exposeReaderController(readerPage);
       for (const theme of ["White", "Sepia", "Dark"]) {
-        await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
-        await readerPage.getByRole("menuitem", { name: /^Page theme/ }).click();
-        await readerPage.getByRole("menuitemradio", { name: theme, exact: true }).click();
+        await readerPage.getByRole("button", { name: "Ambra settings", exact: true }).click();
+        await readerPage.getByRole("combobox", { name: "Page theme", exact: true }).selectOption({ label: theme });
         await readerPage.keyboard.press("Escape");
         await readerPage.keyboard.press("Escape");
+        await expect(readerPage.getByRole("combobox", { name: "Page theme", exact: true })).toBeHidden();
         const src = await readerPage.evaluate(async (format) => {
           const doc = document.querySelector("iframe")!.contentDocument!;
           const image = doc.createElement("img");
@@ -68,6 +71,24 @@ for (const format of ["svg", "png"] as const) {
         await expect(image).toBeVisible();
         await expect(image).toHaveCSS("background-color", "rgb(255, 255, 255)");
         await expect(dialog).toHaveCSS("background-color", "rgba(10, 8, 6, 0.82)");
+        if (format === "svg" && theme === "White") {
+          const asRgb = (hex: string) => `rgb(${hex.slice(1).match(/../g)!.map(part => Number.parseInt(part, 16)).join(", ")})`;
+          for (const appearance of ["light", "dark"] as const) {
+            await readerPage.emulateMedia({ colorScheme: appearance });
+            for (const choice of ["ambra", "silver", "green", "blue", "purple"] as const) {
+              await readerPage.evaluate(choice => Reflect.get(window, "__readerController").setChromeTheme(choice), choice);
+              const palette = getChromeTheme(choice, appearance);
+              const controls = dialog.getByRole("group", { name: "Image zoom", exact: true });
+              await expect(controls).toHaveCSS("background-color", asRgb(palette.surface));
+              await expect(controls).toHaveCSS("color", asRgb(palette.text));
+              await expect(image).toHaveCSS("background-color", "rgb(255, 255, 255)");
+              await expect(image).toHaveCSS("filter", "none");
+              expect(await readerPage.evaluate(() => Reflect.get(window, "__readerController").snapshot().pageTheme)).toBe("white");
+            }
+          }
+          await readerPage.emulateMedia({ colorScheme: "light" });
+          await readerPage.evaluate(() => Reflect.get(window, "__readerController").setChromeTheme("ambra"));
+        }
         await dialog.getByRole("button", { name: "Zoom in", exact: true }).click();
         await expect(dialog.locator("output")).toHaveText("125%");
         await expect(image).toHaveCSS("background-color", "rgb(255, 255, 255)");
@@ -528,15 +549,13 @@ test("image fit respects a pinned contents pane and narrow translated controls",
   try {
     await readerPage.getByRole("button", { name: "Show contents", exact: true }).click();
     await readerPage.getByRole("button", { name: "Pin contents panel", exact: true }).click();
-    await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
-    await readerPage.getByRole("menuitem", { name: /^Language/ }).click();
-    await readerPage.getByRole("menuitemradio", { name: "Deutsch", exact: true }).click();
+    await readerPage.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    await readerPage.getByRole("dialog", { name: "Ambra settings", exact: true })
+      .getByRole("combobox", { name: "Language", exact: true }).selectOption("de");
     await expect(readerPage.locator("html")).toHaveAttribute("lang", "de");
-    // Radio selections keep both menu levels open; the language submenu would
-    // otherwise intercept the native wheel at the center of the injected image.
+    // Dismiss the settings dialog before testing native wheel ownership.
     await readerPage.keyboard.press("Escape");
-    await readerPage.keyboard.press("Escape");
-    await expect(readerPage.getByRole("menu")).toHaveCount(0);
+    await expect(readerPage.getByRole("dialog")).toHaveCount(0);
     await readerPage.evaluate(async () => {
       const doc = document.querySelector("iframe")!.contentDocument!;
       const image = doc.createElement("img");
@@ -567,7 +586,7 @@ test("image fit respects a pinned contents pane and narrow translated controls",
           const box = (await image.boundingBox())!;
           const canvas = (await image.locator("xpath=../../..").boundingBox())!;
           return (
-            pane.width < width &&
+            (width === 1200 ? pane.width < width : Math.abs(pane.width - width) < 1) &&
             Math.abs(box.width - pane.width * 0.9) < 1 &&
             Math.abs(box.width / box.height - 4) < 0.01 &&
             box.x >= canvas.x &&

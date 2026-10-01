@@ -1,16 +1,18 @@
-import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test as base, type BrowserContext, type Page } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EXTENSION_PATH } from "../harness.js";
+import { getChromeTheme } from "../../extension/src/reader/chromeTheme.js";
 
 const fixture = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
 const title = "Ambra Long Content Test Fixture";
+const asRgb = (hex: string) => `rgb(${hex.slice(1).match(/../g)!.map(part => Number.parseInt(part, 16)).join(", ")})`;
 
 const test = base.extend<{ library: { context: BrowserContext; page: Page } }>({
   library: async ({ playwright }, use, testInfo) => {
     const context = await playwright.chromium.launchPersistentContext(testInfo.outputPath("profile"), {
+      colorScheme: "light",
       headless: process.env.AMBRA_E2E_HEADLESS === "1",
       ...(process.env.AMBRA_E2E_HEADLESS === "1" ? { channel: "chromium" } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
@@ -24,7 +26,6 @@ const test = base.extend<{ library: { context: BrowserContext; page: Page } }>({
       await expect(input).toBeEnabled();
       await input.setInputFiles(fixture);
       await expect(page.getByRole("button", { name: `Open ${title}`, exact: true })).toBeVisible();
-      await page.getByText(title, { exact: true }).first().hover();
       await page.getByRole("button", { name: `${title} details`, exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Book details", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Save as…", exact: true })).toBeHidden();
@@ -102,8 +103,7 @@ test("Book details Save as writes the original local EPUB without refetching or 
   await expect(save).toBeVisible();
   const filename = page.getByRole("dialog", { name: "Book details", exact: true }).getByText("long-content.epub", { exact: true });
   await expect(save).toHaveCSS("font-size", "12px");
-  const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
-  await expect(save).toHaveCSS("color", `rgb(${accentRgb})`);
+  await expect(save).toHaveCSS("color", asRgb(getChromeTheme("ambra", "light").accentForeground));
   expect(await save.evaluate((element) => getComputedStyle(element).fontSize))
     .toBe(await filename.evaluate((element) => getComputedStyle(element).fontSize));
   await page.getByRole("dialog", { name: "Book details", exact: true })
@@ -141,22 +141,18 @@ test("compact Save as follows the selected theme rather than the context default
   library: { page },
 }, testInfo) => {
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("menuitem", { name: /^Reader theme/ }).press("ArrowRight");
-  await page.getByRole("menuitemradio", { name: "Blue", exact: true }).click();
+  await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+  await page.getByRole("combobox", { name: "Interface theme", exact: true }).selectOption("blue");
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu", { name: "Settings", exact: true })).toBeHidden();
-  await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
-  await page.getByText(title, { exact: true }).first().hover();
+  await expect(page.getByRole("dialog", { name: "Ambra settings", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Ambra settings", exact: true })).toBeFocused();
   await page.getByRole("button", { name: `${title} details`, exact: true }).click();
   const save = page.getByRole("button", { name: "Save as…", exact: true });
   await expect(save).toBeHidden();
   await page.getByRole("button", { name: "Publication details", exact: true }).click();
   await expect(save).toHaveCSS("font-size", "12px");
-  const accentRgb = getInterfaceTheme("blue", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
-  await expect(save).toHaveCSS("color", `rgb(${accentRgb})`);
-  await expect(save).toHaveCSS("border-top-color", "rgb(29, 90, 168)");
+  await expect(save).toHaveCSS("color", asRgb(getChromeTheme("blue", "light").accentForeground));
+  await expect(save).toHaveCSS("border-top-color", asRgb(getChromeTheme("blue", "light").actionBackground));
   await settleAnimations(page);
   await save.focus();
   await expect(save).toBeFocused();

@@ -5,16 +5,18 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { Caption1, makeStyles } from "@fluentui/react-components";
+import { Caption1, makeStyles, tokens } from "@fluentui/react-components";
 import { BookmarkFilled } from "@fluentui/react-icons";
 import type { PreviewPosition, ReaderSnapshot } from "../ReaderTypes.js";
-import { BOOKMARK_COLOR, CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
+import { CHROME_BACKDROP_FILTER, CHROME_BORDER, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { selectProgressMarkers, type ProgressMarkerData } from "../ProgressMarkers.js";
 import { DEFAULT_PROGRESS_MARKER_STYLE, type ProgressMarkerStyle } from "../ProgressMarkerStyle.js";
 import { ProgressMarkerLayer } from "./ProgressMarkerLayer.js";
+import { BookmarkLane } from "./BookmarkLane.js";
+import { BOOKMARK_ROW_HEIGHT } from "../BookmarkGroups.js";
 
 /** Smallest gap the drag preview popup is ever allowed from the browser
  * window's left/right edges — purely cosmetic breathing room, not a
@@ -23,7 +25,7 @@ const POPUP_EDGE_MARGIN = 8;
 
 const useStyles = makeStyles({
   bookmark: {
-    color: BOOKMARK_COLOR,
+    color: tokens.colorBrandForeground1,
     "@media (forced-colors: active)": { color: "CanvasText" },
   },
   track: {
@@ -48,7 +50,7 @@ export interface ProgressScrubberProps {
   snapshot: Pick<ReaderSnapshot,
     "isFixedLayout" | "viewMode" | "pageIndex" | "pageCount" |
     "bookPageIndex" | "bookPageCount" | "spineIndex" | "spineLength" |
-    "pageProgressionDirection" | "bookmarks" | "bookmarkProgress"
+    "pageProgressionDirection" | "bookmarks" | "bookmarkProgress" | "bookmarkLocations"
   >;
   markerStyle?: ProgressMarkerStyle;
   markerData?: ProgressMarkerData;
@@ -71,6 +73,10 @@ export interface ProgressScrubberProps {
    * optimistic destination until this promise settles. */
   onSeek: (fraction: number) => Promise<void>;
   onSeekError: (error: unknown) => void;
+  onGoToBookmark: (bookmark: ReaderSnapshot["bookmarks"][number]) => void;
+  onShowBookmarks: () => void;
+  bookmarkChooserDismissRequest: number;
+  onBookmarkChooserOpenChange: (open: boolean) => void;
 }
 
 /** The current reading position as a fraction (0 to 1) of the whole
@@ -106,7 +112,7 @@ function currentFraction(snapshot: ProgressScrubberProps["snapshot"]): number {
  * name) — see `ReaderController.previewSeek`.
  *
  * Also shows the reader's actual *current* position ("Page X of Y - Z
- * pages left in this chapter") in its own row above the track — this is
+ * pages left in this chapter") in its own row below the bookmark lane — this is
  * deliberately not the same thing as the drag preview above: it reflects
  * whatever page is genuinely on screen right now, not wherever a drag
  * happens to be pointing, so it stays put/unaffected while dragging
@@ -131,6 +137,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   onPreview,
   onSeek,
   onSeekError,
+  onGoToBookmark,
+  onShowBookmarks,
+  bookmarkChooserDismissRequest,
+  onBookmarkChooserOpenChange,
   markerStyle = DEFAULT_PROGRESS_MARKER_STYLE,
   markerData,
 }) => {
@@ -141,6 +151,15 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
   const bookmarkCountId = useId();
   const markerDescriptionId = useId();
   const [hasHidden, setHasHidden] = useState(!visible);
+  const [bookmarkChooserOpen, setBookmarkChooserOpen] = useState(false);
+  const changeBookmarkChooser = useCallback((open: boolean) => {
+    setBookmarkChooserOpen(open);
+    onBookmarkChooserOpenChange(open);
+  }, [onBookmarkChooserOpenChange]);
+  useEffect(() => {
+    if (!snapshot.isFixedLayout && snapshot.viewMode !== "paginated") changeBookmarkChooser(false);
+  }, [snapshot.isFixedLayout, snapshot.viewMode, changeBookmarkChooser]);
+  useEffect(() => () => onBookmarkChooserOpenChange(false), [onBookmarkChooserOpenChange]);
   useEffect(() => {
     if (!visible) setHasHidden(true);
   }, [visible]);
@@ -209,10 +228,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           current: preview.position.current,
           total: preview.position.total,
         })
-      : t("scrubber.chapterOfTotal", {
-          current: preview.position.current,
-          total: preview.position.total,
-        })
+      : `${Math.round((optimisticFraction ?? currentFraction(snapshot)) * 100)}% · ${t("scrubber.countingPages")}`
     : undefined;
   // Marker fractions encode exact measured page / total, not seek targets.
   // Comparing page numbers avoids claiming a nearby (but different) page.
@@ -390,18 +406,12 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
 
   const displayFraction = optimisticFraction ?? currentFraction(snapshot);
   const trackHeight = markerStyle === "off" ? 4 : 10;
-  const sliderHeight = SCRUBBER_HEIGHT - 2;
-  const trackCenter = 29;
+  const positionRowHeight = 20;
+  const sliderHeight = SCRUBBER_HEIGHT - BOOKMARK_ROW_HEIGHT - positionRowHeight - 2;
+  const trackCenter = sliderHeight / 2;
   const trackTop = trackCenter - trackHeight / 2;
 
-  // "Page X of Y" and "Z pages left in this chapter" — the reader's
-  // actual current position, not tied to a drag at all (unlike
-  // everything else in this bar) — deliberately styled/positioned as
-  // its own row above the track, not overlapping the drag-preview
-  // popup's own space (which floats above the *entire* bar via `bottom:
-  // 100%`, so adding a row inside the bar doesn't move it), so the two
-  // don't read as the same thing even though they're visually close
-  // together.
+  // Actual position stays below the bookmark lane, clear of the target preview.
   //
   // Kept as two separate pieces (a centered "Page X of Y" and a
   // far-right "Z pages left in this chapter"), not one hyphen-joined
@@ -428,10 +438,10 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         );
   const bookPageLabel =
     snapshot.bookPageIndex !== undefined && snapshot.bookPageCount !== undefined
-      ? t("scrubber.pageOfTotal", {
+      ? `${t("scrubber.pageOfTotal", {
           current: snapshot.bookPageIndex,
           total: snapshot.bookPageCount,
-        })
+        })} · ${Math.round(currentFraction(snapshot) * 100)}%`
       : hasHidden ? t("scrubber.countingPages") : undefined;
   // Still exposed as one combined string for the slider's own
   // `aria-valuetext` (see below) — a screen reader doesn't care how the
@@ -519,7 +529,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
     return null;
   }
 
-  const shown = visible || optimisticFraction !== undefined;
+  const shown = visible || optimisticFraction !== undefined || bookmarkChooserOpen;
   const previewStateLabel =
     dragFraction === undefined ? t("scrubber.seeking") : undefined;
 
@@ -552,52 +562,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           : "opacity 240ms ease, transform 240ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 240ms ease",
       }}
     >
-      {(bookPageLabel || pagesLeftLabel) && (
-        <div
-          aria-hidden="true"
-          className={styles.positionRow}
-          style={{
-            position: "absolute",
-            top: 2,
-            left: 20,
-            right: 20,
-            alignItems: "baseline",
-            columnGap: 12,
-            pointerEvents: "none",
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          <span />
-          <Caption1
-            as="p"
-            block
-            style={{
-              margin: 0,
-              textAlign: "center",
-              fontWeight: 600,
-              color: "var(--colorNeutralForeground1, #242424)",
-            }}
-          >
-            {bookPageLabel}
-          </Caption1>
-          <Caption1
-            as="p"
-            block
-            title={pagesLeftLabel}
-            style={{
-              margin: 0,
-              textAlign: "right",
-              color: "var(--colorNeutralForeground2, #444)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {pagesLeftLabel}
-          </Caption1>
-        </div>
-      )}
-
       {preview && (
         <div
           ref={popupRef}
@@ -628,7 +592,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             width: "max-content",
             maxWidth: `min(320px, calc(100vw - ${POPUP_EDGE_MARGIN * 2}px))`,
             boxSizing: "border-box",
-            transform: "translate(-50%, -8px)",
+            transform: "translate(-50%, -6px)",
             background: chromeTheme.backgroundSolid,
             backdropFilter: CHROME_BACKDROP_FILTER,
             WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
@@ -737,7 +701,8 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         aria-valuenow={Math.round(displayFraction * 100)}
         aria-valuetext={[
           previewLabel
-            ? `${previewStateLabel ? `${previewStateLabel}: ` : ""}${previewLabel} - ${preview!.chapterLabel}`
+            ? [`${previewStateLabel ? `${previewStateLabel}: ` : ""}${previewLabel}`, preview!.chapterLabel]
+              .filter(Boolean).join(" - ")
             : (currentPositionLabel ?? `${Math.round(displayFraction * 100)}%`),
           bookmarkLabel,
         ].filter(Boolean).join(" - ")}
@@ -779,24 +744,6 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
         />
         {markerStyle !== "off" && <ProgressMarkerLayer selection={markers} rtl={rtl}
           currentFraction={displayFraction} trackTop={trackTop} trackHeight={trackHeight} />}
-        {/* A separate flag lane keeps exact x positions, even under the thumb. */}
-        {Array.from(new Set(snapshot.bookmarkProgress?.map(marker => marker.fraction))).map(fraction => (
-          <BookmarkFilled
-            key={fraction}
-            aria-hidden="true"
-            data-bookmark-marker=""
-            className={styles.bookmark}
-            style={{
-              position: "absolute",
-              left: `${(rtl ? 1 - fraction : fraction) * 100}%`,
-              top: 39,
-              width: 14,
-              height: 15,
-              transform: "translateX(-50%)",
-              pointerEvents: "none",
-            }}
-          />
-        ))}
         <div
           data-scrubber-thumb=""
           style={{
@@ -809,10 +756,38 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
             border: `2px solid ${chromeTheme.accentForeground}`,
             borderRadius: "50%",
             transform: "translateX(-50%)",
-            background: chromeTheme.accent,
+            background: chromeTheme.actionBackground,
             boxShadow: "0 1px 4px rgba(0, 0, 0, 0.3)",
           }}
         />
+      </div>
+      <BookmarkLane
+        bookmarks={snapshot.bookmarks}
+        markers={snapshot.bookmarkProgress ?? []}
+        locations={snapshot.bookmarkLocations}
+        rtl={rtl}
+        onSelect={onGoToBookmark}
+        onShowAll={onShowBookmarks}
+        onOpenChange={changeBookmarkChooser}
+        dismissRequest={bookmarkChooserDismissRequest}
+      />
+      <div aria-hidden="true" data-scrubber-current-position="" className={styles.positionRow}
+        style={{
+          height: positionRowHeight, alignItems: "baseline", columnGap: 12,
+          pointerEvents: "none", fontVariantNumeric: "tabular-nums",
+        }}>
+        <span />
+        <Caption1 as="p" block style={{
+          margin: 0, textAlign: "center", fontWeight: 600, color: tokens.colorNeutralForeground1,
+        }}>
+          {bookPageLabel}
+        </Caption1>
+        <Caption1 as="p" block title={pagesLeftLabel} style={{
+          margin: 0, textAlign: "right", color: tokens.colorNeutralForeground2,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {pagesLeftLabel}
+        </Caption1>
       </div>
     </div>
   );

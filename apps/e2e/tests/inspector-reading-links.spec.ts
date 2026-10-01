@@ -83,10 +83,11 @@ for (const mode of ["paginated", "scroll"]) {
     try {
       await page.emulateMedia({ reducedMotion: "reduce" });
       if (mode === "scroll") {
-        await page.getByRole("button", { name: "Settings", exact: true }).click();
-        await page.getByRole("menuitem", { name: /^Reading mode/ }).click();
-        await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
-        await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+        await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+        const readingMode = page.getByRole("dialog", { name: "Ambra settings", exact: true })
+          .getByRole("combobox", { name: "Reading mode", exact: true });
+        await readingMode.selectOption("scroll");
+        await expect(readingMode).toHaveValue("scroll");
         await page.keyboard.press("Escape");
         await expect(page.getByRole("slider", { name: "Position in book" })).toHaveCount(0);
       }

@@ -64,11 +64,18 @@ test("exporting and re-importing annotations round-trips a highlight and a bookm
     await readerPage.getByRole("button", { name: "Bookmark this page" }).click();
     await readerPage.waitForTimeout(300);
 
-    await readerPage.getByRole("button", { name: "Bookmarks and highlights" }).click();
-    await readerPage.waitForTimeout(300);
+    await readerPage.getByRole("button", { name: "Annotations", exact: true }).click();
+    const panel = readerPage.getByRole("navigation", { name: "Annotations", exact: true });
+    const show = panel.getByRole("combobox", { name: "Show", exact: true });
+    await expect(show).toHaveValue("all");
+    await expect(show.locator("option")).toHaveText([
+      "All annotations (2)", "Highlights (1)", "Notes (0)", "Bookmarks (1)",
+    ]);
+    // Export remains book-wide even when Show hides one annotation kind.
+    await show.selectOption("highlights");
 
     const downloadPromise = readerPage.waitForEvent("download");
-    await readerPage.getByRole("button", { name: "Export" }).click();
+    await panel.getByRole("button", { name: "Export your bookmarks and highlights to a file", exact: true }).click();
     const download = await downloadPromise;
     const savePath = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "ambra-annotations-")), "export.json");
     await download.saveAs(savePath);
@@ -89,27 +96,31 @@ test("exporting and re-importing annotations round-trips a highlight and a bookm
     // truth for what gets recreated — isolates the text re-extraction
     // check below from the highlight/bookmark that already had its text
     // snapshotted at creation time.
-    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
-    await readerPage.getByRole("button", { name: /^Remove highlight:/ }).click();
-    await expect(readerPage.getByText(/No highlights yet/)).toBeVisible();
-    await readerPage.getByRole("tab", { name: /Bookmarks/ }).click();
-    await readerPage.getByRole("button", { name: /^Remove bookmark:/ }).click();
-    await expect(readerPage.getByText(/No bookmarks yet/)).toBeVisible();
+    await panel.getByRole("button", { name: /^Remove highlight:/ }).click();
+    await expect(panel.getByText(/No highlights yet/)).toBeVisible();
+    await show.selectOption("bookmarks");
+    await panel.getByRole("button", { name: /^Remove bookmark:/ }).click();
+    await expect(panel.getByText(/No bookmarks yet/)).toBeVisible();
 
-    const fileInput = readerPage.locator('input[type="file"][accept*="json"]');
-    await fileInput.setInputFiles(savePath);
+    const fileInput = panel.locator('input[type="file"][accept*="json"]');
+    const chooserPromise = readerPage.waitForEvent("filechooser");
+    await panel.getByRole("button", { name: "Import bookmarks and highlights from a file", exact: true }).click();
+    await (await chooserPromise).setFiles(savePath);
     await readerPage.waitForTimeout(700);
 
-    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
-    await expect(readerPage.getByText(/Highlights \(1\)/)).toBeVisible();
+    await expect(show).toHaveValue("bookmarks");
+    await expect(show.locator("option")).toHaveText([
+      "All annotations (2)", "Highlights (1)", "Notes (0)", "Bookmarks (1)",
+    ]);
+    await show.selectOption("highlights");
     // The imported highlight's preview text isn't carried in the export
     // file itself (EPUB Annotations 1.0 only serializes the CFI range,
     // not a content snapshot) — it must be re-extracted from the live
     // document on import. This is the real regression check: before the
     // fix, this re-extraction silently produced an empty string.
-    await expect(readerPage.getByText(highlightedText, { exact: false })).toBeVisible();
-    await readerPage.getByRole("tab", { name: /Bookmarks/ }).click();
-    await expect(readerPage.getByText(/Bookmarks \(1\)/)).toBeVisible();
+    await expect(panel.locator("blockquote")).toHaveText(highlightedText);
+    await show.selectOption("bookmarks");
+    await expect(panel.locator("[data-bookmark-card]")).toHaveCount(1);
 
     // Import the very same file again, on top of what it just created —
     // every entry is now an exact-CFI duplicate, so the counts must stay
@@ -121,9 +132,12 @@ test("exporting and re-importing annotations round-trips a highlight and a bookm
     await expect(
       readerPage.getByRole("status").filter({ hasText: "already have all of these annotations" }),
     ).toBeVisible();
-    await expect(readerPage.getByText(/Bookmarks \(1\)/)).toBeVisible();
-    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
-    await expect(readerPage.getByText(/Highlights \(1\)/)).toBeVisible();
+    await expect(show.locator("option")).toHaveText([
+      "All annotations (2)", "Highlights (1)", "Notes (0)", "Bookmarks (1)",
+    ]);
+    await expect(panel.locator("[data-bookmark-card]")).toHaveCount(1);
+    await show.selectOption("highlights");
+    await expect(panel.getByRole("button", { name: /^Remove highlight:/ })).toHaveCount(1);
   } finally {
     await context.close();
   }
@@ -145,7 +159,7 @@ test("importing a file that isn't a valid annotations export surfaces a weightie
     await readerPage.waitForTimeout(500);
     await readerPage.mouse.move(450, 20);
     await readerPage.waitForTimeout(150);
-    await readerPage.getByRole("button", { name: "Bookmarks and highlights" }).click();
+    await readerPage.getByRole("button", { name: "Annotations", exact: true }).click();
     await readerPage.waitForTimeout(300);
 
     const fileInput = readerPage.locator('input[type="file"][accept*="json"]');
@@ -195,11 +209,13 @@ test("importing annotations that don't resolve against this book's content shows
     await readerPage.waitForTimeout(150);
     const highlightedText = await createLeadingHighlight(readerPage, 40);
 
-    await readerPage.getByRole("button", { name: "Bookmarks and highlights" }).click();
-    await readerPage.waitForTimeout(300);
+    await readerPage.getByRole("button", { name: "Annotations", exact: true }).click();
+    const panel = readerPage.getByRole("navigation", { name: "Annotations", exact: true });
+    const show = panel.getByRole("combobox", { name: "Show", exact: true });
+    await show.selectOption("highlights");
 
     const downloadPromise = readerPage.waitForEvent("download");
-    await readerPage.getByRole("button", { name: "Export" }).click();
+    await panel.getByRole("button", { name: "Export your bookmarks and highlights to a file", exact: true }).click();
     const download = await downloadPromise;
     const savePath = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "ambra-annotations-")), "export.json");
     await download.saveAs(savePath);
@@ -217,11 +233,10 @@ test("importing annotations that don't resolve against this book's content shows
 
     // Clear the existing highlight so re-importing the good CFI is
     // unambiguous.
-    await readerPage.getByRole("tab", { name: /Highlights/ }).click();
-    await readerPage.getByRole("button", { name: /^Remove highlight:/ }).click();
-    await expect(readerPage.getByText(/No highlights yet/)).toBeVisible();
+    await panel.getByRole("button", { name: /^Remove highlight:/ }).click();
+    await expect(panel.getByText(/No highlights yet/)).toBeVisible();
 
-    const fileInput = readerPage.locator('input[type="file"][accept*="json"]');
+    const fileInput = panel.locator('input[type="file"][accept*="json"]');
 
     // First: a file with only unresolvable annotations.
     await fileInput.setInputFiles({
@@ -242,7 +257,8 @@ test("importing annotations that don't resolve against this book's content shows
     const wrongBookToast = readerPage.getByRole("alert").filter({ hasText: "different book" });
     await expect(wrongBookToast).toBeVisible();
     await expect(readerPage.getByText(/No element found/)).toHaveCount(0);
-    await expect(readerPage.getByText(/Highlights \(0\)/).or(readerPage.getByText(/No highlights yet/))).toBeVisible();
+    await expect(show.locator('option[value="highlights"]')).toHaveText("Highlights (0)");
+    await expect(panel.getByText(/No highlights yet/)).toBeVisible();
     await readerPage.getByRole("button", { name: "Dismiss" }).click();
 
     // Second: a mix of one good, one broken — the good one should
@@ -263,7 +279,8 @@ test("importing annotations that don't resolve against this book's content shows
     });
     await readerPage.waitForTimeout(700);
 
-    await expect(readerPage.getByText(highlightedText, { exact: false })).toBeVisible();
+    await expect(panel.locator("blockquote")).toHaveText(highlightedText);
+    await expect(show.locator('option[value="highlights"]')).toHaveText("Highlights (1)");
     await expect(readerPage.getByRole("alert")).toHaveCount(0);
   } finally {
     await context.close();

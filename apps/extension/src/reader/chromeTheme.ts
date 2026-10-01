@@ -2,7 +2,6 @@ import {
   DEFAULT_INTERFACE_THEME, getInterfaceTheme,
   type BrowserAppearance, type InterfaceThemeChoice,
 } from "@ambra/shell/theme";
-import { CHROME_TOOLBAR_HEIGHT } from "../components/ChromeToolbarStyles.js";
 
 /** Compatibility aliases for existing chrome styles; provider variables also reach portals. */
 export const CHROME_BORDER = "var(--ambraBorder, #d8d1c6)";
@@ -14,7 +13,7 @@ export const CHROME_BACKDROP_FILTER = "blur(12px) saturate(1.1)";
 /** @deprecated Migrate chrome to palette.bookmark, page overlays to getPageBookmarkColor.
  * Retained while publication-adjacent consumers migrate with independent page contrast. */
 export const BOOKMARK_COLOR = "#0f6cbd";
-export const SCRUBBER_HEIGHT = CHROME_TOOLBAR_HEIGHT;
+export const SCRUBBER_HEIGHT = 72;
 export type ChromeThemeChoice = InterfaceThemeChoice;
 export const DEFAULT_CHROME_THEME: ChromeThemeChoice = DEFAULT_INTERFACE_THEME;
 

@@ -11,6 +11,10 @@ import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderC
 import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
+vi.mock("./CenteredDialog.js", () => ({
+  CenteredDialog: ({ open, title, children }: { open: boolean; title: string; children: ReactNode }) =>
+    open ? <section role="dialog"><h2>{title}</h2>{children}</section> : null,
+}));
 vi.mock("../shortcuts/ShortcutPreferencesContext.js", () => ({ useShortcutPreferences: vi.fn() }));
 vi.mock("../i18n/LocaleContext.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../i18n/LocaleContext.js")>();
@@ -107,6 +111,8 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     expect(guide?.textContent).toBe(t("about.userGuide"));
     expect(guide?.target).toBe("_blank");
     expect(guide?.rel).toBe("noreferrer");
+    expect(container.querySelector('a[href="https://ambraepub.org/en/privacy/"]')).toBeNull();
+    await click(t("about.aboutAmbra"));
     expect(container.querySelector('a[href="https://ambraepub.org/en/privacy/"]')?.textContent).toBe(t("about.privacy"));
     expect(container.querySelector('a[href="https://github.com/BCWalters/ambra"]')?.textContent).toBe(t("about.sourceCode"));
     const standards = button(t("about.standards"));

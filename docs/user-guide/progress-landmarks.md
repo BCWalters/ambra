@@ -1,6 +1,6 @@
 # Progress landmarks
 
-**Settings > Progress landmarks** has two options:
+**Ambra settings > Reading preferences > Progress landmarks** has two options:
 
 - **Show** (default): chapter bands and available reading landmarks.
 - **Hide**: a plain progress bar without chapter bands or reading landmarks.
@@ -22,11 +22,17 @@ lengths. Bands follow the thumb during seeking and mirror for right-to-left book
 - Declared **back matter** (`backmatter`) has the same darker fill, without a
   separate end marker. It is an inferred end of reading, not a declaration of
   where to stop reading.
-- Blue bookmark ribbons remain in their own lane below the track, even when
-  progress landmarks are hidden.
+- Theme-colored bookmark flags remain in their own clickable lane below the
+  track, even when progress landmarks are hidden. A single flag goes directly
+  to its saved location. A count-marked flag opens a chooser for nearby
+  bookmarks; a large group also offers **Show all bookmarks**.
 
 The slider's accessible description reports available reading boundaries.
-While pagination finishes, the centered status reads "Mapping your book…".
+The actual-position readout stays separate from the destination preview near
+the thumb. When ready, it shows the book-wide page count and percentage;
+remaining pages in the current reading-order section may be available sooner.
+While pagination finishes, Ambra can show "Mapping your book…" after you hide
+and reveal the controls, rather than showing a guessed page count.
 
 ## When less is shown
 

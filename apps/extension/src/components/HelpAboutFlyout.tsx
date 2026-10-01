@@ -3,7 +3,7 @@ import type { FC } from "react";
 import { Body1, Button, Caption1, Link, Subtitle1 } from "@fluentui/react-components";
 import { BookOpenRegular, CopyRegular, KeyboardRegular, MailRegular } from "@fluentui/react-icons";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
-import { ModalFlyout } from "./ModalFlyout.js";
+import { CenteredDialog } from "./CenteredDialog.js";
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
 import { ariaShortcut, getCommandBindings } from "../shortcuts/ReaderCommands.js";
@@ -86,38 +86,22 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
   const version = chrome.runtime.getManifest().version;
 
   return (
-    <ModalFlyout
+    <CenteredDialog
       open={open}
       title={t("about.title")}
       onRequestClose={onRequestClose}
       onOutsideClick={onOutsideClick}
-      backgroundSolid={backgroundSolid}
       onAfterClose={onAfterClose}
       onAfterOpen={() => {
         if (focusShortcutsOnOpen) shortcutsLinkRef.current?.focus();
       }}
     >
       <div style={{ flex: 1, overflowY: "auto", padding: 20, overflowWrap: "anywhere" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-          <AmbraMarkIcon size={48} />
-          <div>
-            <Subtitle1 as="p" block style={{ margin: 0 }}>
-              Ambra
-            </Subtitle1>
-            <Caption1 as="p" block style={{ margin: "2px 0 0", opacity: 0.75 }}>
-              {t("about.version", { version })}
-            </Caption1>
-          </div>
-        </div>
-
-        <Body1 as="p" block style={{ margin: "0 0 8px" }}>
-          {t("about.description")}
-        </Body1>
-        <Caption1 as="p" block style={{ margin: "0 0 24px", opacity: 0.75 }}>
-          {t("about.createdBy")} <span>Ben Walters</span>
-        </Caption1>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <Link href={USER_GUIDE_URL} target="_blank" rel="noreferrer"
+            style={{ color: accentForeground, alignSelf: "flex-start", marginLeft: 12, minHeight: 40, display: "inline-flex", alignItems: "center" }}>
+            {t("about.userGuide")}
+          </Link>
           {onOpenReadingTips && (
             <Button appearance="subtle" icon={<BookOpenRegular />} onClick={onOpenReadingTips}
               style={{ justifyContent: "flex-start", minHeight: 40, textAlign: "left", color: accentForeground }}>
@@ -134,10 +118,6 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
             >
               {t("shortcuts.showKeyboardShortcuts")}
             </Button>
-          <Link href={USER_GUIDE_URL} target="_blank" rel="noreferrer"
-            style={{ color: accentForeground, alignSelf: "flex-start", marginLeft: 12, minHeight: 40, display: "inline-flex", alignItems: "center" }}>
-            {t("about.userGuide")}
-          </Link>
         </div>
 
         <div style={{ marginTop: 20 }}>
@@ -147,16 +127,13 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
             href={`mailto:${REPORT_EMAIL}`}
             target="_blank"
             rel="noreferrer"
-            appearance="primary"
+            appearance="secondary"
             icon={<MailRegular />}
             style={{
               width: "100%",
               minHeight: 44,
               padding: "10px 12px",
               textAlign: "left",
-              background: accentForeground,
-              borderColor: accentForeground,
-              color: "#fff",
             }}
           >
             {t("about.feedback")}
@@ -179,8 +156,7 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
             onClick={() => void copyDiagnostics()}
             style={{
               background: backgroundSolid,
-              borderColor: "rgba(15, 23, 42, 0.22)",
-              boxShadow: "0 1px 3px rgba(15, 23, 42, 0.16)",
+              borderColor: "var(--colorNeutralStroke1)",
               color: "inherit",
             }}
           >
@@ -198,6 +174,17 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
         </PaneCard>
         </div>
 
+        <div style={{ marginTop: 20 }}>
+        <PaneDisclosure title={t("about.aboutAmbra")}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <AmbraMarkIcon size={40} />
+            <div>
+              <Subtitle1 as="p" block style={{ margin: 0 }}>Ambra</Subtitle1>
+              <Caption1 as="p" block style={{ margin: 0 }}>{t("about.version", { version })}</Caption1>
+            </div>
+          </div>
+          <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("about.description")}</Body1>
+          <Caption1 as="p" block style={{ margin: "0 0 16px" }}>{t("about.createdBy")} <span>Ben Walters</span></Caption1>
         <div style={{ margin: "20px 0" }}>
           <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("about.localLibrary")}</Body1>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
@@ -216,7 +203,9 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
             ))}
           </div>
         </PaneDisclosure>
+        </PaneDisclosure>
+        </div>
       </div>
-    </ModalFlyout>
+    </CenteredDialog>
   );
 };

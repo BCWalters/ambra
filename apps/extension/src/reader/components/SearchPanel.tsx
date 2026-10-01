@@ -7,8 +7,9 @@ import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import type { SearchResultItem } from "../SearchCoordinator.js";
-import { useTranslation } from "../../i18n/LocaleContext.js";
+import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
+import { MIN_QUERY_LENGTH } from "@ambra/engine";
 
 /** Debounces the search box's `onChange` before actually calling
  * `ReaderController.search` (see `TocPanel`'s former identical
@@ -37,6 +38,7 @@ export interface SearchPanelProps {
    * translucent overlay instead, auto-dismissing on selection, an
    * outside click, or Escape. */
   pinned: boolean;
+  canPin?: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
   onOutsideClick?: () => void;
@@ -78,6 +80,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   onSelect,
   open,
   pinned,
+  canPin = true,
   onTogglePin,
   onRequestClose,
   onOutsideClick,
@@ -90,6 +93,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = usePrefersReducedMotion();
   const t = useTranslation();
+  const { locale } = useLocale();
 
   useEffect(() => {
     const timeout = setTimeout(() => onSearch(input), SEARCH_DEBOUNCE_MS);
@@ -136,6 +140,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
       )}
 
       <nav
+        data-ambra-reference-panel="search"
         data-ambra-search-panel
         ref={navRef}
         tabIndex={-1}
@@ -152,9 +157,12 @@ export const SearchPanel: FC<SearchPanelProps> = ({
           // mirroring `BookDetailsPanel` rather than `TocPanel`/
           // `AnnotationsPanel` on the left.
           right: 0,
-          bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
+          bottom: pinned ? 0
+            : `calc(${scrubberVisible ? SCRUBBER_HEIGHT : 8}px + var(--ambra-narration-height, 0px))`,
           zIndex: 8,
           width: 300,
+          maxWidth: "100%",
+          boxSizing: "border-box",
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
@@ -181,11 +189,14 @@ export const SearchPanel: FC<SearchPanelProps> = ({
             borderBottom: `1px solid ${CHROME_BORDER}`,
           }}
         >
-          <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
+          <Body1 as="h2" style={{ flex: 1, fontWeight: 600, margin: 0 }}>
             {t("search.title")}
           </Body1>
-          <Tooltip content={pinned ? t("search.unpinSearchPanel") : t("search.pinSearchPanel")} relationship="label">
+          <Tooltip content={!canPin ? t("reader.pinUnavailable") : pinned ? t("search.unpinSearchPanel") : t("search.pinSearchPanel")} relationship={canPin ? "label" : "description"}>
             <Button
+              aria-label={pinned ? t("search.unpinSearchPanel") : t("search.pinSearchPanel")}
+              aria-description={!canPin ? t("reader.pinUnavailable") : undefined}
+              disabledFocusable={!canPin}
               appearance="subtle"
               size="small"
               icon={pinned ? <PinOffRegular /> : <PinRegular />}
@@ -199,7 +210,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
           )}
         </div>
 
-        <div style={{ padding: "8px 10px 0" }}>
+        <div style={{ padding: "10px", borderBottom: `1px solid ${CHROME_BORDER}` }}>
           <SearchBox
             input={{ ref: inputRef }}
             value={input}
@@ -209,15 +220,16 @@ export const SearchPanel: FC<SearchPanelProps> = ({
             style={{ width: "100%" }}
           />
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-          {input.trim().length > 0 && input.trim().length < 3 && (
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 6px" }}>
+          {input.trim().length < MIN_QUERY_LENGTH && (
             <Caption1 as="p" style={{ padding: "6px 10px", color: "var(--colorNeutralForeground2, #333)", margin: 0 }}>
               {t("search.minCharacters")}
             </Caption1>
           )}
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {results.map((result, index) => (
+            <li key={`${result.spineIndex}-${index}`} style={{ borderBottom: `1px solid ${CHROME_BORDER}` }}>
             <button
-              key={`${result.spineIndex}-${index}`}
               type="button"
               onClick={() => onSelect(result.cfi)}
               style={{
@@ -228,7 +240,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
                 borderRadius: 6,
                 color: "var(--colorNeutralForeground2, #333)",
                 cursor: "pointer",
-                padding: "7px 10px",
+                padding: "12px 10px",
                 textAlign: "left",
                 font: "inherit",
                 lineHeight: 1.35,
@@ -241,24 +253,25 @@ export const SearchPanel: FC<SearchPanelProps> = ({
               }}
             >
               <Caption1 as="p" block style={{
-                margin: "0 0 2px", color: "var(--colorNeutralForeground2, #333)",
+                margin: "0 0 6px", color: "var(--colorNeutralForeground2, #333)", fontWeight: 600,
                 minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere",
               }}>
                 {result.chapterLabel}
               </Caption1>
-              {/* Trims `before` down to a short prefix right at render
-                  time (see `TocPanel`'s former identical comment) so the
-                  highlighted match always stays within the visible,
-                  single-line-truncated width. */}
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-                …{result.before.slice(-18)}
+              <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", display: "block", lineHeight: 1.6 }}>
+                …{result.before}
                 <strong style={{ color: chromeTheme.accentForeground }}>{result.match}</strong>
                 {result.after}…
               </span>
             </button>
+            </li>
           ))}
+          </ul>
           <div role="status" aria-atomic="true">
+            {results.length > 0 && <Caption1 as="p" style={{ padding: "6px 10px", margin: 0 }}>
+              {t("search.resultsCount", { count: new Intl.NumberFormat(locale).format(results.length) })}
+            </Caption1>}
             {isSearching && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px" }}>
                 <Spinner size="tiny" role="presentation" aria-hidden="true" />
@@ -267,7 +280,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
                 </Caption1>
               </div>
             )}
-            {!isSearching && input.trim() === query.trim() && input.trim().length >= 3 && results.length === 0 && (
+            {!isSearching && input.trim() === query.trim() && input.trim().length >= MIN_QUERY_LENGTH && results.length === 0 && (
               <Caption1 as="p" style={{ padding: "6px 10px", color: "var(--colorNeutralForeground2, #333)", margin: 0 }}>
                 {t("search.noMatchesFound")}
               </Caption1>

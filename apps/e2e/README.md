@@ -154,9 +154,9 @@ before scheduling its surface removal, so an animation frame alone is not an
 unmount barrier. These cases verify that the frame actually precedes the commit,
 then retain the same destination, accessibility, and single-restoration assertions
 as the normal ordering. Late exits must still defer to a newer modal or menu.
-A separate Settings regression defers the Go to focus-return frame until the
-menu owns keyboard focus, then verifies that releasing the frame neither closes
-the menu nor prevents opening Help & About. Diagnostic close events describe
+A separate Ambra settings regression defers the Go to focus-return frame until
+the settings dialog owns keyboard focus, then verifies that releasing the frame
+neither closes the dialog nor prevents opening Help & About. Diagnostic close events describe
 requested state, not completion of exit motion.
 
 ## Image viewer transparency (#226)
@@ -168,11 +168,11 @@ translucent, and the original inline image keeps its transparency. Synthetic
 illustrations and per-theme screenshots keep this regression independent of
 external books. CI runs these cases against the packaged production build.
 
-The localized native-wheel regression closes both the language submenu and
-Settings after selecting Deutsch, and verifies no menus remain before sending
-wheel input to the image center. An open submenu can intercept that native
-input even though the viewer is still visible; that is a test precondition,
-not evidence of broken image zoom or a reason to weaken the wheel assertions.
+The localized native-wheel regression selects Deutsch in the **Language** native
+select inside **Ambra settings**, closes that dialog, and verifies it is hidden
+before sending wheel input to the image center. An open settings dialog can intercept that native
+input; closing it is a test precondition, not evidence of broken image zoom or
+a reason to weaken the wheel assertions.
 
 ## Fragment-based tables of contents (#202)
 
@@ -199,16 +199,26 @@ AMBRA_E2E_HEADLESS=1 AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/build \
 
 When checking `settings-ownership.spec.ts`, `reader-preferences.spec.ts`,
 `settings-focus.spec.ts`, and `page-theme.spec.ts`, treat **Page theme** as a
-global setting, not a book override. In **Settings**, the
-**Page theme** submenu contains **White**, **Sepia**, and **Dark**
-`menuitemradio` rows with colored previews. **Brightness** stays directly
-accessible on the top-level menu. The appearance section is ordered
-**Reader theme**, **Page theme**, then **Brightness**, before the divider.
-Assert selection with `aria-checked`. Theme changes apply across books;
-old per-book themes must not override them. Legacy `defaultPageTheme` initializes
+global setting, not a book override. **Ambra settings** is a shared, named dialog
+in the Library, popup, and reader. Its Fluent `Select` controls expose native
+`combobox`/`option` semantics: assert the select's value, not `aria-checked` on
+retired menu rows. **Page theme** contains **White**, **Sepia**, and **Dark**.
+Theme changes apply across books; old per-book themes must not override them.
+Legacy `defaultPageTheme` initializes
 the global theme, with white as the fallback.
 
-The book's **Page** menu instead has **Always show one page**, saved per book
+In the reader, **Reading preferences** starts expanded and comes first:
+**Page theme**, **Brightness**, **Reading mode**, **Page turn**, and
+**Progress landmarks**, followed by **Interface theme** and **Language**.
+The Library puts Interface theme and Language first and initially collapses
+Reading preferences. Interface theme retains Ambra, Silver, Green, Blue, and
+Purple; browser appearance supplies light/dark independently of Page theme.
+Page turn is disabled while scrolling, and fixed-layout books hide Reading mode.
+
+**Book options** remains a separate per-book menu, opened by the button whose
+accessible name is **Text and page options**. Its **Text** and **Page** cascades
+retain menu keyboard behavior, font-choice `menuitemradio` rows, sliders, and
+the one-page switch. **Page** has **Always show one page**, saved per book
 and off by default, alongside the **Page width** slider. Check that enabling it centers a single reflowable page
 even at spread-width viewports, including in reflowable sections of mixed-layout
 books. Fixed-layout pages and scrolling must remain unchanged. Scrolling
@@ -225,34 +235,109 @@ Focused browser coverage:
   one-page option enabled, for both LTR and RTL books.
 - `settings-lifecycle.spec.ts`: an external global theme change during a held
   spread load, plus a queued one-page option change.
-- `reader-preferences.spec.ts`: compact top-level Settings height, consistent
-  flyout ordering, preview colors, full-menu/preview screenshots in the reader and Library, and the
-  **Page theme**, **Reading mode**, **Page turn**, and **Reader theme** submenus. The parent rows show the current
-  value; Page turn is disabled while scrolling. Animation/theme choices inside
-  the submenus remain `menuitemradio` controls with `aria-checked`.
-  Computed-font checks preserve the 14px semibold dark title and 14px regular
-  Brightness label, choices, and submenu rows.
-- `settings-focus.spec.ts`: **Reading mode** choices (**Paginated**
-  and **Scroll**) and Page theme choices use menu arrow navigation for focus and
-  Enter/Space for selection inside their flyouts. Reading mode shows inline keyboard shortcuts.
-  Tab exits the menu; Escape closes one menu level and restores focus. Fixed-layout books hide
-  Reading mode; Language remains a submenu and Help keeps its existing dialog.
-- `shell-reflow-accessibility.spec.ts`: theme previews, submenus, and the
-  one-page switch at 320px and actual 400% browser zoom, with menu screenshots.
-  Both reader and Library exercise the single-row Brightness label, slider,
-  and reset in all nine locales at 320px, checking geometry and real keyboard input.
-  At 1400px, both top-level Settings and Book options popovers open below their
+- `reader-preferences.spec.ts`: shared settings task order, native option labels
+  and values, viewport bounds, reader/Library screenshots, persistence, and
+  disabled animation while scrolling. Separate Book options checks retain
+  cascade navigation, checked font choices, slider resets, and the one-page switch.
+- `settings-focus.spec.ts`: native keyboard choices commit without dismissing
+  Ambra settings; Tab moves between controls, and Escape dismisses the dialog
+  and restores its trigger. Per-book slider cases also retain control identity,
+  focus, and the reading position during reflow.
+- `shell-reflow-accessibility.spec.ts`: native settings, Book options cascades,
+  and the one-page switch at 320px and actual 400% browser zoom.
+  Both reader and Library exercise the Brightness label above its slider
+  and reset in all nine locales at 320px, including focus after reset.
+  At 1400px, both Ambra settings and Book options popovers open below their
   triggers with matching right edges; narrow viewports retain collision fallback.
-  Both titles share the same 14px/600 dark text and 20px line-height.
+  Headings use semantic foreground colors: Ambra settings is 16px/700 and
+  Book options is 14px/600, both with 20px line-height.
   Anchor screenshots include the trigger and surrounding reader, not just the menu.
 - `shell-accessibility-audit.spec.ts`: Chromium's actual accessibility tree
-  exposes named Page theme/Reading mode flyout menus with checked
-  menu-row names, selection, and focus. This checks browser semantics, not
-  VoiceOver speech or a complete ARIA conformance audit.
-  Library toolbar tooltips are hidden while Settings is open so they cannot
+  exposes the named Ambra settings dialog and Page theme/Reading mode
+  comboboxes with their selected values and focus. It also covers the
+  Annotations **Show** native select and keyboard-reachable empty states.
+  This checks browser semantics, not VoiceOver speech or a complete ARIA
+  conformance audit.
+  Library toolbar tooltips are hidden while Ambra settings is open so they cannot
   consume the first Escape from Language. Pointer and pre-visible-tooltip
-  cases check one-level dismissal, restored focus, and normal tooltip behavior
-  after the menu closes.
+  cases check dismissal, restored focus, and normal tooltip behavior
+  after the dialog closes.
+
+With an existing frozen build, run without rebuilding or sharing another run's
+output directory:
+
+```sh
+AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/frozen-build AMBRA_E2E_HEADLESS=1 \
+  pnpm --filter @ambra/e2e exec playwright test \
+  settings-ownership.spec.ts reader-preferences.spec.ts settings-focus.spec.ts \
+  page-theme.spec.ts shell-accessibility-audit.spec.ts shell-reflow-accessibility.spec.ts \
+  --workers=1 --max-failures=5 --output=/absolute/path/to/unique-settings-results
+```
+
+### Modal trigger locators and native keyboard input
+
+A modal focus trap can mark its background trigger `aria-hidden` while leaving
+it visually present. Playwright role locators re-evaluate on each use: a nested
+scope based on the Library button can stop resolving as soon as Ambra settings
+opens. For geometry or focus-return references, use `includeHidden: true` on
+both the scope's role locator and the trigger. Still explicitly assert visibility
+before activation; this option is not permission to activate hidden controls.
+
+```ts
+const toolbar = page.getByRole("button", {
+  name: "Library", exact: true, includeHidden: true,
+}).locator("..");
+const trigger = toolbar.getByRole("button", {
+  name: "Ambra settings", exact: true, includeHidden: true,
+});
+await expect(trigger).toBeVisible();
+await trigger.focus();
+await trigger.press("Enter");
+const dialog = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+await expect(dialog).toBeVisible();
+// The trigger still resolves for boundingBox() while the dialog traps focus.
+await page.keyboard.press("Escape");
+await expect(dialog).toBeHidden();
+await expect(trigger).toBeFocused();
+```
+
+Do not relax popup alignment thresholds or remove toolbar motion to compensate
+for a locator disappearing mid-poll: the last sampled offset may simply be an
+in-animation value. Retain the visibility, viewport, and settled-geometry checks.
+
+On macOS headless Chromium, arrow keys may not drive the operating system's
+native select popup, even in plain HTML. Native type-ahead (for example `s` for
+Sepia or `e` for English) exercises real keyboard selection without replacing it
+with `selectOption`. Assert the resulting value and retained focus. When testing
+successive prefixes, Tab away and return to reset the native type-ahead buffer.
+
+## Reader Library and automatic read-along
+
+`reader-library.spec.ts` covers the lazy left **Library** overlay at narrow and
+desktop widths, retained panel state after closing, current-book return without
+navigation, and shared reference-panel ownership when opening Contents. Selecting
+another book replaces the same reader tab only after a successful position
+checkpoint. An injected checkpoint failure must remain visible and leave the
+current book and Library panel intact; successful activation also preserves
+browser Back navigation. Do not substitute the retired toolbar behavior of
+navigating directly to the full-tab Library.
+
+The retained filename `narration-discovery.spec.ts` now covers **Read along**
+appearing automatically, expanded and initially paused, for narrated books.
+There is no separate **Listen** toolbar entry or discovery notice. Collapse is
+ephemeral to that reader opening and retains playback, compact pause/resume, and
+focus; reopening starts expanded without autoplay. The suite also checks
+**Listen from this page** / **Listen from selection**, localized narrow controls,
+and absence of narration UI for plain books. `media-overlay-playback.spec.ts`
+retains real-audio, clip-boundary, speed, browsing/return, fixed-layout, loading,
+and explicit error coverage.
+
+```sh
+AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/frozen-build AMBRA_E2E_HEADLESS=1 \
+  pnpm --filter @ambra/e2e exec playwright test \
+  reader-library.spec.ts narration-discovery.spec.ts media-overlay-playback.spec.ts \
+  --workers=1 --max-failures=5 --output=/absolute/path/to/unique-library-read-along-results
+```
 
 ## Reflowable animation handoff (#208)
 
@@ -575,7 +660,7 @@ Human acceptance still needs:
 - Use TOC, Search, Go To, and Inspector's Show in book; verify spoken destination
   and return-to-reading behavior, including Escape without navigation.
 - Create, edit, and revisit a note; check draft/error announcements and focus.
-- Navigate Library, Settings, and Help without a pointer; check control names.
+- Navigate Library, Ambra settings, Book options, and Help without a pointer; check control names.
 - Start/pause recorded narration and check for competing or excessive announcements.
 
 ## Fixtures
@@ -704,6 +789,13 @@ Purple screenshots at both widths. Scrolling shows "Page unavailable" rather
 than reusing a stale paginated number. Unit tests cover pending measurements and
 invalid positions without inventing page numbers.
 
+Bookmarks live in the right **Annotations** panel, not a separate toolbar panel.
+Its **Show** native select offers **All annotations**, **Highlights**, **Notes**,
+and **Bookmarks**, with counts. Use `getByRole("combobox", { name: "Show" })`
+and assert its value (`all`, `highlights`, `notes`, or `bookmarks`), not retired
+filter tabs or chips. The panel shares single-reference-panel ownership with
+Contents, Search, and Library.
+
 The CI reader matrix includes this spec plus annotation mutation, import/export
 and embedded-annotation regression suites. Its `bookmark-panel-review-<sha>`
 artifact retains the six review screenshots. For a targeted run, point
@@ -734,18 +826,22 @@ bookmarks, resize and resume. Each fixed-layout spine item contributes one
 page without loading a measurement document. Mixed books still measure their
 reflowable chapters; a saved scrolling preference does not hide the FXL scrubber.
 Native moves into an already-visible companion update the scrubber immediately.
-`scrubber-bookmarks.spec.ts` also checks the bookmark flag lane: 14 × 15px flags
-remain at their exact fractions above (never underneath) the thumb, including
-current/adjacent pages, duplicate clusters, long-book last pages and 320px RTL.
+`scrubber-bookmarks.spec.ts` also checks the separate interactive bookmark lane
+above the wide position slider, including current/adjacent pages, duplicate
+clusters, long-book last pages and 320px RTL. Single markers navigate directly;
+nearby markers group into a keyboard-accessible chooser that retains distinct
+saved positions, including multiple positions on one page. Dense groups offer
+**Show all bookmarks**, opening Annotations with **Show: Bookmarks** and handing
+focus to that filter.
 The preview and slider value say "Bookmarked" only for an exact measured page
 match, not for nearby flags; coarse or invalidated counts cannot claim a match.
-Markers remain decorative, with no extra click targets or focus stops. The
-suite captures desktop/narrow/forced-color screenshots and checks popup bounds,
-reduced motion, bookmark counts and unchanged seek hit testing.
-The taller lane stays below notices and panels in the stacking order, so it
-cannot intercept narration discovery actions at 320px or 400% browser zoom.
+The suite captures desktop/narrow/forced-color screenshots and checks chooser
+focus return, popup bounds, reduced motion, bookmark counts, and separate
+marker/slider hit testing. The lane does not intercept persistent read-along
+controls at 320px or 400% browser zoom.
 Panel clearance follows the shared 72px scrubber height. Bookmark status text
-uses the neutral foreground for text contrast; only its icon uses bookmark blue.
+uses the neutral foreground for text contrast; its icon uses the selected
+interface theme's semantic bookmark color.
 Mixed-book seeks into scrolling chapters restore the measured page's CFI rather
 than dropping the destination and opening the chapter's beginning.
 Typography changes retain that exact scrolling position before mutating styles.

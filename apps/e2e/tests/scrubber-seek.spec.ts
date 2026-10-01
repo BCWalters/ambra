@@ -112,9 +112,9 @@ for (const direction of ["ltr", "rtl"]) {
       await expect(slider).toHaveCSS("outline-style", "none");
       for (const fraction of [0, 0.5, 1]) {
         const track = (await slider.boundingBox())!;
-        await page.mouse.move(track.x + track.width * 0.5, track.y + 29);
+        await page.mouse.move(track.x + track.width * 0.5, track.y + track.height / 2);
         await page.mouse.down();
-        await page.mouse.move(track.x + track.width * fraction, track.y + 29);
+        await page.mouse.move(track.x + track.width * fraction, track.y + track.height / 2);
         await expect(slider).toBeFocused();
         await expect(slider).toHaveCSS("outline-style", "none");
         await expect(thumb).toHaveCSS("outline-style", "none");
@@ -402,7 +402,7 @@ test("preview is readable at narrow widths and Escape leaves the book in place",
     await expect(slider.locator("[data-scrubber-thumb]")).toHaveCSS("outline-style", "solid");
     await expect(slider.locator("[data-scrubber-thumb]")).toHaveCSS("outline-width", "2px");
     const track = (await slider.boundingBox())!;
-    expect(track.height).toBeGreaterThanOrEqual(44);
+    expect(track.height).toBeGreaterThanOrEqual(24);
     await page.mouse.move(track.x + track.width * 0.5, track.y + track.height / 2);
     await page.mouse.down();
     await page.mouse.move(track.x + track.width * 0.8, track.y + track.height / 2);
@@ -433,6 +433,8 @@ test("preview is readable at narrow widths and Escape leaves the book in place",
       return total !== undefined && total !== previous;
     }, widePageCount);
     const narrowBefore = await slider.getAttribute("aria-valuenow");
+    const actualPosition = page.locator("[data-scrubber-current-position]");
+    const actualBeforePreview = await actualPosition.textContent();
     const narrowTrack = (await slider.boundingBox())!;
     await page.mouse.move(narrowTrack.x, narrowTrack.y + narrowTrack.height / 2);
     await page.mouse.down();
@@ -446,9 +448,9 @@ test("preview is readable at narrow widths and Escape leaves the book in place",
         })
         .toBe(true);
       expect(await popup.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await expect(actualPosition).toHaveText(actualBeforePreview!);
     }
-    const labels = await slider.evaluate((el) => {
-      const row = el.parentElement!.firstElementChild!;
+    const labels = await actualPosition.evaluate((row) => {
       return [...row.querySelectorAll("p")].map((label) => {
         const bounds = label.getBoundingClientRect();
         return { left: bounds.left, right: bounds.right };

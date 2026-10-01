@@ -148,10 +148,12 @@ test("native Back/Forward preserves A → jump B → ordinary C, branching and r
     await at(page, a.cfi);
     await page.mouse.move(350, 2);
     await page.getByRole("button", { name: "Library", exact: true }).click();
-    await expect(page).toHaveURL(/library\/index\.html\?view=tab/);
-    expect(await page.evaluate(() => history.scrollRestoration)).toBe("auto");
-    await page.goBack();
-    await ready(page);
+    const libraryPanel = page.locator("[data-ambra-library-panel]");
+    await expect(libraryPanel).toBeVisible();
+    expect(page.url()).toContain("/reader/index.html");
+    expect(await page.evaluate(() => history.scrollRestoration)).toBe("manual");
+    await libraryPanel.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(libraryPanel).toBeHidden();
     await at(page, a.cfi);
   } finally {
     await context.close();
@@ -179,8 +181,8 @@ for (const mode of ["paginated", "scroll"]) {
       const origin = await location(page);
       const openSaved = async () => {
         await page.mouse.move(350, 2);
-        await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
-        const panel = page.getByRole("navigation", { name: "Bookmarks and highlights" });
+        await page.getByRole("button", { name: "Annotations", exact: true }).click();
+        const panel = page.getByRole("navigation", { name: "Annotations" });
         await panel.locator("[data-bookmark-link]").click();
         await expect(panel).toBeHidden();
         await ready(page);
@@ -258,7 +260,7 @@ test("legacy parent-offset bookmarks remain unchanged across history restoration
       return cfi;
     });
     await page.mouse.move(350, 2);
-    await page.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
     await page.locator("[data-bookmark-link]").click();
     await ready(page);
     await at(page, legacy);
@@ -594,7 +596,7 @@ test("browser traversal keeps narration playing without resuming follow or stale
   try {
     await ready(page);
     await page.mouse.move(350, 2);
-    await page.getByRole("button", { name: "Listen", exact: true }).click();
+    await page.getByRole("button", { name: "Play narration", exact: true }).click();
     const audio = page.locator("audio[data-ambra-narration-audio]");
     await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
     await ready(page);
@@ -637,16 +639,16 @@ for (const direction of ["ltr", "rtl"]) {
       await ready(page);
       const a = await location(page);
       const slider = page.getByRole("slider", { name: "Position in book" });
-      await expect(slider).toHaveAttribute("aria-valuetext", "Page 1 of 5");
+      await expect(slider).toHaveAttribute("aria-valuetext", "Page 1 of 5 · 20%");
       await slider.focus();
       await slider.press(direction === "rtl" ? "ArrowLeft" : "ArrowRight");
-      await expect(slider).toHaveAttribute("aria-valuetext", "Page 2 of 5");
+      await expect(slider).toHaveAttribute("aria-valuetext", "Page 2 of 5 · 40%");
       await ready(page);
       const b = await location(page);
       expect(b.spine).toBe(1);
       await slider.focus();
       await slider.press(direction === "rtl" ? "ArrowLeft" : "ArrowRight");
-      await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5");
+      await expect(slider).toHaveAttribute("aria-valuetext", "Page 3 of 5 · 60%");
       await ready(page);
       const c = await location(page);
       expect(c.spine).toBe(2);

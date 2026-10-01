@@ -87,6 +87,9 @@ export interface StringCatalog {
   "readingBoundary.nextPage": string;
   "readingBoundary.endOfBook": string;
   "narration.listen": string;
+  "narration.readAlong": string;
+  "narration.collapse": string;
+  "narration.expand": string;
   "narration.discoveryTitle": string;
   "narration.discoveryMessage": string;
   "narration.notNow": string;
@@ -116,6 +119,17 @@ export interface StringCatalog {
   "library.removeBook": string;
   "library.importEpub": string;
   "library.sort": string;
+  "library.sortLabel": string;
+  "library.continueReading": string;
+  "library.removeTitle": string;
+  "library.removeConfirm": string;
+  "library.removeConsequences": string;
+  "library.removeAction": string;
+  "library.currentBookRemoval": string;
+  "settings.ambraTitle": string;
+  "settings.interfaceTheme": string;
+  "settings.readingPreferences": string;
+  "about.aboutAmbra": string;
   "library.sortBy": string;
   "library.expand": string;
   "library.loading": string;
@@ -278,6 +292,11 @@ export interface StringCatalog {
   "search.unpinSearchPanel": string;
   "search.closeSearchPanel": string;
   "scrubber.positionInBook": string;
+  "scrubber.chooseBookmark": string;
+  "scrubber.bookmarkRange": string;
+  "scrubber.showAllBookmarks": string;
+  "scrubber.goToBookmark": string;
+  "scrubber.bookmarkPosition": string;
   "scrubber.markerChapters": string;
   "scrubber.markerSections": string;
   "scrubber.markerLandmarksOnly": string;
@@ -311,6 +330,16 @@ export interface StringCatalog {
    * details: No element found at CFI step 2 under <p>." */
   "error.detailsPrefix": string;
   "annotations.panelAriaLabel": string;
+  "annotations.show": string;
+  "annotations.allAnnotations": string;
+  "annotations.notesFilter": string;
+  "annotations.yourNote": string;
+  "annotations.highlightLabel": string;
+  "annotations.goToPassage": string;
+  "annotations.noAnnotationsYet": string;
+  "annotations.noNotesYet": string;
+  "toc.pageNumber": string;
+  "search.resultsCount": string;
   "annotations.pinPanel": string;
   "annotations.unpinPanel": string;
   "annotations.closePanel": string;
@@ -374,6 +403,7 @@ export interface StringCatalog {
   "announcements.annotationsImported": string;
   "reader.loading": string;
   "reader.openingBook": string;
+  "reader.pinUnavailable": string;
   "reader.navigating": string;
   "reader.bookContentAriaLabel": string;
   "inspector.specialFileContainer": string;
@@ -540,6 +570,9 @@ export const en: StringCatalog = {
   "readingBoundary.nextPage": "Next page",
   "readingBoundary.endOfBook": "End of book",
   "narration.listen": "Listen",
+  "narration.readAlong": "Read along",
+  "narration.collapse": "Collapse read-along controls",
+  "narration.expand": "Expand read-along controls",
   "narration.discoveryTitle": "This book has narration",
   "narration.discoveryMessage": "Listen to recorded audio while the text is highlighted. You can start anytime with the headphones button.",
   "narration.notNow": "Not now",
@@ -569,6 +602,17 @@ export const en: StringCatalog = {
   "library.removeBook": "Remove {title} from library",
   "library.importEpub": "Import EPUB",
   "library.sort": "Sort library",
+  "library.sortLabel": "Sort",
+  "library.continueReading": "Continue reading",
+  "library.removeTitle": "Remove from library?",
+  "library.removeConfirm": "Remove “{title}” from Ambra?",
+  "library.removeConsequences": "This removes its saved reading position, bookmarks, highlights and notes. The original EPUB on your device is not deleted.",
+  "library.removeAction": "Remove from library",
+  "library.currentBookRemoval": "This book is open in the reader. To remove it safely, open the full library and close this reader tab first.",
+  "settings.ambraTitle": "Ambra settings",
+  "settings.interfaceTheme": "Interface theme",
+  "settings.readingPreferences": "Reading preferences",
+  "about.aboutAmbra": "About Ambra",
   "library.sortBy": "Sort by",
   "library.expand": "Expand library into a full browser tab",
   "library.loading": "Loading your library…",
@@ -589,8 +633,8 @@ export const en: StringCatalog = {
   "library.readingProgress": "Reading progress",
   "library.percentRead": "{progress} read",
   "library.added": "Added",
-  "library.emptyTitle": "What will you read first?",
-  "library.emptyDescription": "Bring a book you have, or discover something new.",
+  "library.emptyTitle": "No books yet",
+  "library.emptyDescription": "Import an EPUB from your device or find a book online.",
   "library.fromDevice": "FROM YOUR DEVICE",
   "library.bringBook": "Bring a book",
   "library.bringBookDescription": "Add an EPUB file to your library",
@@ -677,8 +721,8 @@ export const en: StringCatalog = {
   "inspector.sourceCode": "Source code",
   "toolbar.showContents": "Show contents",
   "toolbar.hideContents": "Hide contents",
-  "toolbar.bookmarksAndHighlights": "Bookmarks and highlights",
-  "toolbar.hideBookmarksAndHighlights": "Hide bookmarks and highlights",
+  "toolbar.bookmarksAndHighlights": "Annotations",
+  "toolbar.hideBookmarksAndHighlights": "Hide annotations",
   "toolbar.textOptions": "Text and page options",
   "toolbar.settings": "Settings",
   "toolbar.bookDetails": "Book details",
@@ -750,6 +794,11 @@ export const en: StringCatalog = {
   "search.unpinSearchPanel": "Unpin search panel",
   "search.closeSearchPanel": "Close search panel",
   "scrubber.positionInBook": "Position in book",
+  "scrubber.chooseBookmark": "{count} bookmarks — choose a destination",
+  "scrubber.bookmarkRange": "Pages {first}–{last}",
+  "scrubber.showAllBookmarks": "Show all bookmarks",
+  "scrubber.goToBookmark": "Go to bookmark: {title}, {location}",
+  "scrubber.bookmarkPosition": "Saved position {index}",
   "scrubber.markerChapters": "Chapters",
   "scrubber.markerSections": "Top-level sections",
   "scrubber.markerLandmarksOnly": "Reading landmarks only",
@@ -768,10 +817,20 @@ export const en: StringCatalog = {
   "error.invalidEpubHeadline": "Oh dear, that doesn't look like a valid EPUB file.",
   "error.actionFailedHeadline": "Zoinks!",
   "error.detailsPrefix": "Error details:",
-  "annotations.panelAriaLabel": "Bookmarks and highlights",
-  "annotations.pinPanel": "Pin bookmarks and highlights panel",
-  "annotations.unpinPanel": "Unpin bookmarks and highlights panel",
-  "annotations.closePanel": "Close bookmarks and highlights panel",
+  "annotations.panelAriaLabel": "Annotations",
+  "annotations.show": "Show",
+  "annotations.allAnnotations": "All annotations",
+  "annotations.notesFilter": "Notes",
+  "annotations.yourNote": "Your note",
+  "annotations.highlightLabel": "Highlight",
+  "annotations.goToPassage": "Go to passage",
+  "annotations.noAnnotationsYet": "No annotations yet.",
+  "annotations.noNotesYet": "No notes yet.",
+  "toc.pageNumber": "Page {page}",
+  "search.resultsCount": "Results: {count}",
+  "annotations.pinPanel": "Pin annotations panel",
+  "annotations.unpinPanel": "Unpin annotations panel",
+  "annotations.closePanel": "Close annotations panel",
   "annotations.bookmarksTab": "Bookmarks",
   "annotations.highlightsTab": "Highlights",
   "annotations.noBookmarksYet": "No bookmarks yet — use the bookmark button in the toolbar to save your place.",
@@ -816,6 +875,7 @@ export const en: StringCatalog = {
   "announcements.annotationsImported": "Imported {highlights} highlights and {bookmarks} bookmarks. {skipped} entries were skipped.",
   "reader.loading": "Loading…",
   "reader.openingBook": "Getting your book ready…",
+  "reader.pinUnavailable": "Pinning requires room for this panel and at least 320 px for the book.",
   "reader.navigating": "Turning to your page…",
   "reader.bookContentAriaLabel": "Book content",
   "inspector.specialFileContainer": "OCF container descriptor",

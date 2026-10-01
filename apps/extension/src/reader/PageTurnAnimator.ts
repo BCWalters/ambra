@@ -1,6 +1,6 @@
 import { PaginatedContentHost, ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
 import type { PageTheme } from "@ambra/engine";
-import { HEADER_TEXT_TOP_OFFSET } from "./furnitureLayout.js";
+import { HEADER_TEXT_TOP_OFFSET, PAGE_FURNITURE_TEXT_OPACITY } from "./furnitureLayout.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
 
@@ -134,7 +134,7 @@ export class PageTurnAnimator {
     // fallback chain on a given OS (issue #85), reading as a font-size
     // change even though the value never changed.
     const textStyle =
-      `color: ${foreground}; opacity: 0.55; min-width: 0; ` +
+      `color: ${foreground}; opacity: ${PAGE_FURNITURE_TEXT_OPACITY}; min-width: 0; ` +
       `font-family: var(--fontFamilyBase); font-size: var(--fontSizeBase200); ` +
       `font-weight: var(--fontWeightRegular); line-height: var(--lineHeightBase200); ` +
       `white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`;

@@ -6,6 +6,42 @@ import { NavPoint } from "@ambra/engine";
 import { TocPanel } from "./TocPanel.js";
 
 describe("Contents presentation", () => {
+  it("keeps docking changes focus-neutral and makes an unavailable pin focusable but inactive", () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onTogglePin = vi.fn();
+    const render = (pinned: boolean, canPin: boolean) => act(() => root.render(
+      <TocPanel items={[new NavPoint("Chapter", "chapter.xhtml", undefined, [])]} currentPath="chapter.xhtml"
+        firstSpinePath="chapter.xhtml" pageNumbers={new Map()} onSelect={vi.fn()}
+        open pinned={pinned} canPin={canPin} onTogglePin={onTogglePin} onRequestClose={vi.fn()} scrubberVisible={false} />,
+    ));
+    try {
+      render(true, true);
+      const chapter = container.querySelector<HTMLButtonElement>('[aria-current="location"]')!;
+      act(() => chapter.focus());
+      render(false, false);
+      expect(document.activeElement).toBe(chapter);
+      const pin = container.querySelector<HTMLButtonElement>('button[aria-label="Pin contents panel"]')!;
+      expect(pin.disabled).toBe(false);
+      expect(pin.tabIndex).toBe(0);
+      expect(pin.getAttribute("aria-disabled")).toBe("true");
+      expect(pin.getAttribute("aria-description")).toContain("at least 320 px for the book");
+      act(() => { pin.focus(); pin.click(); });
+      expect(document.activeElement).toBe(pin);
+      expect(onTogglePin).not.toHaveBeenCalled();
+      render(true, true);
+      expect(document.activeElement).toBe(pin);
+      act(() => pin.click());
+      expect(onTogglePin).toHaveBeenCalledOnce();
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("distinguishes current section and page numbers for same-spine fragments", () => {
     const markup = renderToStaticMarkup(
       <TocPanel
@@ -24,9 +60,12 @@ describe("Contents presentation", () => {
     container.innerHTML = markup;
     expect(container.querySelectorAll('[aria-current="location"]')).toHaveLength(1);
     expect(container.querySelector('[aria-current="location"]')?.textContent).toBe("Second8");
+    expect(container.querySelector('[aria-current="location"]')?.getAttribute("aria-label")).toBe("Second, Page 8");
+    expect(container.querySelector('[aria-current="location"] [aria-hidden="true"]')?.textContent).toBe("8");
     const buttons = [...container.querySelectorAll("button")];
     expect(buttons.find(button => button.textContent?.startsWith("First"))?.textContent).toBe("First3");
     expect(buttons.find(button => button.textContent?.startsWith("Missing"))?.textContent).toBe("Missing");
+    expect(buttons.find(button => button.textContent === "Missing")?.hasAttribute("aria-label")).toBe(false);
   });
 
   it("keeps the current chapter emphasized and allows long labels to wrap", () => {
@@ -64,6 +103,30 @@ describe("Contents presentation", () => {
         entry.textContent === heading && entry.style.overflow === "hidden")!;
       expect(groupLabel.style.overflow).toBe("hidden");
       expect(groupLabel.style.overflowWrap).toBe("anywhere");
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps authored numbering and labels intact and navigates the original target", () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const chapter = new NavPoint("Part IV — 第十二章: 007", "chapter.xhtml", "authored-target", []);
+    const select = vi.fn();
+    try {
+      act(() => root.render(<TocPanel items={[chapter]} currentPath={undefined}
+        firstSpinePath="cover.xhtml" pageNumbers={new Map([["cover.xhtml", 1], [chapter.target!, 127]])}
+        onSelect={select} open pinned onTogglePin={vi.fn()} onRequestClose={vi.fn()} scrubberVisible={false} />));
+      const target = container.querySelector<HTMLButtonElement>('button[aria-label="Part IV — 第十二章: 007, Page 127"]')!;
+      expect(target.querySelector("span")?.textContent).toBe(chapter.label);
+      expect(container.querySelector('button[aria-label="Start of book, Page 1"]')).not.toBeNull();
+      act(() => target.click());
+      expect(select).toHaveBeenCalledExactlyOnceWith(chapter);
+      expect(chapter.label).toBe("Part IV — 第十二章: 007");
     } finally {
       act(() => root.unmount());
       container.remove();

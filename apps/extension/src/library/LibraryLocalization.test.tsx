@@ -1,13 +1,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LibraryApp } from "./LibraryApp.js";
 import { useLibrary, type UseLibraryResult, type LibraryBookViewModel } from "./useLibrary.js";
 import { CATALOGS, getTranslate } from "../i18n/translate.js";
 import { SUPPORTED_LOCALES, type Locale } from "../i18n/Locale.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
-import { CHROME_THEMES } from "../reader/chromeTheme.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
@@ -17,15 +15,8 @@ vi.mock("../i18n/LocaleContext.js", async (importOriginal) => {
   return { ...actual, useTranslation: () => actual.getTranslate(language.locale),
     useLocale: () => ({ locale: language.locale, preference: language.locale, ready: true, setPreference: vi.fn() }) };
 });
-vi.mock("@fluentui/react-components", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@fluentui/react-components")>();
-  return { ...actual,
-    OverlayDrawer: ({ open, children, "aria-labelledby": labelledBy }: { open: boolean; children: React.ReactNode; "aria-labelledby"?: string }) =>
-      open ? <section role="dialog" aria-labelledby={labelledBy}>{children}</section> : null,
-  };
-});
 
-describe("Library localization and action order", () => {
+describe("Library localization and action ownership", () => {
   let container: HTMLDivElement;
   let root: Root;
   let state: UseLibraryResult;
@@ -35,6 +26,8 @@ describe("Library localization and action order", () => {
     const animate = Element.prototype.animate;
     vi.spyOn(Element.prototype, "animate").mockImplementation(function (this: Element, keyframes, options) {
       const animation = animate.call(this, keyframes, options);
+      // happy-dom rejects canceled finished promises even after Fluent has disposed its motion.
+      vi.spyOn(animation, "cancel").mockImplementation(() => animation.finish());
       queueMicrotask(() => animation.finish());
       return animation;
     });
@@ -44,8 +37,9 @@ describe("Library localization and action order", () => {
       importActivities: [], dismissCompletedImports: vi.fn(), cancelDownload: vi.fn(),
       dismissError: vi.fn(), importFiles: vi.fn(), removeBook: vi.fn(), openBook: vi.fn(),
       chromeTheme: "ambra", settings: DEFAULT_GLOBAL_READING_SETTINGS, setSettings: vi.fn(),
-      sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: false, openInFullTab: vi.fn(),
+      sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: true, openInFullTab: vi.fn(),
       storageUsage: { usageBytes: 1536, quotaBytes: 1048576 }, openInspectionSession: vi.fn(), saveBookAs: vi.fn(),
+      getBookFileSize: vi.fn().mockResolvedValue(1536),
     };
     vi.mocked(useLibrary).mockImplementation(() => state);
     container = document.createElement("div");
@@ -60,304 +54,211 @@ describe("Library localization and action order", () => {
   });
   async function render() { await act(async () => root.render(<LibraryApp />)); }
   function button(label: string) {
-    return [...container.querySelectorAll<HTMLButtonElement>("button")].find((entry) =>
-      entry.textContent === label || entry.getAttribute("aria-label") === label ||
-      entry.getAttribute("aria-labelledby")?.split(" ").map((id) => document.getElementById(id)?.textContent).join(" ") === label)!;
+    return [...document.querySelectorAll<HTMLButtonElement>("button")].find((entry) =>
+      entry.textContent === label || entry.getAttribute("aria-label") === label)!;
   }
+  async function click(label: string) { await act(async () => button(label).click()); }
+  const book = (title = "Original title"): LibraryBookViewModel => ({
+    id: title, title, creator: "Original author", publisher: "Original publisher", identifiers: [],
+    fileName: "original.epub", addedAt: new Date(2026, 8, 23).getTime(),
+  } as unknown as LibraryBookViewModel);
 
-  it.each(SUPPORTED_LOCALES)("localizes the existing-book outcome in %s", async locale => {
-    language.locale = locale;
-    state.importActivities = [{ id: 1, fileName: "existing.epub", phase: "complete", outcome: "existing" }];
+  it.each([true, false])("keeps standalone book activation available during imports (full tab: %s)", async (isFullTab) => {
+    state.isFullTab = isFullTab;
+    state.books = [{ ...book("Original title"), lastReadAt: 10 }];
+    state.importActivities = [
+      { id: 1, fileName: "original.epub", phase: "complete", bookId: "Original title" },
+      { id: 2, fileName: "new.epub", phase: "saving" },
+    ];
     await render();
-    const expected = getTranslate(locale)("library.importAlreadyPresent", { fileName: "existing.epub" });
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(expected);
-    expect(CATALOGS[locale]["library.importAlreadyPresent"]).toBeTruthy();
+    const covers = [...container.querySelectorAll<HTMLButtonElement>("[data-book-open]")];
+    expect(covers).toHaveLength(isFullTab ? 2 : 1);
+    for (const cover of covers) {
+      expect(cover.disabled).toBe(false);
+      await act(async () => cover.click());
+    }
+    expect(button("Read now: Original title").disabled).toBe(false);
+    await click("Read now: Original title");
+    expect(state.openBook).toHaveBeenCalledTimes(covers.length + 1);
+    expect(state.openBook).toHaveBeenLastCalledWith("Original title");
   });
 
-  it.each(SUPPORTED_LOCALES)("localizes empty Library, discovery, About and storage in %s", async (locale) => {
+  it.each(SUPPORTED_LOCALES)("localizes empty state, modal discovery, help and populated totals in %s", async (locale) => {
     language.locale = locale;
     const t = getTranslate(locale);
     await render();
     expect(document.title).toBe(t("library.pageTitle"));
     expect(container.textContent).toContain(t("library.emptyTitle"));
-    const explore = button(`${t("library.findNextBook")} ${t("library.exploreBooks")}`);
-    expect(explore.getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector("main section")?.hasAttribute("hidden")).toBe(true);
-    await act(async () => explore.click());
-    expect(container.textContent).toContain(t("library.discoveryTitle"));
-    expect(container.textContent).toContain(t("library.discoveryImport", { importLabel: t("library.chooseEpubFiles"), extension: ".epub" }));
-    expect(container.textContent).toContain(t("library.standardEbooksDownload"));
-    expect(container.textContent).toContain(t("library.gutenbergDownload"));
-    expect(container.textContent).toContain(t("library.readBeyondDownload"));
-    expect(container.textContent).toContain(t("library.ebooksComDescription"));
-    expect(container.textContent).toContain(t("library.ebooksComDownload"));
-    const ebooksCom = container.querySelector<HTMLAnchorElement>('a[href="https://www.ebooks.com/drm-free-epub"]');
-    expect(ebooksCom?.textContent?.trim()).toBe("eBooks.com");
-    expect(ebooksCom?.target).toBe("_blank");
-    expect(ebooksCom?.rel).toBe("noopener noreferrer");
-    expect(container.textContent).toContain(t("library.bookCount", { count: "0" }));
-    expect(container.textContent).toContain(formatLibraryBytes(1536, locale));
-    expect(container.querySelector('a[href="https://www.gutenberg.org/ebooks/"]')?.textContent?.trim()).toBe("Project Gutenberg");
-    await act(async () => button(t("about.title")).click());
-    expect(container.textContent).toContain(t("about.description"));
-    expect(container.textContent).toContain(t("about.version", { version: "1.2.3" }));
-    expect(container.textContent).toContain("Ben Walters");
-    expect(container.querySelector('a[href="mailto:AmbraEPUB@outlook.com"]')?.textContent).toBe(t("about.feedback"));
-    const privacy = container.querySelector<HTMLAnchorElement>('a[href="https://ambraepub.org/en/privacy/"]');
-    expect(privacy?.textContent).toBe(t("about.privacy"));
-    expect(privacy?.target).toBe("_blank");
-    expect(privacy?.rel).toBe("noreferrer");
-    expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra"]')?.style.color).toBe(CHROME_THEMES.ambra.accentForeground);
-    expect(button(t("about.copyDiagnostics"))).toBeDefined();
-  });
-
-  it("keeps DOM/tab order Import, Sort, Settings, About, then popup-only Expand", async () => {
-    await render();
-    const labels = () => [...container.querySelectorAll<HTMLButtonElement>('[role="toolbar"] button')].map((entry) =>
-      entry.getAttribute("aria-label") ?? (entry.textContent || document.getElementById(entry.getAttribute("aria-labelledby") ?? "")?.textContent));
-    expect(labels()).toEqual(["Settings", "Help & About", "Expand library into a full browser tab"]);
-    state.books = [{ id: "book", title: "Book", identifiers: [] } as unknown as LibraryBookViewModel];
-    await render();
-    expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About", "Expand library into a full browser tab"]);
-    state.isFullTab = true;
-    await render();
-    expect(labels()).toEqual(["Import EPUB", "Sort library", "Settings", "Help & About"]);
-  });
-
-  it("offers exactly two whole-card actions and toggles discovery without moving focus", async () => {
-    await render();
-    const actions = [...container.querySelectorAll<HTMLButtonElement>("main button")];
-    expect(actions).toHaveLength(2);
-    const [bring, explore] = actions;
-    expect(bring?.textContent).toContain("FROM YOUR DEVICE");
-    expect(bring?.textContent).toContain("Choose EPUB files...");
-    expect(explore?.textContent).toContain("ON THE WEB");
-    expect(bring?.querySelector("button, a")).toBeNull();
-    expect(explore?.querySelector("button, a")).toBeNull();
-    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
-    const choose = vi.spyOn(input, "click");
-    await act(async () => bring!.click());
-    expect(choose).toHaveBeenCalledOnce();
-    explore!.focus();
-    await act(async () => explore!.click());
-    expect(document.activeElement).toBe(explore);
-    const panel = document.getElementById(explore!.getAttribute("aria-controls")!)!;
-    expect(panel.hidden).toBe(false);
-    expect(container.querySelectorAll("main button")).toHaveLength(2);
-    expect([...panel.querySelectorAll("a")].map((link) => link.textContent?.trim())).toEqual([
+    expect(container.querySelector("main button")).toBeNull();
+    expect(container.querySelector("footer")?.textContent).not.toContain("0");
+    expect(button(t("library.importEpub"))).toBeDefined();
+    await click(t("library.findBooks"));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain(t("library.discoveryTitle"));
+    expect([...dialog.querySelectorAll("a")].map((link) => link.textContent?.trim())).toEqual([
       "Standard Ebooks", "Project Gutenberg", "ReadBeyond", "eBooks.com",
     ]);
-    await act(async () => explore!.click());
-    expect(panel.hidden).toBe(true);
-    expect(document.activeElement).toBe(explore);
+    for (const link of dialog.querySelectorAll("a")) {
+      expect(link.target).toBe("_blank");
+      expect(link.rel).toBe("noopener noreferrer");
+    }
+    expect(dialog.textContent).toContain(t("library.discoveryImport", { importLabel: t("library.importEpub"), extension: ".epub" }));
+    await click(t("highlight.close"));
+    await click(t("about.title"));
+    const help = document.querySelector('[role="dialog"]')!;
+    expect(help.querySelector("a")?.textContent).toBe(t("about.userGuide"));
+    expect(button(t("about.copyDiagnostics"))).toBeDefined();
+    expect(help.textContent).not.toContain(t("about.description"));
+    await click(t("about.aboutAmbra"));
+    expect(help.textContent).toContain(t("about.description"));
+    expect(help.textContent).toContain(t("about.version", { version: "1.2.3" }));
+    expect(help.querySelector('a[href="https://ambraepub.org/en/privacy/"]')?.textContent).toBe(t("about.privacy"));
+    await click(t("highlight.close"));
+    state.books = [book()];
+    await render();
+    const footer = container.querySelector("footer")!;
+    expect(footer.textContent).toContain(t("library.bookCount", { count: "1" }));
+    expect(footer.textContent).toContain(formatLibraryBytes(1536, locale));
+    expect(button(t("library.sort"))?.textContent).toBe(t("library.sortLabel"));
   });
 
-  it("keeps onboarding out of loading, disables unavailable import, and preserves discovery", async () => {
+  it("keeps persistent normal actions while loading/importing and routes compact discovery to a tab", async () => {
+    state.isFullTab = false;
     state.isLoading = true;
     state.canImport = false;
     await render();
-    expect(container.textContent).not.toContain("What will you read first?");
-    expect(container.querySelector("main button")).toBeNull();
-    expect(button("Import EPUB")).toBeUndefined();
+    expect(button("Import EPUB").disabled).toBe(true);
+    expect(button("Find books").disabled).toBe(false);
+    expect(container.textContent).not.toContain("No books yet");
+    await click("Find books");
+    expect(state.openInFullTab).toHaveBeenCalledWith(true);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await click("Open library in new tab");
+    expect(state.openInFullTab).toHaveBeenCalledWith();
     state.isLoading = false;
-    state.error = "Database unavailable";
-    await render();
-    expect(button("Bring a book Choose EPUB files...").disabled).toBe(true);
-    expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
-    expect(button("Find your next book Explore books").disabled).toBe(false);
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Database unavailable");
-  });
-
-  it("hides choices safely while retaining errors and concurrent import progress", async () => {
-    await render();
-    const bring = button("Bring a book Choose EPUB files...");
-    bring.focus();
-    state.importActivities = [
-      { id: 1, fileName: "first.epub", phase: "processing" },
-      { id: 2, fileName: "second.epub", phase: "queued" },
-    ];
+    state.canImport = true;
+    state.importActivities = [{ id: 1, fileName: "first.epub", phase: "processing" }];
     state.error = "Another file failed";
     await render();
-    expect(button("Bring a book Choose EPUB files...")).toBe(bring);
-    expect(bring.disabled).toBe(false);
-    expect(bring.closest("[hidden]")).not.toBeNull();
-    expect(document.activeElement).toBe(container.querySelector("h1")?.parentElement);
+    expect(container.textContent).not.toContain("No books yet");
     expect(container.querySelector('[role="status"]')?.textContent).toContain("first.epub");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Another file failed");
-    state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
-    state.importActivities = [
-      { id: 1, fileName: "first.epub", phase: "complete", bookId: "first" },
-      { id: 2, fileName: "second.epub", phase: "processing" },
-    ];
-    await render();
-    expect(container.textContent).not.toContain("What will you read first?");
-    expect(document.activeElement).toBe(container.querySelector("h1")?.parentElement);
-    expect(button("Read now: First book")).toBeDefined();
-    expect(button("Find books").getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("second.epub");
+    const choose = vi.spyOn(container.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
+    await click("Import EPUB");
+    expect(choose).toHaveBeenCalledOnce();
   });
 
-  it("restores focus to the visible heading when cancellation leaves another import running", async () => {
-    state.importActivities = [
-      { id: 1, fileName: "download.epub", phase: "downloading" },
-      { id: 2, fileName: "local.epub", phase: "processing" },
-    ];
-    state.cancelDownload = () => {
-      state.importActivities = state.importActivities.filter(activity => activity.id !== 1);
-      root.render(<LibraryApp />);
-      return true;
-    };
+  it("leads settings with interface controls and initially collapsed shared reading preferences", async () => {
     await render();
-    const cancel = button("Cancel download: download.epub");
-    cancel.focus();
-    await act(async () => cancel.click());
-    expect(button("Bring a book Choose EPUB files...").closest("[hidden]")).not.toBeNull();
-    expect(document.activeElement).toBe(container.querySelector("h1")?.parentElement);
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("local.epub");
+    await click("Ambra settings");
+    const surface = document.querySelector('[role="dialog"]')!;
+    expect(surface.textContent).toContain("Interface theme");
+    expect(surface.querySelector("details")?.open).toBe(false);
+    const select = surface.querySelector("select")!;
+    await act(async () => { select.value = "blue"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(state.setSettings).toHaveBeenCalledWith({ chromeTheme: "blue" });
+    expect(surface.querySelectorAll("select")).toHaveLength(6);
   });
 
-  it.each(["Help & About", undefined])("does not steal focus from %s after the first import", async (focusLabel) => {
+  it("uses the latest real saved reading timestamp for Continue reading without replacing the collection", async () => {
+    state.books = [{ ...book("Old"), lastReadAt: 10 }, { ...book("New"), lastReadAt: 20 }, book("Unread")];
     await render();
-    if (focusLabel) button(focusLabel).focus();
-    const focused = document.activeElement;
-    state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
-    await render();
-    expect(document.activeElement).toBe(focused);
-  });
-
-  it("restores focus when a focused discovery link disappears with onboarding", async () => {
-    await render();
-    await act(async () => button("Find your next book Explore books").click());
-    container.querySelector<HTMLAnchorElement>('a[href="https://standardebooks.org/ebooks"]')!.focus();
-    state.books = [{ id: "first", title: "First book", identifiers: [] } as unknown as LibraryBookViewModel];
-    await render();
-    expect(document.activeElement).toBe(button("Import EPUB"));
-  });
-
-  it("contains coverless titles, creators and action tooltips without shortening book data or action names", async () => {
-    const title = `Title ${"unbroken".repeat(100)}`;
-    const creator = `Creator ${"作者".repeat(100)}`;
-    state.books = [{ id: "long-book", title, creator, identifiers: [] } as unknown as LibraryBookViewModel];
-    state.isFullTab = true;
-    const markup = renderToStaticMarkup(<LibraryApp />);
-    expect(markup).toContain("-webkit-line-clamp:6");
-    expect(markup).toContain("-webkit-line-clamp:2");
+    const section = container.querySelector('section[aria-label="Continue reading"]')!;
+    expect(section.textContent).toContain("New");
+    expect(section.textContent).not.toContain("Old");
+    expect(container.querySelectorAll("[data-library-book]")).toHaveLength(4);
     state.isFullTab = false;
     await render();
-    const cover = button(`Open ${title}`);
-    const coverTitle = cover.querySelector<HTMLElement>("span")!;
-    expect(coverTitle.textContent).toBe(title);
-    expect(coverTitle.style.overflow).toBe("hidden");
-    expect(coverTitle.style.overflowWrap).toBe("anywhere");
-    const author = [...container.querySelectorAll("p")].find((entry) => entry.textContent === creator)!;
-    expect(author.style.overflow).toBe("hidden");
-    expect(author.style.overflowWrap).toBe("anywhere");
-    const details = button(`${title} details`);
-    await act(async () => details.dispatchEvent(new PointerEvent("pointerover", { bubbles: true })));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
-    const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]')!;
-    expect(tooltip.textContent).toBe(`${title} details`);
-    expect(tooltip.style.overflowWrap).toBe("anywhere");
-    expect(tooltip.style.maxHeight).toContain("240px");
-    expect(details.getAttribute("aria-label")).toBe(`${title} details`);
+    expect(container.querySelector('section[aria-label="Continue reading"]')).toBeNull();
+  });
+
+  it("reserves card rows and contains real artwork without changing accessible titles", async () => {
+    const title = `Title ${"unbroken".repeat(100)}`;
+    const creator = "作者".repeat(100);
+    state.books = [{ ...book(title), creator, cardCoverUrl: "blob:cover" }, book("Unread")];
+    await render();
+    const open = button(`Open ${title}`);
+    expect(open.querySelector("img")?.style.objectFit).toBe("contain");
+    expect(open.style.width).toBe("140px");
+    expect(open.style.height).toBe("210px");
+    const cards = container.querySelectorAll("article");
+    for (const card of cards) {
+      expect(card.querySelector("p")?.style.height).toBe("40px");
+      expect(card.querySelectorAll("p")[1]?.style.height).toBe("18px");
+    }
+    expect(button(`${title} details`)).toBeDefined();
     expect(state.books[0]?.title).toBe(title);
     expect(state.books[0]?.creator).toBe(creator);
   });
 
-  it("exposes a Library main landmark and a readable top-level heading", async () => {
-    await render();
-    expect(container.querySelector("main")?.getAttribute("aria-label")).toBe("Ambra — Library");
-    const heading = container.querySelector("h1")!;
-    expect(heading.textContent).toBe("Ambra");
-    expect(heading.style.color).toBe(CHROME_THEMES.ambra.accentForeground);
-    expect(container.querySelectorAll("h1")).toHaveLength(1);
-    expect(container.querySelector("main h2")?.getAttribute("style")).toContain(CHROME_THEMES.ambra.accentForeground);
-  });
-
-  it.each(SUPPORTED_LOCALES)("localizes every import stage and completion in %s", async (locale) => {
+  it.each(SUPPORTED_LOCALES)("preserves every import state and duplicate outcome in %s", async (locale) => {
     language.locale = locale;
     const t = getTranslate(locale);
     state.importActivities = [
       { id: 1, fileName: "queued.epub", phase: "queued" },
-      { id: 2, fileName: "narrated.epub", phase: "downloading" },
+      { id: 2, fileName: "download.epub", phase: "downloading" },
       { id: 3, fileName: "processing.epub", phase: "processing" },
       { id: 4, fileName: "saving.epub", phase: "saving" },
-      { id: 5, fileName: "complete.epub", phase: "complete", bookId: "complete" },
+      { id: 5, fileName: "complete.epub", phase: "complete", bookId: "Original title" },
+      { id: 6, fileName: "existing.epub", phase: "complete", outcome: "existing" },
     ];
-    const title = "Original EPUB title";
-    state.books = [{ id: "complete", title, identifiers: [] } as unknown as LibraryBookViewModel];
+    state.books = [book()];
     await render();
     const status = container.querySelector('[role="status"]')!;
-    expect(status.textContent).toContain(t("library.importQueued", { fileName: "queued.epub" }));
-    expect(status.textContent).toContain(t("library.importDownloading", { fileName: "narrated.epub" }));
-    expect(status.textContent).toContain(t("library.importProcessing", { fileName: "processing.epub" }));
-    expect(status.textContent).toContain(t("library.importSaving", { fileName: "saving.epub" }));
-    expect(status.textContent).toContain(t("library.importComplete", { fileName: title }));
-    expect(status.textContent).not.toContain("complete.epub");
-    expect(status.textContent).toContain(t("library.importKeepOpen"));
-    expect(status.querySelector('[aria-valuenow]')).toBeNull();
-    const cancel = button(t("library.cancelDownloadFile", { fileName: "narrated.epub" }));
-    expect(cancel.textContent).toBe(t("library.cancelDownload"));
-    await act(async () => cancel.click());
-    expect(state.cancelDownload).toHaveBeenCalledExactlyOnceWith(2);
-    await act(async () => button(t("library.readNowBook", { title })).click());
-    expect(state.openBook).toHaveBeenCalledExactlyOnceWith("complete");
-    await act(async () => button(t("library.dismiss")).click());
+    for (const [key, fileName] of [
+      ["library.importQueued", "queued.epub"], ["library.importDownloading", "download.epub"],
+      ["library.importProcessing", "processing.epub"], ["library.importSaving", "saving.epub"],
+      ["library.importComplete", "Original title"], ["library.importAlreadyPresent", "existing.epub"],
+    ] as const) expect(status.textContent).toContain(t(key, { fileName }));
+    await click(t("library.cancelDownloadFile", { fileName: "download.epub" }));
+    expect(state.cancelDownload).toHaveBeenCalledWith(2);
+    await click(t("library.readNowBook", { title: "Original title" }));
+    expect(state.openBook).toHaveBeenCalledWith("Original title");
+    await click(t("library.dismiss"));
     expect(state.dismissCompletedImports).toHaveBeenCalledOnce();
   });
 
-  it("updates an open details pane, localized dates, progress and errors while preserving book data", async () => {
-    const book = {
-      id: "book", title: "Original title", creator: "Original author", publisher: "Original publisher",
-      fileName: "original.epub", description: "Original description", progressFraction: 0.42,
-      addedAt: new Date(2026, 8, 23).getTime(), identifiers: [],
-    } as unknown as LibraryBookViewModel;
-    state.books = [book];
-    state.error = "Raw parser detail <tag>";
+  it("keeps full metadata, file size, Save as and removal in book details", async () => {
+    state.books = [{ ...book(), progressFraction: 0.42, description: "Original description" }];
     await render();
-    await act(async () => button("Original title details").click());
-    language.locale = "de";
-    await render();
-    const t = getTranslate("de");
-    expect(button(t("library.openBookProgress", { title: book.title, progress: formatLibraryProgress(0.42, "de") }))).toBeDefined();
-    expect(container.textContent).toContain(t("bookDetails.publisher"));
-    expect(container.textContent).toContain(t("library.percentRead", { progress: formatLibraryProgress(0.42, "de") }));
-    expect(container.textContent).toContain("Original description");
-    expect(container.textContent).toContain(t("error.somethingWentWrongHeadline"));
-    expect(container.textContent).toContain("Raw parser detail <tag>");
-    await act(async () => button(t("bookDetails.publicationDetails")).click());
-    expect(container.textContent).toContain(new Date(book.addedAt).toLocaleDateString("de"));
-    expect(container.textContent).toContain("original.epub");
+    await click("Original title details");
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Original publisher");
+    expect(dialog.textContent).toContain(formatLibraryBytes(1536, "en"));
+    expect(dialog.textContent).toContain("Original description");
+    expect(button("Remove from library")).toBeDefined();
+    await click("Publication details");
+    expect(dialog.textContent).toContain("original.epub");
+    expect(dialog.textContent).toContain(new Date(state.books[0]!.addedAt).toLocaleDateString("en"));
+    expect(button(getTranslate("en")("library.saveAs"))).toBeDefined();
   });
 
-  it("localizes diagnostics status while keeping the copied support payload unchanged", async () => {
+  it("reports diagnostic copy success/failure without publication data or rendered error markup", async () => {
     language.locale = "fr";
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(writeText);
-    await render();
     const t = getTranslate("fr");
-    await act(async () => button(t("about.title")).click());
-    await act(async () => button(t("about.copyDiagnostics")).click());
+    const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    await render();
+    await click(t("about.title"));
+    await click(t("about.copyDiagnostics"));
     expect(button(t("about.copied"))).toBeDefined();
-    expect(writeText.mock.calls[0]?.[0]).toContain("Ambra environment info\n");
-    expect(writeText.mock.calls[0]?.[0]).toContain("Extension version: 1.2.3");
-    expect(writeText.mock.calls[0]?.[0]).not.toContain("Original title");
-    writeText.mockRejectedValueOnce(new Error("Permission denied <script>"));
-    await act(async () => button(t("about.copied")).click());
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe(`${t("about.copyError")} Permission denied <script>`);
-    expect(container.querySelector('[role="alert"] script')).toBeNull();
+    expect(write.mock.calls[0]?.[0]).toContain("Ambra environment info\n");
+    expect(write.mock.calls[0]?.[0]).not.toContain("Original title");
+    write.mockRejectedValueOnce(new Error("Permission denied <script>"));
+    await click(t("about.copied"));
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Permission denied <script>");
+    expect(document.querySelector('[role="alert"] script')).toBeNull();
   });
 });
 
 describe("Library catalog and number formatting", () => {
-  it.each(SUPPORTED_LOCALES)("preserves translation placeholders for every Library/About key in %s", (locale) => {
-    for (const key of Object.keys(CATALOGS.en).filter((key) => key.startsWith("library.") || key.startsWith("about.") || key.startsWith("shortcuts.") || key === "settings.helpAbout")) {
+  it.each(SUPPORTED_LOCALES)("preserves translation placeholders in %s", (locale) => {
+    for (const key of Object.keys(CATALOGS.en).filter((key) => /^(library|about|settings|shortcuts)\./.test(key))) {
       const catalogKey = key as keyof typeof CATALOGS.en;
       const placeholders = (value: string) => value.match(/\{\w+\}/g)?.sort() ?? [];
       expect(placeholders(CATALOGS[locale][catalogKey]), catalogKey).toEqual(placeholders(CATALOGS.en[catalogKey]));
     }
   });
-  it("uses localized decimal and percent formatting with binary byte scaling", () => {
+  it("formats localized bytes and progress", () => {
     expect(formatLibraryBytes(1536, "en")).toContain("1.50");
     expect(formatLibraryBytes(1536, "de")).toContain("1,50");
     expect(formatLibraryProgress(0.425, "fr")).toBe(new Intl.NumberFormat("fr", { style: "percent", maximumFractionDigits: 0 }).format(0.425));

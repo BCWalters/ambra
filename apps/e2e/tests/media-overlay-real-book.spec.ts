@@ -24,7 +24,7 @@ for (const book of samples) {
     const { context, readerPage: page } = await launchReader(book.file!);
     try {
       await page.emulateMedia({ reducedMotion: "reduce" });
-      const listen = page.getByRole("button", { name: "Listen", exact: true });
+      const listen = page.getByRole("button", { name: "Play narration", exact: true });
       await listen.focus();
       await listen.click();
       const audio = page.locator("audio[data-ambra-narration-audio]");

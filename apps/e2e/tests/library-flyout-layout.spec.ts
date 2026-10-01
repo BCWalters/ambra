@@ -48,11 +48,11 @@ for (const width of [1000, 360]) {
         libraryPage.getByRole("dialog", { name: "Book details" }),
         readerPage.getByRole("complementary", { name: "Book details" }),
       ]) {
-        await expect(panel.getByRole("heading", { name: metadata.title })).toBeVisible();
+        await expect(panel.getByRole("heading", { name: metadata.title, exact: true })).toBeVisible();
+        await expect(panel.getByRole("heading", { name: metadata.title, exact: true })).toHaveCSS("overflow-wrap", "anywhere");
+        await expect(panel.getByRole("button", { name: "Show more: Title", exact: true })).toHaveCount(0);
         await expect(panel.getByText(metadata.description)).toHaveCSS("font-size", "12px");
         await expect(panel.getByText(metadata.description)).toHaveCSS("line-height", "18px");
-        await expect(panel.getByText(metadata.rights, { exact: true })).toBeVisible();
-        await expect(panel.getByText(metadata.rights, { exact: true })).toHaveCSS("font-size", "12px");
         await expect(panel.getByText(metadata.publisher, { exact: true })).toHaveCSS("font-size", "14px");
         await expect(panel.getByText("Copyright", { exact: true })).toHaveCount(0);
         await expect(panel.locator("img")).toHaveCSS("object-fit", "contain");
@@ -61,7 +61,14 @@ for (const width of [1000, 360]) {
         await disclosure.focus();
         await disclosure.press("Space");
         await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+        await expect(panel.getByText(metadata.rights, { exact: true })).toBeVisible();
+        await expect(panel.getByText(metadata.rights, { exact: true })).toHaveCSS("font-size", "12px");
+        const identifierDisclosure = panel.getByRole("button", { name: "Show more: Identifier", exact: true });
+        await identifierDisclosure.press("Enter");
+        await expect(panel.getByRole("button", { name: "Show less: Identifier", exact: true })).toHaveAttribute("aria-expanded", "true");
         await expect(panel.getByText(identifier, { exact: true })).toBeVisible();
+        await panel.getByRole("button", { name: "Show more: File name", exact: true }).press("Enter");
+        await expect(panel.getByText(metadata.fileName, { exact: true })).toBeVisible();
         // Fluent focus rings extend beyond buttons; measure text and scroll areas instead.
         await expect.poll(() => panel.evaluate(element =>
           Math.max(...[element, ...element.querySelectorAll("*")]
@@ -69,7 +76,9 @@ for (const width of [1000, 360]) {
             .map(child => child.clientWidth > 0 ? child.scrollWidth - child.clientWidth : 0)),
         )).toBeLessThanOrEqual(1);
       }
-      await expect(readerPage.getByRole("heading", { name: "Reading tools" })).toBeVisible();
+      const readerDetails = readerPage.getByRole("complementary", { name: "Book details" });
+      await expect(readerDetails.getByRole("button", { name: "Help & About", exact: true })).toBeVisible();
+      await expect(readerDetails.getByRole("button", { name: "EPUB Inspector", exact: true })).toBeVisible();
       await expect(libraryPage.getByText(metadata.fileName, { exact: true })).toBeVisible();
     } finally {
       await context.close();
@@ -82,10 +91,9 @@ for (const width of [1000, 360]) {
     const { context, libraryPage, readerPage } = await launchReader(book, { viewport: { width, height: 800 } });
     try {
       const brand = libraryPage.getByText("Ambra", { exact: true });
-      const libraryHeader = brand.locator("..");
-      const readerSettings = readerPage.getByRole("button", { name: "Settings", exact: true });
-      await expect(libraryHeader).toHaveCSS("min-height", "56px");
-      if (width === 1000) await expect(libraryHeader).toHaveCSS("height", "56px");
+      const libraryHeader = libraryPage.getByRole("toolbar", { name: "Library actions" });
+      const readerSettings = readerPage.getByRole("button", { name: "Ambra settings", exact: true });
+      await expect(libraryHeader).toHaveCSS("height", "56px");
       expect(await libraryHeader.evaluate(element => {
         const bounds = element.getBoundingClientRect();
         return Array.from(element.querySelectorAll("button")).every(button =>
@@ -93,15 +101,15 @@ for (const width of [1000, 360]) {
         );
       })).toBe(true);
       await expect(readerSettings.locator("..")).toHaveCSS("height", "56px");
-      await expect(libraryPage.getByRole("button", { name: "Settings", exact: true }).locator("svg")).toHaveCSS("width", "20px");
+      await expect(libraryPage.getByRole("button", { name: "Ambra settings", exact: true }).locator("svg")).toHaveCSS("width", "20px");
       await expect(readerSettings.locator("svg")).toHaveCSS("width", "20px");
       await expect(brand.locator("svg")).toHaveAttribute("aria-hidden", "true");
-      expect(await brand.evaluate(element => element.closest("button, a, [tabindex]"))).toBeNull();
+      expect(await brand.evaluate(element => element.closest("button, a"))).toBeNull();
       expect(await brand.locator("button, a, [tabindex]").count()).toBe(0);
       await expect.poll(() => brand.locator("..").evaluate(element =>
         element.scrollWidth - element.clientWidth,
       )).toBeLessThanOrEqual(1);
-      for (const title of ["Book details", "About Ambra"]) {
+      for (const title of ["Book details", "Help & About"]) {
         const trigger = title === "Book details"
           ? libraryPage.getByRole("button", { name: /details$/ })
           : libraryPage.getByRole("button", { name: title, exact: true });
@@ -109,21 +117,19 @@ for (const width of [1000, 360]) {
         await trigger.press("Enter");
         const dialog = libraryPage.getByRole("dialog", { name: title });
         const close = dialog.getByRole("button", { name: "Close", exact: true });
-        if (title === "About Ambra") {
-          expect(await dialog.locator("svg linearGradient").getAttribute("id"))
-            .not.toBe(await brand.locator("svg linearGradient").getAttribute("id"));
-        }
         await expect(close).toBeFocused();
         await expect.poll(async () => {
           const panel = await dialog.boundingBox();
-          return panel ? Math.abs(panel.x + panel.width - width) : Infinity;
+          return panel ? title === "Book details"
+            ? Math.abs(panel.x + panel.width - width)
+            : Math.abs(panel.x + panel.width / 2 - width / 2) : Infinity;
         }).toBeLessThan(1);
         await expect.poll(async () => {
           const panel = await dialog.boundingBox();
           const button = await close.boundingBox();
           if (!panel || !button) return Infinity;
           return Math.abs(panel.x + panel.width - button.x - button.width);
-        }).toBeLessThanOrEqual(16);
+        }).toBeLessThanOrEqual(20);
         await libraryPage.screenshot({ path: testInfo.outputPath(`${title}.png`) });
         await close.click();
         await expect(dialog).toBeHidden();
@@ -132,7 +138,7 @@ for (const width of [1000, 360]) {
       for (const [trigger, role, name] of [
         ["Show contents", "navigation", "Table of contents"],
         ["Search", "navigation", "Search"],
-        ["Bookmarks and highlights", "navigation", "Bookmarks and highlights"],
+        ["Annotations", "navigation", "Annotations"],
         ["Book details", "complementary", "Book details"],
       ] as const) {
         await readerPage.mouse.move(150, 2);

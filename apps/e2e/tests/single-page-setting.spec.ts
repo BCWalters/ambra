@@ -44,7 +44,7 @@ test("Always show one page retains focus and location, respects width, and survi
     const trigger = page.getByRole("button", { name: "Text and page options", exact: true });
     await trigger.click();
     await page.getByRole("menuitem", { name: "Page", exact: true }).press("ArrowRight");
-    expect(await page.getByRole("menuitem", { name: /^Page theme/ }).count()).toBe(0);
+    await expect(page.getByRole("combobox", { name: "Page theme", exact: true })).toHaveCount(0);
     const toggle = page.getByRole("switch", { name: "Always show one page", exact: true });
     await expect(toggle).not.toBeChecked();
     await page.screenshot({ path: test.info().outputPath("single-page-switch-off.png"), animations: "disabled" });

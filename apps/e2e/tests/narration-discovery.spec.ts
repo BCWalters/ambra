@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
+import { getTranslate } from "../../extension/src/i18n/translate.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
 const narrated = path.join(fixtures, "media-overlay/narrated.epub");
@@ -10,100 +11,93 @@ const notice = (page: Page) => page.getByRole("region", { name: "This book has n
 const controls = (page: Page) => page.getByRole("region", { name: "Narration controls" });
 const audio = (page: Page) => page.locator("audio[data-ambra-narration-audio]");
 
-async function acknowledged(page: Page) {
-  await exposeReaderController(page);
-  return page.evaluate(async () => {
-    const controller = Reflect.get(window, "__readerController");
-    const metadata = await controller.library.getBookMetadata(controller.bookId);
-    return metadata?.narrationNoticeDismissed === true;
-  });
-}
-
-test("first-open narration notice neither steals focus nor autoplays; dismissal survives reopening", async () => {
+test("read-along appears paused without stealing focus; reopening resets collapse without autoplay", async () => {
   const { context, readerPage: page, libraryPage } = await launchReader(narrated);
   try {
-    await expect(notice(page)).toBeVisible();
-    expect(await notice(page).evaluate(element => element.contains(document.activeElement))).toBe(false);
-    expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
-    await expect(controls(page)).toHaveCount(0);
-    const frame = page.locator("iframe").first();
-    const before = await frame.boundingBox();
-    await notice(page).getByRole("button", { name: "Not now", exact: true }).click();
+    await expect(controls(page)).toBeVisible();
     await expect(notice(page)).toHaveCount(0);
-    await expect.poll(() => acknowledged(page)).toBe(true);
-    expect(await frame.boundingBox()).toEqual(before);
+    await expect(page.getByRole("button", { name: "Listen", exact: true })).toHaveCount(0);
+    expect(await controls(page).evaluate(element => element.contains(document.activeElement))).toBe(false);
+    expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
+    await controls(page).getByRole("button", { name: "Collapse read-along controls", exact: true }).click();
+    await expect(controls(page).getByRole("button", { name: "Expand read-along controls", exact: true })).toBeVisible();
+    await expect(controls(page).getByRole("button", { name: "Play narration", exact: true })).toBeVisible();
     await page.reload();
     await expect(page.locator("iframe").first()).toBeVisible();
     await expect(notice(page)).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Listen", exact: true })).toBeVisible();
+    await expect(controls(page).getByRole("button", { name: "Collapse read-along controls", exact: true })).toBeVisible();
+    expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
 
     await libraryPage.locator('input[type="file"]').setInputFiles(path.join(fixtures, "media-overlay/fixed-layout.epub"));
-    await expect(libraryPage.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(2);
+    await expect(libraryPage.locator("[data-library-collection]").getByRole("button", { name: /^Open / })).toHaveCount(2);
     const secondTab = context.waitForEvent("page");
     await libraryPage.getByRole("button", { name: "Open Synthetic narration fixed-layout", exact: true }).click();
     const secondReader = await secondTab;
-    await expect(notice(secondReader)).toBeVisible();
+    await expect(controls(secondReader)).toBeVisible();
+    await expect(notice(secondReader)).toHaveCount(0);
     expect(await audio(secondReader).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
   } finally {
     await context.close();
   }
 });
 
-test("Listen now opens playback and acknowledges the notice; stopping does not bring it back", async () => {
+test("collapse keeps playback running and the compact strip can pause and resume", async () => {
   const { context, readerPage: page } = await launchReader(narrated);
   try {
-    await notice(page).getByRole("button", { name: "Listen now", exact: true }).click();
+    await controls(page).getByRole("button", { name: "Play narration", exact: true }).click();
     await expect(controls(page)).toBeVisible();
     await expect(notice(page)).toHaveCount(0);
     await expect.poll(() => audio(page).evaluate(element => !(element as HTMLAudioElement).paused)).toBe(true);
     await expect(controls(page).getByRole("button", { name: "Pause narration", exact: true })).toBeFocused();
-    await expect.poll(() => acknowledged(page)).toBe(true);
-    await controls(page).getByRole("button", { name: "Close narration", exact: true }).click();
-    await expect(controls(page)).toHaveCount(0);
-    await expect(notice(page)).toHaveCount(0);
+    await controls(page).getByRole("button", { name: "Collapse read-along controls", exact: true }).click();
+    await expect(controls(page).getByRole("button", { name: "Expand read-along controls", exact: true })).toBeFocused();
+    expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
+    await controls(page).getByRole("button", { name: "Pause narration", exact: true }).click();
     expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
-    await page.reload();
-    await expect(page.locator("iframe").first()).toBeVisible();
-    await expect(notice(page)).toHaveCount(0);
+    await controls(page).getByRole("button", { name: "Play narration", exact: true }).click();
+    await expect.poll(() => audio(page).evaluate(element => !(element as HTMLAudioElement).paused)).toBe(true);
   } finally {
     await context.close();
   }
 });
 
-test("unacknowledged notices survive reopening and plain books have none", async () => {
-  const { context, readerPage: page, libraryPage } = await launchReader(narrated);
+test("plain books have no read-along controls or retired discovery notice", async () => {
+  const { context, libraryPage } = await launchReader(narrated);
   try {
-    await expect(notice(page)).toBeVisible();
-    await page.reload();
-    await expect(notice(page)).toBeVisible();
     await libraryPage.locator('input[type="file"]').setInputFiles(path.join(fixtures, "long-content.epub"));
-    await expect(libraryPage.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(2);
+    await expect(libraryPage.locator("[data-library-collection]").getByRole("button", { name: /^Open / })).toHaveCount(2);
     const nextTab = context.waitForEvent("page");
     await libraryPage.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }).click();
     const plain = await nextTab;
     await expect(plain.locator("iframe").first()).toBeVisible();
     await expect(notice(plain)).toHaveCount(0);
+    await expect(controls(plain)).toHaveCount(0);
+    await expect(plain.getByRole("button", { name: "Listen", exact: true })).toHaveCount(0);
   } finally {
     await context.close();
   }
 });
 
-test("failure to remember dismissal is surfaced and does not silently lose the reminder", async () => {
+test("ephemeral collapse never writes the retired discovery preference", async () => {
   const { context, readerPage: page } = await launchReader(narrated);
   try {
-    await expect(notice(page)).toBeVisible();
+    await expect(controls(page)).toBeVisible();
     await exposeReaderController(page);
     await page.evaluate(() => {
+      let writes = 0;
+      Reflect.set(window, "__narrationPreferenceWrites", () => writes);
       Reflect.get(window, "__readerController").library.dismissNarrationNotice = async () => {
+        writes++;
         throw new DOMException("Could not save the narration preference", "QuotaExceededError");
       };
     });
-    await notice(page).getByRole("button", { name: "Not now", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "out of storage space" })).toBeVisible();
-    expect(await acknowledged(page)).toBe(false);
+    await controls(page).getByRole("button", { name: "Collapse read-along controls", exact: true }).click();
+    await controls(page).getByRole("button", { name: "Expand read-along controls", exact: true }).click();
+    expect(await page.evaluate(() => Reflect.get(window, "__narrationPreferenceWrites")())).toBe(0);
+    await expect(page.getByRole("status").filter({ hasText: "out of storage space" })).toHaveCount(0);
     expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
     await page.reload();
-    await expect(notice(page)).toBeVisible();
+    await expect(controls(page).getByRole("button", { name: "Collapse read-along controls", exact: true })).toBeVisible();
   } finally {
     await context.close();
   }
@@ -112,7 +106,7 @@ test("failure to remember dismissal is surfaced and does not silently lose the r
 test("listening action tracks reading selections and starts the selected authored passage", async () => {
   const { context, readerPage: page } = await launchReader(narrated);
   try {
-    await notice(page).getByRole("button", { name: "Listen now", exact: true }).click();
+    await controls(page).getByRole("button", { name: "Play narration", exact: true }).click();
     await expect.poll(() => audio(page).evaluate(element => !(element as HTMLAudioElement).paused)).toBe(true);
     await controls(page).getByRole("button", { name: "Pause narration", exact: true }).click();
     await expect(controls(page).getByRole("button", { name: "Listen from this page", exact: true })).toBeVisible();
@@ -145,7 +139,7 @@ for (const { width, locale } of [
   { width: 360, locale: "en" },
   { width: 900, locale: "de" },
 ] as const) {
-  test(`${width}px ${locale}: compact controls keep one row and a stable viewport; speed menu supports keyboard`, async () => {
+  test(`${width}px ${locale}: expanded transport has a separate row, collapse is compact, and speed supports keyboard`, async () => {
     const { context, readerPage: page } = await launchReader(narrated, { viewport: { width, height: 900 } });
     try {
       await exposeReaderController(page);
@@ -153,24 +147,26 @@ for (const { width, locale } of [
         await page.evaluate(locale => Reflect.get(window, "__readerController").library.setLocalePreference(locale), locale);
         await page.reload();
       }
-      await page.locator("[data-narration-discovery]").getByRole("button").first().click();
+      const t = getTranslate(locale);
+      const strip = page.locator("[data-narration-controls]");
+      await strip.getByRole("button", { name: t("narration.play"), exact: true }).click();
       await expect.poll(() => audio(page).evaluate(element => !(element as HTMLAudioElement).paused)).toBe(true);
       await exposeReaderController(page);
       await page.evaluate(() => Reflect.get(window, "__readerController").performNarrationAction("toggle"));
-      const strip = page.locator("[data-narration-controls]");
       const before = (await strip.boundingBox())!;
-      expect(before.height).toBeLessThanOrEqual(48);
+      expect(before.height).toBeLessThanOrEqual(116);
+      const header = (await strip.locator("[data-narration-commands]").boundingBox())!;
+      const transport = (await strip.locator("[data-narration-primary-commands]").boundingBox())!;
+      expect(transport.y).toBeGreaterThanOrEqual(header.y + header.height);
+      const frameBefore = await page.locator("iframe").first().boundingBox();
       await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
       await expect.poll(() => page.evaluate(() =>
         Reflect.get(window, "__readerController").snapshot().narration.following,
       )).toBe(false);
       expect(await strip.boundingBox()).toEqual(before);
-      const buttonRows = await strip.getByRole("button").evaluateAll(elements =>
-        elements.map(element => element.getBoundingClientRect().y),
-      );
-      expect(Math.max(...buttonRows) - Math.min(...buttonRows)).toBeLessThan(2);
+      expect(await page.locator("iframe").first().boundingBox()).toEqual(frameBefore);
       expect(await strip.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-      const closeBounds = (await strip.getByRole("button").last().boundingBox())!;
+      const closeBounds = (await strip.getByRole("button", { name: t("narration.collapse"), exact: true }).boundingBox())!;
       expect(closeBounds.x + closeBounds.width).toBeGreaterThan(width - 20);
       const positionBeforeMenu = await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().pageIndex);
       const speed = strip.getByRole("button").filter({ hasText: /^1×$/ });
@@ -189,6 +185,11 @@ for (const { width, locale } of [
       await page.keyboard.press("Escape");
       await expect(updatedSpeed).toBeFocused();
       expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().pageIndex)).toBe(positionBeforeMenu);
+      await strip.getByRole("button", { name: t("narration.collapse"), exact: true }).click();
+      expect((await strip.boundingBox())!.height).toBeLessThan(before.height);
+      await expect(strip.locator("[data-narration-primary-commands]")).toHaveCount(0);
+      await expect(strip.getByRole("button", { name: t("narration.play"), exact: true })).toBeVisible();
+      expect(await strip.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.screenshot({ path: test.info().outputPath(`narration-controls-${width}-${locale}.png`) });
     } finally {
       await context.close();

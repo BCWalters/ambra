@@ -93,9 +93,18 @@ the control itself, including over arbitrary covers, not only in a tooltip.
   Title A-Z, Author A-Z. Reuse existing persistence rather than inventing
   independent per-surface preferences. Filtering retains the selected order.
 - Reader Library opens a left-side browsing panel without replacing/reloading the
-  reader or changing position. Deliberate book activation uses existing save,
-  open/reuse/focus routing. Reuse metadata/cover/database helpers; do not mount a
+  reader or changing position. Full-page and popup Library retain existing
+  new-tab opening behavior; embedded Library deliberately owns this reader tab.
+  Reuse metadata/cover/database helpers; do not mount a
   second full LibraryApp or load EPUB buffers merely to browse.
+- Mount the embedded library view on first use, then retain it while hidden so
+  imports, filtering, and sort state survive panel switches. Returning to the
+  current book only closes the panel and restores content focus. Selecting a
+  different book first awaits a successful reading-position checkpoint, then
+  navigates this reader tab; failure leaves the current book open with an error.
+  During embedded imports, other-book activation is unavailable with the import
+  status as context, rather than abandoning in-flight work on navigation.
+  Current-book return and closing the panel remain available.
 - Keep **Open library in new tab** as an explicit secondary escape hatch in
   compact/reader contexts. Library browsing is not browser fullscreen.
 
@@ -163,6 +172,9 @@ Preserve explicit copy-failure feedback and existing diagnostic redaction.
 - Toolbar starts **Contents, then Library**, retaining visible labels where
   possible. Restore/preserve Search, Book options, Annotations, Book details,
   Ambra settings, Help, and current-page bookmark commands at narrow widths too.
+- When the remaining title region is under 80px, hide its redundant title action
+  rather than leave an invisible tab stop. Book details stays available by icon;
+  move focus there if a resize hides the focused title.
 - **One reference panel at a time.** Opening another replaces the active panel.
   Left: Contents and Library. Right: Annotations, Search, and Book details.
 - Contents and Annotations share their existing pin preference; Search has its
@@ -170,12 +182,22 @@ Preserve explicit copy-failure feedback and existing diagnostic redaction.
   unpinned panels are temporary flyouts dismissed by navigation, outside click,
   or Escape, with focus restoration. Do not invent pin capabilities for Library
   or Book details. Define responsive library overlay geometry during its phase.
+- Dock only when the actual available row, after any Inspector dock, can fit the
+  reference panel and at least 320px of reading space. Otherwise use an overlay
+  without changing the remembered pin preference; restore docking when room
+  returns. Keep the disabled pin action focusable with a localized explanation,
+  and preserve focus, drafts, filters, and results while resizing.
 - The study starts reference panels pinned only to facilitate layout review.
   That is not a change to production defaults or persisted pin state.
 - Keep one authored navigation-label string. Do not infer chapter numbers or
   fabricate a separate chapter-number label. TOC shows known book-wide page
   numbers, right-aligned and included accessibly; unknown numbers are omitted.
   Do not append page numbers to the stored/navigation label.
+  Without an authored section label, omit it from the title area and seek preview;
+  saved bookmark/search labels can fall back to the publication title. The
+  frontmatter fallback is the localized Start of book label, not a spine number.
+  While page counts are pending, the seek preview shows its target percentage
+  and counting status, not a guessed chapter ordinal based on the spine.
 - Preserve search semantics and matching/navigation engine. The study uses
   literal, case-insensitive search with a three-character minimum only as a
   representative UI; it is not an engine replacement.
@@ -226,8 +248,14 @@ settings/search utility:
   lifecycle behavior. The study plays no audio and simulates control states only.
 
 Automatic paused visibility is an intentional behavior change from explicit
-Listen-to-open. Whether collapse preference persists across reopening books is
-still an open implementation decision, not implied by prototype memory.
+Listen-to-open. Collapse is ephemeral to this reader opening: reopening starts
+expanded and paused. Collapsing never pauses playback or cancels a pending audio
+load, and does not write the retired discovery-notice preference. Playback errors
+remain visible in either presentation.
+
+Panels above the read-along strip use its measured height, including changes
+caused by collapse, localization, or an error. Panels already inside the reduced
+content pane must not subtract that space twice.
 
 ## 8. Progress scrubber and bookmarks
 
@@ -259,11 +287,20 @@ still an open implementation decision, not implied by prototype memory.
 - Support pointer, touch, keyboard, Escape/outside dismissal, focus restoration,
   and focus continuity when resizing regroups markers. Grouping must remain
   bounded with dense data and must not leak events to the slider/page-turn zones.
+- Show all bookmarks transfers focus to the Annotations Show control only after
+  the chooser has closed and released its focus scope. In fixed-layout spreads,
+  creating a bookmark uses the selected companion page, not always the primary
+  document; the marker, saved target, and displayed page must agree.
 
 Study reference measurements, not universal translated-layout constants:
 24px bookmark row; normal desktop footer about 85px; preview 6px above the track
 hit area. Preserve the compact hierarchy with zoom, larger text, and localization
 rather than clipping content to satisfy those exact pixels.
+
+The initial runtime integration uses a 72px footer (26px slider, 24px bookmark
+lane, 20px actual-position row, and 2px border/padding). This fits the existing
+76px publication inset without changing pagination geometry. The prototype's
+85px footer is not a required runtime height.
 
 ## 9. Whole-extension pattern and parity map
 
@@ -305,8 +342,8 @@ errors, importing and Save as need a parity review, not speculative redesign.
 | Short progress bar and side chapter label | Wide chapter-aware track, actual current readout, target preview at thumb. |
 | Above-track or vertically stacked bookmarks | Below-track fixed-height row with collision groups and bounded chooser. |
 
-Resolve explicitly during the appropriate phase: collapse persistence; exact
-token values; native-popup geometry/overflow with all locales; responsive
+Resolve explicitly during the appropriate phase: exact token values;
+native-popup geometry/overflow with all locales; responsive
 non-pinnable library-panel geometry; existing Inspector coexistence; truthful
 pending/unknown page positions; real same-page bookmark disambiguation. Do not
 treat simulated pages, available storage, pin defaults, disabled controls, or

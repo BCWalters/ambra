@@ -1,6 +1,9 @@
 import { expect, it, vi } from "vitest";
 import { ReaderController } from "./ReaderController.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "../library/ReadingSettings.js";
+import { attachTableControls } from "./TableControls.js";
+import { attachImageControlTheme } from "./ImageViewerSemantics.js";
+import { getInterfaceTheme } from "@ambra/shell/theme";
 
 function fixture() {
   const controller = Object.create(ReaderController.prototype);
@@ -26,6 +29,45 @@ it("repaints external global theme changes without repagination or writeback", a
   expect(controller.library.patchGlobalReadingSettings).not.toHaveBeenCalled();
   await controller.refreshGlobalSettings();
   expect(controller.applyPageThemeToHost).toHaveBeenCalledOnce();
+});
+
+it("refreshes injected interface controls without repagination, page changes or preference writeback", async () => {
+  const controller = fixture();
+  const table = document.createElement("table");
+  table.innerHTML = "<tbody><tr><td>Publication</td></tr></tbody>";
+  document.body.append(table);
+  const palette = getInterfaceTheme("ambra", "light");
+  const cleanups = [attachTableControls(document, "Expand table", vi.fn()),
+    attachImageControlTheme(document, palette)];
+  controller.allContentDocuments = () => [document];
+  try {
+    controller.library.getGlobalReadingSettings.mockResolvedValue({
+      ...DEFAULT_GLOBAL_READING_SETTINGS, chromeTheme: "purple",
+    });
+    await controller.refreshGlobalSettings();
+    const control = document.querySelector<HTMLElement>("[data-ambra-table-controls]")!;
+    expect(control.style.getPropertyValue("--ambraFocus")).toBe(getInterfaceTheme("purple", "light").focus);
+    expect(controller.pageTheme).toBe("white");
+    expect(controller.requestLayout).not.toHaveBeenCalled();
+    expect(controller.applyPageThemeToHost).not.toHaveBeenCalled();
+    expect(controller.library.patchGlobalReadingSettings).not.toHaveBeenCalled();
+    const media = vi.spyOn(window, "matchMedia").mockReturnValue(Object.assign(
+      new EventTarget(), { matches: true, media: "(prefers-color-scheme: dark)", onchange: null,
+        addListener: vi.fn(), removeListener: vi.fn() },
+    ));
+    controller.refreshContentControlTheme();
+    expect(control.style.getPropertyValue("--ambraFocus")).toBe(getInterfaceTheme("purple", "dark").focus);
+    expect(controller.library.patchGlobalReadingSettings).not.toHaveBeenCalled();
+    controller.operations.disposed = true;
+    controller.chromeTheme = "blue";
+    controller.refreshContentControlTheme();
+    expect(control.style.getPropertyValue("--ambraFocus")).toBe(getInterfaceTheme("purple", "dark").focus);
+    media.mockRestore();
+  } finally {
+    cleanups.forEach(cleanup => cleanup());
+    table.remove();
+    vi.restoreAllMocks();
+  }
 });
 
 it("does not let a late read override a newer cross-tab theme", async () => {

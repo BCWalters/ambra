@@ -245,7 +245,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   ))}
                   <DetailRow small label={t("inspector.fileName")} value={details.fileName} />
                   {onSaveAs && (
-                    <BookSaveAsAction accent={chromeTheme.accent} accentForeground={chromeTheme.accentForeground}
+                    <BookSaveAsAction accent={chromeTheme.actionBackground} accentForeground={chromeTheme.accentForeground}
                       onSaveAs={onSaveAs}
                       renderError={(message, onDismiss) => (
                         <FriendlyError message={message} severity="actionFailed" onDismiss={onDismiss}

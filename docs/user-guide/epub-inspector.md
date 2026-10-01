@@ -4,8 +4,11 @@ Explore the files, images, and metadata inside an EPUB without unpacking it. For
 
 ## Open EPUB Inspector
 
-- **In the reader:** move to the top edge to reveal the toolbar. Click the book title or the book-shaped information icon beside **Settings**.
-- **In the Library:** hover over a book’s cover and click the information button in its upper-left corner.
+- **In the reader:** move to the top edge to reveal the toolbar. Click the book
+  title or **Book details**, the book-shaped information control near
+  **Ambra settings** and **Help & About**.
+- **In the Library:** use the book's **Book details** action, available with its
+  cover and metadata in the full library, popup, and reader Library panel.
 
 Both open **Book details**. Choose **EPUB Inspector** near the bottom of that panel; scroll down if needed.
 

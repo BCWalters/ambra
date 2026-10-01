@@ -126,6 +126,7 @@ const OpenHighlightActionPopup: FC<HighlightActionPopupProps & { state: ActiveHi
         overflowY: "auto",
         boxSizing: "border-box",
         background: chromeTheme.backgroundSolid,
+        color: chromeTheme.text,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
       }}

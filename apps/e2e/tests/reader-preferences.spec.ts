@@ -1,4 +1,3 @@
-import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,102 +6,61 @@ import { launchReader } from "../harness.js";
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
 
 for (const surface of ["reader", "library"] as const) {
-  test(`${surface}: consistent Settings flyouts preserve previews, typography and compact height`, async () => {
+  test(`${surface}: shared Ambra settings retain task order, native choices and viewport bounds`, async () => {
     const testInfo = test.info();
     const { context, readerPage, libraryPage } = await launchReader(path.join(fixtures, "two-chapter.epub"));
     const page = surface === "reader" ? readerPage : libraryPage;
     try {
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
-      const menu = page.getByRole("menu", { name: "Settings", exact: true });
-      const title = menu.getByText("Ambra settings", { exact: true });
-      await expect(title).toHaveCSS("font-size", "14px");
-      await expect(title).toHaveCSS("font-weight", "600");
-      await expect(title).toHaveCSS("opacity", "1");
-      const textRgb = getInterfaceTheme("ambra", "light").text.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
-      await expect(title).toHaveCSS("color", `rgb(${textRgb})`);
-      for (const name of ["Page theme", "Brightness", "Reading mode", "Reader theme", "Page turn"]) {
-        const label = menu.getByText(name, { exact: true });
-        await expect(label).toHaveCSS("font-size", "14px");
-        await expect(label).toHaveCSS("font-weight", "400");
+      const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
+      await trigger.click();
+      const settings = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+      await expect(settings.getByRole("heading", { name: "Ambra settings", exact: true })).toBeVisible();
+      const reading = settings.locator("details").filter({ hasText: "Reading preferences" });
+      await expect(reading).toHaveJSProperty("open", surface === "reader");
+      if (surface === "reader") {
+        await expect(settings.getByRole("combobox", { name: "Page theme", exact: true })).toBeFocused();
+      } else {
+        await expect(settings.getByRole("combobox", { name: "Page theme", exact: true })).toBeHidden();
+        await reading.locator("summary").click();
       }
-      await expect(menu.getByRole("menuitemradio")).toHaveCount(0);
-      await expect(page.getByRole("menu")).toHaveCount(1);
-      await expect(menu.locator("..")).toBeInViewport({ ratio: 1 });
-      const dimensions = await menu.locator("..").evaluate(element => ({
-        height: element.getBoundingClientRect().height,
-        overflow: element.scrollHeight - element.clientHeight,
-      }));
-      expect(dimensions.height).toBeLessThanOrEqual(400);
-      expect(dimensions.overflow).toBeLessThanOrEqual(1);
+      await expect(settings.getByRole("menuitemradio")).toHaveCount(0);
+      await expect(settings.getByRole("slider", { name: "Font size", exact: true })).toHaveCount(0);
+      await expect(settings.getByRole("switch", { name: "Always show one page", exact: true })).toHaveCount(0);
+      await expect(settings).toBeInViewport({ ratio: 1 });
+      expect(await settings.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
       let previousBottom = 0;
-      for (const name of ["Reader theme", "Page theme", "Brightness", "Reading mode", "Page turn", "Language", "Help & About"]) {
-        if (surface === "library" && name === "Help & About") continue;
+      const readingNames = ["Page theme", "Brightness", "Reading mode", "Page turn", "Progress landmarks"];
+      const interfaceNames = ["Interface theme", "Language"];
+      for (const name of surface === "reader" ? [...readingNames, ...interfaceNames] : [...interfaceNames, ...readingNames]) {
         const control = name === "Brightness"
-          ? menu.getByRole("slider", { name, exact: true })
-          : menu.getByRole("menuitem", { name: new RegExp(`^${name}`) });
+          ? settings.getByRole("slider", { name, exact: true })
+          : settings.getByRole("combobox", { name, exact: true });
+        await expect(control).toBeVisible();
         const box = (await control.boundingBox())!;
         expect(box.y).toBeGreaterThanOrEqual(previousBottom);
         previousBottom = box.y + box.height;
       }
       for (const [label, value] of [
-        ["Page theme", "White"], ["Reading mode", "Paginated"],
-        ["Page turn", "Slide"], ["Reader theme", "Ambra"], ["Language", "System default"],
+        ["Page theme", "white"], ["Reading mode", "paginated"],
+        ["Page turn", "slide"], ["Interface theme", "ambra"], ["Language", "system"],
       ]) {
-        await expect(menu.getByRole("menuitem", { name: new RegExp(`^${label}`) })
-          .getByText(value!, { exact: true })).toHaveCSS("font-size", "14px");
+        await expect(settings.getByRole("combobox", { name: label, exact: true })).toHaveValue(value!);
       }
       const screenshot = testInfo.outputPath(`${surface}-full-settings.png`);
-      await menu.locator("..").screenshot({ path: screenshot });
+      await settings.screenshot({ path: screenshot });
       await testInfo.attach(`${surface}-full-settings`, { path: screenshot, contentType: "image/png" });
       for (const [name, labels] of [
         ["Page theme", ["White", "Sepia", "Dark"]],
         ["Reading mode", ["Paginated", "Scroll"]],
         ["Page turn", ["Slide", "Film strip", "Page flip", "Off"]],
-        ["Reader theme", ["Ambra", "Silver", "Green", "Blue", "Purple"]],
+        ["Interface theme", ["Ambra", "Silver", "Green", "Blue", "Purple"]],
       ] as const) {
-        const parent = menu.getByRole("menuitem", { name: new RegExp(`^${name}`) });
-        await parent.press("ArrowRight");
-        const submenu = page.getByRole("menu").last();
-        await expect(submenu.getByRole("menuitemradio")).toHaveCount(labels.length);
-        for (const label of labels) {
-          const choice = submenu.getByRole("menuitemradio", { name: new RegExp(`^${label}`) });
-          await expect(choice).toBeVisible();
-          await expect(choice.getByText(label, { exact: true })).toHaveCSS("font-size", "14px");
-          await expect(choice.getByText(label, { exact: true })).toHaveCSS("font-weight", "400");
-        }
-        if (name === "Page turn") {
-          await expect(submenu.getByRole("menuitemradio", { name: /^Page flip/ })).toContainText("Experimental");
-        } else if (name === "Page theme") {
-          for (const [label, background, foreground] of [
-            ["White", "rgb(255, 255, 255)", "rgb(26, 26, 26)"],
-            ["Sepia", "rgb(250, 247, 241)", "rgb(35, 32, 25)"],
-            ["Dark", "rgb(35, 35, 35)", "rgb(232, 230, 225)"],
-          ]) {
-            const preview = submenu.getByRole("menuitemradio", { name: label, exact: true })
-              .locator('span[aria-hidden="true"]').first();
-            await expect(preview).toHaveCSS("background-color", background!);
-            await expect(preview.locator("span")).toHaveCount(2);
-            for (const line of await preview.locator("span").all()) await expect(line).toHaveCSS("background-color", foreground!);
-            await expect(preview).toBeInViewport({ ratio: 1 });
-          }
-          const previewScreenshot = testInfo.outputPath(`${surface}-page-theme-previews.png`);
-          await submenu.locator("..").screenshot({ path: previewScreenshot });
-          await testInfo.attach(`${surface}-page-theme-previews`, { path: previewScreenshot, contentType: "image/png" });
-        } else if (name === "Reading mode" && surface === "reader") {
-          for (const [label, chord] of [["Paginated", "Alt+Shift+PageUp"], ["Scroll", "Alt+Shift+PageDown"]]) {
-            const choice = submenu.getByRole("menuitemradio", { name: label, exact: true });
-            await expect(choice).toHaveAttribute("aria-keyshortcuts", chord!);
-            await expect(choice.getByText(/Page(?:Up|Down)/)).toBeVisible();
-          }
-        } else if (name === "Reader theme") {
-          for (const item of await submenu.getByRole("menuitemradio").all()) {
-            await expect(item.locator('span[aria-hidden="true"]').first()).toBeVisible();
-          }
-        }
-        await page.keyboard.press("Escape");
-        await expect(parent).toBeFocused();
-        await expect(page.getByRole("menu")).toHaveCount(1);
+        await expect(settings.getByRole("combobox", { name, exact: true }).locator("option")).toHaveText([...labels]);
       }
+      await settings.getByRole("combobox", { name: "Interface theme", exact: true }).focus();
+      await page.keyboard.press("Escape");
+      await expect(settings).toBeHidden();
+      await expect(trigger).toBeFocused();
     } finally {
       await context.close();
     }
@@ -116,6 +74,7 @@ test("typography cascades preserve keyboard focus, checked choices and slider re
     await trigger.focus();
     await trigger.press("Enter");
     await expect(page.getByRole("menu", { name: "Text and page options", exact: true })).toHaveAccessibleDescription("Book options");
+    await expect(page.getByRole("combobox", { name: /^(Page theme|Reading mode|Interface theme|Language)$/ })).toHaveCount(0);
     const text = page.getByRole("menuitem", { name: "Text", exact: true });
     await text.press("ArrowRight");
     const size = page.getByRole("slider", { name: "Font size", exact: true });
@@ -144,57 +103,43 @@ test("typography cascades preserve keyboard focus, checked choices and slider re
   }
 });
 
-test("settings retain choices across reading-mode changes and disable animation only in scroll mode", async () => {
-  const { context, readerPage: page } = await launchReader(path.join(fixtures, "two-chapter.epub"));
+test("global settings retain choices across modes, reload and library while disabling animation only in scroll mode", async () => {
+  const { context, readerPage: page, libraryPage } = await launchReader(path.join(fixtures, "two-chapter.epub"));
   try {
-    const trigger = page.getByRole("button", { name: "Settings", exact: true });
+    // A trapped settings dialog removes its background trigger from the accessibility tree.
+    const trigger = page.locator("[data-ambra-page-band]")
+      .getByRole("button", { name: "Ambra settings", exact: true, includeHidden: true });
     await trigger.click();
-    await expect(page.getByRole("menu", { name: "Settings", exact: true })).toHaveAccessibleDescription("Ambra settings");
-    const readerTheme = page.getByRole("menuitem", { name: /^Reader theme/ });
-    await readerTheme.press("ArrowRight");
-    const blue = page.getByRole("menuitemradio", { name: "Blue", exact: true });
-    await blue.click();
-    await expect(blue).toHaveAttribute("aria-checked", "true");
-    await blue.press("Escape");
-    await expect(readerTheme).toBeFocused();
-    await expect(readerTheme).toContainText("Blue");
-    const readingMode = page.getByRole("menuitem", { name: /^Reading mode/ });
-    await readingMode.press("ArrowRight");
-    await page.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
+    const settings = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+    const readerTheme = settings.getByRole("combobox", { name: "Interface theme", exact: true });
+    await readerTheme.selectOption("blue");
+    await expect(readerTheme).toHaveValue("blue");
+    const readingMode = settings.getByRole("combobox", { name: "Reading mode", exact: true });
+    await readingMode.selectOption("scroll");
+    await expect(readingMode).toHaveValue("scroll");
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const pageTurn = page.getByRole("menuitem", { name: /^Page turn/ });
+    const pageTurn = settings.getByRole("combobox", { name: "Page turn", exact: true });
     await expect(pageTurn).toBeDisabled();
-    await expect(readerTheme).toContainText("Blue");
-    await page.getByRole("menuitemradio", { name: "Paginated", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Paginated", exact: true })).toHaveAttribute("aria-checked", "true");
-    await page.keyboard.press("Escape");
-    await expect(readingMode).toBeFocused();
+    await expect(readerTheme).toHaveValue("blue");
+    await readingMode.selectOption("paginated");
+    await expect(readingMode).toHaveValue("paginated");
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
     await expect(pageTurn).toBeEnabled();
-    await pageTurn.press("ArrowRight");
-    const filmStrip = page.getByRole("menuitemradio", { name: "Film strip", exact: true });
-    await expect(filmStrip).toBeEnabled();
-    await filmStrip.click();
-    await expect(filmStrip).toHaveAttribute("aria-checked", "true");
-    await filmStrip.press("Escape");
-    await expect(pageTurn).toBeFocused();
-    await expect(pageTurn).toContainText("Film strip");
-    const brightness = page.getByRole("slider", { name: "Brightness", exact: true });
-    const pageTheme = page.getByRole("menuitem", { name: /^Page theme/ });
-    await pageTheme.press("ArrowRight");
-    const sepia = page.getByRole("menuitemradio", { name: "Sepia", exact: true });
-    await sepia.click();
-    await expect(sepia).toBeFocused();
-    await expect(sepia).toHaveAttribute("aria-checked", "true");
-    await sepia.press("Escape");
+    await pageTurn.selectOption("scroll");
+    await expect(pageTurn).toHaveValue("scroll");
+    const brightness = settings.getByRole("slider", { name: "Brightness", exact: true });
+    const pageTheme = settings.getByRole("combobox", { name: "Page theme", exact: true });
+    await pageTheme.focus();
+    await pageTheme.selectOption("sepia");
     await expect(pageTheme).toBeFocused();
+    await expect(pageTheme).toHaveValue("sepia");
     await pageTheme.press("Escape");
     await expect(trigger).toBeFocused();
     await trigger.press("Enter");
-    await pageTheme.press("ArrowRight");
-    await expect(sepia).toHaveAttribute("aria-checked", "true");
-    await sepia.press("Escape");
+    await expect(pageTheme).toBeFocused();
+    await expect(pageTheme).toHaveValue("sepia");
+    await expect(readerTheme).toHaveValue("blue");
+    await expect(pageTurn).toHaveValue("scroll");
     const originalBrightness = await brightness.inputValue();
     await brightness.focus();
     await brightness.press("ArrowLeft");
@@ -203,6 +148,24 @@ test("settings retain choices across reading-mode changes and disable animation 
     await expect(brightness).toHaveValue(originalBrightness);
     await brightness.press("Escape");
     await expect(trigger).toBeFocused();
+    await page.reload();
+    await expect(page.locator("iframe").first()).toBeAttached();
+    await trigger.click();
+    await expect(pageTheme).toHaveValue("sepia");
+    await expect(readerTheme).toHaveValue("blue");
+    await expect(pageTurn).toHaveValue("scroll");
+    await expect(readingMode).toHaveValue("paginated");
+    await expect(brightness).toHaveValue(originalBrightness);
+
+    await libraryPage.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    const librarySettings = libraryPage.getByRole("dialog", { name: "Ambra settings", exact: true });
+    await expect(librarySettings.getByRole("combobox", { name: "Interface theme", exact: true })).toHaveValue("blue");
+    const reading = librarySettings.locator("details").filter({ hasText: "Reading preferences" });
+    await expect(reading).toHaveJSProperty("open", false);
+    await reading.locator("summary").click();
+    await expect(librarySettings.getByRole("combobox", { name: "Page theme", exact: true })).toHaveValue("sepia");
+    await expect(librarySettings.getByRole("combobox", { name: "Page turn", exact: true })).toHaveValue("scroll");
+    await expect(librarySettings.getByRole("combobox", { name: "Reading mode", exact: true })).toHaveValue("paginated");
   } finally {
     await context.close();
   }
@@ -216,19 +179,14 @@ test("fixed-layout books retain theme, animation and brightness but hide typogra
     await expect(
       page.getByRole("button", { name: "Text and page options", exact: true }),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: /^Reading mode/ })).toHaveCount(0);
-    await expect(page.getByRole("menuitemradio", { name: "Paginated", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveCount(0);
-    await page.getByRole("menuitem", { name: /^Page turn/ }).click();
-    const off = page.getByRole("menuitemradio", { name: "Off", exact: true });
-    await off.click();
-    await expect(off).toHaveAttribute("aria-checked", "true");
-    await off.press("Escape");
-    await page.getByRole("menuitem", { name: /^Reader theme/ }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Ambra", exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("slider", { name: "Brightness", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    const settings = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+    await expect(settings.getByRole("combobox", { name: "Reading mode", exact: true })).toHaveCount(0);
+    const pageTurn = settings.getByRole("combobox", { name: "Page turn", exact: true });
+    await pageTurn.selectOption("none");
+    await expect(pageTurn).toHaveValue("none");
+    await expect(settings.getByRole("combobox", { name: "Interface theme", exact: true })).toHaveValue("ambra");
+    await expect(settings.getByRole("slider", { name: "Brightness", exact: true })).toBeVisible();
   } finally {
     await context.close();
   }

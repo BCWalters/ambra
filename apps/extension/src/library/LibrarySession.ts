@@ -4,6 +4,7 @@ export interface LibraryBookViewModel extends BookMetadata {
   readonly coverUrl: string | undefined;
   readonly cardCoverUrl: string | undefined;
   readonly progressFraction: number | undefined;
+  readonly lastReadAt?: number;
 }
 
 /** One mounted library's database connection, cover URLs, and refresh ownership. */
@@ -63,6 +64,7 @@ export class LibrarySession {
           coverUrl: this.coverUrls.get(book.id),
           cardCoverUrl: this.cardCoverUrls.get(book.id),
           progressFraction: progress.get(book.id)?.fractionComplete,
+          ...(progress.has(book.id) ? { lastReadAt: progress.get(book.id)!.updatedAt } : {}),
         };
       });
     } catch (error) {

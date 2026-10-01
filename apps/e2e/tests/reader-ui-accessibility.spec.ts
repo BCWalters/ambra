@@ -1,4 +1,3 @@
-import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,11 +109,32 @@ test("search uses accessible text emphasis and changing UI language updates the 
     await readerPage.getByRole("button", { name: "Search", exact: true }).click();
     await readerPage.getByRole("searchbox").fill("chapter");
     const match = readerPage.getByRole("navigation", { name: "Search" }).locator("strong").first();
-    const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
-    await expect(match).toHaveCSS("color", `rgb(${accentRgb})`);
-    await readerPage.getByRole("button", { name: "Settings", exact: true }).click();
-    await readerPage.getByRole("menuitem", { name: /^Language/ }).click();
-    await readerPage.getByRole("menuitemradio", { name: "Français", exact: true }).click();
+    await expect(match).toBeVisible();
+    const contrasts = await match.evaluate(element => {
+      const luminance = (color: string) => {
+        const channels = color.match(/[\d.]+/g)!.map(Number);
+        if (channels.length === 4 && channels[3] !== 1) throw new Error(`Expected opaque contrast color: ${color}`);
+        const [r, g, b] = channels.slice(0, 3).map(value => {
+          const channel = Number(value) / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return r! * 0.2126 + g! * 0.7152 + b! * 0.0722;
+      };
+      const foreground = luminance(getComputedStyle(element).color);
+      const panel = getComputedStyle(element.closest("nav")!);
+      // Chrome paints an opaque gradient, not its transparent background-color.
+      const backgrounds = panel.backgroundImage === "none"
+        ? [panel.backgroundColor] : panel.backgroundImage.match(/rgba?\([^)]+\)/g);
+      if (!backgrounds?.length) throw new Error(`Unrecognized panel background: ${panel.backgroundImage}`);
+      return backgrounds.map(color => {
+        const background = luminance(color);
+        return { color, ratio: (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05) };
+      });
+    });
+    for (const { color, ratio } of contrasts) expect(ratio, `Search emphasis against ${color}`).toBeGreaterThanOrEqual(4.5);
+    await readerPage.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    await readerPage.getByRole("dialog", { name: "Ambra settings", exact: true })
+      .getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
     await expect(readerPage.locator("html")).toHaveAttribute("lang", "fr");
   } finally {
     await context.close();

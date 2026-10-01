@@ -84,10 +84,6 @@ describe.each(["popup", "panel"] as const)("%s note persistence", (surface) => {
       ),
     );
     if (surface === "panel") {
-      const tab = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
-        (button) => button.textContent?.includes("Highlights"),
-      )!;
-      act(() => tab.click());
       const edit = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
         /^(Edit|Add) note:/.test(button.getAttribute("aria-label") ?? ""),
       )!;

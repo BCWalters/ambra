@@ -5,6 +5,8 @@ import { LibraryRegular } from "@fluentui/react-icons";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toolbar, type ToolbarProps } from "./Toolbar.js";
 import type { ReaderSnapshot } from "../ReaderTypes.js";
+import { getTranslate } from "../../i18n/LocaleContext.js";
+import { DEFAULT_GLOBAL_READING_SETTINGS } from "../../library/ReadingSettings.js";
 
 vi.mock("./ReaderPreferencesMenus.js", () => ({
   ReaderSettingsMenu: () => null,
@@ -46,8 +48,8 @@ describe("Toolbar startup positioning (#175)", () => {
   function render(chapter: string) {
     const noop = () => {};
     const props: ToolbarProps = {
-      snapshot: { title: "Short book", currentChapterLabel: chapter } as ReaderSnapshot,
-      openMenu: undefined, onOpenMenuChange: noop, onBackToLibrary: backToLibrary,
+      snapshot: { ...DEFAULT_GLOBAL_READING_SETTINGS, title: "Short book", currentChapterLabel: chapter } as ReaderSnapshot,
+      openMenu: undefined, onOpenMenuChange: noop, isLibraryOpen: false, onToggleLibrary: backToLibrary,
       isTocOpen: false, onToggleToc: noop, isSearchOpen: false, onToggleSearch: noop,
       isAnnotationsOpen: false, onToggleAnnotations: noop, isDetailsOpen: false,
       onToggleDetails: toggleDetails, onToggleBookmark: noop, onSetViewMode: noop,
@@ -56,7 +58,7 @@ describe("Toolbar startup positioning (#175)", () => {
       onSetAlwaysShowOnePage: noop,
       onSetBrightness: noop, onSetChromeTheme: noop, onSetPageTurnAnimationStyle: noop,
       onSetProgressMarkerStyle: noop,
-      onOpenHelp: noop, visible: true,
+      onOpenHelp: noop, isHelpOpen: false, visible: true,
       handlers: { onPointerEnter: noop, onPointerLeave: noop, onFocus: noop, onBlur: noop },
     };
     act(() => root.render(<Toolbar {...props} />));
@@ -86,6 +88,18 @@ describe("Toolbar startup positioning (#175)", () => {
     expect(backToLibrary).toHaveBeenCalledOnce();
   });
 
+  it("places Contents before Library, reference actions after the title, and exposes Help directly", () => {
+    render("");
+    const t = getTranslate("en");
+    const buttons = [...container.querySelectorAll("button")];
+    expect(buttons[0]!.getAttribute("aria-label")).toBe(t("toolbar.showContents"));
+    expect(buttons[1]!.getAttribute("aria-label")).toBe(t("toolbar.backToLibrary"));
+    const titleIndex = buttons.findIndex(button => button.textContent === "Short book");
+    const annotationIndex = buttons.findIndex(button => button.getAttribute("aria-label") === t("toolbar.bookmarksAndHighlights"));
+    expect(annotationIndex).toBeGreaterThan(titleIndex);
+    expect(buttons.find(button => button.getAttribute("aria-label") === t("settings.helpAbout"))).toBeDefined();
+  });
+
   it("adds the resolved resume chapter without a slide and retains narrow-width ellipsis", () => {
     render("");
     const chapter = "Actual resumed chapter";
@@ -103,5 +117,21 @@ describe("Toolbar startup positioning (#175)", () => {
     expect(group.style.transition).toBe("");
     expect(group.lastElementChild?.textContent).toBe(`— ${chapter}`);
     expect((group.lastElementChild as HTMLElement).style.textOverflow).toBe("ellipsis");
+  });
+
+  it("hides a cramped redundant title and transfers its focus to Book details on resize", () => {
+    const title = render("Actual chapter");
+    const region = title.closest("[data-ambra-toolbar-title]")!.parentElement as HTMLElement;
+    expect(region.style.visibility).toBe("visible");
+    act(() => title.focus());
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(40);
+    act(() => resize([], {} as ResizeObserver));
+    expect(region.style.visibility).toBe("hidden");
+    const details = container.querySelector<HTMLButtonElement>('button[aria-label="Book details"]')!;
+    expect(document.activeElement).toBe(details);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+    act(() => resize([], {} as ResizeObserver));
+    expect(region.style.visibility).toBe("visible");
+    expect(document.activeElement).toBe(details);
   });
 });

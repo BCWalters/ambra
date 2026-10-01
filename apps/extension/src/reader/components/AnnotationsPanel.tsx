@@ -1,6 +1,6 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, FC, MouseEvent } from "react";
-import { Body1, Button, Caption1, makeStyles, Tab, TabList, Tooltip } from "@fluentui/react-components";
+import { Body1, Button, Caption1, makeStyles, Select, Tooltip } from "@fluentui/react-components";
 import {
   ArrowDownloadRegular,
   ArrowUploadRegular,
@@ -13,7 +13,7 @@ import {
   PinRegular,
 } from "@fluentui/react-icons";
 import { HighlightTheme } from "@ambra/engine";
-import { BOOKMARK_COLOR, CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
+import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
@@ -90,6 +90,7 @@ const BookmarkCard: FC<{
 }> = ({ title, location, onSelect, onRemove }) => {
   const t = useTranslation();
   const { locale } = useLocale();
+  const chromeTheme = useChromeTheme();
   const styles = useBookmarkStyles();
   const pageId = useId();
   const page = location?.page;
@@ -103,7 +104,7 @@ const BookmarkCard: FC<{
         <button type="button" className={styles.jump} onClick={onSelect}
           aria-describedby={pageId} data-bookmark-link="">
           <BookmarkFilled aria-hidden="true" fontSize={18}
-            style={{ flexShrink: 0, marginTop: 1, color: BOOKMARK_COLOR }} />
+            style={{ flexShrink: 0, marginTop: 1, color: chromeTheme.bookmark }} />
           <span className={styles.title} data-bookmark-title="">{title}</span>
         </button>
       </Tooltip>
@@ -165,7 +166,7 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, locations, embedded, o
           onRemove={event => {
             pendingFocus.current = {
               id: bookmark.id, index, button: event.currentTarget,
-              fallback: event.currentTarget.closest<HTMLElement>('[role="tabpanel"]'),
+              fallback: event.currentTarget.closest("nav")?.querySelector("select") ?? null,
             };
             onRemove(bookmark.id);
           }} />
@@ -179,6 +180,8 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, locations, embedded, o
 };
 
 
+export type AnnotationFilter = "all" | "highlights" | "notes" | "bookmarks";
+
 interface HighlightListProps {
   highlights: readonly Highlight[];
   /** Publisher-embedded, read-only highlights/comments (issue #109/
@@ -190,15 +193,12 @@ interface HighlightListProps {
   onSetNote: (id: string, note: string | undefined) => Promise<boolean>;
   /** Distinct from `onSelect` — see `BookmarkListProps.onSelectEmbedded`. */
   onSelectEmbedded: (cfi: string) => void;
+  filter: AnnotationFilter;
+  panelVisible: boolean;
+  focusFilter: () => void;
 }
 
-/** The "Highlights" tab's contents — each entry shows a small color
- * swatch (matching `HighlightTheme`'s style — an underline preview for
- * that one style, same as the selection toolbar's own swatches), an
- * excerpt of the highlighted text itself (snapshotted at creation time —
- * see `Highlight.text` — so this never needs to re-resolve/re-extract
- * from the DOM just to render a list), and its note (if any — see
- * `HighlightListItem`). */
+/** Rows stay mounted while filtered out to retain drafts and pending persistence. */
 const HighlightList: FC<HighlightListProps> = ({
   highlights,
   embedded,
@@ -206,17 +206,25 @@ const HighlightList: FC<HighlightListProps> = ({
   onRemove,
   onSetNote,
   onSelectEmbedded,
+  filter,
+  panelVisible,
+  focusFilter,
 }) => {
   const t = useTranslation();
+  const notesOnly = filter === "notes";
+  const hasEntries = highlights.some(highlight => !notesOnly || !!highlight.note)
+    || embedded.some(annotation => !notesOnly || !!annotation.note);
   if (highlights.length === 0 && embedded.length === 0) {
     return (
       <Body1 as="p" block style={{ padding: "16px 12px", opacity: 0.75, margin: 0 }}>
-        {t("annotations.noHighlightsYet")}
+        {t(notesOnly ? "annotations.noNotesYet" : "annotations.noHighlightsYet")}
       </Body1>
     );
   }
 
   return (
+    <>
+    {!hasEntries && <Body1 as="p" style={{ padding: "16px 12px", margin: 0 }}>{t("annotations.noNotesYet")}</Body1>}
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {highlights.map((highlight) => (
         <HighlightListItem
@@ -225,12 +233,16 @@ const HighlightList: FC<HighlightListProps> = ({
           onSelect={onSelect}
           onRemove={onRemove}
           onSetNote={onSetNote}
+          visible={filter !== "bookmarks" && (!notesOnly || !!highlight.note)}
+          panelVisible={panelVisible}
+          focusFilter={focusFilter}
         />
       ))}
-      {embedded.map((annotation) => (
+      {embedded.filter(annotation => !notesOnly || !!annotation.note).map((annotation) => (
         <ReadOnlyRow key={annotation.id} annotation={annotation} onSelect={onSelectEmbedded} clampLines={2} />
       ))}
     </ul>
+    </>
   );
 };
 
@@ -239,6 +251,9 @@ interface HighlightListItemProps {
   onSelect: (cfi: string) => void;
   onRemove: (id: string) => void;
   onSetNote: (id: string, note: string | undefined) => Promise<boolean>;
+  visible: boolean;
+  panelVisible: boolean;
+  focusFilter: () => void;
 }
 
 /** One highlight's row, plus its own local "note editor open?" state —
@@ -250,95 +265,62 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
   onSelect,
   onRemove,
   onSetNote,
+  visible,
+  panelVisible,
+  focusFilter,
 }) => {
   const t = useTranslation();
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [draftNote, setDraftNote] = useState(highlight.note ?? "");
   const noteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const itemRef = useRef<HTMLLIElement | null>(null);
+  const ownedFocus = useRef(false);
+  const previouslyVisible = useRef(visible);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const editorId = useId();
   const option = HighlightTheme.STYLES[highlight.style];
+  const activeRef = useRef(false);
+  activeRef.current = panelVisible && visible;
   const closeNoteEditor = () => {
     setIsEditingNote(false);
-    noteButtonRef.current?.focus();
+    if (activeRef.current) noteButtonRef.current?.focus();
   };
+  useLayoutEffect(() => {
+    if (!visible && previouslyVisible.current && panelVisible
+      && (itemRef.current?.contains(document.activeElement)
+        || (ownedFocus.current && document.activeElement === document.body))) focusFilter();
+    previouslyVisible.current = visible;
+  }, [visible, panelVisible, focusFilter]);
 
   return (
     <li
+      ref={itemRef}
+      hidden={!visible}
+      onFocusCapture={() => { ownedFocus.current = true; }}
+      onBlurCapture={event => {
+        if (event.relatedTarget !== null) ownedFocus.current = event.currentTarget.contains(event.relatedTarget);
+      }}
       style={ANNOTATION_CARD_STYLE}
     >
-      <button
-        type="button"
-        onClick={() => onSelect(highlight.startCfi)}
-        style={{
-          width: "100%",
-          minWidth: 0,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 8,
-          background: "none",
-          border: "none",
-          borderRadius: 6,
-          color: "var(--colorNeutralForeground2, #333)",
-          cursor: "pointer",
-          padding: "10px",
-          textAlign: "left",
-          font: "inherit",
-          lineHeight: 1.35,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = CHROME_HOVER_BACKGROUND;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "none";
-        }}
-      >
-        <span
-          aria-hidden="true"
-          style={{
-            flexShrink: 0,
-            marginTop: 4,
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            border: "1px solid rgba(0, 0, 0, 0.15)",
-            background:
-              highlight.style === "underline"
-                ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
-                : option.swatch,
-          }}
-        />
-        <span style={{ minWidth: 0, flex: 1 }}>
-          <span
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {highlight.text}
-          </span>
-        </span>
-      </button>
-      {highlight.note && !isEditingNote && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "0 10px 8px" }}>
-          <NoteRegular aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
-          <Body1 as="p" block style={{ margin: 0, whiteSpace: "pre-wrap", minWidth: 0 }}>
-            {highlight.note}
-          </Body1>
-        </div>
-      )}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 8,
-          padding: "0 8px 8px",
+          padding: "10px 8px 6px 10px",
         }}
       >
+        <Caption1 style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--colorNeutralForeground3, #616161)" }}>
+          <span aria-hidden="true" style={{
+            flexShrink: 0, width: 12, height: 12, borderRadius: "50%",
+            border: "1px solid rgba(0, 0, 0, 0.15)",
+            background: highlight.style === "underline"
+              ? `linear-gradient(to bottom, transparent 0%, transparent 65%, ${option.swatch} 65%, ${option.swatch} 80%, transparent 80%)`
+              : option.swatch,
+          }} />
+          {t(highlight.note || isEditingNote ? "annotations.yourNote" : "annotations.highlightLabel")}
+        </Caption1>
         <Tooltip
           content={{
             children: highlight.note
@@ -367,18 +349,12 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
             {t(highlight.note ? "highlight.editNote" : "highlight.addNote")}
           </Button>
         </Tooltip>
-        <Tooltip
-          content={{ children: t("annotations.removeHighlight", { text: highlight.text }), style: EPUB_TOOLTIP_STYLE }}
-          relationship="label"
-        >
-          <Button
-            appearance="subtle"
-            size="small"
-            icon={<DeleteRegular />}
-            onClick={() => onRemove(highlight.id)}
-          />
-        </Tooltip>
       </div>
+      {highlight.note && !isEditingNote && (
+        <Body1 as="p" block style={{ margin: "0 10px 12px", whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.6 }}>
+          {highlight.note}
+        </Body1>
+      )}
       {isEditingNote && (
         <div ref={editorRef} id={editorId} style={{ padding: "0 10px 10px" }}>
           <HighlightNoteEditor
@@ -389,9 +365,30 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
             onSaved={closeNoteEditor}
             onCancel={closeNoteEditor}
             autoFocus
+            active={panelVisible && visible}
           />
         </div>
       )}
+      <blockquote style={{
+        margin: "4px 10px 10px",
+        paddingLeft: 10,
+        borderLeft: `3px solid ${option.swatch}`,
+        color: highlight.note || isEditingNote ? "var(--colorNeutralForeground3, #616161)" : "var(--colorNeutralForeground1, #242424)",
+        fontSize: highlight.note || isEditingNote ? 12 : 14,
+        whiteSpace: "pre-wrap",
+        lineHeight: 1.6,
+      }}>{highlight.text}</blockquote>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "0 8px 8px" }}>
+        <Button appearance="subtle" size="small" onClick={() => onSelect(highlight.startCfi)}>
+          {t("annotations.goToPassage")}
+        </Button>
+        <Tooltip
+          content={{ children: t("annotations.removeHighlight", { text: highlight.text }), style: EPUB_TOOLTIP_STYLE }}
+          relationship="label"
+        >
+          <Button appearance="subtle" size="small" icon={<DeleteRegular />} onClick={() => onRemove(highlight.id)} />
+        </Tooltip>
+      </div>
     </li>
   );
 };
@@ -494,18 +491,24 @@ export interface AnnotationsPanelProps {
   /** Imports bookmarks/highlights from a previously-exported (or
    * third-party) annotation file (issue #108). */
   onImportFile: (file: File) => void | Promise<void>;
-  /** Whether the panel should currently be shown at all. Always rendered
-   * (never conditionally unmounted) so it can animate closed instead of
-   * simply vanishing — see the `transform`/`opacity` transition below. */
+  /** Keep this component mounted when closed: both drafts and pending note
+   * saves must survive switching reference panels, as well as the closing animation. */
   open: boolean;
   /** `true` docks the panel in the normal layout flow, pushing the
    * content pane over; `false` (the default) makes it fly out as a
    * translucent overlay on top of the content pane instead,
    * auto-dismissing on selection, an outside click, or Escape. */
   pinned: boolean;
+  canPin?: boolean;
   onTogglePin: () => void;
   onRequestClose: () => void;
   onOutsideClick?: () => void;
+  /** One-shot filter command: increment requestId for every external action,
+   * including repeated requests for the same filter. Open the panel in the same
+   * parent update. The Show control receives focus, including for a pinned or
+   * already-open panel; subsequent user filter choices remain local. Omit this
+   * prop on ordinary opens to restore the panel's default focus behavior. */
+  filterRequest?: { readonly filter: AnnotationFilter; readonly requestId: number };
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
    * condition) — this panel needs to stop *above* it rather than
@@ -538,16 +541,20 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   onImportFile,
   open,
   pinned,
+  canPin = true,
   onTogglePin,
   onRequestClose,
   onOutsideClick,
+  filterRequest,
   scrubberVisible,
 }) => {
-  const [activeTab, setActiveTab] = useState<"bookmarks" | "highlights">("bookmarks");
-  const tabsId = useId();
+  const [filter, setFilter] = useState<AnnotationFilter>("all");
+  const filterId = useId();
+  const filterRef = useRef<HTMLSelectElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = useTranslation();
+  const { locale } = useLocale();
   const chromeTheme = useChromeTheme();
   const navRef = useRef<HTMLElement | null>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -558,13 +565,26 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   // `classifyReadOnlyAnnotationKind`.
   const embeddedBookmarks = readOnlyAnnotations.filter((annotation) => annotation.kind === "bookmark");
   const embeddedHighlights = readOnlyAnnotations.filter((annotation) => annotation.kind === "highlight");
+  const counts = {
+    all: bookmarks.length + highlights.length + readOnlyAnnotations.length,
+    bookmarks: bookmarks.length + embeddedBookmarks.length,
+    highlights: highlights.length + embeddedHighlights.length,
+    notes: highlights.filter(highlight => !!highlight.note).length + embeddedHighlights.filter(annotation => !!annotation.note).length,
+  };
+  const focusFilter = useCallback(() => filterRef.current?.focus(), []);
+  const requestedFilter = filterRequest?.filter;
+  const filterRequestId = filterRequest?.requestId ?? 0;
+
+  useLayoutEffect(() => {
+    if (requestedFilter !== undefined) setFilter(requestedFilter);
+  }, [requestedFilter, filterRequestId]);
 
   useEffect(() => {
     if (!open || pinned) {
       return;
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) {
         onRequestClose();
       }
     };
@@ -575,7 +595,8 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   // See `TocPanel`'s matching effect's doc comment for why this is
   // needed at all (this panel is likewise rendered earlier in the DOM
   // than the toolbar button that opens it).
-  useFocusOnOpen(navRef, open && !pinned);
+  useFocusOnOpen(navRef, open && filterRequest === undefined);
+  useFocusOnOpen(filterRef, (open || pinned) && filterRequest !== undefined, filterRequestId);
 
   return (
     <>
@@ -596,6 +617,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
       )}
 
       <nav
+        data-ambra-reference-panel="annotations"
         ref={navRef}
         tabIndex={-1}
         aria-label={t("annotations.panelAriaLabel")}
@@ -603,19 +625,22 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
           position: pinned ? "relative" : "absolute",
           outline: "none",
           top: pinned ? 0 : CHROME_TOOLBAR_HEIGHT,
-          left: 0,
-          bottom: scrubberVisible ? SCRUBBER_HEIGHT : pinned ? 0 : 8,
+          right: 0,
+          bottom: pinned ? 0
+            : `calc(${scrubberVisible ? SCRUBBER_HEIGHT : 8}px + var(--ambra-narration-height, 0px))`,
           zIndex: 8,
           width: 300,
+          maxWidth: "100%",
+          boxSizing: "border-box",
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           background: chromeTheme.backgroundSolid,
           backdropFilter: pinned ? undefined : "blur(16px)",
-          borderRight: `1px solid ${CHROME_BORDER}`,
-          borderRadius: pinned ? 0 : "0 12px 12px 0",
+          borderLeft: `1px solid ${CHROME_BORDER}`,
+          borderRadius: pinned ? 0 : "12px 0 0 12px",
           boxShadow: pinned ? "none" : CHROME_SHADOW,
-          transform: pinned ? "none" : `translateX(${open ? "0" : "-100%"})`,
+          transform: pinned ? "none" : `translateX(${open ? "0" : "100%"})`,
           opacity: pinned || open ? 1 : 0,
           pointerEvents: pinned || open ? "auto" : "none",
           visibility: pinned || open ? "visible" : "hidden",
@@ -633,11 +658,14 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             borderBottom: `1px solid ${CHROME_BORDER}`,
           }}
         >
-          <Body1 as="span" style={{ flex: 1, fontWeight: 600 }}>
-            {activeTab === "bookmarks" ? t("annotations.bookmarksTab") : t("annotations.highlightsTab")}
+          <Body1 as="h2" style={{ flex: 1, fontWeight: 600, margin: 0 }}>
+            {t("annotations.panelAriaLabel")}
           </Body1>
-          <Tooltip content={pinned ? t("annotations.unpinPanel") : t("annotations.pinPanel")} relationship="label">
+          <Tooltip content={!canPin ? t("reader.pinUnavailable") : pinned ? t("annotations.unpinPanel") : t("annotations.pinPanel")} relationship={canPin ? "label" : "description"}>
             <Button
+              aria-label={pinned ? t("annotations.unpinPanel") : t("annotations.pinPanel")}
+              aria-description={!canPin ? t("reader.pinUnavailable") : undefined}
+              disabledFocusable={!canPin}
               appearance="subtle"
               size="small"
               icon={pinned ? <PinOffRegular /> : <PinRegular />}
@@ -650,44 +678,37 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
             </Tooltip>
           )}
         </div>
-        {/* No icons (they read as empty/decorative rather than
-         * meaningful) and no horizontal scrollbar — each tab clips its
-         * own label with an ellipsis instead, so a longer translated
-         * label plus its "(N)" count can lose a few trailing characters
-         * but never bleeds a scrollbar or overflowing text past the
-         * pane's edge (issue #118). The ellipsis styling lives on a
-         * plain nested `<span>` rather than Tab's own `content` slot
-         * prop — passing that prop forces Tab's internal
-         * width-reservation mirror span to always render (even while
-         * selected) instead of only when unselected, which doubled up
-         * matching accessible text for the active tab. */}
-        <TabList
-          aria-label={t("annotations.panelAriaLabel")}
-          size="small"
-          selectedValue={activeTab}
-          onTabSelect={(_event, data) => setActiveTab(data.value as "bookmarks" | "highlights")}
-          style={{ padding: "4px 8px 0", borderBottom: `1px solid ${CHROME_BORDER}` }}
-        >
-          <Tab id={`${tabsId}-bookmarks`} aria-controls={`${tabsId}-panel`} value="bookmarks" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
-            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {t("annotations.bookmarksTab")}
-              {bookmarks.length + embeddedBookmarks.length > 0
-                ? ` (${bookmarks.length + embeddedBookmarks.length})`
-                : ""}
-            </span>
-          </Tab>
-          <Tab id={`${tabsId}-highlights`} aria-controls={`${tabsId}-panel`} value="highlights" style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
-            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {t("annotations.highlightsTab")}
-              {highlights.length + embeddedHighlights.length > 0
-                ? ` (${highlights.length + embeddedHighlights.length})`
-                : ""}
-            </span>
-          </Tab>
-        </TabList>
-        <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${activeTab}`}
-          tabIndex={0} style={{ flex: 1, overflowY: "auto", padding: "8px 6px" }}>
-          {activeTab === "bookmarks" ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px", borderBottom: `1px solid ${CHROME_BORDER}` }}>
+          <label htmlFor={filterId} style={{ flexShrink: 0, fontSize: 12 }}>{t("annotations.show")}</label>
+          <Select ref={filterRef} id={filterId} value={filter} size="small"
+            onChange={(_event, data) => setFilter(data.value as AnnotationFilter)}
+            style={{ flex: 1, minWidth: 0 }} select={{ style: { minWidth: 0, width: "100%" } }}>
+            <option value="all">{t("annotations.allAnnotations")} ({new Intl.NumberFormat(locale).format(counts.all)})</option>
+            <option value="highlights">{t("annotations.highlightsTab")} ({new Intl.NumberFormat(locale).format(counts.highlights)})</option>
+            <option value="notes">{t("annotations.notesFilter")} ({new Intl.NumberFormat(locale).format(counts.notes)})</option>
+            <option value="bookmarks">{t("annotations.bookmarksTab")} ({new Intl.NumberFormat(locale).format(counts.bookmarks)})</option>
+          </Select>
+        </div>
+        <div role="region" aria-label={t("annotations.panelAriaLabel")}
+          style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 6px" }}>
+          {filter === "all" && counts.all === 0 && (
+            <Body1 as="p" style={{ padding: "16px 12px", margin: 0 }}>{t("annotations.noAnnotationsYet")}</Body1>
+          )}
+          {/* Keep editors mounted across filters so unsaved drafts and pending saves survive. */}
+          <div hidden={filter === "bookmarks" || (filter === "all" && counts.highlights === 0)}>
+            <HighlightList
+              highlights={highlights}
+              embedded={embeddedHighlights}
+              onSelect={onSelectHighlight}
+              onRemove={onRemoveHighlight}
+              onSetNote={onSetHighlightNote}
+              onSelectEmbedded={onSelectReadOnlyAnnotation}
+              filter={filter}
+              panelVisible={open || pinned}
+              focusFilter={focusFilter}
+            />
+          </div>
+          <div hidden={filter !== "bookmarks" && (filter !== "all" || counts.bookmarks === 0)}>
             <BookmarkList
               bookmarks={bookmarks}
               locations={bookmarkLocations}
@@ -696,16 +717,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
               onRemove={onRemoveBookmark}
               onSelectEmbedded={onSelectReadOnlyAnnotation}
             />
-          ) : (
-            <HighlightList
-              highlights={highlights}
-              embedded={embeddedHighlights}
-              onSelect={onSelectHighlight}
-              onRemove={onRemoveHighlight}
-              onSetNote={onSetHighlightNote}
-              onSelectEmbedded={onSelectReadOnlyAnnotation}
-            />
-          )}
+          </div>
         </div>
         <div
           style={{

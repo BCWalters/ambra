@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { EXTENSION_PATH, launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
+import { getTranslate } from "../../extension/src/i18n/translate.js";
 
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 const otherBook = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
@@ -89,7 +90,7 @@ test("Library settings fit at 360px and propagate live both ways, including lang
   try {
     await ready(reader);
     await library.setViewportSize({ width: 360, height: 800 });
-    const settingsButton = library.getByRole("button", { name: "Settings", exact: true });
+    const settingsButton = library.getByRole("button", { name: "Ambra settings", exact: true });
     await expect(settingsButton).toBeVisible();
     const fits = await library.getByRole("toolbar").evaluate(header => {
       const boxes = [...header.querySelectorAll("button")].map(el => el.getBoundingClientRect());
@@ -103,45 +104,44 @@ test("Library settings fit at 360px and propagate live both ways, including lang
     });
     expect(fits).toBe(true);
     await settingsButton.click();
-    await library.getByRole("menuitem", { name: /^Reader theme/ }).click();
-    await library.getByRole("menuitemradio", { name: "Blue", exact: true }).click();
-    await library.keyboard.press("Escape");
-    await library.getByRole("menuitem", { name: /^Page turn/ }).click();
-    await library.getByRole("menuitemradio", { name: "Film strip", exact: true }).click();
-    await library.keyboard.press("Escape");
-    await library.getByRole("menuitem", { name: /^Page theme/ }).click();
-    await library.getByRole("menuitemradio", { name: "Sepia", exact: true }).click();
-    await expect(library.getByRole("menuitemradio", { name: "Sepia", exact: true })).toHaveAttribute("aria-checked", "true");
-    await library.keyboard.press("Escape");
-    const brightness = library.getByRole("slider", { name: "Brightness", exact: true });
+    const dialog = library.getByRole("dialog", { name: "Ambra settings", exact: true });
+    await dialog.getByRole("combobox", { name: "Interface theme", exact: true }).selectOption("blue");
+    const reading = dialog.locator("details").filter({ hasText: "Reading preferences" });
+    await expect(reading).toHaveJSProperty("open", false);
+    await reading.locator("summary").click();
+    await dialog.getByRole("combobox", { name: "Page turn", exact: true }).selectOption("scroll");
+    const pageTheme = dialog.getByRole("combobox", { name: "Page theme", exact: true });
+    await pageTheme.selectOption("sepia");
+    await expect(pageTheme).toHaveValue("sepia");
+    const brightness = dialog.getByRole("slider", { name: "Brightness", exact: true });
     await brightness.focus();
     await brightness.press("ArrowLeft");
-    await library.getByRole("menuitem", { name: /^Reading mode/ }).click();
-    await library.getByRole("menuitemradio", { name: "Scroll", exact: true }).click();
-    await expect(library.getByRole("menuitemradio", { name: "Scroll", exact: true })).toHaveAttribute("aria-checked", "true");
-    await library.keyboard.press("Escape");
-    await expect(library.getByRole("menuitem", { name: /^Page turn/ })).toBeDisabled();
+    const readingMode = dialog.getByRole("combobox", { name: "Reading mode", exact: true });
+    await readingMode.selectOption("scroll");
+    await expect(readingMode).toHaveValue("scroll");
+    await expect(dialog.getByRole("combobox", { name: "Page turn", exact: true })).toBeDisabled();
     await expect.poll(() => reader.evaluate(() => {
       const s = Reflect.get(window, "__readerController").snapshot();
       return { chromeTheme: s.chromeTheme, viewMode: s.viewMode, brightness: s.brightness, animation: s.pageTurnAnimationStyle, pageTheme: s.pageTheme };
     })).toEqual({ chromeTheme: "blue", viewMode: "scroll", brightness: 0.95, animation: "scroll", pageTheme: "sepia" });
-    await library.getByRole("menuitem", { name: /Language/ }).press("ArrowRight");
-    await library.getByRole("menuitemradio", { name: "Français", exact: true }).click();
+    await dialog.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
     await expect(reader.locator("html")).toHaveAttribute("lang", "fr");
     await expect(library.locator("html")).toHaveAttribute("lang", "fr");
-    await library.keyboard.press("Escape");
     await library.keyboard.press("Escape");
     await reader.evaluate(async () => {
       const c = Reflect.get(window, "__readerController");
       await c.setChromeTheme("green");
       await c.setViewMode("paginated");
     });
-    await library.getByRole("button", { name: "Paramètres", exact: true }).click();
-    await library.getByRole("menuitem", { name: /Paginé/ }).click();
-    await expect(library.getByRole("menuitemradio", { name: "Paginé", exact: true })).toHaveAttribute("aria-checked", "true");
-    await library.keyboard.press("Escape");
-    await library.getByRole("menuitem", { name: /Vert/ }).click();
-    await expect(library.getByRole("menuitemradio", { name: "Vert", exact: true })).toHaveAttribute("aria-checked", "true");
+    const t = getTranslate("fr");
+    await library.getByRole("button", { name: t("settings.ambraTitle"), exact: true }).click();
+    const translated = library.getByRole("dialog", { name: t("settings.ambraTitle"), exact: true });
+    const translatedReading = translated.locator("details");
+    if (!await translatedReading.evaluate(element => (element as HTMLDetailsElement).open)) {
+      await translatedReading.locator("summary").click();
+    }
+    await expect(translated.getByRole("combobox", { name: t("settings.readingMode"), exact: true })).toHaveValue("paginated");
+    await expect(translated.getByRole("combobox", { name: t("settings.interfaceTheme"), exact: true })).toHaveValue("green");
     await expect(library.getByRole("alert")).toHaveCount(0);
     await expect(reader.getByRole("alert")).toHaveCount(0);
   } finally {
@@ -296,7 +296,8 @@ test("v6 migration preserves existing books and reading data while later imports
     });
     expect(rolledBack).toEqual({ version: 6, settingsStore: false, fontScale: 1.25 });
     await page.goto(`${origin}/src/library/index.html?view=tab`);
-    await expect(page.getByRole("button", { name: /^Open legacy-a/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Continue reading", exact: true })
+      .getByRole("button", { name: /^Open legacy-a/ })).toBeVisible();
     const stored = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve) => {
         const request = indexedDB.open("ambra-library");

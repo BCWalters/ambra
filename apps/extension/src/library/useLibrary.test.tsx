@@ -106,7 +106,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.error).toBeUndefined();
   });
 
-  it("hides import choices and disables the file input until initialization finishes", async () => {
+  it("keeps import visible but disables it and the file input until initialization finishes", async () => {
     const opening = deferred<LibraryDatabase>();
     const preference = deferred<undefined>();
     vi.mocked(LibraryDatabase.open).mockReturnValue(opening.promise);
@@ -116,11 +116,11 @@ describe("useLibrary ownership and failures", () => {
     const importButton = () => [...container.querySelectorAll<HTMLButtonElement>("button")]
       .find((button) => button.textContent === "Import EPUB");
     expect(input.disabled).toBe(true);
-    expect(importButton()).toBeUndefined();
-    expect(container.textContent).not.toContain("What will you read first?");
+    expect(importButton()?.disabled).toBe(true);
+    expect(container.textContent).not.toContain("No books yet");
     await act(async () => { opening.resolve(db.value); });
     expect(input.disabled).toBe(true);
-    expect(importButton()).toBeUndefined();
+    expect(importButton()?.disabled).toBe(true);
     await act(async () => { preference.resolve(undefined); });
     expect(input.disabled).toBe(false);
     expect(importButton()?.disabled).toBe(false);
@@ -132,7 +132,7 @@ describe("useLibrary ownership and failures", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Close other Ambra tabs");
     expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
     const buttons = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .filter((button) => button.textContent?.includes("Choose EPUB files..."));
+      .filter((button) => button.textContent === "Import EPUB");
     expect(buttons).toHaveLength(1);
     expect(buttons.every((button) => button.disabled)).toBe(true);
     act(() => root.unmount());
@@ -494,7 +494,7 @@ describe("useLibrary ownership and failures", () => {
     await act(async () => root.render(<LibraryApp />));
     const cancel = container.querySelector<HTMLButtonElement>('[aria-label="Cancel download: book.epub"]')!;
     const importButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => empty ? button.textContent?.includes("Choose EPUB files...") : button.textContent === "Import EPUB")!;
+      .find((button) => button.textContent === "Import EPUB")!;
     cancel.focus();
     expect(document.activeElement).toBe(cancel);
     await act(async () => cancel.click());
@@ -511,7 +511,7 @@ describe("useLibrary ownership and failures", () => {
     setDirectImportUrl();
     await act(async () => root.render(<LibraryApp />));
     const cancel = container.querySelector<HTMLButtonElement>('[aria-label^="Cancel download:"]')!;
-    const other = container.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')!;
+    const other = container.querySelector<HTMLButtonElement>('button[aria-label="Ambra settings"]')!;
     other.focus();
     await act(async () => cancel.click());
     expect(document.activeElement).toBe(other);
@@ -653,14 +653,14 @@ describe("useLibrary ownership and failures", () => {
     setDirectImportUrl();
     await act(async () => root.render(<LibraryApp />));
     const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((entry) => entry.textContent?.includes("Choose EPUB files..."))!;
+      .find((entry) => entry.textContent === "Import EPUB")!;
     button.focus();
     const status = container.querySelector('[role="status"]')!;
     expect(status.textContent).toContain("Downloading book.epub");
     expect(status.textContent).toContain("Keep your library open");
     expect(status.getAttribute("aria-live")).toBe("polite");
     expect(status.hasAttribute("aria-busy")).toBe(false);
-    expect(container.textContent).toContain("What will you read first?");
+    expect(container.textContent).not.toContain("No books yet");
     expect(button.disabled).toBe(false);
     await act(async () => response.resolve(new Response("epub")));
     expect(status.textContent).toContain("Added book.epub to your library");
@@ -673,8 +673,8 @@ describe("useLibrary ownership and failures", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
     setDirectImportUrl();
     await render();
-    expect(latest.error).toContain("Choose EPUB files...");
-    expect(latest.error).not.toContain("Import EPUB");
+    expect(latest.error).toContain("Import EPUB");
+    expect(latest.error).not.toContain("Choose EPUB files...");
     expect(latest.importActivities).toEqual([]);
     expect(latest.canImport).toBe(true);
   });
@@ -820,6 +820,27 @@ describe("useLibrary ownership and failures", () => {
     db.methods.getGlobalReadingSettings.mockResolvedValue(external);
     await act(async () => db.methods.subscribePreferences.mock.calls[0]![0]());
     expect(latest.settings).toEqual(external);
+  });
+
+  it("shares committed sorting with other mounted library surfaces", async () => {
+    await render();
+    db.methods.getDefaultLibrarySort.mockResolvedValue("titleAsc");
+    await act(async () => db.methods.subscribePreferences.mock.calls[0]![0]());
+    expect(latest.sort).toBe("titleAsc");
+    db.methods.getDefaultLibrarySort.mockResolvedValue("authorAsc");
+    await act(async () => db.methods.subscribePreferences.mock.calls[0]![0]());
+    expect(latest.sort).toBe("authorAsc");
+  });
+
+  it("does not replace a newer local sort with an obsolete preference read", async () => {
+    await render();
+    const stale = deferred<"titleAsc">();
+    db.methods.getDefaultLibrarySort.mockReturnValueOnce(stale.promise);
+    act(() => db.methods.subscribePreferences.mock.calls[0]![0]());
+    await act(async () => latest.setSort("authorAsc"));
+    await act(async () => stale.resolve("titleAsc"));
+    expect(latest.sort).toBe("authorAsc");
+    expect(db.methods.setDefaultLibrarySort).toHaveBeenCalledWith("authorAsc");
   });
 
   it("does not let a stale settings read replace a newer external change", async () => {

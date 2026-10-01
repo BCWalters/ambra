@@ -12,8 +12,11 @@ const LIBRARY_PAGE_URL = "src/library/index.html";
  * background-only responsibility reached via message-passing.
  */
 export async function openReaderTab(bookId: string): Promise<void> {
-  const url = chrome.runtime.getURL(`${READER_PAGE_URL}?bookId=${encodeURIComponent(bookId)}`);
-  await chrome.tabs.create({ url });
+  await chrome.tabs.create({ url: readerTabUrl(bookId) });
+}
+
+export function readerTabUrl(bookId: string): string {
+  return chrome.runtime.getURL(`${READER_PAGE_URL}?bookId=${encodeURIComponent(bookId)}`);
 }
 
 /** The query param `LibraryApp` checks (via `isRunningInFullTab`) to
@@ -23,12 +26,8 @@ export async function openReaderTab(bookId: string): Promise<void> {
 export const LIBRARY_FULL_TAB_PARAM = "view";
 export const LIBRARY_FULL_TAB_VALUE = "tab";
 
-/** The library page's own URL, in its full-tab form (see
- * `LIBRARY_FULL_TAB_PARAM`) — shared by `openLibraryTab` (opens it in a
- * new tab) and the reader's Library toolbar button (issue #112, which
- * instead navigates the reader's *own* tab there directly via
- * `window.location`, rather than leaving the reader tab open behind a
- * second new one). */
+/** Full Library destination for the explicit new-tab action in popup and
+ * embedded Library views; the reader's toolbar itself only opens its panel. */
 export function libraryFullTabUrl(): string {
   return chrome.runtime.getURL(`${LIBRARY_PAGE_URL}?${LIBRARY_FULL_TAB_PARAM}=${LIBRARY_FULL_TAB_VALUE}`);
 }

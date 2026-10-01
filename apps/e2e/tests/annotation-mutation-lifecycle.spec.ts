@@ -32,8 +32,11 @@ test("failed bookmark deletion preserves the panel, page marker, and stored reco
   try {
     await exposeReaderController(page);
     await page.getByRole("button", { name: "Bookmark this page" }).click();
-    await page.getByRole("button", { name: "Bookmarks and highlights" }).click();
-    const remove = page.getByRole("button", { name: /^Remove bookmark:/ });
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    const panel = page.getByRole("navigation", { name: "Annotations", exact: true });
+    const show = panel.getByRole("combobox", { name: "Show", exact: true });
+    await show.selectOption("bookmarks");
+    const remove = panel.getByRole("button", { name: /^Remove bookmark:/ });
     await expect(remove).toHaveCount(1);
     await page.evaluate(() => {
       const library = Reflect.get(window, "__readerController").library;
@@ -43,6 +46,9 @@ test("failed bookmark deletion preserves the panel, page marker, and stored reco
     });
     await remove.click();
     await expect(page.getByText(/Simulated rollback/)).toBeVisible();
+    await expect(panel).toBeVisible();
+    await expect(show).toHaveValue("bookmarks");
+    await expect(show.locator('option[value="bookmarks"]')).toHaveText("Bookmarks (1)");
     await expect(remove).toHaveCount(1);
     expect(await page.evaluate(async () => {
       const controller = Reflect.get(window, "__readerController");
@@ -56,6 +62,8 @@ test("failed bookmark deletion preserves the panel, page marker, and stored reco
     await page.evaluate(() => Reflect.get(window, "__restoreBookmarkWrites")());
     await remove.click();
     await expect(remove).toHaveCount(0);
+    await expect(show).toBeFocused();
+    await expect(show.locator('option[value="bookmarks"]')).toHaveText("Bookmarks (0)");
     await expect.poll(() => page.evaluate(() =>
       Reflect.get(window, "__readerController").snapshot().isBookmarked)).toBe(false);
   } finally {

@@ -91,6 +91,21 @@ describe("native reading resume", () => {
     expect(saveProgress).toHaveBeenCalledWith("book", "3:4", undefined);
   });
 
+  it("lets explicit book switching surface a failed save while background checkpoints remain best-effort", async () => {
+    const { tracker, views, read, visual } = setup();
+    read();
+    const controller: ReaderController = Object.create(ReaderController.prototype);
+    const error = new Error("Could not persist the reading position");
+    Object.assign(controller, {
+      nativeReading: tracker, host: { currentPosition: visual }, spineIndex: 2,
+      contentDocumentViews: () => views, locatorResolver: { generate: () => ({ cfi: "saved-position" }) },
+      library: { saveProgress: vi.fn(async () => { throw error; }) },
+      bookId: "book", currentBookFraction: () => 0.2,
+    });
+    await expect(controller.flushProgress(true)).rejects.toBe(error);
+    await expect(controller.flushProgress()).resolves.toBeUndefined();
+  });
+
   it("tracks an off-page collapsed caret and retains it across blur/selection removal", () => {
     const { tracker, read, views } = setup();
     const point = read(0, 7);

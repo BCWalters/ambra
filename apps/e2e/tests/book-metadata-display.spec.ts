@@ -122,9 +122,14 @@ async function checkDefaultDetails(page: Page, panel: Locator) {
 
 async function checkDetails(page: Page, panel: Locator) {
   await checkDefaultDetails(page, panel);
+  const heading = panel.getByRole("heading", { level: 2 }).filter({ hasText: title });
+  await expect(heading).toHaveText(title);
+  await expect(heading).toHaveCSS("overflow-wrap", "anywhere");
+  await expect(panel.getByRole("button", { name: "Show more: Title", exact: true })).toHaveCount(0);
+  await noHorizontalOverflow(page, heading);
   const displayed = {
     description: await checkDisclosure(page, panel, "Description", { preview: 700, expanded: 1400 }),
-    title: await checkDisclosure(page, panel, "Title", { preview: 100, expanded: 480 }),
+    title: await heading.textContent(),
     creator: await checkDisclosure(page, panel, "Creator", { preview: 100, expanded: 480 }),
     publisher: await checkDisclosure(page, panel, "Publisher", { preview: 160, expanded: 600 }),
   };

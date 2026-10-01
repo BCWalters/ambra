@@ -1,13 +1,13 @@
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import { Body1, Button, useRestoreFocusTarget } from "@fluentui/react-components";
-import { CodeCircleRegular } from "@fluentui/react-icons";
+import { CodeCircleRegular, DeleteRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { LibraryFlyout } from "./LibraryFlyout.js";
 import { LibraryImportError } from "./LibraryImportError.js";
 import { BookDescription, BookDetailRow as DetailRow, BookMetadataText, BookRightsRow } from "../components/BookMetadataRows.js";
 import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
-import { formatLibraryProgress } from "./LibraryFormatting.js";
+import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 import { BookSaveAsAction } from "../components/BookSaveAsAction.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
@@ -42,6 +42,8 @@ export interface BookDetailsFlyoutProps {
   inspectorOpen?: boolean;
   /** Saves the original stored EPUB with the browser's destination picker. */
   onSaveAs?: ((bookId: string) => Promise<void>) | undefined;
+  onRemove?: (() => void) | undefined;
+  onGetFileSize?: ((bookId: string) => Promise<number | undefined>) | undefined;
 }
 
 /**
@@ -63,10 +65,24 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   inspectionError,
   inspectorOpen = false,
   onSaveAs,
+  onRemove,
+  onGetFileSize,
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const open = book !== undefined;
+  const [fileSize, setFileSize] = useState<number>();
+  const [fileSizeError, setFileSizeError] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    setFileSize(undefined);
+    setFileSizeError(undefined);
+    if (book && onGetFileSize) void onGetFileSize(book.id).then(
+      (size) => { if (active) setFileSize(size); },
+      (error: unknown) => { if (active) setFileSizeError(error instanceof Error ? error.message : String(error)); },
+    );
+    return () => { active = false; };
+  }, [book?.id, onGetFileSize]);
   const restoreInspectorFocus = useRestoreFocusTarget();
   const inspectorButtonRef = useRef<HTMLButtonElement>(null);
   const inspectorReturnBook = useRef<string | undefined>(undefined);
@@ -111,7 +127,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                   height: 126,
                   flexShrink: 0,
                   objectFit: "contain",
-                  borderRadius: 4,
+                  borderRadius: "3px 7px 7px 3px",
                   boxShadow: "0 2px 10px rgba(15, 23, 42, 0.18)",
                 }}
               />
@@ -122,8 +138,10 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 <BookMetadataText value={book.creator} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
               )}
               <DetailRow label={t("bookDetails.publisher")} value={book.publisher} compact />
+              {fileSize !== undefined && <DetailRow label={t("bookDetails.fileSize")} value={formatLibraryBytes(fileSize, locale)} compact />}
             </div>
           </div>
+          {fileSizeError && <LibraryImportError message={fileSizeError} onDismiss={() => setFileSizeError(undefined)} />}
 
           {progressPercent !== undefined && (
             <div style={{ marginBottom: 20 }}>
@@ -192,6 +210,10 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               </Button>
             </div>
           )}
+          {onRemove && <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+            <Button icon={<DeleteRegular />} onClick={onRemove}
+              style={{ color: "var(--colorPaletteRedForeground1)" }}>{t("library.removeAction")}</Button>
+          </div>}
         </div>
       )}
     </LibraryFlyout>

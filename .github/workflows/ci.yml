@@ -72,6 +72,9 @@ jobs:
           first-reading-welcome.spec.ts
           harness-lifecycle.spec.ts
           reader-ui-dismissal.spec.ts
+          reader-library.spec.ts
+          reader-back-to-library.spec.ts
+          narration-discovery.spec.ts
           popup-hover-ownership.spec.ts
           margin-selection.spec.ts
           page-turn-margin.spec.ts
@@ -116,11 +119,11 @@ jobs:
           path: apps/e2e/test-results/first-reading-welcome-*/welcome-*.png
           if-no-files-found: error
           retention-days: 14
-      - name: Verify fixed-layout narration
+      - name: Verify recorded narration
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
           AMBRA_E2E_HEADLESS: "1"
-        run: pnpm --filter @ambra/e2e exec playwright test media-overlay-playback.spec.ts --grep 'fixed-layout narration highlights' --workers=1
+        run: pnpm --filter @ambra/e2e exec playwright test media-overlay-playback.spec.ts --workers=1
       - name: Verify image viewer transparency
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension

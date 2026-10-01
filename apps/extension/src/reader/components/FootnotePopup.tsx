@@ -82,6 +82,7 @@ export const FootnotePopup: FC<FootnotePopupProps> = ({ state, onDismiss }) => {
         minWidth: 220,
         maxWidth: 360,
         background: chromeTheme.backgroundSolid,
+        color: chromeTheme.text,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
       }}

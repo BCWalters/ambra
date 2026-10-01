@@ -226,7 +226,7 @@ test("Shell dismissal restores the precise reading position in a merged spread c
         await expectOriginal();
       });
     }
-    for (const title of ["Show contents", "Bookmarks and highlights", "Book details"]) {
+    for (const title of ["Show contents", "Annotations", "Book details"]) {
       await test.step(`${title} returns to the companion caret`, async () => {
         await page.getByRole("button", { name: title, exact: true }).click();
         await page.keyboard.press("Escape");
@@ -535,7 +535,7 @@ test("editing, selection, widgets, menus and dialogs keep ownership; removed his
     expect(await position(page)).toEqual(initial);
     expect(await bookmarkCount(page)).toBe(0);
     await page.locator("#shortcut-test-slider").evaluate(node => node.remove());
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
     await page.keyboard.press("Alt+PageDown");
     await page.keyboard.press(`${modifier}+b`);
     expect(await position(page)).toEqual(initial);
@@ -580,31 +580,27 @@ test("editing, selection, widgets, menus and dialogs keep ownership; removed his
   }
 });
 
-test("a visible Settings tooltip cannot consume the first Escape in its menu or Help", async () => {
+test("settings and direct Help tooltips cannot consume the first Escape in their dialogs", async () => {
   const { context, readerPage: page } = await launchReader(proseBook);
   try {
     await ready(page);
-    const settings = page.getByRole("button", { name: "Settings", exact: true });
-    const tooltip = page.getByRole("tooltip", { name: "Settings", exact: true });
-    for (const target of ["menu", "help"] as const) {
-      await settings.hover();
-      await expect(tooltip).toBeVisible();
-      await settings.focus();
-      await page.keyboard.press("Enter");
-      const menu = page.getByRole("menu");
-      await expect(menu).toBeVisible();
-      // Sample once: waiting for the tooltip's hide timer would conceal the bug.
-      expect(await tooltip.count()).toBe(0);
-      if (target === "help") {
-        await page.getByRole("menuitem", { name: "Help & About", exact: true }).focus();
+    for (const name of ["Ambra settings", "Help & About"] as const) {
+      await test.step(name, async () => {
+        const trigger = page.getByRole("button", { name, exact: true });
+        const tooltip = page.getByRole("tooltip", { name, exact: true });
+        await trigger.hover();
+        await expect(tooltip).toBeVisible();
+        await trigger.focus();
         await page.keyboard.press("Enter");
-        await expect(page.getByRole("dialog", { name: "Help & About", exact: true })).toBeVisible();
-        expect(await tooltip.count()).toBe(0);
-      }
-      await page.keyboard.press("Escape");
-      await expect(target === "menu" ? menu : page.getByRole("dialog", { name: "Help & About", exact: true })).toBeHidden();
-      await expect(settings).toBeFocused();
-      await page.mouse.move(450, 450);
+        const dialog = page.getByRole("dialog", { name, exact: true });
+        await expect(dialog).toBeVisible();
+        // Sample once: waiting for the tooltip's hide timer would conceal the bug.
+        expect.soft(await tooltip.count()).toBe(0);
+        await page.keyboard.press("Escape");
+        await expect(dialog).toBeHidden();
+        await expect(trigger).toBeFocused();
+        await page.mouse.move(450, 450);
+      });
     }
   } finally {
     await context.close();
@@ -615,15 +611,14 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
   const { context, readerPage: page, libraryPage } = await launchReader(proseBook);
   try {
     await ready(page);
-    const settings = page.getByRole("button", { name: "Settings", exact: true });
-    await settings.focus();
-    await page.keyboard.press("Enter");
-    const helpItem = page.getByRole("menuitem", { name: "Help & About", exact: true });
-    await helpItem.focus();
+    const settings = page.getByRole("button", { name: "Ambra settings", exact: true });
+    const helpTrigger = page.getByRole("button", { name: "Help & About", exact: true });
+    await helpTrigger.focus();
     await page.keyboard.press("Enter");
     const help = page.getByRole("dialog", { name: "Help & About", exact: true });
     await expect(help).toBeVisible();
-    await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(0);
+    await expect(page.locator("[data-ambra-page-band]")
+      .getByRole("button", { name: "Help & About", exact: true, includeHidden: true })).toHaveCount(1);
     await page.screenshot({ path: test.info().outputPath("help-desktop.png") });
     await help.getByRole("button", { name: "Show keyboard shortcuts", exact: true }).click();
     await expect(shortcutDialog(page)).toBeVisible();
@@ -633,19 +628,17 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     await expect(help).toBeVisible();
     await expect(help.getByRole("button", { name: "Show keyboard shortcuts", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
-    await expect(settings).toBeFocused();
+    await expect(helpTrigger).toBeFocused();
 
     for (const [opener, closeButton, modal] of [
       ["Show contents", "Close contents panel", "help"],
-      ["Bookmarks and highlights", "Close bookmarks and highlights panel", "shortcuts"],
+      ["Annotations", "Close annotations panel", "shortcuts"],
     ] as const) {
       await page.getByRole("button", { name: opener, exact: true }).click();
       const underlying = page.getByRole("button", { name: closeButton, exact: true });
       await expect(underlying).toBeVisible();
       if (modal === "help") {
-        await settings.focus();
-        await page.keyboard.press("Enter");
-        await helpItem.focus();
+        await helpTrigger.focus();
         await page.keyboard.press("Enter");
         await expect(help).toBeVisible();
       } else {
@@ -674,31 +667,15 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     await settled(page);
     await settings.focus();
     await page.keyboard.press("Enter");
-    const menu = page.getByRole("menu");
-    await menu.getByRole("menuitem", { name: /^Reading mode/ }).press("ArrowRight");
-    const modeMenu = page.getByRole("menu").last();
-    for (const [name, chord] of [
-      [/^Paginated/, "Alt+Shift+PageUp"],
-      [/^Scroll/, "Alt+Shift+PageDown"],
-    ] as const) {
-      const mode = modeMenu.getByRole("menuitemradio", { name });
-      await expect(mode).toHaveAttribute("aria-keyshortcuts", chord);
-      await mode.focus();
-      await expect(mode).toBeInViewport({ ratio: 1 });
-      await expect(mode.getByText(/Page(?:Up|Down)/)).toBeVisible();
-      expect(await mode.evaluate(node => {
-        const bounds = node.getBoundingClientRect();
-        return Array.from(node.children).every(child => {
-          const rect = child.getBoundingClientRect();
-          return rect.left >= bounds.left && rect.right <= bounds.right &&
-            child.scrollWidth <= child.clientWidth + 1;
-        });
-      })).toBe(true);
-    }
-    expect(await modeMenu.locator("..").evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
-    await expect(modeMenu.locator("..")).toBeInViewport({ ratio: 1 });
+    const preferences = page.getByRole("dialog", { name: "Ambra settings", exact: true });
+    const mode = preferences.getByRole("combobox", { name: "Reading mode", exact: true });
+    await mode.focus();
+    await expect(mode).toBeInViewport({ ratio: 1 });
+    await expect(mode.locator("option")).toHaveText(["Paginated", "Scroll"]);
+    expect(await preferences.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+    await expect(preferences).toBeInViewport({ ratio: 1 });
     await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
+    await expect(settings).toBeFocused();
     await focusReading(page);
     await openShortcuts(page);
     const dialog = shortcutDialog(page);
@@ -707,6 +684,16 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     await page.screenshot({ path: test.info().outputPath("shortcuts-320px.png") });
     for (const label of ["Navigation", "Reading", "Help"]) {
       await expect(dialog.getByRole("heading", { name: label, exact: true })).toHaveCount(1);
+    }
+    const modeShortcutPrefix = await mod(page) === "Meta" ? "⌥⇧" : "Alt+Shift+";
+    for (const [label, key] of [
+      ["Switch to paginated", "PageUp"],
+      ["Switch to scrolling", "PageDown"],
+    ]) {
+      const command = dialog.getByText(label!, { exact: true });
+      await command.scrollIntoViewIfNeeded();
+      await expect(command).toBeVisible();
+      await expect(command.locator("..").locator("kbd")).toHaveText(`${modeShortcutPrefix}${key}`);
     }
     await expect(dialog.getByRole("button", { name: /Change|Disable|Reset|Restore|Press keys/i })).toHaveCount(0);
     const enabled = dialog.getByRole("checkbox", { name: "Enable keyboard shortcuts", exact: true });
@@ -718,9 +705,7 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     await page.keyboard.press("Escape");
     await expectReadingFocus(page);
-    await settings.focus();
-    await page.keyboard.press("Enter");
-    await helpItem.focus();
+    await helpTrigger.focus();
     await page.keyboard.press("Enter");
     await expect(help).toBeVisible();
     await expect(help).toBeInViewport({ ratio: 1 });
@@ -728,7 +713,7 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     await page.screenshot({ path: test.info().outputPath("help-320px.png") });
     await expect(help.getByRole("button", { name: "Close", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
-    await expect(settings).toBeFocused();
+    await expect(helpTrigger).toBeFocused();
   } finally {
     await context.close();
   }
@@ -741,7 +726,7 @@ for (const viewport of [{ width: 900, height: 900 }, { width: 320, height: 256 }
       await ready(page);
       const initialPosition = await position(page);
       const url = page.url();
-      await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(1);
       await page.getByRole("button", { name: "Book details", exact: true }).focus();
       await page.keyboard.press("Enter");
       const details = page.getByRole("complementary", { name: "Book details", exact: true });
@@ -766,7 +751,7 @@ for (const viewport of [{ width: 900, height: 900 }, { width: 320, height: 256 }
       await expect(details).toBeHidden();
       await expectReadingFocus(page);
       await expect.poll(() => position(page)).toEqual(initialPosition);
-      await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Help & About", exact: true })).toHaveCount(1);
     } finally {
       await context.close();
     }

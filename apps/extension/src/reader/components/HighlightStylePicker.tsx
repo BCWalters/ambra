@@ -5,6 +5,7 @@ import { HighlightTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { HIGHLIGHT_STYLE_LABEL_KEYS } from "./SelectionToolbar.js";
+import { useChromeTheme } from "../ChromeThemeContext.js";
 
 export interface HighlightStylePickerProps {
   value: HighlightStyle;
@@ -13,6 +14,7 @@ export interface HighlightStylePickerProps {
 
 export const HighlightStylePicker: FC<HighlightStylePickerProps> = ({ value, onChange }) => {
   const t = useTranslation();
+  const chromeTheme = useChromeTheme();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   return (
     <div
@@ -56,9 +58,9 @@ export const HighlightStylePicker: FC<HighlightStylePickerProps> = ({ value, onC
                 height: 22,
                 borderRadius: "50%",
                 border: selected
-                  ? "2px solid rgba(15, 23, 42, 0.75)"
-                  : "1px solid rgba(0, 0, 0, 0.15)",
-                boxShadow: selected ? "0 0 0 2px rgba(255, 255, 255, 0.9)" : "none",
+                  ? `2px solid ${chromeTheme.accentForeground}`
+                  : `1px solid ${chromeTheme.controlBorder}`,
+                boxShadow: selected ? `0 0 0 2px ${chromeTheme.surface}` : "none",
                 cursor: "pointer",
                 padding: 0,
                 background:
