@@ -288,7 +288,9 @@ content pane must not subtract that space twice.
   and focus continuity when resizing regroups markers. Grouping must remain
   bounded with dense data and must not leak events to the slider/page-turn zones.
 - Show all bookmarks transfers focus to the Annotations Show control only after
-  the chooser has closed and released its focus scope. In fixed-layout spreads,
+  the chooser has closed and released its focus scope. Move focus to the group
+  flag before closing so automatic trigger restoration cannot steal the panel's
+  focus afterward. In fixed-layout spreads,
   creating a bookmark uses the selected companion page, not always the primary
   document; the marker, saved target, and displayed page must agree.
 

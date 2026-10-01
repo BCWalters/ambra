@@ -53,6 +53,11 @@ describe("Focused library book removal", () => {
       target.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true, ...options }));
     });
   }
+  it("registers both the cover and Details as focus-return targets", () => {
+    const target = cover("Second").getAttribute("data-tabster");
+    expect(target).not.toBeNull();
+    expect(target).toBe(button("Second details").getAttribute("data-tabster"));
+  });
   it.each(["Delete", "Backspace"])("%s asks once, names the book, starts on Cancel and never deletes before confirmation", async (keyName) => {
     await key(cover("Second"), { key: keyName });
     const dialog = document.querySelector('[role="alertdialog"]')!;

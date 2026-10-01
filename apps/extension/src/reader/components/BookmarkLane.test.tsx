@@ -121,7 +121,10 @@ describe("BookmarkLane", () => {
     expect(choices).toHaveLength(6);
     expect(choices[5]!.textContent).toBe("Show all bookmarks");
     expect(choices[5]!.parentElement).toBe(dialog());
+    const focusBeforeExit = vi.fn(() => dialog()?.isConnected);
+    flags()[0]!.addEventListener("focus", focusBeforeExit, { once: true });
     await click(choices[5]!);
+    expect(focusBeforeExit).toHaveReturnedWith(true);
     expect(onSelect).not.toHaveBeenCalled();
     expect(dialog()).toBeNull();
     await act(async () => {

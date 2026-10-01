@@ -98,6 +98,11 @@ test.describe("Library book focus and safe removal", () => {
       await details.press("Enter");
       const metadata = page.getByRole("dialog", { name: "Book details", exact: true });
       await expect(metadata.getByText(title, { exact: true })).toHaveText(title);
+      const more = metadata.getByRole("button", { name: "Show more: Creator", exact: true });
+      await expect(more).toHaveAttribute("aria-expanded", "false");
+      await more.click();
+      await expect(metadata.getByRole("button", { name: "Show less: Creator", exact: true }))
+        .toHaveAttribute("aria-expanded", "true");
       await expect(metadata.getByText(creator, { exact: true })).toHaveText(creator);
     } finally { await context.close(); }
   });

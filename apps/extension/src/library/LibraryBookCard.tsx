@@ -67,7 +67,7 @@ export const LibraryBookCard: FC<{
         onRequestRemove();
       }
     }}>
-      <button type="button" className={styles.open} data-book-open={book.id}
+      <button {...restoreFocusTarget} type="button" className={styles.open} data-book-open={book.id}
         disabled={openDisabled} aria-describedby={openDescriptionId}
         aria-current={current ? "true" : undefined}
         onClick={onOpen}

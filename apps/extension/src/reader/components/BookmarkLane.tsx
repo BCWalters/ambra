@@ -164,6 +164,9 @@ export function BookmarkLane({
     onOpenChange(false);
   };
   const showAllAfterClose = (surface: HTMLElement | null) => {
+    cancelHandoff();
+    // Exit with focus outside the surface so Tabster never queues a late restore.
+    if (openGroup) focusBookmarkFlag(openGroup);
     focusedBookmark.current = undefined;
     setOpenGroup(undefined);
     setOpenMembers(undefined);
@@ -173,12 +176,9 @@ export function BookmarkLane({
         handoffFrame.current = requestAnimationFrame(afterUnmount);
         return;
       }
-      // Its queued trigger-focus restoration follows the DOM removal.
-      handoffFrame.current = requestAnimationFrame(() => {
-        handoffFrame.current = undefined;
-        onOpenChange(false);
-        onShowAll();
-      });
+      handoffFrame.current = undefined;
+      onOpenChange(false);
+      onShowAll();
     };
     handoffFrame.current = requestAnimationFrame(afterUnmount);
   };
