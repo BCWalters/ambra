@@ -116,6 +116,11 @@ jobs:
           path: apps/e2e/test-results/first-reading-welcome-*/welcome-*.png
           if-no-files-found: error
           retention-days: 14
+      - name: Verify fixed-layout narration
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
+          AMBRA_E2E_HEADLESS: "1"
+        run: pnpm --filter @ambra/e2e exec playwright test media-overlay-playback.spec.ts --grep 'fixed-layout narration highlights' --workers=1
       - name: Verify image viewer transparency
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
