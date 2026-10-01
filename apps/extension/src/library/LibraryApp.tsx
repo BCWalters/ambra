@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FC } from "react";
+import { useBrowserAppearance } from "@ambra/shell";
 import {
   Body1,
   Button,
@@ -37,7 +38,7 @@ import { LibraryImportStatus } from "./LibraryImportStatus.js";
 import { LibraryEmptyState } from "./LibraryEmptyState.js";
 import { LibraryDiscovery } from "./LibraryDiscovery.js";
 import { filterLibraryBooks } from "./LibrarySearch.js";
-import { CHROME_BORDER, CHROME_SHADOW, CHROME_THEMES } from "../reader/chromeTheme.js";
+import { CHROME_BORDER, CHROME_SHADOW, getChromeTheme } from "../reader/chromeTheme.js";
 import { ChromeThemeProvider } from "../reader/ChromeThemeContext.js";
 import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH, type InspectorViewMode } from "../reader/components/EpubInspectorPanel.js";
 import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
@@ -356,7 +357,7 @@ export const LibraryApp: FC = () => {
       libraryHeadingRef.current?.focus();
     }
   }, [importInProgress]);
-  const palette = CHROME_THEMES[chromeTheme];
+  const palette = getChromeTheme(chromeTheme, useBrowserAppearance());
   const toolbarStyles = useChromeToolbarStyles();
   const libraryStyles = useLibraryStyles();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -401,6 +402,7 @@ export const LibraryApp: FC = () => {
   };
 
   return (
+    <ChromeThemeProvider theme={chromeTheme}>
     <div style={{
       minHeight: isFullTab ? "100vh" : undefined, height: isFullTab ? undefined : "100dvh",
       overflow: isFullTab ? undefined : "hidden",
@@ -615,7 +617,6 @@ export const LibraryApp: FC = () => {
         inspectionError={inspector.error ? { message: inspector.error, onDismiss: inspector.close } : undefined}
       />
 
-      <ChromeThemeProvider theme={chromeTheme}>
         <HelpAboutFlyout
           open={help.view === "about"}
           focusShortcutsOnOpen={help.focusShortcutsOnOpen}
@@ -656,7 +657,6 @@ export const LibraryApp: FC = () => {
             return inspector.session.getInspectionFilePreviewUrl(path, mediaType);
           }}
         />
-      </ChromeThemeProvider>
 
       {/* Purely informational (see `LibraryDatabase.estimateStorageUsage`'s
           doc comment on why this is never an enforced limit) — lets a
@@ -696,5 +696,6 @@ export const LibraryApp: FC = () => {
       )}
       </footer>
     </div>
+    </ChromeThemeProvider>
   );
 };

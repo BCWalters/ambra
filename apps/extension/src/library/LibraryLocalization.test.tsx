@@ -7,6 +7,7 @@ import { useLibrary, type UseLibraryResult, type LibraryBookViewModel } from "./
 import { CATALOGS, getTranslate } from "../i18n/translate.js";
 import { SUPPORTED_LOCALES, type Locale } from "../i18n/Locale.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
+import { CHROME_THEMES } from "../reader/chromeTheme.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
@@ -106,7 +107,7 @@ describe("Library localization and action order", () => {
     expect(privacy?.textContent).toBe(t("about.privacy"));
     expect(privacy?.target).toBe("_blank");
     expect(privacy?.rel).toBe("noreferrer");
-    expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra"]')?.style.color).toBe("#7a3e00");
+    expect(container.querySelector<HTMLAnchorElement>('a[href="https://github.com/BCWalters/ambra"]')?.style.color).toBe(CHROME_THEMES.ambra.accentForeground);
     expect(button(t("about.copyDiagnostics"))).toBeDefined();
   });
 
@@ -268,9 +269,9 @@ describe("Library localization and action order", () => {
     expect(container.querySelector("main")?.getAttribute("aria-label")).toBe("Ambra — Library");
     const heading = container.querySelector("h1")!;
     expect(heading.textContent).toBe("Ambra");
-    expect(heading.style.color).toBe("#7a3e00");
+    expect(heading.style.color).toBe(CHROME_THEMES.ambra.accentForeground);
     expect(container.querySelectorAll("h1")).toHaveLength(1);
-    expect(container.querySelector("main h2")?.getAttribute("style")).toContain("#7a3e00");
+    expect(container.querySelector("main h2")?.getAttribute("style")).toContain(CHROME_THEMES.ambra.accentForeground);
   });
 
   it.each(SUPPORTED_LOCALES)("localizes every import stage and completion in %s", async (locale) => {

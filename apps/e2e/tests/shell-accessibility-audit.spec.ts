@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,7 +103,8 @@ test("Library exposes structure and supports keyboard-only modal entry and retur
     await libraryPage.bringToFront();
     await expect(libraryPage.getByRole("main", { name: "Ambra — Library" })).toBeVisible();
     const heading = libraryPage.getByRole("heading", { name: "Ambra", level: 1, exact: true });
-    await expect(heading).toHaveCSS("color", "rgb(122, 62, 0)");
+    const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+    await expect(heading).toHaveCSS("color", `rgb(${accentRgb})`);
     const cover = libraryPage.getByRole("main").getByRole("button", { name: /^Open / }).first();
     await cover.focus();
     await cover.press("Tab");

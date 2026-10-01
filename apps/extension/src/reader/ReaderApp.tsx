@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { Spinner, Title2 } from "@fluentui/react-components";
+import { useBrowserAppearance } from "@ambra/shell";
 import { FixedContentHost, ReadingTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
@@ -32,7 +33,7 @@ import { ChromeThemeProvider } from "./ChromeThemeContext.js";
 import { ReaderDiagnosticContext } from "./ReaderDiagnosticContext.js";
 import { LocaleProvider, useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import type { BookDetails, EpubInspectionData, InspectorReaderBridge } from "./ReaderTypes.js";
-import { CHROME_THEMES } from "./chromeTheme.js";
+import { getChromeTheme } from "./chromeTheme.js";
 import { ShortcutPreferencesProvider, useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
 import { HelpAboutFlyout } from "../components/HelpAboutFlyout.js";
 import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.js";
@@ -63,6 +64,7 @@ export const ReaderApp: FC = () => (
 
 const ReaderAppInner: FC = () => {
   const t = useTranslation();
+  const appearance = useBrowserAppearance();
   const locale = useLocale();
   const {
     recordDiagnosticEvent,
@@ -760,8 +762,8 @@ const ReaderAppInner: FC = () => {
               onRequestClose={help.close}
               onOutsideClick={dismissHelpToContent}
               onAfterClose={help.afterClose}
-              backgroundSolid={CHROME_THEMES[snapshot.chromeTheme].backgroundSolid}
-              accentForeground={CHROME_THEMES[snapshot.chromeTheme].accentForeground}
+              backgroundSolid={getChromeTheme(snapshot.chromeTheme, appearance).backgroundSolid}
+              accentForeground={getChromeTheme(snapshot.chromeTheme, appearance).accentForeground}
               onOpenKeyboardShortcuts={help.openShortcutsFromHelp}
               onOpenReadingTips={help.openWelcome}
               getReaderDiagnostics={getDiagnosticsText}

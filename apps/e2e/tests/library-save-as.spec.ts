@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test as base, type BrowserContext, type Page } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -101,7 +102,8 @@ test("Book details Save as writes the original local EPUB without refetching or 
   await expect(save).toBeVisible();
   const filename = page.getByRole("dialog", { name: "Book details", exact: true }).getByText("long-content.epub", { exact: true });
   await expect(save).toHaveCSS("font-size", "12px");
-  await expect(save).toHaveCSS("color", "rgb(122, 62, 0)");
+  const accentRgb = getInterfaceTheme("ambra", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+  await expect(save).toHaveCSS("color", `rgb(${accentRgb})`);
   expect(await save.evaluate((element) => getComputedStyle(element).fontSize))
     .toBe(await filename.evaluate((element) => getComputedStyle(element).fontSize));
   await page.getByRole("dialog", { name: "Book details", exact: true })
@@ -152,7 +154,8 @@ test("compact Save as follows the selected theme rather than the context default
   await expect(save).toBeHidden();
   await page.getByRole("button", { name: "Publication details", exact: true }).click();
   await expect(save).toHaveCSS("font-size", "12px");
-  await expect(save).toHaveCSS("color", "rgb(21, 71, 128)");
+  const accentRgb = getInterfaceTheme("blue", "light").accentForeground.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+  await expect(save).toHaveCSS("color", `rgb(${accentRgb})`);
   await expect(save).toHaveCSS("border-top-color", "rgb(29, 90, 168)");
   await settleAnimations(page);
   await save.focus();

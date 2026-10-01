@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test as base, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { EXTENSION_PATH } from "../harness.js";
@@ -51,7 +52,8 @@ test("invalid EPUB errors use a specific headline, quiet details, and a centered
   await expect(alert.locator("not-a-book")).toHaveCount(0);
   await expect(detail).toHaveCSS("font-size", "12px");
   await expect(detail).toHaveCSS("font-weight", "400");
-  await expect(detail).toHaveCSS("color", "rgb(66, 66, 66)");
+  const subduedRgb = getInterfaceTheme("ambra", "light").textSubdued.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ");
+  await expect(detail).toHaveCSS("color", `rgb(${subduedRgb})`);
   for (const width of [1920, 360]) {
     await library.setViewportSize({ width, height: 900 });
     const bounds = await alert.boundingBox();

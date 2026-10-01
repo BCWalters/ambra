@@ -1,3 +1,4 @@
+import { getInterfaceTheme } from "../../../packages/shell/src/theme.js";
 import { expect, test } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
@@ -114,7 +115,8 @@ for (const { width, zoom } of [{ width: 320, zoom: 1 }, { width: 1400, zoom: 1 }
           const style = getComputedStyle(element);
           return { fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
         }), `${name} must use the shared top-level menu title styling`).toEqual({
-          fontSize: "14px", fontWeight: "600", lineHeight: "20px", color: "rgb(36, 36, 36)",
+          fontSize: "14px", fontWeight: "600", lineHeight: "20px",
+          color: `rgb(${getInterfaceTheme("ambra", "light").text.match(/\w\w/g)!.map(hex => parseInt(hex, 16)).join(", ")})`,
         });
         if (width === 1400 && zoom === 1) {
           await expect.poll(async () => {

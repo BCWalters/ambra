@@ -1,154 +1,41 @@
+import {
+  DEFAULT_INTERFACE_THEME, getInterfaceTheme,
+  type BrowserAppearance, type InterfaceThemeChoice,
+} from "@ambra/shell/theme";
 import { CHROME_TOOLBAR_HEIGHT } from "../components/ChromeToolbarStyles.js";
 
-/** Shared visual constants for the reader's chrome (toolbar, TOC panel,
- * progress scrubber, Book Details panel) — kept in one place so all of
- * them stay visually consistent, and so "chrome should read as a
- * distinct color from the book page, not smudged onto it" only needs to
- * be decided once. Deliberately a cool-toned palette rather than the
- * warm paper tone `ReadingTheme` uses for the page itself.
- *
- * `background`/`backgroundSolid` are the only pieces that vary by
- * `ChromeThemeChoice` (see `CHROME_THEMES`) — border/shadow/hover/
- * selected colors and the backdrop blur stay neutral and shared across
- * every color choice, since a semi-transparent neutral overlay already
- * reads as a natural darker/lighter shade of whatever tinted background
- * it sits on, without needing its own per-theme variant. Every
- * `CHROME_THEMES` background is deliberately kept light enough that the
- * existing dark neutral text/icons (Fluent's own defaults, used
- * throughout the toolbar/TOC/panels) stay comfortably above WCAG AAA
- * contrast (10:1+) against all five, without needing to re-theme
- * Fluent's own component internals (icons, menu popovers) per color —
- * out of scope for this pass, which only themes the toolbar/TOC/
- * scrubber/details-panel *backgrounds* the issue asked for.
- *
- * Most themes are a flat translucent/opaque color, but nothing about
- * `background`/`backgroundSolid` requires that — they're plain CSS
- * `background` values, so a theme can just as well be a gradient (used
- * for all five themes below) as long as *every* stop stays light enough
- * to keep that same contrast guarantee; a flat, raw saturated color
- * sampled directly from brand art (e.g. the extension icon's own vivid
- * amber gem tone) reads as garish/loud as a full chrome tint in a way a
- * soft gradient across lighter tints of the same hue doesn't. */
-export const CHROME_BORDER = "rgba(15, 23, 42, 0.09)";
-export const CHROME_SHADOW = "0 2px 16px rgba(15, 23, 42, 0.10)";
-export const CHROME_HOVER_BACKGROUND = "rgba(15, 23, 42, 0.05)";
-export const CHROME_SELECTED_BACKGROUND = "rgba(15, 23, 42, 0.08)";
+/** Compatibility aliases for existing chrome styles; provider variables also reach portals. */
+export const CHROME_BORDER = "var(--ambraBorder, #d8d1c6)";
+export const CHROME_SHADOW = "var(--ambraShadow, 0 8px 28px #302c2618)";
+export const CHROME_HOVER_BACKGROUND = "var(--ambraHover, #eee9de)";
+export const CHROME_SELECTED_BACKGROUND = "var(--ambraSelected, #ffebbb)";
 export const CHROME_BACKDROP_FILTER = "blur(12px) saturate(1.1)";
 
-/** The one color that means "this page/entry is bookmarked," used
- * consistently everywhere that state shows up: the toolbar's bookmark
- * toggle (`Toolbar`, a plain unthemed Fluent `ToggleButton` — this is
- * simply Fluent's own default brand blue, `colorCompoundBrandForeground1`,
- * copied as a literal so the other two spots can match it exactly
- * without needing Fluent's theme tokens), the in-page corner ribbon
- * (`PageFurniture`), and the Bookmarks panel's own list icon
- * (`AnnotationsPanel`). Deliberately fixed rather than tied to
- * `ChromeThemePalette.accent` (issue #86 follow-up) — unlike the TOC/
- * search/details accents, which are purely decorative, a bookmark
- * marker is a *functional* indicator, and needs to read as "bookmark"
- * unambiguously regardless of whichever reader theme (and its own
- * differently-colored accent) happens to be active. */
+/** @deprecated Migrate chrome to palette.bookmark, page overlays to getPageBookmarkColor.
+ * Retained while publication-adjacent consumers migrate with independent page contrast. */
 export const BOOKMARK_COLOR = "#0f6cbd";
-
-/** The progress scrubber's own total rendered height (see
- * `ProgressScrubber`) — the flyout panels (TOC/Search/Bookmarks &
- * Highlights) need this to stop *above* it rather than running the
- * full height of the reader pane (issue #59: they previously left only
- * a flat 8px gap at the bottom, far short of the scrubber's real
- * height, so its last several rows/list items ended up hidden
- * underneath the scrubber bar). Measured from the real rendered
- * scrubber (padding + page-position label row + track), not computed
- * from its individual style values, since small font-metric rounding
- * differences would make a computed value an unreliable source of
- * truth — a plain constant kept in sync by hand is simpler and exact
- * enough for a fixed-size, non-user-resizable bar. */
 export const SCRUBBER_HEIGHT = CHROME_TOOLBAR_HEIGHT;
+export type ChromeThemeChoice = InterfaceThemeChoice;
+export const DEFAULT_CHROME_THEME: ChromeThemeChoice = DEFAULT_INTERFACE_THEME;
 
-/** The reader's own chrome color, as opposed to `PageTheme` (the book
- * *page's* background, picked in the font menu, renamed "Page Style" to
- * avoid the two being confused as the same setting) — this one lives in
- * the Settings ("gear") menu as "Reader Theme" instead, since it's an
- * app-chrome preference, not a book-reading-experience one. */
-export type ChromeThemeChoice = "silver" | "green" | "blue" | "purple" | "ambra";
-
-interface ChromeThemePalette {
-  readonly label: string;
-  /** Translucent — used for the toolbar and progress scrubber bars,
-   * which float over the page content with a backdrop blur. */
-  readonly background: string;
-  /** Fully opaque — used for the TOC and Book Details panels, which
-   * need to stay legible without any book content showing through
-   * (unlike the toolbar/scrubber, these can cover a large portion of
-   * the page). */
-  readonly backgroundSolid: string;
-  /** A small, genuinely saturated dose of this theme's own color (issue
-   * #86) — everything above stays deliberately soft/light (for text
-   * contrast, over a large area), which alone left "Ambra" barely
-   * reading as amber-anything at all, let alone tied to the extension's
-   * own icon (a rich, gem-toned amber/orange, nothing like the pale
-   * wash its chrome background alone can afford to be). Used only for
-   * small, purely decorative accents that don't carry text of their own
-   * and so aren't bound by the same contrast rules — currently the
-   * progress scrubber's filled track/thumb (previously a flat,
-   * un-themed Fluent brand blue regardless of which reader theme was
-   * active) and the theme picker's own preview swatch. Every other
-   * theme got one too, not just Ambra, so the same idea pays off across
-   * the board — see the issue's own suggestion to do this. */
-  readonly accent: string;
-  /** Text emphasis on backgroundSolid, with at least 4.5:1 contrast. */
-  readonly accentForeground: string;
+function rgb(hex: string): string {
+  return `rgb(${hex.slice(1).match(/../g)!.map((part) => Number.parseInt(part, 16)).join(", ")})`;
 }
 
-export const DEFAULT_CHROME_THEME: ChromeThemeChoice = "ambra";
+/** Opaque quiet surfaces keep contrast independent of publication content beneath chrome. */
+export function getChromeTheme(choice: ChromeThemeChoice, appearance: BrowserAppearance) {
+  const palette = getInterfaceTheme(choice, appearance);
+  const background = `linear-gradient(135deg, ${rgb(palette.surface)}, ${rgb(palette.canvas)})`;
+  return { ...palette, background, backgroundSolid: background };
+}
 
-// Every gradient below runs light-to-slightly-deeper along the same
-// 135deg diagonal (a consistent implied "light source" direction across
-// themes) and was individually verified — at *both* stops, not just the
-// lighter one — to clear at least 10:1 contrast (WCAG AAA is 7:1) against
-// the reader's existing dark text/icon colors.
+export type ChromeThemePalette = ReturnType<typeof getChromeTheme>;
+
+/** Stable light previews/settings enumeration. Runtime chrome uses useChromeTheme instead. */
 export const CHROME_THEMES: Readonly<Record<ChromeThemeChoice, ChromeThemePalette>> = {
-  // Listed first (issue-driven reorder) — Ambra is this app's own
-  // signature theme (see its accent color's own doc comment just
-  // below), so it leads the picker rather than sitting last after the
-  // four more generic color options.
-  ambra: {
-    label: "Ambra",
-    background: "linear-gradient(135deg, rgba(255, 232, 189, 0.90), rgba(240, 196, 140, 0.86))",
-    backgroundSolid: "linear-gradient(135deg, rgb(255, 232, 189), rgb(240, 196, 140))",
-    // Sampled straight from the extension icon's own gem gradient (see
-    // `icon-source/icon.svg`) — the exact mid-tone the icon itself
-    // uses, not a fresh guess at "amber" — so this is the one place in
-    // the whole chrome that actually reads as the same amber gem the
-    // icon shows, addressing the issue's core complaint directly.
-    accent: "#f5a531",
-    accentForeground: "#7a3e00",
-  },
-  silver: {
-    label: "Silver",
-    background: "linear-gradient(135deg, rgba(244, 245, 248, 0.90), rgba(222, 225, 231, 0.86))",
-    backgroundSolid: "linear-gradient(135deg, rgb(244, 245, 248), rgb(222, 225, 231))",
-    accent: "#5b6472",
-    accentForeground: "#404a59",
-  },
-  green: {
-    label: "Green",
-    background: "linear-gradient(135deg, rgba(206, 231, 218, 0.90), rgba(178, 212, 194, 0.86))",
-    backgroundSolid: "linear-gradient(135deg, rgb(206, 231, 218), rgb(178, 212, 194))",
-    accent: "#1f7a4d",
-    accentForeground: "#155d39",
-  },
-  blue: {
-    label: "Blue",
-    background: "linear-gradient(135deg, rgba(199, 215, 236, 0.90), rgba(176, 199, 226, 0.86))",
-    backgroundSolid: "linear-gradient(135deg, rgb(199, 215, 236), rgb(176, 199, 226))",
-    accent: "#1d5aa8",
-    accentForeground: "#154780",
-  },
-  purple: {
-    label: "Purple",
-    background: "linear-gradient(135deg, rgba(227, 212, 233, 0.90), rgba(211, 189, 223, 0.86))",
-    backgroundSolid: "linear-gradient(135deg, rgb(227, 212, 233), rgb(211, 189, 223))",
-    accent: "#7c3fa0",
-    accentForeground: "#612a82",
-  },
+  ambra: getChromeTheme("ambra", "light"),
+  silver: getChromeTheme("silver", "light"),
+  green: getChromeTheme("green", "light"),
+  blue: getChromeTheme("blue", "light"),
+  purple: getChromeTheme("purple", "light"),
 };
