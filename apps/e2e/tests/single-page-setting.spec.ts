@@ -8,7 +8,8 @@ const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.u
 async function settled(page: Page) {
   await page.waitForFunction(() => {
     const c = Reflect.get(window, "__readerController");
-    return !c.isApplyingLayout && !c.isLoadInFlight && !c.pendingLayout && !c.isTurningPage;
+    return c.host && c.contentDocumentViews().length > 0 &&
+      !c.isApplyingLayout && !c.isLoadInFlight && !c.pendingLayout && !c.isTurningPage;
   });
 }
 
@@ -79,6 +80,7 @@ test("Always show one page retains focus and location, respects width, and survi
     await page.reload();
     await expect(trigger).toBeVisible();
     await exposeReaderController(page);
+    await settled(page);
     await expectCenteredColumn(page, 26);
     expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().alwaysShowOnePage)).toBe(true);
     await page.evaluate(async () => {

@@ -67,6 +67,11 @@ description before measuring Save-as traffic. Keep the strict zero-network
 assertion for the save operation; do not ignore late Wikipedia requests or
 depend on real lookup services completing first.
 
+After reloading a reader, an exposed controller and visible toolbar do not prove
+that its content host has mounted. The single-page preference test waits for an
+owned host, nonempty document views, and idle layout/navigation before asserting
+column geometry; it does not weaken the one-column or exact-width checks.
+
 ```sh
 # from the repo root
 pnpm --filter @ambra/e2e run test:e2e          # headless
