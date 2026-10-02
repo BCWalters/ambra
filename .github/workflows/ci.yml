@@ -159,6 +159,7 @@ jobs:
           library-description.spec.ts book-details-presentation.spec.ts library-inspector.spec.ts
           native-library-import.spec.ts review-invitation.spec.ts
           library-file-drop.spec.ts page-turn-guide.spec.ts
+          footnote-noteref.spec.ts note-save-lifecycle.spec.ts
           --workers=1
       - name: Verify local review simulation controls
         env:

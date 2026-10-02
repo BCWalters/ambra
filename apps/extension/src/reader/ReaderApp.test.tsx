@@ -658,5 +658,6 @@ it("dismisses a footnote even after chrome has auto-hidden", async () => {
   await act(async () => root.render(<ReaderApp />));
   act(() => { expect(dismiss?.()).toBe(true); });
   expect(bridge.dismissFootnotePopup).toHaveBeenCalledOnce();
+  expect(bridge.dismissFootnotePopup).toHaveBeenCalledWith(false);
   expect(chromeVisible()).toBe(false);
 });

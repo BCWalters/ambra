@@ -90,9 +90,9 @@ export interface UseReaderControllerResult {
   saveBookAs: () => Promise<void>;
   importAnnotationsFile: (file: File) => Promise<AnnotationImportResult | undefined>;
   dismissSelectionToolbar: () => void;
-  dismissActiveHighlight: () => void;
+  dismissActiveHighlight: (restoreFocus?: boolean) => void;
   openHighlightPopup: (id: string) => void;
-  dismissFootnotePopup: () => void;
+  dismissFootnotePopup: (restoreFocus?: boolean) => void;
   dismissError: () => void;
 }
 
@@ -553,8 +553,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     controller?.dismissSelectionToolbar();
   }, [controller]);
 
-  const dismissActiveHighlight = useCallback(() => {
-    controller?.dismissActiveHighlight();
+  const dismissActiveHighlight = useCallback((restoreFocus = true) => {
+    controller?.dismissActiveHighlight(restoreFocus);
   }, [controller]);
 
   const openHighlightPopup = useCallback(
@@ -564,8 +564,8 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     [controller],
   );
 
-  const dismissFootnotePopup = useCallback(() => {
-    controller?.dismissFootnotePopup();
+  const dismissFootnotePopup = useCallback((restoreFocus = true) => {
+    controller?.dismissFootnotePopup(restoreFocus);
   }, [controller]);
 
   const dismissError = useCallback(() => {

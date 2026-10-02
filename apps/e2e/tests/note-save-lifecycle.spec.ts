@@ -37,6 +37,42 @@ async function releaseSave(page: Page, commit: boolean): Promise<void> {
   }, commit);
 }
 
+test("contextual note actions restore the reading origin and surviving note marker", async () => {
+  const { context, readerPage: page } = await launchReader(book);
+  try {
+    await exposeReaderController(page);
+    const popup = page.getByRole("dialog", { name: "Highlight options", exact: true });
+    const readingFocused = () => page.evaluate(() => {
+      const frame = document.querySelector("iframe")!;
+      return document.activeElement === frame && frame.contentDocument?.activeElement !== frame.contentDocument?.body;
+    });
+    for (const exit of ["escape", "cancel", "save"] as const) {
+      await selectText(page);
+      await page.getByRole("button", { name: "Add note", exact: true }).click();
+      await expect(popup.getByRole("textbox")).toBeFocused();
+      if (exit === "escape") await page.keyboard.press("Escape");
+      else if (exit === "cancel") await popup.getByRole("button", { name: "Cancel", exact: true }).click();
+      else {
+        await popup.getByRole("textbox").fill("A persistent note");
+        await popup.getByRole("button", { name: "Save", exact: true }).click();
+      }
+      await expect(popup).toHaveCount(0);
+      await expect.poll(readingFocused).toBe(true);
+    }
+    const marker = page.getByRole("button", { name: "This highlight has a note", exact: true }).first();
+    await marker.focus();
+    await marker.press("Enter");
+    await expect(popup.getByRole("textbox")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(marker).toBeFocused();
+    await marker.press("Enter");
+    await popup.getByRole("button", { name: "Delete highlight", exact: true }).click();
+    await expect(popup).toHaveCount(0);
+    await expect(marker).toHaveCount(0);
+    await expect.poll(readingFocused).toBe(true);
+  } finally { await context.close(); }
+});
+
 test("annotation actions are explicit and inline note editing keeps focus and drafts predictable", async ({ browserName: _browserName }, testInfo) => {
   const { context, readerPage: page } = await launchReader(book, {
     viewport: { width: 360, height: 800 },

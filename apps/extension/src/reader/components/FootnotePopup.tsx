@@ -40,6 +40,8 @@ export const FootnotePopup: FC<FootnotePopupProps> = ({ state, onDismiss }) => {
     }
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         onDismiss();
       }
     };
@@ -79,20 +81,23 @@ export const FootnotePopup: FC<FootnotePopupProps> = ({ state, onDismiss }) => {
         gap: 8,
         padding: 12,
         borderRadius: 10,
-        minWidth: 220,
-        maxWidth: 360,
+        boxSizing: "border-box",
+        minWidth: "min(220px, calc(100vw - 16px))",
+        maxWidth: "min(360px, calc(100vw - 16px))",
+        maxHeight: "calc(100dvh - 16px)",
+        overflowY: "auto",
         background: chromeTheme.backgroundSolid,
         color: chromeTheme.text,
         border: `1px solid ${CHROME_BORDER}`,
         boxShadow: CHROME_SHADOW,
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <Body1 as="p" block style={{ margin: 0, flex: 1, whiteSpace: "pre-wrap" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, minHeight: 0 }}>
+        <Body1 as="p" block style={{ margin: 0, flex: 1, minWidth: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
           {state.content}
         </Body1>
         <Tooltip content={t("footnote.close")} relationship="label">
-          <Button appearance="subtle" size="small" icon={<DismissRegular />} onClick={onDismiss} />
+          <Button appearance="subtle" size="small" icon={<DismissRegular />} style={{ flexShrink: 0 }} onClick={onDismiss} />
         </Tooltip>
       </div>
     </div>
