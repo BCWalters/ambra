@@ -15,6 +15,7 @@ function Probe() {
   const className = useThemeClassName();
   return <div data-testid="probe" data-appearance={palette.appearance} data-theme={palette.choice} className={className}>
     <Button appearance="primary">Import</Button>
+    <Button size="small" data-testid="compact-action">Compact action</Button>
     <ToggleButton checked>Bookmark</ToggleButton>
     <Checkbox checked label="Selected" />
     <Button disabled appearance="primary">Unavailable</Button>
@@ -88,11 +89,16 @@ describe("shared interface provider", () => {
       const primary = probe.querySelector("button")!;
       expect(getComputedStyle(primary).backgroundColor).toBe(palette.actionBackground);
       expect(getComputedStyle(portalButton).backgroundColor).toBe(palette.actionBackground);
+      expect(getComputedStyle(probe.querySelector('[data-testid="compact-action"]')!).fontWeight).toBe("550");
       expect(providerRule.style.getPropertyValue("--colorBrandBackground")).toBe(palette.actionBackground);
       expect(providerRule.style.getPropertyValue("--colorNeutralForegroundOnBrand")).toBe(palette.actionForeground);
       expect(providerRule.style.getPropertyValue("--colorCompoundBrandBackground")).toBe(palette.actionBackground);
       expect(providerRule.style.getPropertyValue("--colorStrokeFocus2")).toBe(palette.focus);
       expect(providerRule.style.getPropertyValue("--ambraBookmark")).toBe(palette.bookmark);
+      expect(providerRule.style.getPropertyValue("--fontFamilyBase"))
+        .toBe('-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif');
+      expect(providerRule.style.getPropertyValue("--lineHeightBase300")).toBe("21px");
+      expect(providerRule.style.getPropertyValue("--fontWeightSemibold")).toBe("550");
       expect(container.querySelector('button[disabled]')).not.toBeNull();
       expect(container.querySelector('[role="progressbar"]')).not.toBeNull();
       expect(container.querySelector('input[type="checkbox"]')?.getAttribute("aria-checked")).not.toBe("false");

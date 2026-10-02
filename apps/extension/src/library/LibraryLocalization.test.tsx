@@ -7,6 +7,7 @@ import { CATALOGS, getTranslate } from "../i18n/translate.js";
 import { SUPPORTED_LOCALES, type Locale } from "../i18n/Locale.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
+import { generatedCoverColor } from "./LibraryBookCard.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
 vi.mock("./useLibrary.js", () => ({ useLibrary: vi.fn() }));
@@ -40,6 +41,7 @@ describe("Library localization and action ownership", () => {
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: true, openInFullTab: vi.fn(),
       storageUsage: { usageBytes: 1536, quotaBytes: 1048576 }, openInspectionSession: vi.fn(), saveBookAs: vi.fn(),
       getBookFileSize: vi.fn().mockResolvedValue(1536),
+      enrichDescription: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(useLibrary).mockImplementation(() => state);
     container = document.createElement("div");
@@ -108,8 +110,7 @@ describe("Library localization and action ownership", () => {
     const help = document.querySelector('[role="dialog"]')!;
     expect(help.querySelector("a")?.textContent).toBe(t("about.userGuide"));
     expect(button(t("about.copyDiagnostics"))).toBeDefined();
-    expect(help.textContent).not.toContain(t("about.description"));
-    await click(t("about.aboutAmbra"));
+    expect([...help.querySelectorAll("h3")].map((heading) => heading.textContent)).toContain(t("about.aboutAmbra"));
     expect(help.textContent).toContain(t("about.description"));
     expect(help.textContent).toContain(t("about.version", { version: "1.2.3" }));
     expect(help.querySelector('a[href="https://ambraepub.org/en/privacy/"]')?.textContent).toBe(t("about.privacy"));
@@ -191,6 +192,45 @@ describe("Library localization and action ownership", () => {
     expect(state.books[0]?.creator).toBe(creator);
   });
 
+  it.each([true, false])("renders title, author, ornament and stable color with full-tab=%s", async fullTab => {
+    state.isFullTab = fullTab;
+    state.books = [{ ...book("The Quiet Coast"), creator: "Mara Vale" }];
+    await render();
+    const cover = button("Open The Quiet Coast").querySelector<HTMLElement>("[data-generated-cover]")!;
+    expect(cover.getAttribute("aria-hidden")).toBe("true");
+    expect(cover.textContent).toContain("The Quiet Coast");
+    expect(cover.textContent).toContain("Mara Vale");
+    expect(cover.querySelector("[data-cover-ornament]")).not.toBeNull();
+    const color = cover.style.backgroundColor;
+    state.chromeTheme = "purple";
+    state.books = [{ ...state.books[0]!, id: "reimported", progressFraction: 0.5 }];
+    await render();
+    expect(container.querySelector<HTMLElement>("[data-generated-cover]")!.style.backgroundColor).toBe(color);
+  });
+
+  it.each(SUPPORTED_LOCALES)("labels unread and unknown progress without inventing a percentage in %s", async (locale) => {
+    language.locale = locale;
+    const t = getTranslate(locale);
+    state.books = [
+      book("Unread"),
+      { ...book("Unknown"), lastReadAt: 1 },
+      { ...book("Zero"), progressFraction: 0 },
+      { ...book("Reading"), progressFraction: 0.42 },
+    ];
+    await render();
+    const cards = container.querySelectorAll("[data-library-collection] article");
+    expect(cards[0]!.textContent).toContain(t("library.notStarted"));
+    expect(cards[1]!.textContent).toContain(t("library.started"));
+    expect(cards[1]!.textContent).not.toContain(t("library.notStarted"));
+    expect(cards[2]!.textContent).toContain(formatLibraryProgress(0, locale));
+    expect(cards[3]!.textContent).toContain(formatLibraryProgress(0.42, locale));
+    for (const [index, card] of [...cards].entries()) {
+      const track = card.querySelector<HTMLElement>("[data-library-progress-track]")!;
+      expect(track.style.background).toBe("var(--colorNeutralStroke2)");
+      expect(track.childElementCount).toBe(index < 2 ? 0 : 1);
+    }
+  });
+
   it.each(SUPPORTED_LOCALES)("preserves every import state and duplicate outcome in %s", async (locale) => {
     language.locale = locale;
     const t = getTranslate(locale);
@@ -251,6 +291,20 @@ describe("Library localization and action ownership", () => {
 });
 
 describe("Library catalog and number formatting", () => {
+  it("assigns exactly five stable cover colors with accessible text contrast", () => {
+    const colors = new Set(Array.from({ length: 200 }, (_, index) => generatedCoverColor(`Book ${index}`)));
+    expect(colors.size).toBe(5);
+    expect(generatedCoverColor("Café")).toBe(generatedCoverColor("Cafe\u0301"));
+    expect(generatedCoverColor(" The Quiet Coast ")).toBe(generatedCoverColor("The Quiet Coast"));
+    const luminance = (hex: string) => {
+      const rgb = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16) / 255)
+        .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+      return rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+    };
+    for (const color of colors) {
+      expect((luminance("#fff8e9") + 0.05) / (luminance(color) + 0.05)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
   it.each(SUPPORTED_LOCALES)("preserves translation placeholders in %s", (locale) => {
     for (const key of Object.keys(CATALOGS.en).filter((key) => /^(library|about|settings|shortcuts)\./.test(key))) {
       const catalogKey = key as keyof typeof CATALOGS.en;

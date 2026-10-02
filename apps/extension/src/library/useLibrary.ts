@@ -15,6 +15,7 @@ import type { LibraryImportActivity } from "./LibraryImportStatus.js";
 import { readLibraryDownload } from "./LibraryDownload.js";
 import { saveLibraryBookAs } from "./LibrarySaveAs.js";
 import { isInvalidEpubError } from "../EpubErrors.js";
+import { enrichBookDescription } from "./BookDescriptionEnrichment.js";
 
 type LibraryError = string | (
   { key: keyof StringCatalog; params?: Record<string, string | number> } |
@@ -62,6 +63,7 @@ export interface UseLibraryResult {
   openBook: (id: string) => void;
   saveBookAs: (id: string) => Promise<void>;
   getBookFileSize?: (id: string) => Promise<number | undefined>;
+  enrichDescription: (id: string) => Promise<void>;
   /** App-global settings, shared live with open readers. */
   chromeTheme: ChromeThemeChoice;
   settings: GlobalReadingSettings;
@@ -319,6 +321,12 @@ export function useLibrary(): UseLibraryResult {
     return (await db.getBookFile(id))?.size;
   }, [db, ownsDatabase]);
 
+  const enrichDescription = useCallback(async (id: string): Promise<void> => {
+    if (!db || !ownsDatabase(db)) throw new Error(translateRef.current("library.notReady"));
+    await enrichBookDescription(db, id, () => ownsDatabase(db));
+    await refresh(db);
+  }, [db, ownsDatabase, refresh]);
+
   const saveBookAs = useCallback(async (id: string): Promise<void> => {
     if (!db || !ownsDatabase(db)) {
       throw new Error(translateRef.current("library.notReady"));
@@ -525,6 +533,7 @@ export function useLibrary(): UseLibraryResult {
     openBook,
     saveBookAs,
     getBookFileSize,
+    enrichDescription,
     chromeTheme: settings.chromeTheme,
     settings,
     setSettings,

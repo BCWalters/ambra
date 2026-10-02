@@ -45,7 +45,7 @@ import { saveLibraryBookAs } from "../library/LibrarySaveAs.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ariaShortcut, DEFAULT_SHORTCUT_PREFERENCES, getCommandBindings, getShortcutPlatform, matchReaderCommand, parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
-import { fetchBookDescription } from "../library/BookDescriptionEnrichment.js";
+import { enrichBookDescription } from "../library/BookDescriptionEnrichment.js";
 import {
   buildAnnotationCollection,
   classifyImportOutcome,
@@ -114,10 +114,6 @@ import type { Translate } from "../i18n/LocaleContext.js";
  * checked against rendered size, not intrinsic resolution, so a small
  * decorative icon can't accidentally "zoom" into a meaningless blur. */
 const MIN_ZOOMABLE_IMAGE_SIZE = 100;
-
-/** Caps how many times a book with no discoverable description gets a
- * fresh `fetchBookDescription` attempt on subsequent opens. */
-const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
 
 interface ReaderLayout {
   width: number;
@@ -2364,6 +2360,13 @@ export class ReaderController {
       bridgeCfi, preserveFocus,
       ...(preservePageBoundaries ? { preservePageBoundaries: true } : {}),
     });
+    // A panel can close after the rebuild captured its shell focus. Its
+    // immediate return then targets the old frame; recover only orphaned focus,
+    // never a newer panel, dialog, or keyboard target.
+    if (preserveFocus && doc && doc.activeElement === doc.body &&
+      !this.operations.disposed && !this.isLoadInFlight) {
+      this.restoreContentFocus();
+    }
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
@@ -4106,23 +4109,7 @@ export class ReaderController {
     if (this.pkg.metadata.description) {
       return;
     }
-    const libraryRecord = await this.library.getBookMetadata(this.bookId);
-    if (!libraryRecord || libraryRecord.fetchedDescription) {
-      return;
-    }
-    if ((libraryRecord.descriptionFetchAttempts ?? 0) >= MAX_DESCRIPTION_FETCH_ATTEMPTS) {
-      return;
-    }
-
-    const isbn = this.pkg.metadata.identifiers.find(
-      (id) => id.scheme?.toUpperCase() === "ISBN",
-    )?.value;
-    const result = await fetchBookDescription(
-      this.pkg.metadata.title,
-      this.pkg.metadata.creator,
-      isbn,
-    );
-    await this.library.recordDescriptionFetchResult(this.bookId, result);
+    await enrichBookDescription(this.library, this.bookId, () => !this.operations.disposed);
   }
 
   /** Assembles the EPUB Inspector panel data — see `EpubInspectionSession`. */

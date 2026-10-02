@@ -18,6 +18,12 @@ test("Book Details shows archive file size and compact descriptions in reader an
       (await Reflect.get(window, "__readerController").getBookDetails()).fileSizeBytes,
     )).toBe(fileSize);
     await readerPage.mouse.move(350, 2);
+    const contents = readerPage.getByRole("button", { name: "Show contents", exact: true });
+    await expect(contents).toHaveText("Contents");
+    await contents.click();
+    const hideContents = readerPage.getByRole("button", { name: "Hide contents", exact: true });
+    await expect(hideContents).toHaveText("Contents");
+    await hideContents.click();
     await readerPage.getByRole("button", { name: "Book details", exact: true }).click();
     await expect(readerPage.getByText(description, { exact: true })).toHaveCSS("font-size", "12px");
     await expect(readerPage.getByText(description, { exact: true })).toHaveCSS("line-height", "18px");

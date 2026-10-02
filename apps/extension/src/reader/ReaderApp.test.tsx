@@ -458,18 +458,24 @@ it("logs a superseded save failure without showing an obsolete activation error"
   expect(log).toHaveBeenCalledWith("Could not save reading position for a superseded Library request.", error);
 });
 
-it("shares the Contents/Annotations pin preference without applying it to Search", async () => {
+it("shares the Contents/Annotations pin preference while retaining opposite docks and keeping Search independent", async () => {
   await openPanel("toc");
   const pin = container.querySelector<HTMLButtonElement>('button[aria-label="Pin contents panel"]')!;
   await act(async () => pin.click());
   await openPanel("annotations");
   expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
-    toc: { open: false, pinned: false },
+    toc: { open: true, pinned: true },
     annotations: { open: true, pinned: true },
   }));
   await openPanel("search");
   expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    toc: { open: true, pinned: true },
     annotations: { open: false, pinned: false },
+    search: { open: true, pinned: false },
+  }));
+  await openPanel("toc");
+  expect(bridge.recordDiagnosticSurfaces).toHaveBeenLastCalledWith(expect.objectContaining({
+    toc: { open: false, pinned: false },
     search: { open: true, pinned: false },
   }));
   await openPanel("toc");
@@ -500,12 +506,18 @@ it("falls back at the measured 320px reading threshold and restores the shared p
   expect(panel.querySelector('button[aria-label="Unpin contents panel"]')).not.toBeNull();
   await openPanel("annotations");
   const annotations = container.querySelector<HTMLElement>('[data-ambra-reference-panel="annotations"]')!;
-  expect(annotations.style.position).toBe("relative");
+  expect(panel.style.position).toBe("relative");
+  expect(annotations.style.position).toBe("absolute");
   await resizeReferenceRow(619);
+  expect(panel.style.visibility).toBe("hidden");
+  expect(annotations.style.visibility).toBe("visible");
   await openPanel("annotations");
   await resizeReferenceRow(620);
   expect(annotations.style.visibility).toBe("hidden");
   await openPanel("annotations");
+  expect(annotations.style.position).toBe("absolute");
+  await resizeReferenceRow(920);
+  expect(panel.style.position).toBe("relative");
   expect(annotations.style.position).toBe("relative");
 });
 
@@ -570,6 +582,10 @@ it("retains Search's independent pin preference, input and results across an ava
   expect(document.activeElement).toBe(input);
   await openPanel("toc");
   expect(container.querySelector<HTMLElement>('[data-ambra-reference-panel="toc"]')!.style.position).toBe("absolute");
+  expect(panel.style.position).toBe("relative");
+  expect(panel.style.visibility).toBe("visible");
+  await openPanel("search");
+  expect(panel.style.visibility).toBe("hidden");
   await openPanel("search");
   expect(panel.style.position).toBe("relative");
   expect(input.value).toBe("unsent draft");

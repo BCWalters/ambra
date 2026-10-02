@@ -53,6 +53,8 @@ const useReaderToolbarStyles = makeStyles({
     "@container reader-pane (max-width: 800px)": { display: "none" },
   },
   navigationButton: {
+    fontSize: "14px",
+    lineHeight: "21px",
     "@media (max-width: 800px)": { minWidth: "28px", paddingInline: "4px" },
     "@container reader-pane (max-width: 800px)": { minWidth: "28px", paddingInline: "4px" },
   },
@@ -165,26 +167,8 @@ export const Toolbar: FC<ToolbarProps> = ({
   const searchLabel = isSearchOpen ? t("toolbar.hideSearch") : t("toolbar.search");
   const bookmarkLabel = snapshot.isBookmarked ? t("toolbar.removeBookmark") : t("toolbar.bookmarkThisPage");
 
-  // Centers the title/chapter group within the space left over between
-  // the TOC toggle and the menu buttons whenever it comfortably fits
-  // there without truncating — falling back to today's left-aligned,
-  // chapter-truncates-first layout in narrower windows, per explicit
-  // design direction. `titleGroupRef`/`measureRef` render the *exact*
-  // same "Title — Chapter" text, but `measureRef`'s copy is always
-  // `white-space: nowrap` and invisible, existing purely so its
-  // `scrollWidth` reports the group's true, untruncated width — `<span
-  // style="text-overflow: ellipsis">`'s own `scrollWidth` would report
-  // the same untruncated width regardless (that's just how the CSS
-  // property works, not exclusive to visibly-truncated text), but only
-  // once *this* render's actual title/chapter text has painted, whereas
-  // the hidden measuring copy can be sized independently of whatever
-  // layout mode is currently active — deliberately avoiding a feedback
-  // loop where switching modes changes the exact thing being measured.
-  // `middleWrapperRef` is the flex:1 region between the two button
-  // groups — its own width is unaffected by whether the title/chapter
-  // inside it is a normal flex child or pulled out via `position:
-  // absolute` for centering, so comparing against it stays stable
-  // either way.
+  // Measure an unconstrained copy so centering never feeds back into its own
+  // fit calculation. Title and chapter truncate independently on separate lines.
   const titleGroupRef = useRef<HTMLDivElement | null>(null);
   const measureRef = useRef<HTMLDivElement | null>(null);
   const middleWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -250,12 +234,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           display: "flex",
           alignItems: "center",
           gap: "var(--ambra-toolbar-gap)",
-          // A little taller than a bare-minimum button bar (12px, not
-          // 8px, of vertical padding) so the toolbar fully covers the
-          // running header's own title/chapter text underneath it (see
-          // `PageFurniture`'s `HEADER_TEXT_TOP_OFFSET`) whenever it's
-          // shown, instead of just barely overlapping it.
-          padding: "12px 10px",
+          padding: "4px 10px",
           background: chromePalette.background,
           backdropFilter: CHROME_BACKDROP_FILTER,
           WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
@@ -278,7 +257,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             icon={<TextBulletListRegular />}
             onClick={onToggleToc}
           >
-            <span className={readerStyles.navigationLabel}>{t("toolbar.showContents")}</span>
+            <span className={readerStyles.navigationLabel}>{t("toc.contents")}</span>
           </ToggleButton>
         </Tooltip>
 
@@ -289,17 +268,6 @@ export const Toolbar: FC<ToolbarProps> = ({
           </ToggleButton>
         </Tooltip>
 
-        {/* Book title + current chapter, sharing one flexible region: the
-            chapter name (shown here because it's otherwise only visible
-            in the running header underneath — see `PageFurniture` — which
-            this same toolbar covers whenever it's shown) is deliberately
-            the first thing to truncate/disappear as the toolbar narrows,
-            never the book title.
-            
-            Centered within this region (see `canCenterTitle`'s doc
-            comment) whenever it comfortably fits without truncating,
-            falling back to the left-aligned/truncating layout below in
-            narrower windows. */}
         <div
           ref={middleWrapperRef}
           style={{
@@ -346,14 +314,14 @@ export const Toolbar: FC<ToolbarProps> = ({
               pointerEvents: "none",
               whiteSpace: "nowrap",
               display: "flex",
-              alignItems: "baseline",
-              gap: 6,
+              flexDirection: "column",
+              alignItems: "center",
             }}
           >
-            <Body1 as="span" style={{ fontWeight: 600 }}>
+            <Body1 as="span" style={{ fontWeight: 600, padding: "2px 4px" }}>
               {snapshot.title}
             </Body1>
-            {snapshot.currentChapterLabel && <Caption1 as="span">— {snapshot.currentChapterLabel}</Caption1>}
+            {snapshot.currentChapterLabel && <Caption1 as="span">{snapshot.currentChapterLabel}</Caption1>}
           </div>
 
           <div
@@ -361,9 +329,10 @@ export const Toolbar: FC<ToolbarProps> = ({
             data-ambra-toolbar-title
             style={{
               display: "flex",
-              alignItems: "baseline",
-              gap: 6,
+              flexDirection: "column",
+              alignItems: canCenterTitle ? "center" : "flex-start",
               minWidth: 0,
+              maxWidth: "100%",
               overflow: "hidden",
               // Measure before paint and position without a transition:
               // startup/resume must not slide provisional labels across
@@ -418,27 +387,18 @@ export const Toolbar: FC<ToolbarProps> = ({
               </button>
             </Tooltip>
 
-            {/* The current chapter — shown only when there's room for it
-                (see the doc comment above): this wrapper takes whatever
-                space is left after the book title above (which never
-                shrinks below its own content size), so as the toolbar
-                narrows, the chapter name is always the first thing to
-                truncate and eventually disappear, never the book title.
-                When centered, it never needs to shrink at all — that's
-                exactly the case `canCenterTitle` already confirmed has
-                enough room. */}
             {snapshot.currentChapterLabel && <Caption1
               as="span"
               style={{
                 minWidth: 0,
-                flex: canCenterTitle ? undefined : 1,
+                maxWidth: "100%",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
                 color: "var(--colorNeutralForeground2, #444)",
               }}
             >
-              — {snapshot.currentChapterLabel}
+              {snapshot.currentChapterLabel}
             </Caption1>}
           </div>
         </div>
@@ -463,19 +423,6 @@ export const Toolbar: FC<ToolbarProps> = ({
             commands rather than toolbar or Book Details controls. */}
 
         <Tooltip
-          content={isAnnotationsOpen ? t("toolbar.hideBookmarksAndHighlights") : t("toolbar.bookmarksAndHighlights")}
-          relationship="label"
-        >
-          <ToggleButton
-            appearance="subtle"
-            size="small"
-            checked={isAnnotationsOpen}
-            icon={<ReadingListRegular />}
-            onClick={onToggleAnnotations}
-          />
-        </Tooltip>
-
-        <Tooltip
           content={searchShortcut.shortcutLabel ? `${searchLabel} (${searchShortcut.shortcutLabel})` : searchLabel}
           relationship="description"
         >
@@ -487,7 +434,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             checked={isSearchOpen}
             icon={<SearchRegular />}
             onClick={onToggleSearch}
-            style={{ marginLeft: "var(--ambra-toolbar-cluster-gap)" }}
+            style={{ marginInlineEnd: "var(--ambra-toolbar-cluster-gap)" }}
           />
         </Tooltip>
 
@@ -509,6 +456,36 @@ export const Toolbar: FC<ToolbarProps> = ({
             onSetAlwaysShowOnePage={onSetAlwaysShowOnePage}
           />
         )}
+
+        <Tooltip
+          content={isAnnotationsOpen ? t("toolbar.hideBookmarksAndHighlights") : t("toolbar.bookmarksAndHighlights")}
+          relationship="label"
+        >
+          <ToggleButton
+            className={readerStyles.navigationButton}
+            appearance="subtle"
+            size="small"
+            checked={isAnnotationsOpen}
+            icon={<ReadingListRegular />}
+            onClick={onToggleAnnotations}
+          >
+            <span className={readerStyles.navigationLabel}>{t("toolbar.bookmarksAndHighlights")}</span>
+          </ToggleButton>
+        </Tooltip>
+
+        <Tooltip
+          content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}
+          relationship="label"
+        >
+          <ToggleButton
+            ref={detailsButtonRef}
+            appearance="subtle"
+            size="small"
+            checked={isDetailsOpen}
+            icon={<BookInformationRegular />}
+            onClick={onToggleDetails}
+          />
+        </Tooltip>
 
         <AmbraSettingsPopover
           open={openMenu === "settings"}
@@ -544,43 +521,6 @@ export const Toolbar: FC<ToolbarProps> = ({
             }} />
         </Tooltip>
 
-        <Tooltip
-          content={isDetailsOpen ? t("toolbar.hideBookDetails") : t("toolbar.bookDetails")}
-          relationship="label"
-        >
-          <ToggleButton
-            ref={detailsButtonRef}
-            appearance="subtle"
-            size="small"
-            checked={isDetailsOpen}
-            icon={<BookInformationRegular />}
-            onClick={onToggleDetails}
-          />
-        </Tooltip>
-
-        {/* Bookmark stands alone at the far right, set apart from the
-            Text/Settings/Details group with some extra breathing room
-            (beyond the toolbar's own uniform `gap`) — per explicit
-            design direction, the toolbar reads as three loose clusters
-            left to right: Search on its own (issue #78: previously
-            grouped tightly with Text/Settings/Details, which read as
-            "one more settings-ish button" even though searching isn't
-            a settings/configuration action), then Text/Settings/Details
-            grouped closely together (issue #68: Search used to dock
-            here too, alongside Book Details on the same, opposite edge
-            of the reader pane — see `SearchPanel`'s doc comment), then
-            Bookmark on its own at the end. (A fourth "Navigate" cluster
-            used to sit further left — removed as redundant clutter, see
-            this file's doc comment.)
-
-            A single toggle rather than a plain "add" action (issue
-            #47): pressed/filled whenever any bookmark already falls on
-            whichever page(s) are visible right now (`snapshot.isBookmarked`,
-            resolved against the *live* page content, not just "was one
-            ever added to this chapter") — clicking it either adds one
-            at the current position or removes every bookmark on the
-            current page(s), whichever the pressed state says is about
-            to happen. */}
         <Tooltip
           content={bookmarkShortcut.shortcutLabel ? `${bookmarkLabel} (${bookmarkShortcut.shortcutLabel})` : bookmarkLabel}
           relationship="description"

@@ -74,6 +74,14 @@ To save a library book to your device, open **Book details → Publication detai
 
 Open **Book details** for a description, or expand **Publication details** for rights and accessibility information. The [EPUB Inspector](epub-inspector.md) lets you explore the original metadata and files.
 
+If a book has no description, opening **Book details** also checks Open Library
+and then Wikipedia for a fallback, without opening the book in the reader.
+This sends only its title, author, and ISBN, not the EPUB or reading history.
+Found descriptions are saved locally with a source link and appear in the open
+panel automatically. The EPUB's own description always takes priority. Offline
+or unmatched books remain usable without a description; unsuccessful lookups
+are limited to three attempts, shared with the reader.
+
 **Remove from library** is at the bottom of Book details. You can also press
 **Delete** or **Backspace** on a focused book to request removal. Confirmation
 names the book and initially focuses **Cancel**. Removal deletes that library

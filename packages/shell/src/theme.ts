@@ -76,7 +76,14 @@ export function getInterfaceCssVariables(palette: InterfaceTheme): Record<`--amb
 
 /** Fluent owns behavior, status colors, disabled states and forced-colors adaptation. */
 export function createAmbraFluentTheme(palette: InterfaceTheme): Theme {
-  const theme = { ...(palette.appearance === "dark" ? webDarkTheme : webLightTheme) };
+  const theme: Theme = {
+    ...(palette.appearance === "dark" ? webDarkTheme : webLightTheme),
+    fontFamilyBase: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    lineHeightBase300: "21px",
+    lineHeightBase200: "18px",
+    fontWeightSemibold: 550,
+  };
+  theme.fontFamilyNumeric = theme.fontFamilyBase;
   // Map every brand alias, including less common inverted/static/link states, so
   // ordinary Fluent controls and future consumers cannot fall back to stock blue.
   for (const key of Object.keys(theme) as (keyof Theme)[]) {

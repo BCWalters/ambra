@@ -9,6 +9,7 @@ import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 import { BookSaveAsAction } from "../components/BookSaveAsAction.js";
+import { CHROME_BORDER } from "../reader/chromeTheme.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -44,6 +45,7 @@ export interface BookDetailsFlyoutProps {
   onSaveAs?: ((bookId: string) => Promise<void>) | undefined;
   onRemove?: (() => void) | undefined;
   onGetFileSize?: ((bookId: string) => Promise<number | undefined>) | undefined;
+  onEnrichDescription?: ((bookId: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -67,12 +69,23 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   onSaveAs,
   onRemove,
   onGetFileSize,
+  onEnrichDescription,
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const open = book !== undefined;
   const [fileSize, setFileSize] = useState<number>();
   const [fileSizeError, setFileSizeError] = useState<string>();
+  const [descriptionError, setDescriptionError] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    setDescriptionError(undefined);
+    if (book && onEnrichDescription) void onEnrichDescription(book.id).catch((error: unknown) => {
+      console.warn("Description enrichment failed.", error);
+      if (active) setDescriptionError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { active = false; };
+  }, [book?.id, onEnrichDescription]);
   useEffect(() => {
     let active = true;
     setFileSize(undefined);
@@ -142,6 +155,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
             </div>
           </div>
           {fileSizeError && <LibraryImportError message={fileSizeError} onDismiss={() => setFileSizeError(undefined)} />}
+          {descriptionError && <LibraryImportError message={descriptionError} onDismiss={() => setDescriptionError(undefined)} />}
 
           {progressPercent !== undefined && (
             <div style={{ marginBottom: 20 }}>
@@ -191,26 +205,24 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
 
           {inspectionError && <LibraryImportError {...inspectionError} />}
           {onOpenInspector && (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+            <div style={{ marginTop: 16 }}>
               <Button
-                appearance="secondary"
+                appearance="primary"
                 icon={<CodeCircleRegular />}
                 {...restoreInspectorFocus}
                 ref={inspectorButtonRef}
                 onClick={onOpenInspector}
                 style={{
-                  background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",
-                  borderColor: "rgba(126, 232, 250, 0.35)",
-                  color: "#7ee8fa",
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+                  justifyContent: "flex-start",
+                  textAlign: "left",
                 }}
               >
                 {t("bookDetails.epubInspector")}
               </Button>
             </div>
           )}
-          {onRemove && <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+          {onRemove && <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 24,
+            paddingTop: 16, borderTop: `1px solid ${CHROME_BORDER}` }}>
             <Button icon={<DeleteRegular />} onClick={onRemove}
               style={{ color: "var(--colorPaletteRedForeground1)" }}>{t("library.removeAction")}</Button>
           </div>}

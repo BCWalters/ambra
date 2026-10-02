@@ -1,12 +1,43 @@
 import { useEffect, useState, type FC, type KeyboardEvent } from "react";
-import { Button, Tooltip, makeStyles, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Button, Tooltip, makeStyles, mergeClasses, useRestoreFocusTarget } from "@fluentui/react-components";
 import { BookInformationRegular } from "@fluentui/react-icons";
 import type { LibraryBookViewModel } from "./useLibrary.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryProgress } from "./LibraryFormatting.js";
 import { EPUB_TOOLTIP_STYLE } from "../components/EpubTextStyles.js";
 
+const GENERATED_COVER_COLORS = ["#40564e", "#55516b", "#69494b", "#40566b", "#735a35"] as const;
+
+export function generatedCoverColor(title: string): string {
+  let hash = 2166136261;
+  const name = title.normalize("NFC").trim();
+  for (let index = 0; index < name.length; index++) {
+    hash = Math.imul(hash ^ name.charCodeAt(index), 16777619) >>> 0;
+  }
+  return GENERATED_COVER_COLORS[hash % GENERATED_COVER_COLORS.length]!;
+}
+
 const useStyles = makeStyles({
+  generatedCover: {
+    position: "relative",
+    display: "flex",
+    height: "100%",
+    boxSizing: "border-box",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    textAlign: "left",
+    boxShadow: "inset 4px 0 rgba(0, 0, 0, 0.12)",
+    "::after": {
+      content: '""',
+      position: "absolute",
+      inset: "8px",
+      border: "1px solid rgba(255, 248, 233, 0.3)",
+      pointerEvents: "none",
+    },
+  },
+  compactCover: {
+    "::after": { inset: "4px" },
+  },
   open: {
     cursor: "pointer",
     border: "1px solid var(--colorNeutralStroke2)",
@@ -23,6 +54,14 @@ const useStyles = makeStyles({
     "@media (forced-colors: active)": {
       ":focus-visible": { outlineColor: "Highlight" },
     },
+  },
+  artwork: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid transparent",
+    backgroundColor: "transparent",
+    ":hover": { border: "1px solid transparent" },
   },
 });
 
@@ -67,7 +106,7 @@ export const LibraryBookCard: FC<{
         onRequestRemove();
       }
     }}>
-      <button {...restoreFocusTarget} type="button" className={styles.open} data-book-open={book.id}
+      <button {...restoreFocusTarget} type="button" className={mergeClasses(styles.open, !!book.cardCoverUrl && styles.artwork)} data-book-open={book.id}
         disabled={openDisabled} aria-describedby={openDescriptionId}
         aria-current={current ? "true" : undefined}
         onClick={onOpen}
@@ -75,16 +114,23 @@ export const LibraryBookCard: FC<{
           t("library.openBookProgress", { title: book.title, progress: formatLibraryProgress(progress / 100, locale) })}
         style={{ width: compact ? 56 : 140, height: compact ? 84 : 210, flexShrink: 0 }}>
         {book.cardCoverUrl ? (
-          <img src={book.cardCoverUrl} alt="" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+          <img src={book.cardCoverUrl} alt="" style={{ display: "block", width: "auto", height: "auto",
+            maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "3px 7px 7px 3px",
+            outline: "1px solid var(--colorNeutralStroke2)", outlineOffset: "-1px" }} />
         ) : (
-          <span aria-hidden="true" style={{
-            display: "flex", height: "100%", padding: compact ? 4 : 12, boxSizing: "border-box",
-            flexDirection: "column", justifyContent: "center", borderLeft: "4px solid var(--colorBrandStroke2)",
-            background: "var(--colorBrandBackground2)", color: "var(--colorBrandForeground2)",
+          <span aria-hidden="true" data-generated-cover="" className={mergeClasses(styles.generatedCover, compact && styles.compactCover)} style={{
+            padding: compact ? 8 : "16px 14px", gap: compact ? 4 : 8,
+            backgroundColor: generatedCoverColor(book.title), color: "#fff8e9",
           }}>
-            <span style={{ fontFamily: "Georgia, serif", fontSize: compact ? 10 : 16, lineHeight: 1.35,
-              display: "-webkit-box", WebkitLineClamp: compact ? 4 : 6, WebkitBoxOrient: "vertical",
+            <span style={{ fontFamily: "Georgia, serif", fontSize: compact ? 9 : 18, lineHeight: 1.15,
+              flexShrink: 0, display: "-webkit-box", WebkitLineClamp: compact ? 3 : 4, WebkitBoxOrient: "vertical",
               overflow: "hidden", overflowWrap: "anywhere" }}>{book.title}</span>
+            <span data-cover-ornament="" style={{ width: compact ? 6 : 18, height: compact ? 6 : 18,
+              border: "1px solid rgba(255, 248, 233, 0.55)", transform: "rotate(45deg)",
+              alignSelf: "center", flexShrink: 0 }} />
+            <span style={{ fontSize: compact ? 6 : 10, lineHeight: 1.3, letterSpacing: compact ? 0 : 1,
+              textTransform: "uppercase", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              overflow: "hidden", overflowWrap: "anywhere" }}>{book.creator}</span>
           </span>
         )}
       </button>
@@ -95,13 +141,15 @@ export const LibraryBookCard: FC<{
         </p>
         <p style={{ margin: 0, height: 18, lineHeight: "18px", fontSize: 12, color: "var(--colorNeutralForeground2)",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{book.creator}</p>
-        <div aria-hidden="true" style={{ height: 3, marginBlock: 2,
-          background: progress === undefined ? "transparent" : "var(--colorNeutralStroke2)", borderRadius: 2 }}>
+        <div data-library-progress-track="" aria-hidden="true" style={{ height: 3, marginBlock: 2,
+          background: "var(--colorNeutralStroke2)", borderRadius: 2 }}>
           {progress !== undefined && <div style={{ width: `${progress}%`, height: "100%", background: "var(--colorBrandBackground)", borderRadius: 2 }} />}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 28 }}>
           <span style={{ fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
-            {progress !== undefined && formatLibraryProgress(progress / 100, locale)}
+            {progress === undefined
+              ? t(book.lastReadAt === undefined ? "library.notStarted" : "library.started")
+              : formatLibraryProgress(progress / 100, locale)}
           </span>
           <Tooltip content={{ children: t("library.bookDetails", { title: book.title }), style: EPUB_TOOLTIP_STYLE }} relationship="label"
             visible={active && detailsTooltip} onVisibleChange={(_event, data) => setDetailsTooltip(data.visible)}>

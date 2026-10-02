@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { FC } from "react";
-import { Body1, Button, Caption1, Link, Subtitle1 } from "@fluentui/react-components";
-import { BookOpenRegular, CopyRegular, KeyboardRegular, MailRegular } from "@fluentui/react-icons";
+import { Body1, Body1Strong, Button, Caption1, Link, Subtitle1 } from "@fluentui/react-components";
+import { BookOpenRegular, CopyRegular, KeyboardRegular } from "@fluentui/react-icons";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { CenteredDialog } from "./CenteredDialog.js";
-import { PaneCard, PaneDisclosure } from "../components/PaneSections.js";
+import { PaneDisclosure } from "../components/PaneSections.js";
+import { CHROME_BORDER } from "../reader/chromeTheme.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
 import { ariaShortcut, getCommandBindings } from "../shortcuts/ReaderCommands.js";
 import { useShortcutPreferences } from "../shortcuts/ShortcutPreferencesContext.js";
@@ -57,6 +58,8 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
 }) => {
   const t = useTranslation();
   const diagnosticsHintId = useId();
+  const feedbackTitleId = useId();
+  const aboutTitleId = useId();
   const shortcutsLinkRef = useRef<HTMLButtonElement>(null);
   const { preferences, platform } = useShortcutPreferences();
   const bindings = preferences.enabled ? getCommandBindings("showKeyboardShortcuts", platform) : [];
@@ -96,7 +99,7 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
         if (focusShortcutsOnOpen) shortcutsLinkRef.current?.focus();
       }}
     >
-      <div style={{ flex: 1, overflowY: "auto", padding: 20, overflowWrap: "anywhere" }}>
+      <div style={{ padding: "8px 4px", overflowWrap: "anywhere" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <Link href={USER_GUIDE_URL} target="_blank" rel="noreferrer"
             style={{ color: accentForeground, alignSelf: "flex-start", marginLeft: 12, minHeight: 40, display: "inline-flex", alignItems: "center" }}>
@@ -120,28 +123,17 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
             </Button>
         </div>
 
-        <div style={{ marginTop: 20 }}>
-        <PaneCard title={t("about.helpShape")}>
-          <Button
-            as="a"
+        <section aria-labelledby={feedbackTitleId} style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${CHROME_BORDER}` }}>
+          <Body1Strong as="h3" block id={feedbackTitleId} style={{ margin: "0 0 8px" }}>{t("about.helpShape")}</Body1Strong>
+          <Link
             href={`mailto:${REPORT_EMAIL}`}
             target="_blank"
             rel="noreferrer"
-            appearance="secondary"
-            icon={<MailRegular />}
-            style={{
-              width: "100%",
-              minHeight: 44,
-              padding: "10px 12px",
-              textAlign: "left",
-            }}
+            style={{ color: accentForeground, display: "block", marginBottom: 8 }}
           >
             {t("about.feedback")}
-          </Button>
-          <Caption1 as="p" block style={{ margin: "8px 0 16px", opacity: 0.75 }}>
-            {REPORT_EMAIL}
-          </Caption1>
-          <Link href={`${GITHUB_REPO_URL}/issues`} target="_blank" rel="noreferrer" style={{ color: accentForeground, display: "block", marginBottom: 16 }}>
+          </Link>
+          <Link href={`${GITHUB_REPO_URL}/issues`} target="_blank" rel="noreferrer" style={{ color: accentForeground, display: "block", marginBottom: 8 }}>
             {t("about.issues")}
           </Link>
           <Caption1 as="p" block style={{ margin: "0 0 8px" }} id={diagnosticsHintId}>
@@ -162,7 +154,7 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
           >
             {copyState === "copied" ? t("about.copied") : copyState === "copying" ? t("about.copying") : t("about.copyDiagnostics")}
           </Button>
-          <Caption1 as="p" block role="status" aria-live="polite" style={{ margin: "8px 0 0" }}>
+          <Caption1 as="p" block role="status" aria-live="polite" style={{ margin: copyState === "idle" ? 0 : "8px 0 0" }}>
             {copyState === "copied" ? t("about.copied") : copyState === "copying" ? t("about.copying") : ""}
           </Caption1>
           {copyError && (
@@ -171,21 +163,20 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
               <ErrorDetails style={{ marginTop: 4 }}>{copyError}</ErrorDetails>
             </div>
           )}
-        </PaneCard>
-        </div>
+        </section>
 
-        <div style={{ marginTop: 20 }}>
-        <PaneDisclosure title={t("about.aboutAmbra")}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <AmbraMarkIcon size={40} />
+        <section aria-labelledby={aboutTitleId} style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${CHROME_BORDER}` }}>
+          <Body1Strong as="h3" block id={aboutTitleId} style={{ margin: "0 0 8px" }}>{t("about.aboutAmbra")}</Body1Strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <AmbraMarkIcon size={32} />
             <div>
               <Subtitle1 as="p" block style={{ margin: 0 }}>Ambra</Subtitle1>
               <Caption1 as="p" block style={{ margin: 0 }}>{t("about.version", { version })}</Caption1>
             </div>
           </div>
           <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("about.description")}</Body1>
-          <Caption1 as="p" block style={{ margin: "0 0 16px" }}>{t("about.createdBy")} <span>Ben Walters</span></Caption1>
-        <div style={{ margin: "20px 0" }}>
+          <Caption1 as="p" block style={{ margin: "0 0 12px" }}>{t("about.createdBy")} <span>Ben Walters</span></Caption1>
+        <div>
           <Body1 as="p" block style={{ margin: "0 0 8px" }}>{t("about.localLibrary")}</Body1>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
             <Link style={{ color: accentForeground }} href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer">{t("about.privacy")}</Link>
@@ -203,8 +194,7 @@ export const HelpAboutFlyout: FC<HelpAboutFlyoutProps> = ({
             ))}
           </div>
         </PaneDisclosure>
-        </PaneDisclosure>
-        </div>
+        </section>
       </div>
     </CenteredDialog>
   );

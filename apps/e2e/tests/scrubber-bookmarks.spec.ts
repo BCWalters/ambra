@@ -299,6 +299,19 @@ test("same-page saved text positions remain distinct, bounded, and directly navi
     await expect(panel.getByRole("combobox", { name: "Show", exact: true })).toHaveValue("bookmarks");
     await expect(panel.getByRole("combobox", { name: "Show", exact: true })).toBeFocused();
     await expect(panel.locator("[data-bookmark-link]")).toHaveCount(6);
+    await panel.getByRole("button", { name: "Close annotations panel", exact: true }).click();
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    const show = panel.getByRole("combobox", { name: "Show", exact: true });
+    await expect(show).toHaveValue("all");
+    await show.selectOption("notes");
+    await panel.getByRole("button", { name: "Close annotations panel", exact: true }).click();
+    await flag.click();
+    await chooser.getByRole("button", { name: "Show all bookmarks", exact: true }).click();
+    await expect(show).toHaveValue("bookmarks");
+    await expect(show).toBeFocused();
+    await panel.getByRole("button", { name: "Close annotations panel", exact: true }).click();
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    await expect(show).toHaveValue("notes");
   } finally {
     await context.close();
   }

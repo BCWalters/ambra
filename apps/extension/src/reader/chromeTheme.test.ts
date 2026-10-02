@@ -36,6 +36,12 @@ describe.each(["light", "dark"] as const)("semantic interface tokens in %s appea
     expect(contrast(palette.controlBorder, palette.surface)).toBeGreaterThanOrEqual(3);
     expect(contrast(palette.controlBorder, palette.canvas)).toBeGreaterThanOrEqual(3);
     const fluent = createAmbraFluentTheme(palette);
+    expect(fluent.fontFamilyBase).toBe('-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif');
+    expect(fluent.fontFamilyNumeric).toBe(fluent.fontFamilyBase);
+    expect(fluent.fontSizeBase300).toBe("14px");
+    expect(fluent.lineHeightBase300).toBe("21px");
+    expect(fluent.lineHeightBase200).toBe("18px");
+    expect(fluent.fontWeightSemibold).toBe(550);
     expect(fluent.colorBrandBackground).toBe(palette.actionBackground);
     expect(fluent.colorCompoundBrandBackground).toBe(palette.actionBackground);
     expect(fluent.colorNeutralForegroundOnBrand).toBe(palette.actionForeground);

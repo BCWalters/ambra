@@ -195,6 +195,7 @@ interface HighlightListProps {
   onSelectEmbedded: (cfi: string) => void;
   filter: AnnotationFilter;
   panelVisible: boolean;
+  focusOnOpen: boolean;
   focusFilter: () => void;
 }
 
@@ -208,6 +209,7 @@ const HighlightList: FC<HighlightListProps> = ({
   onSelectEmbedded,
   filter,
   panelVisible,
+  focusOnOpen,
   focusFilter,
 }) => {
   const t = useTranslation();
@@ -235,6 +237,7 @@ const HighlightList: FC<HighlightListProps> = ({
           onSetNote={onSetNote}
           visible={filter !== "bookmarks" && (!notesOnly || !!highlight.note)}
           panelVisible={panelVisible}
+          focusOnOpen={focusOnOpen}
           focusFilter={focusFilter}
         />
       ))}
@@ -253,6 +256,7 @@ interface HighlightListItemProps {
   onSetNote: (id: string, note: string | undefined) => Promise<boolean>;
   visible: boolean;
   panelVisible: boolean;
+  focusOnOpen: boolean;
   focusFilter: () => void;
 }
 
@@ -267,6 +271,7 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
   onSetNote,
   visible,
   panelVisible,
+  focusOnOpen,
   focusFilter,
 }) => {
   const t = useTranslation();
@@ -365,6 +370,7 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
             onSaved={closeNoteEditor}
             onCancel={closeNoteEditor}
             autoFocus
+            autoFocusOnActivate={focusOnOpen}
             active={panelVisible && visible}
           />
         </div>
@@ -494,6 +500,7 @@ export interface AnnotationsPanelProps {
   /** Keep this component mounted when closed: both drafts and pending note
    * saves must survive switching reference panels, as well as the closing animation. */
   open: boolean;
+  focusOnOpen?: boolean;
   /** `true` docks the panel in the normal layout flow, pushing the
    * content pane over; `false` (the default) makes it fly out as a
    * translucent overlay on top of the content pane instead,
@@ -507,7 +514,7 @@ export interface AnnotationsPanelProps {
    * including repeated requests for the same filter. Open the panel in the same
    * parent update. The Show control receives focus, including for a pinned or
    * already-open panel; subsequent user filter choices remain local. Omit this
-   * prop on ordinary opens to restore the panel's default focus behavior. */
+   * prop on ordinary opens to restore the user's filter and default focus. */
   filterRequest?: { readonly filter: AnnotationFilter; readonly requestId: number };
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
@@ -540,6 +547,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   onExport,
   onImportFile,
   open,
+  focusOnOpen = true,
   pinned,
   canPin = true,
   onTogglePin,
@@ -549,6 +557,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   scrubberVisible,
 }) => {
   const [filter, setFilter] = useState<AnnotationFilter>("all");
+  const manualFilter = useRef<AnnotationFilter>("all");
   const filterId = useId();
   const filterRef = useRef<HTMLSelectElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -576,7 +585,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   const filterRequestId = filterRequest?.requestId ?? 0;
 
   useLayoutEffect(() => {
-    if (requestedFilter !== undefined) setFilter(requestedFilter);
+    setFilter(requestedFilter ?? manualFilter.current);
   }, [requestedFilter, filterRequestId]);
 
   useEffect(() => {
@@ -595,8 +604,8 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
   // See `TocPanel`'s matching effect's doc comment for why this is
   // needed at all (this panel is likewise rendered earlier in the DOM
   // than the toolbar button that opens it).
-  useFocusOnOpen(navRef, open && filterRequest === undefined);
-  useFocusOnOpen(filterRef, (open || pinned) && filterRequest !== undefined, filterRequestId);
+  useFocusOnOpen(navRef, open && focusOnOpen && filterRequest === undefined);
+  useFocusOnOpen(filterRef, (open || pinned) && focusOnOpen && filterRequest !== undefined, filterRequestId);
 
   return (
     <>
@@ -681,7 +690,10 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px", borderBottom: `1px solid ${CHROME_BORDER}` }}>
           <label htmlFor={filterId} style={{ flexShrink: 0, fontSize: 12 }}>{t("annotations.show")}</label>
           <Select ref={filterRef} id={filterId} value={filter} size="small"
-            onChange={(_event, data) => setFilter(data.value as AnnotationFilter)}
+            onChange={(_event, data) => {
+              manualFilter.current = data.value as AnnotationFilter;
+              setFilter(manualFilter.current);
+            }}
             style={{ flex: 1, minWidth: 0 }} select={{ style: { minWidth: 0, width: "100%" } }}>
             <option value="all">{t("annotations.allAnnotations")} ({new Intl.NumberFormat(locale).format(counts.all)})</option>
             <option value="highlights">{t("annotations.highlightsTab")} ({new Intl.NumberFormat(locale).format(counts.highlights)})</option>
@@ -705,6 +717,7 @@ export const AnnotationsPanel: FC<AnnotationsPanelProps> = ({
               onSelectEmbedded={onSelectReadOnlyAnnotation}
               filter={filter}
               panelVisible={open || pinned}
+              focusOnOpen={focusOnOpen}
               focusFilter={focusFilter}
             />
           </div>

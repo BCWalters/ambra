@@ -31,6 +31,7 @@ describe("Focused library book removal", () => {
       chromeTheme: "ambra", settings: DEFAULT_GLOBAL_READING_SETTINGS, setSettings: vi.fn(),
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: true, openInFullTab: vi.fn(),
       storageUsage: undefined, openInspectionSession: vi.fn(), saveBookAs: vi.fn(),
+      enrichDescription: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(useLibrary).mockImplementation(() => state);
     container = document.createElement("div");

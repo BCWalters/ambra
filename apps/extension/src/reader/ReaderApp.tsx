@@ -40,6 +40,8 @@ import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.j
 import { captureFocusReturn, useHelpDialogs } from "../components/useHelpDialogs.js";
 import { ReadingWelcome } from "./components/ReadingWelcome.js";
 import { useReadingWelcome } from "./useReadingWelcome.js";
+import { closeReferencePanel, openReferencePanel, referencePanelLayout, referencePanelSide, wantsReferencePanelPin } from "./referencePanels.js";
+import type { ReferencePanel, ReferencePanels } from "./referencePanels.js";
 
 /**
  * Real reader page: toolbar (title, TOC toggle, chapter/page navigation,
@@ -138,14 +140,15 @@ const ReaderAppInner: FC = () => {
   }, []);
   const searchFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [searchInputFocusRequest, setSearchInputFocusRequest] = useState(0);
-  type ReferencePanel = "toc" | "library" | "annotations" | "search" | "details";
-  const [activePanel, setActivePanel] = useState<ReferencePanel>();
+  const [referencePanels, setReferencePanels] = useState<ReferencePanels>({});
   const [hasOpenedLibrary, setHasOpenedLibrary] = useState(false);
   const bookActivationRequest = useRef(0);
   const currentBookId = new URLSearchParams(window.location.search).get("bookId") ?? undefined;
   const [isActivePanelPinned, setIsActivePanelPinned] = useState(false);
   const referenceRowRef = useRef<HTMLDivElement>(null);
-  const [canDock, setCanDock] = useState({ toc: false, annotations: false, search: false });
+  const [referenceRowSize, setReferenceRowSize] = useState({
+    available: 0, toc: 0, annotations: 0, search: 0,
+  });
   const [seekError, setSeekError] = useState<string>();
   const [bookmarkFilterRequest, setBookmarkFilterRequest] = useState(0);
   const [bookmarkChooserOpen, setBookmarkChooserOpen] = useState(false);
@@ -169,28 +172,38 @@ const ReaderAppInner: FC = () => {
     observer.observe(narration);
     return () => observer.disconnect();
   }, [isNarrationOpen]);
-  const isTocOpen = activePanel === "toc";
-  const isLibraryOpen = activePanel === "library";
-  const isAnnotationsOpen = activePanel === "annotations";
-  const isTocPinned = isTocOpen && isActivePanelPinned && canDock.toc;
-  const isAnnotationsPinned = isAnnotationsOpen && isActivePanelPinned && canDock.annotations;
-
   // Contents/Annotations share a pin preference; Search retains its own.
-  // Only the active panel can occupy a dock. A narrow row temporarily overlays
-  // it without overwriting either preference.
+  // Opposite docks share a width budget; narrow rows never overwrite intent.
   const [isSearchPinnedToggle, setIsSearchPinnedToggle] = useState(false);
-  const isSearchOpen = activePanel === "search";
-  const isDetailsOpen = activePanel === "details";
-  const isSearchPinned = isSearchOpen && isSearchPinnedToggle && canDock.search;
+  const panelPins = { reference: isActivePanelPinned, search: isSearchPinnedToggle };
+  const panelLayout = referencePanelLayout(referencePanels, panelPins, referenceRowSize.available, referenceRowSize);
+  const canDock = panelLayout.canPin;
+  const isTocOpen = panelLayout.visible.left === "toc";
+  const isLibraryOpen = panelLayout.visible.left === "library";
+  const isAnnotationsOpen = panelLayout.visible.right === "annotations";
+  const isSearchOpen = panelLayout.visible.right === "search";
+  const isDetailsOpen = panelLayout.visible.right === "details";
+  const isTocPinned = panelLayout.docked.toc;
+  const isAnnotationsPinned = panelLayout.docked.annotations;
+  const isSearchPinned = panelLayout.docked.search;
+  const hasReferencePanel = referencePanels.active !== undefined;
+  const openPanel = useCallback((panel: ReferencePanel) => {
+    setReferencePanels(current => openReferencePanel(current, panel, {
+      reference: isActivePanelPinned, search: isSearchPinnedToggle,
+    }));
+  }, [isActivePanelPinned, isSearchPinnedToggle]);
+  const closePanel = (panel: ReferencePanel): void => {
+    setReferencePanels(current => closeReferencePanel(current, panel));
+  };
   const openSearch = useCallback(() => {
     if (!document.activeElement?.closest("[data-ambra-search-panel]")) {
       searchFocusReturn.current = captureFocusReturn(restoreContentFocus);
     }
-    setActivePanel("search");
+    openPanel("search");
     setSearchInputFocusRequest(request => request + 1);
-  }, [restoreContentFocus]);
+  }, [restoreContentFocus, openPanel]);
   const closeSearch = useCallback(() => {
-    setActivePanel(undefined);
+    setReferencePanels(current => closeReferencePanel(current, "search"));
     (searchFocusReturn.current ?? restoreContentFocus)();
     searchFocusReturn.current = undefined;
   }, [restoreContentFocus]);
@@ -221,7 +234,22 @@ const ReaderAppInner: FC = () => {
   }, [isSearchOpen, isSearchPinned, setSearchPanelState]);
 
   const toggleReferencePanel = (panel: ReferencePanel): void => {
-    setActivePanel((current) => (current === panel ? undefined : panel));
+    setReferencePanels(current => current[referencePanelSide(panel)] === panel &&
+      panelLayout.visible[referencePanelSide(panel)] === panel
+      ? closeReferencePanel(current, panel) : openReferencePanel(current, panel, panelPins));
+  };
+  const togglePanelPin = (panel: "toc" | "annotations" | "search"): void => {
+    const nextPins = panel === "search"
+      ? { ...panelPins, search: !panelPins.search }
+      : { ...panelPins, reference: !panelPins.reference };
+    // Unpinning restores ordinary flyout exclusivity, not two overlapping flyouts.
+    setReferencePanels(current => {
+      const next = openReferencePanel(current, panel, nextPins);
+      if (current.focusTarget) next.focusTarget = current.focusTarget;
+      return next;
+    });
+    if (panel === "search") setIsSearchPinnedToggle(nextPins.search);
+    else setIsActivePanelPinned(nextPins.reference);
   };
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -231,6 +259,17 @@ const ReaderAppInner: FC = () => {
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
   const [openError, setOpenError] = useState<{ message: string; invalidEpub?: boolean } | null>(null);
   const hasReaderLayout = snapshot !== undefined && openError === null;
+  useLayoutEffect(() => {
+    const visibility = { toc: isTocOpen, annotations: isAnnotationsOpen, search: isSearchOpen };
+    for (const [panel, visible] of Object.entries(visibility)) {
+      if (!visible && referenceRowRef.current?.querySelector(
+        `[data-ambra-reference-panel="${panel}"]`,
+      )?.contains(document.activeElement)) {
+        restoreContentFocus();
+        break;
+      }
+    }
+  }, [isTocOpen, isAnnotationsOpen, isSearchOpen, restoreContentFocus]);
   useLayoutEffect(() => {
     const row = referenceRowRef.current;
     if (!row) return;
@@ -243,12 +282,10 @@ const ReaderAppInner: FC = () => {
       // Measure the actual row after Inspector docking, not the viewport. Panel
       // border-box widths remain measurable even when their flyouts are closed.
       const available = row.getBoundingClientRect().width;
-      const fits = (panel: HTMLElement) => {
-        const width = panel.getBoundingClientRect().width;
-        return width > 0 && available - width >= 320;
-      };
-      const next = { toc: fits(panels.toc), annotations: fits(panels.annotations), search: fits(panels.search) };
-      setCanDock(previous => previous.toc === next.toc && previous.annotations === next.annotations
+      const next = { available, toc: panels.toc.getBoundingClientRect().width,
+        annotations: panels.annotations.getBoundingClientRect().width, search: panels.search.getBoundingClientRect().width };
+      setReferenceRowSize(previous => previous.available === next.available &&
+        previous.toc === next.toc && previous.annotations === next.annotations
         && previous.search === next.search ? previous : next);
     };
     measure();
@@ -260,7 +297,7 @@ const ReaderAppInner: FC = () => {
   const welcome = useReadingWelcome(snapshot?.hasRenderedContent === true, help.view === undefined &&
     !snapshot?.isLoading && !snapshot?.error && !openError &&
     !isInspectorOpen && goToMode === undefined && !snapshot?.imageViewer && !snapshot?.tableViewer &&
-    activePanel === undefined &&
+    !hasReferencePanel &&
     toolbarMenu === undefined, help.openWelcome);
   useEffect(() => {
     if (!snapshot) return;
@@ -310,7 +347,7 @@ const ReaderAppInner: FC = () => {
   // reasons to keep the chrome from auto-hiding out from under an open
   // panel.
   const { visible: chromeVisible, handlers: chromeHandlers, dismissForContent, hide: hideChrome } = useAutoHideChrome(
-    activePanel !== undefined || help.view !== undefined || bookmarkChooserOpen,
+    hasReferencePanel || help.view !== undefined || bookmarkChooserOpen,
     snapshot?.contentPointerActivityId,
   );
 
@@ -329,7 +366,7 @@ const ReaderAppInner: FC = () => {
         restoreContentFocus();
         setBookmarkChooserOpen(false);
         setBookmarkChooserDismissRequest(request => request + 1);
-        if (activePanel === undefined && help.view === undefined) hideChrome();
+        if (!hasReferencePanel && help.view === undefined) hideChrome();
       }
       const dismissedPopup = snapshot?.activeHighlight !== undefined || snapshot?.footnotePopup !== undefined;
       if (snapshot?.activeHighlight) dismissActiveHighlight();
@@ -339,17 +376,17 @@ const ReaderAppInner: FC = () => {
     return () => setContentUiDismissal(undefined);
   }, [dismissForContent, setContentUiDismissal, snapshot?.activeHighlight, snapshot?.footnotePopup,
     dismissActiveHighlight, dismissFootnotePopup, changeToolbarMenu, restoreContentFocus,
-    bookmarkChooserOpen, activePanel, help.view, hideChrome]);
+    bookmarkChooserOpen, hasReferencePanel, help.view, hideChrome]);
 
-  const dismissPanelToContent = (): void => {
-    setActivePanel(undefined);
-    searchFocusReturn.current = undefined;
+  const dismissPanelToContent = (panel: ReferencePanel): void => {
+    closePanel(panel);
+    if (panel === "search") searchFocusReturn.current = undefined;
     restoreContentFocus();
-    if (help.view === undefined) hideChrome();
+    if (help.view === undefined && closeReferencePanel(referencePanels, panel).active === undefined) hideChrome();
   };
   const dismissHelpToContent = (): void => {
     help.closeToContent();
-    if (activePanel === undefined) hideChrome();
+    if (!hasReferencePanel) hideChrome();
   };
 
   // Names the browser tab after the book itself, rather than leaving it
@@ -410,7 +447,7 @@ const ReaderAppInner: FC = () => {
   const openInspector = (): void => {
     setInspectorReader(getInspectorReaderBridge());
     inspectionFocusReturn.current = restoreContentFocus;
-    setActivePanel(undefined);
+    closePanel("details");
     setIsInspectorOpen(true);
   };
 
@@ -431,14 +468,14 @@ const ReaderAppInner: FC = () => {
   const handleSelectBookmark = (cfi: string): void => {
     void goToBookmark(cfi);
     if (!isAnnotationsPinned) {
-      setActivePanel(undefined);
+      closePanel("annotations");
     }
   };
 
   const activateLibraryBook = async (bookId: string): Promise<void> => {
     const request = ++bookActivationRequest.current;
     if (bookId === currentBookId) {
-      setActivePanel(undefined);
+      closePanel("library");
       restoreContentFocus();
       return;
     }
@@ -472,14 +509,14 @@ const ReaderAppInner: FC = () => {
   const handleSelectHighlight = (cfi: string): void => {
     void goToHighlight(cfi);
     if (!isAnnotationsPinned) {
-      setActivePanel(undefined);
+      closePanel("annotations");
     }
   };
 
   const handleSelectReadOnlyAnnotation = (cfi: string): void => {
     void goToReadOnlyAnnotation(cfi);
     if (!isAnnotationsPinned) {
-      setActivePanel(undefined);
+      closePanel("annotations");
     }
   };
 
@@ -507,7 +544,7 @@ const ReaderAppInner: FC = () => {
   const handleSelectSearchResult = (cfi: string): void => {
     void goToSearchResult(cfi);
     if (!isSearchPinned) {
-      setActivePanel(undefined);
+      closePanel("search");
     }
   };
 
@@ -608,18 +645,19 @@ const ReaderAppInner: FC = () => {
             firstSpinePath={snapshot.firstSpinePath}
             pageNumbers={snapshot.tocPageNumbers}
             open={isTocOpen}
+            focusOnOpen={referencePanels.focusTarget === "toc"}
             pinned={isTocPinned}
             canPin={canDock.toc}
-            onTogglePin={() => setIsActivePanelPinned((pinned) => !pinned)}
+            onTogglePin={() => togglePanelPin("toc")}
             onRequestClose={() => {
-              setActivePanel(undefined);
+              closePanel("toc");
               restoreContentFocus();
             }}
-            onOutsideClick={dismissPanelToContent}
+            onOutsideClick={() => dismissPanelToContent("toc")}
             onSelect={(navPoint) => {
               goToNavPoint(navPoint);
               if (!isTocPinned) {
-                setActivePanel(undefined);
+                closePanel("toc");
               }
             }}
             scrubberVisible={scrubberVisible}
@@ -630,10 +668,10 @@ const ReaderAppInner: FC = () => {
             currentBookId={currentBookId}
             scrubberVisible={scrubberVisible}
             onRequestClose={() => {
-              setActivePanel(undefined);
+              closePanel("library");
               restoreContentFocus();
             }}
-            onOutsideClick={dismissPanelToContent}
+            onOutsideClick={() => dismissPanelToContent("library")}
             onActivateBook={bookId => {
               void activateLibraryBook(bookId).catch(error =>
                 setSeekError(error instanceof Error ? error.message : String(error)));
@@ -752,6 +790,8 @@ const ReaderAppInner: FC = () => {
               onToggleAnnotations={() => {
                 if (isAnnotationsOpen) {
                   restoreContentFocus();
+                } else {
+                  setBookmarkFilterRequest(0);
                 }
                 toggleReferencePanel("annotations");
               }}
@@ -814,10 +854,10 @@ const ReaderAppInner: FC = () => {
             <BookDetailsPanel
               open={isDetailsOpen}
               onRequestClose={() => {
-                setActivePanel(undefined);
+                closePanel("details");
                 restoreContentFocus();
               }}
-              onOutsideClick={dismissPanelToContent}
+              onOutsideClick={() => dismissPanelToContent("details")}
               details={bookDetails}
               onOpenInspector={openInspector}
               onOpenHelp={help.openHelp}
@@ -852,7 +892,12 @@ const ReaderAppInner: FC = () => {
               onViewModeChange={setInspectorView}
               onOpenChange={setIsInspectorOpen}
               onShowInBook={() => {
-                setActivePanel(undefined);
+                setReferencePanels(current => {
+                  let next = current;
+                  if (next.left && !wantsReferencePanelPin(next.left, panelPins)) next = closeReferencePanel(next, next.left);
+                  if (next.right && !wantsReferencePanelPin(next.right, panelPins)) next = closeReferencePanel(next, next.right);
+                  return next;
+                });
               }}
               data={inspectionData}
               fileName={bookDetails?.fileName}
@@ -902,7 +947,7 @@ const ReaderAppInner: FC = () => {
               onSeekError={(error) => setSeekError(error instanceof Error ? error.message : String(error))}
               onGoToBookmark={bookmark => { void goToBookmark(bookmark.cfi); }}
               onShowBookmarks={() => {
-                setActivePanel("annotations");
+                openPanel("annotations");
                 setBookmarkFilterRequest(request => request + 1);
               }}
               bookmarkChooserDismissRequest={bookmarkChooserDismissRequest}
@@ -954,14 +999,15 @@ const ReaderAppInner: FC = () => {
             onExport={handleExportAnnotations}
             onImportFile={handleImportAnnotationsFile}
             open={isAnnotationsOpen}
+            focusOnOpen={referencePanels.focusTarget === "annotations"}
             pinned={isAnnotationsPinned}
             canPin={canDock.annotations}
-            onTogglePin={() => setIsActivePanelPinned((pinned) => !pinned)}
+            onTogglePin={() => togglePanelPin("annotations")}
             onRequestClose={() => {
-              setActivePanel(undefined);
+              closePanel("annotations");
               restoreContentFocus();
             }}
-            onOutsideClick={dismissPanelToContent}
+            onOutsideClick={() => dismissPanelToContent("annotations")}
             scrubberVisible={scrubberVisible}
           />
 
@@ -972,11 +1018,12 @@ const ReaderAppInner: FC = () => {
             onSearch={search}
             onSelect={handleSelectSearchResult}
             open={isSearchOpen}
+            focusOnOpen={referencePanels.focusTarget === "search"}
             pinned={isSearchPinned}
             canPin={canDock.search}
-            onTogglePin={() => setIsSearchPinnedToggle((pinned) => !pinned)}
+            onTogglePin={() => togglePanelPin("search")}
             onRequestClose={closeSearch}
-            onOutsideClick={dismissPanelToContent}
+            onOutsideClick={() => dismissPanelToContent("search")}
             inputFocusRequest={searchInputFocusRequest}
             scrubberVisible={scrubberVisible}
           />

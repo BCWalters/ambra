@@ -33,6 +33,7 @@ export interface SearchPanelProps {
    * rendered (never conditionally unmounted) so it can animate closed
    * instead of simply vanishing — mirrors `TocPanel`/`AnnotationsPanel`. */
   open: boolean;
+  focusOnOpen?: boolean;
   /** `true` docks the panel in the normal layout flow, pushing the
    * content pane over; `false` (the default) makes it fly out as a
    * translucent overlay instead, auto-dismissing on selection, an
@@ -79,6 +80,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   onSearch,
   onSelect,
   open,
+  focusOnOpen = true,
   pinned,
   canPin = true,
   onTogglePin,
@@ -119,7 +121,7 @@ export const SearchPanel: FC<SearchPanelProps> = ({
   // it, a keyboard user pressing Tab right after opening this panel (via
   // the toolbar's toggle button) has no guarantee of landing inside it
   // next.
-  useFocusOnOpen(inputRef, open, inputFocusRequest);
+  useFocusOnOpen(inputRef, open && focusOnOpen, inputFocusRequest);
 
   return (
     <>

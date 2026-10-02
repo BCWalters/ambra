@@ -9,8 +9,10 @@ import { LibraryApp } from "./LibraryApp.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
 import { LocaleProvider, useLocale } from "../i18n/LocaleContext.js";
 import { EPUB_IMPORT_ACTIVE, EPUB_IMPORT_CANCEL, EPUB_IMPORT_RESULT } from "../epubImportHandoff.js";
+import { enrichBookDescription } from "./BookDescriptionEnrichment.js";
 
 vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue({ id: "book", outcome: "added" }) }));
+vi.mock("./BookDescriptionEnrichment.js", () => ({ enrichBookDescription: vi.fn().mockResolvedValue(undefined) }));
 
 function addedBook(id = "book"): BookImportResult {
   return { id, outcome: "added" };
@@ -75,6 +77,7 @@ describe("useLibrary ownership and failures", () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:cover");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     vi.mocked(importBook).mockReset().mockResolvedValue(addedBook());
+    vi.mocked(enrichBookDescription).mockReset().mockResolvedValue(undefined);
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -91,6 +94,21 @@ describe("useLibrary ownership and failures", () => {
   async function render(strict = false) {
     await act(async () => root.render(strict ? <StrictMode><Harness /></StrictMode> : <Harness />));
   }
+
+  it("refreshes the initiating Library after enrichment without relying on its own broadcast", async () => {
+    await render();
+    expect(enrichBookDescription).not.toHaveBeenCalled();
+    const existing = latest.books[0]!;
+    db.methods.listBooks.mockResolvedValue([{ ...existing, fetchedDescription: "An original fallback." }]);
+    await act(async () => latest.enrichDescription(existing.id));
+    expect(enrichBookDescription).toHaveBeenCalledExactlyOnceWith(db.value, existing.id, expect.any(Function));
+    expect(latest.books[0]?.fetchedDescription).toBe("An original fallback.");
+    const isActive = vi.mocked(enrichBookDescription).mock.calls[0]![2];
+    expect(isActive()).toBe(true);
+    act(() => root.unmount());
+    mounted = false;
+    expect(isActive()).toBe(false);
+  });
 
   it("reports an attempted import while database opening is withheld, then supports retry", async () => {
     const opening = deferred<LibraryDatabase>();

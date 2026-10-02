@@ -88,6 +88,13 @@ export interface StringCatalog {
   "readingBoundary.endOfBook": string;
   "narration.listen": string;
   "narration.readAlong": string;
+  "narration.playLabel": string;
+  "narration.pauseLabel": string;
+  "narration.previousLabel": string;
+  "narration.nextLabel": string;
+  "narration.speedLabel": string;
+  "narration.collapseLabel": string;
+  "narration.expandLabel": string;
   "narration.collapse": string;
   "narration.expand": string;
   "narration.discoveryTitle": string;
@@ -149,6 +156,8 @@ export interface StringCatalog {
   "library.progress": string;
   "library.readingProgress": string;
   "library.percentRead": string;
+  "library.notStarted": string;
+  "library.started": string;
   "library.added": string;
   "library.emptyTitle": string;
   "library.emptyDescription": string;
@@ -571,6 +580,13 @@ export const en: StringCatalog = {
   "readingBoundary.endOfBook": "End of book",
   "narration.listen": "Listen",
   "narration.readAlong": "Read along",
+  "narration.playLabel": "Play",
+  "narration.pauseLabel": "Pause",
+  "narration.previousLabel": "Previous",
+  "narration.nextLabel": "Next",
+  "narration.speedLabel": "Speed",
+  "narration.collapseLabel": "Collapse",
+  "narration.expandLabel": "Expand",
   "narration.collapse": "Collapse read-along controls",
   "narration.expand": "Expand read-along controls",
   "narration.discoveryTitle": "This book has narration",
@@ -632,6 +648,8 @@ export const en: StringCatalog = {
   "library.progress": "Progress",
   "library.readingProgress": "Reading progress",
   "library.percentRead": "{progress} read",
+  "library.notStarted": "Not started",
+  "library.started": "Started",
   "library.added": "Added",
   "library.emptyTitle": "No books yet",
   "library.emptyDescription": "Import an EPUB from your device or find a book online.",

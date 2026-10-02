@@ -47,7 +47,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   useEffect(() => { if (!isEmbedded) document.title = t("library.pageTitle"); }, [t, isEmbedded]);
   const {
     books, isLoading, canImport, importActivities, dismissCompletedImports, cancelDownload,
-    error, errorHeadline, dismissError, importFiles, removeBook, saveBookAs, getBookFileSize,
+    error, errorHeadline, dismissError, importFiles, removeBook, saveBookAs, getBookFileSize, enrichDescription,
     settings, setSettings, sort, setSort, openInFullTab, storageUsage, openInspectionSession,
   } = library;
   const isFullTab = !isEmbedded && library.isFullTab;
@@ -170,7 +170,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   return (
     <div style={{
       minWidth: 0, minHeight: isFullTab ? "100vh" : 0, height: isEmbedded ? "100%" : isFullTab ? undefined : "100dvh",
-      overflow: isFullTab ? undefined : isEmbedded ? "auto" : "hidden",
+      overflow: isFullTab ? undefined : "auto",
       background: palette.backgroundSolid, color: "var(--colorNeutralForeground1)", display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
@@ -211,8 +211,8 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
       </div>
 
       <CollectionContainer aria-label={t("library.pageTitle")} style={{ padding: isFullTab ? "0 24px 24px" : "0 12px 12px",
-        // At high zoom, the outer embedded surface scrolls instead of collapsing the collection away.
-        flex: 1, minHeight: isEmbedded ? 160 : 0, overflowY: isFullTab ? undefined : "auto" }}>
+        // Short windows and high zoom scroll the outer surface instead of hiding books behind the filters.
+        flex: 1, minHeight: isFullTab ? 0 : 160, overflowY: isFullTab ? undefined : "auto" }}>
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
           onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
           isBookOpenDisabled={isBookOpenDisabled} busyMessageId={importStatusId}
@@ -224,14 +224,15 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
           <>
             {isFullTab && continueBook && !hasQuery && (
               <section aria-label={t("library.continueReading")} style={{ marginBottom: 24 }}>
-                <h2 style={{ fontSize: 20, fontFamily: "Georgia, serif", fontWeight: 400 }}>{t("library.continueReading")}</h2>
+                <h2 style={{ fontSize: 20, fontWeight: 600 }}>{t("library.continueReading")}</h2>
                 <div style={{ maxWidth: 420 }}>
                   <LibraryBookCard book={continueBook} compact onOpen={() => openBook(continueBook.id)}
                     onRequestRemove={() => requestRemove(continueBook.id)} onShowDetails={() => setDetailsBookId(continueBook.id)} />
                 </div>
               </section>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 12,
+            <div data-library-filters="" style={{ display: "flex", alignItems: "center", gap: 4,
+              marginBottom: isFullTab ? 12 : 0, paddingBottom: isFullTab ? 0 : 12,
               position: isFullTab ? undefined : "sticky", top: 0, zIndex: 1, background: palette.backgroundSolid }}>
               <SearchBox value={query} onChange={(_event, data) => setQuery(data.value)}
                 aria-label={t("library.search")} aria-controls={resultsId} placeholder={t("library.searchPlaceholder")}
@@ -268,6 +269,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
       </CenteredDialog>
       <BookDetailsFlyout book={active ? detailsBook : undefined} inspectorOpen={inspector.isOpen}
         onRequestClose={() => setDetailsBookId(undefined)} onSaveAs={saveBookAs} onGetFileSize={getBookFileSize}
+        onEnrichDescription={enrichDescription}
         onRemove={detailsBook ? () => requestRemove(detailsBook.id) : undefined}
         accent={palette.actionBackground} accentForeground={palette.accentForeground} backgroundSolid={palette.backgroundSolid}
         onOpenInspector={isFullTab ? inspector.open : undefined}

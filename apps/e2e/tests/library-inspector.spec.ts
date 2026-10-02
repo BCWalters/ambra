@@ -33,6 +33,32 @@ test.describe("Library EPUB Inspector (issue #111)", () => {
       await fullDetails.click();
       const inspectorButton = fullTabPage.getByRole("button", { name: /inspector/i });
       await expect(inspectorButton).toBeVisible();
+      await expect(inspectorButton).toHaveCSS("background-image", "none");
+      const primaryColors = await inspectorButton.evaluate(element => {
+        const style = getComputedStyle(element);
+        const probe = document.createElement("span");
+        probe.style.backgroundColor = "var(--colorBrandBackground)";
+        probe.style.color = "var(--colorNeutralForegroundOnBrand)";
+        element.append(probe);
+        const expected = getComputedStyle(probe);
+        const result = { background: style.backgroundColor, foreground: style.color,
+          expectedBackground: expected.backgroundColor, expectedForeground: expected.color };
+        probe.remove();
+        return result;
+      });
+      expect(primaryColors.background).toBe(primaryColors.expectedBackground);
+      expect(primaryColors.foreground).toBe(primaryColors.expectedForeground);
+      const remove = fullTabPage.getByRole("button", { name: "Remove from library", exact: true });
+      await expect.poll(async () => {
+        const inspectorBox = (await inspectorButton.boundingBox())!;
+        const removeBox = (await remove.boundingBox())!;
+        return { aligned: Math.abs(removeBox.x - inspectorBox.x) < 1,
+          separated: removeBox.y - inspectorBox.y - inspectorBox.height >= 40 };
+      }).toEqual({ aligned: true, separated: true });
+      await expect(remove.locator("..")).toHaveCSS("border-top-style", "solid");
+      await fullTabPage.getByRole("dialog", { name: "Book details", exact: true }).screenshot({
+        path: test.info().outputPath("details-utility-and-removal.png"),
+      });
       await inspectorButton.click();
 
       await fullTabPage.getByRole("tab", { name: /Files/ }).waitFor();
