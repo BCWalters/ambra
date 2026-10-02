@@ -33,6 +33,12 @@ Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep them disabled.
   to the existing support address; **Not sure yet** postpones for three days.
   Escape, close, and backdrop dismissal also postpone rather than trapping
   keyboard users. Keep the standard modal focus trap and return focus to Import.
+- Both follow-ups have one filled primary action and no competing footer Close
+  button; the title-bar close control and Escape remain available. The negative
+  response keeps **Help us improve Ambra**, uses a short invitation to email
+  suggestions, and emphasizes **Share feedback by email**. The positive response
+  keeps **That's great!**, separates its thank-you into a second paragraph, and
+  emphasizes **Write a review**.
 - Selecting either Yes or Not really permanently stops reminders, whether or
   not the user follows the subsequent link. This sentiment-based review routing
   remains a pre-publication decision: the Chrome Web Store's
@@ -457,9 +463,12 @@ The `VITE_AMBRA_LOCAL_FEATURES=1` preview extends the existing reading welcome,
 not the first-run persistence model. After the welcome's exit finishes, shade
 the full height and width of each outer margin with a persistent low-opacity
 accent wash. Pulse the arrow icons gently for three seconds, then leave static
-directional hints. Reduced motion skips the pulse, not the shading.
-Use the active theme's accent and solid
-surface; no focus capture, extra dismiss button, or blocking walkthrough.
+directional hints. Add a small, dismissible callout pointing toward the next-page
+outer margin: **Click or tap in the margins to change pages.** Use the active
+theme's accent and solid surface. The callout may temporarily overlap the page
+edge, but the shading stays in true whitespace. Do not capture focus or make the
+walkthrough modal. Only the close button intercepts pointer input; dismissing it
+returns focus to the reading position without turning a page.
 
 Measure actual outer publication bounds through the controller. Never paint
 the spread gutter or the whitespace-sensitive overlap region inside the text
@@ -469,7 +478,10 @@ layout/resize; RTL reverses the meaning, not the physical arrow. Hide while
 another reading surface is open and in scrolling mode. A committed navigation
 ends the guide, including navigation from an open panel; boundary no-ops,
 failed navigation, progress persistence and layout alone do not. Reopening
-Reading tips explicitly is the only replay path after acknowledgement.
+Reading tips explicitly is the only replay path after acknowledgement. Successful
+navigation or explicit dismissal fades the shading, arrows, and callout together
+over 240 ms. Reduced motion skips both pulse and fade, not the initial shading.
+Hidden guides finish immediately rather than returning for a delayed exit.
 
 ## 10. Superseded proposals and outstanding decisions
 

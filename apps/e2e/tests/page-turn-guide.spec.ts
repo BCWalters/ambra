@@ -2,12 +2,20 @@ import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { launchReader, clickReadingPage } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
+import type { ReaderSnapshot } from "../../extension/src/reader/ReaderTypes.js";
 
 test.skip(process.env.VITE_AMBRA_LOCAL_FEATURES !== "1", "Local feature prototype only");
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 const rtlBook = fileURLToPath(new URL("../fixtures/fxl-spread-rtl.epub", import.meta.url));
 const welcome = (page: Page) => page.getByRole("dialog", { name: "Make yourself at home", exact: true });
 const guide = (page: Page) => page.getByTestId("page-turn-guide");
+async function pagePosition(page: Page) {
+  return page.evaluate(() => {
+    const snapshot: ReaderSnapshot = Reflect.get(window, "__readerController").snapshot();
+    const { spineIndex, pageIndex } = snapshot;
+    return { spineIndex, pageIndex };
+  });
+}
 async function reopen(page: Page) {
   const help = page.getByRole("button", { name: "Help & About", exact: true });
   await help.focus();
@@ -29,6 +37,10 @@ test("first welcome guides real margins; resize/no-op preserve it, successful ma
     await expect(guide(page)).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(guide(page)).toBeVisible();
+    await expect(guide(page).getByRole("status")).toHaveText("Click or tap in the margins to change pages.");
+    await expect(guide(page).getByRole("button", { name: "Dismiss page-turn tip", exact: true })).not.toBeFocused();
+    await expect(guide(page)).toHaveCSS("transition-property", "opacity");
+    await expect(guide(page)).toHaveCSS("transition-duration", "0.24s");
     const arrow = page.locator(".page-turn-guide-indicator svg").first();
     await expect(arrow).toHaveCSS("animation-name", "page-turn-guide-pulse");
     await expect(arrow).toHaveCSS("animation-duration", "1.5s");
@@ -46,6 +58,9 @@ test("first welcome guides real margins; resize/no-op preserve it, successful ma
     await page.setViewportSize({ width: 320, height: 750 });
     await expect(guide(page)).toBeVisible();
     await expect(page.locator(".page-turn-guide-indicator span")).toHaveCount(0);
+    const tipBounds = await page.locator(".page-turn-guide-tip").boundingBox();
+    expect(tipBounds?.x).toBeGreaterThanOrEqual(0);
+    expect((tipBounds?.x ?? 0) + (tipBounds?.width ?? 0)).toBeLessThanOrEqual(320);
     await page.setViewportSize({ width: 780, height: 750 });
     await expect(guide(page)).toBeVisible();
     await expect.poll(() => page.evaluate(() => {
@@ -63,6 +78,24 @@ test("first welcome guides real margins; resize/no-op preserve it, successful ma
     await reopen(page);
     await page.evaluate(() => Reflect.get(window, "__readerController").goToChapter(1));
     await expect(guide(page)).toHaveCount(0);
+    await reopen(page);
+    const beforeDismiss = await pagePosition(page);
+    await guide(page).evaluate(element => {
+      const result = { exiting: false, duration: "" };
+      Reflect.set(window, "__guideExit", result);
+      const observer = new MutationObserver(() => {
+        if (element.getAttribute("data-phase") !== "exiting") return;
+        result.exiting = true;
+        result.duration = getComputedStyle(element).transitionDuration;
+        observer.disconnect();
+      });
+      observer.observe(element, { attributes: true, attributeFilter: ["data-phase"] });
+    });
+    await guide(page).getByRole("button", { name: "Dismiss page-turn tip", exact: true }).click();
+    await expect(guide(page)).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, "__guideExit"))).toEqual({ exiting: true, duration: "0.24s" });
+    expect(await pagePosition(page)).toEqual(beforeDismiss);
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("IFRAME");
     await page.reload();
     await expect(welcome(page)).toHaveCount(0);
     await expect(guide(page)).toHaveCount(0);
@@ -78,6 +111,8 @@ test("reduced motion and RTL preserve physical arrows and invert next/previous",
     await reopen(page);
     await expect(guide(page)).toHaveAttribute("data-phase", "indicators");
     await expect(page.locator('.page-turn-guide-margin[data-side="left"]')).toHaveAttribute("data-direction", "next");
+    await expect(page.locator(".page-turn-guide-tip")).toHaveAttribute("data-tip-side", "left");
+    await expect(guide(page)).toHaveCSS("transition-duration", "0s");
     expect(await guide(page).evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
     await page.keyboard.press("ArrowLeft");
     await expect(guide(page)).toHaveCount(0);

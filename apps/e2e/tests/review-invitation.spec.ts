@@ -73,14 +73,30 @@ test("review modal simulation covers every response, cooldown, focus and release
     await expect(positive.getByRole("link", { name: "Write a review", exact: true })).toBeFocused();
     await expect(positive.getByRole("link", { name: "Write a review", exact: true }))
       .toHaveAttribute("href", /chromewebstore\.google\.com\/.*\/reviews$/);
+    await expect(positive.getByRole("link", { name: "Write a review", exact: true })).toHaveClass(/fui-Button/);
+    await expect(positive.locator("p").filter({ hasText: /^Thank you for reading with Ambra\.$/ })).toBeVisible();
+    await expect(positive.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
+    for (const width of [320, 1200]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: test.info().outputPath(`review-thanks-${width}.png`) });
+    }
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Simulate 3 days later", exact: true }).click();
     await expect(invitation).toHaveCount(0);
     await page.getByRole("button", { name: "Reset simulated invitation", exact: true }).click();
     await invitation.getByRole("button", { name: "Not really", exact: true }).click();
     const negative = page.getByRole("dialog", { name: "Help us improve Ambra", exact: true });
-    await expect(negative.getByRole("link", { name: "Share feedback by email", exact: true }))
-      .toHaveAttribute("href", "mailto:AmbraEPUB@outlook.com");
+    await expect(negative).toContainText("Sorry to hear that! Click below to send us an email if you have any suggestions to improve Ambra.");
+    const feedback = negative.getByRole("link", { name: "Share feedback by email", exact: true });
+    await expect(feedback).toHaveAttribute("href", "mailto:AmbraEPUB@outlook.com");
+    await expect(feedback).toHaveClass(/fui-Button/);
+    await expect(feedback).toBeFocused();
+    expect(await feedback.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+    await expect(negative.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
+    for (const width of [320, 1200]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.screenshot({ path: test.info().outputPath(`feedback-${width}.png`) });
+    }
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Simulate 3 days later", exact: true }).click();
     await expect(invitation).toHaveCount(0);
@@ -115,7 +131,10 @@ test("review modal and both follow-ups fit all nine locales at narrow widths", a
         const followup = page.getByRole("dialog");
         await expect(followup.getByRole("link", {
           name: translated(response === "yes" ? "review.write" : "review.feedback"), exact: true,
-        })).toBeVisible();
+        })).toHaveClass(/fui-Button/);
+        if (response === "yes") {
+          await expect(followup.locator("p").filter({ hasText: translated("review.thanks") })).toHaveText(translated("review.thanks"));
+        }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         const bounds = await followup.boundingBox();
         expect(bounds?.x).toBeGreaterThanOrEqual(0);

@@ -44,6 +44,7 @@ export interface StringCatalog {
   "review.laterHint": string;
   "review.yesTitle": string;
   "review.yesBody": string;
+  "review.thanks": string;
   "review.noTitle": string;
   "review.noBody": string;
   "review.error": string;
@@ -540,6 +541,7 @@ export interface StringCatalog {
   "pageTurnGuide.next": string;
   "pageTurnGuide.previous": string;
   "pageTurnGuide.instructions": string;
+  "pageTurnGuide.dismiss": string;
 }
 
 export const en: StringCatalog = {
@@ -554,9 +556,10 @@ export const en: StringCatalog = {
   "review.later": "Not sure yet",
   "review.laterHint": "Not sure yet? Closing this window also postpones the question for three days.",
   "review.yesTitle": "That's great!",
-  "review.yesBody": "Would you mind taking a moment to leave a review? It really helps us. Thank you for reading with Ambra.",
+  "review.yesBody": "Would you mind taking a moment to leave a review? It really helps us.",
+  "review.thanks": "Thank you for reading with Ambra.",
   "review.noTitle": "Help us improve Ambra",
-  "review.noBody": "We're sorry it hasn't been the experience you hoped for. Would you share what we could do better by email?",
+  "review.noBody": "Sorry to hear that! Click below to send us an email if you have any suggestions to improve Ambra.",
   "review.error": "Could not load or save the review invitation",
   "review.retry": "Try again",
   "welcome.title": "Make yourself at home",
@@ -1020,5 +1023,6 @@ export const en: StringCatalog = {
   "imageViewer.instructions": "Scroll to zoom. Drag or use arrow keys to pan. Press 0 to fit.",
   "pageTurnGuide.next": "Click for next page",
   "pageTurnGuide.previous": "Click for previous page",
-  "pageTurnGuide.instructions": "Click the outer margins to turn pages. These hints disappear after you navigate.",
+  "pageTurnGuide.instructions": "Click or tap in the margins to change pages.",
+  "pageTurnGuide.dismiss": "Dismiss page-turn tip",
 };

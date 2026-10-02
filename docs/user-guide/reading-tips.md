@@ -14,13 +14,18 @@ Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Spa
 
 In local builds explicitly enabled with `VITE_AMBRA_LOCAL_FEATURES=1`, closing
 the first-reading welcome shades the full outer margins. The arrow icons pulse
-gently for three seconds, then remain still. Click through the hints normally: they never intercept
-input or cover the text/overlap area. Narrow margins use arrows instead of
+gently for three seconds, then remain still. A small tip points toward the next-page
+margin: **Click or tap in the margins to change pages.** Its close button dismisses
+the guide without turning a page. The tip does not take focus when it appears;
+closing it returns focus to your reading position. The shading and arrows remain
+click-through and outside the text area; the tip may briefly overlap the page edge.
+Narrow margins use arrows instead of
 labels; margins too narrow for an arrow retain just the shading. Hints follow resizing
-and right-to-left reading order. Reduced-motion preferences skip the pulse;
+and right-to-left reading order. Reduced-motion preferences skip the pulse and fade;
 the margin shading remains.
 
-The first successful page turn or jump removes the hints. A boundary click
+The first successful page turn or jump fades the hints out over a quarter-second,
+as does closing the tip. A boundary click
 that cannot turn a page does not. To replay them, open **Help & About → Reading
 tips** and close the welcome. Reloading or opening another book does not replay
 an acknowledged welcome. Scrolling mode has no page-margin hints. This local

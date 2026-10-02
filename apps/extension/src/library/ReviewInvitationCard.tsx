@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FC } from "react";
-import { Button, Link } from "@fluentui/react-components";
+import { Button } from "@fluentui/react-components";
 import { CenteredDialog } from "../components/CenteredDialog.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
 import { LibraryDatabase } from "./LibraryDatabase.js";
@@ -176,14 +176,16 @@ export const ReviewInvitationCard: FC<{
             <p style={{ fontSize: 12, color: "var(--colorNeutralForeground2)", marginBottom: 0 }}>{t("review.laterHint")}</p>
           </> : <>
             <p>{t(stage === "yes" ? "review.yesBody" : "review.noBody")}</p>
+            {stage === "yes" && <p>{t("review.thanks")}</p>}
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16, marginTop: 16 }}>
-              <Link ref={responseLink} href={stage === "yes"
-                ? "https://chromewebstore.google.com/detail/ambra-epub-reader/mcjkkebkhifgkkbahlcapjlnaihocogj/reviews"
-                : "mailto:AmbraEPUB@outlook.com"}
-                target="_blank" rel="noreferrer" onClick={() => setVisible(false)}>
+              <Button as="a" role="link" ref={responseLink} appearance="primary"
+                href={stage === "yes"
+                  ? "https://chromewebstore.google.com/detail/ambra-epub-reader/mcjkkebkhifgkkbahlcapjlnaihocogj/reviews"
+                  : "mailto:AmbraEPUB@outlook.com"}
+                target="_blank" rel="noreferrer"
+                style={{ maxWidth: "100%", whiteSpace: "normal" }} onClick={() => setVisible(false)}>
                 {t(stage === "yes" ? "review.write" : "review.feedback")}
-              </Link>
-              <Button onClick={dismiss}>{t("highlight.close")}</Button>
+              </Button>
             </div>
           </>}
           {errorMessage}
