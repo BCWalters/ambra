@@ -120,7 +120,7 @@ for (const width of [360, 1200]) {
       await expect(page.getByRole("status").filter({ hasText: "0 of 2 books" })).toBeVisible();
       await expect(page.getByText("No matching books.", { exact: false })).toBeVisible();
       await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Clear library search", exact: true }).click();
       await expect(search).toBeFocused();
       await expect(covers).toHaveCount(2);

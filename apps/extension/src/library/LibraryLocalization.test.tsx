@@ -128,7 +128,7 @@ describe("Library localization and action ownership", () => {
     state.isLoading = true;
     state.canImport = false;
     await render();
-    expect(button("Import EPUB").disabled).toBe(true);
+    expect(button("Import book").disabled).toBe(true);
     expect(button("Find books").disabled).toBe(false);
     expect(container.textContent).not.toContain("No books yet");
     await click("Find books");
@@ -145,7 +145,7 @@ describe("Library localization and action ownership", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toContain("first.epub");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Another file failed");
     const choose = vi.spyOn(container.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
-    await click("Import EPUB");
+    await click("Import book");
     expect(choose).toHaveBeenCalledOnce();
   });
 
@@ -171,6 +171,28 @@ describe("Library localization and action ownership", () => {
     state.isFullTab = false;
     await render();
     expect(container.querySelector('section[aria-label="Continue reading"]')).toBeNull();
+  });
+
+  it.each(SUPPORTED_LOCALES)("offers a prominent localized resume card without inventing chapter metadata in %s", async locale => {
+    language.locale = locale;
+    const t = getTranslate(locale);
+    state.books = [{ ...book("Old"), lastReadAt: 10 },
+      { ...book("Most recent"), lastReadAt: 20, progressFraction: 0.29 }, book("Unread")];
+    await render();
+    const resume = container.querySelector<HTMLElement>("[data-library-continue]")!;
+    expect(resume.querySelector("h3")?.textContent).toBe("Most recent");
+    expect(resume.textContent).toContain(t("library.percentRead", { progress: formatLibraryProgress(0.29, locale) }));
+    expect(getComputedStyle(resume).borderRadius).toBe("8px");
+    expect(resume.querySelector<HTMLButtonElement>("[data-book-open]")?.style.width).toBe("72px");
+    expect(resume.querySelector<HTMLElement>("[data-library-progress-track]")?.style.maxWidth).toBe("240px");
+    expect(resume.textContent).not.toContain("Chapter");
+    await click(t("library.continueReading"));
+    expect(state.openBook).toHaveBeenCalledExactlyOnceWith("Most recent");
+    const details = [...resume.querySelectorAll("button")].find(element =>
+      element.getAttribute("aria-label") === t("library.bookDetails", { title: "Most recent" }))!;
+    await act(async () => details.click());
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Most recent");
+    expect(container.querySelector("input[type=file]")?.getAttribute("accept")).toBe(".epub");
   });
 
   it("reserves card rows and contains real artwork without changing accessible titles", async () => {

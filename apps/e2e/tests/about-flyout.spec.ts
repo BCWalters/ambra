@@ -34,7 +34,7 @@ test.describe("About Ambra flyout", () => {
       await feedback.click();
       const tab = await openedTab;
       await expect(tab).toHaveURL(destination);
-      await expect(tab.getByRole("button", { name: "Import EPUB" })).toBeVisible();
+      await expect(tab.getByRole("button", { name: "Import book" })).toBeVisible();
     } finally {
       await context.close();
     }

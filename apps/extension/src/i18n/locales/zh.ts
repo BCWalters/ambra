@@ -95,7 +95,7 @@ export const zh: StringCatalog = {
   "library.openBook": "打开《{title}》",
   "library.bookDetails": "《{title}》详情",
   "library.removeBook": "从书库中移除《{title}》",
-  "library.importEpub": "导入 EPUB",
+  "library.importEpub": "导入图书",
   "library.sort": "排序书库",
   "library.sortLabel": "排序",
   "library.continueReading": "继续阅读",

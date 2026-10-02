@@ -224,11 +224,8 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
           <>
             {isFullTab && continueBook && !hasQuery && (
               <section aria-label={t("library.continueReading")} style={{ marginBottom: 24 }}>
-                <h2 style={{ fontSize: 20, fontWeight: 600 }}>{t("library.continueReading")}</h2>
-                <div style={{ maxWidth: 420 }}>
-                  <LibraryBookCard book={continueBook} compact onOpen={() => openBook(continueBook.id)}
-                    onRequestRemove={() => requestRemove(continueBook.id)} onShowDetails={() => setDetailsBookId(continueBook.id)} />
-                </div>
+                <LibraryBookCard book={continueBook} compact variant="continue" onOpen={() => openBook(continueBook.id)}
+                  onRequestRemove={() => requestRemove(continueBook.id)} onShowDetails={() => setDetailsBookId(continueBook.id)} />
               </section>
             )}
             <div data-library-filters="" style={{ display: "flex", alignItems: "center", gap: 4,

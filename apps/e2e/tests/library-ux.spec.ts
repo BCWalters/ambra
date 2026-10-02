@@ -2,12 +2,83 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentPageLabel, launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
+import { getTranslate } from "../../extension/src/i18n/translate.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const LONG_CONTENT = path.resolve(here, "..", "fixtures", "long-content.epub");
 const TWO_CHAPTER = path.resolve(here, "..", "fixtures", "two-chapter.epub");
 const LONG_CONTENT_TITLE = "Ambra Long Content Test Fixture";
 const TWO_CHAPTER_TITLE = "Ambra Two-Chapter Spread Test Fixture";
+
+test("Continue reading follows the prototype and resumes the saved book at wide and narrow widths", async () => {
+  const { context, libraryPage: page, readerPage } = await launchReader(TWO_CHAPTER, { viewport: { width: 1200, height: 900 } });
+  try {
+    await exposeReaderController(readerPage);
+    await readerPage.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToChapter(1);
+      await controller.flushProgress();
+    });
+    await page.goto(`${page.url()}?view=tab`);
+    await page.bringToFront();
+    const resume = page.getByRole("region", { name: "Continue reading", exact: true });
+    await expect(resume.getByRole("heading", { name: TWO_CHAPTER_TITLE, exact: true })).toBeVisible();
+    for (const width of [1200, 600, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const card = resume.locator("[data-library-continue]");
+      const cover = resume.locator("[data-book-open]");
+      await expect(card).toHaveCSS("border-radius", "8px");
+      await expect(card).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(cover).toHaveCSS("width", "72px");
+      await expect(cover).toHaveCSS("height", "108px");
+      await expect(resume.getByRole("heading")).toHaveCSS("font-size", width > 600 ? "21px" : "18px");
+      const progress = resume.locator("[data-library-progress-track]");
+      expect((await progress.boundingBox())!.width).toBeLessThanOrEqual(240);
+      await expect(resume.getByRole("button", { name: "Continue reading", exact: true })).toBeInViewport({ ratio: 1 });
+      const coverBox = (await cover.boundingBox())!;
+      const actionsBox = (await resume.locator("[data-library-continue-actions]").boundingBox())!;
+      if (width > 600) {
+        expect(actionsBox.x).toBeGreaterThan((await progress.boundingBox())!.x + 240);
+        expect(actionsBox.y).toBeLessThan(coverBox.y + coverBox.height);
+        expect(actionsBox.y + actionsBox.height).toBeGreaterThan(coverBox.y);
+      } else {
+        expect(actionsBox.y).toBeGreaterThanOrEqual(coverBox.y + coverBox.height + 16);
+        expect(actionsBox.x).toBe(coverBox.x);
+      }
+      expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeVisible();
+      await expect(page.locator('input[type="file"]')).toHaveAttribute("accept", ".epub");
+      await page.screenshot({ path: test.info().outputPath(`continue-reading-${width}.png`) });
+    }
+    const search = page.getByRole("searchbox", { name: "Search library" });
+    await search.fill("Two-Chapter");
+    await expect(resume).toHaveCount(0);
+    await search.fill("");
+    await expect(resume).toBeVisible();
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({ path: test.info().outputPath("continue-reading-dark.png") });
+    await page.emulateMedia({ forcedColors: "active" });
+    const action = resume.getByRole("button", { name: "Continue reading", exact: true });
+    await action.focus();
+    await expect(action).toHaveCSS("outline-style", "solid");
+    await page.emulateMedia({ forcedColors: "none" });
+    await readerPage.evaluate(async () => Reflect.get(window, "__readerController").library.setLocalePreference("fr"));
+    await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+    const t = getTranslate("fr");
+    await expect(page.getByRole("button", { name: t("library.importEpub"), exact: true })).toBeVisible();
+    const frenchResume = page.getByRole("region", { name: t("library.continueReading"), exact: true });
+    expect(await frenchResume.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await readerPage.close();
+    const opened = context.waitForEvent("page");
+    await frenchResume.getByRole("button", { name: t("library.continueReading"), exact: true }).click();
+    const resumed = await opened;
+    await expect(resumed.locator("[data-ambra-toolbar-title]")).toContainText("Chapter Two");
+  } finally {
+    await context.close();
+  }
+});
 
 /** Covers the Library redesign (themed action buttons/trash-can remove,
  * a full-browser-tab expand option, and book-grid sorting) added on top
@@ -93,7 +164,7 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
       await confirm.getByRole("button", { name: "Remove from library", exact: true }).click();
       await expect(cover).toHaveCount(0);
       await expect(libraryPage.getByRole("heading", { name: "No books yet" })).toBeVisible();
-      await expect(libraryPage.getByRole("button", { name: "Import EPUB", exact: true })).toBeFocused();
+      await expect(libraryPage.getByRole("button", { name: "Import book", exact: true })).toBeFocused();
     } finally {
       await context.close();
     }

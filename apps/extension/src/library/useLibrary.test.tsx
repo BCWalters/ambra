@@ -132,7 +132,7 @@ describe("useLibrary ownership and failures", () => {
     await act(async () => root.render(<LibraryApp />));
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     const importButton = () => [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "Import EPUB");
+      .find((button) => button.textContent === "Import book");
     expect(input.disabled).toBe(true);
     expect(importButton()?.disabled).toBe(true);
     expect(container.textContent).not.toContain("No books yet");
@@ -150,7 +150,7 @@ describe("useLibrary ownership and failures", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Close other Ambra tabs");
     expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
     const buttons = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .filter((button) => button.textContent === "Import EPUB");
+      .filter((button) => button.textContent === "Import book");
     expect(buttons).toHaveLength(1);
     expect(buttons.every((button) => button.disabled)).toBe(true);
     act(() => root.unmount());
@@ -512,7 +512,7 @@ describe("useLibrary ownership and failures", () => {
     await act(async () => root.render(<LibraryApp />));
     const cancel = container.querySelector<HTMLButtonElement>('[aria-label="Cancel download: book.epub"]')!;
     const importButton = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((button) => button.textContent === "Import EPUB")!;
+      .find((button) => button.textContent === "Import book")!;
     cancel.focus();
     expect(document.activeElement).toBe(cancel);
     await act(async () => cancel.click());
@@ -671,7 +671,7 @@ describe("useLibrary ownership and failures", () => {
     setDirectImportUrl();
     await act(async () => root.render(<LibraryApp />));
     const button = [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .find((entry) => entry.textContent === "Import EPUB")!;
+      .find((entry) => entry.textContent === "Import book")!;
     button.focus();
     const status = container.querySelector('[role="status"]')!;
     expect(status.textContent).toContain("Downloading book.epub");
@@ -691,7 +691,7 @@ describe("useLibrary ownership and failures", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
     setDirectImportUrl();
     await render();
-    expect(latest.error).toContain("Import EPUB");
+    expect(latest.error).toContain("Import book");
     expect(latest.error).not.toContain("Choose EPUB files...");
     expect(latest.importActivities).toEqual([]);
     expect(latest.canImport).toBe(true);
@@ -717,7 +717,7 @@ describe("useLibrary ownership and failures", () => {
       expect(latest.importActivities).toEqual([]);
       expect(latest.error).not.toContain("Failed to fetch");
       if (failure === "quota") expect(latest.error).toContain("storage");
-      else expect(latest.error).toContain("Import EPUB");
+      else expect(latest.error).toContain("Import book");
       if (failure === "http") expect(latest.error).toContain("403");
       if (failure === "parse") expect(latest.error).toContain("Invalid EPUB: missing OEBPS/chapter.xhtml");
       expect(resultMessages()).toEqual([{
@@ -734,7 +734,7 @@ describe("useLibrary ownership and failures", () => {
     expect(latest.errorHeadline).toBe("Oh dear, that doesn't look like a valid EPUB file.");
     expect(latest.error).toContain("broken-download.epub");
     expect(latest.error).toContain("Missing ZIP directory");
-    expect(latest.error).toContain("Import EPUB");
+    expect(latest.error).toContain("Import book");
   });
 
   it.each(["permission", "api-unavailable", "unsupported"])(
@@ -746,7 +746,7 @@ describe("useLibrary ownership and failures", () => {
       setDirectImportUrl(reason === "unsupported" ? "blob:https://example.com/id" : undefined);
       await render();
       expect(fetch).not.toHaveBeenCalled();
-      expect(latest.error).toContain("Import EPUB");
+      expect(latest.error).toContain("Import book");
       expect(latest.importActivities).toEqual([]);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ imported: false }));
     },
@@ -786,10 +786,10 @@ describe("useLibrary ownership and failures", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
     setDirectImportUrl();
     await act(async () => root.render(<LocaleProvider><LocalizedHarness /></LocaleProvider>));
-    expect(latest.error).toContain("Import EPUB");
+    expect(latest.error).toContain("Import book");
     expect(latest.error).toContain("Missing OEBPS/chapter.xhtml");
     await act(async () => changeLocale("fr"));
-    expect(latest.error).toContain("Importer un EPUB");
+    expect(latest.error).toContain("Importer un livre");
     expect(latest.error).toContain("Missing OEBPS/chapter.xhtml");
     expect(importBook).toHaveBeenCalledOnce();
   });

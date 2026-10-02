@@ -95,7 +95,7 @@ export const ru: StringCatalog = {
   "library.openBook": "Открыть {title}",
   "library.bookDetails": "Сведения о книге {title}",
   "library.removeBook": "Удалить {title} из библиотеки",
-  "library.importEpub": "Импортировать EPUB",
+  "library.importEpub": "Импортировать книгу",
   "library.sort": "Сортировать библиотеку",
   "library.sortLabel": "Сортировка",
   "library.continueReading": "Продолжить чтение",

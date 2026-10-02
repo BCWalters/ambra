@@ -95,7 +95,7 @@ export const it: StringCatalog = {
   "library.openBook": "Apri {title}",
   "library.bookDetails": "Dettagli di {title}",
   "library.removeBook": "Rimuovi {title} dalla libreria",
-  "library.importEpub": "Importa EPUB",
+  "library.importEpub": "Importa libro",
   "library.sort": "Ordina libreria",
   "library.sortLabel": "Ordina",
   "library.continueReading": "Continua a leggere",

@@ -5,13 +5,17 @@ Keep your EPUBs together and reopen a book at your saved reading position.
 ## Compact or full library
 
 The extension popup uses a compact cover-and-metadata list whose books scroll
-independently. **Find books** and **Import EPUB** remain above the collection,
+independently. **Find books** and **Import book** remain above the collection,
 including when the library is empty. Choose **Open library in new tab** for a
 full browser tab with more room; this is available before your first import.
 
 The full library uses larger covers and offers **Continue reading** when a
 previously opened book is available. Search and **Sort** stay together in both
 views. Covers preserve the original artwork without cropping it.
+The Continue reading card highlights your most recently read book, its author,
+and saved progress. Choose **Continue reading** to reopen it at your saved
+position, or its information button for Book details. The book also remains
+in the collection; searching temporarily hides the resume card.
 
 ## Browse your library while reading
 
@@ -33,7 +37,7 @@ close its reader tab first.
 
 ## Add a book from your device
 
-Choose **Import EPUB**, whether the library is empty or populated. Select EPUB
+Choose **Import book**, whether the library is empty or populated. Select EPUB
 files from your device, then open a book to read. **Sort** offers **Date added
 (newest first)**, **Date added (oldest first)**, **Title (A–Z)**, and **Author (A–Z)**. The saved sort order is shared
 by the full library, popup, and in-reader panel.
@@ -66,7 +70,7 @@ with discovery already open. Source links open in a new tab:
 - **ReadBeyond:** choose **Download** for [read-along EPUBs](read-along-books.md) with recorded narration.
 - **[eBooks.com](https://www.ebooks.com/drm-free-epub):** buy a DRM-free EPUB edition and download it after purchase.
 
-Ambra can import EPUB downloads directly into your library. If that fails, save the EPUB to your device and choose **Import EPUB**.
+Ambra can import EPUB downloads directly into your library. If that fails, save the EPUB to your device and choose **Import book**.
 
 To save a library book to your device, open **Book details → Publication details** and choose **Save as…** beside **File name**.
 

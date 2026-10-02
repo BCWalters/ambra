@@ -676,8 +676,8 @@ static under reduced motion or after completion. It is decorative and outside
 the existing polite live region. The tests cover real download success/failure,
 motion preferences, focus retention, the centered 600px notification limit,
 small-window wrapping, the right-aligned Read now action, and the top-right close button.
-Import EPUB and Find books remain available during downloads; the empty-state
-message returns after cancellation, with focus on Import EPUB. Cross-tab removal
+Import book and Find books remain available during downloads; the empty-state
+message returns after cancellation, with focus on Import book. Cross-tab removal
 checks use Book details and its confirmation rather than a hover-only card action.
 Completed rows keep their check, wrapped title, and action on the same grid row,
 including long book titles at 600px and narrow 360px browser widths.

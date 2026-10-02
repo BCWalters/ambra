@@ -95,7 +95,7 @@ export const ja: StringCatalog = {
   "library.openBook": "{title}を開く",
   "library.bookDetails": "{title}の詳細",
   "library.removeBook": "{title}をライブラリから削除",
-  "library.importEpub": "EPUB をインポート",
+  "library.importEpub": "本をインポート",
   "library.sort": "ライブラリを並べ替え",
   "library.sortLabel": "並べ替え",
   "library.continueReading": "続きを読む",

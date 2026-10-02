@@ -104,6 +104,14 @@ the control itself, including over arbitrary covers, not only in a tooltip.
 ### Collection and navigation
 
 - Full library: Continue reading, followed by the searchable/sortable collection.
+- Continue reading is a full-width, softly theme-tinted resume card: 72x108px
+  cover, small uppercase section label, prominent book title, author, bounded
+  progress track, and a bordered **Continue reading** action. Keep Book details
+  accessible, wrap the action row on narrow screens, and use real saved progress
+  without inventing chapter metadata. The collection remains below it.
+- The import action reads **Import book** in every Library presentation, with
+  translated equivalents. Supported files remain EPUB; discovery instructions,
+  recovery messages, and the file picker retain that format guidance.
   Progress sits beneath covers. Search and Sort stay together.
 - Compact popup: a readable cover-and-metadata list, not the old three-column
   cover grid. Keep Find books and Import together above the collection, including

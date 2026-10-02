@@ -95,7 +95,7 @@ export const ko: StringCatalog = {
   "library.openBook": "{title} 열기",
   "library.bookDetails": "{title} 상세 정보",
   "library.removeBook": "라이브러리에서 {title} 삭제",
-  "library.importEpub": "EPUB 가져오기",
+  "library.importEpub": "책 가져오기",
   "library.sort": "라이브러리 정렬",
   "library.sortLabel": "정렬",
   "library.continueReading": "계속 읽기",

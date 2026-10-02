@@ -109,6 +109,6 @@ describe("Focused library book removal", () => {
     await key(cover("First"));
     await act(async () => button("Remove from library").click());
     await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
-    expect(document.activeElement).toBe(button("Import EPUB"));
+    expect(document.activeElement).toBe(button("Import book"));
   });
 });
