@@ -295,7 +295,8 @@ Preserve explicit copy-failure feedback and existing diagnostic redaction.
 ## 5. Reader hierarchy, panels, and navigation
 
 The Contents button keeps the visible label **Contents** in both states; its
-tooltip/accessibility label switches between **Show contents** and **Hide contents**.
+tooltip/accessibility label switches between **Contents** and **Hide contents**.
+Library follows the same pattern: **Library** when closed and **Hide library** when open.
 
 - Toolbar starts **Contents, then Library**, retaining visible labels where
   possible. After the title, order commands **Search, Book options, Annotations,

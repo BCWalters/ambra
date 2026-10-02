@@ -261,7 +261,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           </ToggleButton>
         </Tooltip>
 
-        <Tooltip content={t("toolbar.backToLibrary")} relationship="label">
+        <Tooltip content={isLibraryOpen ? t("toolbar.hideLibrary") : t("toolbar.backToLibrary")} relationship="label">
           <ToggleButton className={readerStyles.navigationButton} appearance="subtle" size="small" icon={<LibraryRegular />}
             checked={isLibraryOpen} onClick={onToggleLibrary}>
             <span className={readerStyles.navigationLabel}>{t("toolbar.backToLibrary")}</span>

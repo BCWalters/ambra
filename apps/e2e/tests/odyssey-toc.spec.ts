@@ -30,7 +30,7 @@ function fixture(directory: string, direction: "ltr" | "rtl"): string {
 
 async function openTocEntry(page: Page, title: string, keyboard = false) {
   await page.mouse.move(350, 2);
-  await page.getByRole("button", { name: "Show contents", exact: true }).click();
+  await page.getByRole("button", { name: "Contents", exact: true }).click();
   const navigation = page.getByRole("navigation", { name: "Table of contents" });
   const entry = navigation.getByRole("button")
     .filter({ has: page.locator("span").filter({ hasText: new RegExp(`^${title}$`) }) });

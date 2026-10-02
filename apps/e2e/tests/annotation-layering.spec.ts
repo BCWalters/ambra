@@ -21,7 +21,7 @@ test("annotation actions stay behind reader panels (#149)", async () => {
     });
     const actions = page.getByRole("toolbar", { name: "Highlight this selection" });
     await expect(actions).toBeVisible();
-    const contents = page.getByRole("button", { name: "Show contents", exact: true });
+    const contents = page.getByRole("button", { name: "Contents", exact: true });
     await contents.focus();
     await contents.click();
     await expect(page.getByRole("button", { name: "Pin contents panel", exact: true })).toBeVisible();

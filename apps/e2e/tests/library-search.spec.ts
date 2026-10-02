@@ -133,7 +133,7 @@ for (const width of [360, 1200]) {
       await covers.click();
       const reader = await opened;
       await expect(reader).toHaveURL(readerUrl);
-      await expect(reader.getByRole("button", { name: "Show contents", exact: true })).toBeVisible();
+      await expect(reader.getByRole("button", { name: "Contents", exact: true })).toBeVisible();
       await expect(reader.getByRole("main").locator("iframe").first()).toBeVisible();
       await expect(search).toHaveValue("long");
     } finally {

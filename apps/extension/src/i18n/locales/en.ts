@@ -260,6 +260,7 @@ export interface StringCatalog {
   "toolbar.search": string;
   "toolbar.hideSearch": string;
   "toolbar.backToLibrary": string;
+  "toolbar.hideLibrary": string;
   "settings.language": string;
   "settings.languageSystemDefault": string;
   "settings.readingMode": string;
@@ -783,7 +784,7 @@ export const en: StringCatalog = {
   "inspector.sourceElementSelected": "Source element selected. Show in book opens this element.",
   "inspector.sourceSelectionHint": "Click or select source text to choose an element. With source focused, use arrow keys; hold Shift to select. Without a selection, Show in book opens the file start.",
   "inspector.sourceCode": "Source code",
-  "toolbar.showContents": "Show contents",
+  "toolbar.showContents": "Contents",
   "toolbar.hideContents": "Hide contents",
   "toolbar.bookmarksAndHighlights": "Annotations",
   "toolbar.hideBookmarksAndHighlights": "Hide annotations",
@@ -796,6 +797,7 @@ export const en: StringCatalog = {
   "toolbar.search": "Search",
   "toolbar.hideSearch": "Hide search",
   "toolbar.backToLibrary": "Library",
+  "toolbar.hideLibrary": "Hide library",
   "settings.language": "Language",
   "settings.languageSystemDefault": "System default",
   "settings.readingMode": "Reading mode",

@@ -402,7 +402,7 @@ test.describe("Progress landmarks", () => {
         await checkMidbook();
         await screenshot(page, info, `landmarks-${rtl ? "rtl" : "ltr"}-midbook-bookmark`);
         await page.mouse.move(300, 2);
-        await page.getByRole("button", { name: "Show contents", exact: true }).click();
+        await page.getByRole("button", { name: "Contents", exact: true }).click();
         const contents = page.getByRole("navigation", { name: "Table of contents" });
         await expect(contents).toBeVisible();
         await expect.poll(async () => {

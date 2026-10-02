@@ -24,7 +24,7 @@ test("diagnostics identify panel/dialog modes and settings, and copy all 500 ret
       return c?.host && !c.isLoadInFlight && !c.isTurningPage && !c.isApplyingLayout && !c.pendingLayout;
     });
     for (const [name, surface] of [
-      ["Show contents", "toc"], ["Annotations", "annotations"],
+      ["Contents", "toc"], ["Annotations", "annotations"],
       ["Search", "search"], ["Book details", "details"],
     ] as const) {
       await reveal(page);

@@ -226,7 +226,7 @@ test("Shell dismissal restores the precise reading position in a merged spread c
         await expectOriginal();
       });
     }
-    for (const title of ["Show contents", "Annotations", "Book details"]) {
+    for (const title of ["Contents", "Annotations", "Book details"]) {
       await test.step(`${title} returns to the companion caret`, async () => {
         await page.getByRole("button", { name: title, exact: true }).click();
         await page.keyboard.press("Escape");
@@ -631,7 +631,7 @@ test("Help & About has shared keyboard entry, correct Escape focus and a readabl
     await expect(helpTrigger).toBeFocused();
 
     for (const [opener, closeButton, modal] of [
-      ["Show contents", "Close contents panel", "help"],
+      ["Contents", "Close contents panel", "help"],
       ["Annotations", "Close annotations panel", "shortcuts"],
     ] as const) {
       await page.getByRole("button", { name: opener, exact: true }).click();

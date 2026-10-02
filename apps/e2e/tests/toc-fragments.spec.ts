@@ -64,7 +64,7 @@ async function snapshot(page: Page): Promise<{
 
 async function openContents(page: Page) {
   await page.mouse.move(350, 2);
-  await page.getByRole("button", { name: "Show contents", exact: true }).click();
+  await page.getByRole("button", { name: "Contents", exact: true }).click();
   return page.getByRole("navigation", { name: "Table of contents" });
 }
 
