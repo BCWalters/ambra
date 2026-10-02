@@ -18,6 +18,8 @@ const test = base.extend<{ library: { context: BrowserContext; page: Page } }>({
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
     try {
+      await context.route("https://openlibrary.org/**", route => route.fulfill({ json: { docs: [] } }));
+      await context.route("https://en.wikipedia.org/**", route => route.fulfill({ json: {} }));
       let [worker] = context.serviceWorkers();
       worker ??= await context.waitForEvent("serviceworker");
       const page = await context.newPage();
@@ -31,6 +33,10 @@ const test = base.extend<{ library: { context: BrowserContext; page: Page } }>({
       await expect(page.getByRole("button", { name: "Save as…", exact: true })).toBeHidden();
       await page.getByRole("button", { name: "Publication details", exact: true }).click();
       await expect(page.getByRole("button", { name: "Save as…", exact: true })).toBeVisible();
+      await expect.poll(async () => {
+        const books = (await librarySnapshot(page)).find(store => store.name === "books")!;
+        return books.rows[0]?.descriptionFetchAttempts;
+      }).toBe(1);
       await settleAnimations(page);
       await use({ context, page });
     } finally {
@@ -59,7 +65,7 @@ async function librarySnapshot(page: Page) {
           request.onsuccess = () => resolve(request.result);
           request.onerror = () => reject(request.error);
         });
-        snapshot.push({ name, rows: await Promise.all(rows.map(async (row) => ({
+        snapshot.push({ name, rows: await Promise.all(rows.map(async (row): Promise<Record<string, unknown>> => ({
           ...row,
           ...(row.blob ? { blob: Array.from(new Uint8Array(await row.blob.arrayBuffer())) } : {}),
         }))) });
