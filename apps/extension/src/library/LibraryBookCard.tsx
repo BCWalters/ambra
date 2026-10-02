@@ -182,15 +182,15 @@ export const LibraryBookCard: FC<{
           background: "var(--colorNeutralStroke2)", borderRadius: 2 }}>
           {progress !== undefined && <div style={{ width: `${progress}%`, height: "100%", background: "var(--colorBrandBackground)", borderRadius: 2 }} />}
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: resume ? undefined : 28,
-          marginTop: resume ? 4 : undefined }}>
+        <div data-library-progress-status="" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 28,
+          maxWidth: resume ? 240 : undefined, width: "100%", marginTop: resume ? 4 : undefined }}>
           <span style={{ fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
             {progress === undefined
               ? t(book.lastReadAt === undefined ? "library.notStarted" : "library.started")
               : resume ? t("library.percentRead", { progress: formatLibraryProgress(progress / 100, locale) })
                 : formatLibraryProgress(progress / 100, locale)}
           </span>
-          {!resume && detailsButton}
+          {detailsButton}
         </div>
       </div>
       {resume && <div data-library-continue-actions="" className={styles.continueActions}>
@@ -199,7 +199,6 @@ export const LibraryBookCard: FC<{
           style={{ flex: 1, minWidth: 0, whiteSpace: "normal" }}>
           {t("library.continueReading")}
         </Button>
-        {detailsButton}
       </div>}
     </article>
   );

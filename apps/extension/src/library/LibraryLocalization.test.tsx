@@ -190,6 +190,9 @@ describe("Library localization and action ownership", () => {
     expect(state.openBook).toHaveBeenCalledExactlyOnceWith("Most recent");
     const details = [...resume.querySelectorAll("button")].find(element =>
       element.getAttribute("aria-label") === t("library.bookDetails", { title: "Most recent" }))!;
+    expect(details.closest("[data-library-progress-status]")?.textContent)
+      .toContain(t("library.percentRead", { progress: formatLibraryProgress(0.29, locale) }));
+    expect(resume.querySelector("[data-library-continue-actions]")?.contains(details)).toBe(false);
     await act(async () => details.click());
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Most recent");
     expect(container.querySelector("input[type=file]")?.getAttribute("accept")).toBe(".epub");

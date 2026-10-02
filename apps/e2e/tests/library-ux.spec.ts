@@ -35,6 +35,15 @@ test("Continue reading follows the prototype and resumes the saved book at wide 
       await expect(resume.getByRole("heading")).toHaveCSS("font-size", width > 600 ? "21px" : "18px");
       const progress = resume.locator("[data-library-progress-track]");
       expect((await progress.boundingBox())!.width).toBeLessThanOrEqual(240);
+      const details = resume.getByRole("button", { name: `${TWO_CHAPTER_TITLE} details`, exact: true });
+      const progressBox = (await progress.boundingBox())!;
+      const detailsBox = (await details.boundingBox())!;
+      const statusBox = (await resume.locator("[data-library-progress-status]").boundingBox())!;
+      expect(detailsBox.y).toBeGreaterThanOrEqual(progressBox.y + progressBox.height);
+      expect(detailsBox.x + detailsBox.width).toBeCloseTo(progressBox.x + progressBox.width, 0);
+      expect(detailsBox.y).toBeGreaterThanOrEqual(statusBox.y);
+      expect(detailsBox.y + detailsBox.height).toBeLessThanOrEqual(statusBox.y + statusBox.height);
+      await expect(resume.locator("[data-library-continue-actions]").getByRole("button")).toHaveCount(1);
       await expect(resume.getByRole("button", { name: "Continue reading", exact: true })).toBeInViewport({ ratio: 1 });
       const coverBox = (await cover.boundingBox())!;
       const actionsBox = (await resume.locator("[data-library-continue-actions]").boundingBox())!;
@@ -53,6 +62,11 @@ test("Continue reading follows the prototype and resumes the saved book at wide 
       await page.screenshot({ path: test.info().outputPath(`continue-reading-${width}.png`) });
     }
     const search = page.getByRole("searchbox", { name: "Search library" });
+    await resume.getByRole("button", { name: `${TWO_CHAPTER_TITLE} details`, exact: true }).click();
+    const detailsDialog = page.getByRole("dialog", { name: "Book details", exact: true });
+    await expect(detailsDialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(detailsDialog).toBeHidden();
     await search.fill("Two-Chapter");
     await expect(resume).toHaveCount(0);
     await search.fill("");

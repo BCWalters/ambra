@@ -106,8 +106,9 @@ the control itself, including over arbitrary covers, not only in a tooltip.
 - Full library: Continue reading, followed by the searchable/sortable collection.
 - Continue reading is a full-width, softly theme-tinted resume card: 72x108px
   cover, small uppercase section label, prominent book title, author, bounded
-  progress track, and a bordered **Continue reading** action. Keep Book details
-  accessible, wrap the action row on narrow screens, and use real saved progress
+  progress track, and a bordered **Continue reading** action. Put Book details
+  at the right of the percentage row beneath the track, matching collection
+  cards; keep the reading action separate. Wrap the action row on narrow screens, and use real saved progress
   without inventing chapter metadata. The collection remains below it.
 - The import action reads **Import book** in every Library presentation, with
   translated equivalents. Supported files remain EPUB; discovery instructions,
