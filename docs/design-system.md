@@ -25,20 +25,33 @@ Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep them disabled.
   file drag, retain keyboard-accessible **Import book**, and reuse the existing
   import/duplicate/error pipeline. Keep embedded highlighting inside its panel
   and detach drop handlers while that panel is closed.
-- Invite feedback in the full Library, never over the reader. Use a quiet
-  non-modal card without moving focus, and defer it during imports, searches,
-  or other Library tasks. Offer an honest store review and feedback equally;
-  do not route only satisfied readers to the store.
+- Invite feedback in the full Library, never over the reader. The owner's
+  revised local prototype uses a modal asking **Are you loving Ambra?**,
+  deferred during imports, searches, or other Library tasks, including a tab
+  opened explicitly for popup import. **Yes, I love it!**
+  leads to a store-review invitation; **Not really** offers feedback by email
+  to the existing support address; **Not sure yet** postpones for three days.
+  Escape, close, and backdrop dismissal also postpone rather than trapping
+  keyboard users. Keep the standard modal focus trap and return focus to Import.
+- Selecting either Yes or Not really permanently stops reminders, whether or
+  not the user follows the subsequent link. This sentiment-based review routing
+  remains a pre-publication decision: the Chrome Web Store's
+  [spam-and-abuse policy](https://developer.chrome.com/docs/webstore/program-policies/spam-and-abuse)
+  prohibits manipulating ratings. It does not explicitly discuss this exact
+  flow; this local prototype is not a claim of policy approval.
 - Proposed eligibility is three distinct local reading days plus reaching
   halfway through a book. A day counts only when a saved reading position
   changes, not on import or simply reopening a book. This is a heuristic,
   not evidence that every preceding page was read.
-- Keep only three date strings, a halfway flag, and a one-time presentation
-  flag in local prototype preferences. No book identities or telemetry are
-  collected for the invitation. Claim presentation atomically so other tabs
-  do not repeat it; dismissing or ignoring it does not cause later reminders.
+- Keep only three date strings, a halfway flag, a permanent stop flag, and the
+  next permitted prompt timestamp in local prototype preferences. Neither the
+  yes/no sentiment nor book identities are stored or transmitted. Reserve the
+  three-day reminder window atomically before opening, so another tab or an
+  abandoned dialog does not immediately repeat it. Terminal responses win over
+  later postponements from stale tabs. Preserve earlier previews' stop flags.
 - The full Library's **Local prototype controls** can simulate eligibility,
-  simulate a new reader, reset the simulated invitation, or restore real
+  simulate a new reader, reset the simulated invitation, advance the simulated
+  clock by three days, or restore real
   eligibility. Simulation stays in memory and never edits reading history or
   the real invitation record. These developer controls are explicitly English
   and local-build-only; the invitation and drop overlay use all nine locales.

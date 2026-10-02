@@ -38,7 +38,14 @@ export interface StringCatalog {
   "review.body": string;
   "review.write": string;
   "review.feedback": string;
-  "review.dismiss": string;
+  "review.yes": string;
+  "review.no": string;
+  "review.later": string;
+  "review.laterHint": string;
+  "review.yesTitle": string;
+  "review.yesBody": string;
+  "review.noTitle": string;
+  "review.noBody": string;
   "review.error": string;
   "review.retry": string;
   "settings.helpAbout": string;
@@ -538,11 +545,18 @@ export interface StringCatalog {
 export const en: StringCatalog = {
   "library.dropFilesTitle": "Drop EPUB files to import",
   "library.dropFilesHint": "Books are added to your library.",
-  "review.title": "Share your experience with Ambra",
-  "review.body": "Now that you've spent some time reading, would you like to leave an honest review or send feedback? Either is welcome.",
+  "review.title": "Are you loving Ambra?",
+  "review.body": "We'd love to hear how your reading is going.",
   "review.write": "Write a review",
-  "review.feedback": "Send feedback",
-  "review.dismiss": "No thanks",
+  "review.feedback": "Share feedback by email",
+  "review.yes": "Yes, I love it!",
+  "review.no": "Not really",
+  "review.later": "Not sure yet",
+  "review.laterHint": "Not sure yet? Closing this window also postpones the question for three days.",
+  "review.yesTitle": "That's great!",
+  "review.yesBody": "Would you mind taking a moment to leave a review? It really helps us. Thank you for reading with Ambra.",
+  "review.noTitle": "Help us improve Ambra",
+  "review.noBody": "We're sorry it hasn't been the experience you hoped for. Would you share what we could do better by email?",
   "review.error": "Could not load or save the review invitation",
   "review.retry": "Try again",
   "welcome.title": "Make yourself at home",

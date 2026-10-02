@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isReviewInvitationEligible, parseReviewInvitation, recordReviewReading } from "./ReviewInvitation.js";
+import { answerReviewInvitation, isReviewInvitationEligible, parseReviewInvitation, recordReviewReading,
+  REVIEW_REMINDER_DELAY } from "./ReviewInvitation.js";
 
 describe("local review invitation eligibility", () => {
   const day = (date: number) => new Date(2026, 9, date, 12).getTime();
@@ -26,10 +27,30 @@ describe("local review invitation eligibility", () => {
     expect(isReviewInvitationEligible(recordReviewReading(state, day(7), 0.5))).toBe(true);
   });
 
-  it("never qualifies again or records more dates after presentation", () => {
+  it("respects the permanent flag from earlier local previews", () => {
     const state = { days: ["2026-10-01", "2026-10-02", "2026-10-03"], reachedHalf: true, presented: true };
     expect(isReviewInvitationEligible(state)).toBe(false);
     expect(recordReviewReading(state, day(4), 1)).toBe(state);
+  });
+
+  it.each(["yes", "no"] as const)("never prompts again after %s, even without following the link", answer => {
+    const state = answerReviewInvitation({ days: ["2026-10-01", "2026-10-02", "2026-10-03"],
+      reachedHalf: true, presented: false }, answer, day(4));
+    expect(isReviewInvitationEligible(state, day(30))).toBe(false);
+    expect(answerReviewInvitation(state, "later", day(10))).toBe(state);
+    expect(recordReviewReading(state, day(5), 0.9)).toBe(state);
+  });
+
+  it("waits exactly three days after not sure yet and preserves the deadline while reading", () => {
+    const now = day(4);
+    const state = answerReviewInvitation({ days: ["2026-10-01", "2026-10-02", "2026-10-03"],
+      reachedHalf: true, presented: false }, "later", now);
+    expect(state.nextPromptAt).toBe(now + REVIEW_REMINDER_DELAY);
+    const afterReading = recordReviewReading(state, day(5), 0.8);
+    expect(afterReading.nextPromptAt).toBe(state.nextPromptAt);
+    expect(isReviewInvitationEligible(afterReading, now + REVIEW_REMINDER_DELAY - 1)).toBe(false);
+    expect(isReviewInvitationEligible(afterReading, now + REVIEW_REMINDER_DELAY)).toBe(true);
+    expect(parseReviewInvitation(state)).toEqual(state);
   });
 
   it("does not mistake duplicate dates for genuine separate days", () => {
@@ -39,7 +60,10 @@ describe("local review invitation eligibility", () => {
   });
 
   it.each([null, 1, {}, { days: [], reachedHalf: "yes", presented: false },
-    { days: ["yesterday"], reachedHalf: true, presented: false }])("rejects malformed storage %j explicitly", value => {
+    { days: ["yesterday"], reachedHalf: true, presented: false },
+    ...[-1, NaN, Infinity, "tomorrow", null].map(nextPromptAt =>
+      ({ days: [], reachedHalf: false, presented: false, nextPromptAt })),
+  ])("rejects malformed storage %j explicitly", value => {
     expect(() => parseReviewInvitation(value)).toThrow("Invalid review invitation preferences.");
   });
 });

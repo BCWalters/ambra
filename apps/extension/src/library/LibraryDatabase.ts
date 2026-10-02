@@ -9,8 +9,8 @@ import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { createLibraryCover } from "./LibraryCover.js";
 import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
-import { isReviewInvitationEligible, parseReviewInvitation, recordReviewReading, REVIEW_INVITATION_KEY,
-  type ReviewInvitationState } from "./ReviewInvitation.js";
+import { answerReviewInvitation, isReviewInvitationEligible, parseReviewInvitation, recordReviewReading, REVIEW_INVITATION_KEY,
+  type ReviewInvitationResponse, type ReviewInvitationState } from "./ReviewInvitation.js";
 
 export interface BookImportResult {
   readonly id: string;
@@ -573,12 +573,28 @@ export class LibraryDatabase {
           const record = request.result as PreferenceRecord | undefined;
           const state = parseReviewInvitation(record?.value);
           const eligible = isReviewInvitationEligible(state);
-          if (eligible) preferences.put({ key: REVIEW_INVITATION_KEY, value: { ...state, presented: true } });
+          // Reserve the reminder window atomically, including if this tab closes without an answer.
+          if (eligible) preferences.put({ key: REVIEW_INVITATION_KEY, value: answerReviewInvitation(state, "later") });
           setResult(eligible);
         };
       });
     if (claimed) this.preferencesChanged();
     return claimed;
+  }
+
+  public async respondToReviewInvitation(answer: ReviewInvitationResponse): Promise<void> {
+    if (!LOCAL_FEATURE_PROTOTYPES) throw new Error("Review invitation prototypes are disabled.");
+    await this.transaction(
+      PREFERENCES_STORE, "readwrite", "Failed to save review invitation response.", tx => {
+        const preferences = tx.objectStore(PREFERENCES_STORE);
+        const request = preferences.get(REVIEW_INVITATION_KEY);
+        request.onsuccess = () => {
+          const record = request.result as PreferenceRecord | undefined;
+          preferences.put({ key: REVIEW_INVITATION_KEY,
+            value: answerReviewInvitation(parseReviewInvitation(record?.value), answer) });
+        };
+      });
+    this.preferencesChanged();
   }
 
   public getProgress(bookId: string): Promise<ReadingProgress | undefined> {

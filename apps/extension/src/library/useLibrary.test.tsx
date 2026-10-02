@@ -63,6 +63,23 @@ describe("useLibrary ownership and failures", () => {
     return null;
   }
 
+  it.each([
+    [undefined, "?view=tab"],
+    [true, "?view=tab&discover=1"],
+    ["import", "?view=tab&import=1"],
+  ] as const)("opens a persistent Library destination for %s", async (destination, query) => {
+    const create = vi.fn().mockResolvedValue({});
+    vi.stubGlobal("chrome", { ...chrome,
+      runtime: { ...chrome.runtime, getURL: (path: string) => `chrome-extension://ambra/${path}` },
+      tabs: { create },
+    });
+    await act(async () => root.render(<Harness />));
+    await act(async () => latest.openInFullTab(destination));
+    expect(create).toHaveBeenCalledWith({
+      url: `chrome-extension://ambra/src/library/index.html${query}`,
+    });
+  });
+
   beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

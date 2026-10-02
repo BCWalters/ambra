@@ -37,8 +37,17 @@ close its reader tab first.
 
 ## Add a book from your device
 
-Choose **Import book**, whether the library is empty or populated. Select EPUB
-files from your device, then open a book to read. **Sort** offers **Date added
+Choose **Import book**, whether the library is empty or populated. From Chrome's
+Ambra toolbar popup, this first opens the full Library in a new tab. Select
+**Import book** again in that tab to choose EPUB files from your device. Chrome
+can close its toolbar popup when a native file chooser takes focus, so importing
+in the tab keeps your selected files and import progress alive. Keep that tab
+open until the import finishes. Canceling the chooser leaves the Library open
+so you can try again.
+
+In the full Library and the Library panel inside the reader, **Import book**
+opens the chooser directly; no extra tab or click is needed. After importing,
+open a book to read. **Sort** offers **Date added
 (newest first)**, **Date added (oldest first)**, **Title (A–Z)**, and **Author (A–Z)**. The saved sort order is shared
 by the full library, popup, and in-reader panel.
 

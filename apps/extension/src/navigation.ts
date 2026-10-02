@@ -26,6 +26,9 @@ export function readerTabUrl(bookId: string): string {
 export const LIBRARY_FULL_TAB_PARAM = "view";
 export const LIBRARY_FULL_TAB_VALUE = "tab";
 
+/** Local file selection must begin in a persistent tab, not an action popup. */
+export const LIBRARY_LOCAL_IMPORT_PARAM = "import";
+
 /** Full Library destination for the explicit new-tab action in popup and
  * embedded Library views; the reader's toolbar itself only opens its panel. */
 export function libraryFullTabUrl(): string {

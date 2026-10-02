@@ -32,6 +32,7 @@ import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { ReviewInvitationCard } from "./ReviewInvitationCard.js";
 import { useLibraryFileDrop } from "./useLibraryFileDrop.js";
 import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
+import { LIBRARY_LOCAL_IMPORT_PARAM } from "../navigation.js";
 
 export interface EmbeddedLibraryOptions {
   open: boolean;
@@ -55,6 +56,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     settings, setSettings, sort, setSort, openInFullTab, storageUsage, openInspectionSession,
   } = library;
   const isFullTab = !isEmbedded && library.isFullTab;
+  const isActionPopup = !isEmbedded && !isFullTab;
   const openBook = embedded?.onActivateBook ?? library.openBook;
   const CollectionContainer = isEmbedded ? "div" : "main";
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,9 +68,14 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const restoreDiscoveryFocus = useRestoreFocusTarget();
   const restoreRemoveFocus = useRestoreFocusSource();
   const [query, setQuery] = useState("");
+  const [importHandoff] = useState(() =>
+    isFullTab && new URLSearchParams(window.location.search).get(LIBRARY_LOCAL_IMPORT_PARAM) === "1");
+  const [importRequested, setImportRequested] = useState(importHandoff);
+  const importFocusPending = useRef(importRequested);
   const [discoveryOpen, setDiscoveryOpen] = useState(() =>
     new URLSearchParams(window.location.search).get("discover") === "1");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [helpTooltip, setHelpTooltip] = useState(false);
   const [detailsBookId, setDetailsBookId] = useState<string>();
   const [removeBookId, setRemoveBookId] = useState<string>();
@@ -98,6 +105,17 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     isEmbedded && importInProgress && bookId !== embedded.currentBookId;
 
   useEffect(() => {
+    if (!importRequested) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete(LIBRARY_LOCAL_IMPORT_PARAM);
+    window.history.replaceState(window.history.state, "", url);
+  }, [importRequested]);
+  useEffect(() => {
+    if (!importFocusPending.current || !canImport) return;
+    importFocusPending.current = false;
+    toolbarImportRef.current?.focus();
+  }, [canImport]);
+  useEffect(() => {
     if (!isLoading && books.length === 0) setQuery("");
   }, [isLoading, books.length]);
   useEffect(() => {
@@ -125,7 +143,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   useEffect(() => {
     if (isEmbedded) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen || discoveryOpen || settingsOpen || removeBookId) return;
+      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen || discoveryOpen || settingsOpen || reviewOpen || removeBookId) return;
       const command = matchReaderCommand(event, document, {
         preferences: shortcuts.preferences, platform: shortcuts.platform, commands: ["showKeyboardShortcuts"], scope: "shell",
       });
@@ -137,7 +155,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [shortcuts.ready, shortcuts.preferences, shortcuts.platform, help.view, help.openShortcuts,
-    detailsBookId, inspector.isOpen, discoveryOpen, settingsOpen, removeBookId, isEmbedded]);
+    detailsBookId, inspector.isOpen, discoveryOpen, settingsOpen, reviewOpen, removeBookId, isEmbedded]);
 
   const requestRemove = (id: string): void => {
     if (id === embedded?.currentBookId) {
@@ -170,6 +188,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = event.target.files;
     if (!files?.length) return;
+    setImportRequested(false);
     void importFiles(Array.from(files));
     event.target.value = "";
   };
@@ -212,7 +231,13 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             {t("library.findBooks")}
           </Button>
           <Button ref={toolbarImportRef} appearance="primary" icon={<DocumentAddRegular />}
-            disabled={!canImport} onClick={() => fileInputRef.current?.click()}>
+            title={isActionPopup ? t("library.fullLibrary") : undefined}
+            disabled={!canImport} onClick={() => {
+              // A native chooser can destroy the action popup before files are returned.
+              // The destination tab deliberately waits for a fresh user click to choose files.
+              if (isActionPopup) openInFullTab("import");
+              else fileInputRef.current?.click();
+            }}>
             {t("library.importEpub")}
           </Button>
         </div>
@@ -222,6 +247,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
       <CollectionContainer aria-label={t("library.pageTitle")} style={{ padding: isFullTab ? "0 24px 24px" : "0 12px 12px",
         // Short windows and high zoom scroll the outer surface instead of hiding books behind the filters.
         flex: 1, minHeight: isFullTab ? 0 : 160, overflowY: isFullTab ? undefined : "auto" }}>
+        {importRequested && <p role="status">{t("library.importKeepOpen")}</p>}
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
           onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
           isBookOpenDisabled={isBookOpenDisabled} busyMessageId={importStatusId}
@@ -269,8 +295,9 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
           </>
         )}
         {LOCAL_FEATURE_PROTOTYPES && isFullTab && <ReviewInvitationCard
+          onOpenChange={setReviewOpen}
           onDismiss={() => toolbarImportRef.current?.focus()}
-          blocked={isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||
+          blocked={importHandoff || isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||
             inspector.isOpen || discoveryOpen || settingsOpen || !!removeBookId || hasQuery} />}
       </CollectionContainer>
 

@@ -4,10 +4,10 @@ import { launchReader } from "../harness.js";
 
 const initialBook = fileURLToPath(new URL("../fixtures/reading-entry.epub", import.meta.url));
 const importedBook = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
-const droppedBook = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
+const secondImportedBook = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 
-test("native action popup Import book opens a chooser and imports the selected EPUB", async () => {
-  const { context, libraryPage: page } = await launchReader(initialBook, { viewport: null });
+test("native popup hands Import book to a persistent tab before the popup is destroyed", async () => {
+  const { context, libraryPage: page, readerPage, extensionId } = await launchReader(initialBook, { viewport: null });
   try {
     const worker = context.serviceWorkers()[0]!;
     await worker.evaluate(async () => {
@@ -54,6 +54,20 @@ test("native action popup Import book opens a chooser and imports the selected E
     };
     await send("Page.enable");
     await send("Page.setInterceptFileChooserDialog", { enabled: true });
+    if (process.env.VITE_AMBRA_LOCAL_FEATURES === "1") {
+      const point = await page.evaluate(() => {
+        const popup = chrome.extension.getViews({ type: "popup" })[0]!;
+        const bounds = popup.document.querySelector("main")!.getBoundingClientRect();
+        return { x: bounds.x + 20, y: bounds.y + 20 };
+      });
+      for (const type of ["dragEnter", "dragOver", "drop"]) {
+        await send("Input.dispatchDragEvent", { type, ...point,
+          data: { items: [], files: [secondImportedBook], dragOperationsMask: 1 } });
+      }
+      await expect.poll(() => page.evaluate(() =>
+        chrome.extension.getViews({ type: "popup" })[0]?.document.querySelector("[data-library-collection]")?.textContent,
+      )).toContain("Ambra Two-Chapter Spread Test Fixture");
+    }
     const buttonPoint = await page.evaluate(() => {
       const popup = chrome.extension.getViews({ type: "popup" })[0]!;
       const button = [...popup.document.querySelectorAll("button")].find(item => item.textContent === "Import book")!;
@@ -62,29 +76,80 @@ test("native action popup Import book opens a chooser and imports the selected E
     });
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", ...buttonPoint });
     await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...buttonPoint });
-    await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...buttonPoint });
-    await expect.poll(() => chooser).toBeDefined();
-    await send("DOM.setFileInputFiles", { backendNodeId: chooser!.backendNodeId, files: [importedBook] });
-    await expect.poll(() => page.evaluate(() => {
-      const popup = chrome.extension.getViews({ type: "popup" })[0];
-      return popup?.document.querySelector("[data-library-collection]")?.textContent;
-    })).toContain("Ambra Long Content Test Fixture");
-    if (process.env.VITE_AMBRA_LOCAL_FEATURES === "1") {
-      const bounds = await page.evaluate(() => {
-        const popup = chrome.extension.getViews({ type: "popup" })[0]!;
-        const main = popup.document.querySelector("main")!.getBoundingClientRect();
-        return { x: main.x + 20, y: main.y + 20 };
-      });
-      for (const type of ["dragEnter", "dragOver", "drop"]) {
-        await send("Input.dispatchDragEvent", { type, ...bounds,
-          data: { items: [], files: [droppedBook], dragOperationsMask: 1 } });
-      }
-      await expect.poll(() => page.evaluate(() =>
-        chrome.extension.getViews({ type: "popup" })[0]?.document.querySelector("[data-library-collection]")?.textContent,
-      )).toContain("Ambra Two-Chapter Spread Test Fixture");
-    }
+    const destinationOpened = context.waitForEvent("page");
+    // Do not wait for a response from the popup after the release: creating the
+    // active tab can destroy that target before CDP delivers its acknowledgement.
+    await cdp.send("Target.sendMessageToTarget", { sessionId, message: JSON.stringify({
+      id: ++sequence, method: "Input.dispatchMouseEvent",
+      params: { type: "mouseReleased", button: "left", clickCount: 1, ...buttonPoint },
+    }) });
+    const destination = await destinationOpened;
+    let destinationChooserCount = 0;
+    destination.on("filechooser", () => { destinationChooserCount++; });
+    await expect(destination).toHaveURL(`chrome-extension://${extensionId}/src/library/index.html?view=tab`);
+    await expect(destination.getByRole("button", { name: "Import book", exact: true })).toBeFocused();
+    await expect(destination.getByRole("status").filter({ hasText: "Keep your library open." })).toBeVisible();
+    expect(chooser).toBeUndefined();
+    expect(destinationChooserCount).toBe(0);
+
+    // This is the lifecycle boundary the old intercepted-popup-chooser test missed:
+    // assert the actual Chrome popup document AND its CDP target are gone before
+    // selecting anything, rather than keeping it alive while injecting files.
+    await expect.poll(() => page.evaluate(() => chrome.extension.getViews({ type: "popup" }).length)).toBe(0);
+    await expect.poll(async () => (await cdp.send("Target.getTargets")).targetInfos
+      .some(info => info.targetId === target!.targetId)).toBe(false);
     await cdp.detach();
-    await page.reload();
-    await expect(page.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    await readerPage.close();
+    await page.close();
+
+    // OS dialogs themselves cannot be driven by Playwright. Interception is safe
+    // here because the chooser now belongs to a normal tab, after popup destruction.
+    const [cancelled] = await Promise.all([
+      destination.waitForEvent("filechooser"),
+      destination.getByRole("button", { name: "Import book", exact: true }).click(),
+    ]);
+    await cancelled.setFiles([]);
+    await expect(destination.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
+    await expect(destination.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toHaveCount(0);
+    const [files] = await Promise.all([
+      destination.waitForEvent("filechooser"),
+      destination.getByRole("button", { name: "Import book", exact: true }).click(),
+    ]);
+    expect(files.isMultiple()).toBe(true);
+    await files.setFiles([importedBook, secondImportedBook]);
+    for (const title of ["Ambra Long Content Test Fixture", "Ambra Two-Chapter Spread Test Fixture"]) {
+      await expect(destination.getByRole("button", { name: `Read now: ${title}`, exact: true })).toBeVisible();
+    }
+    await destination.reload();
+    await expect(destination.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    await expect(destination.getByRole("button", { name: "Open Ambra Two-Chapter Spread Test Fixture", exact: true })).toBeVisible();
+    expect(destinationChooserCount).toBe(2);
+
+    const [openedReader] = await Promise.all([
+      context.waitForEvent("page"),
+      destination.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }).click(),
+    ]);
+    await expect(openedReader.getByRole("main").locator("iframe").first()).toBeVisible();
+    await expect(openedReader.getByRole("progressbar")).toHaveCount(0);
+  } finally { await context.close(); }
+});
+
+test("the in-reader compact Library still chooses files directly without a handoff tab", async () => {
+  const { context, libraryPage, readerPage: page } = await launchReader(initialBook);
+  try {
+    const originalUrl = page.url();
+    const originalPageCount = context.pages().length;
+    await page.getByRole("button", { name: "Library", exact: true }).click();
+    const panel = page.locator("[data-ambra-library-panel]");
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      panel.getByRole("button", { name: "Import book", exact: true }).click(),
+    ]);
+    await chooser.setFiles(importedBook);
+    await expect(panel.getByRole("button", { name: "Read now: Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    expect(page.url()).toBe(originalUrl);
+    expect(context.pages()).toHaveLength(originalPageCount);
+    await libraryPage.reload();
+    await expect(libraryPage.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
   } finally { await context.close(); }
 });
