@@ -74,6 +74,14 @@ Close the old popup explicitly only after successful window creation, and use
 before closing it. Assert the original CDP target is gone rather than assuming
 that creating another window proves the ephemeral document was destroyed.
 
+The [pre-2.0.0 accessibility review](../../docs/accessibility-review-2026-10-02.md)
+records engineering coverage and manual limits. The
+[screen-reader walkthrough](../../docs/screen-reader-walkthrough-2.0.0.md)
+is the owner's native-speech test script. `footnote-noteref.spec.ts` verifies
+reference focus return and keyboard-scrollable viewport-bounded long notes;
+`note-save-lifecycle.spec.ts` verifies contextual note exits return to the
+reading origin or surviving marker, with reading fallback after deletion.
+
 For manual review, open the full Library and expand **Local prototype controls**
 below the collection. **Simulate eligible reader** opens the modal.
 **Yes, I love it!** leads to the store-review link; **Not really** leads to email

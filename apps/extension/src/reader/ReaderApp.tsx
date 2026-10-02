@@ -373,8 +373,8 @@ const ReaderAppInner: FC = () => {
         if (!hasReferencePanel && help.view === undefined) hideChrome();
       }
       const dismissedPopup = snapshot?.activeHighlight !== undefined || snapshot?.footnotePopup !== undefined;
-      if (snapshot?.activeHighlight) dismissActiveHighlight();
-      if (snapshot?.footnotePopup) dismissFootnotePopup();
+      if (snapshot?.activeHighlight) dismissActiveHighlight(false);
+      if (snapshot?.footnotePopup) dismissFootnotePopup(false);
       return dismissedChrome || dismissedMenu || dismissedPopup || bookmarkChooserOpen;
     });
     return () => setContentUiDismissal(undefined);
@@ -936,7 +936,11 @@ const ReaderAppInner: FC = () => {
               state={snapshot.activeHighlight}
               onSetNote={setHighlightNote}
               onSetStyle={(id, style) => void setHighlightStyle(id, style)}
-              onRemove={(id) => void removeHighlight(id)}
+              onRemove={(id) => {
+                dismissActiveHighlight(false);
+                restoreContentFocus();
+                void removeHighlight(id);
+              }}
               onDismiss={dismissActiveHighlight}
             />
 

@@ -73,6 +73,11 @@ For a wide table in a reflowable book, choose **Expand table** at its upper edge
 
 Supported footnote and endnote references open a popup beside the passage. Press **Escape** to close it. Other links may navigate normally, depending on the book. For your own notes, see [Annotations and Bookmarks](annotations-and-bookmarks.md).
 
+Closing a supported footnote popup returns keyboard focus to its reference.
+Long notes wrap and scroll inside the popup, including at narrow widths.
+Closing your own contextual note editor returns to its surviving note marker
+or the reading position; deleting that marker returns to reading.
+
 For books with recorded narration, see [Read-along books](read-along-books.md).
 
 [Back to the Ambra guide](README.md)

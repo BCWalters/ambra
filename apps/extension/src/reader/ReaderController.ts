@@ -315,9 +315,12 @@ export class ReaderController {
    * set at a time, but they're separate fields since their popup UIs
    * differ (color swatches vs. note/delete). */
   private activeHighlight: ActiveHighlightState | undefined;
+  private highlightPopupFocusTarget: HTMLElement | undefined;
   /** An `epub:type="noteref"` link's target content, shown inline
    * instead of navigating — see `setUpContentInteraction`. */
   private footnotePopup: FootnotePopupState | undefined;
+  private footnotePopupFocusTarget: HTMLElement | undefined;
+  private popupFocusRevision = 0;
   private readonly highlightInteraction: HighlightInteraction;
   private readonly pageTurnAnimator = new PageTurnAnimator({
     rtl: () => this.pkg.pageProgressionDirection === "rtl",
@@ -468,6 +471,10 @@ export class ReaderController {
       announce: (translationKey) => this.announce(this.translate(translationKey)),
       getActiveHighlight: () => this.activeHighlight,
       setActiveHighlight: (state) => {
+        if (state?.highlight.id !== this.activeHighlight?.highlight.id) {
+          this.popupFocusRevision++;
+          this.highlightPopupFocusTarget = state ? this.contentPopupFocusTarget() : undefined;
+        }
         this.activeHighlight = state;
         this.highlightInteraction.applyActiveHighlightOverlay();
       },
@@ -487,6 +494,10 @@ export class ReaderController {
         this.selectionToolbar = state;
       },
       setActiveHighlight: (state) => {
+        if (state?.highlight.id !== this.activeHighlight?.highlight.id) {
+          this.popupFocusRevision++;
+          this.highlightPopupFocusTarget = state ? this.contentPopupFocusTarget() : undefined;
+        }
         this.activeHighlight = state;
         this.highlightInteraction.applyActiveHighlightOverlay();
       },
@@ -1941,6 +1952,8 @@ export class ReaderController {
         if (anchor && targetSpineIndex === own.spineIndex && fragment && hasEpubType(anchor, "noteref")) {
           const content = iframeDocument.getElementById(fragment)?.textContent?.trim();
           if (content) {
+            this.popupFocusRevision++;
+            this.footnotePopupFocusTarget = anchor;
             const iframeEl = iframeDocument.defaultView?.frameElement;
             const iframeRect = iframeEl?.getBoundingClientRect();
             this.footnotePopup = {
@@ -2692,13 +2705,44 @@ export class ReaderController {
     this.highlightInteraction.dismissSelectionToolbar();
   }
 
-  public dismissActiveHighlight(): void {
-    this.highlightInteraction.dismissActiveHighlight();
+  private contentPopupFocusTarget(): HTMLElement | undefined {
+    const active = (this.containerEl?.ownerDocument ?? document).activeElement;
+    const frame = this.allContentDocuments().find(doc => doc.defaultView?.frameElement === active);
+    const target = frame?.activeElement ?? active;
+    if (!target || target === target.ownerDocument.body || target === target.ownerDocument.documentElement) return undefined;
+    const view = target.ownerDocument.defaultView;
+    return view && target instanceof view.HTMLElement ? target : undefined;
   }
 
-  public dismissFootnotePopup(): void {
+  private restorePopupFocus(target: HTMLElement | undefined): void {
+    const revision = this.popupFocusRevision;
+    queueMicrotask(() => {
+      if (revision !== this.popupFocusRevision || this.operations.disposed || this.activeHighlight || this.footnotePopup) return;
+      const frame = target?.ownerDocument.defaultView?.frameElement;
+      if (target?.isConnected && (!frame || frame.isConnected)) {
+        target.focus({ preventScroll: true });
+        if (target.ownerDocument.activeElement === target) return;
+      }
+      this.restoreContentFocus();
+    });
+  }
+
+  public dismissActiveHighlight(restoreFocus = true): void {
+    if (!this.activeHighlight) return;
+    const target = this.highlightPopupFocusTarget;
+    this.highlightPopupFocusTarget = undefined;
+    this.highlightInteraction.dismissActiveHighlight();
+    if (restoreFocus) this.restorePopupFocus(target);
+  }
+
+  public dismissFootnotePopup(restoreFocus = true): void {
+    if (!this.footnotePopup) return;
+    this.popupFocusRevision++;
+    const target = this.footnotePopupFocusTarget;
+    this.footnotePopupFocusTarget = undefined;
     this.footnotePopup = undefined;
     this.notify();
+    if (restoreFocus) this.restorePopupFocus(target);
   }
 
   public openHighlightPopup(id: string): void {
@@ -2845,6 +2889,9 @@ export class ReaderController {
     // highlights at all (the document itself doesn't change), which would
     // otherwise leave a stale glow on the outgoing page's old position.
     this.activeHighlight = undefined;
+    this.highlightPopupFocusTarget = undefined;
+    this.footnotePopupFocusTarget = undefined;
+    this.popupFocusRevision++;
     this.highlightInteraction.applyActiveHighlightOverlay();
     this.footnotePopup = undefined;
     let moved: boolean;
@@ -4060,6 +4107,9 @@ export class ReaderController {
         // A committed drag turn also invalidates any highlight popup tied
         // to the outgoing page.
         this.activeHighlight = undefined;
+        this.highlightPopupFocusTarget = undefined;
+        this.footnotePopupFocusTarget = undefined;
+        this.popupFocusRevision++;
         this.footnotePopup = undefined;
         oldHost.dispose();
         newEl.style.position = "";
@@ -4849,6 +4899,9 @@ export class ReaderController {
       this.pendingSelectionRange = undefined;
       this.selectionToolbar = undefined;
       this.activeHighlight = undefined;
+      this.highlightPopupFocusTarget = undefined;
+      this.footnotePopupFocusTarget = undefined;
+      this.popupFocusRevision++;
       this.footnotePopup = undefined;
 
       // Swap hosts by disposing/removing wrappers in place and revealing
