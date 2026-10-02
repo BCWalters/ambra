@@ -45,8 +45,7 @@ async function nativeFileDrop(page: Page, files: string[]): Promise<void> {
   }
 }
 
-test.describe("local prototype: Library file drop", () => {
-  test.skip(process.env.VITE_AMBRA_LOCAL_FEATURES !== "1", "Requires a local-feature extension build.");
+test.describe("Library file drop", () => {
 
   test("imports an ordered multi-file drop through the standard pipeline, including invalid-file feedback", async () => {
     const { context, libraryPage: page, readerPage } = await launchReader(twoChapter);

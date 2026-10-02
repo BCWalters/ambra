@@ -3,7 +3,6 @@ import { Button } from "@fluentui/react-components";
 import { DocumentAddRegular } from "@fluentui/react-icons";
 import { useTranslation } from "../i18n/LocaleContext.js";
 import { closeLibraryImportWindow, finishLibraryImport, libraryFullTabUrl, readerTabUrl } from "../navigation.js";
-import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { useChromeTheme } from "../reader/ChromeThemeContext.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
@@ -24,7 +23,7 @@ export const LibraryImportWindow: FC<{ library: UseLibraryResult }> = ({ library
   const busy = library.importActivities.some(activity => activity.phase !== "complete");
   const canChoose = library.canImport && !busy && !leaving;
   const { dropTargetRef, isDraggingFiles } = useLibraryFileDrop({
-    enabled: LOCAL_FEATURE_PROTOTYPES, canImport: canChoose, busy: busy || leaving, importFiles: library.importFiles,
+    enabled: true, canImport: canChoose, busy: busy || leaving, importFiles: library.importFiles,
   });
   useEffect(() => { document.title = `${t("library.importEpub")} - Ambra`; }, [t]);
   useEffect(() => {
@@ -58,7 +57,7 @@ export const LibraryImportWindow: FC<{ library: UseLibraryResult }> = ({ library
         style={{ maxWidth: "100%", whiteSpace: "normal" }} onClick={() => input.current?.click()}>
         {t("library.chooseEpubFiles")}
       </Button>
-      {LOCAL_FEATURE_PROTOTYPES && <p style={{ margin: "12px 0 0", color: "var(--colorNeutralForeground2)" }}>{t("library.importWindowDrop")}</p>}
+      <p style={{ margin: "12px 0 0", color: "var(--colorNeutralForeground2)" }}>{t("library.importWindowDrop")}</p>
       <input ref={input} type="file" accept=".epub" multiple disabled={!canChoose} style={{ display: "none" }}
         onChange={event => {
           const files = Array.from(event.currentTarget.files ?? []);

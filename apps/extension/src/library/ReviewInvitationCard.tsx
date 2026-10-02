@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FC } from "react";
 import { Button } from "@fluentui/react-components";
 import { CenteredDialog } from "../components/CenteredDialog.js";
 import { useTranslation } from "../i18n/LocaleContext.js";
+import { LOCAL_SIMULATION_CONTROLS } from "../prototypes/localFeatures.js";
 import { LibraryDatabase } from "./LibraryDatabase.js";
 import { answerReviewInvitation, isReviewInvitationEligible, parseReviewInvitation, REVIEW_REMINDER_DELAY,
   type ReviewInvitationResponse, type ReviewInvitationState } from "./ReviewInvitation.js";
@@ -192,7 +193,7 @@ export const ReviewInvitationCard: FC<{
         </div>
       </CenteredDialog>
       {!visible && errorMessage}
-      <details lang="en" data-prototype-controls="" style={{ marginTop: 16, fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
+      {LOCAL_SIMULATION_CONTROLS && <details lang="en" data-prototype-controls="" style={{ marginTop: 16, fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
         <summary>Local prototype controls</summary>
         <p>Review invitation: three reading days and at least halfway through a book. Yes or Not really stops reminders;
           Not sure yet, Escape, or closing postpones for three days. Full Library only.</p>
@@ -210,7 +211,7 @@ export const ReviewInvitationCard: FC<{
         <p role="status">Mode: {simulation ? "simulated" : "real"}. Real reading days: {state?.days.length ?? 0}/3.
           Halfway reached: {state?.reachedHalf ? "yes" : "no"}. Real reminders stopped: {state?.presented ? "yes" : "no"}.
           {simulation && ` Simulated reminders stopped: ${simulation.state.presented ? "yes" : "no"}.`}</p>
-      </details>
+      </details>}
     </div>
   );
 };

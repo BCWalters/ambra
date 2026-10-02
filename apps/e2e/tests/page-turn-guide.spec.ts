@@ -4,7 +4,6 @@ import { launchReader, clickReadingPage } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import type { ReaderSnapshot } from "../../extension/src/reader/ReaderTypes.js";
 
-test.skip(process.env.VITE_AMBRA_LOCAL_FEATURES !== "1", "Local feature prototype only");
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 const rtlBook = fileURLToPath(new URL("../fixtures/fxl-spread-rtl.epub", import.meta.url));
 const welcome = (page: Page) => page.getByRole("dialog", { name: "Make yourself at home", exact: true });

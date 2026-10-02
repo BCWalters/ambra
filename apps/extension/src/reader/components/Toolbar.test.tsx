@@ -117,6 +117,12 @@ describe("Toolbar startup positioning (#175)", () => {
     const button = container.querySelector(`button[aria-label="${label}"]`)!;
     expect(button.textContent).toBe(t("toolbar.bookmarksAndHighlights"));
     expect(button.getAttribute("aria-pressed")).toBe(String(open));
+    const icon = button.querySelector("svg")!;
+    expect(icon.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(icon.getAttribute("aria-hidden")).toBe("true");
+    expect(icon.getAttribute("focusable")).toBe("false");
+    expect(icon.getAttribute("stroke")).toBe("currentColor");
+    expect(icon.querySelector("path")?.getAttribute("d")).toBe("M5 3h14v18H5Zm4 5h6m-6 4h6m-6 4h4");
   });
 
   it("adds the resolved resume chapter without a slide and retains narrow-width ellipsis", () => {

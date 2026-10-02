@@ -10,11 +10,8 @@ import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.j
 import { generatedCoverColor } from "./LibraryBookCard.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
-const review = vi.hoisted(() => ({ enabled: false, blocked: undefined as boolean | undefined }));
+const review = vi.hoisted(() => ({ blocked: undefined as boolean | undefined }));
 vi.mock("./useLibrary.js", () => ({ useLibrary: vi.fn() }));
-vi.mock("../prototypes/localFeatures.js", () => ({
-  get LOCAL_FEATURE_PROTOTYPES() { return review.enabled; },
-}));
 vi.mock("./ReviewInvitationCard.js", () => ({
   ReviewInvitationCard: ({ blocked }: { blocked: boolean }) => { review.blocked = blocked; return null; },
 }));
@@ -40,7 +37,6 @@ describe("Library localization and action ownership", () => {
       return animation;
     });
     language.locale = "en";
-    review.enabled = false;
     review.blocked = undefined;
     state = {
       books: [], isLoading: false, canImport: true, error: undefined,
@@ -171,7 +167,6 @@ describe("Library localization and action ownership", () => {
   });
 
   it("focuses the dedicated importer after loading and keeps unrelated Library surfaces out", async () => {
-    review.enabled = true;
     window.history.replaceState(null, "", "/?view=import&sourceWindow=7");
     state.canImport = false;
     state.isLoading = true;
@@ -221,7 +216,7 @@ describe("Library localization and action ownership", () => {
     expect(button(t("library.chooseEpubFiles"))).toBeDefined();
     expect(button(t("library.openLibrary"))).toBeDefined();
     expect(button(t("highlight.close"))).toBeDefined();
-    expect(container.textContent).not.toContain(t("library.importWindowDrop"));
+    expect(container.textContent).toContain(t("library.importWindowDrop"));
   });
 
   it("leads settings with interface controls and initially collapsed shared reading preferences", async () => {

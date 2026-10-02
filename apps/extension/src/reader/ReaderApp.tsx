@@ -41,7 +41,6 @@ import { captureFocusReturn, useHelpDialogs } from "../components/useHelpDialogs
 import { ReadingWelcome } from "./components/ReadingWelcome.js";
 import { useReadingWelcome } from "./useReadingWelcome.js";
 import { PageTurnGuide } from "./components/PageTurnGuide.js";
-import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { closeReferencePanel, openReferencePanel, referencePanelLayout, referencePanelSide, wantsReferencePanelPin } from "./referencePanels.js";
 import type { ReferencePanel, ReferencePanels } from "./referencePanels.js";
 
@@ -750,7 +749,7 @@ const ReaderAppInner: FC = () => {
               }}
             />
             <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
-            {LOCAL_FEATURE_PROTOTYPES && pageTurnGuideRun > 0 && pageTurnGuideController && (
+            {pageTurnGuideRun > 0 && pageTurnGuideController && (
               <PageTurnGuide key={pageTurnGuideRun} controller={pageTurnGuideController}
                 hidden={help.view !== undefined || !!snapshot.isLoading || !!snapshot.error ||
                   isInspectorOpen || goToMode !== undefined || !!snapshot.imageViewer || !!snapshot.tableViewer ||
@@ -850,7 +849,7 @@ const ReaderAppInner: FC = () => {
               scrolling={!snapshot.isFixedLayout && snapshot.viewMode === "scroll"}
               rtl={snapshot.pageProgressionDirection === "rtl"}
               onDismiss={() => {
-                guidePending.current = LOCAL_FEATURE_PROTOTYPES;
+                guidePending.current = true;
                 void welcome.acknowledge();
                 help.closeToContent();
               }}

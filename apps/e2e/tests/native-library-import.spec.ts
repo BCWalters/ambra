@@ -55,7 +55,7 @@ test("native popup hands Import book to a focused import window that survives fo
     };
     await send("Page.enable");
     await send("Page.setInterceptFileChooserDialog", { enabled: true });
-    if (process.env.VITE_AMBRA_LOCAL_FEATURES === "1") {
+    {
       const point = await page.evaluate(() => {
         const popup = chrome.extension.getViews({ type: "popup" })[0]!;
         const bounds = popup.document.querySelector("main")!.getBoundingClientRect();
@@ -93,7 +93,7 @@ test("native popup hands Import book to a focused import window that survives fo
     await expect(destination.locator("[data-library-collection]")).toHaveCount(0);
     await expect(destination.locator("[data-review-invitation]")).toHaveCount(0);
     await expect(destination.getByText("You can also drop EPUB files here.", { exact: true }))
-      .toHaveCount(process.env.VITE_AMBRA_LOCAL_FEATURES === "1" ? 1 : 0);
+      .toHaveCount(1);
     const importerWindow = await destination.evaluate(async () => {
       const win = await chrome.windows.getCurrent();
       return { id: win.id, type: win.type };
@@ -180,7 +180,6 @@ test("the in-reader compact Library still chooses files directly without a hando
 });
 
 test("focused importer accepts a drop and returns to the original Library window", async () => {
-  test.skip(process.env.VITE_AMBRA_LOCAL_FEATURES !== "1", "Drop support requires a local-feature build");
   const { context, libraryPage: page, extensionId } = await launchReader(initialBook);
   try {
     const sourceWindow = await page.evaluate(async () => (await chrome.windows.getCurrent()).id);

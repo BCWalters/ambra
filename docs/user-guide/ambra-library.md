@@ -42,7 +42,7 @@ Ambra toolbar popup, this opens a small **Import book** window. Select
 **Choose EPUB files...** to pick books from your device. This window stays open
 when the native file chooser takes focus, unlike Chrome's toolbar popup.
 Keep it open until importing finishes; canceling the chooser leaves it ready
-to try again. The local drag-and-drop preview also accepts EPUBs in this window.
+to try again. You can also drop EPUBs in this window.
 
 Import progress, errors, and duplicate feedback appear in the import window.
 **Read now** opens the selected book in your original browser window;

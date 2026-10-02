@@ -38,20 +38,24 @@ every-iteration signal.
 
 ## Running it
 
-### Local feature prototypes
+### Approved features and local simulation controls
 
 Build an isolated extension with `VITE_AMBRA_LOCAL_FEATURES=1 pnpm --filter
 @ambra/extension build --outDir /absolute/path/to/local-prototype`, then set
 `VITE_AMBRA_LOCAL_FEATURES=1`, `AMBRA_E2E_HEADLESS=1`, and
 `AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/local-prototype` when running
-`review-invitation.spec.ts` and `library-file-drop.spec.ts`.
+the simulation cases in `review-invitation.spec.ts` and
+`library-review-keyboard.spec.ts`. The environment variable now controls only
+developer simulation tools, not user-facing features.
 
 `review-invitation.spec.ts` checks actual saved-position eligibility, modal
 focus and localization, permanent yes/no responses, durable three-day reminders,
 cross-tab claims, save failures, and simulation without altering books, progress,
 or preferences. Run it against a normal build without
-the feature environment variable as well to assert the release UI has no
-invitation or simulation controls.
+the feature environment variable as well to verify real eligibility and
+cooldown behavior while confirming simulation controls are absent. Drag-and-drop,
+the first-reading guide, review invitations, and the dedicated importer are
+enabled in every build; their browser regressions run against ordinary packages.
 
 `native-library-import.spec.ts` attaches to Chrome's actual action-popup target
 and uses a trusted mouse click to verify handoff to a dedicated, persistent
@@ -86,6 +90,15 @@ libraries, retained sorting and book identity, clear/Escape focus, live French
 labels, import/removal updates, and the distinction between no matches and an
 empty library. It also verifies that search does not request remote book sites.
 The Library CI step runs this suite against the packaged extension.
+
+`library-lifecycle.spec.ts` also saves real reader positions and returns to the
+same full Library document twice, checking card percentages, Continue reading,
+and resumption. Mounted Libraries refresh on visible tab/window activation
+(visibility changes or window focus), not on every reader navigation. The
+refresh uses the existing session's latest-read ownership and cached cover URLs;
+failed reads retain the displayed collection and surface a retryable error.
+Embedded Libraries use the same activation lifecycle without replacing local
+import activity.
 
 `library-compact.spec.ts` checks three-column cover geometry at 320/360px with
 native scrollbars, a single-row header in all nine languages, persistent

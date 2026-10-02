@@ -8,7 +8,6 @@ import { normalizeProgressMarkerStyle } from "../reader/ProgressMarkerStyle.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { createLibraryCover } from "./LibraryCover.js";
-import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { answerReviewInvitation, isReviewInvitationEligible, parseReviewInvitation, recordReviewReading, REVIEW_INVITATION_KEY,
   type ReviewInvitationResponse, type ReviewInvitationState } from "./ReviewInvitation.js";
 
@@ -534,28 +533,24 @@ export class LibraryDatabase {
    * fraction yet (see its doc comment on `ReadingProgress`). */
   public async saveProgress(bookId: string, cfi: string, fractionComplete: number | undefined): Promise<void> {
     const record: ReadingProgress = { bookId, cfi, updatedAt: Date.now(), fractionComplete };
-    if (LOCAL_FEATURE_PROTOTYPES) {
-      await this.transaction([PROGRESS_STORE, PREFERENCES_STORE], "readwrite", "Failed to save reading progress.", tx => {
-        const progress = tx.objectStore(PROGRESS_STORE);
-        const previous = progress.get(bookId);
-        previous.onsuccess = () => {
-          const old = previous.result as ReadingProgress | undefined;
-          progress.put(record);
-          if (!old || old.cfi === cfi) return;
-          const preferences = tx.objectStore(PREFERENCES_STORE);
-          const request = preferences.get(REVIEW_INVITATION_KEY);
-          request.onsuccess = () => {
-            const stored = request.result as PreferenceRecord | undefined;
-            const state = parseReviewInvitation(stored?.value);
-            if (!state.presented) preferences.put({ key: REVIEW_INVITATION_KEY,
-              value: recordReviewReading(state, record.updatedAt, fractionComplete) });
-          };
+    await this.transaction([PROGRESS_STORE, PREFERENCES_STORE], "readwrite", "Failed to save reading progress.", tx => {
+      const progress = tx.objectStore(PROGRESS_STORE);
+      const previous = progress.get(bookId);
+      previous.onsuccess = () => {
+        const old = previous.result as ReadingProgress | undefined;
+        progress.put(record);
+        if (!old || old.cfi === cfi) return;
+        const preferences = tx.objectStore(PREFERENCES_STORE);
+        const request = preferences.get(REVIEW_INVITATION_KEY);
+        request.onsuccess = () => {
+          const stored = request.result as PreferenceRecord | undefined;
+          const state = parseReviewInvitation(stored?.value);
+          if (!state.presented) preferences.put({ key: REVIEW_INVITATION_KEY,
+            value: recordReviewReading(state, record.updatedAt, fractionComplete) });
         };
-      });
-      this.preferencesChanged();
-      return;
-    }
-    await this.put(PROGRESS_STORE, record);
+      };
+    });
+    this.preferencesChanged();
   }
 
   public async getReviewInvitation(): Promise<ReviewInvitationState> {
@@ -564,7 +559,6 @@ export class LibraryDatabase {
   }
 
   public async claimReviewInvitation(): Promise<boolean> {
-    if (!LOCAL_FEATURE_PROTOTYPES) throw new Error("Review invitation prototypes are disabled.");
     const claimed = await this.transaction<boolean>(
       PREFERENCES_STORE, "readwrite", "Failed to save review invitation preferences.", (tx, setResult) => {
         const preferences = tx.objectStore(PREFERENCES_STORE);
@@ -583,7 +577,6 @@ export class LibraryDatabase {
   }
 
   public async respondToReviewInvitation(answer: ReviewInvitationResponse): Promise<void> {
-    if (!LOCAL_FEATURE_PROTOTYPES) throw new Error("Review invitation prototypes are disabled.");
     await this.transaction(
       PREFERENCES_STORE, "readwrite", "Failed to save review invitation response.", tx => {
         const preferences = tx.objectStore(PREFERENCES_STORE);

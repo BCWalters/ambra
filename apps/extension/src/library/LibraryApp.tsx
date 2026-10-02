@@ -28,7 +28,6 @@ import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryBytes } from "./LibraryFormatting.js";
-import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { ReviewInvitationCard } from "./ReviewInvitationCard.js";
 import { useLibraryFileDrop } from "./useLibraryFileDrop.js";
 import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
@@ -96,7 +95,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const toolbarStyles = useChromeToolbarStyles();
   const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
   const { dropTargetRef, isDraggingFiles } = useLibraryFileDrop({
-    enabled: LOCAL_FEATURE_PROTOTYPES && active, canImport, busy: importInProgress, importFiles,
+    enabled: active, canImport, busy: importInProgress, importFiles,
   });
   const isBookOpenDisabled = (bookId: string): boolean =>
     isEmbedded && importInProgress && bookId !== embedded.currentBookId;
@@ -278,7 +277,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             </div>
           </>
         )}
-        {LOCAL_FEATURE_PROTOTYPES && isFullTab && <ReviewInvitationCard
+        {isFullTab && <ReviewInvitationCard
           onOpenChange={setReviewOpen}
           onDismiss={() => toolbarImportRef.current?.focus()}
           blocked={isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||

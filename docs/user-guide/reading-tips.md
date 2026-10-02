@@ -10,10 +10,9 @@ If reader controls are showing, the first page-turning click hides them; click a
 
 Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Space** for the previous page. See the [keyboard shortcuts](README.md#keyboard-shortcuts) for more options.
 
-### Local preview: first-reading margin hints
+### First-reading margin hints
 
-In local builds explicitly enabled with `VITE_AMBRA_LOCAL_FEATURES=1`, closing
-the first-reading welcome shades the full outer margins. The arrow icons pulse
+Closing the first-reading welcome shades the full outer margins. The arrow icons pulse
 gently for three seconds, then remain still. A small tip points toward the next-page
 margin: **Click or tap in the margins to change pages.** Its close button dismisses
 the guide without turning a page. The tip does not take focus when it appears;
@@ -28,8 +27,7 @@ The first successful page turn or jump fades the hints out over a quarter-second
 as does closing the tip. A boundary click
 that cannot turn a page does not. To replay them, open **Help & About → Reading
 tips** and close the welcome. Reloading or opening another book does not replay
-an acknowledged welcome. Scrolling mode has no page-margin hints. This local
-preview is off in ordinary release builds.
+an acknowledged welcome. Scrolling mode has no page-margin hints.
 
 ## Choose pagination or scrolling
 

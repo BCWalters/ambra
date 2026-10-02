@@ -17,12 +17,16 @@ existing feature.
 
 ## Reviewed features: Library import and review invitation
 
-The owner accepted the local drag-and-drop, page-turn guidance, review-dialog
-presentation, and focused import-window experience. The first three remain
-behind `VITE_AMBRA_LOCAL_FEATURES=1` pending release rollout; merging their
-implementation does not enable them in store packages or expose simulation
-controls there. CI verifies both the ordinary package and an isolated flagged
-build. The native file-selection handoff below also applies to ordinary builds.
+The Annotations command uses the approved prototype's outlined note-page icon
+in both open and closed states. The icon is decorative; the localized command
+name and pressed state carry its accessible meaning.
+
+The owner approved drag-and-drop, page-turn guidance, the review invitation,
+and the focused import-window experience for every build ahead of 2.0.0.
+Only developer simulation controls require `VITE_AMBRA_LOCAL_FEATURES=1`;
+ordinary packages include all user-facing features without those controls.
+CI verifies real behavior in ordinary packages and simulations in an isolated
+flagged build. No version bump or store publication is implied by this rollout.
 
 - **Import book** in Chrome's action popup opens a focused 480×560 import window,
   not the full Library. Lead with a prominent **Choose EPUB files...** action,
@@ -44,7 +48,7 @@ build. The native file-selection handoff below also applies to ordinary builds.
   import/duplicate/error pipeline. Keep embedded highlighting inside its panel
   and detach drop handlers while that panel is closed.
 - Invite feedback in the full Library, never over the reader. The owner's
-  revised local prototype uses a modal asking **Are you loving Ambra?**,
+  approved interaction uses a modal asking **Are you loving Ambra?**,
   deferred during imports, searches, or other Library tasks.
   The focused import window has no invitation.
   **Yes, I love it!**
@@ -60,16 +64,16 @@ build. The native file-selection handoff below also applies to ordinary builds.
   emphasizes **Write a review**.
 - Selecting either Yes or Not really permanently stops reminders, whether or
   not the user follows the subsequent link. This sentiment-based review routing
-  remains a pre-publication decision: the Chrome Web Store's
+  was explicitly approved by the owner. The Chrome Web Store's
   [spam-and-abuse policy](https://developer.chrome.com/docs/webstore/program-policies/spam-and-abuse)
   prohibits manipulating ratings. It does not explicitly discuss this exact
-  flow; this local prototype is not a claim of policy approval.
-- Proposed eligibility is three distinct local reading days plus reaching
+  flow; owner approval is not a claim of policy approval.
+- Eligibility is three distinct local reading days plus reaching
   halfway through a book. A day counts only when a saved reading position
   changes, not on import or simply reopening a book. This is a heuristic,
   not evidence that every preceding page was read.
 - Keep only three date strings, a halfway flag, a permanent stop flag, and the
-  next permitted prompt timestamp in local prototype preferences. Neither the
+  next permitted prompt timestamp in local preferences. Neither the
   yes/no sentiment nor book identities are stored or transmitted. Reserve the
   three-day reminder window atomically before opening, so another tab or an
   abandoned dialog does not immediately repeat it. Terminal responses win over
@@ -476,9 +480,9 @@ panel coordinator. Do not remove or force them into a generic panel incidentally
 Existing image/table viewers, footnotes, selection controls, Go to, welcome,
 errors, importing and Save as need a parity review, not speculative redesign.
 
-### Local first-reading margin-guide prototype
+### First-reading margin guide
 
-The `VITE_AMBRA_LOCAL_FEATURES=1` preview extends the existing reading welcome,
+The approved guide extends the existing reading welcome in every build,
 not the first-run persistence model. After the welcome's exit finishes, shade
 the full height and width of each outer margin with a persistent low-opacity
 accent wash. Pulse the arrow icons gently for three seconds, then leave static

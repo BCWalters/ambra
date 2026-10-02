@@ -8,7 +8,7 @@ import { REVIEW_REMINDER_DELAY } from "../../extension/src/library/ReviewInvitat
 import type { LibraryDatabase } from "../../extension/src/library/LibraryDatabase.js";
 
 const book = fileURLToPath(new URL("../fixtures/reading-entry.epub", import.meta.url));
-const enabled = process.env.VITE_AMBRA_LOCAL_FEATURES === "1";
+const simulationEnabled = process.env.VITE_AMBRA_LOCAL_FEATURES === "1";
 
 async function snapshot(page: Page) {
   return page.evaluate(async () => {
@@ -34,7 +34,7 @@ test("review modal simulation covers every response, cooldown, focus and release
     await readerPage.close();
     await page.goto(`${page.url()}?view=tab`);
     await page.bringToFront();
-    if (!enabled) {
+    if (!simulationEnabled) {
       await expect(page.locator("[data-prototype-controls]")).toHaveCount(0);
       await expect(page.locator("[data-review-invitation]")).toHaveCount(0);
       return;
@@ -107,7 +107,7 @@ test("review modal simulation covers every response, cooldown, focus and release
 });
 
 test("review modal and both follow-ups fit all nine locales at narrow widths", async () => {
-  test.skip(!enabled, "Local feature prototype build required");
+  test.skip(!simulationEnabled, "Local simulation controls required");
   const { context, libraryPage: page, readerPage } = await launchReader(book);
   try {
     await readerPage.close();
@@ -171,7 +171,6 @@ async function qualify(readerPage: Page) {
 
 for (const response of ["yes", "no"] as const) {
   test(`real eligibility counts changed positions; ${response} stops prompts permanently across reloads and tabs`, async () => {
-    test.skip(!enabled, "Local feature prototype build required");
     const { context, libraryPage: page, readerPage } = await launchReader(book);
     try {
       const state = await qualify(readerPage);
@@ -208,11 +207,11 @@ for (const response of ["yes", "no"] as const) {
       await page.keyboard.press("Escape");
       await page.clock.setFixedTime(Date.now() + 365 * 24 * 60 * 60 * 1000);
       await page.reload();
-      await expect(page.locator("[data-prototype-controls]")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
       await expect(invitation).toHaveCount(0);
       const other = await context.newPage();
       await other.goto(page.url());
-      await expect(other.locator("[data-prototype-controls]")).toBeVisible();
+      await expect(other.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
       await expect(other.locator("[data-review-invitation]")).toHaveCount(0);
     } finally { await context.close(); }
   });
@@ -220,7 +219,6 @@ for (const response of ["yes", "no"] as const) {
 }
 
 test("atomic reservations and terminal responses survive concurrent database connections", async () => {
-    test.skip(!enabled, "Local feature prototype build required");
     const { context, readerPage } = await launchReader(book);
     try {
       await qualify(readerPage);
@@ -243,7 +241,6 @@ test("atomic reservations and terminal responses survive concurrent database con
   });
 
   test("new eligibility waits for another Library dialog to close", async () => {
-    test.skip(!enabled, "Local feature prototype build required");
     const { context, libraryPage: page, readerPage } = await launchReader(book);
     try {
       await page.goto(`${page.url()}?view=tab`);
@@ -261,7 +258,6 @@ test("atomic reservations and terminal responses survive concurrent database con
   });
 
   test("explicit popup import handoff defers the review without consuming eligibility", async () => {
-    test.skip(!enabled, "Local feature prototype build required");
     const { context, libraryPage: page, readerPage } = await launchReader(book);
     try {
       await qualify(readerPage);
@@ -281,7 +277,6 @@ test("atomic reservations and terminal responses survive concurrent database con
     } finally { await context.close(); }
   });
 test("real not-sure cooldown is durable, repeatable, and claimed only once across concurrent tabs", async () => {
-  test.skip(!enabled, "Local feature prototype build required");
   const { context, libraryPage: page, readerPage } = await launchReader(book);
   try {
     await qualify(readerPage);
@@ -296,7 +291,7 @@ test("real not-sure cooldown is durable, repeatable, and claimed only once acros
     await other.clock.setFixedTime(now);
     await other.goto(page.url());
     await other.bringToFront();
-    await expect(other.locator("[data-prototype-controls]")).toBeVisible();
+    await expect(other.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
     await expect(other.locator("[data-review-invitation]")).toHaveCount(0);
     await other.close();
     await page.bringToFront();
@@ -308,7 +303,7 @@ test("real not-sure cooldown is durable, repeatable, and claimed only once acros
     });
     await page.clock.setFixedTime(now + REVIEW_REMINDER_DELAY - 1);
     await page.reload();
-    await expect(page.locator("[data-prototype-controls]")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
     await expect(invitation).toHaveCount(0);
     await page.clock.setFixedTime(now + REVIEW_REMINDER_DELAY);
     await page.reload();
@@ -320,7 +315,7 @@ test("real not-sure cooldown is durable, repeatable, and claimed only once acros
       value: expect.objectContaining({ presented: false, nextPromptAt: now + 2 * REVIEW_REMINDER_DELAY }),
     });
     await page.reload();
-    await expect(page.locator("[data-prototype-controls]")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
     await expect(invitation).toHaveCount(0);
   } finally { await context.close(); }
 });
