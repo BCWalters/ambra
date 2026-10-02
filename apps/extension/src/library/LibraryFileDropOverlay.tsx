@@ -4,14 +4,14 @@ import { useTranslation } from "../i18n/LocaleContext.js";
 import { useChromeTheme } from "../reader/ChromeThemeContext.js";
 import { CHROME_SHADOW } from "../reader/chromeTheme.js";
 
-export const LibraryFileDropOverlay: FC<{ active: boolean }> = ({ active }) => {
+export const LibraryFileDropOverlay: FC<{ active: boolean; contained?: boolean }> = ({ active, contained = false }) => {
   const t = useTranslation();
   const palette = useChromeTheme();
   if (!active) return null;
   return (
     <div data-library-file-drop="" role="status" aria-live="polite" aria-atomic="true"
       style={{
-        position: "fixed", inset: 12, zIndex: 1000, pointerEvents: "none",
+        position: contained ? "absolute" : "fixed", inset: 12, zIndex: 1000, pointerEvents: "none",
         border: `2px dashed ${palette.accentForeground}`, borderRadius: 8,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>

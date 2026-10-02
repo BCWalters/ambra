@@ -52,6 +52,13 @@ altering books, progress, or preferences. Run it against a normal build without
 the feature environment variable as well to assert the release UI has no
 invitation or simulation controls.
 
+`native-library-import.spec.ts` attaches to Chrome's actual action-popup target
+and uses a trusted mouse click to verify chooser activation, selected-file
+import, and (in local-feature builds) native file dropping. It intercepts the
+chooser for automation; it does not certify the operating system's file-dialog
+or focus behavior. `library-file-drop.spec.ts` also covers the compact
+in-reader Library and ensures its drop highlight stays inside the panel.
+
 For manual review, open the full Library and expand **Local prototype controls**
 below the collection. **Simulate eligible reader** shows the invitation;
 **No thanks** dismisses it; **Reset simulated invitation** shows it again.

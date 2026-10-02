@@ -92,7 +92,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const toolbarStyles = useChromeToolbarStyles();
   const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
   const { dropTargetRef, isDraggingFiles } = useLibraryFileDrop({
-    enabled: LOCAL_FEATURE_PROTOTYPES && isFullTab, canImport, busy: importInProgress, importFiles,
+    enabled: LOCAL_FEATURE_PROTOTYPES && active, canImport, busy: importInProgress, importFiles,
   });
   const isBookOpenDisabled = (bookId: string): boolean =>
     isEmbedded && importInProgress && bookId !== embedded.currentBookId;
@@ -176,13 +176,14 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
 
   return (
     <div ref={dropTargetRef} style={{
+      position: isEmbedded ? "relative" : undefined,
       minWidth: 0, minHeight: isFullTab ? "100vh" : 0, height: isEmbedded ? "100%" : isFullTab ? undefined : "100dvh",
       overflow: isFullTab ? undefined : "auto",
       background: palette.backgroundSolid, color: "var(--colorNeutralForeground1)", display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
     }}>
-      <LibraryFileDropOverlay active={isDraggingFiles} />
+      <LibraryFileDropOverlay active={isDraggingFiles} contained={isEmbedded} />
       {!isEmbedded && <header className={toolbarStyles.root} role="toolbar" aria-label={t("library.toolbar")}
         style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
           flexShrink: 0, borderBottom: `1px solid ${CHROME_BORDER}` }}>

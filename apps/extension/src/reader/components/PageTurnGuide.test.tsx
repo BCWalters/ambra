@@ -43,12 +43,18 @@ afterEach(() => {
 it("settles once, survives resize, disappears on navigation and only replays on a new welcome run", () => {
   act(() => root.render(<PageTurnGuide controller={controller} hidden={false} />));
   expect(element.querySelector("[data-phase]")?.getAttribute("data-phase")).toBe("highlight");
-  act(() => vi.advanceTimersByTime(1600));
+  act(() => vi.advanceTimersByTime(2999));
+  expect(element.querySelector("[data-phase]")?.getAttribute("data-phase")).toBe("highlight");
+  act(() => vi.advanceTimersByTime(1));
   expect(element.querySelector("[data-phase]")?.getAttribute("data-phase")).toBe("indicators");
   geometry.leftWidth = 30;
   act(() => measure());
   expect(element.querySelector('[data-side="left"]')?.textContent).toBe("");
   expect(element.querySelector('[data-side="left"]')?.getAttribute("style")).toContain("width: 30px");
+  geometry.leftWidth = 8;
+  act(() => measure());
+  expect(element.querySelector('[data-side="left"] .page-turn-guide-wash')).not.toBeNull();
+  expect(element.querySelector('[data-side="left"] .page-turn-guide-indicator')).toBeNull();
   act(() => navigate());
   expect(element.childElementCount).toBe(0);
   act(() => root.render(<PageTurnGuide controller={controller} hidden={false} />));

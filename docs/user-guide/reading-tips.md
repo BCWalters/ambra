@@ -13,11 +13,12 @@ Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Spa
 ### Local preview: first-reading margin hints
 
 In local builds explicitly enabled with `VITE_AMBRA_LOCAL_FEATURES=1`, closing
-the first-reading welcome briefly highlights the outer margins, then leaves
-small page-turn hints. Click through the hints normally: they never intercept
+the first-reading welcome shades the full outer margins. The arrow icons pulse
+gently for three seconds, then remain still. Click through the hints normally: they never intercept
 input or cover the text/overlap area. Narrow margins use arrows instead of
-labels; margins too narrow for an arrow remain unmarked. Hints follow resizing
-and right-to-left reading order. Reduced-motion preferences skip the highlight.
+labels; margins too narrow for an arrow retain just the shading. Hints follow resizing
+and right-to-left reading order. Reduced-motion preferences skip the pulse;
+the margin shading remains.
 
 The first successful page turn or jump removes the hints. A boundary click
 that cannot turn a page does not. To replay them, open **Help & About → Reading

@@ -15,14 +15,13 @@
 
 .page-turn-guide-wash {
   position: absolute;
-  inset: 0 2px;
-  border-radius: 12px;
+  inset: 0;
   background: currentColor;
-  opacity: 0;
+  opacity: .08;
 }
 
-.page-turn-guide[data-phase="highlight"] .page-turn-guide-wash {
-  animation: page-turn-guide-glow 1600ms ease-in-out both;
+.page-turn-guide[data-phase="highlight"] .page-turn-guide-indicator svg {
+  animation: page-turn-guide-pulse 1500ms ease-in-out 2;
 }
 
 .page-turn-guide-indicator {
@@ -51,11 +50,19 @@
   clip-path: inset(50%);
 }
 
-@keyframes page-turn-guide-glow {
-  0%, 100% { opacity: 0; }
-  35%, 65% { opacity: .12; }
+@keyframes page-turn-guide-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .6; transform: scale(1.18); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .page-turn-guide-wash { animation: none !important; }
+  .page-turn-guide-indicator svg { animation: none !important; }
+}
+
+@media (forced-colors: active) {
+  .page-turn-guide-wash {
+    forced-color-adjust: none;
+    background: Highlight;
+    opacity: .12;
+  }
 }

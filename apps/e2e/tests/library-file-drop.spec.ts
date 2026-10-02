@@ -45,7 +45,7 @@ async function nativeFileDrop(page: Page, files: string[]): Promise<void> {
   }
 }
 
-test.describe("local prototype: full-tab Library file drop", () => {
+test.describe("local prototype: Library file drop", () => {
   test.skip(process.env.VITE_AMBRA_LOCAL_FEATURES !== "1", "Requires a local-feature extension build.");
 
   test("imports an ordered multi-file drop through the standard pipeline, including invalid-file feedback", async () => {
@@ -133,7 +133,7 @@ test.describe("local prototype: full-tab Library file drop", () => {
     }
   });
 
-  test("ignores plain links and popup drags, clears cancelled drags, and fits narrow/dark/forced-colors Library", async () => {
+  test("supports compact drops, ignores plain links, clears cancelled drags, and fits narrow/dark/forced-colors Library", async () => {
     const { context, libraryPage: page, readerPage } = await launchReader(twoChapter);
     try {
       await readerPage.close();
@@ -141,8 +141,11 @@ test.describe("local prototype: full-tab Library file drop", () => {
       const overlay = page.locator("[data-library-file-drop]");
       const popupFiles = await fileTransfer(page, [longContent]);
       try {
-        expect(await dispatch(page, "main", "dragenter", popupFiles)).toBe(false);
-        expect(await dispatch(page, "main", "dragover", popupFiles)).toBe(false);
+        expect(await dispatch(page, "main", "dragenter", popupFiles)).toBe(true);
+        expect(await dispatch(page, "main", "dragover", popupFiles)).toBe(true);
+        await expect(overlay).toBeVisible();
+        await nativeFileDrop(page, [longContent]);
+        await expect(page.getByRole("button", { name: `Open ${longContentTitle}`, exact: true })).toBeVisible();
         await expect(overlay).toHaveCount(0);
       } finally {
         await popupFiles.dispose();
@@ -185,5 +188,38 @@ test.describe("local prototype: full-tab Library file drop", () => {
     } finally {
       await context.close();
     }
+  });
+
+  test("in-reader compact Library imports drops without covering or navigating the book", async () => {
+    const { context, readerPage: page } = await launchReader(twoChapter, { viewport: { width: 1000, height: 800 } });
+    try {
+      await page.bringToFront();
+      await page.getByRole("button", { name: "Library", exact: true }).click();
+      const panel = page.locator("[data-ambra-library-panel]");
+      const collection = panel.locator("[data-library-collection]");
+      await expect(collection.locator("[data-book-open]")).toHaveCount(1);
+      const files = await fileTransfer(page, [longContent]);
+      try {
+        const selector = "[data-ambra-library-panel] [data-library-collection]";
+        await dispatch(page, selector, "dragenter", files);
+        const overlay = panel.locator("[data-library-file-drop]");
+        await expect(overlay).toBeVisible();
+        const bounds = (await panel.boundingBox())!;
+        const overlayBounds = (await overlay.boundingBox())!;
+        expect(overlayBounds.x).toBeGreaterThanOrEqual(bounds.x);
+        expect(overlayBounds.x + overlayBounds.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+        expect(overlayBounds.y).toBeGreaterThanOrEqual(bounds.y);
+        expect(overlayBounds.y + overlayBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+        const url = page.url();
+        await dispatch(page, selector, "drop", files);
+        await expect(collection.getByRole("button", { name: `Open ${longContentTitle}`, exact: true })).toBeVisible();
+        await expect(overlay).toHaveCount(0);
+        expect(page.url()).toBe(url);
+        await page.keyboard.press("Escape");
+        await expect(panel).toBeHidden();
+        expect(await dispatch(page, "body", "dragover", files)).toBe(false);
+        await expect(page.locator("[data-library-file-drop]")).toHaveCount(0);
+      } finally { await files.dispose(); }
+    } finally { await context.close(); }
   });
 });

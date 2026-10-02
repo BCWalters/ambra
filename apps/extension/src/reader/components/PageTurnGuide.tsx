@@ -21,7 +21,7 @@ export function PageTurnGuide({ controller, hidden }: {
 
   useEffect(() => controller.subscribeNavigation(() => setFinished(true)), [controller]);
   useEffect(() => {
-    const timer = window.setTimeout(() => setHighlight(false), 1600);
+    const timer = window.setTimeout(() => setHighlight(false), 3000);
     return () => window.clearTimeout(timer);
   }, []);
   useLayoutEffect(() => {
@@ -43,7 +43,7 @@ export function PageTurnGuide({ controller, hidden }: {
     <span className="page-turn-guide-announcement" role="status">{t("pageTurnGuide.instructions")}</span>
     {(["left", "right"] as const).map(side => {
       const width = side === "left" ? geometry.leftWidth : geometry.rightWidth;
-      if (width < 18) return null;
+      if (width <= 0) return null;
       const next = side === (rtl ? "left" : "right");
       const label = t(next ? "pageTurnGuide.next" : "pageTurnGuide.previous");
       return <div key={side} className="page-turn-guide-margin" data-side={side}
@@ -53,10 +53,10 @@ export function PageTurnGuide({ controller, hidden }: {
           top: geometry.top, width, height: geometry.height,
         }}>
         <div className="page-turn-guide-wash" />
-        <div className="page-turn-guide-indicator" style={{ background: palette.backgroundSolid }}>
+        {width >= 18 && <div className="page-turn-guide-indicator" style={{ background: palette.backgroundSolid }}>
           {side === "left" ? <ArrowLeftRegular /> : <ArrowRightRegular />}
           {width >= 120 && <span>{label}</span>}
-        </div>
+        </div>}
       </div>;
     })}
   </div>;

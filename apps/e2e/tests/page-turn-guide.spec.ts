@@ -29,7 +29,13 @@ test("first welcome guides real margins; resize/no-op preserve it, successful ma
     await expect(guide(page)).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(guide(page)).toBeVisible();
+    const arrow = page.locator(".page-turn-guide-indicator svg").first();
+    await expect(arrow).toHaveCSS("animation-name", "page-turn-guide-pulse");
+    await expect(arrow).toHaveCSS("animation-duration", "1.5s");
+    await expect(arrow).toHaveCSS("animation-iteration-count", "2");
     await expect(guide(page)).toHaveAttribute("data-phase", "indicators");
+    await expect(arrow).toHaveCSS("animation-name", "none");
+    await expect(page.locator(".page-turn-guide-wash").first()).toHaveCSS("opacity", "0.08");
     expect(await guide(page).evaluate(el => getComputedStyle(el).pointerEvents)).toBe("none");
     await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(-1));
     await expect(guide(page)).toBeVisible();
@@ -46,7 +52,10 @@ test("first welcome guides real margins; resize/no-op preserve it, successful ma
       const expected = Reflect.get(window, "__readerController").pageTurnGuideGeometry();
       const actual = document.querySelector('[data-side="right"]')?.getBoundingClientRect();
       return !!expected && !!actual && Math.abs(actual.right - expected.right) < 1 &&
-        Math.abs(actual.width - expected.rightWidth) < 1;
+        Math.abs(actual.width - expected.rightWidth) < 1 && Math.abs(actual.top - expected.top) < 1 &&
+        Math.abs(actual.height - expected.height) < 1 &&
+        Math.abs(expected.top - document.querySelector('[role="main"]')!.getBoundingClientRect().top) < 1 &&
+        Math.abs(expected.height - document.querySelector('[role="main"]')!.getBoundingClientRect().height) < 1;
     })).toBe(true);
     await page.screenshot({ path: info.outputPath("first-turn-guide.png") });
     await clickReadingPage(page, "right");
