@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const ALICE = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub");
+const EPUB = path.resolve(here, "..", "fixtures", "two-chapter.epub");
+const detailsLabel = "Ambra Two-Chapter Spread Test Fixture details";
 
 /** Covers issue #111: an EPUB Inspector button reachable from the
  * Library's own Book Details flyout — a standalone `EpubInspectionSession`
@@ -14,10 +15,10 @@ const ALICE = path.resolve(here, "..", "real-books", "alice-in-wonderland.epub")
  * would have nowhere useful to lead). */
 test.describe("Library EPUB Inspector (issue #111)", () => {
   test("the Inspector button is hidden in the popup, but shown and functional in the full-tab library", async () => {
-    const { context, libraryPage } = await launchReader(ALICE, { viewport: { width: 1000, height: 700 } });
+    const { context, libraryPage } = await launchReader(EPUB, { viewport: { width: 1000, height: 700 } });
     try {
       const popupDetails = libraryPage.locator("[data-library-collection]")
-        .getByRole("button", { name: "Alice's Adventures in Wonderland details", exact: true });
+        .getByRole("button", { name: detailsLabel, exact: true });
       await expect(popupDetails).toBeVisible();
       await popupDetails.click();
       await expect(libraryPage.getByText("Book details", { exact: true })).toBeVisible();
@@ -28,7 +29,7 @@ test.describe("Library EPUB Inspector (issue #111)", () => {
       const [fullTabPage] = await Promise.all([context.waitForEvent("page"), expandButton.click()]);
       await fullTabPage.waitForLoadState("domcontentloaded");
       const fullDetails = fullTabPage.locator("[data-library-collection]")
-        .getByRole("button", { name: "Alice's Adventures in Wonderland details", exact: true });
+        .getByRole("button", { name: detailsLabel, exact: true });
       await expect(fullDetails).toBeVisible();
       await fullDetails.click();
       const inspectorButton = fullTabPage.getByRole("button", { name: /inspector/i });
