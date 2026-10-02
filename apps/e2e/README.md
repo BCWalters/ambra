@@ -38,11 +38,73 @@ every-iteration signal.
 
 ## Running it
 
+### Approved features and local simulation controls
+
+Build an isolated extension with `VITE_AMBRA_LOCAL_FEATURES=1 pnpm --filter
+@ambra/extension build --outDir /absolute/path/to/local-prototype`, then set
+`VITE_AMBRA_LOCAL_FEATURES=1`, `AMBRA_E2E_HEADLESS=1`, and
+`AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/local-prototype` when running
+the simulation cases in `review-invitation.spec.ts` and
+`library-review-keyboard.spec.ts`. The environment variable now controls only
+developer simulation tools, not user-facing features.
+
+`review-invitation.spec.ts` checks actual saved-position eligibility, modal
+focus and localization, permanent yes/no responses, durable three-day reminders,
+cross-tab claims, save failures, and simulation without altering books, progress,
+or preferences. Run it against a normal build without
+the feature environment variable as well to verify real eligibility and
+cooldown behavior while confirming simulation controls are absent. Drag-and-drop,
+the first-reading guide, review invitations, and the dedicated importer are
+enabled in every build; their browser regressions run against ordinary packages.
+
+`native-library-import.spec.ts` attaches to Chrome's actual action-popup target
+and uses a trusted mouse click to verify handoff to a dedicated, persistent
+import window. It confirms the action popup is destroyed and the importer
+survives focus loss before choosing files, then checks chooser cancellation/retry,
+multi-file import, persistence after reload, and return to the original normal
+browser window. Embedded Library imports still choose files directly. The test
+intercepts the chooser for automation; it does not certify the operating
+system's file-dialog behavior. Local-feature builds also check native popup
+file dropping; `library-file-drop.spec.ts` covers the compact in-reader Library
+and ensures its drop highlight stays inside the panel.
+
+Creating a focused browser window does not reliably dismiss the action popup.
+Close the old popup explicitly only after successful window creation, and use
+`chrome.tabs.getCurrent()` to distinguish a tab from the tabless action popup
+before closing it. Assert the original CDP target is gone rather than assuming
+that creating another window proves the ephemeral document was destroyed.
+
+For manual review, open the full Library and expand **Local prototype controls**
+below the collection. **Simulate eligible reader** opens the modal.
+**Yes, I love it!** leads to the store-review link; **Not really** leads to email
+feedback. Either response stops future prompts without requiring the link.
+**Not sure yet**, Escape, or closing postpones for three days; after dismissal,
+**Simulate 3 days later** tests that reminder without changing the system clock.
+It does not undo a yes/no response. **Reset simulated invitation** starts over;
+**Simulate new reader** tests ineligibility. **Use real eligibility** restores the
+actual rules. Reload also clears simulation. None of these controls reset real
+reading history or saved invitation preferences.
+
 `library-search.spec.ts` covers local title/author filtering in compact and full
 libraries, retained sorting and book identity, clear/Escape focus, live French
 labels, import/removal updates, and the distinction between no matches and an
 empty library. It also verifies that search does not request remote book sites.
 The Library CI step runs this suite against the packaged extension.
+
+`library-lifecycle.spec.ts` also saves real reader positions and returns to the
+same full Library document twice, checking card percentages, Continue reading,
+and resumption. Mounted Libraries refresh on visible tab/window activation
+(visibility changes or window focus), not on every reader navigation. The
+refresh uses the existing session's latest-read ownership and cached cover URLs;
+failed reads retain the displayed collection and surface a retryable error.
+Embedded Libraries use the same activation lifecycle without replacing local
+import activity.
+
+For activation regressions, disable Playwright's CDP focus emulation on both
+pages (`Emulation.setFocusEmulationEnabled`, `enabled: false`) before switching
+native Chrome tabs. Otherwise every document appears focused in headless mode
+and activation events never fire. Assert trusted focus events as well as the
+rendered result; reloading or manually dispatching focus would mask this bug.
 
 `library-compact.spec.ts` checks three-column cover geometry at 320/360px with
 native scrollbars, a single-row header in all nine languages, persistent

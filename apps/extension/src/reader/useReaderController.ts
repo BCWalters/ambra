@@ -29,6 +29,7 @@ import type { ProgressMarkerStyle } from "./ProgressMarkerStyle.js";
 import type { Translate } from "../i18n/LocaleContext.js";
 
 export interface UseReaderControllerResult {
+  pageTurnGuideController?: Pick<ReaderController, "subscribe" | "snapshot" | "subscribeNavigation" | "pageTurnGuideGeometry" | "restoreContentFocus">;
   recordDiagnosticEvent: (event: DiagnosticEvent) => void;
   recordDiagnosticSurfaces: (surfaces: DiagnosticSurfaces) => void;
   setContentUiDismissal: (dismiss: ContentUiDismissal | undefined) => void;
@@ -572,6 +573,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
   }, [controller]);
 
   return {
+    pageTurnGuideController: controller ?? undefined,
     recordDiagnosticEvent,
     recordDiagnosticSurfaces,
     setContentUiDismissal,

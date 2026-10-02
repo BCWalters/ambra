@@ -15,7 +15,6 @@ import {
   BookmarkRegular,
   LibraryRegular,
   QuestionCircleRegular,
-  ReadingListRegular,
   SearchRegular,
   TextBulletListRegular,
 } from "@fluentui/react-icons";
@@ -34,6 +33,7 @@ import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderP
 import { AmbraSettingsPopover } from "../../components/AmbraSettingsPopover.js";
 import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
 import { useCommandPresentation } from "../../shortcuts/useCommandPresentation.js";
+import { AnnotationsIcon } from "./AnnotationsIcon.js";
 
 const useReaderToolbarStyles = makeStyles({
   root: {
@@ -466,7 +466,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             appearance="subtle"
             size="small"
             checked={isAnnotationsOpen}
-            icon={<ReadingListRegular />}
+            icon={<AnnotationsIcon />}
             onClick={onToggleAnnotations}
           >
             <span className={readerStyles.navigationLabel}>{t("toolbar.bookmarksAndHighlights")}</span>

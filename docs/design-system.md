@@ -15,6 +15,76 @@ earlier prototype iterations. Change an approved interaction explicitly, not as
 an incidental styling cleanup. Prototype omissions never authorize removing an
 existing feature.
 
+## Reviewed features: Library import and review invitation
+
+The Annotations command uses the approved prototype's outlined note-page icon
+in both open and closed states. The icon is decorative; the localized command
+name and pressed state carry its accessible meaning.
+
+The owner approved drag-and-drop, page-turn guidance, the review invitation,
+and the focused import-window experience for every build ahead of 2.0.0.
+Only developer simulation controls require `VITE_AMBRA_LOCAL_FEATURES=1`;
+ordinary packages include all user-facing features without those controls.
+CI verifies real behavior in ordinary packages and simulations in an isolated
+flagged build. No version bump or store publication is implied by this rollout.
+
+- **Import book** in Chrome's action popup opens a focused 480×560 import window,
+  not the full Library. Lead with a prominent **Choose EPUB files...** action,
+  retain progress/error/duplicate feedback, and omit unrelated Library controls
+  and review prompts. After import, **Read now** and **Open library** return to
+  the originating normal browser window and close the importer. Disable in-app
+  exit actions during a batch. Full-tab and in-reader imports remain direct.
+  No new extension permissions are needed.
+- The owner reproduced native chooser closure in both the original 1.0.0 package
+  and store 1.1.1 on macOS, so the recent overhaul is not its cause.
+  [Chrome documents action-popup closure on focus loss](https://developer.chrome.com/docs/extensions/develop/ui/add-popup);
+  use a [persistent browser window](https://developer.chrome.com/docs/extensions/reference/api/windows)
+  rather than unsupported keep-alive or automatic-chooser tricks. The explicit
+  chooser click remains necessary in this design; OS-native behavior still
+  requires manual verification.
+- Every active Library view is a local-file drop target, including the native
+  popup and in-reader compact Library. Highlight it only during a
+  file drag, retain keyboard-accessible **Import book**, and reuse the existing
+  import/duplicate/error pipeline. Keep embedded highlighting inside its panel
+  and detach drop handlers while that panel is closed.
+- Invite feedback in the full Library, never over the reader. The owner's
+  approved interaction uses a modal asking **Are you loving Ambra?**,
+  deferred during imports, searches, or other Library tasks.
+  The focused import window has no invitation.
+  **Yes, I love it!**
+  leads to a store-review invitation; **Not really** offers feedback by email
+  to the existing support address; **Not sure yet** postpones for three days.
+  Escape, close, and backdrop dismissal also postpone rather than trapping
+  keyboard users. Keep the standard modal focus trap and return focus to Import.
+- Both follow-ups have one filled primary action and no competing footer Close
+  button; the title-bar close control and Escape remain available. The negative
+  response keeps **Help us improve Ambra**, uses a short invitation to email
+  suggestions, and emphasizes **Share feedback by email**. The positive response
+  keeps **That's great!**, separates its thank-you into a second paragraph, and
+  emphasizes **Write a review**.
+- Selecting either Yes or Not really permanently stops reminders, whether or
+  not the user follows the subsequent link. This sentiment-based review routing
+  was explicitly approved by the owner. The Chrome Web Store's
+  [spam-and-abuse policy](https://developer.chrome.com/docs/webstore/program-policies/spam-and-abuse)
+  prohibits manipulating ratings. It does not explicitly discuss this exact
+  flow; owner approval is not a claim of policy approval.
+- Eligibility is three distinct local reading days plus reaching
+  halfway through a book. A day counts only when a saved reading position
+  changes, not on import or simply reopening a book. This is a heuristic,
+  not evidence that every preceding page was read.
+- Keep only three date strings, a halfway flag, a permanent stop flag, and the
+  next permitted prompt timestamp in local preferences. Neither the
+  yes/no sentiment nor book identities are stored or transmitted. Reserve the
+  three-day reminder window atomically before opening, so another tab or an
+  abandoned dialog does not immediately repeat it. Terminal responses win over
+  later postponements from stale tabs. Preserve earlier previews' stop flags.
+- The full Library's **Local prototype controls** can simulate eligibility,
+  simulate a new reader, reset the simulated invitation, advance the simulated
+  clock by three days, or restore real
+  eligibility. Simulation stays in memory and never edits reading history or
+  the real invitation record. These developer controls are explicitly English
+  and local-build-only; the invitation and drop overlay use all nine locales.
+
 ## 1. Principles and ownership
 
 - Quiet, bookish, coherent, and functional. Avoid cutesy in-app copy, redundant
@@ -409,6 +479,32 @@ exceptions to ordinary reference-panel density and the prototype's simplified
 panel coordinator. Do not remove or force them into a generic panel incidentally.
 Existing image/table viewers, footnotes, selection controls, Go to, welcome,
 errors, importing and Save as need a parity review, not speculative redesign.
+
+### First-reading margin guide
+
+The approved guide extends the existing reading welcome in every build,
+not the first-run persistence model. After the welcome's exit finishes, shade
+the full height and width of each outer margin with a persistent low-opacity
+accent wash. Pulse the arrow icons gently for three seconds, then leave static
+directional hints. Add a small, dismissible callout pointing toward the next-page
+outer margin: **Click or tap in the margins to change pages.** Use the active
+theme's accent and solid surface. The callout may temporarily overlap the page
+edge, but the shading stays in true whitespace. Do not capture focus or make the
+walkthrough modal. Only the close button intercepts pointer input; dismissing it
+returns focus to the reading position without turning a page.
+
+Measure actual outer publication bounds through the controller. Never paint
+the spread gutter or the whitespace-sensitive overlap region inside the text
+measure. Keep chrome above the shading, use arrows without labels below
+120 px, and retain only the shading below 18 px rather than cover content. Remeasure after
+layout/resize; RTL reverses the meaning, not the physical arrow. Hide while
+another reading surface is open and in scrolling mode. A committed navigation
+ends the guide, including navigation from an open panel; boundary no-ops,
+failed navigation, progress persistence and layout alone do not. Reopening
+Reading tips explicitly is the only replay path after acknowledgement. Successful
+navigation or explicit dismissal fades the shading, arrows, and callout together
+over 240 ms. Reduced motion skips both pulse and fade, not the initial shading.
+Hidden guides finish immediately rather than returning for a delayed exit.
 
 ## 10. Superseded proposals and outstanding decisions
 

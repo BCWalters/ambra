@@ -28,6 +28,11 @@ import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryBytes } from "./LibraryFormatting.js";
+import { ReviewInvitationCard } from "./ReviewInvitationCard.js";
+import { useLibraryFileDrop } from "./useLibraryFileDrop.js";
+import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
+import { LIBRARY_FULL_TAB_PARAM, LIBRARY_IMPORT_VIEW_VALUE } from "../navigation.js";
+import { LibraryImportWindow } from "./LibraryImportWindow.js";
 
 export interface EmbeddedLibraryOptions {
   open: boolean;
@@ -51,6 +56,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     settings, setSettings, sort, setSort, openInFullTab, storageUsage, openInspectionSession,
   } = library;
   const isFullTab = !isEmbedded && library.isFullTab;
+  const isActionPopup = !isEmbedded && !isFullTab;
   const openBook = embedded?.onActivateBook ?? library.openBook;
   const CollectionContainer = isEmbedded ? "div" : "main";
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +71,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const [discoveryOpen, setDiscoveryOpen] = useState(() =>
     new URLSearchParams(window.location.search).get("discover") === "1");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [helpTooltip, setHelpTooltip] = useState(false);
   const [detailsBookId, setDetailsBookId] = useState<string>();
   const [removeBookId, setRemoveBookId] = useState<string>();
@@ -87,6 +94,9 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const palette = useChromeTheme();
   const toolbarStyles = useChromeToolbarStyles();
   const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
+  const { dropTargetRef, isDraggingFiles } = useLibraryFileDrop({
+    enabled: active, canImport, busy: importInProgress, importFiles,
+  });
   const isBookOpenDisabled = (bookId: string): boolean =>
     isEmbedded && importInProgress && bookId !== embedded.currentBookId;
 
@@ -118,7 +128,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   useEffect(() => {
     if (isEmbedded) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen || discoveryOpen || settingsOpen || removeBookId) return;
+      if (!shortcuts.ready || help.view || detailsBookId || inspector.isOpen || discoveryOpen || settingsOpen || reviewOpen || removeBookId) return;
       const command = matchReaderCommand(event, document, {
         preferences: shortcuts.preferences, platform: shortcuts.platform, commands: ["showKeyboardShortcuts"], scope: "shell",
       });
@@ -130,7 +140,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [shortcuts.ready, shortcuts.preferences, shortcuts.platform, help.view, help.openShortcuts,
-    detailsBookId, inspector.isOpen, discoveryOpen, settingsOpen, removeBookId, isEmbedded]);
+    detailsBookId, inspector.isOpen, discoveryOpen, settingsOpen, reviewOpen, removeBookId, isEmbedded]);
 
   const requestRemove = (id: string): void => {
     if (id === embedded?.currentBookId) {
@@ -168,13 +178,15 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   };
 
   return (
-    <div style={{
+    <div ref={dropTargetRef} style={{
+      position: isEmbedded ? "relative" : undefined,
       minWidth: 0, minHeight: isFullTab ? "100vh" : 0, height: isEmbedded ? "100%" : isFullTab ? undefined : "100dvh",
       overflow: isFullTab ? undefined : "auto",
       background: palette.backgroundSolid, color: "var(--colorNeutralForeground1)", display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
     }}>
+      <LibraryFileDropOverlay active={isDraggingFiles} contained={isEmbedded} />
       {!isEmbedded && <header className={toolbarStyles.root} role="toolbar" aria-label={t("library.toolbar")}
         style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
           flexShrink: 0, borderBottom: `1px solid ${CHROME_BORDER}` }}>
@@ -203,7 +215,13 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             {t("library.findBooks")}
           </Button>
           <Button ref={toolbarImportRef} appearance="primary" icon={<DocumentAddRegular />}
-            disabled={!canImport} onClick={() => fileInputRef.current?.click()}>
+            title={isActionPopup ? t("library.importWindowAction") : undefined}
+            disabled={!canImport} onClick={() => {
+              // A native chooser can destroy the action popup before files are returned.
+              // The persistent importer waits for a fresh user click to choose files.
+              if (isActionPopup) openInFullTab("import");
+              else fileInputRef.current?.click();
+            }}>
             {t("library.importEpub")}
           </Button>
         </div>
@@ -259,6 +277,11 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             </div>
           </>
         )}
+        {isFullTab && <ReviewInvitationCard
+          onOpenChange={setReviewOpen}
+          onDismiss={() => toolbarImportRef.current?.focus()}
+          blocked={isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||
+            inspector.isOpen || discoveryOpen || settingsOpen || !!removeBookId || hasQuery} />}
       </CollectionContainer>
 
       <CenteredDialog open={isFullTab && discoveryOpen} title={t("library.findBooks")} onRequestClose={() => setDiscoveryOpen(false)}>
@@ -325,5 +348,8 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
 export const LibraryApp: FC<LibraryAppProps> = ({ embedded }) => {
   const library = useLibrary();
   if (embedded) return <LibrarySurface library={library} embedded={embedded} />;
-  return <ChromeThemeProvider theme={library.chromeTheme}><LibrarySurface library={library} /></ChromeThemeProvider>;
+  const importWindow = new URLSearchParams(window.location.search).get(LIBRARY_FULL_TAB_PARAM) === LIBRARY_IMPORT_VIEW_VALUE;
+  return <ChromeThemeProvider theme={library.chromeTheme}>
+    {importWindow ? <LibraryImportWindow library={library} /> : <LibrarySurface library={library} />}
+  </ChromeThemeProvider>;
 };

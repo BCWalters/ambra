@@ -1,0 +1,105 @@
+.page-turn-guide {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 1;
+  transition-property: opacity;
+  transition-timing-function: ease-out;
+}
+
+.page-turn-guide[data-phase="exiting"] { opacity: 0; }
+
+.page-turn-guide-margin {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.page-turn-guide-wash {
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: .08;
+}
+
+.page-turn-guide[data-phase="highlight"] .page-turn-guide-indicator svg {
+  animation: page-turn-guide-pulse 1500ms ease-in-out 2;
+}
+
+.page-turn-guide-indicator {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 4px);
+  padding: 8px 2px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.page-turn-guide-indicator svg { width: 20px; height: 20px; max-width: 100%; }
+.page-turn-guide-indicator span { padding: 0 8px; }
+
+.page-turn-guide-tip {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid;
+  border-radius: 8px;
+  transform: translateY(-50%);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.page-turn-guide-tip p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+
+.page-turn-guide-tip button { pointer-events: auto; flex-shrink: 0; }
+
+.page-turn-guide-tip::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 5px);
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border: inherit;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.page-turn-guide-tip[data-tip-side="right"]::after { right: -6px; transform: rotate(45deg); }
+.page-turn-guide-tip[data-tip-side="left"]::after { left: -6px; transform: rotate(225deg); }
+
+@keyframes page-turn-guide-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .6; transform: scale(1.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-turn-guide { transition: none; }
+  .page-turn-guide-indicator svg { animation: none !important; }
+}
+
+@media (forced-colors: active) {
+  .page-turn-guide-wash {
+    forced-color-adjust: none;
+    background: Highlight;
+    opacity: .12;
+  }
+}

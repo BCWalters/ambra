@@ -10,6 +10,25 @@ If reader controls are showing, the first page-turning click hides them; click a
 
 Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Space** for the previous page. See the [keyboard shortcuts](README.md#keyboard-shortcuts) for more options.
 
+### First-reading margin hints
+
+Closing the first-reading welcome shades the full outer margins. The arrow icons pulse
+gently for three seconds, then remain still. A small tip points toward the next-page
+margin: **Click or tap in the margins to change pages.** Its close button dismisses
+the guide without turning a page. The tip does not take focus when it appears;
+closing it returns focus to your reading position. The shading and arrows remain
+click-through and outside the text area; the tip may briefly overlap the page edge.
+Narrow margins use arrows instead of
+labels; margins too narrow for an arrow retain just the shading. Hints follow resizing
+and right-to-left reading order. Reduced-motion preferences skip the pulse and fade;
+the margin shading remains.
+
+The first successful page turn or jump fades the hints out over a quarter-second,
+as does closing the tip. A boundary click
+that cannot turn a page does not. To replay them, open **Help & About → Reading
+tips** and close the welcome. Reloading or opening another book does not replay
+an acknowledged welcome. Scrolling mode has no page-margin hints.
+
 ## Choose pagination or scrolling
 
 Open **Ambra settings → Reading preferences → Reading mode** to choose pagination

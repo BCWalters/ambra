@@ -39,6 +39,9 @@ test("prototype toolbar ordering, responsive labels, stacked title, and system t
       ]);
       for (const button of await buttons.all()) await expect(button).toBeInViewport({ ratio: 1 });
       const annotations = toolbar.getByRole("button", { name: "Annotations", exact: true });
+      await expect(annotations.locator("svg")).toHaveAttribute("aria-hidden", "true");
+      await expect(annotations.locator("svg")).toHaveAttribute("focusable", "false");
+      await expect(annotations.locator("svg path")).toHaveAttribute("d", "M5 3h14v18H5Zm4 5h6m-6 4h6m-6 4h4");
       const label = annotations.getByText("Annotations", { exact: true });
       if (width > 800) {
         await expect(label).toBeVisible();

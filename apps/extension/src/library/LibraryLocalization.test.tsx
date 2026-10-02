@@ -10,7 +10,11 @@ import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.j
 import { generatedCoverColor } from "./LibraryBookCard.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
+const review = vi.hoisted(() => ({ blocked: undefined as boolean | undefined }));
 vi.mock("./useLibrary.js", () => ({ useLibrary: vi.fn() }));
+vi.mock("./ReviewInvitationCard.js", () => ({
+  ReviewInvitationCard: ({ blocked }: { blocked: boolean }) => { review.blocked = blocked; return null; },
+}));
 vi.mock("../i18n/LocaleContext.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../i18n/LocaleContext.js")>();
   return { ...actual, useTranslation: () => actual.getTranslate(language.locale),
@@ -33,6 +37,7 @@ describe("Library localization and action ownership", () => {
       return animation;
     });
     language.locale = "en";
+    review.blocked = undefined;
     state = {
       books: [], isLoading: false, canImport: true, error: undefined,
       importActivities: [], dismissCompletedImports: vi.fn(), cancelDownload: vi.fn(),
@@ -51,6 +56,7 @@ describe("Library localization and action ownership", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    window.history.replaceState(null, "", "/");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -146,7 +152,71 @@ describe("Library localization and action ownership", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Another file failed");
     const choose = vi.spyOn(container.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
     await click("Import book");
+    expect(choose).not.toHaveBeenCalled();
+    expect(state.openInFullTab).toHaveBeenLastCalledWith("import");
+  });
+
+  it.each([false, true])("opens a chooser directly in a persistent Library (embedded: %s)", async (embedded) => {
+    state.isFullTab = !embedded;
+    await act(async () => root.render(<LibraryApp {...(embedded
+      ? { embedded: { open: true, onActivateBook: vi.fn() } } : {})} />));
+    const choose = vi.spyOn(container.querySelector<HTMLInputElement>('input[type="file"]')!, "click");
+    await click("Import book");
     expect(choose).toHaveBeenCalledOnce();
+    expect(state.openInFullTab).not.toHaveBeenCalled();
+  });
+
+  it("focuses the dedicated importer after loading and keeps unrelated Library surfaces out", async () => {
+    window.history.replaceState(null, "", "/?view=import&sourceWindow=7");
+    state.canImport = false;
+    state.isLoading = true;
+    const choose = vi.spyOn(HTMLInputElement.prototype, "click");
+    await render();
+    expect(container.querySelector("[data-library-import-window]")).not.toBeNull();
+    expect(container.querySelector("[data-library-collection]")).toBeNull();
+    expect(container.querySelector('input[type="search"]')).toBeNull();
+    expect(choose).not.toHaveBeenCalled();
+    state.canImport = true;
+    state.isLoading = false;
+    await render();
+    expect(document.activeElement).toBe(button("Choose EPUB files..."));
+    expect(review.blocked).toBeUndefined();
+    expect(choose).not.toHaveBeenCalled();
+    await click("Choose EPUB files...");
+    expect(choose).toHaveBeenCalledOnce();
+    expect(state.openInFullTab).not.toHaveBeenCalled();
+
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(state.importFiles).not.toHaveBeenCalled();
+    const file = new File(["epub"], "chosen.epub");
+    Object.defineProperty(input, "files", { value: [file] });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(state.importFiles).toHaveBeenCalledWith([file]);
+    state.importActivities = [{ id: 1, fileName: "chosen.epub", phase: "processing" }];
+    await render();
+    expect(button("Choose EPUB files...").disabled).toBe(true);
+    expect(button("Open library").disabled).toBe(true);
+    expect(button("Close").disabled).toBe(true);
+    expect(review.blocked).toBeUndefined();
+
+    window.history.replaceState(null, "", "/?view=tab");
+    state.importActivities = [];
+    await act(async () => root.render(<LibraryApp key="ordinary-library" />));
+    expect(review.blocked).toBe(false);
+  });
+
+  it.each(SUPPORTED_LOCALES)("localizes the focused importer in %s", async locale => {
+    language.locale = locale;
+    window.history.replaceState(null, "", "/?view=import");
+    const t = getTranslate(locale);
+    await render();
+    expect(container.querySelector("h1")?.textContent).toBe(t("library.importEpub"));
+    expect(container.textContent).toContain(t("library.importWindowHint"));
+    expect(button(t("library.chooseEpubFiles"))).toBeDefined();
+    expect(button(t("library.openLibrary"))).toBeDefined();
+    expect(button(t("highlight.close"))).toBeDefined();
+    expect(container.textContent).toContain(t("library.importWindowDrop"));
   });
 
   it("leads settings with interface controls and initially collapsed shared reading preferences", async () => {

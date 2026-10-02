@@ -8,6 +8,8 @@ import { normalizeProgressMarkerStyle } from "../reader/ProgressMarkerStyle.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import type { ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { createLibraryCover } from "./LibraryCover.js";
+import { answerReviewInvitation, isReviewInvitationEligible, parseReviewInvitation, recordReviewReading, REVIEW_INVITATION_KEY,
+  type ReviewInvitationResponse, type ReviewInvitationState } from "./ReviewInvitation.js";
 
 export interface BookImportResult {
   readonly id: string;
@@ -531,7 +533,61 @@ export class LibraryDatabase {
    * fraction yet (see its doc comment on `ReadingProgress`). */
   public async saveProgress(bookId: string, cfi: string, fractionComplete: number | undefined): Promise<void> {
     const record: ReadingProgress = { bookId, cfi, updatedAt: Date.now(), fractionComplete };
-    await this.put(PROGRESS_STORE, record);
+    await this.transaction([PROGRESS_STORE, PREFERENCES_STORE], "readwrite", "Failed to save reading progress.", tx => {
+      const progress = tx.objectStore(PROGRESS_STORE);
+      const previous = progress.get(bookId);
+      previous.onsuccess = () => {
+        const old = previous.result as ReadingProgress | undefined;
+        progress.put(record);
+        if (!old || old.cfi === cfi) return;
+        const preferences = tx.objectStore(PREFERENCES_STORE);
+        const request = preferences.get(REVIEW_INVITATION_KEY);
+        request.onsuccess = () => {
+          const stored = request.result as PreferenceRecord | undefined;
+          const state = parseReviewInvitation(stored?.value);
+          if (!state.presented) preferences.put({ key: REVIEW_INVITATION_KEY,
+            value: recordReviewReading(state, record.updatedAt, fractionComplete) });
+        };
+      };
+    });
+    this.preferencesChanged();
+  }
+
+  public async getReviewInvitation(): Promise<ReviewInvitationState> {
+    const record = await this.get<PreferenceRecord>(PREFERENCES_STORE, REVIEW_INVITATION_KEY);
+    return parseReviewInvitation(record?.value);
+  }
+
+  public async claimReviewInvitation(): Promise<boolean> {
+    const claimed = await this.transaction<boolean>(
+      PREFERENCES_STORE, "readwrite", "Failed to save review invitation preferences.", (tx, setResult) => {
+        const preferences = tx.objectStore(PREFERENCES_STORE);
+        const request = preferences.get(REVIEW_INVITATION_KEY);
+        request.onsuccess = () => {
+          const record = request.result as PreferenceRecord | undefined;
+          const state = parseReviewInvitation(record?.value);
+          const eligible = isReviewInvitationEligible(state);
+          // Reserve the reminder window atomically, including if this tab closes without an answer.
+          if (eligible) preferences.put({ key: REVIEW_INVITATION_KEY, value: answerReviewInvitation(state, "later") });
+          setResult(eligible);
+        };
+      });
+    if (claimed) this.preferencesChanged();
+    return claimed;
+  }
+
+  public async respondToReviewInvitation(answer: ReviewInvitationResponse): Promise<void> {
+    await this.transaction(
+      PREFERENCES_STORE, "readwrite", "Failed to save review invitation response.", tx => {
+        const preferences = tx.objectStore(PREFERENCES_STORE);
+        const request = preferences.get(REVIEW_INVITATION_KEY);
+        request.onsuccess = () => {
+          const record = request.result as PreferenceRecord | undefined;
+          preferences.put({ key: REVIEW_INVITATION_KEY,
+            value: answerReviewInvitation(parseReviewInvitation(record?.value), answer) });
+        };
+      });
+    this.preferencesChanged();
   }
 
   public getProgress(bookId: string): Promise<ReadingProgress | undefined> {

@@ -4,7 +4,7 @@ import { LibraryDatabase, type BookImportResult } from "./LibraryDatabase.js";
 import { LibrarySession, type LibraryBookViewModel } from "./LibrarySession.js";
 import { DEFAULT_LIBRARY_SORT } from "./LibrarySortOption.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
-import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, libraryFullTabUrl, openLibraryTab, openReaderTab } from "../navigation.js";
+import { LIBRARY_FULL_TAB_PARAM, LIBRARY_FULL_TAB_VALUE, LIBRARY_IMPORT_URL_PARAM, libraryFullTabUrl, openLibraryTab, openLibraryImportWindow, openReaderTab } from "../navigation.js";
 import type { ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS, type GlobalReadingSettings } from "./ReadingSettings.js";
 import { EpubInspectionSession } from "../reader/EpubInspectionSession.js";
@@ -77,7 +77,8 @@ export interface UseLibraryResult {
    * `LibraryApp` uses this to hide its own "open in a new tab" button
    * once there's no smaller popup left to expand out of. */
   isFullTab: boolean;
-  openInFullTab: (discovery?: boolean) => void;
+  /** `true` opens discovery; `"import"` opens a focused, persistent import window. */
+  openInFullTab: (destination?: boolean | "import") => void;
   /** See `StorageUsageEstimate` — `undefined` until the first estimate
    * resolves (or permanently, if the browser doesn't support it). */
   storageUsage: StorageUsageEstimate | undefined;
@@ -168,6 +169,18 @@ export function useLibrary(): UseLibraryResult {
     let session: LibrarySession | undefined;
     let unsubscribe: (() => void) | undefined;
     let unsubscribeBooks: (() => void) | undefined;
+    let initialized = false;
+
+    const refreshOnActivation = () => {
+      // A hidden tab can receive focus events while another surface opens.
+      // Initialization already reads current progress; don't supersede that read.
+      if (cancelled || !initialized || !session || document.visibilityState !== "visible") return;
+      void refresh(session.database).catch((err) => {
+        if (!cancelled) setError(describeLibraryStorageError(err));
+      });
+    };
+    window.addEventListener("focus", refreshOnActivation);
+    document.addEventListener("visibilitychange", refreshOnActivation);
 
     void (async () => {
       try {
@@ -201,12 +214,15 @@ export function useLibrary(): UseLibraryResult {
         }
       } finally {
         if (!cancelled) {
+          initialized = true;
           setIsLoading(false);
         }
       }
     })();
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", refreshOnActivation);
+      document.removeEventListener("visibilitychange", refreshOnActivation);
       unsubscribe?.();
       unsubscribeBooks?.();
       if (sessionRef.current === session) sessionRef.current = undefined;
@@ -309,8 +325,8 @@ export function useLibrary(): UseLibraryResult {
     [db, ownsDatabase],
   );
 
-  const openInFullTab = useCallback((discovery = false): void => {
-    const open = discovery
+  const openInFullTab = useCallback((destination: boolean | "import" = false): void => {
+    const open = destination === "import" ? openLibraryImportWindow() : destination
       ? chrome.tabs.create({ url: `${libraryFullTabUrl()}&discover=1` })
       : openLibraryTab();
     void open.catch((err: unknown) => setError(describeLibraryStorageError(err)));

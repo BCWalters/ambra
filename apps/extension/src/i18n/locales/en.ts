@@ -32,6 +32,23 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "library.dropFilesTitle": string;
+  "library.dropFilesHint": string;
+  "review.title": string;
+  "review.body": string;
+  "review.write": string;
+  "review.feedback": string;
+  "review.yes": string;
+  "review.no": string;
+  "review.later": string;
+  "review.laterHint": string;
+  "review.yesTitle": string;
+  "review.yesBody": string;
+  "review.thanks": string;
+  "review.noTitle": string;
+  "review.noBody": string;
+  "review.error": string;
+  "review.retry": string;
   "settings.helpAbout": string;
   "welcome.title": string;
   "welcome.intro": string;
@@ -125,6 +142,10 @@ export interface StringCatalog {
   "library.bookDetails": string;
   "library.removeBook": string;
   "library.importEpub": string;
+  "library.importWindowAction": string;
+  "library.importWindowHint": string;
+  "library.importWindowDrop": string;
+  "library.openLibrary": string;
   "library.sort": string;
   "library.sortLabel": string;
   "library.continueReading": string;
@@ -521,9 +542,30 @@ export interface StringCatalog {
   "imageViewer.fit": string;
   "imageViewer.controls": string;
   "imageViewer.instructions": string;
+  "pageTurnGuide.next": string;
+  "pageTurnGuide.previous": string;
+  "pageTurnGuide.instructions": string;
+  "pageTurnGuide.dismiss": string;
 }
 
 export const en: StringCatalog = {
+  "library.dropFilesTitle": "Drop EPUB files to import",
+  "library.dropFilesHint": "Books are added to your library.",
+  "review.title": "Are you loving Ambra?",
+  "review.body": "We'd love to hear how your reading is going.",
+  "review.write": "Write a review",
+  "review.feedback": "Share feedback by email",
+  "review.yes": "Yes, I love it!",
+  "review.no": "Not really",
+  "review.later": "Not sure yet",
+  "review.laterHint": "Not sure yet? Closing this window also postpones the question for three days.",
+  "review.yesTitle": "That's great!",
+  "review.yesBody": "Would you mind taking a moment to leave a review? It really helps us.",
+  "review.thanks": "Thank you for reading with Ambra.",
+  "review.noTitle": "Help us improve Ambra",
+  "review.noBody": "Sorry to hear that! Click below to send us an email if you have any suggestions to improve Ambra.",
+  "review.error": "Could not load or save the review invitation",
+  "review.retry": "Try again",
   "welcome.title": "Make yourself at home",
   "welcome.intro": "Your next chapter starts here.",
   "welcome.readingTips": "Reading tips",
@@ -617,6 +659,10 @@ export const en: StringCatalog = {
   "library.bookDetails": "{title} details",
   "library.removeBook": "Remove {title} from library",
   "library.importEpub": "Import book",
+  "library.importWindowAction": "Import in a dedicated window",
+  "library.importWindowHint": "Choose EPUB files from your device to add to your Ambra library.",
+  "library.importWindowDrop": "You can also drop EPUB files here.",
+  "library.openLibrary": "Open library",
   "library.sort": "Sort library",
   "library.sortLabel": "Sort",
   "library.continueReading": "Continue reading",
@@ -983,4 +1029,8 @@ export const en: StringCatalog = {
   "imageViewer.fit": "Fit to window",
   "imageViewer.controls": "Image zoom",
   "imageViewer.instructions": "Scroll to zoom. Drag or use arrow keys to pan. Press 0 to fit.",
+  "pageTurnGuide.next": "Click for next page",
+  "pageTurnGuide.previous": "Click for previous page",
+  "pageTurnGuide.instructions": "Click or tap in the margins to change pages.",
+  "pageTurnGuide.dismiss": "Dismiss page-turn tip",
 };

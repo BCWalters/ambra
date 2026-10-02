@@ -26,6 +26,49 @@ export function readerTabUrl(bookId: string): string {
 export const LIBRARY_FULL_TAB_PARAM = "view";
 export const LIBRARY_FULL_TAB_VALUE = "tab";
 
+export const LIBRARY_IMPORT_VIEW_VALUE = "import";
+const LIBRARY_IMPORT_SOURCE_PARAM = "sourceWindow";
+
+/** A standalone browser window survives the native chooser stealing focus. */
+export async function openLibraryImportWindow(): Promise<chrome.windows.Window> {
+  const source = await chrome.windows.getCurrent();
+  const sourceTab = await chrome.tabs.getCurrent();
+  const params = new URLSearchParams({ [LIBRARY_FULL_TAB_PARAM]: LIBRARY_IMPORT_VIEW_VALUE });
+  if (source.id !== undefined) params.set(LIBRARY_IMPORT_SOURCE_PARAM, String(source.id));
+  const importer = await chrome.windows.create({
+    url: chrome.runtime.getURL(`${LIBRARY_PAGE_URL}?${params}`),
+    type: "popup", width: 480, height: 560, focused: true,
+  });
+  if (importer?.id === undefined) throw new Error("Could not open the import window.");
+  // Opening a browser window does not reliably dismiss the action popup.
+  if (sourceTab === undefined) window.close();
+  return importer;
+}
+
+export async function closeLibraryImportWindow(): Promise<void> {
+  const tab = await chrome.tabs.getCurrent();
+  if (tab?.id === undefined) throw new Error("Could not identify the import window.");
+  await chrome.tabs.remove(tab.id);
+}
+
+/** Read-now and Library actions leave the small importer for a normal browser window. */
+export async function finishLibraryImport(url: string): Promise<void> {
+  const source = new URLSearchParams(window.location.search).get(LIBRARY_IMPORT_SOURCE_PARAM);
+  if (source !== null && (!/^[1-9]\d*$/.test(source) || !Number.isSafeInteger(Number(source)))) {
+    throw new Error("Invalid import-window destination.");
+  }
+  const windows = await chrome.windows.getAll({ windowTypes: ["normal"] });
+  const destination = windows.find(item => item.id === Number(source)) ??
+    windows.find(item => item.focused) ?? windows[0];
+  if (destination?.id !== undefined) {
+    await chrome.tabs.create({ url, windowId: destination.id });
+    await chrome.windows.update(destination.id, { focused: true });
+  } else {
+    await chrome.windows.create({ url, type: "normal", focused: true });
+  }
+  await closeLibraryImportWindow();
+}
+
 /** Full Library destination for the explicit new-tab action in popup and
  * embedded Library views; the reader's toolbar itself only opens its panel. */
 export function libraryFullTabUrl(): string {
