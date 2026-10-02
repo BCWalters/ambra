@@ -3,8 +3,11 @@
 Choose **Annotations** in the reader toolbar to open the right-side panel.
 The **Show** dropdown offers **All annotations**, **Highlights**, **Notes**, and
 **Bookmarks**, with counts. **Notes** filters to highlights with notes.
-Opening another reference panel replaces Annotations; where space allows,
-pin it to keep it beside the book while following saved passages.
+Search and Book details replace Annotations on the right. Pin Annotations to
+keep it open when you open Contents or Library on the left. Likewise, opening
+Annotations keeps a pinned Contents panel open. When space is tight, Ambra
+temporarily shows the active panel without forgetting the other panel's pin
+preference or your drafts.
 
 ## Save and revisit a bookmark
 
@@ -14,6 +17,8 @@ Choose **Annotations → Show → Bookmarks** to revisit or remove saved places.
 Page numbers update with your reading layout. Theme-colored flags on the
 [progress bar](book-navigation.md#move-along-the-progress-bar) also open saved
 locations directly, or offer a chooser when bookmarks are close together.
+**Show all bookmarks** from that chooser temporarily selects the Bookmarks
+filter; reopening Annotations from the toolbar restores your last manual filter.
 
 Bookmarks supplied with the book have a **Publisher note** tag and cannot be deleted.
 
