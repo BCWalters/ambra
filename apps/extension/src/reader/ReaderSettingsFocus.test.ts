@@ -133,6 +133,36 @@ describe("ReaderController layout-only focus", () => {
     expect(controller.focusReadingContent).toHaveBeenCalledWith(second, undefined);
   });
 
+  it.each([true, false])("commits the fragment rather than a focus-handoff caret before it (move=%s)", moveFocus => {
+    const controller = Object.create(ReaderController.prototype);
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = "<p>Previous section</p><div id='gamma'><h2>Gamma</h2></div>";
+    const target = doc.getElementById("gamma")!;
+    const caret = { node: doc.body.firstChild!.firstChild!, offset: 0, spineIndex: 3 };
+    const retain = vi.fn();
+    Object.assign(controller, {
+      updateContentTitle: vi.fn(),
+      reattachKeyboardNav: vi.fn(),
+      primaryContentDocument: () => doc,
+      contentDocumentViews: () => [{ document: doc, spineIndex: 3 }],
+      nativeReading: { current: () => caret, retain },
+      accessibility: {
+        focusReadingPosition: vi.fn(() => retain(caret)),
+        focusContent: vi.fn(),
+      },
+    });
+    controller.setUpAccessibility(target, moveFocus);
+    if (moveFocus) {
+      expect(controller.accessibility.focusReadingPosition).toHaveBeenCalledExactlyOnceWith(doc, {
+        node: target, offset: 0,
+      });
+      expect(retain).toHaveBeenLastCalledWith({ node: target, offset: 0, spineIndex: 3 });
+    } else {
+      expect(controller.accessibility.focusReadingPosition).not.toHaveBeenCalled();
+      expect(retain).not.toHaveBeenCalled();
+    }
+  });
+
   it.each([true, false])("returns from an overlay using a retained companion position when available: %s", retained => {
     const controller = Object.create(ReaderController.prototype);
     const first = document.implementation.createHTMLDocument();

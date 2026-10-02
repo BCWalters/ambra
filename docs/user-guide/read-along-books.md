@@ -11,20 +11,21 @@ This is narration supplied with the EPUB, not automatic text-to-speech. The book
 ## Start listening
 
 Open a supported narrated book. **Read along** controls appear automatically
-below the reading area, initially paused. Choose **Play narration** to begin.
+below the reading area, initially paused. Choose **Play** to begin.
 There is no separate **Listen** toolbar button or discovery notice, and opening
 the book never starts audio automatically.
 
-- Play or pause, move to the previous or next narrated passage, and adjust the narration speed.
+- Use **Play/Pause**, **Previous**, and **Next** to control recorded passages,
+  and **Speed** to adjust playback speed. Labels remain visible in narrow windows.
 - Choose **Listen from this page**, or select text and choose **Listen from selection**.
 - If you browse elsewhere while audio continues, choose **Return to narration** to follow along again.
 
 ## Make more room without stopping playback
 
-Choose **Collapse read-along controls** to reduce the controls to a compact strip
+Choose **Collapse** to reduce the controls to a compact strip
 that still includes play/pause. Collapsing does not pause narration or change the
-reading position; use **Pause narration** when you want to stop playback.
-Choose **Expand read-along controls** to restore the larger controls.
+reading position; use **Pause** when you want to stop playback.
+Choose **Expand** to restore the larger controls.
 
 Collapse is temporary for the current reader session, not a saved book or app
 preference. Reopening or reloading the reader restores the expanded controls.

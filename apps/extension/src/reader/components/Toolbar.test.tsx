@@ -45,13 +45,13 @@ describe("Toolbar startup positioning (#175)", () => {
     vi.unstubAllGlobals();
   });
 
-  function render(chapter: string) {
+  function render(chapter: string, isTocOpen = false, isAnnotationsOpen = false) {
     const noop = () => {};
     const props: ToolbarProps = {
       snapshot: { ...DEFAULT_GLOBAL_READING_SETTINGS, title: "Short book", currentChapterLabel: chapter } as ReaderSnapshot,
       openMenu: undefined, onOpenMenuChange: noop, isLibraryOpen: false, onToggleLibrary: backToLibrary,
-      isTocOpen: false, onToggleToc: noop, isSearchOpen: false, onToggleSearch: noop,
-      isAnnotationsOpen: false, onToggleAnnotations: noop, isDetailsOpen: false,
+      isTocOpen, onToggleToc: noop, isSearchOpen: false, onToggleSearch: noop,
+      isAnnotationsOpen, onToggleAnnotations: noop, isDetailsOpen: false,
       onToggleDetails: toggleDetails, onToggleBookmark: noop, onSetViewMode: noop,
       onSetFontScale: noop, onSetLineSpacing: noop, onSetLetterSpacing: noop,
       onSetContentWidth: noop, onSetFontFamily: noop, onSetPageTheme: noop,
@@ -95,9 +95,28 @@ describe("Toolbar startup positioning (#175)", () => {
     expect(buttons[0]!.getAttribute("aria-label")).toBe(t("toolbar.showContents"));
     expect(buttons[1]!.getAttribute("aria-label")).toBe(t("toolbar.backToLibrary"));
     const titleIndex = buttons.findIndex(button => button.textContent === "Short book");
-    const annotationIndex = buttons.findIndex(button => button.getAttribute("aria-label") === t("toolbar.bookmarksAndHighlights"));
-    expect(annotationIndex).toBeGreaterThan(titleIndex);
-    expect(buttons.find(button => button.getAttribute("aria-label") === t("settings.helpAbout"))).toBeDefined();
+    expect(buttons.slice(titleIndex + 1).map(button => button.getAttribute("aria-label"))).toEqual([
+      t("toolbar.search"), t("toolbar.bookmarksAndHighlights"), t("toolbar.bookDetails"),
+      t("settings.ambraTitle"), t("settings.helpAbout"), t("toolbar.bookmarkThisPage"),
+    ]);
+  });
+
+  it.each([false, true])("keeps the Contents label stable with panel open=%s", open => {
+    render("", open);
+    const t = getTranslate("en");
+    const button = container.querySelector("button")!;
+    expect(button.textContent).toBe(t("toc.contents"));
+    expect(button.getAttribute("aria-label")).toBe(t(open ? "toolbar.hideContents" : "toolbar.showContents"));
+    expect(button.getAttribute("aria-pressed")).toBe(String(open));
+  });
+
+  it.each([false, true])("keeps the Annotations label stable with panel open=%s", open => {
+    render("", false, open);
+    const t = getTranslate("en");
+    const label = t(open ? "toolbar.hideBookmarksAndHighlights" : "toolbar.bookmarksAndHighlights");
+    const button = container.querySelector(`button[aria-label="${label}"]`)!;
+    expect(button.textContent).toBe(t("toolbar.bookmarksAndHighlights"));
+    expect(button.getAttribute("aria-pressed")).toBe(String(open));
   });
 
   it("adds the resolved resume chapter without a slide and retains narrow-width ellipsis", () => {
@@ -105,7 +124,8 @@ describe("Toolbar startup positioning (#175)", () => {
     const chapter = "Actual resumed chapter";
     let title = render(chapter);
     let group = title.parentElement!;
-    expect(group.textContent).toBe(`Short book— ${chapter}`);
+    expect(group.textContent).toBe(`Short book${chapter}`);
+    expect(group.style.flexDirection).toBe("column");
     expect(group.style.left).toBe("50%");
     expect(group.style.transition).toBe("");
     measuredWidth = 800;
@@ -115,7 +135,7 @@ describe("Toolbar startup positioning (#175)", () => {
     expect(group.style.left).toBe("0px");
     expect(group.style.right).toBe("0px");
     expect(group.style.transition).toBe("");
-    expect(group.lastElementChild?.textContent).toBe(`— ${chapter}`);
+    expect(group.lastElementChild?.textContent).toBe(chapter);
     expect((group.lastElementChild as HTMLElement).style.textOverflow).toBe("ellipsis");
   });
 

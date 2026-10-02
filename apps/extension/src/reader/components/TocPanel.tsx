@@ -152,6 +152,7 @@ export interface TocPanelProps {
    * (never conditionally unmounted) so it can animate closed instead of
    * simply vanishing — see the `transform`/`opacity` transition below. */
   open: boolean;
+  focusOnOpen?: boolean;
   /** `true` docks the panel in the normal layout flow, pushing the
    * content pane over (like the very first version of this panel);
    * `false` (the default) makes it fly out as a translucent overlay on
@@ -204,6 +205,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   pageNumbers,
   onSelect,
   open,
+  focusOnOpen = true,
   pinned,
   canPin = true,
   onTogglePin,
@@ -243,7 +245,7 @@ export const TocPanel: FC<TocPanelProps> = ({
   // specific descendant keeps this robust across which tab happens to be
   // active. See `useFocusOnOpen` for why this isn't just a plain
   // `.focus()` call in a `useEffect`.
-  useFocusOnOpen(navRef, open);
+  useFocusOnOpen(navRef, open && focusOnOpen);
 
   return (
     <>

@@ -6,6 +6,34 @@ import { NavPoint } from "@ambra/engine";
 import { TocPanel } from "./TocPanel.js";
 
 describe("Contents presentation", () => {
+  it("restores a retained dock without stealing focus from the other panel or reading surface", () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const render = (open: boolean, focusOnOpen: boolean) => act(() => root.render(
+      <>
+        <button id="other-panel-focus">Other panel</button>
+        <TocPanel items={[]} currentPath={undefined} firstSpinePath={undefined} pageNumbers={new Map()}
+          onSelect={vi.fn()} open={open} focusOnOpen={focusOnOpen} pinned={open}
+          onTogglePin={vi.fn()} onRequestClose={vi.fn()} scrubberVisible={false} />
+      </>,
+    ));
+    try {
+      render(true, true);
+      expect(document.activeElement).toBe(container.querySelector("nav"));
+      const other = container.querySelector<HTMLButtonElement>("#other-panel-focus")!;
+      act(() => other.focus());
+      render(false, false);
+      render(true, false);
+      expect(document.activeElement).toBe(other);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps docking changes focus-neutral and makes an unavailable pin focusable but inactive", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");

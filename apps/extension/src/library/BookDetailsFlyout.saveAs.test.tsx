@@ -11,6 +11,7 @@ describe("Book details Save as action", () => {
   let root: Root;
   let container: HTMLDivElement;
   let save: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
+  let enrich: ReturnType<typeof vi.fn<(id: string) => Promise<void>>>;
   const book = {
     id: "book", title: "A book", fileName: "original.epub", addedAt: 0, identifiers: [],
   } as unknown as LibraryBookViewModel;
@@ -23,6 +24,7 @@ describe("Book details Save as action", () => {
       return animation;
     });
     save = vi.fn().mockResolvedValue(undefined);
+    enrich = vi.fn().mockResolvedValue(undefined);
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -33,10 +35,10 @@ describe("Book details Save as action", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
-  async function render(selected: LibraryBookViewModel | undefined = book, expandDetails = true) {
+  async function render(selected: LibraryBookViewModel | null = book, expandDetails = true) {
     await act(async () => root.render(
-      <BookDetailsFlyout book={selected} onRequestClose={vi.fn()} accent="#000" accentForeground="#7a3e00"
-        backgroundSolid="#fff" onOpenInspector={undefined} onSaveAs={save} />,
+      <BookDetailsFlyout book={selected ?? undefined} onRequestClose={vi.fn()} accent="#000" accentForeground="#7a3e00"
+        backgroundSolid="#fff" onOpenInspector={undefined} onSaveAs={save} onEnrichDescription={enrich} />,
     ));
     const disclosure = [...container.querySelectorAll("button")].find((button) => button.textContent === "Publication details")!;
     if (expandDetails && disclosure?.getAttribute("aria-expanded") === "false") {
@@ -46,6 +48,26 @@ describe("Book details Save as action", () => {
   function saveButton() {
     return [...container.querySelectorAll("button")].find((button) => button.textContent === "Save as…")!;
   }
+
+  it("requests enrichment once per details opening, not on refreshed metadata", async () => {
+    await render();
+    expect(enrich).toHaveBeenCalledExactlyOnceWith("book");
+    await render({ ...book, fetchedDescription: "A saved fallback." });
+    expect(enrich).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("A saved fallback.");
+    await render(null, false);
+    await render();
+    expect(enrich).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces enrichment errors without blocking book details", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    enrich.mockRejectedValueOnce(new Error("Metadata write failed"));
+    await render();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Metadata write failed");
+    expect(container.textContent).toContain("A book");
+    expect(console.warn).toHaveBeenCalledWith("Description enrichment failed.", expect.any(Error));
+  });
 
   it("offers a compact themed named button beside the filename inside Publication details", async () => {
     await render();

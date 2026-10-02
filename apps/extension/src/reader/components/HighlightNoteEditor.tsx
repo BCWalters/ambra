@@ -15,6 +15,8 @@ export interface HighlightNoteEditorProps {
   onSaved: () => void;
   onCancel: () => void;
   autoFocus?: boolean;
+  /** A retained dock reappearing after resize must not steal another panel's focus. */
+  autoFocusOnActivate?: boolean;
   /** Hidden reference panels retain drafts without taking keyboard focus. */
   active?: boolean;
   rows?: number;
@@ -29,6 +31,7 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
   onSaved,
   onCancel,
   autoFocus = false,
+  autoFocusOnActivate = true,
   active = true,
   rows,
 }) => {
@@ -37,6 +40,7 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
   const requestRef = useRef(0);
   const pendingRef = useRef(false);
   const activeRef = useRef(active);
+  const hasMounted = useRef(false);
   activeRef.current = active;
   const [pending, setPending] = useState(false);
   const [saveError, setSaveError] = useState<string>();
@@ -44,8 +48,9 @@ export const HighlightNoteEditor: FC<HighlightNoteEditorProps> = ({
   const isEmptyAddition = !hasExistingNote && value.trim() === "";
 
   useEffect(() => {
-    if (autoFocus && active) textareaRef.current?.focus();
-  }, [autoFocus, active]);
+    if (autoFocus && active && (!hasMounted.current || autoFocusOnActivate)) textareaRef.current?.focus();
+    hasMounted.current = true;
+  }, [autoFocus, active, autoFocusOnActivate]);
 
   useLayoutEffect(
     () => () => {

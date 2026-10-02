@@ -129,7 +129,7 @@ for (const { width, zoom } of [{ width: 320, zoom: 1 }, { width: 1400, zoom: 1 }
           const style = getComputedStyle(element);
           return { fontSize: style.fontSize, fontWeight: style.fontWeight, lineHeight: style.lineHeight, color: style.color };
         }), `${name} must use its task heading and semantic foreground`).toEqual({
-          fontSize: isSettings ? "16px" : "14px", fontWeight: isSettings ? "700" : "600", lineHeight: "20px",
+          fontSize: isSettings ? "16px" : "14px", fontWeight: isSettings ? "700" : "600", lineHeight: isSettings ? "21px" : "20px",
           color: `rgb(${foreground.slice(1).match(/../g)!.map(part => Number.parseInt(part, 16)).join(", ")})`,
         });
         if (width === 1400 && zoom === 1) {

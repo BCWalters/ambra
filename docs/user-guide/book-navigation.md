@@ -7,9 +7,12 @@ left-side **Table of contents** panel. **Library** follows it and opens your
 collection without navigating away from the book. Choose a contents entry to
 go to its passage; page numbers are shown when available for the current layout.
 
-Press **Mod+F** to search the book; enter at least three characters. Reader
-reference panels open one at a time. Where space allows, pin Contents to keep
-it beside the page while following entries.
+Press **Mod+F** to search the book; enter at least three characters. Panels on
+the same side replace one another. Pin Contents to keep it open when opening
+Search, Annotations, or Book details on the right; a pinned right-side panel
+also stays open when you open a left-side panel. Where space allows, pinned
+panels sit beside the page. Narrow windows temporarily show the active panel
+without discarding the other panel's state.
 
 **Alt+Page Up / Alt+Page Down** move to the previous / next reading-order section, which may differ from a named chapter.
 

@@ -111,8 +111,9 @@ describe("shared Help & About and read-only keyboard shortcuts", () => {
     expect(guide?.textContent).toBe(t("about.userGuide"));
     expect(guide?.target).toBe("_blank");
     expect(guide?.rel).toBe("noreferrer");
-    expect(container.querySelector('a[href="https://ambraepub.org/en/privacy/"]')).toBeNull();
-    await click(t("about.aboutAmbra"));
+    expect([...container.querySelectorAll("h3")].map((heading) => heading.textContent)).toContain(t("about.aboutAmbra"));
+    expect([...container.querySelectorAll("button")].some((entry) => entry.textContent === t("about.aboutAmbra"))).toBe(false);
+    expect(container.textContent).toContain(t("about.version", { version: "1.2.3" }));
     expect(container.querySelector('a[href="https://ambraepub.org/en/privacy/"]')?.textContent).toBe(t("about.privacy"));
     expect(container.querySelector('a[href="https://github.com/BCWalters/ambra"]')?.textContent).toBe(t("about.sourceCode"));
     const standards = button(t("about.standards"));

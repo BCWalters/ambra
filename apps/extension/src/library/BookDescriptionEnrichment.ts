@@ -8,15 +8,11 @@
  * make up a large share of what a from-scratch EPUB reader is likely to
  * see — public-domain classics, popular fiction, etc.).
  *
- * This is the *only* place this extension makes an outbound network
- * request to a third party — everything else (parsing, rendering,
- * annotations, search) is fully local. That's a deliberate, narrow
- * exception to the project's general offline-first stance, made
- * because:
+ * This metadata lookup is a narrow exception to the project's general
+ * offline-first stance:
  *  - it only ever runs for a book that has no author-supplied
- *    description to show instead (see `ReaderController`'s trigger
- *    condition), so a reader who never opens Book Details for such a
- *    book never causes any network activity from this;
+ *    description to show instead, when opening the book in the reader
+ *    or opening its Book details in the Library;
  *  - it sends only the book's own title/author/ISBN — the same
  *    information already shown in the Book Details panel — never file
  *    contents, reading position, annotations, or any other activity;
@@ -31,6 +27,26 @@
  */
 
 import { abbreviateMetadata, METADATA_TEXT_LIMITS } from "../MetadataText.js";
+import type { LibraryDatabase } from "./LibraryDatabase.js";
+
+const MAX_DESCRIPTION_FETCH_ATTEMPTS = 3;
+
+/** Share the retry budget and one active lookup across Library/reader tabs. */
+export async function enrichBookDescription(
+  library: Pick<LibraryDatabase, "getBookMetadata" | "recordDescriptionFetchResult">,
+  bookId: string,
+  isActive: () => boolean,
+): Promise<void> {
+  await navigator.locks.request(`ambra-description:${bookId}`, { ifAvailable: true }, async (lock) => {
+    if (!lock || !isActive()) return;
+    const book = await library.getBookMetadata(bookId);
+    if (!isActive() || !book || book.description || book.fetchedDescription ||
+      (book.descriptionFetchAttempts ?? 0) >= MAX_DESCRIPTION_FETCH_ATTEMPTS) return;
+    const isbn = book.identifiers?.find((id) => id.scheme?.toUpperCase() === "ISBN")?.value;
+    const result = await fetchBookDescription(book.title, book.creator, isbn);
+    if (isActive()) await library.recordDescriptionFetchResult(bookId, result);
+  });
+}
 
 export interface DescriptionEnrichmentResult {
   readonly description: string;

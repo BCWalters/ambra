@@ -72,6 +72,7 @@ jobs:
           first-reading-welcome.spec.ts
           harness-lifecycle.spec.ts
           reader-ui-dismissal.spec.ts
+          reference-panel-coexistence.spec.ts
           reader-library.spec.ts
           reader-back-to-library.spec.ts
           narration-discovery.spec.ts
@@ -155,6 +156,7 @@ jobs:
           library-discovery.spec.ts library-localization.spec.ts
           library-lifecycle.spec.ts library-transactions.spec.ts library-ux.spec.ts
           library-covers.spec.ts library-search.spec.ts library-compact.spec.ts
+          library-description.spec.ts book-details-presentation.spec.ts library-inspector.spec.ts
           --workers=1
       - name: Keep verified package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -255,29 +255,15 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                 </PaneDisclosure>
               )}
 
-              {/* An EPUB-author-facing tool, deliberately tucked away
-                  down here rather than given its own toolbar button —
-                  see `EpubInspectorPanel`'s doc comment.
-
-                  Given a deliberately distinct, "developer tool" look
-                  (issue #76) — a dark, code-editor-like background and
-                  monospaced label, a genuinely different visual register
-                  from every other (light, Fluent-neutral) control in
-                  this panel — so it reads as the power-user/debugging
-                  escape hatch it actually is, not just one more ordinary
-                  button in the list. */}
-              <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+              <div style={{ marginTop: 16 }}>
                 <Button
-                  appearance="secondary"
+                  appearance="primary"
                   icon={<CodeCircleRegular />}
                   {...restoreInspectorFocus}
                   onClick={onOpenInspector}
                   style={{
-                    background: "linear-gradient(135deg, #1e1e2e, #2a2a42)",
-                    borderColor: "rgba(126, 232, 250, 0.35)",
-                    color: "#7ee8fa",
-                    fontFamily:
-                      "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+                    justifyContent: "flex-start",
+                    textAlign: "left",
                   }}
                 >
                   {t("bookDetails.epubInspector")}

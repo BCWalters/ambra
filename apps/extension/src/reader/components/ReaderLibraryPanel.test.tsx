@@ -61,6 +61,7 @@ describe("Reader library reference panel", () => {
       sort: "dateAddedDesc", setSort: vi.fn(), isFullTab: true, openInFullTab: vi.fn(),
       storageUsage: undefined, openInspectionSession: vi.fn(), saveBookAs: vi.fn().mockResolvedValue(undefined),
       getBookFileSize: vi.fn().mockResolvedValue(2048),
+      enrichDescription: vi.fn().mockResolvedValue(undefined),
     };
     vi.mocked(useLibrary).mockImplementation(function useMockLibrary() {
       useEffect(() => { mounted(); return () => { disposed(); }; }, []);

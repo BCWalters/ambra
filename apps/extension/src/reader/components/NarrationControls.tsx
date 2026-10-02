@@ -9,7 +9,6 @@ import {
   MenuPopover,
   MenuTrigger,
   Tooltip,
-  buttonClassNames,
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
@@ -18,10 +17,8 @@ import {
   ChevronDownRegular,
   ChevronUpRegular,
   HeadphonesRegular,
-  NextRegular,
   PauseRegular,
   PlayRegular,
-  PreviousRegular,
 } from "@fluentui/react-icons";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
@@ -46,18 +43,14 @@ const RATES = [0.75, 1, 1.25, 1.5, 2];
 
 const useStyles = makeStyles({
   auxiliary: {
-    whiteSpace: "nowrap",
+    whiteSpace: "normal",
+    minWidth: 0,
+    maxWidth: "100%",
     paddingInline: "8px",
-    "@container narration (max-width: 720px)": {
-      minWidth: "28px",
-      width: "28px",
-      paddingInline: "4px",
-      [`& .${buttonClassNames.icon}`]: { marginRight: 0 },
-    },
+    overflowWrap: "anywhere",
   },
   auxiliaryLabel: {
     display: "inline-grid",
-    "@container narration (max-width: 720px)": { display: "none" },
   },
   rate: {
     minHeight: "28px",
@@ -127,7 +120,12 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
       <Button ref={playButton} appearance="primary" size={collapsed ? "small" : "large"}
         icon={playing ? <PauseRegular /> : <PlayRegular />}
         aria-label={playLabel} onClick={onPlayPause}
-        style={{ minWidth: collapsed ? 32 : 48, height: collapsed ? 28 : 40 }} />
+        style={{ minWidth: collapsed ? 92 : 120, minHeight: collapsed ? 36 : 48, fontSize: collapsed ? 13 : 15 }}>
+        <span className={styles.auxiliaryLabel}>
+          <span aria-hidden={playing} style={{ gridArea: "1 / 1", visibility: playing ? "hidden" : "visible" }}>{t("narration.playLabel")}</span>
+          <span aria-hidden={!playing} style={{ gridArea: "1 / 1", visibility: playing ? "visible" : "hidden" }}>{t("narration.pauseLabel")}</span>
+        </span>
+      </Button>
     </Tooltip>
   );
 
@@ -158,14 +156,17 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
     >
       <div
         data-narration-commands
-        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 8, minHeight: 28 }}
+        style={{ display: collapsed ? "grid" : "flex", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+          flexWrap: "wrap", alignItems: "center", gap: 8, minHeight: 28 }}
       >
         <div
           data-narration-position-commands
-          style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0 }}
+          style={{ display: collapsed ? "contents" : "flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0, flex: 1 }}
         >
-          <Caption1 style={{ fontWeight: 600 }}>{t("narration.readAlong")}</Caption1>
+          <Caption1 style={{ fontSize: 14, lineHeight: "21px", fontWeight: 600 }}>{t("narration.readAlong")}</Caption1>
           {collapsed ? playback : <>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <Caption1>{t("narration.speedLabel")}</Caption1>
           <Menu
             checkedValues={{ rate: [String(state.rate)] }}
             onCheckedValueChange={(_, data) => {
@@ -195,6 +196,7 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
               </MenuList>
             </MenuPopover>
           </Menu>
+          </div>
           <Tooltip content={t("narration.return")} relationship="label">
             <Button
               appearance="secondary"
@@ -240,19 +242,28 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
             aria-label={collapseLabel}
             aria-expanded={!collapsed}
             onClick={() => onCollapsedChange(!collapsed)}
-          />
+            className={styles.auxiliary}
+            style={{ marginInlineStart: "auto", alignSelf: collapsed ? "center" : "flex-start", justifySelf: "end" }}
+          >
+            {t(collapsed ? "narration.expandLabel" : "narration.collapseLabel")}
+          </Button>
         </Tooltip>
       </div>
       {!collapsed && <div data-narration-primary-commands
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, minHeight: 40 }}>
+        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+          alignItems: "center", gap: 8, minHeight: 48, width: "100%", maxWidth: 480, marginInline: "auto" }}>
         <Tooltip content={t("narration.previous")} relationship="label">
-          <Button appearance="subtle" size="small" icon={<PreviousRegular />}
-            aria-label={t("narration.previous")} disabled={!state.hasPrevious} onClick={onPrevious} />
+          <Button appearance="secondary" size="small" className={styles.auxiliary} style={{ justifySelf: "end" }}
+            aria-label={t("narration.previous")} disabled={!state.hasPrevious} onClick={onPrevious}>
+            {t("narration.previousLabel")}
+          </Button>
         </Tooltip>
         {playback}
         <Tooltip content={t("narration.next")} relationship="label">
-          <Button appearance="subtle" size="small" icon={<NextRegular />}
-            aria-label={t("narration.next")} disabled={!state.hasNext} onClick={onNext} />
+          <Button appearance="secondary" size="small" className={styles.auxiliary} style={{ justifySelf: "start" }}
+            aria-label={t("narration.next")} disabled={!state.hasNext} onClick={onNext}>
+            {t("narration.nextLabel")}
+          </Button>
         </Tooltip>
       </div>}
       <div

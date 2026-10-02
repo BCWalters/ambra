@@ -202,7 +202,7 @@ test("Help and its nested shortcut guide dismiss directly to reading on a backdr
   }
 });
 
-test("reference tasks replace each other while Contents and Annotations share pin state and Search keeps its own", async () => {
+test("reference tasks preserve opposite pinned panels while Contents and Annotations share pin state and Search keeps its own", async () => {
   const { context, readerPage: page } = await launchReader(fixture("two-chapter"), {
     viewport: { width: 1400, height: 900 },
   });
@@ -218,7 +218,7 @@ test("reference tasks replace each other while Contents and Annotations share pi
     await settled(page);
 
     await page.getByRole("button", { name: "Annotations", exact: true }).click();
-    await expect(contents).toBeHidden();
+    await expect(contents).toBeVisible();
     await expect(annotations).toBeVisible();
     await expect(annotations.getByRole("button", { name: "Unpin annotations panel", exact: true })).toBeVisible();
     await expect(annotations.getByRole("combobox", { name: "Show", exact: true })).toHaveValue("all");
@@ -229,16 +229,27 @@ test("reference tasks replace each other while Contents and Annotations share pi
 
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await expect(annotations).toBeHidden();
-    await expect(contents).toBeHidden();
+    await expect(contents).toBeVisible();
     await expect(search).toBeVisible();
     await expect(search.getByRole("button", { name: "Pin search panel", exact: true })).toBeVisible();
     await search.getByRole("button", { name: "Pin search panel", exact: true }).click();
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
-    await expect(search).toBeHidden();
-    await expect(contents.getByRole("button", { name: "Unpin contents panel", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByRole("button", { name: "Hide contents", exact: true }).click();
     await expect(contents).toBeHidden();
+    await expect(search).toBeVisible();
+    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await expect(search).toBeVisible();
+    await expect(contents.getByRole("button", { name: "Unpin contents panel", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Hide search", exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(contents).toBeVisible();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
     await expect(search.getByRole("button", { name: "Unpin search panel", exact: true })).toBeVisible();
+    await contents.getByRole("button", { name: "Unpin contents panel", exact: true }).click();
+    await expect(search.getByRole("button", { name: "Unpin search panel", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Annotations", exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(contents).toBeHidden();
+    await expect(annotations.getByRole("button", { name: "Pin annotations panel", exact: true })).toBeVisible();
   } finally {
     await context.close();
   }
@@ -344,7 +355,7 @@ test("reference docking uses the row left by the Inspector dock, not the viewpor
     await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
     const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
     await inspector.getByRole("button", { name: "Dock left", exact: true }).click();
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await expect(contents).toBeVisible();
     await expect(contents).toHaveCSS("position", "relative");
     await contents.focus();
 

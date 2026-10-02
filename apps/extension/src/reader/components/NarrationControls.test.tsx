@@ -281,26 +281,25 @@ describe("NarrationControls", () => {
     expect(region.style.containerType).toBe("inline-size");
     expect(region.style.containerName).toBe("narration");
     const commands = container.querySelector<HTMLElement>("[data-narration-commands]")!;
-    expect(commands.style.gridTemplateColumns).toBe("minmax(0, 1fr) auto");
+    expect(commands.style.flexWrap).toBe("wrap");
     expect(commands.style.minHeight).toBe("28px");
     expect(commands.querySelectorAll("button")).toHaveLength(4);
     expect(commands.lastElementChild).toBe(button("Collapse read-along controls"));
     expect(commands.textContent).toContain("Read along");
     const primary = container.querySelector<HTMLElement>("[data-narration-primary-commands]")!;
-    expect(primary.style.justifyContent).toBe("center");
+    expect(primary.style.gridTemplateColumns).toBe("minmax(0, 1fr) auto minmax(0, 1fr)");
     expect(primary.querySelectorAll("button")).toHaveLength(3);
-    expect(button("Play narration").style.height).toBe("40px");
+    expect(button("Play narration").style.minHeight).toBe("48px");
     for (const name of ["Return to narration", "Listen from this page"]) {
       const action = button(name);
       expect(commands.contains(action)).toBe(true);
       expect(primary.contains(action)).toBe(false);
       expect(action.querySelector("svg")).not.toBeNull();
-      expect(getComputedStyle(action).whiteSpace).toBe("nowrap");
+      expect(getComputedStyle(action).whiteSpace).toBe("normal");
     }
     const css = Array.from(document.styleSheets)
       .flatMap(sheet => Array.from(sheet.cssRules, rule => rule.cssText)).join("\n");
-    expect(css).toContain("@container narration (max-width: 720px)");
-    expect(css).toMatch(/@container narration \(max-width: 720px\)[^{]*\{[^}]*display: none/);
+    expect(css).not.toContain("@container narration (max-width: 720px)");
     expect(document.activeElement).toBe(focused);
     expect(getComputedStyle(button("Play narration")).backgroundColor).toBe(CHROME_THEMES.blue.actionBackground);
     expect(getComputedStyle(button("Play narration")).color).toBe(CHROME_THEMES.blue.actionForeground);
@@ -315,7 +314,7 @@ describe("NarrationControls", () => {
     render({ status: "playing" }, false, false, true);
     expect(container.querySelector("[data-narration-primary-commands]")).toBeNull();
     expect(container.querySelectorAll("button")).toHaveLength(2);
-    expect(button("Pause narration").style.height).toBe("28px");
+    expect(button("Pause narration").style.minHeight).toBe("36px");
     expect(document.activeElement).toBe(button("Expand read-along controls"));
     expect(button("Expand read-along controls")).toBe(collapse);
     act(() => button("Expand read-along controls").click());
@@ -355,9 +354,14 @@ describe("NarrationControls", () => {
       render({ following: false });
       expect(button(t("narration.previous")).disabled).toBe(false);
       expect(button(t("narration.next")).disabled).toBe(false);
+      expect(button(t("narration.previous")).textContent).toBe(t("narration.previousLabel"));
+      expect(button(t("narration.next")).textContent).toBe(t("narration.nextLabel"));
+      expect(button(t("narration.play")).querySelector('[aria-hidden="false"]')?.textContent).toBe(t("narration.playLabel"));
       expect(button(t("narration.return"))).toBeDefined();
       expect(button(t("narration.listenFromPage"))).toBeDefined();
       expect(button(t("narration.collapse"))).toBeDefined();
+      expect(button(t("narration.collapse")).textContent).toBe(t("narration.collapseLabel"));
+      expect(container.textContent).toContain(t("narration.speedLabel"));
       expect(button(`${t("narration.speed")}: 1×`)).toBeDefined();
       expect(container.querySelector('[role="status"]')!.textContent).toBe(t("narration.browsing"));
       render({ following: false }, false, true);

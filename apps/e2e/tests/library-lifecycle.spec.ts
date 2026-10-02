@@ -106,7 +106,7 @@ test("standalone Inspector docks beside the Library without a hidden modal block
         ? main.x >= dock.x + dock.width - 1
         : main.x + main.width <= dock.x + 1);
     }).toBe(true);
-    const importButton = library.getByRole("button", { name: "Import EPUB", exact: true });
+    const importButton = library.getByRole("button", { name: "Import book", exact: true });
     await importButton.focus();
     await expect(importButton).toBeFocused();
     await expect(inspector).toBeVisible();
@@ -156,11 +156,11 @@ base("import controls wait for a withheld database open before accepting the fir
     await page.goto(`chrome-extension://${worker.url().split("/")[2]}/src/library/index.html?view=tab`);
     await expect.poll(() => page.evaluate(() => Reflect.get(window, "__heldLibraryOpens") ?? 0)).toBeGreaterThan(0);
     const input = page.locator('input[type="file"]');
-    const button = page.getByRole("button", { name: "Import EPUB", exact: true });
+    const button = page.getByRole("button", { name: "Import book", exact: true });
     await expect(input).toBeDisabled();
     await expect(button).toBeDisabled();
     await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Import book", exact: true })).toHaveCount(1);
     await page.evaluate(() => Reflect.get(window, "__releaseLibraryOpen")());
     await expect(input).toBeEnabled();
     await expect(button).toBeEnabled();

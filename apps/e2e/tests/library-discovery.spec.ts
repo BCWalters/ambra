@@ -49,7 +49,7 @@ async function expectDiscovery(page: Page) {
   await expect(dialog).toContainText("Check each book's license");
   await expect(dialog).toContainText("recorded narration and synchronized text");
   await expect(dialog).toContainText("DRM-free EPUBs available for purchase.");
-  await expect(dialog.getByRole("listitem").nth(1)).toContainText("Import EPUB");
+  await expect(dialog.getByRole("listitem").nth(1)).toContainText("Import book");
   return dialog;
 }
 
@@ -57,7 +57,7 @@ test("empty full library keeps normal actions, opens centered discovery and rest
   await withLibrary(info, 1000, async (page) => {
     const find = page.getByRole("button", { name: "Find books", exact: true });
     await expect(find).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Import book", exact: true })).toHaveCount(1);
     await expect(page.getByRole("contentinfo")).not.toContainText("0 books");
     await expect(page.getByRole("main").getByRole("button")).toHaveCount(0);
     await find.click();
@@ -102,11 +102,11 @@ test("failed imports retain the single normal Import action, retry succeeds and 
     await page.keyboard.press("Escape");
     await page.getByRole("alert").getByRole("button", { name: "Dismiss", exact: true }).click();
     const choosing = page.waitForEvent("filechooser");
-    await page.getByRole("button", { name: "Import EPUB", exact: true }).press("Enter");
+    await page.getByRole("button", { name: "Import book", exact: true }).press("Enter");
     await (await choosing).setFiles(BOOK);
     await expect(page.locator("[data-library-collection] [data-book-open]")).toHaveCount(1);
     await expect(page.getByRole("heading", { name: "No books yet" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Import EPUB", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Import book", exact: true })).toHaveCount(1);
     await page.getByRole("button", { name: "Find books", exact: true }).click();
     await expectDiscovery(page);
   });

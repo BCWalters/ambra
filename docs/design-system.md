@@ -61,6 +61,27 @@ glyph size is not hit-target size. Meet WCAG 2.2 AA target-size requirements;
 prefer larger touch targets where space permits. Reduce motion without changing
 reading geometry to animate chrome.
 
+Keep at least 160px for a compact Library collection. In short windows or at
+high zoom, let the outer Library scroll rather than compressing its books
+behind the sticky search/sort controls.
+
+Compound Fluent Input/SearchBox controls own focus on their rounded outer
+wrapper. Do not add the generic focus-ring backing shadow to the inner text
+field; it produces a second, square inset box. Preserve Fluent's matching
+underline and forced-colors wrapper outline for pointer and keyboard focus.
+
+### Interface typography
+
+Use the prototype's native-system-first font stack:
+`-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`. Shared Fluent
+typography tokens carry it to Library, reader chrome, panels, controls, and
+portals, including numeric UI text. Body text is 14px/21px; compact captions
+are 12px/18px and ordinary button emphasis is 550. Keep deliberate heading
+hierarchy and compact control sizing rather than making every label the same
+size. Generated cover artwork retains its decorative serif; interface headings
+such as Continue reading use the system font. Do not change EPUB fonts,
+publication styles, or the user's reading-font choice.
+
 ### Action vocabulary
 
 | Role | Treatment and contract |
@@ -83,6 +104,15 @@ the control itself, including over arbitrary covers, not only in a tooltip.
 ### Collection and navigation
 
 - Full library: Continue reading, followed by the searchable/sortable collection.
+- Continue reading is a full-width, softly theme-tinted resume card: 72x108px
+  cover, small uppercase section label, prominent book title, author, bounded
+  progress track, and a bordered **Continue reading** action. Put Book details
+  at the right of the percentage row beneath the track, matching collection
+  cards; keep the reading action separate. Wrap the action row on narrow screens, and use real saved progress
+  without inventing chapter metadata. The collection remains below it.
+- The import action reads **Import book** in every Library presentation, with
+  translated equivalents. Supported files remain EPUB; discovery instructions,
+  recovery messages, and the file picker retain that format guidance.
   Progress sits beneath covers. Search and Sort stay together.
 - Compact popup: a readable cover-and-metadata list, not the old three-column
   cover grid. Keep Find books and Import together above the collection, including
@@ -107,17 +137,31 @@ the control itself, including over arbitrary covers, not only in a tooltip.
   Current-book return and closing the panel remain available.
 - Keep **Open library in new tab** as an explicit secondary escape hatch in
   compact/reader contexts. Library browsing is not browser fullscreen.
+- Compact Library search/sort retains a 12px opaque gap below the sticky
+  controls, so scrolling book rows never run directly into the search field.
 
 ### Covers, titles, metadata, and removal
 
 - Generated covers have a 2:3 ratio. Real artwork is contained without cropping,
   distortion, recoloring, or losing its native aspect ratio.
+- Generated covers use a serif title, author, small diamond ornament, inset
+  outline, and subtle spine shading. A stable FNV-1a hash of the normalized
+  title selects one of five complementary colors: sage, violet, muted rose,
+  slate blue, or ochre. Color is independent of interface theme, sort order,
+  book ID, and reading progress. Keep full metadata accessible outside the
+  bounded decorative cover, including at compact sizes.
 - Real and generated covers share restrained asymmetric corner treatment:
   approximately 3px spine-side and 7px outer-side in the study.
+- Real artwork has no visible frame or fill around its reserved 2:3 slot.
+  Round and thinly outline the actual aspect-ratio-preserving image, not its
+  letterboxed slot, so light covers remain distinct from the Library background.
+  Keep the keyboard focus indicator on the open-book control.
 - Reserve two title lines and one author line, with ellipsis. Full titles remain
   in the accessible open-book name and untruncated Book details.
-- Reserve progress-track space for unread books without showing false progress;
-  author, progress, and details rows should align across cards.
+- Show an empty progress track and **Not started** for unread books; author,
+  progress, and details rows should align across cards. Recorded progress keeps
+  its percentage, including 0%. A saved reading position without a known
+  percentage shows **Started**, not a fabricated percentage or unread status.
 - Direct Book details action, not duplicate details actions in an overflow menu.
   Retain file size and publisher alongside author without repeating the author.
   Other existing publication/identifier/accessibility metadata remains available.
@@ -128,6 +172,12 @@ the control itself, including over arbitrary covers, not only in a tooltip.
   names the book, explains loss of saved state/annotations, distinguishes the
   original EPUB on disk, and initially focuses Cancel. Restore focus to the
   next/previous item in displayed order or an appropriate empty-state control.
+- EPUB Inspector follows publication details as a left-aligned, filled primary
+  action using the interface theme and typography in both Library and reader.
+  Library removal stays last below a divider, separate from the non-destructive
+  inspection action. Both buttons share the left content edge at their natural
+  widths; Inspector is primary and removal is secondary. Keep existing Inspector availability and
+  focus-return behavior.
 - No Trash/undo promise. Prototype Reset sample is not an app recovery feature.
 
 ### Discovery and empty states
@@ -164,21 +214,37 @@ Opening settings dismisses the neighboring Help tooltip immediately and keeps it
 hidden while settings owns focus; the first Escape belongs to settings.
 
 Help leads with the guide, keyboard shortcuts, issue reporting, feedback, and
-privacy-conscious diagnostic copying. About/version/privacy/source/credits is a
-secondary disclosure. The owner accepted this while noting that About is slightly
-more hidden than ideal; retain that concern without blocking implementation.
+privacy-conscious diagnostic copying. About is an always-expanded section with
+version, creator, privacy, and source links; only standards/open-source credits
+remain a disclosure. Help shape Ambra uses a plain divided section and quiet
+feedback links rather than a nested card or full-width call to action. Keep
+spacing compact without duplicating the email destination as a separate line
+or hiding diagnostic privacy guidance.
 Preserve explicit copy-failure feedback and existing diagnostic redaction.
 
 ## 5. Reader hierarchy, panels, and navigation
 
+The Contents button keeps the visible label **Contents** in both states; its
+tooltip/accessibility label switches between **Show contents** and **Hide contents**.
+
 - Toolbar starts **Contents, then Library**, retaining visible labels where
-  possible. Restore/preserve Search, Book options, Annotations, Book details,
-  Ambra settings, Help, and current-page bookmark commands at narrow widths too.
+  possible. After the title, order commands **Search, Book options, Annotations,
+  Book details, Ambra settings, Help, Bookmark**. Annotations keeps its visible
+  label alongside Contents/Library when the reader pane is wider than 800px;
+  narrower panes retain all commands as accessible icons.
+- Stack the current chapter below the book title, centered when both fit and
+  independently ellipsized when space is tight. Keep the toolbar height stable;
+  chapter text must not compete horizontally with the title.
 - When the remaining title region is under 80px, hide its redundant title action
   rather than leave an invisible tab stop. Book details stays available by icon;
   move focus there if a resize hides the focused title.
-- **One reference panel at a time.** Opening another replaces the active panel.
-  Left: Contents and Library. Right: Annotations, Search, and Book details.
+- **One reference panel per side.** Opening another panel preserves a pinned
+  panel on the opposite side; an unpinned opposite panel still closes.
+  Same-side panels replace one another: left, Contents and Library; right,
+  Annotations, Search, and Book details. Budget both docks together, retaining
+  at least 320px for reading. If both panels cannot fit side by side with at
+  least one dock, temporarily show only the most recently opened panel. Restore
+  the other when room returns without resetting its pin preference, drafts, or filters.
 - Contents and Annotations share their existing pin preference; Search has its
   independent preference. Pinned panels dock and remain across navigation;
   unpinned panels are temporary flyouts dismissed by navigation, outside click,
@@ -244,6 +310,11 @@ settings/search utility:
 - Expanded strip below progress: Read along and speed upper-left; position
   actions and Collapse upper-right; centered prominent Play/Pause with secondary
   Previous/Next in their own transport row.
+- Keep visible labels for Previous, Play/Pause, Next, Speed, position actions,
+  and Collapse/Expand, including in narrow layouts. Wrap rather than replacing
+  these labels with icons. Short visible labels retain descriptive accessible
+  names; reserve alternate-label space to avoid layout jumps on playback or
+  selection changes.
 - Collapse retains persistent compact Play/Pause and Expand, not dismissal.
 - Preserve speed, previous/next, Return to narration, and position selection.
   Exact default label: **Listen from this page**; selected text changes it to
@@ -284,7 +355,10 @@ content pane must not subtract that space twice.
   badge in overlap calculations. Wider layouts can separate groups again.
 - Clicking a group opens a compact chooser showing count/range and at most five
   distinct destinations. Larger groups expose **Show all bookmarks**, opening
-  Annotations filtered to Bookmarks. Keep this fallback visible without scrolling
+  Annotations temporarily filtered to Bookmarks. A later command-bar opening
+  restores the user's last explicit filter (All annotations by default), rather
+  than retaining the shortcut's filter. Explicit choices made during the visit
+  are still remembered. Keep this fallback visible without scrolling
   the popup. The visual badge can cap at 99+; accessible counts remain exact.
 - Preserve separate saved targets even when multiple bookmarks share a rendered
   page. Use existing safe label/excerpt information to disambiguate where

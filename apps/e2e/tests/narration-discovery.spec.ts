@@ -138,6 +138,7 @@ for (const { width, locale } of [
   { width: 900, locale: "en" },
   { width: 360, locale: "en" },
   { width: 900, locale: "de" },
+  ...(["en", "de", "es", "fr", "it", "ja", "ko", "ru", "zh"] as const).map(locale => ({ width: 320, locale })),
 ] as const) {
   test(`${width}px ${locale}: expanded transport has a separate row, collapse is compact, and speed supports keyboard`, async () => {
     const { context, readerPage: page } = await launchReader(narrated, { viewport: { width, height: 900 } });
@@ -154,16 +155,30 @@ for (const { width, locale } of [
       await exposeReaderController(page);
       await page.evaluate(() => Reflect.get(window, "__readerController").performNarrationAction("toggle"));
       const before = (await strip.boundingBox())!;
-      expect(before.height).toBeLessThanOrEqual(116);
+      expect(before.height).toBeLessThanOrEqual(224);
+      await expect(strip.getByRole("button", { name: t("narration.previous"), exact: true }))
+        .toHaveText(t("narration.previousLabel"));
+      await expect(strip.getByRole("button", { name: t("narration.next"), exact: true }))
+        .toHaveText(t("narration.nextLabel"));
+      await expect(strip.getByRole("button", { name: t("narration.play"), exact: true }).locator('[aria-hidden="false"]'))
+        .toHaveText(t("narration.playLabel"));
+      await expect(strip.getByText(t("narration.speedLabel"), { exact: true })).toBeVisible();
+      await expect(strip.getByRole("button", { name: t("narration.listenFromPage"), exact: true })
+        .getByText(t("narration.listenFromPage"), { exact: true })).toBeVisible();
       const header = (await strip.locator("[data-narration-commands]").boundingBox())!;
       const transport = (await strip.locator("[data-narration-primary-commands]").boundingBox())!;
       expect(transport.y).toBeGreaterThanOrEqual(header.y + header.height);
+      const play = strip.getByRole("button", { name: t("narration.play"), exact: true });
+      const playBox = (await play.boundingBox())!;
+      expect(Math.abs(playBox.x + playBox.width / 2 - (before.x + before.width / 2))).toBeLessThanOrEqual(1);
       const frameBefore = await page.locator("iframe").first().boundingBox();
       await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
       await expect.poll(() => page.evaluate(() =>
         Reflect.get(window, "__readerController").snapshot().narration.following,
       )).toBe(false);
       expect(await strip.boundingBox()).toEqual(before);
+      await expect(strip.getByRole("button", { name: t("narration.return"), exact: true })
+        .getByText(t("narration.return"), { exact: true })).toBeVisible();
       expect(await page.locator("iframe").first().boundingBox()).toEqual(frameBefore);
       expect(await strip.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       const closeBounds = (await strip.getByRole("button", { name: t("narration.collapse"), exact: true }).boundingBox())!;
@@ -189,6 +204,11 @@ for (const { width, locale } of [
       expect((await strip.boundingBox())!.height).toBeLessThan(before.height);
       await expect(strip.locator("[data-narration-primary-commands]")).toHaveCount(0);
       await expect(strip.getByRole("button", { name: t("narration.play"), exact: true })).toBeVisible();
+      const collapsedBox = (await strip.boundingBox())!;
+      const collapsedPlay = (await strip.getByRole("button", { name: t("narration.play"), exact: true }).boundingBox())!;
+      expect(Math.abs(collapsedPlay.x + collapsedPlay.width / 2 - (collapsedBox.x + collapsedBox.width / 2))).toBeLessThanOrEqual(1);
+      await expect(strip.getByRole("button", { name: t("narration.expand"), exact: true }))
+        .toHaveText(t("narration.expandLabel"));
       expect(await strip.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       await page.screenshot({ path: test.info().outputPath(`narration-controls-${width}-${locale}.png`) });
     } finally {

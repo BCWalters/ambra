@@ -97,6 +97,27 @@ describe("Annotations reference panel", () => {
     expect(props.onSetHighlightNote).not.toHaveBeenCalled();
   });
 
+  it("reveals a retained draft without taking focus from the opposite panel", () => {
+    render({ pinned: true });
+    act(() => button("Edit note").click());
+    const textarea = edit("Retained during narrow layout");
+    const other = document.createElement("button");
+    document.body.append(other);
+    try {
+      act(() => other.focus());
+      render({ open: false, pinned: false, focusOnOpen: false });
+      render({ open: true, pinned: true });
+      expect(document.activeElement).toBe(other);
+      expect(container.querySelector("textarea")).toBe(textarea);
+      expect(textarea.value).toBe("Retained during narrow layout");
+      act(() => button("Cancel").click());
+      act(() => button("Edit note").click());
+      expect(document.activeElement).toBe(container.querySelector("textarea"));
+    } finally {
+      other.remove();
+    }
+  });
+
   it("uses one counted Show filter with overlapping Notes and Highlights, including publisher entries", () => {
     render({ readOnlyAnnotations: [
       { id: "embedded", kind: "highlight", cfi: "embedded", label: "Publisher text", note: "Publisher comment" },
@@ -268,5 +289,25 @@ describe("Annotations reference panel", () => {
     filter("all");
     expect(textarea.value).toBe("Preserved across external requests");
     expect(props.onSetHighlightNote).not.toHaveBeenCalled();
+  });
+
+  it.each(["all", "notes"] as const)("restores the manual %s filter after a bookmark-shortcut visit", manual => {
+    render();
+    filter(manual);
+    render({ filterRequest: { filter: "bookmarks", requestId: 1 } });
+    expect(container.querySelector("select")?.value).toBe("bookmarks");
+    render({ open: false });
+    render({ open: true, filterRequest: undefined });
+    expect(container.querySelector("select")?.value).toBe(manual);
+    render({ filterRequest: { filter: "bookmarks", requestId: 1 } });
+    expect(container.querySelector("select")?.value).toBe("bookmarks");
+  });
+
+  it("retains an explicit filter choice made during a bookmark-shortcut visit", () => {
+    render({ filterRequest: { filter: "bookmarks", requestId: 1 } });
+    filter("highlights");
+    render({ open: false });
+    render({ open: true, filterRequest: undefined });
+    expect(container.querySelector("select")?.value).toBe("highlights");
   });
 });

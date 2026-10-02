@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore, type FC, type PropsWithChildren } from "react";
-import { FluentProvider, makeStyles, mergeClasses } from "@fluentui/react-components";
+import { FluentProvider, buttonClassNames, inputClassNames, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { createAmbraFluentTheme, DEFAULT_INTERFACE_THEME, getInterfaceTheme } from "../theme.js";
 import type { BrowserAppearance, InterfaceThemeChoice } from "../theme.js";
 
@@ -20,15 +20,16 @@ const useStyles = makeStyles({
   light: { colorScheme: "light" },
   dark: { colorScheme: "dark" },
   root: {
-    // Controls with their own focus indicator take precedence over this fallback.
-    ":where(&) :where(:focus-visible)": {
+    [`& .${buttonClassNames.root}`]: { fontWeight: tokens.fontWeightSemibold },
+    // Fluent Input/SearchBox draws focus on its wrapper, not the inner text field.
+    [`:where(&) :where(:focus-visible:not(.${inputClassNames.input}))`]: {
       outline: "2px solid var(--ambraFocus)",
       outlineOffset: "2px",
       // A solid backing keeps the outer indicator legible over arbitrary cover art.
       boxShadow: "0 0 0 2px var(--ambraSurface)",
     },
     "@media (forced-colors: active)": {
-      ":where(&) :where(:focus-visible)": { outlineColor: "Highlight", boxShadow: "none" },
+      [`:where(&) :where(:focus-visible:not(.${inputClassNames.input}))`]: { outlineColor: "Highlight", boxShadow: "none" },
     },
     "@media (prefers-reduced-motion: reduce)": {
       "& *, & *::before, & *::after": {
