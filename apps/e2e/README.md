@@ -54,14 +54,21 @@ the feature environment variable as well to assert the release UI has no
 invitation or simulation controls.
 
 `native-library-import.spec.ts` attaches to Chrome's actual action-popup target
-and uses a trusted mouse click to verify handoff to a persistent Library tab.
-It confirms the original popup is destroyed before choosing files, then checks
-chooser cancellation/retry, multi-file import, persistence after reload, and
-reader opening. Embedded Library imports still choose files directly. The test
+and uses a trusted mouse click to verify handoff to a dedicated, persistent
+import window. It confirms the action popup is destroyed and the importer
+survives focus loss before choosing files, then checks chooser cancellation/retry,
+multi-file import, persistence after reload, and return to the original normal
+browser window. Embedded Library imports still choose files directly. The test
 intercepts the chooser for automation; it does not certify the operating
 system's file-dialog behavior. Local-feature builds also check native popup
 file dropping; `library-file-drop.spec.ts` covers the compact in-reader Library
 and ensures its drop highlight stays inside the panel.
+
+Creating a focused browser window does not reliably dismiss the action popup.
+Close the old popup explicitly only after successful window creation, and use
+`chrome.tabs.getCurrent()` to distinguish a tab from the tabless action popup
+before closing it. Assert the original CDP target is gone rather than assuming
+that creating another window proves the ephemeral document was destroyed.
 
 For manual review, open the full Library and expand **Local prototype controls**
 below the collection. **Simulate eligible reader** opens the modal.

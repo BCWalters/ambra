@@ -142,6 +142,10 @@ export interface StringCatalog {
   "library.bookDetails": string;
   "library.removeBook": string;
   "library.importEpub": string;
+  "library.importWindowAction": string;
+  "library.importWindowHint": string;
+  "library.importWindowDrop": string;
+  "library.openLibrary": string;
   "library.sort": string;
   "library.sortLabel": string;
   "library.continueReading": string;
@@ -655,6 +659,10 @@ export const en: StringCatalog = {
   "library.bookDetails": "{title} details",
   "library.removeBook": "Remove {title} from library",
   "library.importEpub": "Import book",
+  "library.importWindowAction": "Import in a dedicated window",
+  "library.importWindowHint": "Choose EPUB files from your device to add to your Ambra library.",
+  "library.importWindowDrop": "You can also drop EPUB files here.",
+  "library.openLibrary": "Open library",
   "library.sort": "Sort library",
   "library.sortLabel": "Sort",
   "library.continueReading": "Continue reading",

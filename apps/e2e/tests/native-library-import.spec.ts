@@ -6,9 +6,10 @@ const initialBook = fileURLToPath(new URL("../fixtures/reading-entry.epub", impo
 const importedBook = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
 const secondImportedBook = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 
-test("native popup hands Import book to a persistent tab before the popup is destroyed", async () => {
+test("native popup hands Import book to a focused import window that survives focus loss", async () => {
   const { context, libraryPage: page, readerPage, extensionId } = await launchReader(initialBook, { viewport: null });
   try {
+    const sourceWindow = await page.evaluate(async () => (await chrome.windows.getCurrent()).id);
     const worker = context.serviceWorkers()[0]!;
     await worker.evaluate(async () => {
       const [window] = await chrome.windows.getAll();
@@ -78,7 +79,7 @@ test("native popup hands Import book to a persistent tab before the popup is des
     await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...buttonPoint });
     const destinationOpened = context.waitForEvent("page");
     // Do not wait for a response from the popup after the release: creating the
-    // active tab can destroy that target before CDP delivers its acknowledgement.
+    // import window can destroy that target before CDP delivers its acknowledgement.
     await cdp.send("Target.sendMessageToTarget", { sessionId, message: JSON.stringify({
       id: ++sequence, method: "Input.dispatchMouseEvent",
       params: { type: "mouseReleased", button: "left", clickCount: 1, ...buttonPoint },
@@ -86,49 +87,73 @@ test("native popup hands Import book to a persistent tab before the popup is des
     const destination = await destinationOpened;
     let destinationChooserCount = 0;
     destination.on("filechooser", () => { destinationChooserCount++; });
-    await expect(destination).toHaveURL(`chrome-extension://${extensionId}/src/library/index.html?view=tab`);
-    await expect(destination.getByRole("button", { name: "Import book", exact: true })).toBeFocused();
-    await expect(destination.getByRole("status").filter({ hasText: "Keep your library open." })).toBeVisible();
+    await expect(destination).toHaveURL(`chrome-extension://${extensionId}/src/library/index.html?view=import&sourceWindow=${sourceWindow}`);
+    await expect(destination.getByRole("button", { name: "Choose EPUB files...", exact: true })).toBeFocused();
+    await expect(destination.locator("[data-library-import-window]")).toBeVisible();
+    await expect(destination.locator("[data-library-collection]")).toHaveCount(0);
+    await expect(destination.locator("[data-review-invitation]")).toHaveCount(0);
+    await expect(destination.getByText("You can also drop EPUB files here.", { exact: true }))
+      .toHaveCount(process.env.VITE_AMBRA_LOCAL_FEATURES === "1" ? 1 : 0);
+    const importerWindow = await destination.evaluate(async () => {
+      const win = await chrome.windows.getCurrent();
+      return { id: win.id, type: win.type };
+    });
+    expect(importerWindow.type).toBe("popup");
+    expect(importerWindow.id).not.toBe(sourceWindow);
+    expect(await destination.evaluate(() => document.documentElement.style.width)).toBe("");
     expect(chooser).toBeUndefined();
     expect(destinationChooserCount).toBe(0);
 
     // This is the lifecycle boundary the old intercepted-popup-chooser test missed:
     // assert the actual Chrome popup document AND its CDP target are gone before
     // selecting anything, rather than keeping it alive while injecting files.
-    await expect.poll(() => page.evaluate(() => chrome.extension.getViews({ type: "popup" }).length)).toBe(0);
+    await expect.poll(() => page.evaluate(actionUrl =>
+      chrome.extension.getViews({ type: "popup" }).some(view => view.location.href === actionUrl), target!.url,
+    )).toBe(false);
     await expect.poll(async () => (await cdp.send("Target.getTargets")).targetInfos
       .some(info => info.targetId === target!.targetId)).toBe(false);
     await cdp.detach();
     await readerPage.close();
-    await page.close();
+    await page.bringToFront();
+    expect(destination.isClosed()).toBe(false);
+    await expect(destination.locator("[data-library-import-window]")).toBeVisible();
+    await destination.bringToFront();
+    await destination.screenshot({ path: test.info().outputPath("import-window-empty.png") });
 
     // OS dialogs themselves cannot be driven by Playwright. Interception is safe
-    // here because the chooser now belongs to a normal tab, after popup destruction.
+    // here because the chooser belongs to a persistent window, after action-popup destruction.
     const [cancelled] = await Promise.all([
       destination.waitForEvent("filechooser"),
-      destination.getByRole("button", { name: "Import book", exact: true }).click(),
+      destination.getByRole("button", { name: "Choose EPUB files...", exact: true }).click(),
     ]);
     await cancelled.setFiles([]);
-    await expect(destination.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
-    await expect(destination.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toHaveCount(0);
+    await expect(destination.getByRole("button", { name: "Choose EPUB files...", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toHaveCount(0);
     const [files] = await Promise.all([
       destination.waitForEvent("filechooser"),
-      destination.getByRole("button", { name: "Import book", exact: true }).click(),
+      destination.getByRole("button", { name: "Choose EPUB files...", exact: true }).click(),
     ]);
     expect(files.isMultiple()).toBe(true);
     await files.setFiles([importedBook, secondImportedBook]);
     for (const title of ["Ambra Long Content Test Fixture", "Ambra Two-Chapter Spread Test Fixture"]) {
       await expect(destination.getByRole("button", { name: `Read now: ${title}`, exact: true })).toBeVisible();
     }
-    await destination.reload();
-    await expect(destination.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
-    await expect(destination.getByRole("button", { name: "Open Ambra Two-Chapter Spread Test Fixture", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Ambra Two-Chapter Spread Test Fixture", exact: true })).toBeVisible();
     expect(destinationChooserCount).toBe(2);
+    await destination.screenshot({ path: test.info().outputPath("import-window-complete.png") });
 
+    const closed = destination.waitForEvent("close");
     const [openedReader] = await Promise.all([
       context.waitForEvent("page"),
-      destination.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true }).click(),
+      destination.getByRole("button", { name: "Read now: Ambra Long Content Test Fixture", exact: true }).click(),
     ]);
+    await closed;
+    expect(await openedReader.evaluate(async () => {
+      const win = await chrome.windows.getCurrent();
+      return { id: win.id, type: win.type };
+    })).toEqual({ id: sourceWindow, type: "normal" });
     await expect(openedReader.getByRole("main").locator("iframe").first()).toBeVisible();
     await expect(openedReader.getByRole("progressbar")).toHaveCount(0);
   } finally { await context.close(); }
@@ -151,5 +176,56 @@ test("the in-reader compact Library still chooses files directly without a hando
     expect(context.pages()).toHaveLength(originalPageCount);
     await libraryPage.reload();
     await expect(libraryPage.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+  } finally { await context.close(); }
+});
+
+test("focused importer accepts a drop and returns to the original Library window", async () => {
+  test.skip(process.env.VITE_AMBRA_LOCAL_FEATURES !== "1", "Drop support requires a local-feature build");
+  const { context, libraryPage: page, extensionId } = await launchReader(initialBook);
+  try {
+    const sourceWindow = await page.evaluate(async () => (await chrome.windows.getCurrent()).id);
+    const opened = context.waitForEvent("page");
+    await page.evaluate(async ({ extensionId, sourceWindow }) => {
+      await chrome.windows.create({ type: "popup", width: 480, height: 560,
+        url: `chrome-extension://${extensionId}/src/library/index.html?view=import&sourceWindow=${sourceWindow}` });
+    }, { extensionId, sourceWindow });
+    const importer = await opened;
+    await expect(importer.getByRole("button", { name: "Choose EPUB files...", exact: true })).toBeEnabled();
+    await importer.setViewportSize({ width: 320, height: 600 });
+    expect(await importer.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const cdp = await context.newCDPSession(importer);
+    for (const type of ["dragEnter", "dragOver", "drop"] as const) {
+      await cdp.send("Input.dispatchDragEvent", { type, x: 100, y: 150,
+        data: { items: [], files: [importedBook], dragOperationsMask: 1 } });
+    }
+    await expect(importer.getByRole("button", { name: "Read now: Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    expect(await importer.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await importer.screenshot({ path: test.info().outputPath("import-window-narrow.png"), fullPage: true });
+    await cdp.detach();
+    const libraryOpened = context.waitForEvent("page");
+    const closed = importer.waitForEvent("close");
+    await importer.getByRole("button", { name: "Open library", exact: true }).click();
+    const library = await libraryOpened;
+    await closed;
+    await expect(library).toHaveURL(/view=tab$/);
+    await expect(library.getByRole("button", { name: "Open Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    expect(await library.evaluate(async () => (await chrome.windows.getCurrent()).id)).toBe(sourceWindow);
+    expect(page.isClosed()).toBe(false);
+  } finally { await context.close(); }
+});
+
+test("closing an unused importer leaves the original browser window open", async () => {
+  const { context, libraryPage: page, extensionId } = await launchReader(initialBook);
+  try {
+    const opened = context.waitForEvent("page");
+    await page.evaluate(async extensionId => {
+      await chrome.windows.create({ type: "popup", url: `chrome-extension://${extensionId}/src/library/index.html?view=import` });
+    }, extensionId);
+    const importer = await opened;
+    const closed = importer.waitForEvent("close");
+    await importer.getByRole("button", { name: "Close", exact: true }).click();
+    await closed;
+    expect(page.isClosed()).toBe(false);
+    await expect(page.getByRole("button", { name: "Open Reading Entry", exact: true })).toBeVisible();
   } finally { await context.close(); }
 });

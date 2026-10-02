@@ -267,10 +267,11 @@ test("atomic reservations and terminal responses survive concurrent database con
       await qualify(readerPage);
       await readerPage.close();
       const libraryUrl = page.url().split("?")[0];
-      await page.goto(`${libraryUrl}?view=tab&import=1`);
+      await page.goto(`${libraryUrl}?view=import`);
       await page.bringToFront();
-      await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeFocused();
-      await expect(page.locator("[data-prototype-controls]")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Choose EPUB files...", exact: true })).toBeFocused();
+      await expect(page.locator("[data-library-import-window]")).toBeVisible();
+      await expect(page.locator("[data-prototype-controls]")).toHaveCount(0);
       await expect(page.locator("[data-review-invitation]")).toHaveCount(0);
       expect((await snapshot(page))[2]).toContainEqual({
         key: "localPrototypeReviewInvitation", value: expect.not.objectContaining({ nextPromptAt: expect.any(Number) }),

@@ -38,12 +38,18 @@ close its reader tab first.
 ## Add a book from your device
 
 Choose **Import book**, whether the library is empty or populated. From Chrome's
-Ambra toolbar popup, this first opens the full Library in a new tab. Select
-**Import book** again in that tab to choose EPUB files from your device. Chrome
-can close its toolbar popup when a native file chooser takes focus, so importing
-in the tab keeps your selected files and import progress alive. Keep that tab
-open until the import finishes. Canceling the chooser leaves the Library open
-so you can try again.
+Ambra toolbar popup, this opens a small **Import book** window. Select
+**Choose EPUB files...** to pick books from your device. This window stays open
+when the native file chooser takes focus, unlike Chrome's toolbar popup.
+Keep it open until importing finishes; canceling the chooser leaves it ready
+to try again. The local drag-and-drop preview also accepts EPUBs in this window.
+
+Import progress, errors, and duplicate feedback appear in the import window.
+**Read now** opens the selected book in your original browser window;
+**Open library** opens the full Library there. Either action closes the importer
+after its destination opens. If the original browser window was closed, Ambra
+uses another normal window or creates one. **Close** dismisses only the importer.
+In-app exit actions wait until the current import batch has finished.
 
 In the full Library and the Library panel inside the reader, **Import book**
 opens the chooser directly; no extra tab or click is needed. After importing,

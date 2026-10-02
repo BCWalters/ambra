@@ -17,9 +17,25 @@ existing feature.
 
 ## Local feature review: Library import and review invitation
 
-The following are opt-in local prototypes, not approved release behavior.
-Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep them disabled.
+Drag-and-drop and the review invitation are opt-in local prototypes, not approved
+release behavior. Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep
+them disabled. The native file-selection handoff below also applies to ordinary
+builds.
 
+- **Import book** in Chrome's action popup opens a focused 480×560 import window,
+  not the full Library. Lead with a prominent **Choose EPUB files...** action,
+  retain progress/error/duplicate feedback, and omit unrelated Library controls
+  and review prompts. After import, **Read now** and **Open library** return to
+  the originating normal browser window and close the importer. Disable in-app
+  exit actions during a batch. Full-tab and in-reader imports remain direct.
+  No new extension permissions are needed.
+- The owner reproduced native chooser closure in both the original 1.0.0 package
+  and store 1.1.1 on macOS, so the recent overhaul is not its cause.
+  [Chrome documents action-popup closure on focus loss](https://developer.chrome.com/docs/extensions/develop/ui/add-popup);
+  use a [persistent browser window](https://developer.chrome.com/docs/extensions/reference/api/windows)
+  rather than unsupported keep-alive or automatic-chooser tricks. The explicit
+  chooser click remains necessary in this design; OS-native behavior still
+  requires manual verification.
 - Every active Library view is a local-file drop target, including the native
   popup and in-reader compact Library. Highlight it only during a
   file drag, retain keyboard-accessible **Import book**, and reuse the existing
@@ -27,8 +43,9 @@ Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep them disabled.
   and detach drop handlers while that panel is closed.
 - Invite feedback in the full Library, never over the reader. The owner's
   revised local prototype uses a modal asking **Are you loving Ambra?**,
-  deferred during imports, searches, or other Library tasks, including a tab
-  opened explicitly for popup import. **Yes, I love it!**
+  deferred during imports, searches, or other Library tasks.
+  The focused import window has no invitation.
+  **Yes, I love it!**
   leads to a store-review invitation; **Not really** offers feedback by email
   to the existing support address; **Not sure yet** postpones for three days.
   Escape, close, and backdrop dismissal also postpone rather than trapping

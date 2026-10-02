@@ -66,7 +66,6 @@ describe("useLibrary ownership and failures", () => {
   it.each([
     [undefined, "?view=tab"],
     [true, "?view=tab&discover=1"],
-    ["import", "?view=tab&import=1"],
   ] as const)("opens a persistent Library destination for %s", async (destination, query) => {
     const create = vi.fn().mockResolvedValue({});
     vi.stubGlobal("chrome", { ...chrome,
@@ -77,6 +76,21 @@ describe("useLibrary ownership and failures", () => {
     await act(async () => latest.openInFullTab(destination));
     expect(create).toHaveBeenCalledWith({
       url: `chrome-extension://ambra/src/library/index.html${query}`,
+    });
+  });
+
+  it("opens file selection in a focused persistent import window", async () => {
+    const create = vi.fn().mockResolvedValue({ id: 9 });
+    vi.stubGlobal("chrome", { ...chrome,
+      runtime: { ...chrome.runtime, getURL: (path: string) => `chrome-extension://ambra/${path}` },
+      windows: { getCurrent: vi.fn().mockResolvedValue({ id: 7 }), create },
+      tabs: { getCurrent: vi.fn().mockResolvedValue({ id: 8 }) },
+    });
+    await act(async () => root.render(<Harness />));
+    await act(async () => latest.openInFullTab("import"));
+    expect(create).toHaveBeenCalledWith({
+      url: "chrome-extension://ambra/src/library/index.html?view=import&sourceWindow=7",
+      type: "popup", width: 480, height: 560, focused: true,
     });
   });
 

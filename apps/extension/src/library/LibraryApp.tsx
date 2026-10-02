@@ -32,7 +32,8 @@ import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { ReviewInvitationCard } from "./ReviewInvitationCard.js";
 import { useLibraryFileDrop } from "./useLibraryFileDrop.js";
 import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
-import { LIBRARY_LOCAL_IMPORT_PARAM } from "../navigation.js";
+import { LIBRARY_FULL_TAB_PARAM, LIBRARY_IMPORT_VIEW_VALUE } from "../navigation.js";
+import { LibraryImportWindow } from "./LibraryImportWindow.js";
 
 export interface EmbeddedLibraryOptions {
   open: boolean;
@@ -68,10 +69,6 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const restoreDiscoveryFocus = useRestoreFocusTarget();
   const restoreRemoveFocus = useRestoreFocusSource();
   const [query, setQuery] = useState("");
-  const [importHandoff] = useState(() =>
-    isFullTab && new URLSearchParams(window.location.search).get(LIBRARY_LOCAL_IMPORT_PARAM) === "1");
-  const [importRequested, setImportRequested] = useState(importHandoff);
-  const importFocusPending = useRef(importRequested);
   const [discoveryOpen, setDiscoveryOpen] = useState(() =>
     new URLSearchParams(window.location.search).get("discover") === "1");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -104,17 +101,6 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const isBookOpenDisabled = (bookId: string): boolean =>
     isEmbedded && importInProgress && bookId !== embedded.currentBookId;
 
-  useEffect(() => {
-    if (!importRequested) return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete(LIBRARY_LOCAL_IMPORT_PARAM);
-    window.history.replaceState(window.history.state, "", url);
-  }, [importRequested]);
-  useEffect(() => {
-    if (!importFocusPending.current || !canImport) return;
-    importFocusPending.current = false;
-    toolbarImportRef.current?.focus();
-  }, [canImport]);
   useEffect(() => {
     if (!isLoading && books.length === 0) setQuery("");
   }, [isLoading, books.length]);
@@ -188,7 +174,6 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = event.target.files;
     if (!files?.length) return;
-    setImportRequested(false);
     void importFiles(Array.from(files));
     event.target.value = "";
   };
@@ -231,10 +216,10 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             {t("library.findBooks")}
           </Button>
           <Button ref={toolbarImportRef} appearance="primary" icon={<DocumentAddRegular />}
-            title={isActionPopup ? t("library.fullLibrary") : undefined}
+            title={isActionPopup ? t("library.importWindowAction") : undefined}
             disabled={!canImport} onClick={() => {
               // A native chooser can destroy the action popup before files are returned.
-              // The destination tab deliberately waits for a fresh user click to choose files.
+              // The persistent importer waits for a fresh user click to choose files.
               if (isActionPopup) openInFullTab("import");
               else fileInputRef.current?.click();
             }}>
@@ -247,7 +232,6 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
       <CollectionContainer aria-label={t("library.pageTitle")} style={{ padding: isFullTab ? "0 24px 24px" : "0 12px 12px",
         // Short windows and high zoom scroll the outer surface instead of hiding books behind the filters.
         flex: 1, minHeight: isFullTab ? 0 : 160, overflowY: isFullTab ? undefined : "auto" }}>
-        {importRequested && <p role="status">{t("library.importKeepOpen")}</p>}
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
           onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
           isBookOpenDisabled={isBookOpenDisabled} busyMessageId={importStatusId}
@@ -297,7 +281,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
         {LOCAL_FEATURE_PROTOTYPES && isFullTab && <ReviewInvitationCard
           onOpenChange={setReviewOpen}
           onDismiss={() => toolbarImportRef.current?.focus()}
-          blocked={importHandoff || isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||
+          blocked={isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||
             inspector.isOpen || discoveryOpen || settingsOpen || !!removeBookId || hasQuery} />}
       </CollectionContainer>
 
@@ -365,5 +349,8 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
 export const LibraryApp: FC<LibraryAppProps> = ({ embedded }) => {
   const library = useLibrary();
   if (embedded) return <LibrarySurface library={library} embedded={embedded} />;
-  return <ChromeThemeProvider theme={library.chromeTheme}><LibrarySurface library={library} /></ChromeThemeProvider>;
+  const importWindow = new URLSearchParams(window.location.search).get(LIBRARY_FULL_TAB_PARAM) === LIBRARY_IMPORT_VIEW_VALUE;
+  return <ChromeThemeProvider theme={library.chromeTheme}>
+    {importWindow ? <LibraryImportWindow library={library} /> : <LibrarySurface library={library} />}
+  </ChromeThemeProvider>;
 };
