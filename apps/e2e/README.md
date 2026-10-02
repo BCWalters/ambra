@@ -100,6 +100,12 @@ failed reads retain the displayed collection and surface a retryable error.
 Embedded Libraries use the same activation lifecycle without replacing local
 import activity.
 
+For activation regressions, disable Playwright's CDP focus emulation on both
+pages (`Emulation.setFocusEmulationEnabled`, `enabled: false`) before switching
+native Chrome tabs. Otherwise every document appears focused in headless mode
+and activation events never fire. Assert trusted focus events as well as the
+rendered result; reloading or manually dispatching focus would mask this bug.
+
 `library-compact.spec.ts` checks three-column cover geometry at 320/360px with
 native scrollbars, a single-row header in all nine languages, persistent
 full-library access, first-run discovery focus, and unchanged full-tab cover

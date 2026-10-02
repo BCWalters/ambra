@@ -1,6 +1,7 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
-import { EXTENSION_PATH } from "../harness.js";
+import { EXTENSION_PATH, seedReadingWelcomeAcknowledgement } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
 
 const test = base.extend<{ library: Page }>({
   library: async ({ playwright }, use, testInfo) => {
@@ -24,6 +25,81 @@ const test = base.extend<{ library: Page }>({
       await context.close();
     }
   },
+});
+
+test("returning to an existing full Library refreshes real reader progress and Continue reading", async ({ library }) => {
+  const activate = async (page: Page) => page.evaluate(async () => {
+    const tab = await chrome.tabs.getCurrent();
+    await chrome.tabs.update(tab!.id!, { active: true });
+    await chrome.windows.update(tab!.windowId, { focused: true });
+  });
+  await seedReadingWelcomeAcknowledgement(library);
+  const url = library.url();
+  await library.evaluate(() => Reflect.set(window, "__libraryActivationSentinel", "same document"));
+  await library.evaluate(() => {
+    Reflect.set(window, "__libraryActivations", 0);
+    window.addEventListener("focus", (event) => {
+      if (event.isTrusted) Reflect.set(window, "__libraryActivations", Reflect.get(window, "__libraryActivations") + 1);
+    });
+  });
+  const gridCard = library.locator("[data-library-book]:not([data-library-continue])");
+  await expect(gridCard.locator("[data-library-progress-status]")).toContainText("Not started");
+  const opened = library.context().waitForEvent("page");
+  await gridCard.getByRole("button", { name: /^Open Ambra Long Content/ }).click();
+  const reader = await opened;
+  // Playwright makes every page appear focused by default, masking tab activation.
+  for (const page of [library, reader]) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: false });
+    await cdp.detach();
+  }
+  await expect(reader.getByRole("main").locator("iframe").first()).toBeVisible();
+  await expect(reader.getByRole("progressbar")).toHaveCount(0);
+  await exposeReaderController(reader);
+  await reader.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 1);
+  await activate(reader);
+
+  let previousFraction = 0;
+  for (const visit of [1, 2]) {
+    await reader.evaluate(async () => Reflect.get(window, "__readerController").turnPage(1));
+    await reader.waitForFunction(() => {
+      const controller = Reflect.get(window, "__readerController");
+      return !controller.isLoadInFlight && !controller.isApplyingLayout && controller.snapshot().bookPageCount > 1;
+    });
+    const saved = await reader.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.flushProgress(true);
+      const progress = await controller.library.getProgress(controller.bookId);
+      return { fraction: progress.fractionComplete as number, page: controller.snapshot().bookPageIndex as number };
+    });
+    expect(saved.fraction).toBeGreaterThan(previousFraction);
+    previousFraction = saved.fraction;
+    // Real tab activation, not a reload or synthetic notification.
+    await activate(library);
+    await expect.poll(() => library.evaluate(() => Reflect.get(window, "__libraryActivations"))).toBeGreaterThanOrEqual(visit);
+    expect(library.url()).toBe(url);
+    expect(await library.evaluate(() => Reflect.get(window, "__libraryActivationSentinel"))).toBe("same document");
+    const percent = `${Math.round(saved.fraction * 100)}%`;
+    await expect(gridCard.locator("[data-library-progress-status]")).toContainText(percent);
+    const resume = library.getByRole("region", { name: "Continue reading", exact: true });
+    await expect(resume.getByRole("heading", { name: "Ambra Long Content Test Fixture", exact: true })).toBeVisible();
+    await expect(resume.locator("[data-library-progress-status]")).toContainText(`${percent} read`);
+    expect(await resume.locator("[data-library-progress-track] > div")
+      .evaluate((element) => (element as HTMLElement).style.width)).toBe(percent);
+    if (visit === 1) {
+      await activate(reader);
+    } else {
+      await reader.close();
+      const reopened = library.context().waitForEvent("page");
+      await resume.getByRole("button", { name: "Continue reading", exact: true }).click();
+      const continued = await reopened;
+      await expect(continued.getByRole("main").locator("iframe").first()).toBeVisible();
+      await expect(continued.getByRole("progressbar")).toHaveCount(0);
+      await exposeReaderController(continued);
+      await expect.poll(() => continued.evaluate(() =>
+        Reflect.get(window, "__readerController").snapshot().bookPageIndex)).toBe(saved.page);
+    }
+  }
 });
 
 test("failed deletion stays visible, preserves the stored book, and can be retried", async ({ library }) => {

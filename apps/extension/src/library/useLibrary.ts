@@ -169,6 +169,18 @@ export function useLibrary(): UseLibraryResult {
     let session: LibrarySession | undefined;
     let unsubscribe: (() => void) | undefined;
     let unsubscribeBooks: (() => void) | undefined;
+    let initialized = false;
+
+    const refreshOnActivation = () => {
+      // A hidden tab can receive focus events while another surface opens.
+      // Initialization already reads current progress; don't supersede that read.
+      if (cancelled || !initialized || !session || document.visibilityState !== "visible") return;
+      void refresh(session.database).catch((err) => {
+        if (!cancelled) setError(describeLibraryStorageError(err));
+      });
+    };
+    window.addEventListener("focus", refreshOnActivation);
+    document.addEventListener("visibilitychange", refreshOnActivation);
 
     void (async () => {
       try {
@@ -202,12 +214,15 @@ export function useLibrary(): UseLibraryResult {
         }
       } finally {
         if (!cancelled) {
+          initialized = true;
           setIsLoading(false);
         }
       }
     })();
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", refreshOnActivation);
+      document.removeEventListener("visibilitychange", refreshOnActivation);
       unsubscribe?.();
       unsubscribeBooks?.();
       if (sessionRef.current === session) sessionRef.current = undefined;

@@ -2,7 +2,7 @@ import { act, StrictMode } from "react";
 import { PackageDocumentError, ZipFormatError } from "@ambra/engine";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LibraryDatabase, type BookImportResult, type BookMetadata } from "./LibraryDatabase.js";
+import { LibraryDatabase, type BookImportResult, type BookMetadata, type ReadingProgress } from "./LibraryDatabase.js";
 import { importBook } from "./BookImporter.js";
 import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { LibraryApp } from "./LibraryApp.js";
@@ -13,6 +13,7 @@ import { enrichBookDescription } from "./BookDescriptionEnrichment.js";
 
 vi.mock("./BookImporter.js", () => ({ importBook: vi.fn().mockResolvedValue({ id: "book", outcome: "added" }) }));
 vi.mock("./BookDescriptionEnrichment.js", () => ({ enrichBookDescription: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("./ReviewInvitationCard.js", () => ({ ReviewInvitationCard: () => null }));
 
 function addedBook(id = "book"): BookImportResult {
   return { id, outcome: "added" };
@@ -20,8 +21,9 @@ function addedBook(id = "book"): BookImportResult {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((yes) => { resolve = yes; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 }
 
 function makeDatabase() {
@@ -125,6 +127,107 @@ describe("useLibrary ownership and failures", () => {
   async function render(strict = false) {
     await act(async () => root.render(strict ? <StrictMode><Harness /></StrictMode> : <Harness />));
   }
+
+  it.each(["focus", "visibilitychange"] as const)("refreshes saved progress on %s without disturbing imports or covers", async (event) => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await render();
+    await act(async () => latest.importFiles([new File(["book"], "book.epub")]));
+    const activities = latest.importActivities;
+    const cover = latest.books[0]?.coverUrl;
+    db.methods.getAllProgress.mockResolvedValue(new Map([
+      ["book", { bookId: "book", cfi: "saved", fractionComplete: 0.42, updatedAt: 123 }],
+    ]));
+    await act(async () => (event === "focus" ? window : document).dispatchEvent(new Event(event)));
+    expect(latest.books[0]).toMatchObject({ progressFraction: 0.42, lastReadAt: 123, coverUrl: cover });
+    expect(latest.importActivities).toBe(activities);
+    expect(latest.canImport).toBe(true);
+    expect(URL.createObjectURL).toHaveBeenCalledOnce();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("ignores hidden activation and refreshes embedded libraries when visible", async () => {
+    window.history.replaceState(null, "", "/");
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await render();
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(db.methods.listBooks).toHaveBeenCalledOnce();
+    visibility.mockReturnValue("visible");
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(db.methods.listBooks).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not refresh during initialization or after unmount", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const preference = deferred<undefined>();
+    db.methods.getDefaultLibrarySort.mockReturnValue(preference.promise);
+    await render();
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(db.methods.listBooks).not.toHaveBeenCalled();
+    expect(latest.canImport).toBe(false);
+    await act(async () => preference.resolve(undefined));
+    expect(db.methods.listBooks).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    mounted = false;
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(db.methods.listBooks).toHaveBeenCalledOnce();
+  });
+
+  it("reports activation failures, retains the book, and supports retry without clearing import errors", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await render();
+    db.methods.getAllProgress.mockRejectedValueOnce(new Error("Progress read failed"));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(latest.error).toBe("Progress read failed");
+    expect(latest.books).toHaveLength(1);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    act(() => latest.dismissError());
+    vi.mocked(importBook).mockRejectedValueOnce(new Error("Import failed"));
+    await act(async () => latest.importFiles([new File(["bad"], "bad.epub")]));
+    db.methods.getAllProgress.mockResolvedValue(new Map([
+      ["book", { fractionComplete: 0.5, updatedAt: 456 }],
+    ]));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(latest.books[0]?.progressFraction).toBe(0.5);
+    expect(latest.error).toContain("Import failed");
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores an older activation that later %ss after a peer refresh", async (settle) => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await render(true);
+    const old = deferred<ReadonlyMap<string, ReadingProgress>>();
+    db.methods.getAllProgress.mockReturnValueOnce(old.promise);
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    db.methods.getAllProgress.mockResolvedValue(new Map([
+      ["book", { fractionComplete: 0.75, updatedAt: 789 }],
+    ]));
+    await act(async () => db.methods.subscribeBooks.mock.calls[0]![0]());
+    await act(async () => {
+      if (settle === "resolve") old.resolve(new Map());
+      else old.reject(new Error("Stale activation failure"));
+    });
+    expect(latest.books[0]?.progressFraction).toBe(0.75);
+    expect(latest.error).toBeUndefined();
+    expect(URL.createObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it("ignores an activation failure completing after unmount", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await render();
+    const pending = deferred<ReadonlyMap<string, ReadingProgress>>();
+    db.methods.getAllProgress.mockReturnValueOnce(pending.promise);
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    act(() => root.unmount());
+    mounted = false;
+    await act(async () => pending.reject(new Error("Closed session")));
+    expect(latest.error).toBeUndefined();
+    expect(db.methods.close).toHaveBeenCalledOnce();
+  });
 
   it("refreshes the initiating Library after enrichment without relying on its own broadcast", async () => {
     await render();
