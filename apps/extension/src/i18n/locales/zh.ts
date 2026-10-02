@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "library.dropFilesTitle": "拖放 EPUB 文件以导入",
+  "library.dropFilesHint": "图书将添加到您的书库。",
+  "review.title": "分享您的 Ambra 使用体验",
+  "review.body": "您已经阅读了一段时间，愿意留下真实的评价或发送反馈吗？我们欢迎任何意见。",
+  "review.write": "撰写评价",
+  "review.feedback": "发送反馈",
+  "review.dismiss": "不用了，谢谢",
+  "review.error": "无法加载或保存评价邀请",
+  "review.retry": "重试",
   "welcome.title": "安心落座，开始阅读",
   "welcome.intro": "下一段故事，从这里开始。",
   "welcome.readingTips": "阅读小提示",
@@ -463,4 +472,7 @@ export const zh: StringCatalog = {
   "text.bookScope": "图书选项",
   "settings.resetToDefault": "重置为默认值",
   "settings.resetSliderToDefault": "将{label}重置为默认值",
+  "pageTurnGuide.next": "点击前往下一页",
+  "pageTurnGuide.previous": "点击前往上一页",
+  "pageTurnGuide.instructions": "点击外侧页边空白即可翻页。导航后，这些提示会消失。",
 };

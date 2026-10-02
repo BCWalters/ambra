@@ -40,6 +40,8 @@ import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.j
 import { captureFocusReturn, useHelpDialogs } from "../components/useHelpDialogs.js";
 import { ReadingWelcome } from "./components/ReadingWelcome.js";
 import { useReadingWelcome } from "./useReadingWelcome.js";
+import { PageTurnGuide } from "./components/PageTurnGuide.js";
+import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
 import { closeReferencePanel, openReferencePanel, referencePanelLayout, referencePanelSide, wantsReferencePanelPin } from "./referencePanels.js";
 import type { ReferencePanel, ReferencePanels } from "./referencePanels.js";
 
@@ -128,6 +130,7 @@ const ReaderAppInner: FC = () => {
     setShortcutActions,
     setShortcutModalOpen,
     setContentUiDismissal,
+    pageTurnGuideController,
   } = useReaderController(t);
   const shortcutSettings = useShortcutPreferences();
   const help = useHelpDialogs(restoreContentFocus);
@@ -294,6 +297,8 @@ const ReaderAppInner: FC = () => {
     for (const panel of Object.values(panels)) observer.observe(panel);
     return () => observer.disconnect();
   }, [hasReaderLayout]);
+  const [pageTurnGuideRun, setPageTurnGuideRun] = useState(0);
+  const guidePending = useRef(false);
   const welcome = useReadingWelcome(snapshot?.hasRenderedContent === true, help.view === undefined &&
     !snapshot?.isLoading && !snapshot?.error && !openError &&
     !isInspectorOpen && goToMode === undefined && !snapshot?.imageViewer && !snapshot?.tableViewer &&
@@ -745,6 +750,13 @@ const ReaderAppInner: FC = () => {
               }}
             />
             <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
+            {LOCAL_FEATURE_PROTOTYPES && pageTurnGuideRun > 0 && pageTurnGuideController && (
+              <PageTurnGuide key={pageTurnGuideRun} controller={pageTurnGuideController}
+                hidden={help.view !== undefined || !!snapshot.isLoading || !!snapshot.error ||
+                  isInspectorOpen || goToMode !== undefined || !!snapshot.imageViewer || !!snapshot.tableViewer ||
+                  hasReferencePanel || toolbarMenu !== undefined || !!snapshot.selectionToolbar ||
+                  !!snapshot.activeHighlight || !!snapshot.footnotePopup} />
+            )}
             {snapshot.isLoading && (
               <Spinner
                 label={t(snapshot.loadingPhase === "navigating" ? "reader.navigating" : "reader.openingBook")}
@@ -838,10 +850,17 @@ const ReaderAppInner: FC = () => {
               scrolling={!snapshot.isFixedLayout && snapshot.viewMode === "scroll"}
               rtl={snapshot.pageProgressionDirection === "rtl"}
               onDismiss={() => {
+                guidePending.current = LOCAL_FEATURE_PROTOTYPES;
                 void welcome.acknowledge();
                 help.closeToContent();
               }}
-              onAfterClose={help.afterClose}
+              onAfterClose={() => {
+                help.afterClose();
+                if (guidePending.current) {
+                  guidePending.current = false;
+                  setPageTurnGuideRun(run => run + 1);
+                }
+              }}
             />
             <KeyboardShortcutsDialog
               open={help.view === "shortcuts"}

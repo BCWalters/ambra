@@ -1,0 +1,61 @@
+.page-turn-guide {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.page-turn-guide-margin {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.page-turn-guide-wash {
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 12px;
+  background: currentColor;
+  opacity: 0;
+}
+
+.page-turn-guide[data-phase="highlight"] .page-turn-guide-wash {
+  animation: page-turn-guide-glow 1600ms ease-in-out both;
+}
+
+.page-turn-guide-indicator {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 4px);
+  padding: 8px 2px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.page-turn-guide-indicator svg { width: 20px; height: 20px; max-width: 100%; }
+.page-turn-guide-indicator span { padding: 0 8px; }
+
+.page-turn-guide-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+@keyframes page-turn-guide-glow {
+  0%, 100% { opacity: 0; }
+  35%, 65% { opacity: .12; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-turn-guide-wash { animation: none !important; }
+}

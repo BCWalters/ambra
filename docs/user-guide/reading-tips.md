@@ -10,6 +10,21 @@ If reader controls are showing, the first page-turning click hides them; click a
 
 Use **Page Down** or **Space** for the next page, and **Page Up** or **Shift+Space** for the previous page. See the [keyboard shortcuts](README.md#keyboard-shortcuts) for more options.
 
+### Local preview: first-reading margin hints
+
+In local builds explicitly enabled with `VITE_AMBRA_LOCAL_FEATURES=1`, closing
+the first-reading welcome briefly highlights the outer margins, then leaves
+small page-turn hints. Click through the hints normally: they never intercept
+input or cover the text/overlap area. Narrow margins use arrows instead of
+labels; margins too narrow for an arrow remain unmarked. Hints follow resizing
+and right-to-left reading order. Reduced-motion preferences skip the highlight.
+
+The first successful page turn or jump removes the hints. A boundary click
+that cannot turn a page does not. To replay them, open **Help & About → Reading
+tips** and close the welcome. Reloading or opening another book does not replay
+an acknowledged welcome. Scrolling mode has no page-margin hints. This local
+preview is off in ordinary release builds.
+
 ## Choose pagination or scrolling
 
 Open **Ambra settings → Reading preferences → Reading mode** to choose pagination

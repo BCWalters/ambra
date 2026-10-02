@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Spanish speaker. */
 export const es: StringCatalog = {
+  "library.dropFilesTitle": "Suelta archivos EPUB para importarlos",
+  "library.dropFilesHint": "Los libros se añadirán a tu biblioteca.",
+  "review.title": "Comparte tu experiencia con Ambra",
+  "review.body": "Ahora que has dedicado un tiempo a leer, ¿te gustaría dejar una reseña sincera o enviar comentarios? Ambas opciones son bienvenidas.",
+  "review.write": "Escribir una reseña",
+  "review.feedback": "Enviar comentarios",
+  "review.dismiss": "No, gracias",
+  "review.error": "No se pudo cargar o guardar la invitación a dejar una reseña",
+  "review.retry": "Reintentar",
   "welcome.title": "Siéntete como en casa",
   "welcome.intro": "Tu próximo capítulo empieza aquí.",
   "welcome.readingTips": "Consejos de lectura",
@@ -475,4 +484,7 @@ export const es: StringCatalog = {
   "highlightStyle.pink": "Rosa",
   "highlightStyle.purple": "Morado",
   "highlightStyle.underline": "Subrayado",
+  "pageTurnGuide.next": "Clic para avanzar",
+  "pageTurnGuide.previous": "Clic para retroceder",
+  "pageTurnGuide.instructions": "Haz clic en los márgenes exteriores para pasar de página. Estas pistas desaparecen al navegar.",
 };

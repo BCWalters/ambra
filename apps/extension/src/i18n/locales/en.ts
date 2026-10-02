@@ -32,6 +32,15 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "library.dropFilesTitle": string;
+  "library.dropFilesHint": string;
+  "review.title": string;
+  "review.body": string;
+  "review.write": string;
+  "review.feedback": string;
+  "review.dismiss": string;
+  "review.error": string;
+  "review.retry": string;
   "settings.helpAbout": string;
   "welcome.title": string;
   "welcome.intro": string;
@@ -521,9 +530,21 @@ export interface StringCatalog {
   "imageViewer.fit": string;
   "imageViewer.controls": string;
   "imageViewer.instructions": string;
+  "pageTurnGuide.next": string;
+  "pageTurnGuide.previous": string;
+  "pageTurnGuide.instructions": string;
 }
 
 export const en: StringCatalog = {
+  "library.dropFilesTitle": "Drop EPUB files to import",
+  "library.dropFilesHint": "Books are added to your library.",
+  "review.title": "Share your experience with Ambra",
+  "review.body": "Now that you've spent some time reading, would you like to leave an honest review or send feedback? Either is welcome.",
+  "review.write": "Write a review",
+  "review.feedback": "Send feedback",
+  "review.dismiss": "No thanks",
+  "review.error": "Could not load or save the review invitation",
+  "review.retry": "Try again",
   "welcome.title": "Make yourself at home",
   "welcome.intro": "Your next chapter starts here.",
   "welcome.readingTips": "Reading tips",
@@ -983,4 +1004,7 @@ export const en: StringCatalog = {
   "imageViewer.fit": "Fit to window",
   "imageViewer.controls": "Image zoom",
   "imageViewer.instructions": "Scroll to zoom. Drag or use arrow keys to pan. Press 0 to fit.",
+  "pageTurnGuide.next": "Click for next page",
+  "pageTurnGuide.previous": "Click for previous page",
+  "pageTurnGuide.instructions": "Click the outer margins to turn pages. These hints disappear after you navigate.",
 };

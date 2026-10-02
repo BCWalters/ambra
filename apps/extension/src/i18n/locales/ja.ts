@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Japanese speaker. */
 export const ja: StringCatalog = {
+  "library.dropFilesTitle": "EPUBファイルをドロップしてインポート",
+  "library.dropFilesHint": "本がライブラリに追加されます。",
+  "review.title": "Ambraの感想をお聞かせください",
+  "review.body": "読書をお楽しみいただけましたか？率直なレビューやフィードバックをお寄せいただけると幸いです。どちらも歓迎します。",
+  "review.write": "レビューを書く",
+  "review.feedback": "フィードバックを送る",
+  "review.dismiss": "いいえ、結構です",
+  "review.error": "レビューの案内を読み込みまたは保存できませんでした",
+  "review.retry": "再試行",
   "welcome.title": "くつろいで読書を",
   "welcome.intro": "次の物語は、ここから。",
   "welcome.readingTips": "読書のヒント",
@@ -467,4 +476,7 @@ export const ja: StringCatalog = {
   "text.bookScope": "本のオプション",
   "settings.resetToDefault": "デフォルトに戻す",
   "settings.resetSliderToDefault": "{label}をデフォルトに戻す",
+  "pageTurnGuide.next": "クリックで次のページ",
+  "pageTurnGuide.previous": "クリックで前のページ",
+  "pageTurnGuide.instructions": "外側の余白をクリックするとページをめくれます。移動すると、このヒントは消えます。",
 };

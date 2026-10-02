@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Korean speaker. */
 export const ko: StringCatalog = {
+  "library.dropFilesTitle": "EPUB 파일을 놓아 가져오기",
+  "library.dropFilesHint": "책이 라이브러리에 추가됩니다.",
+  "review.title": "Ambra 사용 경험을 공유해 주세요",
+  "review.body": "독서를 즐기셨나요? 솔직한 리뷰를 남기거나 의견을 보내 주세요. 어떤 의견이든 환영합니다.",
+  "review.write": "리뷰 작성",
+  "review.feedback": "의견 보내기",
+  "review.dismiss": "괜찮습니다",
+  "review.error": "리뷰 안내를 불러오거나 저장하지 못했습니다",
+  "review.retry": "다시 시도",
   "welcome.title": "편안하게 읽어 보세요",
   "welcome.intro": "다음 이야기가 여기서 시작됩니다.",
   "welcome.readingTips": "독서 도움말",
@@ -464,4 +473,7 @@ export const ko: StringCatalog = {
   "imageViewer.fit": "창에 맞추기",
   "imageViewer.controls": "이미지 확대/축소",
   "imageViewer.instructions": "스크롤하여 확대하거나 축소하세요. 드래그하거나 방향키로 이동하세요. 0키를 누르면 창에 맞춥니다.",
+  "pageTurnGuide.next": "클릭하여 다음 페이지",
+  "pageTurnGuide.previous": "클릭하여 이전 페이지",
+  "pageTurnGuide.instructions": "바깥쪽 여백을 클릭하면 페이지가 넘어갑니다. 이동하면 이 안내는 사라집니다.",
 };

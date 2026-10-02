@@ -60,6 +60,7 @@ import { HighlightInteraction } from "./HighlightInteraction.js";
 import { HighlightManager } from "./HighlightManager.js";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
 import { frameContentBounds, isReflowableEdgeWhitespace, outerEdgeSide, outerMarginSide, reflowableContentBounds, reflowableEdgeSide } from "./PageMargins.js";
+import { pageTurnGuideGeometry } from "./PageTurnGuide.js";
 import { PageTurnOrchestrator } from "./PageTurnOrchestrator.js";
 import { ReaderOperation, ReaderOperations } from "./ReaderOperation.js";
 import { ReadingHistory } from "./ReadingHistory.js";
@@ -1036,7 +1037,8 @@ export class ReaderController {
   /** Resolves the current position to a CFI and persists it as reading
    * progress. Called after every navigation settles; also exposed as
    * `flushProgress` for the reader page to call on visibility/unload. */
-  private async saveProgress(throwOnError = false): Promise<void> {
+  private async saveProgress(throwOnError = false, navigation = false): Promise<void> {
+    if (navigation && !this.isApplyingLayout) this.notifyNavigation();
     const native = this.nativeReading.current();
     const position = native ?? this.host?.currentPosition();
     if (!position) {
@@ -1072,6 +1074,28 @@ export class ReaderController {
 
   public flushProgress(throwOnError = false): Promise<void> {
     return this.saveProgress(throwOnError);
+  }
+
+  private navigationListeners = new Set<() => void>();
+
+  /** Successful navigation only: layout, failed turns and boundary no-ops do
+   * not complete onboarding. No persistence or telemetry is attached here. */
+  public subscribeNavigation(listener: () => void): () => void {
+    this.navigationListeners.add(listener);
+    return () => { this.navigationListeners.delete(listener); };
+  }
+
+  private notifyNavigation(): void {
+    this.navigationListeners?.forEach(listener => listener());
+  }
+
+  public pageTurnGuideGeometry() {
+    if (!this.containerEl || !this.host || this.host instanceof ScrollContentHost ||
+      this.isLoadInFlight) return undefined;
+    const bounds = this.host instanceof FixedContentHost
+      ? [frameContentBounds(this.host.element)]
+      : (this.turnMargins ?? this.pageMargins())?.bounds ?? [];
+    return pageTurnGuideGeometry(this.containerEl.getBoundingClientRect(), bounds);
   }
 
   public async addBookmark(): Promise<Bookmark | undefined> {
@@ -1337,7 +1361,7 @@ export class ReaderController {
       else this.host.restorePosition(element, 0);
       this.highlightInteraction.updateNoteMarkers();
       this.notify();
-      await this.saveProgress();
+      await this.saveProgress(false, true);
       return;
     }
     await this.openSpineItem(target.spineIndex, { fragment: target.fragment, automatic: true });
@@ -2075,6 +2099,7 @@ export class ReaderController {
             this.focusReadingContent(destination.document);
           }
           commit?.();
+          this.notifyNavigation();
           return;
         }
         // Uses the existing owned load/error path; never advances without activation.
@@ -2845,7 +2870,7 @@ export class ReaderController {
                 current: oldHost.pageIndex + 1, total: oldHost.pageCount,
               }));
           this.notify();
-          await this.saveProgress();
+          await this.saveProgress(false, true);
           return;
         }
       }
@@ -2885,7 +2910,7 @@ export class ReaderController {
               }),
         );
         this.notify();
-        await this.saveProgress();
+        await this.saveProgress(false, true);
         return;
       }
       moved = false;
@@ -2916,7 +2941,7 @@ export class ReaderController {
             current: oldHost.currentPageIndex + 1, total: oldHost.pageCount,
           }));
           this.notify();
-          await this.saveProgress();
+          await this.saveProgress(false, true);
           return;
         }
       }
@@ -2945,7 +2970,7 @@ export class ReaderController {
           }),
         );
         this.notify();
-        await this.saveProgress();
+        await this.saveProgress(false, true);
         return;
       }
       moved = direction === 1 ? this.host.nextPage() : this.host.previousPage();
@@ -2966,7 +2991,7 @@ export class ReaderController {
     if (moved) {
       this.announce(announcement);
       this.notify();
-      await this.saveProgress();
+      await this.saveProgress(false, true);
       return;
     }
 
@@ -3082,7 +3107,7 @@ export class ReaderController {
             }),
       );
       this.notify();
-      await this.saveProgress();
+      await this.saveProgress(false, true);
       return;
     }
 
@@ -4068,7 +4093,7 @@ export class ReaderController {
           }),
         );
         this.notify();
-        await this.saveProgress();
+        await this.saveProgress(false, true);
       }
     } catch (error) {
       if (this.operations.owns(operation))
@@ -4217,6 +4242,7 @@ export class ReaderController {
       this.nativeReading.retain(point);
       this.publishFixedReadingPosition();
       commit?.();
+      this.notifyNavigation();
       return;
     }
     await this.openSpineItem(nextSpineIndex, { history: "jump" });
@@ -4932,7 +4958,7 @@ export class ReaderController {
       if (!options.automatic && !options.preserveFocus) this.announce(this.chapterLabel(spineIndex));
       commitHistory?.();
       if (!options.history && !this.isApplyingLayout) this.readingHistory?.update();
-      await this.saveProgress();
+      await this.saveProgress(false, true);
       // properties="remote-resources" (EPUB3) is the book's own
       // declaration that this item may need network access this reader's
       // CSP unconditionally blocks — logged so a reader-reported "this

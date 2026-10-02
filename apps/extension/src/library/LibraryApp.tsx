@@ -28,6 +28,10 @@ import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryBytes } from "./LibraryFormatting.js";
+import { LOCAL_FEATURE_PROTOTYPES } from "../prototypes/localFeatures.js";
+import { ReviewInvitationCard } from "./ReviewInvitationCard.js";
+import { useLibraryFileDrop } from "./useLibraryFileDrop.js";
+import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
 
 export interface EmbeddedLibraryOptions {
   open: boolean;
@@ -87,6 +91,9 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const palette = useChromeTheme();
   const toolbarStyles = useChromeToolbarStyles();
   const importInProgress = importActivities.some(({ phase }) => phase !== "complete");
+  const { dropTargetRef, isDraggingFiles } = useLibraryFileDrop({
+    enabled: LOCAL_FEATURE_PROTOTYPES && isFullTab, canImport, busy: importInProgress, importFiles,
+  });
   const isBookOpenDisabled = (bookId: string): boolean =>
     isEmbedded && importInProgress && bookId !== embedded.currentBookId;
 
@@ -168,13 +175,14 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   };
 
   return (
-    <div style={{
+    <div ref={dropTargetRef} style={{
       minWidth: 0, minHeight: isFullTab ? "100vh" : 0, height: isEmbedded ? "100%" : isFullTab ? undefined : "100dvh",
       overflow: isFullTab ? undefined : "auto",
       background: palette.backgroundSolid, color: "var(--colorNeutralForeground1)", display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
     }}>
+      <LibraryFileDropOverlay active={isDraggingFiles} />
       {!isEmbedded && <header className={toolbarStyles.root} role="toolbar" aria-label={t("library.toolbar")}
         style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
           flexShrink: 0, borderBottom: `1px solid ${CHROME_BORDER}` }}>
@@ -259,6 +267,10 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             </div>
           </>
         )}
+        {LOCAL_FEATURE_PROTOTYPES && isFullTab && <ReviewInvitationCard
+          onDismiss={() => toolbarImportRef.current?.focus()}
+          blocked={isLoading || importInProgress || !!error || !!help.view || !!detailsBookId ||
+            inspector.isOpen || discoveryOpen || settingsOpen || !!removeBookId || hasQuery} />}
       </CollectionContainer>
 
       <CenteredDialog open={isFullTab && discoveryOpen} title={t("library.findBooks")} onRequestClose={() => setDiscoveryOpen(false)}>

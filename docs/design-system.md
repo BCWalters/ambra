@@ -15,6 +15,32 @@ earlier prototype iterations. Change an approved interaction explicitly, not as
 an incidental styling cleanup. Prototype omissions never authorize removing an
 existing feature.
 
+## Local feature review: Library import and review invitation
+
+The following are opt-in local prototypes, not approved release behavior.
+Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep them disabled.
+
+- The full Library is the local-file drop target. Highlight it only during a
+  file drag, retain keyboard-accessible **Import book**, and reuse the existing
+  import/duplicate/error pipeline. Popup and embedded Library are unchanged.
+- Invite feedback in the full Library, never over the reader. Use a quiet
+  non-modal card without moving focus, and defer it during imports, searches,
+  or other Library tasks. Offer an honest store review and feedback equally;
+  do not route only satisfied readers to the store.
+- Proposed eligibility is three distinct local reading days plus reaching
+  halfway through a book. A day counts only when a saved reading position
+  changes, not on import or simply reopening a book. This is a heuristic,
+  not evidence that every preceding page was read.
+- Keep only three date strings, a halfway flag, and a one-time presentation
+  flag in local prototype preferences. No book identities or telemetry are
+  collected for the invitation. Claim presentation atomically so other tabs
+  do not repeat it; dismissing or ignoring it does not cause later reminders.
+- The full Library's **Local prototype controls** can simulate eligibility,
+  simulate a new reader, reset the simulated invitation, or restore real
+  eligibility. Simulation stays in memory and never edits reading history or
+  the real invitation record. These developer controls are explicitly English
+  and local-build-only; the invitation and drop overlay use all nine locales.
+
 ## 1. Principles and ownership
 
 - Quiet, bookish, coherent, and functional. Avoid cutesy in-app copy, redundant
@@ -409,6 +435,24 @@ exceptions to ordinary reference-panel density and the prototype's simplified
 panel coordinator. Do not remove or force them into a generic panel incidentally.
 Existing image/table viewers, footnotes, selection controls, Go to, welcome,
 errors, importing and Save as need a parity review, not speculative redesign.
+
+### Local first-reading margin-guide prototype
+
+The `VITE_AMBRA_LOCAL_FEATURES=1` preview extends the existing reading welcome,
+not the first-run persistence model. After the welcome's exit finishes, a single
+1.6-second low-opacity accent wash settles into noninteractive directional
+hints. Reduced motion skips the wash. Use the active theme's accent and solid
+surface; no focus capture, extra dismiss button, or blocking walkthrough.
+
+Measure actual outer publication bounds through the controller. Never paint
+the spread gutter or the whitespace-sensitive overlap region inside the text
+measure. Reserve top/bottom chrome space, use arrows without labels below
+120 px, and omit a marker below 18 px rather than cover content. Remeasure after
+layout/resize; RTL reverses the meaning, not the physical arrow. Hide while
+another reading surface is open and in scrolling mode. A committed navigation
+ends the guide, including navigation from an open panel; boundary no-ops,
+failed navigation, progress persistence and layout alone do not. Reopening
+Reading tips explicitly is the only replay path after acknowledgement.
 
 ## 10. Superseded proposals and outstanding decisions
 

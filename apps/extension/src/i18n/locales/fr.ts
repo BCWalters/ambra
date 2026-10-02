@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native French speaker. */
 export const fr: StringCatalog = {
+  "library.dropFilesTitle": "Déposez des fichiers EPUB pour les importer",
+  "library.dropFilesHint": "Les livres seront ajoutés à votre bibliothèque.",
+  "review.title": "Partagez votre expérience avec Ambra",
+  "review.body": "Maintenant que vous avez passé du temps à lire, souhaitez-vous laisser un avis sincère ou envoyer des commentaires ? Les deux sont les bienvenus.",
+  "review.write": "Rédiger un avis",
+  "review.feedback": "Envoyer des commentaires",
+  "review.dismiss": "Non merci",
+  "review.error": "Impossible de charger ou d'enregistrer l'invitation à laisser un avis",
+  "review.retry": "Réessayer",
   "welcome.title": "Installez-vous confortablement",
   "welcome.intro": "Votre prochain chapitre commence ici.",
   "welcome.readingTips": "Conseils de lecture",
@@ -475,4 +484,7 @@ export const fr: StringCatalog = {
   "text.bookScope": "Options du livre",
   "settings.resetToDefault": "Réinitialiser à la valeur par défaut",
   "settings.resetSliderToDefault": "Réinitialiser {label} à la valeur par défaut",
+  "pageTurnGuide.next": "Page suivante",
+  "pageTurnGuide.previous": "Page précédente",
+  "pageTurnGuide.instructions": "Cliquez sur les marges extérieures pour tourner les pages. Ces indications disparaissent dès que vous naviguez.",
 };

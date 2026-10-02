@@ -3,6 +3,15 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Russian speaker. */
 export const ru: StringCatalog = {
+  "library.dropFilesTitle": "Перетащите файлы EPUB для импорта",
+  "library.dropFilesHint": "Книги будут добавлены в библиотеку.",
+  "review.title": "Поделитесь впечатлениями об Ambra",
+  "review.body": "Вы уже провели некоторое время за чтением. Хотите оставить честный отзыв или отправить обратную связь? Мы рады любому мнению.",
+  "review.write": "Написать отзыв",
+  "review.feedback": "Отправить обратную связь",
+  "review.dismiss": "Нет, спасибо",
+  "review.error": "Не удалось загрузить или сохранить приглашение оставить отзыв",
+  "review.retry": "Повторить",
   "welcome.title": "Устраивайтесь поудобнее",
   "welcome.intro": "Новая глава начинается здесь.",
   "welcome.readingTips": "Советы по чтению",
@@ -477,4 +486,7 @@ export const ru: StringCatalog = {
   "text.bookScope": "Параметры книги",
   "settings.resetToDefault": "Сбросить на значение по умолчанию",
   "settings.resetSliderToDefault": "Сбросить {label} на значение по умолчанию",
+  "pageTurnGuide.next": "Нажмите: следующая",
+  "pageTurnGuide.previous": "Нажмите: предыдущая",
+  "pageTurnGuide.instructions": "Нажимайте на внешние поля, чтобы перелистывать страницы. После перехода эти подсказки исчезнут.",
 };

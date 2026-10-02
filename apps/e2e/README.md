@@ -38,6 +38,27 @@ every-iteration signal.
 
 ## Running it
 
+### Local feature prototypes
+
+Build an isolated extension with `VITE_AMBRA_LOCAL_FEATURES=1 pnpm --filter
+@ambra/extension build --outDir /absolute/path/to/local-prototype`, then set
+`VITE_AMBRA_LOCAL_FEATURES=1`, `AMBRA_E2E_HEADLESS=1`, and
+`AMBRA_E2E_EXTENSION_PATH=/absolute/path/to/local-prototype` when running
+`review-invitation.spec.ts` and `library-file-drop.spec.ts`.
+
+`review-invitation.spec.ts` checks actual saved-position eligibility, one-time
+presentation across Library tabs, and responsive simulation controls without
+altering books, progress, or preferences. Run it against a normal build without
+the feature environment variable as well to assert the release UI has no
+invitation or simulation controls.
+
+For manual review, open the full Library and expand **Local prototype controls**
+below the collection. **Simulate eligible reader** shows the invitation;
+**No thanks** dismisses it; **Reset simulated invitation** shows it again.
+**Simulate new reader** hides it and **Use real eligibility** restores the actual
+eligibility rules. Reload also clears simulation. These operations do not reset
+real reading history or the saved one-time invitation flag.
+
 `library-search.spec.ts` covers local title/author filtering in compact and full
 libraries, retained sorting and book identity, clear/Escape focus, live French
 labels, import/removal updates, and the distinction between no matches and an
