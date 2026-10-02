@@ -15,12 +15,14 @@ earlier prototype iterations. Change an approved interaction explicitly, not as
 an incidental styling cleanup. Prototype omissions never authorize removing an
 existing feature.
 
-## Local feature review: Library import and review invitation
+## Reviewed features: Library import and review invitation
 
-Drag-and-drop and the review invitation are opt-in local prototypes, not approved
-release behavior. Build with `VITE_AMBRA_LOCAL_FEATURES=1`; ordinary builds keep
-them disabled. The native file-selection handoff below also applies to ordinary
-builds.
+The owner accepted the local drag-and-drop, page-turn guidance, review-dialog
+presentation, and focused import-window experience. The first three remain
+behind `VITE_AMBRA_LOCAL_FEATURES=1` pending release rollout; merging their
+implementation does not enable them in store packages or expose simulation
+controls there. CI verifies both the ordinary package and an isolated flagged
+build. The native file-selection handoff below also applies to ordinary builds.
 
 - **Import book** in Chrome's action popup opens a focused 480×560 import window,
   not the full Library. Lead with a prominent **Choose EPUB files...** action,
