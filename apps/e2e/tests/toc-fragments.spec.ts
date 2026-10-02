@@ -77,6 +77,7 @@ async function selectEntry(page: Page, label: string, keyboard = false) {
   else await entry.click();
   await expect(navigation).not.toBeVisible();
   await expect.poll(async () => (await snapshot(page)).section).toBe(label);
+  expect((await sectionAtReadingPosition(page)).expected).toBe(label);
 }
 
 async function sectionAtReadingPosition(page: Page) {

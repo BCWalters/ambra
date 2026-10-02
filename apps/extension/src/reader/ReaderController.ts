@@ -1790,6 +1790,15 @@ export class ReaderController {
         this.accessibility.focusReadingPosition(iframeDocument, readingPosition);
         // Explicit page navigation takes precedence over any shell-return caret.
         this.nativeReading.retain({ ...readingPosition, spineIndex: readingSpineIndex });
+      } else if (focusTarget) {
+        const document = focusTarget.ownerDocument;
+        const position = { node: focusTarget, offset: 0 };
+        const spineIndex = this.contentDocumentViews().find(view => view.document === document)?.spineIndex
+          ?? this.spineIndex;
+        // Focusing the new frame can restore a caret at its page start, before
+        // the fragment. Commit the explicit destination after that focus handoff.
+        this.accessibility.focusReadingPosition(document, position);
+        this.nativeReading.retain({ ...position, spineIndex });
       } else {
         this.focusReadingContent(iframeDocument, focusTarget);
       }
