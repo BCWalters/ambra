@@ -110,7 +110,8 @@ for (const width of [320, 360]) {
       const cover = full.locator("[data-library-collection]").getByRole("button", { name: t("library.openBook", { title: "Compact layout 1" }), exact: true });
       await expect(cover).toBeVisible();
       expect((await cover.boundingBox())!.width).toBe(140);
-      await expect(cover.locator("span span")).toHaveCSS("-webkit-line-clamp", "6");
+      await expect(cover.getByText("Compact layout 1", { exact: true })).toHaveCSS("-webkit-line-clamp", "4");
+      await expect(cover.getByText("Layout author", { exact: true })).toBeVisible();
       expect(await full.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     } finally {
       await context.close();
