@@ -1,0 +1,92 @@
+{
+  "sourceCommit": "90d329c910711995fa526647dc57d96a3edf9241",
+  "capturePurpose": "packaged-runtime",
+  "sourceAttestation": "Caller supplied the runtime source commit; every candidate file matched the supplied release ZIP.",
+  "releaseStatus": "Capture is not evidence of Chrome Web Store publication.",
+  "version": "2.0.0",
+  "candidateTreeSha256": "5beed2cdd7075ac32b6ff2bbdcc148ccfd9bb044583b0aabc52594e9b95f8c3d",
+  "releasePackage": {
+    "archive": "ambra-2.0.0.zip",
+    "sha256": "f133ea8a463b26fe849f27b66fc8a360d466345042d0a7146224c90e0297e09e"
+  },
+  "capturedAt": "2026-10-03T06:13:36.245Z",
+  "browser": "Playwright Chromium",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "offline": true,
+  "publications": [
+    {
+      "file": "alice-in-wonderland.epub",
+      "title": "Alice's Adventures in Wonderland",
+      "language": "en",
+      "source": "https://www.gutenberg.org/ebooks/11",
+      "sourceSha256": "12cbc3610260503383ad7ecf800beb0d885a6011e15900b2bf61cecfc571d6c8",
+      "rights": [
+        "Public domain in the USA."
+      ],
+      "cover": "Original Ambra typographic artwork, MIT; replaces the source cover image.",
+      "illustration": {
+        "file": "alice15a.gif",
+        "url": "https://www.gutenberg.org/files/114/114-h/images/alice15a.gif",
+        "source": "https://www.gutenberg.org/ebooks/114",
+        "creator": "John Tenniel (1820–1914)",
+        "title": "Illustration 15: Alice meets the Caterpillar",
+        "sha256": "1829e0bf84f1d79cbf2cb18e90ad481cbb014af00a6371c010790a7b79e481f7"
+      },
+      "readerChapter": "OEBPS/8761230412384829988_11-h-5.htm.xhtml",
+      "editionNote": "Custom combination of PG11 text and PG114 Tenniel art; PG11 alone is not this illustrated edition.",
+      "sha256": "3749a36390d536d6a114fa160f3b7e1b77b9112c08b8c3fe4a741955da1eb727"
+    },
+    {
+      "file": "media-overlay/narrated.epub",
+      "sha256": "b10c46efc9ad49748e84fe1164c470f503eea54f9ebc948925a2fd78fa9971e5",
+      "rights": "Original synthetic Ambra fixture (MIT)."
+    }
+  ],
+  "attribution": "../screenshots.md",
+  "observations": {
+    "find-books.png": {
+      "dialog": "Find books",
+      "populatedLibrary": true
+    },
+    "reading-alice.png": {
+      "position": "Page 45 of 157 · 29% - 12 pages left in this chapter - Bookmarked",
+      "savedHighlight": "Who are you?"
+    },
+    "annotations.png": {
+      "panel": "Annotations",
+      "filter": "Notes",
+      "savedNotes": 1
+    },
+    "inspector-overview.png": {
+      "view": "popover",
+      "image": "alice15a.gif"
+    },
+    "inspector-source.png": {
+      "dock": "right",
+      "file": "OEBPS/8761230412384829988_11-h-5.htm.xhtml",
+      "locatedCurrentPassage": true
+    },
+    "read-along.png": {
+      "paused": true,
+      "toolbarListenButton": false,
+      "expanded": true
+    },
+    "read-along-collapsed.png": {
+      "paused": true,
+      "expanded": false,
+      "playAvailable": true
+    }
+  },
+  "files": {
+    "find-books.png": "20abaf1e48245427d4e1143636f71724dbd00696d487b015d0f0f60edb81b7e6",
+    "reading-alice.png": "b8ac7fbd5c5f60504eeadc7a866ac4f03a8c729c1da277ae1c1117a4180d2cbb",
+    "annotations.png": "0fd860b754f6b28d9938788bcec2e66ebf397fa34d5140b0b9b21ae8696bf3a0",
+    "inspector-overview.png": "7260794b96342169d5a2206b15b9c4345c8f7368c160e2c142dcfd04a92e3648",
+    "inspector-source.png": "f336229012f43c9b37cdbc2e8dda664906a83d9fac2941fca51e8cf5048d344b",
+    "read-along.png": "76e62360be14f46519ad54544adf0504366e81c230367da204aadd71ba9e399d",
+    "read-along-collapsed.png": "45e21870b2a6a7c1c00a30d0ba4c61ecaa477fbc61754f90d55a9253507c5681"
+  }
+}

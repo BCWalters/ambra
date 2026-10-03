@@ -1,8 +1,8 @@
 # Ambra - the best of EPUB books, right in your browser
 
-[![Alice's Adventures in Wonderland in Ambra: two pages with yellow and blue highlights, the reader toolbar, and chapter landmarks on the progress bar.](images/reading-alice.png)](images/reading-alice.png)
+[![Alice's Adventures in Wonderland in Ambra, with a saved yellow highlight, the current reader toolbar, and a bookmarked position on the progress bar.](images/reading-alice.png)](images/reading-alice.png)
 
-> This source guide describes the unreleased interface. The public website's guide remains pinned to the released version. Existing screenshots may show the previous interface; follow the control names in the text below.
+> This guide describes the 2.0.0 interface. Screenshots were captured from the verified 2.0.0 package; they do not establish Chrome Web Store publication. See [screenshot sources and capture status](screenshots.md).
 
 Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome. For readers, it is a place to make books your own: adjust the reading experience, find passages, and keep your notes. For EPUB authors and publishers, it connects the book you see with the files behind it—making investigation and debugging easier without leaving the reader.
 

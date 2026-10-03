@@ -5,8 +5,8 @@ Keep your EPUBs together and reopen a book at your saved reading position.
 ## Compact or full library
 
 The extension popup uses a compact cover-and-metadata list whose books scroll
-independently. **Find books** and **Import book** remain above the collection,
-including when the library is empty. Choose **Open library in new tab** for a
+independently. **Find books** and **Import book** remain above the collection.
+Choose **Open library in new tab** for a
 full browser tab with more room; this is available before your first import.
 
 The full library uses larger covers and offers **Continue reading** when a
@@ -37,7 +37,7 @@ close its reader tab first.
 
 ## Add a book from your device
 
-Choose **Import book**, whether the library is empty or populated. From Chrome's
+Choose **Import book** above the collection. From Chrome's
 Ambra toolbar popup, this opens a small **Import book** window. Select
 **Choose EPUB files...** to pick books from your device. This window stays open
 when the native file chooser takes focus, unlike Chrome's toolbar popup.
@@ -75,8 +75,9 @@ The query is temporary and is cleared when the library page closes or reloads.
 
 ## Find new books on the web
 
-Choose **Find books** above the collection, including in an empty library. In the
-full library, this opens a centered dialog; **Close** or **Escape** dismisses it.
+Choose **Find books** above the collection. The same action is available before
+and after importing books; there is no separate discovery workflow for an empty
+library. In the full library, this opens a centered dialog; **Close** or **Escape** dismisses it.
 From the compact popup or reader panel, it opens the full library in a new tab
 with discovery already open. Source links open in a new tab:
 
@@ -84,6 +85,8 @@ with discovery already open. Source links open in a new tab:
 - **Project Gutenberg:** choose an **EPUB** or **EPUB3** download.
 - **ReadBeyond:** choose **Download** for [read-along EPUBs](read-along-books.md) with recorded narration.
 - **[eBooks.com](https://www.ebooks.com/drm-free-epub):** buy a DRM-free EPUB edition and download it after purchase.
+
+[![Find books in the full Library: a centered dialog with Standard Ebooks, Project Gutenberg, ReadBeyond, and eBooks.com links above the imported book collection.](images/find-books.png)](images/find-books.png)
 
 Ambra can import EPUB downloads directly into your library. If that fails, save the EPUB to your device and choose **Import book**.
 
