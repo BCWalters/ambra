@@ -1,7 +1,7 @@
-# Ambra 1.0.2 Chrome Web Store listing notes
+# Ambra 2.0.0 Chrome Web Store listing notes
 
 Prepared for the existing listing's **manual, owner-only update**.
-Follow [RELEASE-1.0.2.md](RELEASE-1.0.2.md); this file does not authorize a
+Follow [RELEASE-2.0.0.md](RELEASE-2.0.0.md); this file does not authorize a
 dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 ## Product
@@ -15,8 +15,9 @@ dashboard action, workflow dispatch, upload, review cancellation, or submission.
 
 Read, annotate, and explore EPUBs in Chrome with a personal library, flexible reading settings, and EPUB Inspector.
 
-Unchanged from the published 1.0.1 package. For 1.0.2, keep the main description
-and existing images; only the guide/privacy URLs below change.
+Keep the existing approved short and full descriptions. For 2.0.0, use the
+refreshed screenshots captured from the verified final package; guide/privacy
+URLs remain unchanged.
 
 Character count: 115. This read-only dashboard summary comes from the uploaded
 package's manifest `description`; it is not separately editable listing copy.
@@ -77,6 +78,9 @@ Feedback: AmbraEPUB@outlook.com
 
 The owner reports that human VoiceOver acceptance passed before this preparation.
 Do not relabel that completed check as pending, or invent its OS/browser versions.
+The 2.0.0 abbreviated owner pass and follow-up confirmations are recorded in
+the [current accessibility review](../docs/accessibility-review-2026-10-02.md);
+they do not establish a complete final-candidate pass.
 The source version bump and screenshots are not a new final-candidate AT test.
 NVDA acceptance is not established; do not claim it, universal screen-reader
 compatibility, certified accessibility, or complete EPUB conformance. Automated

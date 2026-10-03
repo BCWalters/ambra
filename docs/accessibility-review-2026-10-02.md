@@ -98,6 +98,12 @@ Two import-speech concerns and one possible compact-navigation issue remained:
   group navigation still needs a retest using Stop interacting before leaving
   the toolbar; no source-only conclusion can certify that behavior.
 
+After reloading the updated preview, the owner confirmed that navigation out
+of the toolbar works and that the small-import completion announcement is
+audible. The possible toolbar-navigation bug is resolved by that manual
+confirmation. This does not establish the large web-download speech sequence
+or a complete screen-reader pass.
+
 Regression tests verify real Chrome fallback settlement before completion,
 small-file and duplicate speech text, localized feedback, retained/restored
 focus, and explicit cancellation/failure behavior. They do not verify the
