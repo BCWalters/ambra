@@ -415,6 +415,7 @@ export class ReaderController {
     this.inspectionSession = new EpubInspectionSession(contentLoader, pkg, rootFilePath);
     this.inspectionReading = new InspectorReadingBridge(contentLoader, locatorResolver, pkg, {
       documents: () => this.contentDocumentViews(),
+      pageNumber: view => this.inspectorPageNumber(view),
       currentPosition: () => this.isFixedLayoutHost(this.host)
         ? this.nativeReading.current() ?? this.host?.currentPosition()
         : this.host?.currentPosition(),
@@ -4205,6 +4206,21 @@ export class ReaderController {
     const bridge = this.inspectionReading.create();
     return {
       ...bridge,
+      subscribeVisiblePages: listener => {
+        let previous = this.contentDocumentViews();
+        let previousNumbers = previous.map(view => this.inspectorPageNumber(view));
+        return this.subscribe(() => {
+          const next = this.contentDocumentViews();
+          const nextNumbers = next.map(view => this.inspectorPageNumber(view));
+          if (next.length === previous.length && next.every((view, index) =>
+            view.document === previous[index]?.document && view.page === previous[index]?.page &&
+            view.spineIndex === previous[index]?.spineIndex && view.physicalSide === previous[index]?.physicalSide &&
+            nextNumbers[index] === previousNumbers[index])) return;
+          previous = next;
+          previousNumbers = nextNumbers;
+          listener();
+        });
+      },
       showInBook: async location => {
         this.recordDiagnosticEvent({ kind: "navigation", source: "inspector", targetSpine: location.spineIndex });
         await bridge.showInBook(location);
@@ -4214,6 +4230,13 @@ export class ReaderController {
 
   public findInspectionReferences(path: string): Promise<readonly InspectorReference[]> {
     return this.inspectionSession.findReferences(path);
+  }
+
+  private inspectorPageNumber(view: ContentDocumentView): number | undefined {
+    if (!view.page) return undefined;
+    return this.host instanceof SpreadPaginatedHost
+      ? this.furniturePageNumber(view.spineIndex, view.page.index)
+      : this.bookWidePagePosition()?.bookPageIndex;
   }
 
   /** Reads one archive file's raw text for the Inspector file browser,

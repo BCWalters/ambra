@@ -1,4 +1,4 @@
-import { Locator, SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES } from "@ambra/engine";
+import { isReaderOwnedContent, Locator, SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES } from "@ambra/engine";
 import type {
   ContentDocumentView,
   ContentLoader,
@@ -6,11 +6,12 @@ import type {
   LocatorResolver,
   PackageDocument,
 } from "@ambra/engine";
-import type { InspectorReaderBridge, InspectorReadingLocation } from "./ReaderTypes.js";
+import type { InspectorReaderBridge, InspectorReadingLocation, InspectorSourcePoint, InspectorVisiblePage } from "./ReaderTypes.js";
 import { selectedReadingPosition, visibleReadingPosition, type ReadingPosition } from "./ReadingPosition.js";
 
 interface ReadingContext {
   documents: () => readonly ContentDocumentView[];
+  pageNumber: (view: ContentDocumentView) => number | undefined;
   currentPosition: () => DomBreakPoint | undefined;
   navigate: (spineIndex: number, cfi?: string) => Promise<void>;
   focus: (document: Document, element: Element) => void;
@@ -47,6 +48,7 @@ export class InspectorReadingBridge {
       showInBook: async (location) => {
         destination = await this.show(location);
       },
+      getVisiblePages: () => this.visiblePages(),
       restoreFocus: () => {
         const target = destination;
         if (!target || this.context.isDisposed()) return;
@@ -60,6 +62,65 @@ export class InspectorReadingBridge {
         if (element) this.context.focus(view.document, element);
       },
     };
+  }
+
+  private async visiblePages(): Promise<readonly InspectorVisiblePage[]> {
+    this.checkActive();
+    const views = this.context.documents().filter(view => view.page);
+    return Promise.all(views.map(async view => {
+      const page = view.page!;
+      const pageNumber = this.context.pageNumber(view);
+      const content = await this.loader.loadSpineDocument(view.spineIndex);
+      this.checkActive();
+      return {
+        path: content.manifestItem.path,
+        spineIndex: view.spineIndex,
+        pageIndex: page.index,
+        pageNumber,
+        physicalSide: view.physicalSide,
+        start: this.sourcePoint(page.startBreak, view.spineIndex, content.document),
+        end: this.sourcePoint(page.endBreak, view.spineIndex, content.document),
+        hasPositionOverrides: !!page.positionOverrides?.length,
+      };
+    }));
+  }
+
+  private sourcePoint(point: DomBreakPoint, spineIndex: number, original: Document): InspectorSourcePoint {
+    const locator = this.resolver.generate(spineIndex, point.node,
+      point.node.nodeType === 1 ? undefined : point.offset ?? 0);
+    const resolved = this.resolver.resolveInDocument(locator, spineIndex, original);
+    const node = resolved.node;
+    const element = node.nodeType === 1 ? node as Element : node.parentElement;
+    if (!element) throw new Error("The page boundary has no source element.");
+    const elementPath = this.elementPath(element, original);
+    if (point.node.nodeType === 1) {
+      if (point.offset === undefined) return { elementPath };
+      if (!Number.isInteger(point.offset) || point.offset < 0 || point.offset > point.node.childNodes.length) {
+        throw new Error("The page boundary has an invalid child offset.");
+      }
+      const childIndex = Array.from(point.node.childNodes).slice(0, point.offset)
+        .filter(child => !isReaderOwnedContent(child)).length;
+      if (childIndex > node.childNodes.length) throw new Error("The page boundary does not match original source children.");
+      return { elementPath, childIndex };
+    }
+    if (node.nodeType !== 3 && node.nodeType !== 4) throw new Error("The page boundary is not source text.");
+    return {
+      elementPath,
+      childIndex: Array.from(element.childNodes).findIndex(child => child === node),
+      textOffset: resolved.characterOffset ?? 0,
+    };
+  }
+
+  private elementPath(sourceElement: Element, original: Document): number[] {
+    let element = sourceElement;
+    const path: number[] = [];
+    while (element !== original.documentElement) {
+      const parent = element.parentElement;
+      if (!parent) throw new Error("The source element is outside the publication document.");
+      path.unshift(Array.from(parent.children).indexOf(element));
+      element = parent;
+    }
+    return path;
   }
 
   private selectedPosition(): ReadingPosition | undefined {
@@ -83,14 +144,7 @@ export class InspectorReadingBridge {
       : content.document.documentElement;
     const sourceElement = node.nodeType === 1 ? (node as Element) : node.parentElement;
     if (!sourceElement) throw new Error("The passage could not be matched to a source element.");
-    let element: Element = sourceElement;
-    const elementPath: number[] = [];
-    while (element !== content.document.documentElement) {
-      const parent: Element | null = element.parentElement;
-      if (!parent) throw new Error("The passage is outside the publication document.");
-      elementPath.unshift(Array.from(parent.children).indexOf(element));
-      element = parent;
-    }
+    const elementPath = this.elementPath(sourceElement, content.document);
     return { path: content.manifestItem.path, spineIndex: position.spineIndex, elementPath };
   }
 

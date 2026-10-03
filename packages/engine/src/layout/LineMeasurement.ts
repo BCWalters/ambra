@@ -464,9 +464,22 @@ function* measureTextLeafChunks(
       offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth);
       lineOffsets.set(targetTop, offset);
     }
-    const position = positionFromTextNodes(textNodes, offset);
+    let position = positionFromTextNodes(textNodes, offset);
     if (!position) {
       continue;
+    }
+    // Prefix bisection reaches a line after including its first glyph.
+    // Move before that glyph only when it actually paints on this line.
+    if (offset > 0) {
+      const before = positionFromTextNodes(textNodes, offset - 1)!;
+      probeRange.setStart(before.node, before.offset);
+      probeRange.setEnd(position.node, position.offset);
+      const rect = Array.from(probeRange.getClientRects()).reverse()
+        .find(rect => rect.width > 0 && paintsInViewport(rect, viewportWidth));
+      if (rect && rect.top >= targetTop - LINE_TOLERANCE_PX &&
+          rect.bottom <= lineRects[lineIndex]!.bottom + LINE_TOLERANCE_PX) {
+        position = before;
+      }
     }
     yield {
       top: lineRects[lineIndex]!.top,
@@ -477,9 +490,9 @@ function* measureTextLeafChunks(
 
 }
 
-/** Binary-searches the smallest global text offset within `fullRange` whose
- * rendered position has already reached `targetTop` — i.e. the character
- * offset where the line starting at `targetTop` begins. Relies purely on
+/** Binary-searches the smallest prefix end offset within `fullRange` whose
+ * rendered position has already reached `targetTop`. The caller converts
+ * this exclusive end to the boundary before the first glyph. Relies purely on
  * `Range.getClientRects()`, a real layout measurement, evaluated at each
  * candidate offset. `textNodes` contains only this range's text nodes,
  * collected once by the caller (see `measureTextLeafChunks`) rather than
@@ -590,21 +603,7 @@ function* chunkMeasurements(
         for (const chunk of chunkMeasurements(part, pageHeight, groups, true, part.localName === "figcaption")) {
           yield undefined;
           if (!chunk) continue;
-          let start = chunk.breakBefore;
-          // Prefix bisection reaches a line after including its first glyph.
-          // Explicit membership must include that glyph, not its trailing caret.
-          if (start.node.nodeType === 3 && (start.offset ?? 0) > 0) {
-            const range = ownerDocument.createRange();
-            range.setStart(start.node, start.offset! - 1);
-            range.setEnd(start.node, start.offset!);
-            // A hyphenated letter can also expose the previous line's generated
-            // hyphen. Its final nonempty rectangle belongs to the letter itself.
-            const rect = Array.from(range.getClientRects()).reverse().find(rect => rect.width > 0 && rect.height > 0);
-            if (rect && rect.top >= chunk.top && rect.bottom <= chunk.bottom) {
-              start = { node: start.node, offset: start.offset! - 1 };
-            }
-          }
-          chunks.push({ ...chunk, breakBefore: start });
+          chunks.push(chunk);
         }
         parts.push(chunks);
       }

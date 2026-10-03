@@ -48,8 +48,10 @@ import cssLanguage from "highlight.js/lib/languages/css";
 import javascriptLanguage from "highlight.js/lib/languages/javascript";
 import jsonLanguage from "highlight.js/lib/languages/json";
 import xmlFormat from "xml-formatter";
-import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation } from "../ReaderTypes.js";
+import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation, InspectorVisiblePage } from "../ReaderTypes.js";
 import { buildInspectorSourceMap, inspectorElementAtOffset } from "../InspectorSourceMap.js";
+import { mapInspectorPageMarkers, type InspectorPageMarker } from "../InspectorPageBoundaries.js";
+import { InspectorPageMarkers, scrollInspectorPageMarker } from "./InspectorPageMarkers.js";
 import type { InspectorReference } from "../InspectorReferences.js";
 import { moveSourceCaret, normalizeInspectorSourceText, sourceSelectionOffset, sourceTextRange } from "./inspectorSourceSelection.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
@@ -230,14 +232,17 @@ const FilePreview: FC<{
   sourceTarget: SourceTarget | undefined;
   onSourceTarget: (target: SourceTarget) => void;
   onMappingState: (state: SourceMappingState) => void;
+  visiblePages: readonly InspectorVisiblePage[];
+  originalSource: boolean;
 }> = ({ path, size, manifestMediaType, wrap, knownFilePaths, onReadFile, onGetPreviewUrl, onNavigateToFile,
-  linked, sourceTarget, onSourceTarget, onMappingState }) => {
+  linked, sourceTarget, onSourceTarget, onMappingState, visiblePages, originalSource }) => {
   const t = useTranslation();
   const revealSvgSource = !!sourceTarget?.reference && guessMediaType(path, manifestMediaType) === "image/svg+xml";
   const classification = useMemo(() => classifyInspectionFile(path, revealSvgSource ? "application/xml" : manifestMediaType),
     [path, manifestMediaType, revealSvgSource]);
   const resolvedMediaType = guessMediaType(path, manifestMediaType);
   const preRef = useRef<HTMLPreElement>(null);
+  const lastPageReveal = useRef<{ pre: HTMLPreElement; markers: readonly InspectorPageMarker[] } | undefined>(undefined);
 
   const [textHtml, setTextHtml] = useState<string | undefined>(undefined);
   const [plainText, setPlainText] = useState<string | undefined>(undefined);
@@ -245,8 +250,17 @@ const FilePreview: FC<{
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
   const [sourceText, setSourceText] = useState<string | undefined>(undefined);
+  const [loadedOriginalSource, setLoadedOriginalSource] = useState(false);
   const [selectionFailed, setSelectionFailed] = useState(false);
   const hintId = useId();
+  const pageMapping = useMemo(() => {
+    if (!originalSource || !loadedOriginalSource || !visiblePages.length || sourceText === undefined) return undefined;
+    try {
+      return { markers: mapInspectorPageMarkers(sourceText, visiblePages) };
+    } catch (error) {
+      return { error: describeLinkError(t("inspector.pageBoundariesError"), error) };
+    }
+  }, [originalSource, loadedOriginalSource, sourceText, visiblePages, t]);
   const sourceElements = useMemo(() => {
     if ((!linked && !sourceTarget?.elementPath) || sourceText === undefined) return undefined;
     try {
@@ -279,12 +293,13 @@ const FilePreview: FC<{
     setError(undefined);
     setIsLoading(true);
     setSourceText(undefined);
+    setLoadedOriginalSource(false);
     let cancelled = false;
 
     async function load(): Promise<void> {
       if (classification.isText) {
         let text = await onReadFile(path);
-        if (classification.prettyPrintXml) {
+        if (classification.prettyPrintXml && !originalSource) {
           try {
             text = xmlFormat(text, { collapseContent: true, throwOnFailure: true });
           } catch {
@@ -299,6 +314,7 @@ const FilePreview: FC<{
         }
         text = normalizeInspectorSourceText(text);
         setSourceText(text);
+        setLoadedOriginalSource(originalSource);
         if (classification.highlightLanguage) {
           setTextHtml(hljs.highlight(text, { language: classification.highlightLanguage }).value);
         } else {
@@ -330,7 +346,7 @@ const FilePreview: FC<{
     return () => {
       cancelled = true;
     };
-  }, [path, classification, onReadFile, onGetPreviewUrl, resolvedMediaType, t]);
+  }, [path, classification, onReadFile, onGetPreviewUrl, resolvedMediaType, t, originalSource]);
 
   // Issue #95: marks every `href`/`src` attribute value in the just-
   // rendered markup that resolves to another file *this same archive
@@ -413,6 +429,28 @@ const FilePreview: FC<{
     return () => { highlights?.delete("ambra-inspector-source"); };
   }, [selectedElement, validTextRange, sourceTarget, textHtml, mappingFailed, isLoading]);
 
+  useEffect(() => {
+    const pre = preRef.current;
+    if (sourceTarget || !pre || isLoading) {
+      lastPageReveal.current = undefined;
+      return;
+    }
+    const markers = pageMapping?.markers;
+    const first = markers?.[0];
+    if (!markers || !first) return;
+    const previous = lastPageReveal.current;
+    // Number-only updates must not pull source away from the user's position.
+    if (previous?.pre === pre && previous.markers.length === markers.length &&
+        markers.every((marker, index) => {
+          const prior = previous.markers[index]!;
+          return marker.offset === prior.offset && marker.edge === prior.edge &&
+            marker.page.path === prior.page.path && marker.page.spineIndex === prior.page.spineIndex &&
+            marker.page.pageIndex === prior.page.pageIndex && marker.page.physicalSide === prior.page.physicalSide;
+        })) return;
+    scrollInspectorPageMarker(pre, first.offset);
+    lastPageReveal.current = { pre, markers };
+  }, [pageMapping, isLoading, sourceTarget]);
+
   function handleContentLinkActivate(target: EventTarget | null): boolean {
     const el = target instanceof Element ? target.closest<HTMLElement>("[data-nav-path]") : null;
     const navPath = el?.dataset.navPath;
@@ -461,6 +499,7 @@ const FilePreview: FC<{
   return textHtml !== undefined ? (
     <>
       <HighlightTheme />
+      {pageMapping?.error && <ErrorDetails role="alert">{pageMapping.error}</ErrorDetails>}
       {mappingFailed && <Caption1 id={hintId} as="p" role="alert" style={{ margin: "0 0 8px" }}>{t("inspector.sourceMappingError")}</Caption1>}
       {!mappingFailed && (selectedElement || validTextRange) && (
         <span id={hintId} role="status" style={{ position: "absolute", width: 1, height: 1, padding: 0,
@@ -468,6 +507,7 @@ const FilePreview: FC<{
           {linked ? t("inspector.sourceElementSelected") : t("inspector.referenceSelected")}
         </span>
       )}
+      <div style={{ position: "relative" }}>
       <pre
         ref={preRef}
         className="ambra-hljs"
@@ -513,6 +553,8 @@ const FilePreview: FC<{
         // already produced; it never introduces new markup of its own.
         dangerouslySetInnerHTML={{ __html: textHtml }}
       />
+      {pageMapping?.markers && <InspectorPageMarkers preRef={preRef} markers={pageMapping.markers} />}
+      </div>
     </>
   ) : (
     <pre
@@ -569,6 +611,35 @@ const FilesTab: FC<{
   // rather than wrapped, and a reader can always switch it back on for a
   // narrower file.
   const [wrap, setWrap] = useState(false);
+  const [pageState, setPageState] = useState<
+    | { status: "loading"; pages: readonly InspectorVisiblePage[] }
+    | { status: "ready"; pages: readonly InspectorVisiblePage[] }
+    | { status: "error"; error: string; pages: readonly InspectorVisiblePage[] }
+  >({ status: "loading", pages: [] });
+  useEffect(() => {
+    if (!reader?.getVisiblePages) return;
+    const getVisiblePages = reader.getVisiblePages;
+    let revision = 0;
+    let disposed = false;
+    const update = () => {
+      const request = ++revision;
+      setPageState(current => ({ status: "loading", pages: current.pages }));
+      getVisiblePages().then(pages => {
+        if (!disposed && request === revision) setPageState({ status: "ready", pages });
+      }).catch(error => {
+        if (!disposed && request === revision) {
+          setPageState(current => ({ status: "error", pages: current.pages,
+            error: describeLinkError(t("inspector.pageBoundariesError"), error) }));
+        }
+      });
+    };
+    const unsubscribe = reader.subscribeVisiblePages?.(update);
+    update();
+    return () => { disposed = true; unsubscribe?.(); };
+  }, [reader, t]);
+  const visiblePages = useMemo(() => reader?.getVisiblePages && pageState.status === "ready" ? pageState.pages : [],
+    [reader, pageState]);
+  const selectedPages = useMemo(() => visiblePages.filter(page => page.path === selectedPath), [visiblePages, selectedPath]);
   const [mappingState, setMappingState] = useState<SourceMappingState | undefined>();
   const selectedFile = data.files.find((file) => file.path === selectedPath);
   const selectedClassification = selectedFile
@@ -734,6 +805,7 @@ const FilesTab: FC<{
           )}
           </div>
         </div>
+        {reader?.getVisiblePages && pageState.status === "error" && <ErrorDetails role="alert">{pageState.error}</ErrorDetails>}
         {referenceSearch && (
           <section aria-label={t("inspector.findReferences")} style={{ maxHeight: "35%", minHeight: 0, overflow: "auto",
             padding: "8px 12px", borderBottom: `1px solid ${CHROME_BORDER}`, flexShrink: 0 }}>
@@ -766,6 +838,7 @@ const FilesTab: FC<{
           </section>
         )}
         <div
+          data-inspector-source-viewport
           style={{
             flex: 1,
             minHeight: 0,
@@ -798,6 +871,8 @@ const FilesTab: FC<{
               sourceTarget={sourceTarget}
               onSourceTarget={onSourceTarget}
               onMappingState={setMappingState}
+              visiblePages={selectedPages}
+              originalSource={!!reader?.getVisiblePages && pageState.pages.length > 0}
             />
           )}
         </div>
