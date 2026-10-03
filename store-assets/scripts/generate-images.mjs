@@ -289,7 +289,8 @@ async function main() {
     const input = library.locator('input[type="file"]').first();
     await expect(input).toBeEnabled();
     await input.setInputFiles(bookPaths);
-    await expect(library.getByRole("button", { name: /^Open / })).toHaveCount(books.length, {
+    const collection = library.locator("[data-library-collection]");
+    await expect(collection.getByRole("button", { name: /^Open / })).toHaveCount(books.length, {
       timeout: 120_000,
     });
     await library.getByRole("button", { name: "Sort library" }).click();
@@ -297,13 +298,20 @@ async function main() {
     const dismissImport = library.getByRole("button", { name: "Dismiss", exact: true });
     if (await dismissImport.isVisible()) await dismissImport.click();
     const opened = context.waitForEvent("page");
-    await library.getByRole("button", { name: /^Open Alice's Adventures in Wonderland/ }).click();
+    await collection.getByRole("button", { name: /^Open Alice's Adventures in Wonderland/ }).click();
     const reader = await opened;
     await reader.waitForLoadState("domcontentloaded");
     const welcome = reader.getByRole("dialog", { name: "Make yourself at home", exact: true });
     await expect(welcome).toBeVisible({ timeout: 20_000 });
     await welcome.getByRole("button", { name: "Start reading", exact: true }).click();
     await expect(welcome).toBeHidden();
+    await reader.mouse.move(6, 2);
+    await reader.getByRole("button", { name: "Ambra settings", exact: true }).click();
+    const settings = reader.getByRole("dialog", { name: "Ambra settings", exact: true });
+    await expect(settings.getByRole("combobox", { name: "Reading mode", exact: true })).toHaveValue("paginated");
+    await expect(settings.getByRole("combobox", { name: "Page theme", exact: true })).toHaveValue("white");
+    await reader.keyboard.press("Escape");
+    await expect(settings).toBeHidden();
     const position = reader.getByRole("slider", { name: "Position in book", includeHidden: true });
     async function mapped() {
       let last = "";
@@ -318,7 +326,7 @@ async function main() {
     }
     async function openChapter(chapter) {
       await reader.mouse.move(6, 2);
-      await reader.getByRole("button", { name: "Show contents", exact: true }).click();
+      await reader.getByRole("button", { name: "Contents", exact: true }).click();
       const contents = reader.getByRole("navigation", { name: "Table of contents" });
       await contents.getByRole("button", { name: new RegExp(chapter) }).click();
       await expect(contents).toBeHidden();
@@ -388,25 +396,31 @@ async function main() {
     await readerObservation("reader", true);
     await screenshot(reader, "screenshot-reader-1280x800.png");
 
-    await reader.getByRole("button", { name: "Bookmarks and highlights", exact: true }).click();
-    const notesPanel = reader.getByRole("navigation", { name: "Bookmarks and highlights" });
-    await notesPanel.getByRole("tab", { name: /Highlights/ }).click();
-    await notesPanel.getByRole("button", { name: "Pin bookmarks and highlights panel", exact: true }).click();
+    await reader.getByRole("button", { name: "Annotations", exact: true }).click();
+    const notesPanel = reader.getByRole("navigation", { name: "Annotations", exact: true });
+    await notesPanel.getByRole("combobox", { name: "Show", exact: true }).selectOption("notes");
+    await notesPanel.getByRole("button", { name: "Pin annotations panel", exact: true }).click();
     await expect(notesPanel.getByRole("button", { name: /^Edit note:/ })).toHaveCount(10);
     await expect.poll(() => notesPanel.evaluate((node) => [node, ...node.querySelectorAll("*")].some((element) =>
       element.scrollHeight > element.clientHeight + 20 && ["auto", "scroll"].includes(getComputedStyle(element).overflowY))))
       .toBe(true);
     await readerObservation("annotations");
-    await reader.getByRole("button", { name: "This highlight has a note", exact: true }).first().click();
+    await reader.getByRole("button", { name: "This highlight has a note", exact: true }).last().click();
+    await expect.poll(() => popup.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      return box.top >= 56 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth;
+    })).toBe(true);
     const note = await popup.getByRole("textbox", { name: "Add a note…", exact: true }).inputValue();
     if (!annotationGroups.flatMap((group) => group.notes).some((entry) => entry[2] === note)) {
       throw new Error("Annotation popup does not show a saved, meaningful capture note.");
     }
-    observations.annotations = { ...observations.annotations, savedNote: note, panelOverflow: true, annotationCount: 10 };
+    observations.annotations = {
+      ...observations.annotations, savedNote: note, panelOverflow: true, annotationCount: 10, popupFullyVisible: true,
+    };
     await reader.mouse.move(6, 2);
     await screenshot(reader, "screenshot-annotations-1280x800.png");
     await reader.keyboard.press("Escape");
-    await reader.getByRole("button", { name: "Hide bookmarks and highlights", exact: true }).click();
+    await reader.getByRole("button", { name: "Hide annotations", exact: true }).click();
     await expect(notesPanel).toBeHidden();
 
     await mapped();
@@ -438,9 +452,10 @@ async function main() {
 
     await mapped();
     await reader.mouse.move(6, 2);
-    await reader.getByRole("button", { name: "Settings", exact: true }).click();
-    await reader.getByRole("menuitem", { name: "Help & About", exact: true }).click();
-    await reader.getByRole("button", { name: "Show keyboard shortcuts", exact: true }).click();
+    await reader.getByRole("button", { name: "Help & About", exact: true }).click();
+    const help = reader.getByRole("dialog", { name: "Help & About", exact: true });
+    await expect(help.getByRole("link", { name: "User guide", exact: true })).toBeVisible();
+    await help.getByRole("button", { name: "Show keyboard shortcuts", exact: true }).click();
     await expect(
       reader.getByRole("dialog", { name: "Keyboard shortcuts", exact: true }),
     ).toBeVisible();
@@ -448,19 +463,16 @@ async function main() {
     observations.shortcuts = { position: await position.getAttribute("aria-valuetext") };
     await screenshot(reader, "screenshot-shortcuts-1280x800.png");
 
+    await library.bringToFront();
     await library.reload();
-    const covers = library.getByRole("button", { name: /^Open / });
+    const covers = collection.getByRole("button", { name: /^Open / });
     await expect(covers).toHaveCount(books.length);
-    await expect.poll(() => covers.evaluateAll((nodes) => {
-      return nodes.filter((node) => !getComputedStyle(node).backgroundImage.startsWith('url("'))
-        .map((node) => node.getAttribute("aria-label"));
-    }), { timeout: 20_000 }).toEqual([]);
-    await covers.evaluateAll((nodes) => Promise.all(nodes.map(async (node) => {
-      const background = getComputedStyle(node).backgroundImage;
-      if (!background.startsWith('url("')) throw new Error("A prepared classic cover is missing.");
-      const image = new Image();
-      image.src = background.slice(5, -2);
+    await expect(covers.locator("img")).toHaveCount(books.length);
+    await covers.locator("img").evaluateAll((images) => Promise.all(images.map(async (image) => {
       await image.decode();
+      if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+        throw new Error("A prepared classic cover is missing.");
+      }
     })));
     observations.library = { books: books.length, frenchEditions: books.filter((book) => book.language === "fr").length };
     await library.mouse.move(6, 2);
