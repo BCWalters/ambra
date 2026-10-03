@@ -17,6 +17,11 @@ for (const width of [360, 1000]) {
       await expect(panel).toHaveCount(0);
       await page.getByRole("button", { name: "Library", exact: true }).click();
       await expect(panel).toBeVisible();
+      await expect(page.getByRole("button", { name: "Hide library", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await page.getByRole("button", { name: "Hide library", exact: true }).click();
+      await expect(panel).toBeHidden();
+      await expect(page.getByRole("button", { name: "Library", exact: true })).toHaveAttribute("aria-pressed", "false");
+      await page.getByRole("button", { name: "Library", exact: true }).click();
       await expect(panel.getByRole("button", { name: `Open ${currentTitle}`, exact: true })).toBeVisible();
       const bounds = (await panel.boundingBox())!;
       expect(bounds.x).toBe(0);
@@ -28,7 +33,7 @@ for (const width of [360, 1000]) {
       await expect(panel).toHaveCount(1);
       await page.mouse.move(10, 2);
       await page.getByRole("button", { name: "Library", exact: true }).click();
-      await page.getByRole("button", { name: "Show contents", exact: true }).click();
+      await page.getByRole("button", { name: "Contents", exact: true }).click();
       await expect(panel).toBeHidden();
       await expect(page.getByRole("navigation", { name: "Table of contents", exact: true })).toBeVisible();
     } finally {

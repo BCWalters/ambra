@@ -94,7 +94,7 @@ async function listen(page: Page) {
 
 async function toc(page: Page, title: string) {
   await page.mouse.move(350, 2);
-  await button(page, "Show contents").click();
+  await button(page, "Contents").click();
   await page
     .getByRole("navigation", { name: "Table of contents" })
     .getByRole("button")

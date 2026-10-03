@@ -45,11 +45,11 @@ describe("Toolbar startup positioning (#175)", () => {
     vi.unstubAllGlobals();
   });
 
-  function render(chapter: string, isTocOpen = false, isAnnotationsOpen = false) {
+  function render(chapter: string, isTocOpen = false, isAnnotationsOpen = false, isLibraryOpen = false) {
     const noop = () => {};
     const props: ToolbarProps = {
       snapshot: { ...DEFAULT_GLOBAL_READING_SETTINGS, title: "Short book", currentChapterLabel: chapter } as ReaderSnapshot,
-      openMenu: undefined, onOpenMenuChange: noop, isLibraryOpen: false, onToggleLibrary: backToLibrary,
+      openMenu: undefined, onOpenMenuChange: noop, isLibraryOpen, onToggleLibrary: backToLibrary,
       isTocOpen, onToggleToc: noop, isSearchOpen: false, onToggleSearch: noop,
       isAnnotationsOpen, onToggleAnnotations: noop, isDetailsOpen: false,
       onToggleDetails: toggleDetails, onToggleBookmark: noop, onSetViewMode: noop,
@@ -106,8 +106,18 @@ describe("Toolbar startup positioning (#175)", () => {
     const t = getTranslate("en");
     const button = container.querySelector("button")!;
     expect(button.textContent).toBe(t("toc.contents"));
-    expect(button.getAttribute("aria-label")).toBe(t(open ? "toolbar.hideContents" : "toolbar.showContents"));
+    expect(button.getAttribute("aria-label")).toBe(open ? "Hide contents" : "Contents");
     expect(button.getAttribute("aria-pressed")).toBe(String(open));
+  });
+
+  it.each([false, true])("keeps the Library label stable with panel open=%s", open => {
+    render("", false, false, open);
+    const button = container.querySelectorAll("button")[1]!;
+    expect(button.textContent).toBe("Library");
+    expect(button.getAttribute("aria-label")).toBe(open ? "Hide library" : "Library");
+    expect(button.getAttribute("aria-pressed")).toBe(String(open));
+    act(() => button.click());
+    expect(backToLibrary).toHaveBeenCalledOnce();
   });
 
   it.each([false, true])("keeps the Annotations label stable with panel open=%s", open => {

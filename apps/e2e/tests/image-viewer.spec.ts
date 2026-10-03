@@ -547,7 +547,7 @@ test("image fit respects a pinned contents pane and narrow translated controls",
     { viewport: { width: 1200, height: 900 } },
   );
   try {
-    await readerPage.getByRole("button", { name: "Show contents", exact: true }).click();
+    await readerPage.getByRole("button", { name: "Contents", exact: true }).click();
     await readerPage.getByRole("button", { name: "Pin contents panel", exact: true }).click();
     await readerPage.getByRole("button", { name: "Ambra settings", exact: true }).click();
     await readerPage.getByRole("dialog", { name: "Ambra settings", exact: true })

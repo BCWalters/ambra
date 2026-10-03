@@ -87,6 +87,9 @@ Preview mode writes images and provenance to ignored
 `store-assets/.generated/previews/`, leaving checked-in images untouched.
 These editorial previews are not release acceptance. Inspect them all before
 deciding the capture is ready; no raster commit is needed for script validation.
+Use a fresh isolated build for a current-UX preview; the example candidate path
+must not be assumed to contain the latest source. Preview provenance records
+dirty source honestly and does not verify a release package.
 
 For a final release capture, first merge
 the approved runtime fixes and source-version/materials update, then build the
@@ -139,17 +142,25 @@ cross-platform pixel identity.
 | Image                                 | Intended real UI                                            |
 | ------------------------------------- | ----------------------------------------------------------- |
 | `screenshot-reader-1280x800.png`      | Alice chapter V, complete Tenniel illustration, three annotations, mapped progress |
-| `screenshot-library-1280x800.png`     | Fifteen varied original covers, including Jane Eyre, Dickens, and three French editions |
+| `screenshot-library-1280x800.png`     | Current Library with Continue reading and a fifteen-book collection of original covers, including Jane Eyre, Dickens, and three French editions |
 | `screenshot-inspector-1280x800.png`   | Right-docked Inspector locating the current Alice passage in real source |
 | `screenshot-annotations-1280x800.png` | Pinned overflowing notes panel, three page annotations, and a saved meaningful note popup |
 | `screenshot-shortcuts-1280x800.png`   | Platform-specific shortcut reference opened through Help    |
 
 The fresh-profile capture acknowledges the real first-reading welcome before
-photographing the reader. Annotation controls, menus, and Help are opened through
-the real UI; selection is limited to the prepared Alice text. Ten original notes
-and three bookmarks are saved through those controls. Capture waits for stable
-book-wide page mapping, checks the complete illustration and visible annotation
-markers, verifies real notes-panel overflow, and decodes all 15 covers.
+photographing the reader, and verifies paginated mode and the white page theme
+through shared **Ambra settings**. **Contents**, **Annotations**, book details,
+and the toolbar's direct **Help & About** action are opened through the real UI;
+selection is limited to the prepared Alice text. Ten original notes and three
+bookmarks are saved through those controls. The pinned Annotations panel uses
+**Show → Notes**, not the historical tabs. Capture waits for stable book-wide
+page mapping, checks the complete illustration and three visible annotation
+markers, verifies real notes-panel overflow and a fully visible saved-note
+popup, and decodes all 15 collection covers. The current Library also contains
+a separate Continue reading card; it is not counted as a sixteenth book.
+The screenshot preserves the real viewport and scrolling layout, so not every
+collection cover is fully visible at once. The expanded Help is checked before
+opening its platform-specific keyboard-shortcut reference.
 Upload in **reader, library, Inspector, annotations, shortcuts** order.
 No application text,
 styles, library data, or welcome preferences are replaced behind the UI.
@@ -165,8 +176,22 @@ Chrome's [official requirements](https://developer.chrome.com/docs/webstore/imag
 128×128 PNG icon and 440×280 promo. An optional marquee is not part of this set.
 
 The five checked-in screenshots and their `asset-provenance.json` are historical
-original-book **previews**, not the 1.0.0 release assets. New previews stay in the
-ignored directory, so no tracked screenshot/provenance churn is necessary.
+original-book **previews**: version `0.0.1`, captured
+`2026-09-24T10:12:29.601Z` from clean commit
+`0ab8ad3b4fe0dfaf79bf06d00a2ffd31066bdde7`. They are not current-UX or final
+release images.
+
+The approved classic-book release set preserved in
+`dist/release-history/1.1.0/store-assets/` was captured
+`2026-10-01T04:25:39.271Z` against verified `ambra-1.1.0.zip`, from clean commit
+`4fc540143352dbd4fd5935007b3738045f671981`. The 1.1.1 handoff reused that
+reviewed set explicitly, retaining its 1.1.0 provenance; it did not create exact
+1.1.1 screenshots. These pre-overhaul images should not be presented as the
+refreshed 2.0.0 UX. A 2.0.0 submission needs a reviewed final capture of the
+merged, packaged 2.0.0 candidate, not a relabeled historical set.
+
+New previews stay in the ignored directory, so no tracked screenshot/provenance
+churn is necessary.
 Historical library/reader screenshots with third-party samples retain
 their [attributions](ATTRIBUTIONS.md). The new covers and commentary are original
 Ambra material under MIT; incorporated classic text and Tenniel art retain their

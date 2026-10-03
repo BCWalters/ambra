@@ -136,7 +136,7 @@ for (const width of [1000, 360]) {
         await expect(trigger).toBeFocused();
       }
       for (const [trigger, role, name] of [
-        ["Show contents", "navigation", "Table of contents"],
+        ["Contents", "navigation", "Table of contents"],
         ["Search", "navigation", "Search"],
         ["Annotations", "navigation", "Annotations"],
         ["Book details", "complementary", "Book details"],

@@ -122,7 +122,7 @@ test("annotation actions are explicit and inline note editing keeps focus and dr
     await show.selectOption("highlights");
     await expect(textarea).toHaveValue("Still thinking");
     await expect(textarea).toBeFocused();
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await page.getByRole("button", { name: "Contents", exact: true }).click();
     await expect(panel).toBeHidden();
     await page.getByRole("button", { name: "Annotations", exact: true }).click();
     await expect(show).toHaveValue("highlights");

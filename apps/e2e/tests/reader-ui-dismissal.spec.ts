@@ -149,7 +149,7 @@ test("book taps dismiss preferences and unpinned panels without click-through or
       await settled(page);
     }
 
-    for (const name of ["Book details", "Show contents", "Annotations", "Search"]) {
+    for (const name of ["Book details", "Contents", "Annotations", "Search"]) {
       await reveal(page, await readingPoint(page));
       const before = await position(page);
       await page.getByRole("button", { name, exact: true }).click();
@@ -212,7 +212,7 @@ test("reference tasks preserve opposite pinned panels while Contents and Annotat
     const contents = page.getByRole("navigation", { name: "Table of contents", exact: true });
     const annotations = page.getByRole("navigation", { name: "Annotations", exact: true });
     const search = page.getByRole("navigation", { name: "Search", exact: true });
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await page.getByRole("button", { name: "Contents", exact: true }).click();
     await expect(contents).toBeVisible();
     await contents.getByRole("button", { name: "Pin contents panel", exact: true }).click();
     await settled(page);
@@ -236,7 +236,7 @@ test("reference tasks preserve opposite pinned panels while Contents and Annotat
     await page.getByRole("button", { name: "Hide contents", exact: true }).click();
     await expect(contents).toBeHidden();
     await expect(search).toBeVisible();
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await page.getByRole("button", { name: "Contents", exact: true }).click();
     await expect(search).toBeVisible();
     await expect(contents.getByRole("button", { name: "Unpin contents panel", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Hide search", exact: true }).click();
@@ -262,7 +262,7 @@ test("pinned contents keeps chrome visible without consuming ordinary page taps"
   try {
     await exposeReaderController(page);
     await settled(page);
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await page.getByRole("button", { name: "Contents", exact: true }).click();
     await page.getByRole("button", { name: "Pin contents panel", exact: true }).click();
     await settled(page);
     const before = await position(page);
@@ -279,7 +279,7 @@ test("pinned contents keeps chrome visible without consuming ordinary page taps"
 });
 
 for (const panel of [
-  { name: "Table of contents", toggle: "Show contents", pin: "contents" },
+  { name: "Table of contents", toggle: "Contents", pin: "contents" },
   { name: "Annotations", toggle: "Annotations", pin: "annotations" },
   { name: "Search", toggle: "Search", pin: "search" },
 ]) {
@@ -348,7 +348,7 @@ test("reference docking uses the row left by the Inspector dock, not the viewpor
   try {
     await exposeReaderController(page);
     await settled(page);
-    await page.getByRole("button", { name: "Show contents", exact: true }).click();
+    await page.getByRole("button", { name: "Contents", exact: true }).click();
     const contents = page.getByRole("navigation", { name: "Table of contents", exact: true });
     await contents.getByRole("button", { name: "Pin contents panel", exact: true }).click();
     await page.getByRole("button", { name: "Book details", exact: true }).click();

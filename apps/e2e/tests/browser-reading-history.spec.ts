@@ -78,7 +78,7 @@ async function go(page: Page, value: number, percentage = false) {
 
 async function toc(page: Page, label: string) {
   await page.mouse.move(350, 2);
-  await page.getByRole("button", { name: "Show contents", exact: true }).click();
+  await page.getByRole("button", { name: "Contents", exact: true }).click();
   const panel = page.getByRole("navigation", { name: "Table of contents" });
   await panel
     .getByRole("button")

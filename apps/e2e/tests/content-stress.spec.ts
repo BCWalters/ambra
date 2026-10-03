@@ -44,7 +44,7 @@ async function state(page: Page): Promise<StressState> {
 
 async function openContents(page: Page) {
   await page.mouse.move(350, 2);
-  await page.getByRole("button", { name: "Show contents", exact: true }).click();
+  await page.getByRole("button", { name: "Contents", exact: true }).click();
   const navigation = page.getByRole("navigation", { name: "Table of contents" });
   await expect(navigation).toBeVisible();
   return navigation;

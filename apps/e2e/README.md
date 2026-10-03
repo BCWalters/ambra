@@ -82,6 +82,16 @@ reference focus return and keyboard-scrollable viewport-bounded long notes;
 `note-save-lifecycle.spec.ts` verifies contextual note exits return to the
 reading origin or surviving marker, with reading fallback after deletion.
 
+`library-import-announcements.spec.ts` checks small-file completion, duplicate
+feedback, localized speech text and unchanged chooser focus. Import feedback
+uses a pre-mounted atomic text-only live region, separate from controls and
+byte progress. Web-import completion follows the background worker's fallback
+download settlement; `epub-direct-import.spec.ts` checks that ordering against
+real Chrome downloads. These checks verify DOM state, not actual VoiceOver
+speech. VoiceOver may require Stop interacting to leave a toolbar group;
+the compact keyboard regression verifies Tab and that Ambra does not consume
+Control-Option-Right, not native VoiceOver cursor movement.
+
 For manual review, open the full Library and expand **Local prototype controls**
 below the collection. **Simulate eligible reader** opens the modal.
 **Yes, I love it!** leads to the store-review link; **Not really** leads to email

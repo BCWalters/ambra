@@ -71,6 +71,18 @@ drag-and-drop is optional; accessible file selection must work without it.
    expect clear consequences and a useful next collection focus.
 7. Repeat representative tasks in the compact popup and reader's Library
    panel. Compact layout must not hide controls from keyboard navigation.
+   If VoiceOver is interacting with the Library actions toolbar, use its
+   **Stop interacting** command (normally Control-Option-Shift-Up) before
+   moving beyond the group with Control-Option-Right. Tab should also reach
+   Import book, search and book actions; verify both paths separately.
+8. Import a small local EPUB with focus on Import book. Expect a localized
+   "Added [title] to your library" announcement without focus being moved.
+   Repeat with the same book: expect "already in your library".
+9. Import from a web download, including a larger book. Chrome may announce
+   cancellation of its separate fallback download after Ambra saves the book.
+   Ambra's final completion announcement should follow that handoff and name
+   the saved book. Confirm the book exists and Read now works; a canceled
+   browser fallback must not be mistaken for a canceled Library import.
 
 ## 3. First reading and publication entry
 

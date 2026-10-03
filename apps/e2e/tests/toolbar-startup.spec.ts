@@ -24,7 +24,7 @@ test("prototype toolbar ordering, responsive labels, stacked title, and system t
     await page.bringToFront();
     const publication = page.frameLocator("iframe").first().locator("body");
     const publicationFont = await publication.evaluate(element => getComputedStyle(element).fontFamily);
-    const contents = page.getByRole("button", { name: "Show contents", exact: true });
+    const contents = page.getByRole("button", { name: "Contents", exact: true });
     const toolbar = contents.locator("..");
     for (const width of [1400, 900, 801, 800, 600, 320, 1400]) {
       await page.setViewportSize({ width, height: 900 });
@@ -34,7 +34,7 @@ test("prototype toolbar ordering, responsive labels, stacked title, and system t
       expect(await buttons.evaluateAll(elements => elements
         .filter(element => !element.closest("[data-ambra-toolbar-title]"))
         .map(element => element.getAttribute("aria-label")))).toEqual([
-        "Show contents", "Library", "Search", "Text and page options", "Annotations",
+        "Contents", "Library", "Search", "Text and page options", "Annotations",
         "Book details", "Ambra settings", "Help & About", "Bookmark this page",
       ]);
       for (const button of await buttons.all()) await expect(button).toBeInViewport({ ratio: 1 });

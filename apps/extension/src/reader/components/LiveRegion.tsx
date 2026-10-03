@@ -3,12 +3,12 @@ import type { FC } from "react";
 
 export interface LiveRegionProps {
   text: string | undefined;
-  /** Bumped by the caller on every announcement, including repeats of the
+  /** Changed by the caller on every announcement, including repeats of the
    * same text — an `aria-live` region only reacts to a DOM text *change*,
    * so without this, two consecutive identical announcements (e.g. a page
    * turn landing back on "Page 3 of 12" some other way) would silently
    * not re-announce. */
-  announcementId: number;
+  announcementId: number | string;
 }
 
 /** A visually-hidden `aria-live="polite"` region announcing reader state
@@ -36,6 +36,7 @@ export const LiveRegion: FC<LiveRegionProps> = ({ text, announcementId }) => {
     <div
       role="status"
       aria-live="polite"
+      aria-atomic="true"
       style={{
         position: "absolute",
         width: 1,

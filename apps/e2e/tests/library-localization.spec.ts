@@ -3,9 +3,46 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
+import { SUPPORTED_LOCALES } from "../../extension/src/i18n/Locale.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const book = path.resolve(here, "../fixtures/long-content.epub");
+
+test("Contents and Library panel tooltips reflect open state in all nine locales", async () => {
+  const { context, readerPage: page } = await launchReader(book, { viewport: { width: 1000, height: 800 } });
+  try {
+    let t = getTranslate("en");
+    for (const locale of SUPPORTED_LOCALES) {
+      await test.step(locale, async () => {
+        await page.getByRole("button", { name: t("settings.ambraTitle"), exact: true }).click();
+        await page.getByRole("combobox", { name: t("settings.language"), exact: true }).selectOption(locale);
+        await expect(page.locator("html")).toHaveAttribute("lang", locale);
+        t = getTranslate(locale);
+        await page.keyboard.press("Escape");
+        for (const [closedLabel, openLabel] of [
+          [t("toolbar.showContents"), t("toolbar.hideContents")],
+          [t("toolbar.backToLibrary"), t("toolbar.hideLibrary")],
+        ]) {
+          const closed = page.getByRole("button", { name: closedLabel, exact: true });
+          await closed.focus();
+          await expect(closed).toHaveAttribute("aria-pressed", "false");
+          await closed.hover();
+          await expect(page.getByRole("tooltip", { name: closedLabel, exact: true })).toBeVisible();
+          await closed.click();
+          const opened = page.getByRole("button", { name: openLabel, exact: true });
+          await expect(opened).toHaveAttribute("aria-pressed", "true");
+          await page.mouse.move(500, 500);
+          await opened.hover();
+          await expect(page.getByRole("tooltip", { name: openLabel, exact: true })).toBeVisible();
+          await opened.click();
+          await expect(closed).toHaveAttribute("aria-pressed", "false");
+        }
+      });
+    }
+  } finally {
+    await context.close();
+  }
+});
 
 for (const width of [320, 1200]) {
   test(`Help & About stays expanded and compact at ${width}px in Library and reader`, async () => {

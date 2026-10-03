@@ -153,7 +153,7 @@ jobs:
           AMBRA_E2E_HEADLESS: "1"
         run: >-
           pnpm --filter @ambra/e2e exec playwright test
-          library-discovery.spec.ts library-localization.spec.ts
+          library-discovery.spec.ts library-localization.spec.ts library-import-announcements.spec.ts
           library-lifecycle.spec.ts library-transactions.spec.ts library-ux.spec.ts
           library-covers.spec.ts library-search.spec.ts library-compact.spec.ts
           library-description.spec.ts book-details-presentation.spec.ts library-inspector.spec.ts

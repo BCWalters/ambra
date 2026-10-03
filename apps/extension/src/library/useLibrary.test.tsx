@@ -799,6 +799,7 @@ describe("useLibrary ownership and failures", () => {
   });
 
   it("keeps the status visible in the empty library without blocking manual import or moving focus", async () => {
+    vi.useFakeTimers();
     const response = deferred<Response>();
     db.methods.listBooks.mockResolvedValue([]);
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(response.promise));
@@ -808,6 +809,7 @@ describe("useLibrary ownership and failures", () => {
       .find((entry) => entry.textContent === "Import book")!;
     button.focus();
     const status = container.querySelector('[role="status"]')!;
+    act(() => vi.advanceTimersByTime(50));
     expect(status.textContent).toContain("Downloading book.epub");
     expect(status.textContent).toContain("Keep your library open");
     expect(status.getAttribute("aria-live")).toBe("polite");
@@ -815,6 +817,7 @@ describe("useLibrary ownership and failures", () => {
     expect(container.textContent).not.toContain("No books yet");
     expect(button.disabled).toBe(false);
     await act(async () => response.resolve(new Response("epub")));
+    act(() => vi.advanceTimersByTime(50));
     expect(status.textContent).toContain("Added book.epub to your library");
     expect(status.textContent).not.toContain("Keep your library open");
     expect(document.activeElement).toBe(button);
@@ -885,6 +888,46 @@ describe("useLibrary ownership and failures", () => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ imported: false }));
     },
   );
+
+  it("announces completion only after Chrome settles the fallback download", async () => {
+    const acknowledgement = deferred<{ received: boolean }>();
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((message: unknown) => {
+      if (message && typeof message === "object" && "type" in message && message.type === EPUB_IMPORT_RESULT) {
+        return acknowledgement.promise;
+      }
+      return Promise.resolve({ received: true });
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await render();
+    expect(latest.books).toHaveLength(1);
+    expect(resultMessages()).toEqual([{ type: EPUB_IMPORT_RESULT, token: "handoff", imported: true }]);
+    expect(latest.importActivities[0]?.phase).not.toBe("complete");
+    expect(latest.cancelDownload(latest.importActivities[0]!.id)).toBe(false);
+    await act(async () => acknowledgement.resolve({ received: true }));
+    expect(latest.importActivities[0]?.phase).toBe("complete");
+    expect(latest.error).toBeUndefined();
+  });
+
+  it("still reports persisted success when the fallback acknowledgement times out", async () => {
+    vi.useFakeTimers();
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation((message: unknown) => {
+      if (message && typeof message === "object" && "type" in message && message.type === EPUB_IMPORT_RESULT) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({ received: true });
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("epub")));
+    setDirectImportUrl();
+    await render();
+    expect(latest.importActivities[0]?.phase).not.toBe("complete");
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(latest.importActivities[0]?.phase).toBe("complete");
+    expect(latest.books).toHaveLength(1);
+    expect(latest.error).toBeUndefined();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("could not report the EPUB import result"),
+      expect.objectContaining({ message: "Import acknowledgement timed out" }));
+  });
 
   it("keeps a successfully imported book if the worker no longer owns its handoff", async () => {
     vi.mocked(chrome.runtime.sendMessage).mockRejectedValue(new Error("No receiver"));

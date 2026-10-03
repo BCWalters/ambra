@@ -93,13 +93,13 @@ for (const { width, zoom } of [{ width: 320, zoom: 1 }, { width: 1400, zoom: 1 }
       const library = page.getByRole("button", { name: "Library", exact: true, includeHidden: true });
       const toolbar = library.locator("..");
       for (const name of [
-        "Show contents", "Library", "Annotations", "Search",
+        "Contents", "Library", "Annotations", "Search",
         "Text and page options", "Ambra settings", "Book details", "Help & About", "Bookmark this page",
       ]) {
         await expect(toolbar.getByRole("button", { name, exact: true })).toHaveCount(1);
       }
       const buttons = toolbar.getByRole("button");
-      await expect(buttons.first()).toHaveAccessibleName("Show contents");
+      await expect(buttons.first()).toHaveAccessibleName("Contents");
       await buttons.first().focus();
       const count = await buttons.count();
       for (let index = 0; index < count; index++) {

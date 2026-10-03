@@ -59,6 +59,7 @@ describe("Library localization and action ownership", () => {
     window.history.replaceState(null, "", "/");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
   async function render() { await act(async () => root.render(<LibraryApp />)); }
   function button(label: string) {
@@ -130,6 +131,7 @@ describe("Library localization and action ownership", () => {
   });
 
   it("keeps persistent normal actions while loading/importing and routes compact discovery to a tab", async () => {
+    vi.useFakeTimers();
     state.isFullTab = false;
     state.isLoading = true;
     state.canImport = false;
@@ -147,6 +149,7 @@ describe("Library localization and action ownership", () => {
     state.importActivities = [{ id: 1, fileName: "first.epub", phase: "processing" }];
     state.error = "Another file failed";
     await render();
+    act(() => vi.advanceTimersByTime(50));
     expect(container.textContent).not.toContain("No books yet");
     expect(container.querySelector('[role="status"]')?.textContent).toContain("first.epub");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Another file failed");
@@ -217,6 +220,30 @@ describe("Library localization and action ownership", () => {
     expect(button(t("library.openLibrary"))).toBeDefined();
     expect(button(t("highlight.close"))).toBeDefined();
     expect(container.textContent).toContain(t("library.importWindowDrop"));
+  });
+
+  it.each([false, true])("restores importer chooser focus after disabling it without stealing other focus (moved: %s)", async moved => {
+    window.history.replaceState(null, "", "/?view=import");
+    await render();
+    const choose = button("Choose EPUB files...");
+    expect(document.activeElement).toBe(choose);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, "files", { value: [new File(["epub"], "small.epub")] });
+    await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+    state.importActivities = [{ id: 1, fileName: "small.epub", phase: "processing" }];
+    await render();
+    expect(choose.disabled).toBe(true);
+    choose.blur();
+    const other = document.createElement("button");
+    document.body.append(other);
+    try {
+      if (moved) other.focus();
+      state.importActivities = [{ id: 1, fileName: "small.epub", phase: "complete" }];
+      await render();
+      expect(document.activeElement).toBe(moved ? other : choose);
+    } finally {
+      other.remove();
+    }
   });
 
   it("leads settings with interface controls and initially collapsed shared reading preferences", async () => {
@@ -327,6 +354,7 @@ describe("Library localization and action ownership", () => {
   });
 
   it.each(SUPPORTED_LOCALES)("preserves every import state and duplicate outcome in %s", async (locale) => {
+    vi.useFakeTimers();
     language.locale = locale;
     const t = getTranslate(locale);
     state.importActivities = [
@@ -340,6 +368,7 @@ describe("Library localization and action ownership", () => {
     state.books = [book()];
     await render();
     const status = container.querySelector('[role="status"]')!;
+    act(() => vi.advanceTimersByTime(50));
     for (const [key, fileName] of [
       ["library.importQueued", "queued.epub"], ["library.importDownloading", "download.epub"],
       ["library.importProcessing", "processing.epub"], ["library.importSaving", "saving.epub"],

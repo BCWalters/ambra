@@ -12,7 +12,7 @@ const search = (page: Page) => page.locator("[data-ambra-search-panel]");
 
 async function toolbar(page: Page, name: string) {
   await page.mouse.move(10, 2);
-  const label = name === "Contents" ? /^(Show|Hide) contents$/
+  const label = name === "Contents" ? /^(Contents|Hide contents)$/
     : name === "Annotations" ? /^(Annotations|Hide annotations)$/ : name;
   await page.getByRole("button", { name: label, exact: true }).click();
 }

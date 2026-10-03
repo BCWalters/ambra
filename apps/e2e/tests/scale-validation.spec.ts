@@ -88,7 +88,7 @@ async function toolbar(page: Page, name: string) {
   await page.getByRole("button", { name, exact: true }).click();
 }
 async function toc(page: Page, title: string) {
-  await toolbar(page, "Show contents");
+  await toolbar(page, "Contents");
   await page
     .getByRole("navigation", { name: "Table of contents" })
     .getByRole("button")
@@ -234,7 +234,7 @@ test("120-chapter 199k-word omnibus pagination, TOC, seek and search (#131)", as
     const paginationMs = Date.now() - paginationStart;
     const turnsMs = [await turn(page), await turn(page), await turn(page)];
     const tocStart = Date.now();
-    await toolbar(page, "Show contents");
+    await toolbar(page, "Contents");
     const nav = page.getByRole("navigation", { name: "Table of contents" });
     await expect(nav.getByRole("button", { name: /Omnibus chapter/ })).toHaveCount(120);
     await nav.getByRole("button", { name: /Omnibus chapter 120/ }).click();

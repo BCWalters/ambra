@@ -72,3 +72,39 @@ fixed-layout content. Preserve these distinctions in any release claim.
 
 Use the [screen-reader walkthrough](screen-reader-walkthrough-2.0.0.md) for the
 owner's manual pass before preparing the 2.0.0 release.
+
+## Owner's abbreviated manual pass, 3 October
+
+The owner tested the RC on macOS 26.6.2 and Chrome 154.0.8037.58 and reported
+that the core reading experience seemed okay. This was not a complete pass.
+Two import-speech concerns and one possible compact-navigation issue remained:
+
+- Successful web import was followed by a cancellation announcement. The
+  successful-import code published completion before asking Chrome to cancel
+  its separate fallback download. Completion now follows the worker's
+  settlement acknowledgement, with bounded waiting and explicit logging if
+  acknowledgement fails. A saved book remains a success in that case.
+- Small local imports could complete without useful speech. Imports now use
+  the existing delayed, pre-mounted live-region component with atomic,
+  text-only localized phase/completion messages. Actions and byte progress
+  are outside it. New activity IDs allow repeated messages; no focus move
+  is needed for full-Library completion.
+- Automated testing additionally reproduced chooser focus loss when the
+  dedicated importer disabled its focused button. It restores the chooser
+  after import only if that chooser initiated the import and focus remains
+  on the body; another control's focus is left alone.
+- Compact Library has a named toolbar group and no identified interception
+  of Control-Option-Right. Tab reaches the content controls. Native VoiceOver
+  group navigation still needs a retest using Stop interacting before leaving
+  the toolbar; no source-only conclusion can certify that behavior.
+
+After reloading the updated preview, the owner confirmed that navigation out
+of the toolbar works and that the small-import completion announcement is
+audible. The possible toolbar-navigation bug is resolved by that manual
+confirmation. This does not establish the large web-download speech sequence
+or a complete screen-reader pass.
+
+Regression tests verify real Chrome fallback settlement before completion,
+small-file and duplicate speech text, localized feedback, retained/restored
+focus, and explicit cancellation/failure behavior. They do not verify the
+native speech queue or suppress Chrome's own download notifications.

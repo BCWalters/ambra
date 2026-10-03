@@ -9,6 +9,7 @@ import type { StringCatalog } from "../i18n/locales/en.js";
 import { LibraryImportIllustration } from "./LibraryImportIllustration.js";
 import type { LibraryDownloadProgress } from "./LibraryDownload.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
+import { LiveRegion } from "../reader/components/LiveRegion.js";
 
 export interface LibraryImportActivity {
   readonly id: number;
@@ -41,6 +42,17 @@ export const LibraryImportStatus: FC<{
   const t = useTranslation();
   const { locale } = useLocale();
   const busy = activities.some(({ phase }) => phase !== "complete");
+  const messages = activities.map(activity => {
+    const { fileName, phase, bookId, outcome } = activity;
+    const title = bookId ? books.find(book => book.id === bookId)?.title : undefined;
+    return {
+      ...activity,
+      text: t(phase === "complete" && outcome === "existing"
+        ? "library.importAlreadyPresent" : PHASE_LABELS[phase], { fileName: title || fileName }),
+    };
+  });
+  const announcement = [...messages.map(({ text }) => text), ...(busy ? [t("library.importKeepOpen")] : [])].join(" ");
+  const announcementId = JSON.stringify(messages.map(({ id, phase, text }) => ({ id, phase, text })));
   return (
     <div data-testid="library-import-status" style={activities.length ? {
       padding: "14px 18px", margin: "0 auto 16px", borderRadius: 8,
@@ -60,10 +72,9 @@ export const LibraryImportStatus: FC<{
           )}
         </div>
       )}
-      {/* Keep the live region mounted before import starts. Do not mark it busy:
-          assistive technology must announce the intermediate stages too. */}
-      <div role="status" aria-live="polite" aria-relevant="additions text">
-        {activities.map(({ id, fileName, phase, bookId, outcome, download }) => {
+      <LiveRegion text={announcement} announcementId={announcementId} />
+      <div data-library-import-activities="" aria-live="off">
+        {messages.map(({ id, fileName, phase, bookId, download, text }) => {
           const book = bookId ? books.find((book) => book.id === bookId) : undefined;
           const title = book?.title;
           const fraction = download?.totalBytes ? download.receivedBytes / download.totalBytes : undefined;
@@ -86,8 +97,7 @@ export const LibraryImportStatus: FC<{
                 overflowWrap: "anywhere", minWidth: 0, gridColumn: (phase === "complete" && book) || phase === "downloading" ? "2" : "2 / -1",
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
               }}>
-                {t(phase === "complete" && outcome === "existing"
-                  ? "library.importAlreadyPresent" : PHASE_LABELS[phase], { fileName: title || fileName })}
+                {text}
               </Body1>
               {phase === "downloading" && (
                 <Button size="small" appearance="secondary" style={{ gridColumn: 3, justifySelf: "end" }}

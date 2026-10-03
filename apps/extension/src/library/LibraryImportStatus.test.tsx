@@ -11,6 +11,7 @@ describe("Library import feedback (#187)", () => {
   const onDismissCompleted = vi.fn();
   const onCancelDownload = vi.fn().mockReturnValue(true);
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     onOpenBook.mockClear();
     onDismissCompleted.mockClear();
@@ -22,12 +23,14 @@ describe("Library import feedback (#187)", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
   function render(activities: readonly LibraryImportActivity[], books = [{ id: "saved", title: "An EPUB title" }]) {
     const content = <LibraryImportStatus activities={activities} books={books}
       onOpenBook={onOpenBook} onDismissCompleted={onDismissCompleted} onCancelDownload={onCancelDownload} />;
     act(() => root.render(content));
+    act(() => vi.advanceTimersByTime(50));
     return content;
   }
 
@@ -44,6 +47,43 @@ describe("Library import feedback (#187)", () => {
     expect(onOpenBook).toHaveBeenCalledExactlyOnceWith("saved");
     expect(container.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
     expect(container.querySelector('[role="status"]')?.hasAttribute("aria-busy")).toBe(false);
+    expect(container.querySelector('[role="status"]')?.getAttribute("aria-atomic")).toBe("true");
+    expect(container.querySelector('[role="status"]')?.querySelector("button, svg, [role=progressbar]")).toBeNull();
+  });
+
+  it("announces a fast import and repeats identical completion text for a new activity without moving focus", () => {
+    render([]);
+    const status = container.querySelector('[role="status"]')!;
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+    try {
+      const activity = { fileName: "small.epub", bookId: "saved", phase: "complete" as const };
+      render([{ ...activity, id: 1 }]);
+      expect(container.querySelector('[role="status"]')).toBe(status);
+      expect(status.textContent).toBe("Added An EPUB title to your library.");
+      expect(document.activeElement).toBe(trigger);
+      act(() => root.render(<LibraryImportStatus activities={[{ ...activity, id: 2 }]}
+        books={[{ id: "saved", title: "An EPUB title" }]} onOpenBook={onOpenBook}
+        onDismissCompleted={onDismissCompleted} onCancelDownload={onCancelDownload} />));
+      expect(status.textContent).toBe("");
+      act(() => vi.advanceTimersByTime(50));
+      expect(status.textContent).toBe("Added An EPUB title to your library.");
+      expect(document.activeElement).toBe(trigger);
+    } finally {
+      trigger.remove();
+    }
+  });
+
+  it("does not reannounce byte-progress changes or include Cancel download in speech", () => {
+    const activity = { id: 1, fileName: "large.epub", phase: "downloading" as const };
+    render([{ ...activity, download: { receivedBytes: 1, totalBytes: 100 } }]);
+    const status = container.querySelector('[role="status"]')!;
+    const originalText = status.firstChild;
+    expect(status.textContent).toContain("Downloading large.epub");
+    expect(status.textContent).not.toContain("Cancel download");
+    render([{ ...activity, download: { receivedBytes: 50, totalBytes: 100 } }]);
+    expect(status.firstChild).toBe(originalText);
   });
 
   it("does not offer to open missing or removed books and preserves a filename fallback", () => {
