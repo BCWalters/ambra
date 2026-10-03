@@ -12,7 +12,7 @@ Explore the files, images, and metadata inside an EPUB without unpacking it. For
 
 Both open **Book details**. Choose **EPUB Inspector** near the bottom of that panel; scroll down if needed.
 
-[![EPUB Inspector open over Alice's Adventures in Wonderland, showing the EPUB file list, metadata tabs, and a preview of the White Rabbit illustration.](images/inspector-overview.png)](images/inspector-overview.png)
+[![EPUB Inspector open over Alice's Adventures in Wonderland, showing the EPUB file list, metadata tabs, and a preview of John Tenniel's Caterpillar illustration.](images/inspector-overview.png)](images/inspector-overview.png)
 
 ## See the whole book
 
@@ -31,7 +31,7 @@ When Inspector is opened from the reader:
 
 Move between a passage and its markup without leaving the book.
 
-[![EPUB Inspector docked to the left of the reader, displaying highlighted XHTML source alongside the corresponding Alice chapter and saved reading highlights.](images/inspector-source.png)](images/inspector-source.png)
+[![EPUB Inspector docked to the right of the reader, displaying highlighted XHTML source alongside the corresponding Alice chapter.](images/inspector-source.png)](images/inspector-source.png)
 
 ## Follow a resource’s references
 
@@ -43,6 +43,8 @@ This answers questions such as “Which pages use this image?” and “Where is
 
 Inspector is **read-only**: your EPUB remains unchanged. It is not an editor or a replacement for EPUBCheck or an accessibility audit. Reference finding covers supported static markup and CSS, not dynamically computed JavaScript uses.
 
-Screenshots show Lewis Carroll’s *Alice’s Adventures in Wonderland*, illustrated by John Tenniel, in the [Standard Ebooks edition](https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel). Its [rights statement](https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel/text/uncopyright) identifies the original text and artwork as believed to be in the US public domain, with Standard Ebooks editorial contributions dedicated to CC0.
+Screenshots use a credited demonstration copy combining Lewis Carroll's text
+with John Tenniel's Caterpillar illustration from Project Gutenberg, not the
+Standard Ebooks edition. See [screenshot sources and capture status](screenshots.md).
 
 [Report Issues / Request Features](report-issues.md) · [Back to the Ambra guide](README.md) · [Source](https://github.com/BCWalters/ambra)

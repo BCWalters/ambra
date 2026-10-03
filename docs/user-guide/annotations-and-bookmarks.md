@@ -1,6 +1,6 @@
 # Annotations and Bookmarks
 
-Choose **Annotations** in the reader toolbar to open the right-side panel.
+Choose **Annotations** in the reader toolbar to open the right-side **Annotations panel**.
 The **Show** dropdown offers **All annotations**, **Highlights**, **Notes**, and
 **Bookmarks**, with counts. **Notes** filters to highlights with notes.
 Search and Book details replace Annotations on the right. Pin Annotations to
@@ -8,6 +8,8 @@ keep it open when you open Contents or Library on the left. Likewise, opening
 Annotations keeps a pinned Contents panel open. When space is tight, Ambra
 temporarily shows the active panel without forgetting the other panel's pin
 preference or your drafts.
+
+[![The Annotations panel beside Alice's Adventures in Wonderland, with Show set to Notes and an original saved note above its quoted passage.](images/annotations.png)](images/annotations.png)
 
 ## Save and revisit a bookmark
 

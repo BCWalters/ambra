@@ -10,10 +10,13 @@ This is narration supplied with the EPUB, not automatic text-to-speech. The book
 
 ## Start listening
 
-Open a supported narrated book. **Read along** controls appear automatically
-below the reading area, initially paused. Choose **Play** to begin.
+Open a supported narrated book. The floating **Read along** control strip appears
+automatically at the bottom of the reader, separate from the top toolbar and
+book progress bar. It starts paused. Choose **Play** to begin.
 There is no separate **Listen** toolbar button or discovery notice, and opening
 the book never starts audio automatically.
+
+[![A synthetic narrated book with the expanded Read along controls: Speed, Listen from this page, Collapse, Previous, Play, and Next.](images/read-along.png)](images/read-along.png)
 
 - Use **Play/Pause**, **Previous**, and **Next** to control recorded passages,
   and **Speed** to adjust playback speed. Labels remain visible in narrow windows.
@@ -26,6 +29,8 @@ Choose **Collapse** to reduce the controls to a compact strip
 that still includes play/pause. Collapsing does not pause narration or change the
 reading position; use **Pause** when you want to stop playback.
 Choose **Expand** to restore the larger controls.
+
+[![The same narrated book with the collapsed Read along strip, retaining Play and Expand.](images/read-along-collapsed.png)](images/read-along-collapsed.png)
 
 Collapse is temporary for the current reader session, not a saved book or app
 preference. Reopening or reloading the reader restores the expanded controls.

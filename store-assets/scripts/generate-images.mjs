@@ -34,7 +34,7 @@ const annotationGroups = [
   ] },
 ];
 
-async function quoteOnPage(reader, quote, select) {
+export async function quoteOnPage(reader, quote, select) {
   return reader.evaluate(({ quote, select }) => {
     for (const frame of document.querySelectorAll("iframe")) {
       const frameBox = frame.getBoundingClientRect();
@@ -96,7 +96,7 @@ async function candidateFiles(directory) {
   return files;
 }
 
-async function treeDigest(directory) {
+export async function treeDigest(directory) {
   const hash = createHash("sha256");
   for (const file of await candidateFiles(directory)) {
     hash.update(file).update(await fs.readFile(path.join(directory, file)));
