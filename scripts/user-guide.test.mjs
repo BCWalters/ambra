@@ -58,6 +58,8 @@ test("all user-guide images have matching provenance and exact output dimensions
   assert.deepEqual(provenance.viewport, { width: 1280, height: 800 });
   if (provenance.capturePurpose === "packaged-runtime") {
     assert.match(provenance.releasePackage.sha256, /^[a-f0-9]{64}$/);
+    assert.match(await fs.readFile(path.join(guide, "screenshots.md"), "utf8"), /packaged-runtime captures/);
+    assert.doesNotMatch(await fs.readFile(path.join(guide, "README.md"), "utf8"), /pre-merge/);
   } else {
     assert.equal(provenance.releasePackage, null);
     assert.match(await fs.readFile(path.join(guide, "screenshots.md"), "utf8"), /pre-merge preview captures/);

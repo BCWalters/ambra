@@ -7,10 +7,12 @@ All images are 1280 × 800 pixels and are actual browser captures, not mockups.
 
 ## Current status
 
-These are **pre-merge preview captures** of the verified ordinary 2.0.0
-candidate from release-preparation PR #316. They do not establish that 2.0.0 is
-published in the Chrome Web Store. Replace them with captures of the final
-verified package before using this revision as the final release guide.
+These are **packaged-runtime captures** of the final verified 2.0.0 package from
+clean, merged source
+[`90d329c910711995fa526647dc57d96a3edf9241`](https://github.com/BCWalters/ambra/commit/90d329c910711995fa526647dc57d96a3edf9241)
+(release-preparation PR #316). Every file in the captured runtime matched the
+checksum-verified `ambra-2.0.0.zip`; both remained unchanged during capture.
+This does not establish that 2.0.0 is published in the Chrome Web Store.
 
 [Capture provenance](images/provenance.json) records the exact runtime source
 commit, candidate tree SHA-256, fixture checksums, image checksums, viewport,

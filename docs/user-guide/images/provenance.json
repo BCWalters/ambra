@@ -1,12 +1,15 @@
 {
-  "sourceCommit": "e34c790ab4af3549e2e6f186048b25a910bc32f3",
-  "capturePurpose": "premerge-preview",
-  "sourceAttestation": "Caller supplied the verified pre-merge runtime and source commit; tree hash records captured bytes, not an independent build attestation.",
+  "sourceCommit": "90d329c910711995fa526647dc57d96a3edf9241",
+  "capturePurpose": "packaged-runtime",
+  "sourceAttestation": "Caller supplied the runtime source commit; every candidate file matched the supplied release ZIP.",
   "releaseStatus": "Capture is not evidence of Chrome Web Store publication.",
   "version": "2.0.0",
-  "candidateTreeSha256": "813d1ca323a9439a3bf8cedf8d30d4494bdd0a462130e93b6b2477e5bb1d541f",
-  "releasePackage": null,
-  "capturedAt": "2026-10-03T06:11:36.251Z",
+  "candidateTreeSha256": "5beed2cdd7075ac32b6ff2bbdcc148ccfd9bb044583b0aabc52594e9b95f8c3d",
+  "releasePackage": {
+    "archive": "ambra-2.0.0.zip",
+    "sha256": "f133ea8a463b26fe849f27b66fc8a360d466345042d0a7146224c90e0297e09e"
+  },
+  "capturedAt": "2026-10-03T06:13:36.245Z",
   "browser": "Playwright Chromium",
   "viewport": {
     "width": 1280,
