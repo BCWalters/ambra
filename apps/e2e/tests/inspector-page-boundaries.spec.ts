@@ -8,7 +8,9 @@ import { navigationFixture } from "../navigation-fixture.js";
 const book = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 
 async function openInspector(page: Page) {
-  await page.getByRole("button", { name: "Book details", exact: true }).click();
+  const details = page.getByRole("button", { name: "Book details", exact: true });
+  await details.focus();
+  await details.click();
   await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
   const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
   await expect(inspector).toBeVisible();
@@ -117,6 +119,8 @@ for (const reducedMotion of ["reduce", "no-preference"] as const) {
         const views: ContentDocumentView[] = Reflect.get(window, "__readerController").contentDocumentViews();
         return views.filter(view => view.page).map(view => view.spineIndex);
       })).toEqual([0, 0]);
+      const toolbar = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ }).locator("..");
+      await expect(toolbar).toHaveCSS("pointer-events", "none");
       const inspector = await openInspector(page);
       await expect(inspector.locator('[data-page-boundary="start"]')).toHaveCount(2);
       await expect.poll(() => pageStartVisible(page)).toBe(true);
