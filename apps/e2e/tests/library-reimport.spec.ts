@@ -178,7 +178,7 @@ test("renamed manual re-import preserves all stored data; changed archive bytes 
   });
   await imported(page, 2);
   await expect(page.getByTestId("library-import-status").getByRole("status")).toContainText(`${title} is already in your library.`);
-  await expect(page.getByTestId("library-import-status").getByRole("status").getByRole("button", { name: `Read now: ${title}`, exact: true })).toBeEnabled();
+  await expect(page.getByTestId("library-import-status").getByRole("button", { name: `Read now: ${title}`, exact: true })).toBeEnabled();
   expect(await snapshot(page)).toEqual(before);
   await expect(page.getByText(title, { exact: true })).toHaveCount(1);
 

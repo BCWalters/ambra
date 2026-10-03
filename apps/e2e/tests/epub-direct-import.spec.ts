@@ -369,6 +369,8 @@ for (const outcome of ["success", "unknown-size", "http-error"] as const) {
       await expect(status).toContainText("Downloading test-book.epub");
       await expect(status).toContainText("Keep your library open");
       await expect(status).toHaveAttribute("aria-live", "polite");
+      await expect(status).toHaveAttribute("aria-atomic", "true");
+      await expect(status.locator("button, [role=progressbar]")).toHaveCount(0);
       const notification = library.getByTestId("library-import-status");
       const illustration = library.getByTestId("library-import-illustration");
       const arrivingBook = library.getByTestId("arriving-book");
@@ -432,15 +434,17 @@ for (const outcome of ["success", "unknown-size", "http-error"] as const) {
         await expect(focusAnchor).toBeFocused();
         server.releaseImport();
         await expect(status).toContainText(`Added ${title} to your library.`);
+        expect((await nativeRecords()).some(item => item.state === "in_progress")).toBe(false);
+        await expect(status).not.toContainText("Cancel");
         await expect(progress).toHaveCount(0);
         await expect(arrivingBook).toHaveCSS("animation-name", "none");
         await expect(arrivingBook).toHaveCSS("opacity", "1");
-        const addedText = await status.locator(".fui-Body1").boundingBox();
+        const addedText = await notification.locator(".fui-Body1").boundingBox();
         const readNow = await library.getByRole("button", { name: /^Read now:/ }).boundingBox();
         expect(Math.abs(readNow!.x - (addedText!.x + addedText!.width) - 12)).toBeLessThan(1);
         const expectCompletionRow = async () => {
           const [check, text, action, card] = await Promise.all([
-            status.locator("svg").boundingBox(), status.locator(".fui-Body1").boundingBox(),
+            notification.locator("[data-library-import-activities] svg").boundingBox(), notification.locator(".fui-Body1").boundingBox(),
             library.getByRole("button", { name: /^Read now:/ }).boundingBox(), notification.boundingBox(),
           ]);
           expect(Math.abs(check!.y + check!.height / 2 - (text!.y + text!.height / 2))).toBeLessThan(1);

@@ -501,15 +501,18 @@ export function useLibrary(): UseLibraryResult {
         downloading = false;
         if (cancelDownloadRef.current === cancel) cancelDownloadRef.current = undefined;
         clearInterval(heartbeat);
-        if (!abort.signal.aborted && ownsDatabase(db)) {
-          updateImport(activity.id, imported ? "complete" : undefined, imported ? result : undefined);
-        }
         if (token && !userCancelled) {
+          let timeout: ReturnType<typeof setTimeout> | undefined;
           try {
-            const response = await chrome.runtime.sendMessage({
-              type: EPUB_IMPORT_RESULT, token,
-              imported: imported && !abort.signal.aborted && ownsDatabase(db),
-            });
+            const response = await Promise.race([
+              chrome.runtime.sendMessage({
+                type: EPUB_IMPORT_RESULT, token,
+                imported: imported && !abort.signal.aborted && ownsDatabase(db),
+              }),
+              new Promise<never>((_, reject) => {
+                timeout = setTimeout(() => reject(new Error("Import acknowledgement timed out")), 5_000);
+              }),
+            ]);
             if (response?.received !== true) {
               console.warn("Ambra's background worker did not acknowledge the EPUB import result. The browser download was left unchanged.");
             }
@@ -517,7 +520,13 @@ export function useLibrary(): UseLibraryResult {
             // A restarted worker may no longer own this handoff. Chrome's
             // original download stays intact; the imported book is still safe.
             console.warn("Ambra could not report the EPUB import result. The browser download was left unchanged.", error);
+          } finally {
+            clearTimeout(timeout);
           }
+        }
+        // Chrome settles the fallback download before Ambra announces completion.
+        if (!abort.signal.aborted && ownsDatabase(db)) {
+          updateImport(activity.id, imported ? "complete" : undefined, imported ? result : undefined);
         }
       }
     })();

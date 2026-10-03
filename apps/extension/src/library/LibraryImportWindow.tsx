@@ -18,6 +18,7 @@ export const LibraryImportWindow: FC<{ library: UseLibraryResult }> = ({ library
   const input = useRef<HTMLInputElement>(null);
   const choose = useRef<HTMLButtonElement>(null);
   const initialFocus = useRef(true);
+  const restoreChooseFocus = useRef(false);
   const [windowError, setWindowError] = useState<string>();
   const [leaving, setLeaving] = useState(false);
   const busy = library.importActivities.some(activity => activity.phase !== "complete");
@@ -27,9 +28,14 @@ export const LibraryImportWindow: FC<{ library: UseLibraryResult }> = ({ library
   });
   useEffect(() => { document.title = `${t("library.importEpub")} - Ambra`; }, [t]);
   useEffect(() => {
-    if (!canChoose || !initialFocus.current) return;
-    initialFocus.current = false;
-    choose.current?.focus();
+    if (!canChoose) return;
+    if (initialFocus.current) {
+      initialFocus.current = false;
+      choose.current?.focus();
+    } else if (restoreChooseFocus.current) {
+      restoreChooseFocus.current = false;
+      if (document.activeElement === document.body) choose.current?.focus();
+    }
   }, [canChoose]);
   const leave = async (destination?: string) => {
     if (busy || leaving) return;
@@ -62,7 +68,10 @@ export const LibraryImportWindow: FC<{ library: UseLibraryResult }> = ({ library
         onChange={event => {
           const files = Array.from(event.currentTarget.files ?? []);
           event.currentTarget.value = "";
-          if (files.length) void library.importFiles(files);
+          if (files.length) {
+            restoreChooseFocus.current = document.activeElement === choose.current;
+            void library.importFiles(files);
+          }
         }} />
     </div>
     {windowError && <LibraryImportError message={windowError} onDismiss={() => setWindowError(undefined)} />}
