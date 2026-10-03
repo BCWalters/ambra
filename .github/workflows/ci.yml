@@ -83,6 +83,7 @@ jobs:
           scrubber-bookmarks.spec.ts
           scrubber-seek.spec.ts
           scrubber-fast-release.spec.ts
+          library-scrubber-progress.spec.ts
           bookmark-panel.spec.ts
           annotation-mutation-lifecycle.spec.ts
           annotation-export-import.spec.ts

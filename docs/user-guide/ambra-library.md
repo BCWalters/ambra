@@ -17,6 +17,11 @@ and saved progress. Choose **Continue reading** to reopen it at your saved
 position, or its information button for Book details. The book also remains
 in the collection; searching temporarily hides the resume card.
 
+Saved progress uses the reading position's measured page, including the second
+page of a two-page spread after a scrubber seek. **Started** means a position is
+saved but no reliable percentage is available, such as in scrolling mode or
+while the book's page count is still being measured.
+
 ## Browse your library while reading
 
 Choose **Library**, immediately after **Contents** in the reader toolbar, to open

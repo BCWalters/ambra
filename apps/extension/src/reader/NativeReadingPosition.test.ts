@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { markReaderOwnedContent, Page } from "@ambra/engine";
+import { markReaderOwnedContent, Page, ScrollContentHost, FixedSpreadHost } from "@ambra/engine";
 import type { ContentDocumentView, DomBreakPoint } from "@ambra/engine";
 import { NativeReadingPosition } from "./NativeReadingPosition.js";
 import { ReaderController } from "./ReaderController.js";
@@ -233,22 +233,67 @@ describe("native reading resume", () => {
     expect(tracker.current()).toBeUndefined();
   });
 
-  it("uses a companion's measured page for the fraction rather than the primary page", async () => {
+  it.each([true, false])("maps the saved native CFI when its caret is on the document's visual page: %s", async onPage => {
     const { tracker, views, read, visual } = setup();
     const point = read();
+    const start = onPage ? point.node : views[1]!.document.querySelector("p")!.firstChild!;
     views[1] = { ...views[1]!, page: new Page(6,
-      { node: point.node, offset: 0 }, { node: point.node, offset: 15 }, 0, 100) };
+      { node: start, offset: 0 }, { node: start, offset: 15 }, 0, 100) };
+    expect(views[1]!.page!.containsPosition(point.node, point.offset, views[1]!.document)).toBe(onPage);
     const controller = Object.create(ReaderController.prototype);
+    const pageIndexForCfi = vi.fn(() => 8);
     const positionFor = vi.fn(() => ({ currentPage: 27, totalPages: 100 }));
     const saveProgress = vi.fn(async () => {});
     Object.assign(controller, {
       nativeReading: tracker, host: { currentPosition: visual }, spineIndex: 2,
       contentDocumentViews: () => views, locatorResolver: { generate: () => ({ cfi: "caret" }) },
-      library: { saveProgress }, bookId: "book", bookPagination: { positionFor },
+      library: { saveProgress }, bookId: "book", bookPagination: { positionFor, pageIndexForCfi },
     });
     await controller.flushProgress();
-    expect(positionFor).toHaveBeenCalledWith(3, 6);
+    expect(pageIndexForCfi).toHaveBeenCalledWith(3, "caret");
+    expect(positionFor).toHaveBeenCalledWith(3, 8);
     expect(saveProgress).toHaveBeenCalledWith("book", "caret", 0.27);
+  });
+
+  it.each([
+    { name: "unmeasured CFI", pageIndex: undefined, currentPage: 27, totalPages: 100 },
+    { name: "unknown current page", pageIndex: 8, currentPage: undefined, totalPages: 100 },
+    { name: "incomplete book count", pageIndex: 8, currentPage: 27, totalPages: undefined },
+    { name: "empty book count", pageIndex: 8, currentPage: 27, totalPages: 0 },
+  ])("keeps the native percentage unknown with $name", async ({ pageIndex, currentPage, totalPages }) => {
+    const { tracker, read, visual } = setup();
+    read();
+    const controller: ReaderController = Object.create(ReaderController.prototype);
+    const positionFor = vi.fn(() => ({ currentPage, totalPages }));
+    const saveProgress = vi.fn(async () => {});
+    Object.assign(controller, {
+      nativeReading: tracker, host: { currentPosition: visual },
+      locatorResolver: { generate: () => ({ cfi: "caret" }) },
+      library: { saveProgress }, bookId: "book",
+      bookPagination: { pageIndexForCfi: () => pageIndex, positionFor },
+    });
+    await controller.flushProgress(true);
+    expect(saveProgress).toHaveBeenCalledWith("book", "caret", undefined);
+    if (pageIndex === undefined) expect(positionFor).not.toHaveBeenCalled();
+  });
+
+  it.each(["scroll", "fixed"] as const)("preserves native progress semantics for a %s host", async kind => {
+    const { tracker, read } = setup();
+    read();
+    const controller: ReaderController = Object.create(ReaderController.prototype);
+    const pageIndexForCfi = vi.fn(() => 0);
+    const saveProgress = vi.fn(async () => {});
+    Object.assign(controller, {
+      nativeReading: tracker,
+      host: Object.create(kind === "scroll" ? ScrollContentHost.prototype : FixedSpreadHost.prototype),
+      locatorResolver: { generate: () => ({ cfi: "caret" }) },
+      library: { saveProgress }, bookId: "book",
+      bookPagination: { pageIndexForCfi, positionFor: () => ({ currentPage: 3, totalPages: 10 }) },
+    });
+    await controller.flushProgress(true);
+    expect(saveProgress).toHaveBeenCalledWith("book", "caret", kind === "scroll" ? undefined : 0.3);
+    if (kind === "scroll") expect(pageIndexForCfi).not.toHaveBeenCalled();
+    else expect(pageIndexForCfi).toHaveBeenCalledWith(3, "caret");
   });
 
   it("keeps an exact point through a layout-only visual rebase", () => {
