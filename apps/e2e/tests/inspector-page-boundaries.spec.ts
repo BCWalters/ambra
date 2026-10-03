@@ -103,7 +103,7 @@ async function verifyMarkers(page: Page) {
 for (const reducedMotion of ["reduce", "no-preference"] as const) {
   test(`opening Inspector reveals the current page start without clicking a file (${reducedMotion})`, async () => {
     const fixture = navigationFixture(test.info(), [1, 1], chapter =>
-      `<p id="long-${chapter}">${"The river passes the orchard and the quiet footbridge before reaching the sea. ".repeat(120)}</p>`);
+      `<p id="long-${chapter}">${"The river passes the orchard and the quiet footbridge before reaching the sea. ".repeat(480)}</p>`);
     const { context, readerPage: page } = await launchReader(fixture, { viewport: { width: 1400, height: 900 } });
     try {
       await page.emulateMedia({ reducedMotion });
@@ -113,6 +113,10 @@ for (const reducedMotion of ["reduce", "no-preference"] as const) {
         await controller.turnPage(1);
         await controller.turnPage(1);
       });
+      await expect.poll(() => page.evaluate(() => {
+        const views: ContentDocumentView[] = Reflect.get(window, "__readerController").contentDocumentViews();
+        return views.filter(view => view.page).map(view => view.spineIndex);
+      })).toEqual([0, 0]);
       const inspector = await openInspector(page);
       await expect(inspector.locator('[data-page-boundary="start"]')).toHaveCount(2);
       await expect.poll(() => pageStartVisible(page)).toBe(true);
