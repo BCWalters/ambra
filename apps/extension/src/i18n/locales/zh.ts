@@ -3,6 +3,11 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "inspector.pageBoundariesError": "无法将当前可见页面的边界映射到源代码。",
+  "inspector.pageStart": "[{page} 起点]",
+  "inspector.pageEnd": "[{page} 终点]",
+  "inspector.pageStartUnnumbered": "[起点]",
+  "inspector.pageEndUnnumbered": "[终点]",
   "library.dropFilesTitle": "拖放 EPUB 文件以导入",
   "library.dropFilesHint": "图书将添加到您的书库。",
   "review.title": "您喜欢 Ambra 吗？",

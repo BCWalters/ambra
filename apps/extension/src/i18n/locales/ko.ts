@@ -3,6 +3,11 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Korean speaker. */
 export const ko: StringCatalog = {
+  "inspector.pageBoundariesError": "표시 중인 페이지 경계를 소스에 연결할 수 없습니다.",
+  "inspector.pageStart": "[{page} 시작]",
+  "inspector.pageEnd": "[{page} 끝]",
+  "inspector.pageStartUnnumbered": "[시작]",
+  "inspector.pageEndUnnumbered": "[끝]",
   "library.dropFilesTitle": "EPUB 파일을 놓아 가져오기",
   "library.dropFilesHint": "책이 라이브러리에 추가됩니다.",
   "review.title": "Ambra가 마음에 드시나요?",

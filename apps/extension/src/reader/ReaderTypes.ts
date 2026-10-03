@@ -118,6 +118,29 @@ export interface InspectorReaderBridge {
   readonly canShowInBook: (path: string) => boolean;
   readonly showInBook: (location: InspectorReadingLocation) => Promise<void>;
   readonly restoreFocus?: () => void;
+  readonly getVisiblePages?: () => Promise<readonly InspectorVisiblePage[]>;
+  readonly subscribeVisiblePages?: (listener: () => void) => () => void;
+}
+
+/** A point in original XML, not in the reader's rewritten DOM. */
+export interface InspectorSourcePoint {
+  readonly elementPath: readonly number[];
+  /** Omitted for the position before an element; otherwise a child-node boundary. */
+  readonly childIndex?: number;
+  /** When present, childIndex identifies a text/CDATA node and this is its UTF-16 offset. */
+  readonly textOffset?: number;
+}
+
+export interface InspectorVisiblePage {
+  readonly path: string;
+  readonly spineIndex: number;
+  readonly pageIndex: number;
+  /** Book-wide number shown in the reader footer; absent until pagination is ready. */
+  readonly pageNumber: number | undefined;
+  readonly physicalSide: "single" | "left" | "right";
+  readonly start: InspectorSourcePoint;
+  readonly end: InspectorSourcePoint;
+  readonly hasPositionOverrides: boolean;
 }
 
 export interface ReaderSnapshot {
