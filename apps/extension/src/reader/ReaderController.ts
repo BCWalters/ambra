@@ -1063,7 +1063,7 @@ export class ReaderController {
       );
       if (!this.isApplyingLayout && !this.isLoadInFlight) this.readingHistory?.update(locator.cfi);
       await this.library.saveProgress(this.bookId, locator.cfi,
-        native ? this.nativeBookFraction(native) : this.currentBookFraction());
+        native ? this.nativeBookFraction(native, locator.cfi) : this.currentBookFraction());
     } catch (error) {
       if (throwOnError) throw error;
       // Best-effort: resume-reading is a convenience, not something
@@ -1071,13 +1071,12 @@ export class ReaderController {
     }
   }
 
-  private nativeBookFraction(point: NativeReadingPoint): number | undefined {
-    const view = this.contentDocumentViews().find(view => view.document === point.node.ownerDocument);
-    // Off-page native reading has no measured page index. Do not attach the
-    // visual page's misleading percentage to its more precise CFI.
-    const pageIndex = view?.page?.containsPosition(point.node, point.offset ?? 0, view.document)
-      ? view.page.index : this.isFixedLayoutHost(this.host) ? 0 : undefined;
-    if (pageIndex === undefined || !this.bookPagination) return undefined;
+  private nativeBookFraction(point: NativeReadingPoint, cfi: string): number | undefined {
+    if (!this.bookPagination || this.host instanceof ScrollContentHost) return undefined;
+    // A spread's accessible document can contain the companion page's caret.
+    // Map the saved CFI, not just that document's currently displayed page.
+    const pageIndex = this.bookPagination.pageIndexForCfi(point.spineIndex, cfi);
+    if (pageIndex === undefined) return undefined;
     const position = this.bookPagination.positionFor(point.spineIndex, pageIndex);
     return position.currentPage !== undefined && position.totalPages
       ? Math.max(0, Math.min(1, position.currentPage / position.totalPages)) : undefined;
