@@ -1,120 +1,58 @@
 # Ambra Library
 
-Keep your EPUBs together and reopen a book at your saved reading position.
+Your EPUB books, together in Chrome.
 
-## Compact or full library
+## Open your Library
 
-The extension popup uses a compact cover-and-metadata list whose books scroll
-independently. **Find books** and **Import book** remain above the collection.
-Choose **Open library in new tab** for a
-full browser tab with more room; this is available before your first import.
+- **From Chrome:** click the **Extensions** button (the puzzle-piece icon)
+  beside the address bar and choose **Ambra EPUB Reader**. Pin Ambra there
+  if you'd like to open it directly from Chrome's toolbar.
+- **While reading:** reveal the reader toolbar and click **Library**, next
+  to **Contents**.
 
-The full library uses larger covers and offers **Continue reading** when a
-previously opened book is available. Search and **Sort** stay together in both
-views. Covers preserve the original artwork without cropping it.
-The Continue reading card highlights your most recently read book, its author,
-and saved progress. Choose **Continue reading** to reopen it at your saved
-position, or its information button for Book details. The book also remains
-in the collection; searching temporarily hides the resume card.
-
-Saved progress uses the reading position's measured page, including the second
-page of a two-page spread after a scrubber seek. **Started** means a position is
-saved but no reliable percentage is available, such as in scrolling mode or
-while the book's page count is still being measured.
-
-## Browse your library while reading
-
-Choose **Library**, immediately after **Contents** in the reader toolbar, to open
-a left-side library panel. The collection loads when you first open the panel.
-Opening it, searching, or sorting does not reload the current book or change your
-reading position.
-
-- Choose the current book to close the panel and return to reading without a reload.
-- Choose another book to save your current position, then open that book in the
-  same reader tab. If saving fails, Ambra stays in the current book and reports
-  the problem.
-- Use **Close** or **Escape** to dismiss the panel, or **Open library in new tab**
-  for the full library. Opening another reader reference panel replaces this one.
-
-The panel retains its search and ongoing imports while temporarily closed.
-To remove the book currently open in this reader, open the full library and
-close its reader tab first.
+For more room, choose **Open library in new tab**.
 
 ## Add a book from your device
 
-Choose **Import book** above the collection. From Chrome's
-Ambra toolbar popup, this opens a small **Import book** window. Select
-**Choose EPUB files...** to pick books from your device. This window stays open
-when the native file chooser takes focus, unlike Chrome's toolbar popup.
-Keep it open until importing finishes; canceling the chooser leaves it ready
-to try again. You can also drop EPUBs in this window.
+Choose **Import book** and select your EPUB files. If an import window opens,
+choose **Choose EPUB files...**.
 
-Import progress, errors, and duplicate feedback appear in the import window.
-**Read now** opens the selected book in your original browser window;
-**Open library** opens the full Library there. Either action closes the importer
-after its destination opens. If the original browser window was closed, Ambra
-uses another normal window or creates one. **Close** dismisses only the importer.
-In-app exit actions wait until the current import batch has finished.
-
-In the full Library and the Library panel inside the reader, **Import book**
-opens the chooser directly; no extra tab or click is needed. After importing,
-open a book to read. **Sort** offers **Date added
-(newest first)**, **Date added (oldest first)**, **Title (A–Z)**, and **Author (A–Z)**. The saved sort order is shared
-by the full library, popup, and in-reader panel.
-
-If an import fails, the error includes the file name when available, so you can identify it when importing several books.
-
-Importing the same EPUB again shows **Already in your library**, with **Read now** to open the existing copy. Your reading position, bookmarks, and annotations stay unchanged. An EPUB with different file contents is added separately, even if its title is the same.
-
-## Search your library
-
-Use **Search title or author** above your books in the compact library, full
-library tab, or reader panel. Each word can match part of a title or author, in any order.
-Search ignores capitalization and accents in Latin-alphabet text; for example,
-`verne voyage` can find *Voyage au centre de la Terre* by Jules Verne.
-
-Results retain your selected sort order. Use the clear button or press **Escape**
-in the search field to show all your books again. Search only filters local
-library metadata: it does not search inside books or contact book websites.
-The query is temporary and is cleared when the library page closes or reloads.
+**Tip:** select several books at once, or drag EPUB files into the Library
+tab or import window.
 
 ## Find new books on the web
 
-Choose **Find books** above the collection. The same action is available before
-and after importing books; there is no separate discovery workflow for an empty
-library. In the full library, this opens a centered dialog; **Close** or **Escape** dismisses it.
-From the compact popup or reader panel, it opens the full library in a new tab
-with discovery already open. Source links open in a new tab:
+Choose **Find books** for links to places to get EPUBs:
 
-- **Standard Ebooks:** choose **Advanced epub** for formatted classics.
+- **Standard Ebooks:** choose **Advanced epub** for carefully formatted classics.
 - **Project Gutenberg:** choose an **EPUB** or **EPUB3** download.
-- **ReadBeyond:** choose **Download** for [read-along EPUBs](read-along-books.md) with recorded narration.
-- **[eBooks.com](https://www.ebooks.com/drm-free-epub):** buy a DRM-free EPUB edition and download it after purchase.
+- **ReadBeyond:** choose **Download** for a [read-along book](read-along-books.md)
+  with recorded narration, rather than the browser-based **Read+Listen** option.
+- **[eBooks.com](https://www.ebooks.com/drm-free-epub):** look for a DRM-free EPUB
+  edition to buy and download.
 
-[![Find books in the full Library: a centered dialog with Standard Ebooks, Project Gutenberg, ReadBeyond, and eBooks.com links above the imported book collection.](images/find-books.png)](images/find-books.png)
+[![Find books offers links to Standard Ebooks, Project Gutenberg, ReadBeyond, and eBooks.com.](images/find-books.png)](images/find-books.png)
 
-Ambra can import EPUB downloads directly into your library. If that fails, save the EPUB to your device and choose **Import book**.
+Ambra can add EPUB downloads directly to your Library. If a download doesn't
+import automatically, save the file to your device and use **Import book**.
 
-To save a library book to your device, open **Book details → Publication details** and choose **Save as…** beside **File name**.
+## A few book-finding tips
+
+- Choose **EPUB**, not PDF or Kindle formats.
+- Check for **DRM-free** before buying; Ambra cannot open DRM-protected books.
+- Importing the same EPUB again shows **Already in your library** without
+  replacing your reading position or notes.
+- Keep your original EPUB files as backups. Your Library is stored in your
+  Chrome profile, not synced to a cloud account.
 
 ## Check book details
 
-Open **Book details** for a description, or expand **Publication details** for rights and accessibility information. The [EPUB Inspector](epub-inspector.md) lets you explore the original metadata and files.
+Open **Book details** for a description and **Publication details** for
+rights and accessibility information. Choose **EPUB Inspector** to
+[explore the book's source, files, and metadata](epub-inspector.md).
 
-If a book has no description, opening **Book details** also checks Open Library
-and then Wikipedia for a fallback, without opening the book in the reader.
-This sends only its title, author, and ISBN, not the EPUB or reading history.
-Found descriptions are saved locally with a source link and appear in the open
-panel automatically. The EPUB's own description always takes priority. Offline
-or unmatched books remain usable without a description; unsuccessful lookups
-are limited to three attempts, shared with the reader.
-
-**Remove from library** is at the bottom of Book details. You can also press
-**Delete** or **Backspace** on a focused book to request removal. Confirmation
-names the book and initially focuses **Cancel**. Removal deletes that library
-copy's saved position, bookmarks, highlights, and notes, not the original EPUB
-on your device.
-
-Ambra is available in the [Chrome Web Store](https://chromewebstore.google.com/detail/ambra-epub-reader/mcjkkebkhifgkkbahlcapjlnaihocogj). See the official [privacy policy](https://ambraepub.org/en/privacy/) for privacy details.
+**Remove from library** is at the bottom of Book details. Removing a book
+also removes its saved reading position and annotations, but leaves the
+original EPUB on your device unchanged.
 
 [Back to the Ambra guide](README.md)

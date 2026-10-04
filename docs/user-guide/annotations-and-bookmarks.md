@@ -1,46 +1,40 @@
 # Annotations and Bookmarks
 
-Choose **Annotations** in the reader toolbar to open the right-side **Annotations panel**.
-The **Show** dropdown offers **All annotations**, **Highlights**, **Notes**, and
-**Bookmarks**, with counts. **Notes** filters to highlights with notes.
-Search and Book details replace Annotations on the right. Pin Annotations to
-keep it open when you open Contents or Library on the left. Likewise, opening
-Annotations keeps a pinned Contents panel open. When space is tight, Ambra
-temporarily shows the active panel without forgetting the other panel's pin
-preference or your drafts.
+Choose **Annotations** in the reader toolbar to see your highlights, notes,
+and bookmarks. Use **Show** to filter the list.
 
 [![The Annotations panel beside Alice's Adventures in Wonderland, with Show set to Notes and an original saved note above its quoted passage.](images/annotations.png)](images/annotations.png)
 
 ## Save and revisit a bookmark
 
-Use the reader toolbar’s bookmark button, or **Mod+B**, to add or remove a bookmark at your current position. **Mod** means Command on Mac and Control elsewhere.
+Click the toolbar's bookmark button or press **Mod+B** to bookmark your
+current position. Use it again to remove the bookmark. **Mod** means Command
+on Mac or Control elsewhere.
 
 Choose **Annotations → Show → Bookmarks** to revisit or remove saved places.
-Page numbers update with your reading layout. Theme-colored flags on the
-[progress bar](book-navigation.md#move-along-the-progress-bar) also open saved
-locations directly, or offer a chooser when bookmarks are close together.
-**Show all bookmarks** from that chooser temporarily selects the Bookmarks
-filter; reopening Annotations from the toolbar restores your last manual filter.
+Bookmark flags on the [progress bar](book-navigation.md#move-along-the-progress-bar)
+also jump to saved places.
 
 Bookmarks supplied with the book have a **Publisher note** tag and cannot be deleted.
 
 ## Highlight text and add a note
 
 1. Select a passage in the book.
-2. Choose a highlight color or underline in the selection toolbar. Choose **Add note** to create a highlight and start a note together.
-3. Write your note and choose **Save**, or **Cancel** to dismiss your edits.
+2. Choose a highlight color or underline, or **Add note** to highlight and
+   write a note together.
+3. Choose **Save** when your note is ready.
 
-Open a highlight to edit or delete it, or choose **Annotations → Show → Highlights**
-or **Notes**. A note appears above its quoted passage; **Go to passage** returns
-to that location. Switching filters or temporarily closing the panel does not
-discard an unsaved note draft, but choose **Save** before leaving the reader.
-
-Changing the interface theme does not change your saved highlight colors.
+Open a highlight to edit or delete it, or find it in **Annotations**.
+**Go to passage** takes you back to its location. Save note edits before
+leaving the reader.
 
 ## Export or import annotations
 
-Use **Export** in **Annotations** to save highlights, notes, bookmarks, and labels as an **EPUB Annotations 1.0 JSON file**.
+Choose **Export** in **Annotations** to back up or share your highlights,
+notes, bookmarks, and labels as an **EPUB Annotations 1.0 JSON file**.
 
-To bring annotations into a book, choose **Import** and select a compatible JSON file. Use the same book or edition for best results. Unsupported locations and detected duplicates are skipped; compatibility varies between tools.
+Choose **Import** to load a compatible JSON file. Use the same book or
+edition for best results; compatibility varies between tools.
+Unsupported locations and detected duplicates are skipped.
 
 [Back to the Ambra guide](README.md)

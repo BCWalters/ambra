@@ -2,11 +2,9 @@
 
 [![Alice's Adventures in Wonderland in Ambra, with a saved yellow highlight, the current reader toolbar, and a bookmarked position on the progress bar.](images/reading-alice.png)](images/reading-alice.png)
 
-> This guide describes the 2.0.0 interface. Screenshots were captured from the verified 2.0.0 package; they do not establish Chrome Web Store publication. See [screenshot sources and capture status](screenshots.md).
-
 Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome. For readers, it is a place to make books your own: adjust the reading experience, find passages, and keep your notes. For EPUB authors and publishers, it connects the book you see with the files behind it—making investigation and debugging easier without leaving the reader.
 
-**Here to explore how a book is built?** Meet the [EPUB Inspector](epub-inspector.md): source and content inspection, reading-to-source navigation, and reference finding in one place.
+**Here to explore how a book is built?** Meet the [EPUB Inspector](epub-inspector.md): source and content inspection, reading-to-source navigation, and reference finding in one place. Its automatic [page break markers](epub-inspector.md#see-the-visible-page-boundaries) show where the pages you are reading begin and end in the source.
 
 > **Reading with a screen reader?** For continuous reading in a reflowable book, consider scrolling mode: **Alt+Shift+Page Down** (**Option+Shift+Page Down** on Mac). Return to pagination: **Alt+Shift+Page Up** (**Option+Shift+Page Up** on Mac).
 >
@@ -14,7 +12,7 @@ Ambra brings a personal EPUB library and an integrated EPUB Inspector to Chrome.
 
 ## More room for reading
 
-- **A library on your device.** Import saved EPUBs, keep books together, and browse the [Library panel](ambra-library.md#browse-your-library-while-reading) without leaving your current book.
+- **A library on your device.** [Open your Library](ambra-library.md#open-your-library) from Chrome's Extensions menu or the reader toolbar, then import EPUBs or find new books.
 - **A reading style that suits you.** Use shared **Ambra settings** for interface and reading preferences, and **Book options** for the current book's typography and layout. Fixed-layout books retain the publisher’s page design.
 - **Read wide tables without changing the page.** Use **Expand table** to open a separate [table viewer](table-viewer.md) with zoom and two-way scrolling.
 - **Find your way.** **Contents** comes first in the reader toolbar, followed by **Library**. Use [book navigation](book-navigation.md), search, and the wide progress bar with clickable bookmarks to reach the passages that matter.
