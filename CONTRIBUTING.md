@@ -90,7 +90,7 @@ Keyboard and Chromium accessibility-tree tests do not establish exact VoiceOver
 or NVDA virtual-cursor behavior. Live assistive-technology testing remains
 pending; report the exact browser/OS/AT combination tested.
 
-Store updates follow the [2.0.0 checklist](store-assets/RELEASE-2.0.0.md).
+Store updates follow the [2.1.0 checklist](store-assets/RELEASE-2.1.0.md).
 The MIT repository and Chrome Web Store listing are Public, as confirmed by the
 owner. Preserve the listing's visibility and existing item. Check the dashboard's
 current version and review status before uploading a new package.
@@ -104,7 +104,7 @@ Choose the version for the complete release, not for each individual PR:
 - A release containing only bug fixes or improved content handling increments
   the patch version, for example `1.1.0` to `1.1.1`.
 - An explicitly owner-approved major milestone may increment the major version.
-  The approved UX overhaul and feature rollout are being prepared as `2.0.0`.
+  The approved UX overhaul and feature rollout shipped as `2.0.0`.
 
 Keep the source version, extension manifest, release notes, and archive name
 consistent when preparing the validated release candidate.
