@@ -10,34 +10,28 @@ This is narration supplied with the EPUB, not automatic text-to-speech. The book
 
 ## Start listening
 
-Open a supported narrated book. The floating **Read along** control strip appears
-automatically at the bottom of the reader, separate from the top toolbar and
-book progress bar. It starts paused. Choose **Play** to begin.
-There is no separate **Listen** toolbar button or discovery notice, and opening
-the book never starts audio automatically.
+Open a book with recorded narration. **Read along** controls appear
+automatically at the bottom of the reader. Choose **Play** to start listening.
 
 [![A synthetic narrated book with the expanded Read along controls: Speed, Listen from this page, Collapse, Previous, Play, and Next.](images/read-along.png)](images/read-along.png)
 
-- Use **Play/Pause**, **Previous**, and **Next** to control recorded passages,
-  and **Speed** to adjust playback speed. Labels remain visible in narrow windows.
-- Choose **Listen from this page**, or select text and choose **Listen from selection**.
-- If you browse elsewhere while audio continues, choose **Return to narration** to follow along again.
+- Use **Speed** to listen faster or slower.
+- Choose **Listen from this page** to start at your reading position, or
+  select text and choose **Listen from selection**.
+- Browsed away while listening? **Return to narration** takes you back to
+  the passage being read.
 
 ## Make more room without stopping playback
 
-Choose **Collapse** to reduce the controls to a compact strip
-that still includes play/pause. Collapsing does not pause narration or change the
-reading position; use **Pause** when you want to stop playback.
-Choose **Expand** to restore the larger controls.
+Choose **Collapse** for smaller controls without pausing narration.
+**Expand** brings the full controls back.
 
 [![The same narrated book with the collapsed Read along strip, retaining Play and Expand.](images/read-along-collapsed.png)](images/read-along-collapsed.png)
 
-Collapse is temporary for the current reader session, not a saved book or app
-preference. Reopening or reloading the reader restores the expanded controls.
-Books without supported Media Overlays do not show the strip.
-
 ## Find a read-along book
 
-The Library’s [book discovery](ambra-library.md#find-new-books-on-the-web) includes [ReadBeyond](https://www.readbeyond.it/ebooks.html). Choose **Download** for a read-along EPUB rather than the browser-based **Read+Listen** option.
+Try [ReadBeyond](https://www.readbeyond.it/ebooks.html), also available through
+**Find books** in your Library. Choose **Download** for a read-along EPUB,
+not the browser-based **Read+Listen** option.
 
 [Back to the Ambra guide](README.md)

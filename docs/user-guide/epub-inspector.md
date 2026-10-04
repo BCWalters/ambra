@@ -33,31 +33,13 @@ Move between a passage and its markup without leaving the book.
 
 ## See the visible page boundaries
 
-In the reader's Inspector **Files** tab, the source for a visible reflowable
-page automatically includes markers such as **[39 start]** and **[39 end]**.
-They identify the exact source boundaries of the current one or two pages,
-including breaks within paragraph text. For a cross-chapter spread, browse
-either chapter's file to see its markers. Page numbers match Ambra's
-book-wide reader footers, not printed page labels. While those numbers are
-being calculated, the markers appear as **[start]** and **[end]** and update
-automatically once the numbers are ready.
+While reading a paginated reflowable book, open **EPUB Inspector** and view
+the current chapter's XHTML source in **Files**. Automatic markers such as
+**[39 start]** and **[39 end]** show where the visible pages begin and end
+in the source.
 
-Opening Inspector brings the current page's start marker into view
-automatically. Explicit source navigation, such as **Locate current passage**
-or opening a reference, keeps its own target instead.
-
-During paginated reading, Inspector uses original source rather than
-pretty-printed XML (line endings are normalized). Markers are annotations:
-copying source does not include their labels, and the EPUB remains unchanged.
-They update when the reader turns a page or repaginates, including after
-docking Inspector or changing the window size. Scroll and fixed-layout
-views have no markers or additional notices.
-
-These are actual Ambra DOM boundaries, not an explanation of why a break
-occurred or a prediction for other readers. The end is exclusive. CSS-reordered
-content may occupy disjoint source ranges, so the markers do not necessarily
-enclose every element painted on a page. If a boundary cannot be mapped
-reliably, Inspector reports an error rather than guessing.
+The numbers match the reader's page numbers. Markers update as you turn
+pages or change the reading layout.
 
 [![EPUB Inspector docked to the right of the reader, displaying highlighted XHTML source alongside the corresponding Alice chapter.](images/inspector-source.png)](images/inspector-source.png)
 
@@ -70,9 +52,5 @@ This answers questions such as “Which pages use this image?” and “Where is
 ## Investigate without changing the book
 
 Inspector is **read-only**: your EPUB remains unchanged. It is not an editor or a replacement for EPUBCheck or an accessibility audit. Reference finding covers supported static markup and CSS, not dynamically computed JavaScript uses.
-
-Screenshots use a credited demonstration copy combining Lewis Carroll's text
-with John Tenniel's Caterpillar illustration from Project Gutenberg, not the
-Standard Ebooks edition. See [screenshot sources and capture status](screenshots.md).
 
 [Report Issues / Request Features](report-issues.md) · [Back to the Ambra guide](README.md) · [Source](https://github.com/BCWalters/ambra)
