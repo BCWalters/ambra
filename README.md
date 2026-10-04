@@ -21,11 +21,11 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [2.0.0 release checklist](store-assets/RELEASE-2.0.0.md).
-This milestone brings the approved Library/reader UX refresh, focused popup
-imports, reading guidance, recorded read-along controls and accessibility
-improvements. Preparing its package does not mean it has been uploaded,
-submitted or published.
+and the [2.1.0 release checklist](store-assets/RELEASE-2.1.0.md).
+Version 2.0.0 is live, as confirmed by the owner. The next release adds
+automatic page-boundary markers in EPUB Inspector and fixes saved Library
+progress after using the reading-position slider. Preparing its package does
+not mean it has been uploaded, submitted or published.
 
 ## Structure
 
