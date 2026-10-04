@@ -97,6 +97,7 @@ jobs:
           reader-diagnostics.spec.ts
           inspector-docking.spec.ts
           inspector-reading-links.spec.ts
+          inspector-page-boundaries.spec.ts
           reader-go-to-shortcuts.spec.ts
           keyboard-ownership.spec.ts
           reader-scale-navigation.spec.ts

@@ -2602,6 +2602,66 @@ test("incremental measurement yields inside a long leaf, preserves exact boundar
   } finally { await session.close(); }
 });
 
+test("text line and page boundaries precede the next line's first painted character", async () => {
+  const session = await browser();
+  try {
+    const result = await session.page.evaluate(() => {
+      const E = window.paginationEngine;
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:500px;height:900px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.style.cssText = "font:20px/30px monospace;width:420px;margin:0";
+      doc.body.innerHTML = [
+        `<p>${"The river passes the orchard and the quiet footbridge. ".repeat(30)}</p>`,
+        `<p>${"One <em>two three</em> four <strong>five six</strong> seven. ".repeat(30)}</p>`,
+        `<p style="word-break:break-all">${"🌍café e\u0301unbroken".repeat(80)}</p>`,
+      ].join("");
+      const failures: { actual: number; expected: number; text: string }[] = [];
+      let checked = 0;
+      for (const paragraph of doc.querySelectorAll("p")) {
+        const glyphs: { node: Node; offset: number; globalOffset: number; rect: DOMRect }[] = [];
+        const walker = doc.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+        let globalOffset = 0;
+        let node: Node | null;
+        while ((node = walker.nextNode())) {
+          let offset = 0;
+          for (const character of node.textContent!) {
+            const range = doc.createRange();
+            range.setStart(node, offset);
+            range.setEnd(node, offset + character.length);
+            const rect = Array.from(range.getClientRects()).reverse().find(rect => rect.width > 0 && rect.height > 0);
+            if (rect) glyphs.push({ node, offset, globalOffset, rect });
+            offset += character.length;
+            globalOffset += character.length;
+          }
+        }
+        const chunks = E.measureChunks(paragraph, 60);
+        const pages = E.planPageBreaks(chunks, 60, { node: paragraph, offset: paragraph.childNodes.length });
+        for (const boundary of [
+          ...chunks.map(chunk => ({ point: chunk.breakBefore, top: chunk.top, bottom: chunk.bottom })),
+          ...pages.slice(1).map(page => ({ point: page.startBreak, top: page.topY, bottom: page.bottomY })),
+        ]) {
+          const first = glyphs.find(glyph => glyph.rect.top >= boundary.top - 1 && glyph.rect.bottom <= boundary.bottom + 1);
+          if (!first) continue;
+          const prefix = doc.createRange();
+          prefix.selectNodeContents(paragraph);
+          prefix.setEnd(boundary.point.node, boundary.point.offset ?? 0);
+          const actual = prefix.toString().length;
+          checked++;
+          if (actual !== first.globalOffset) failures.push({
+            actual, expected: first.globalOffset, text: paragraph.textContent!.slice(first.globalOffset, first.globalOffset + 20),
+          });
+        }
+      }
+      frame.remove();
+      return { failures: failures.slice(0, 10), checked };
+    });
+    expect(result.checked).toBeGreaterThan(100);
+    expect(result.failures).toEqual([]);
+  } finally { await session.close(); }
+});
+
 test("point probes preserve prefix-algorithm boundaries for prose, whitespace, bidi and complex inline content", async () => {
   const session = await browser();
   try {
@@ -3037,7 +3097,7 @@ test("mixed inline offscreen semantics use visible prefix rects and paint every 
           if (chunk.top !== rects[index]!.top || chunk.bottom !== rects[index]!.bottom) return false;
           if (index === 0) return chunk.breakBefore.node === paragraph && chunk.breakBefore.offset === 0;
           const offset = prefixTops.findIndex(top => top >= chunk.top - 1);
-          const expected = E.globalTextOffsetToPosition(paragraph, offset)!;
+          const expected = E.globalTextOffsetToPosition(paragraph, Math.max(0, offset - 1))!;
           return chunk.breakBefore.node === expected.node && chunk.breakBefore.offset === expected.offset;
         });
         const painted: string[] = [];

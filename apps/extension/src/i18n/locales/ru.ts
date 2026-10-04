@@ -3,6 +3,11 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Russian speaker. */
 export const ru: StringCatalog = {
+  "inspector.pageBoundariesError": "Не удалось сопоставить границы видимых страниц с исходным кодом.",
+  "inspector.pageStart": "[{page} начало]",
+  "inspector.pageEnd": "[{page} конец]",
+  "inspector.pageStartUnnumbered": "[начало]",
+  "inspector.pageEndUnnumbered": "[конец]",
   "library.dropFilesTitle": "Перетащите файлы EPUB для импорта",
   "library.dropFilesHint": "Книги будут добавлены в библиотеку.",
   "review.title": "Вам нравится Ambra?",

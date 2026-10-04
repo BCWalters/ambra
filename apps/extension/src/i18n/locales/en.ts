@@ -449,6 +449,11 @@ export interface StringCatalog {
   "inspector.sourceSelectionHint": string;
   "inspector.sourceCode": string;
   "inspector.help": string;
+  "inspector.pageBoundariesError": string;
+  "inspector.pageStart": string;
+  "inspector.pageEnd": string;
+  "inspector.pageStartUnnumbered": string;
+  "inspector.pageEndUnnumbered": string;
   "inspector.referencesHelp": string;
   "inspector.referenceSelected": string;
   "inspector.findReferences": string;
@@ -766,6 +771,11 @@ export const en: StringCatalog = {
   "about.publishingGroup": "W3C Publishing Working Group",
   "about.openSourceCredits": "Built with these open-source projects:",
   "inspector.help": "Inspector help",
+  "inspector.pageBoundariesError": "Could not map the visible page boundaries.",
+  "inspector.pageStart": "[{page} start]",
+  "inspector.pageEnd": "[{page} end]",
+  "inspector.pageStartUnnumbered": "[start]",
+  "inspector.pageEndUnnumbered": "[end]",
   "inspector.referencesHelp": "For images and CSS, Find references lists uses in this archive. Open a result to view its source and highlight the reference when available. Line numbers refer to the original source, before formatting. Use Tab and Enter to open results; Back returns to the list.",
   "inspector.referenceSelected": "Source reference selected.",
   "inspector.findReferences": "Find references",
