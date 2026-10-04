@@ -276,7 +276,9 @@ test("v6 migration preserves existing books and reading data while later imports
       };
     });
     await page.goto(`${origin}/src/library/index.html?view=tab`);
-    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("alert").filter({
+      hasText: getTranslate("en")("error.somethingWentWrongHeadline"),
+    })).toBeVisible();
     await page.goto(`${origin}/manifest.json`);
     const rolledBack = await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve) => {
