@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ambra | Explore EPUB content</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --canvas: #f6f5f2; --surface: #fffefa; --ink: #302c26; --muted: #6e6559;
+      --line: #d8d1c6; --control: #908575; --accent: #865000; --selected: #ffebbb;
+      --hover: #eee9de; --page: #fffefa; --page-ink: #302c26;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --canvas: #232320; --surface: #2b2b27; --ink: #f0eade; --muted: #bcb3a4;
+        --line: #514b40; --control: #a69a86; --accent: #ffc15a; --selected: #493819;
+        --hover: #403b32;
+      }
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 14px/1.5 system-ui, sans-serif; }
+    button, input, select { font: inherit; color: inherit; }
+    button, select { cursor: pointer; }
+    button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--control); border-radius: 6px; background: var(--surface); }
+    button:hover { background: var(--hover); }
+    button:disabled { opacity: .5; cursor: default; }
+    button[aria-pressed="true"] { background: var(--selected); border-color: var(--accent); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    input, select { min-height: 38px; padding: 6px 10px; border: 1px solid var(--control); border-radius: 6px; background: var(--surface); min-width: 0; }
+    h1, h2, h3, p { margin: 0; }
+    .muted { color: var(--muted); }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .between { justify-content: space-between; }
+    .study { padding: 20px 28px; max-width: 1680px; margin: auto; }
+    .study h1 { font-size: 22px; font-weight: 600; }
+    .study p { max-width: 780px; margin: 6px 0 12px; }
+    .label { text-transform: uppercase; letter-spacing: 1.4px; font-size: 11px; color: var(--muted); }
+    .app { max-width: 1624px; margin: 0 auto 28px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+    .app-header { padding: 14px 20px; border-bottom: 1px solid var(--line); }
+    .brand { font-size: 19px; font-weight: 650; margin-right: 14px; }
+    .workspace { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(650px, 1.4fr); height: 760px; }
+    .workspace.expanded { grid-template-columns: minmax(0, 1fr); }
+    .reader { background: #eee9de; color: var(--page-ink); min-width: 0; display: flex; flex-direction: column; }
+    .reader-toolbar { padding: 12px 16px; border-bottom: 1px solid #d8d1c6; color-scheme: light; }
+    .reader-toolbar select { background: var(--page); color: var(--page-ink); border-color: #908575; max-width: 100%; flex: 1; }
+    .reader-body { overflow: auto; padding: 28px; flex: 1; }
+    .book-page { background: var(--page); min-height: 100%; padding: 34px; font: 17px/1.75 Georgia, serif; }
+    .book-page h2 { font-size: 28px; font-weight: 500; margin: 8px 0 18px; line-height: 1.3; }
+    .book-page h3 { font-size: 20px; margin: 12px 0; }
+    .book-page p, .book-page figure, .book-page blockquote, .book-page table, .book-page aside { margin: 20px 0; }
+    .book-page blockquote { border-left: 3px solid #908575; padding-left: 16px; font-style: italic; }
+    .book-page a { color: #865000; }
+    .book-page aside { font-size: 14px; border-top: 1px solid #d8d1c6; padding-top: 12px; }
+    .book-page figure { margin-inline: 0; }
+    .book-page svg { width: 100%; height: auto; display: block; border-radius: 4px; }
+    .book-page figcaption { font-size: 13px; color: #6e6559; margin-top: 6px; }
+    table { border-collapse: collapse; width: 100%; font: 14px/1.5 system-ui, sans-serif; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #d8d1c6; }
+    .reading-target { outline: 2px solid #865000; outline-offset: 6px; background: #fff4d8; }
+    .reader-footer { padding: 10px 16px; font-size: 12px; border-top: 1px solid #d8d1c6; }
+    .inspector { border-left: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; }
+    .inspector-header { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+    .inspector-header h2 { font-size: 18px; font-weight: 600; }
+    .inspector-header p { margin-top: 4px; }
+    .search-controls { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+    .search-row { display: grid; grid-template-columns: minmax(0, 1fr) 136px auto; gap: 8px; margin: 6px 0 12px; }
+    .filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: block; font-size: 12px; color: var(--muted); }
+    .filter-row select { width: 100%; margin-top: 4px; }
+    .scope-hint { font-size: 12px; margin-top: 10px; color: var(--muted); }
+    .explorer { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(210px, .95fr) minmax(230px, 1.05fr); }
+    .results-pane { min-width: 0; overflow: auto; padding: 16px 12px; }
+    .result-summary { padding: 0 8px 10px; font-size: 12px; }
+    .chapter-group h3 { font-size: 12px; color: var(--muted); margin: 16px 8px 8px; font-weight: 600; }
+    .result { text-align: left; display: block; width: 100%; margin-bottom: 6px; padding: 12px; border-color: transparent; }
+    .result strong { display: block; font-size: 14px; font-weight: 600; margin: 3px 0; }
+    .result small { display: block; color: var(--muted); overflow-wrap: anywhere; }
+    .kind { color: var(--accent); font-size: 11px; font-weight: 600; }
+    .detail { border-left: 1px solid var(--line); overflow: auto; min-width: 0; padding: 16px; }
+    .detail h3 { font-size: 16px; font-weight: 600; margin: 10px 0 4px; }
+    .path { font-size: 12px; overflow-wrap: anywhere; color: var(--muted); }
+    .navigator { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 14px; }
+    .navigator span { margin-right: auto; }
+    .navigator button { padding: 4px 8px; }
+    .switch { margin: 18px 0 12px; }
+    .switch button { flex: 1; }
+    .specimen { border: 1px solid var(--line); border-radius: 6px; padding: 14px; background: var(--canvas); overflow-wrap: anywhere; }
+    .specimen .book-page { padding: 0; min-height: auto; font-size: 15px; background: var(--page); color: var(--page-ink); }
+    .specimen:has(.book-page) { background: var(--page); }
+    pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    mark { background: #ffebbb; color: #302c26; border-radius: 2px; }
+    dl { margin: 16px 0; font-size: 12px; }
+    dt { color: var(--muted); margin-top: 8px; }
+    dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+    .show-button { width: 100%; border-color: var(--accent); color: var(--accent); }
+    .empty { padding: 26px 8px; }
+    .empty p { margin: 8px 0 16px; color: var(--muted); }
+    .definitions { padding: 10px 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+    .definitions summary { cursor: pointer; min-height: 28px; }
+    .definitions p { margin: 6px 0; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    @media (max-width: 1100px) {
+      .workspace { grid-template-columns: minmax(240px, .65fr) minmax(540px, 1.4fr); }
+      .reader-body { padding: 16px; }
+      .book-page { padding: 24px; }
+    }
+    @media (max-width: 850px) {
+      .study { padding: 16px; }
+      .app { margin-inline: 12px; }
+      .workspace { height: auto; grid-template-columns: minmax(0, 1fr); }
+      .reader { max-height: 460px; }
+      .inspector { border-left: 0; border-top: 1px solid var(--line); min-height: 720px; }
+      .explorer { min-height: 430px; }
+      .results-pane, .detail { max-height: 520px; }
+    }
+    @media (max-width: 520px) {
+      .app-header, .inspector-header, .search-controls { padding: 12px; }
+      .search-row { grid-template-columns: minmax(0, 1fr) auto; }
+      #search-mode { grid-column: 1 / -1; grid-row: 2; }
+      .explorer { grid-template-columns: minmax(0, 1fr); }
+      .results-pane { max-height: 310px; }
+      .detail { border-left: 0; border-top: 1px solid var(--line); max-height: none; }
+      .filter-row { gap: 8px; }
+    }
+    @media (forced-colors: active) {
+      .result[aria-pressed="true"], .reading-target { outline: 2px solid Highlight; }
+      mark { outline: 1px solid Highlight; }
+    }
+  </style>
+</head>
+<body>
+  <header class="study">
+    <div class="label">Interactive concept / not shipped</div>
+    <h1>A whole-book content explorer</h1>
+    <p class="muted">One EPUB, one reading position. Browse a kind of content or search across chapters, inspect a result, then choose whether to open it in the book.</p>
+    <div class="row" aria-label="Try a sample workflow">
+      <span class="muted">Try:</span>
+      <button id="try-images">Browse images</button>
+      <button id="try-tables">Browse tables</button>
+      <button id="try-source">Find <code>alt=""</code> in source</button>
+      <button id="reset">Reset study</button>
+    </div>
+  </header>
+  <main class="app">
+    <header class="app-header row between">
+      <div class="row"><span class="brand">Ambra</span><span>A field guide to quiet places <span class="muted">/ Sample EPUB</span></span></div>
+      <span class="label">Read-only exploration</span>
+    </header>
+    <div id="workspace" class="workspace">
+      <section id="reader" class="reader" aria-label="Book content">
+        <div class="reader-toolbar row">
+          <label for="reading-chapter">Reading</label>
+          <select id="reading-chapter"></select>
+        </div>
+        <div id="reader-body" class="reader-body"><article id="book-page" class="book-page"></article></div>
+        <div id="reader-position" class="reader-footer">Sample rendering, not an EPUB pagination engine.</div>
+      </section>
+      <section class="inspector" aria-label="EPUB Inspector">
+        <header class="inspector-header">
+          <div class="row between"><h2>EPUB Inspector <span class="muted">/ Explore content</span></h2><button id="expand" aria-pressed="false">Expand inspector</button></div>
+          <p class="muted">Find patterns in this book, not problems to fix.</p>
+        </header>
+        <div class="search-controls">
+          <label for="query">Search the whole book</label>
+          <div class="search-row">
+            <input id="query" type="search" placeholder="A word, phrase, or source fragment" autocomplete="off">
+            <select id="search-mode" aria-label="Search in"><option value="text">Content text</option><option value="source">Source markup</option></select>
+            <button id="clear" aria-label="Clear search" disabled>Clear</button>
+          </div>
+          <div class="filter-row">
+            <label>Content type<select id="content-type"></select></label>
+            <label>Chapter<select id="chapter-filter"></select></label>
+          </div>
+          <p id="scope-hint" class="scope-hint"></p>
+        </div>
+        <div class="explorer">
+          <section class="results-pane" aria-label="Content results">
+            <div id="result-summary" class="result-summary" role="status" aria-live="polite"></div>
+            <div id="results"></div>
+          </section>
+          <section id="detail" class="detail" aria-label="Selected content"></section>
+        </div>
+        <details class="definitions">
+          <summary>What counts as a content type?</summary>
+          <p>Proposed definitions: images = img or SVG; headings = h1-h6; tables = table; notes = explicit footnote/endnote semantics; quotations = blockquote or q; links = a[href]. Elements may belong to more than one type.</p>
+          <p>This study uses a small, hand-authored index, one result per sample element. Content-text search includes sample alt text and captions; source search is literal, case-insensitive text matching. A production whole-book search would also need ordinary prose and other archive text files.</p>
+          <p>Results are observations, not accessibility findings. The sample is not exhaustive, does not parse an EPUB, and does not change your library or files. All prose and illustrations here are original sample material.</p>
+        </details>
+      </section>
+    </div>
+  </main>
+  <p id="announcement" class="sr-only" role="status" aria-live="polite"></p>
+  <script>
+    const chapters = [
+      { title: "1. Before you set out", path: "EPUB/text/before.xhtml", intro: "A quiet place is not necessarily an empty one. Begin by noticing what is already there: a gate left open, a bird on the wire, the small sound of water beyond the hedge." },
+      { title: "2. Along the river", path: "EPUB/text/river.xhtml", intro: "The towpath follows the river without hurrying. On the far bank, willow branches lean into the current. There is room here to walk slowly and to change your mind about the destination." },
+      { title: "3. The old orchard", path: "EPUB/text/orchard.xhtml", intro: "Beyond the low wall, the orchard keeps its own calendar. Some trees are flowering while others have already begun to set fruit. A bench faces the gap between two rows." },
+      { title: "4. Coming home", path: "EPUB/text/home.xhtml", intro: "The return journey need not retrace every step. Take the lane past the cottages, where the evening light makes familiar windows look briefly unfamiliar." },
+    ];
+    const types = [
+      { id: "all", label: "All content" }, { id: "images", label: "Images" },
+      { id: "headings", label: "Headings" }, { id: "tables", label: "Tables" },
+      { id: "notes", label: "Notes" }, { id: "quotations", label: "Quotations" },
+      { id: "links", label: "Links" },
+    ];
+    const items = [
+      { id: "start", chapter: 0, type: "headings", title: "Before you set out", text: "Before you set out", tag: "h1", source: '<h1 id="start">Before you set out</h1>' },
+      { id: "gate", chapter: 0, type: "images", title: "The gate at the start of the path", text: "A wooden gate between two low hedges. The start of the path.", tag: "img", alt: "A wooden gate between two low hedges.", caption: "The start of the path.", resource: "../images/gate.svg", scene: "gate", source: '<figure id="gate">\n  <img src="../images/gate.svg"\n       alt="A wooden gate between two low hedges.">\n  <figcaption>The start of the path.</figcaption>\n</figure>' },
+      { id: "packing", chapter: 0, type: "tables", title: "What to bring", text: "What to bring Water One small bottle Notebook A few blank pages", tag: "table", rows: [["Water", "One small bottle"], ["Notebook", "A few blank pages"]], source: '<table id="packing">\n  <caption>What to bring</caption>\n  <tr><th scope="col">Item</th><th scope="col">Suggestion</th></tr>\n  <tr><td>Water</td><td>One small bottle</td></tr>\n  <tr><td>Notebook</td><td>A few blank pages</td></tr>\n</table>' },
+      { id: "pace", chapter: 0, type: "quotations", title: "A useful pace", text: "Walk at a pace that leaves room for noticing.", tag: "blockquote", source: '<blockquote id="pace" class="walking-note">\n  <p>Walk at a pace that leaves room for noticing.</p>\n</blockquote>' },
+      { id: "access", chapter: 0, type: "notes", title: "A note on access", text: "Paths in this sample guide are fictional. Check local access before setting out.", tag: "aside", source: '<aside id="access" epub:type="footnote">\n  <p>Paths in this sample guide are fictional.\n  Check local access before setting out.</p>\n</aside>' },
+      { id: "river-link", chapter: 0, type: "links", title: "Continue along the river", text: "Continue along the river", tag: "a", href: "river.xhtml#river-start", source: '<a id="river-link" href="river.xhtml#river-start">Continue along the river</a>' },
+      { id: "river-start", chapter: 1, type: "headings", title: "Along the river", text: "Along the river", tag: "h1", source: '<h1 id="river-start">Along the river</h1>' },
+      { id: "bridge", chapter: 1, type: "images", title: "The blue footbridge", text: "A blue footbridge crosses the river beneath a willow. The crossing near the bend.", tag: "img", alt: "A blue footbridge crosses the river beneath a willow.", caption: "The crossing near the bend.", resource: "../images/bridge.svg", scene: "bridge", source: '<figure id="bridge">\n  <img class="wide" src="../images/bridge.svg"\n       alt="A blue footbridge crosses the river beneath a willow.">\n  <figcaption>The crossing near the bend.</figcaption>\n</figure>' },
+      { id: "river-rule", chapter: 1, type: "images", title: "A wave-shaped divider", text: "A wave-shaped divider", tag: "img", alt: "", caption: "", resource: "../images/wave.svg", scene: "wave", source: '<img id="river-rule" class="divider"\n     src="../images/wave.svg" alt="">' },
+      { id: "crossings", chapter: 1, type: "tables", title: "River crossings", text: "River crossings Blue bridge On foot Stone bridge On foot or bicycle", tag: "table", rows: [["Blue bridge", "On foot"], ["Stone bridge", "On foot or bicycle"]], source: '<table id="crossings">\n  <caption>River crossings</caption>\n  <tr><th scope="col">Crossing</th><th scope="col">Access</th></tr>\n  <tr><td>Blue bridge</td><td>On foot</td></tr>\n  <tr><td>Stone bridge</td><td>On foot or bicycle</td></tr>\n</table>' },
+      { id: "water", chapter: 1, type: "quotations", title: "Watching the water", text: "The water carries the sky without keeping it.", tag: "blockquote", source: '<blockquote id="water">\n  <p>The water carries the sky without keeping it.</p>\n</blockquote>' },
+      { id: "flood", chapter: 1, type: "notes", title: "After rain", text: "The lower path can be muddy after rain.", tag: "aside", source: '<aside id="flood" epub:type="footnote">\n  <p>The lower path can be muddy after rain.</p>\n</aside>' },
+      { id: "orchard-start", chapter: 2, type: "headings", title: "The old orchard", text: "The old orchard", tag: "h1", source: '<h1 id="orchard-start">The old orchard</h1>' },
+      { id: "bench", chapter: 2, type: "images", title: "A bench beneath the apple trees", text: "An empty bench beneath two apple trees. A place to pause.", tag: "img", alt: "An empty bench beneath two apple trees.", caption: "A place to pause.", resource: "../images/bench.svg", scene: "bench", source: '<figure id="bench">\n  <img src="../images/bench.svg"\n       alt="An empty bench beneath two apple trees.">\n  <figcaption>A place to pause.</figcaption>\n</figure>' },
+      { id: "seasons", chapter: 2, type: "tables", title: "The orchard through the year", text: "The orchard through the year Spring Blossom Autumn Fallen apples", tag: "table", rows: [["Spring", "Blossom"], ["Autumn", "Fallen apples"]], source: '<table id="seasons">\n  <caption>The orchard through the year</caption>\n  <tr><th scope="col">Season</th><th scope="col">Look for</th></tr>\n  <tr><td>Spring</td><td>Blossom</td></tr>\n  <tr><td>Autumn</td><td>Fallen apples</td></tr>\n</table>' },
+      { id: "sit", chapter: 2, type: "quotations", title: "Staying a while", text: "A bench is an invitation, not an instruction.", tag: "blockquote", source: '<blockquote id="sit" class="walking-note">\n  <p>A bench is an invitation, not an instruction.</p>\n</blockquote>' },
+      { id: "orchard-return", chapter: 2, type: "links", title: "Return to the river", text: "Return to the river", tag: "a", href: "river.xhtml#river-start", source: '<a id="orchard-return" href="river.xhtml#river-start">Return to the river</a>' },
+      { id: "home-start", chapter: 3, type: "headings", title: "Coming home", text: "Coming home", tag: "h1", source: '<h1 id="home-start">Coming home</h1>' },
+      { id: "lane", chapter: 3, type: "images", title: "The lane in evening light", text: "A narrow lane curves between cottages in evening light. The last turn before home.", tag: "img", alt: "A narrow lane curves between cottages in evening light.", caption: "The last turn before home.", resource: "../images/lane.svg", scene: "lane", source: '<figure id="lane">\n  <img src="../images/lane.svg"\n       alt="A narrow lane curves between cottages in evening light.">\n  <figcaption>The last turn before home.</figcaption>\n</figure>' },
+      { id: "remember", chapter: 3, type: "headings", title: "What to remember", text: "What to remember", tag: "h2", source: '<h2 id="remember">What to remember</h2>' },
+      { id: "journal", chapter: 3, type: "notes", title: "A final note", text: "Write down one thing you noticed before the day becomes ordinary again.", tag: "aside", source: '<aside id="journal" epub:type="endnote">\n  <p>Write down one thing you noticed before\n  the day becomes ordinary again.</p>\n</aside>' },
+      { id: "begin-again", chapter: 3, type: "links", title: "Begin again", text: "Begin again", tag: "a", href: "before.xhtml#start", source: '<a id="begin-again" href="before.xhtml#start">Begin again</a>' },
+    ];
+    const $ = id => document.getElementById(id);
+    let selectedId = "gate";
+    let detailMode = "preview";
+    let readingChapter = 0;
+    let readingTarget;
+    let matches = [];
+    const element = (tag, text, className) => {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    };
+    function highlight(node, text, query) {
+      if (!query) { node.textContent = text; return; }
+      const lower = text.toLowerCase();
+      let start = 0;
+      let index;
+      while ((index = lower.indexOf(query.toLowerCase(), start)) !== -1) {
+        node.append(document.createTextNode(text.slice(start, index)), element("mark", text.slice(index, index + query.length)));
+        start = index + query.length;
+      }
+      node.append(document.createTextNode(text.slice(start)));
+    }
+    function illustration(scene, alt) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 360 160");
+      if (alt) { svg.setAttribute("role", "img"); svg.setAttribute("aria-label", alt); }
+      else svg.setAttribute("aria-hidden", "true");
+      const shape = (tag, attributes) => {
+        const node = document.createElementNS(svg.namespaceURI, tag);
+        for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+        svg.append(node);
+      };
+      shape("rect", { width: 360, height: 160, fill: scene === "lane" ? "#f0d9bb" : "#e3ece9" });
+      shape("path", { d: "M0 100 Q80 75 160 100 T360 92 V160 H0Z", fill: "#9ab49b" });
+      if (scene === "bridge" || scene === "wave") shape("path", { d: "M0 122 Q90 97 180 124 T360 120", fill: "none", stroke: "#6589a3", "stroke-width": scene === "wave" ? 8 : 28 });
+      if (scene === "bridge") {
+        shape("path", { d: "M75 100 Q180 40 285 100 M75 115 Q180 55 285 115", fill: "none", stroke: "#3f617e", "stroke-width": 7 });
+        for (const x of [100, 140, 180, 220, 260]) shape("path", { d: `M${x} 75 V107`, stroke: "#3f617e", "stroke-width": 4 });
+      }
+      if (scene === "gate" || scene === "bench") {
+        for (const x of [65, 285]) {
+          shape("rect", { x: x - 5, y: 60, width: 10, height: 70, fill: "#71634a" });
+          shape("circle", { cx: x, cy: 48, r: 38, fill: "#688869" });
+        }
+        shape("path", { d: scene === "gate" ? "M110 85 H250 M110 112 H250 M112 72 V135 M248 72 V135 M115 112 L245 85" : "M120 95 H240 M120 110 H240 M128 95 V137 M232 95 V137", fill: "none", stroke: "#71634a", "stroke-width": 8 });
+      }
+      if (scene === "lane") {
+        shape("path", { d: "M150 160 L205 90 L227 90 L240 160Z", fill: "#d8cbb1" });
+        for (const x of [35, 265]) {
+          shape("rect", { x, y: 65, width: 55, height: 50, fill: "#f8f0e1" });
+          shape("path", { d: `M${x - 6} 65 L${x + 27} 40 L${x + 61} 65Z`, fill: "#9a735e" });
+        }
+      }
+      return svg;
+    }
+    function specimen(item) {
+      let node;
+      if (item.type === "images") {
+        node = element("figure");
+        node.append(illustration(item.scene, item.alt));
+        if (item.caption) node.append(element("figcaption", item.caption));
+      } else if (item.type === "tables") {
+        node = element("table");
+        node.append(element("caption", item.title));
+        const head = element("thead");
+        const row = element("tr");
+        for (const title of item.id === "seasons" ? ["Season", "Look for"] : item.id === "crossings" ? ["Crossing", "Access"] : ["Item", "Suggestion"]) {
+          const th = element("th", title); th.scope = "col"; row.append(th);
+        }
+        head.append(row); node.append(head);
+        const body = element("tbody");
+        for (const values of item.rows) { const tr = element("tr"); for (const value of values) tr.append(element("td", value)); body.append(tr); }
+        node.append(body);
+      } else if (item.type === "links") {
+        node = element("a", item.text);
+        node.href = `#${item.id}`;
+        node.addEventListener("click", event => {
+          event.preventDefault();
+          const [path, id] = item.href.split("#");
+          const target = items.find(candidate => candidate.id === id && chapters[candidate.chapter].path.endsWith(`/${path}`));
+          if (!target) throw new Error(`Sample link target not found: ${item.href}`);
+          showInBook(target);
+        });
+      } else {
+        node = element(item.tag, item.text);
+      }
+      return node;
+    }
+    function renderReader() {
+      $("reading-chapter").value = String(readingChapter);
+      const page = $("book-page");
+      page.replaceChildren(element("div", "A FIELD GUIDE TO QUIET PLACES", "label"));
+      const chapterItems = items.filter(item => item.chapter === readingChapter);
+      for (const [index, item] of chapterItems.entries()) {
+        const node = specimen(item);
+        node.dataset.readingId = item.id;
+        if (item.id === readingTarget) node.classList.add("reading-target");
+        page.append(node);
+        if (index === 0) page.append(element("p", chapters[readingChapter].intro));
+      }
+      $("reader-position").textContent = `${chapters[readingChapter].title} / Sample continuous rendering`;
+    }
+    function showInBook(item) {
+      if ($("workspace").classList.contains("expanded")) toggleExpand();
+      readingChapter = item.chapter;
+      readingTarget = item.id;
+      renderReader();
+      const target = $("book-page").querySelector(`[data-reading-id="${item.id}"]`);
+      target.scrollIntoView({ block: "center", behavior: "instant" });
+      $("announcement").textContent = `Showing ${item.title} in ${chapters[item.chapter].title}.`;
+    }
+    function filtered(includeType = true) {
+      const query = $("query").value.trim().toLowerCase();
+      return items.filter(item =>
+        (!includeType || $("content-type").value === "all" || item.type === $("content-type").value) &&
+        ($("chapter-filter").value === "all" || String(item.chapter) === $("chapter-filter").value) &&
+        (!query || item[$("search-mode").value === "source" ? "source" : "text"].toLowerCase().includes(query)));
+    }
+    function renderDetail(focusView) {
+      const panel = $("detail");
+      panel.replaceChildren();
+      const item = matches.find(candidate => candidate.id === selectedId);
+      if (!item) { panel.append(element("p", "No selected content.", "muted")); return; }
+      const position = matches.indexOf(item);
+      const navigation = element("div", undefined, "navigator");
+      navigation.append(element("span", `${position + 1} of ${matches.length}`));
+      for (const [label, offset] of [["Previous", -1], ["Next", 1]]) {
+        const button = element("button", label);
+        button.disabled = !matches[position + offset];
+        button.addEventListener("click", () => { selectedId = matches[position + offset].id; renderResults(label); });
+        navigation.append(button);
+      }
+      panel.append(navigation, element("span", types.find(type => type.id === item.type).label, "kind"), element("h3", item.title), element("p", `${chapters[item.chapter].path}#${item.id}`, "path"));
+      const views = element("div", undefined, "row switch");
+      for (const [value, label] of [["preview", "Preview"], ["source", "Source"]]) {
+        const button = element("button", label);
+        button.setAttribute("aria-pressed", String(detailMode === value));
+        button.addEventListener("click", () => { detailMode = value; renderDetail(label); });
+        views.append(button);
+      }
+      panel.append(views);
+      const sample = element("div", undefined, "specimen");
+      if (detailMode === "source") {
+        const pre = element("pre");
+        highlight(pre, item.source, $("search-mode").value === "source" ? $("query").value.trim() : "");
+        sample.append(pre);
+      } else {
+        const preview = element("div", undefined, "book-page");
+        preview.append(specimen(item)); sample.append(preview);
+      }
+      panel.append(sample);
+      const facts = element("dl");
+      const entries = [["Element", item.tag], ["ID", item.id]];
+      if (item.type === "images") entries.push(["Alt attribute", item.alt === "" ? 'Empty: alt=""' : item.alt], ["Resource", item.resource]);
+      if (item.href) entries.push(["Link target", item.href]);
+      if (item.type === "notes") entries.push(["epub:type", item.id === "journal" ? "endnote" : "footnote"]);
+      for (const [label, value] of entries) facts.append(element("dt", label), element("dd", value));
+      panel.append(facts);
+      const show = element("button", "Show in book", "show-button");
+      show.addEventListener("click", () => showInBook(item));
+      panel.append(show);
+      if (focusView) {
+        const buttons = Array.from(panel.querySelectorAll("button"));
+        const target = buttons.find(button => button.textContent === focusView && !button.disabled)
+          ?? buttons.find(button => !button.disabled);
+        target?.focus();
+      }
+    }
+    function renderResults(focusNavigation) {
+      const candidates = filtered(false);
+      const previousType = $("content-type").value;
+      $("content-type").replaceChildren();
+      for (const type of types) {
+        const count = candidates.filter(item => type.id === "all" || item.type === type.id).length;
+        const option = element("option", `${type.label} (${count})`);
+        option.value = type.id; $("content-type").append(option);
+      }
+      $("content-type").value = previousType || "images";
+      matches = filtered();
+      if (!matches.some(item => item.id === selectedId)) selectedId = matches[0]?.id;
+      $("result-summary").textContent = `${matches.length} ${matches.length === 1 ? "result" : "results"} / In book order`;
+      $("clear").disabled = !$("query").value;
+      $("scope-hint").textContent = $("search-mode").value === "source" ? "Literal source matching. Type counts reflect this search and chapter filter." : "Text, including image descriptions and captions. Type counts reflect this search and chapter filter.";
+      const results = $("results");
+      results.replaceChildren();
+      if (!matches.length) {
+        const empty = element("div", undefined, "empty");
+        empty.append(element("strong", "No matching content"), element("p", "Try a different type, search scope, or chapter."));
+        const button = element("button", "Reset filters");
+        button.addEventListener("click", () => setWorkflow("all", "", "text"));
+        empty.append(button); results.append(empty);
+      }
+      for (const [index, chapter] of chapters.entries()) {
+        const groupItems = matches.filter(item => item.chapter === index);
+        if (!groupItems.length) continue;
+        const group = element("section", undefined, "chapter-group");
+        group.append(element("h3", `${chapter.title} / ${groupItems.length}`));
+        for (const item of groupItems) {
+          const button = element("button", undefined, "result");
+          button.setAttribute("aria-pressed", String(selectedId === item.id));
+          button.dataset.resultId = item.id;
+          button.append(element("span", `${types.find(type => type.id === item.type).label} / ${item.tag}`, "kind"));
+          const title = element("strong"); highlight(title, item.title, $("query").value.trim()); button.append(title);
+          const excerpt = element("small");
+          const text = $("search-mode").value === "source" ? item.source : item.text;
+          const query = $("query").value.trim();
+          const hit = query ? text.toLowerCase().indexOf(query.toLowerCase()) : 0;
+          const start = Math.max(0, hit - 20);
+          highlight(excerpt, `${start ? "..." : ""}${text.slice(start, start + 120)}${text.length > start + 120 ? "..." : ""}`, query);
+          button.append(excerpt);
+          button.addEventListener("click", () => {
+            selectedId = item.id;
+            for (const result of results.querySelectorAll("button[data-result-id]")) result.setAttribute("aria-pressed", String(result.dataset.resultId === selectedId));
+            renderDetail();
+          });
+          group.append(button);
+        }
+        results.append(group);
+      }
+      renderDetail(focusNavigation);
+      if (focusNavigation) results.querySelector(`[data-result-id="${selectedId}"]`)?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    }
+    function setWorkflow(type, query, mode) {
+      $("content-type").value = type;
+      $("query").value = query;
+      $("search-mode").value = mode;
+      $("chapter-filter").value = "all";
+      detailMode = mode === "source" ? "source" : "preview";
+      renderResults();
+    }
+    function toggleExpand() {
+      const expanded = $("workspace").classList.toggle("expanded");
+      $("reader").hidden = expanded;
+      $("expand").textContent = expanded ? "Show reader alongside" : "Expand inspector";
+      $("expand").setAttribute("aria-pressed", String(expanded));
+    }
+    for (const [index, chapter] of chapters.entries()) {
+      for (const id of ["reading-chapter", "chapter-filter"]) {
+        const option = element("option", chapter.title); option.value = String(index); $(id).append(option);
+      }
+    }
+    const allChapters = element("option", "All chapters"); allChapters.value = "all";
+    $("chapter-filter").prepend(allChapters); $("chapter-filter").value = "all";
+    for (const type of types) { const option = element("option", type.label); option.value = type.id; $("content-type").append(option); }
+    $("content-type").value = "images";
+    $("query").addEventListener("input", () => renderResults());
+    for (const id of ["content-type", "chapter-filter", "search-mode"]) $(id).addEventListener("change", () => {
+      if (id === "search-mode") detailMode = $("search-mode").value === "source" ? "source" : "preview";
+      renderResults();
+    });
+    $("clear").addEventListener("click", () => { $("query").value = ""; renderResults(); $("query").focus(); });
+    $("reading-chapter").addEventListener("change", () => { readingChapter = Number($("reading-chapter").value); readingTarget = undefined; renderReader(); $("reader-body").scrollTop = 0; });
+    $("expand").addEventListener("click", toggleExpand);
+    $("try-images").addEventListener("click", () => setWorkflow("images", "", "text"));
+    $("try-tables").addEventListener("click", () => setWorkflow("tables", "", "text"));
+    $("try-source").addEventListener("click", () => setWorkflow("images", 'alt=""', "source"));
+    $("reset").addEventListener("click", () => {
+      if ($("workspace").classList.contains("expanded")) toggleExpand();
+      readingChapter = 0; readingTarget = undefined; selectedId = "gate";
+      setWorkflow("images", "", "text"); renderReader(); $("reader-body").scrollTop = 0;
+    });
+    renderReader();
+    renderResults();
+  </script>
+</body>
+</html>

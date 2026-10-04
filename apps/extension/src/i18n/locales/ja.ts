@@ -3,6 +3,11 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Japanese speaker. */
 export const ja: StringCatalog = {
+  "inspector.pageBoundariesError": "表示中のページ境界をソースに対応付けられませんでした。",
+  "inspector.pageStart": "[{page} 開始]",
+  "inspector.pageEnd": "[{page} 終端]",
+  "inspector.pageStartUnnumbered": "[開始]",
+  "inspector.pageEndUnnumbered": "[終端]",
   "library.dropFilesTitle": "EPUBファイルをドロップしてインポート",
   "library.dropFilesHint": "本がライブラリに追加されます。",
   "review.title": "Ambraを気に入っていただけましたか？",

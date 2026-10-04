@@ -3,6 +3,11 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Italian speaker. */
 export const it: StringCatalog = {
+  "inspector.pageBoundariesError": "Impossibile individuare i limiti delle pagine visibili nel codice.",
+  "inspector.pageStart": "[{page} inizio]",
+  "inspector.pageEnd": "[{page} fine]",
+  "inspector.pageStartUnnumbered": "[inizio]",
+  "inspector.pageEndUnnumbered": "[fine]",
   "library.dropFilesTitle": "Rilascia i file EPUB da importare",
   "library.dropFilesHint": "I libri verranno aggiunti alla tua biblioteca.",
   "review.title": "Ti sta piacendo Ambra?",

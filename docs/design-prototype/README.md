@@ -40,6 +40,35 @@ Use the controls outside the app frames to change sample data and density.
 This directory is a review reference outside extension build inputs, not a
 second production UI or an engine to copy into the extension.
 
+## Experimental EPUB content explorer
+
+Open [inspector-explore.html](inspector-explore.html) directly in a browser.
+This separate, unapproved concept explores whole-book search and browsing by
+content type within a single-book reading experience. It does not change the
+approved prototype or the shipped Inspector.
+
+Try browsing images or tables, finding `alt=""` in source, filtering by chapter,
+and moving between matching elements. Selecting a result previews it without
+moving the reader; **Show in book** explicitly moves to its sample location.
+**Expand inspector** gives the exploration more room.
+
+The sample uses original fictional prose, inline illustrations, and a small
+hand-authored content index. It does not parse EPUBs, perform accessibility
+checks, or implement comprehensive publication search. Text/source search
+boundaries and proposed content-type definitions are explained in the UI.
+No build, server, network access, or dependency install is needed to open it.
+
+With existing repository dependencies and Playwright Chromium available,
+verify this separate study with:
+
+```sh
+node docs/design-prototype/scripts/verify-inspector-explore.mjs
+```
+
+This checks sample search/filtering, reading-position isolation, source and
+preview switching, result navigation and keyboard focus, sample links, and
+responsive layouts. It does not validate EPUB parsing or live screen readers.
+
 ## Optional prototype verification
 
 The reviewed snapshot passed 150 responsive cases, 1,327 interaction/layout/asset

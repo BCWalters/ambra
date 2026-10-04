@@ -2,7 +2,7 @@ import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation } from "../ReaderTypes.js";
+import type { EpubInspectionData, InspectorReaderBridge, InspectorReadingLocation, InspectorVisiblePage } from "../ReaderTypes.js";
 import type { InspectorReference } from "../InspectorReferences.js";
 import { CHROME_THEMES, DEFAULT_CHROME_THEME } from "../chromeTheme.js";
 import { EpubInspectorPanel, INSPECTOR_DOCK_WIDTH } from "./EpubInspectorPanel.js";
@@ -143,6 +143,102 @@ describe("Inspector reader linking", () => {
     ["dock-left", "Dock left"],
     ["dock-right", "Dock right"],
   ] as const;
+
+  it("automatically marks original source with compact labels without changing copied source", async () => {
+    reader = { ...reader, getVisiblePages: vi.fn().mockResolvedValue([{
+      path: "one.xhtml", spineIndex: 0, pageIndex: 33, pageNumber: 35, physicalSide: "single",
+      start: { elementPath: [1, 0], childIndex: 0, textOffset: 1 },
+      end: { elementPath: [1, 1], childIndex: 0, textOffset: 6 },
+      hasPositionOverrides: false,
+    }]) };
+    await render();
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toBe(markup);
+    const markers = Array.from(pre.querySelectorAll<HTMLElement>("[data-page-boundary]"));
+    expect(markers.map(marker => marker.dataset.label)).toEqual(["[35 start]", "[35 end]"]);
+    expect(markers.map(marker => marker.getAttribute("aria-label"))).toEqual(["[35 start]", "[35 end]"]);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", inline: "center", behavior: "instant" });
+    const offsets = markers.map(marker => Number(marker.dataset.sourceOffset));
+    expect(offsets).toEqual([markup.indexOf("One") + 1, markup.indexOf("Two &amp; three") + 10]);
+    const selection = document.createRange();
+    selection.selectNodeContents(pre);
+    expect(selection.toString()).toBe(markup);
+    expect(container.querySelector('[role="switch"]')).toBeNull();
+    expect(container.querySelector("[data-boundary-offset]")).toBeNull();
+  });
+
+  it("orders adjoining page labels without inserting labels into source selections", async () => {
+    const middle = { elementPath: [1, 0], childIndex: 0, textOffset: 1 };
+    reader = { ...reader, getVisiblePages: vi.fn().mockResolvedValue([
+      { path: "one.xhtml", spineIndex: 0, pageIndex: 2, pageNumber: 3, physicalSide: "left",
+        start: { elementPath: [1, 0], childIndex: 0, textOffset: 0 }, end: middle, hasPositionOverrides: false },
+      { path: "one.xhtml", spineIndex: 0, pageIndex: 3, pageNumber: 4, physicalSide: "right",
+        start: middle, end: { elementPath: [1, 0], childIndex: 0, textOffset: 3 }, hasPositionOverrides: false },
+    ]) };
+    await render();
+    const pre = container.querySelector("pre")!;
+    const markers = Array.from(pre.querySelectorAll<HTMLElement>("[data-page-boundary]"));
+    expect(markers.map(marker => marker.dataset.label)).toEqual(["[3 start]", "[3 end]", "[4 start]", "[4 end]"]);
+    expect(markers[1]!.dataset.sourceOffset).toBe(markers[2]!.dataset.sourceOffset);
+    for (const marker of markers) {
+      const prefix = document.createRange();
+      prefix.selectNodeContents(pre);
+      prefix.setEndBefore(marker);
+      expect(prefix.toString().length).toBe(Number(marker.dataset.sourceOffset));
+    }
+    expect(pre.textContent).toBe(markup);
+  });
+
+  it("refreshes markers automatically, silently omits unavailable boundaries and unsubscribes on close", async () => {
+    const unsubscribe = vi.fn();
+    let refresh: (() => void) | undefined;
+    const pages = vi.fn().mockResolvedValue([]);
+    reader = { ...reader, getVisiblePages: pages,
+      subscribeVisiblePages: listener => { refresh = listener; return unsubscribe; } };
+    await render();
+    expect(container.querySelectorAll("[data-page-boundary]")).toHaveLength(0);
+    expect(container.textContent).not.toContain("fixed-layout");
+    const unnumbered: InspectorVisiblePage = {
+      path: "one.xhtml", spineIndex: 0, pageIndex: 4, pageNumber: undefined, physicalSide: "single",
+      start: { elementPath: [1, 0] }, end: { elementPath: [1, 1] },
+      hasPositionOverrides: true,
+    };
+    pages.mockResolvedValue([unnumbered]);
+    await act(async () => refresh!());
+    expect(container.querySelector('[data-page-boundary="start"]')?.getAttribute("data-label")).toBe("[start]");
+    expect(container.querySelector('[data-page-boundary="end"]')?.getAttribute("data-label")).toBe("[end]");
+    expect(container.textContent).not.toContain("disjoint source ranges");
+    const readCount = onReadFile.mock.calls.length;
+    scrollIntoView.mockClear();
+    pages.mockResolvedValue([{ ...unnumbered, pageNumber: 35 }]);
+    await act(async () => refresh!());
+    expect(container.querySelector('[data-page-boundary="start"]')?.getAttribute("data-label")).toBe("[35 start]");
+    expect(container.querySelector('[data-page-boundary="end"]')?.getAttribute("data-label")).toBe("[35 end]");
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(onReadFile).toHaveBeenCalledTimes(readCount);
+    pages.mockResolvedValue([]);
+    await act(async () => refresh!());
+    expect(container.querySelectorAll("[data-page-boundary]")).toHaveLength(0);
+    expect(container.querySelector("pre")?.textContent).not.toBe(markup);
+    await render(false);
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it("reports boundary loading and mapping failures explicitly", async () => {
+    const getPages = vi.fn().mockRejectedValue(new Error("Layout unavailable"));
+    reader = { ...reader, getVisiblePages: getPages };
+    await render();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Layout unavailable");
+    getPages.mockResolvedValue([{
+      path: "one.xhtml", spineIndex: 0, pageIndex: 0, pageNumber: 1, physicalSide: "single",
+      start: { elementPath: [8] }, end: { elementPath: [1, 1] },
+      hasPositionOverrides: false,
+    }]);
+    reader = { ...reader, getVisiblePages: getPages };
+    await render();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("source element is missing");
+    expect(container.querySelectorAll("[data-page-boundary]")).toHaveLength(0);
+  });
 
   it("offers all four pressed-state view controls in the header on every tab", async () => {
     await render();

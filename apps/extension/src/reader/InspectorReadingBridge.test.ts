@@ -4,6 +4,8 @@ import {
   EpubContainer,
   Locator,
   LocatorResolver,
+  Page,
+  markReaderOwnedContent,
   type ContentDocumentView,
   type DomBreakPoint,
 } from "@ambra/engine";
@@ -37,7 +39,8 @@ function view(
   return { document, spineIndex, physicalSide };
 }
 
-function harness(loader: ContentLoader, views: ContentDocumentView[], position?: DomBreakPoint) {
+function harness(loader: ContentLoader, views: ContentDocumentView[], position?: DomBreakPoint,
+  pageNumber: (view: ContentDocumentView) => number | undefined = () => undefined) {
   const state = { views, position, disposed: false };
   const resolver = new LocatorResolver(loader.packageDocument, loader);
   const navigate = vi
@@ -46,6 +49,7 @@ function harness(loader: ContentLoader, views: ContentDocumentView[], position?:
   const focus = vi.fn<(document: Document, element: Element) => void>();
   const owner = new InspectorReadingBridge(loader, resolver, loader.packageDocument, {
     documents: () => state.views,
+    pageNumber,
     currentPosition: () => state.position,
     navigate,
     focus,
@@ -74,6 +78,80 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+describe("InspectorReadingBridge visible page boundaries", () => {
+  it("maps two actual pages within one paragraph, including text offsets", async () => {
+    const loader = await loadFixture();
+    const content = await loader.loadSpineDocument(0);
+    const text = content.document.querySelector("p")!.firstChild!;
+    const first = new Page(3, { node: text, offset: 4 }, { node: text, offset: 17 }, 0, 100);
+    const second = new Page(4, { node: text, offset: 17 }, { node: text, offset: 28 }, 100, 200);
+    const { owner } = harness(loader, [
+      { ...view(content.document, 0, "left"), page: first },
+      { ...view(content.document, 0, "right"), page: second },
+    ], undefined, view => view.page!.index + 32);
+    const pages = await owner.create().getVisiblePages!();
+    expect(pages.map(page => page.pageNumber)).toEqual([35, 36]);
+    expect(pages.map(page => [page.pageIndex, page.physicalSide, page.start.textOffset, page.end.textOffset]))
+      .toEqual([[3, "left", 4, 17], [4, "right", 17, 28]]);
+    expect(pages[0]!.start).toEqual({ elementPath: [1, 1], childIndex: 0, textOffset: 4 });
+  });
+
+  it("keeps both chapter identities and reading order in an RTL cross-chapter spread", async () => {
+    const loader = await loadFixture("two-chapter.epub", "e2e");
+    const first = await loader.loadSpineDocument(0);
+    const second = await loader.loadSpineDocument(1);
+    const makePage = (document: Document, index: number) => new Page(index,
+      { node: document.body, offset: 0 }, { node: document.body, offset: document.body.childNodes.length }, 0, 100);
+    const { owner } = harness(loader, [
+      { ...view(first.document, 0, "right"), page: makePage(first.document, 5) },
+      { ...view(second.document, 1, "left"), page: makePage(second.document, 0) },
+    ]);
+    expect((await owner.create().getVisiblePages!()).map(page => [page.path, page.spineIndex, page.physicalSide]))
+      .toEqual([["OEBPS/ch1.xhtml", 0, "right"], ["OEBPS/ch2.xhtml", 1, "left"]]);
+  });
+
+  it("excludes reader-owned children from element offsets and preserves exclusive ends", async () => {
+    const loader = await loadFixture();
+    const { document } = await loader.loadSpineDocument(0);
+    const authoredCount = document.body.childNodes.length;
+    const control = document.createElement("button");
+    markReaderOwnedContent(control);
+    document.body.prepend(control);
+    const page = new Page(0, { node: document.body, offset: 1 },
+      { node: document.body, offset: document.body.childNodes.length }, 0, 100);
+    const { owner } = harness(loader, [{ ...view(document), page }]);
+    const pages = await owner.create().getVisiblePages!();
+    expect(pages[0]!.start.childIndex).toBe(0);
+    expect(pages[0]!.end.childIndex).toBe(authoredCount);
+  });
+
+  it("returns no synthetic page boundaries for scroll or fixed-layout documents", async () => {
+    const loader = await loadFixture();
+    const { document } = await loader.loadSpineDocument(0);
+    expect(await harness(loader, [view(document)]).owner.create().getVisiblePages!()).toEqual([]);
+  });
+
+  it("uses current reader numbering when it becomes available without changing the pages", async () => {
+    const loader = await loadFixture();
+    const { document } = await loader.loadSpineDocument(0);
+    const text = document.querySelector("p")!.firstChild!;
+    const page = new Page(33, { node: text, offset: 4 }, { node: text, offset: 17 }, 0, 100);
+    let pageNumber: number | undefined = undefined;
+    const { owner } = harness(loader, [{ ...view(document), page }], undefined, () => pageNumber);
+    const bridge = owner.create();
+    expect((await bridge.getVisiblePages!())[0]!.pageNumber).toBeUndefined();
+    pageNumber = 35;
+    expect((await bridge.getVisiblePages!())[0]!.pageNumber).toBe(35);
+  });
+
+  it("rejects page requests after disposal", async () => {
+    const loader = await loadFixture();
+    const { owner, state } = harness(loader, []);
+    state.disposed = true;
+    await expect(owner.create().getVisiblePages!()).rejects.toThrow(/closed/);
+  });
+});
+
 describe("InspectorReadingBridge locating the live passage", () => {
   it("resolves a visible text position against the original source without requiring IDs", async () => {
     const loader = await loadFixture();
@@ -84,6 +162,7 @@ describe("InspectorReadingBridge locating the live passage", () => {
       node: paragraph.firstChild!,
       offset: 17,
     });
+
     const resolve = vi.spyOn(resolver, "resolveInDocument");
     const bridge = owner.create();
     expect(bridge.currentPath).toBe("OEBPS/chapter1.xhtml");

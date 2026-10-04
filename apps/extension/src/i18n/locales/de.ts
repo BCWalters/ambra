@@ -3,6 +3,11 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native German speaker. */
 export const de: StringCatalog = {
+  "inspector.pageBoundariesError": "Die Grenzen der sichtbaren Seiten konnten nicht im Quelltext zugeordnet werden.",
+  "inspector.pageStart": "[{page} Anfang]",
+  "inspector.pageEnd": "[{page} Ende]",
+  "inspector.pageStartUnnumbered": "[Anfang]",
+  "inspector.pageEndUnnumbered": "[Ende]",
   "library.dropFilesTitle": "EPUB-Dateien zum Importieren ablegen",
   "library.dropFilesHint": "Die Bücher werden Ihrer Bibliothek hinzugefügt.",
   "review.title": "Gefällt Ihnen Ambra?",
