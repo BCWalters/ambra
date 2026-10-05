@@ -21,11 +21,11 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [2.1.0 release checklist](store-assets/RELEASE-2.1.0.md).
-Version 2.0.0 is live, as confirmed by the owner. The next release adds
-automatic page-boundary markers in EPUB Inspector and fixes saved Library
-progress after using the reading-position slider. Preparing its package does
-not mean it has been uploaded, submitted or published.
+and the [2.2.0 release checklist](store-assets/RELEASE-2.2.0.md).
+Version 2.0.0 was last confirmed live by the owner. The prepared 2.2.0 update
+adds an in-app full-screen control; verify the current dashboard version before
+uploading it. Preparing a package does not mean it has been uploaded, submitted
+or published.
 
 ## Structure
 
