@@ -54,8 +54,10 @@ for (const surface of ["reader", "library"] as const) {
           await slider.focus();
           await slider.press("ArrowLeft");
           await expect(slider).not.toHaveValue(original);
-          const reset = menu.getByRole("button");
-          await expect(reset).toHaveCount(1);
+          const reset = menu.getByRole("button", {
+            name: t("settings.resetSliderToDefault", { label: t("settings.brightness") }),
+            exact: true,
+          });
           await expect(reset).toBeInViewport({ ratio: 1 });
           await reset.click();
           await expect(slider).toHaveValue(original);
