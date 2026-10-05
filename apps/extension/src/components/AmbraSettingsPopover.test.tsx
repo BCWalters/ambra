@@ -10,12 +10,30 @@ describe("Shared Ambra settings presentation", () => {
   let container: HTMLDivElement;
   let root: Root;
   let initialized: boolean;
+  let fullscreenElement: Element | null;
+  const requestFullscreen = vi.fn<() => Promise<void>>();
+  const exitFullscreen = vi.fn<() => Promise<void>>();
   const onChange = vi.fn();
   const onOpenChange = vi.fn();
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     onChange.mockReset();
     onOpenChange.mockReset();
+    requestFullscreen.mockReset().mockResolvedValue();
+    exitFullscreen.mockReset().mockResolvedValue();
+    fullscreenElement = null;
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: exitFullscreen,
+    });
+    Object.defineProperty(document.documentElement, "requestFullscreen", {
+      configurable: true,
+      value: requestFullscreen,
+    });
     initialized = false;
     const animate = Element.prototype.animate;
     vi.spyOn(Element.prototype, "animate").mockImplementation(function (this: Element, keyframes, options) {
@@ -52,6 +70,10 @@ describe("Shared Ambra settings presentation", () => {
     expect(document.querySelector("select")?.value).toBe("ambra");
     expect(document.querySelector("details")?.open).toBe(false);
   });
+  it("omits full screen in compact settings", async () => {
+    await render({ showFullscreen: false });
+    expect(document.querySelector('button[aria-label="Enter full screen"]')).toBeNull();
+  });
   it("leads reader settings with expanded reading preferences and focuses Page theme", async () => {
     await render({ readingFirst: true });
     const theme = document.querySelector("select")!;
@@ -78,6 +100,28 @@ describe("Shared Ambra settings presentation", () => {
     expect(document.querySelectorAll("select")).toHaveLength(5);
     expect(document.querySelector('option[value="paginated"]')).toBeNull();
     expect(document.querySelector('option[value="sepia"]')).not.toBeNull();
+  });
+  it("toggles full screen and follows browser-driven full screen changes", async () => {
+    await render();
+    const enter = document.querySelector<HTMLButtonElement>('button[aria-label="Enter full screen"]')!;
+    await act(async () => enter.click());
+    expect(requestFullscreen).toHaveBeenCalledOnce();
+
+    fullscreenElement = document.documentElement;
+    await act(async () => document.dispatchEvent(new Event("fullscreenchange")));
+    const exit = document.querySelector<HTMLButtonElement>('button[aria-label="Exit full screen"]')!;
+    await act(async () => exit.click());
+    expect(exitFullscreen).toHaveBeenCalledOnce();
+
+    fullscreenElement = null;
+    await act(async () => document.dispatchEvent(new Event("fullscreenchange")));
+    expect(document.querySelector('button[aria-label="Enter full screen"]')).not.toBeNull();
+  });
+  it("reports a rejected full screen request", async () => {
+    requestFullscreen.mockRejectedValueOnce(new Error("denied"));
+    await render();
+    await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Enter full screen"]')!.click());
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("Could not change full screen mode.");
   });
 
   it.each([false, true])("keeps brightness reset focus inside settings and Escape closes it (reading first: %s)", async (readingFirst) => {
