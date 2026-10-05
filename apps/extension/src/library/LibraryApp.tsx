@@ -198,6 +198,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
         </div>
         <div style={{ flex: 1 }} />
         <AmbraSettingsPopover settings={settings} onChange={setSettings} disabled={isLoading}
+          showFullscreen={!isActionPopup}
           onOpenChange={(open) => { setSettingsOpen(open); if (open) setHelpTooltip(false); }} />
         <Tooltip content={t("about.title")} relationship="label" visible={helpTooltip && !help.view && !settingsOpen}
           onVisibleChange={(_event, data) => setHelpTooltip(data.visible && !help.view && !settingsOpen)}>

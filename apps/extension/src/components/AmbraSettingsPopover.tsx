@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FC } from "react";
 import { ReadingTheme, type PageTheme } from "@ambra/engine";
 import { Button, Field, Popover, PopoverSurface, PopoverTrigger, Select, Tooltip } from "@fluentui/react-components";
-import { SettingsRegular } from "@fluentui/react-icons";
+import { FullScreenMaximizeRegular, FullScreenMinimizeRegular, SettingsRegular } from "@fluentui/react-icons";
 import type { GlobalReadingSettings } from "../library/ReadingSettings.js";
 import { CHROME_THEMES, type ChromeThemeChoice } from "../reader/chromeTheme.js";
 import { DefaultableSlider } from "../reader/components/DefaultableSlider.js";
@@ -20,6 +20,7 @@ export interface AmbraSettingsPopoverProps {
   onOpenChange?: (open: boolean) => void;
   readingFirst?: boolean;
   isFixedLayout?: boolean;
+  showFullscreen?: boolean;
 }
 
 const themeLabels: Partial<Record<ChromeThemeChoice, keyof StringCatalog>> = {
@@ -29,16 +30,39 @@ const themeLabels: Partial<Record<ChromeThemeChoice, keyof StringCatalog>> = {
 /** App-wide values only. Book typography/layout remain owned by Book options. */
 export const AmbraSettingsPopover: FC<AmbraSettingsPopoverProps> = ({
   settings, onChange, disabled, open: controlledOpen, onOpenChange, readingFirst = false, isFixedLayout = false,
+  showFullscreen = true,
 }) => {
   const t = useTranslation();
   const language = useLocale();
   const [internalOpen, setOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(document.fullscreenElement !== null);
+  const [fullscreenError, setFullscreenError] = useState<string>();
   const pageThemeRef = useRef<HTMLSelectElement>(null);
   useEffect(() => {
     if (open && readingFirst) pageThemeRef.current?.focus({ preventScroll: true });
   }, [open, readingFirst]);
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement !== null);
+      setFullscreenError(undefined);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+  const toggleFullscreen = async (): Promise<void> => {
+    setFullscreenError(undefined);
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      setFullscreenError(t("settings.fullscreenError"));
+    }
+  };
   const interfaceControls = (
     <div style={{ display: "grid", gap: 12 }}>
       <Field label={t("settings.interfaceTheme")}>
@@ -113,7 +137,16 @@ export const AmbraSettingsPopover: FC<AmbraSettingsPopoverProps> = ({
       </PopoverTrigger>
       <PopoverSurface aria-label={t("settings.ambraTitle")} style={{ width: 288, boxSizing: "border-box",
         maxWidth: "calc(100vw - 24px)", maxHeight: "calc(100dvh - 72px)", overflowY: "auto", padding: 16 }}>
-        <h2 style={{ fontSize: 16, margin: "0 0 12px" }}>{t("settings.ambraTitle")}</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, margin: 0 }}>{t("settings.ambraTitle")}</h2>
+          {showFullscreen && <Tooltip content={t(isFullscreen ? "settings.exitFullscreen" : "settings.enterFullscreen")} relationship="label">
+            <Button appearance="subtle" size="small"
+              icon={isFullscreen ? <FullScreenMinimizeRegular /> : <FullScreenMaximizeRegular />}
+              aria-label={t(isFullscreen ? "settings.exitFullscreen" : "settings.enterFullscreen")}
+              onClick={() => void toggleFullscreen()} />
+          </Tooltip>}
+        </div>
+        {fullscreenError && <div role="alert" style={{ marginBottom: 12 }}>{fullscreenError}</div>}
         <div style={{ display: "grid", gap: 12 }}>
           {readingFirst ? <>{readingControls}{interfaceControls}</> : <>{interfaceControls}{readingControls}</>}
         </div>

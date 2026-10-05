@@ -157,6 +157,9 @@ export interface StringCatalog {
   "settings.ambraTitle": string;
   "settings.interfaceTheme": string;
   "settings.readingPreferences": string;
+  "settings.enterFullscreen": string;
+  "settings.exitFullscreen": string;
+  "settings.fullscreenError": string;
   "about.aboutAmbra": string;
   "library.sortBy": string;
   "library.expand": string;
@@ -680,6 +683,9 @@ export const en: StringCatalog = {
   "settings.ambraTitle": "Ambra settings",
   "settings.interfaceTheme": "Interface theme",
   "settings.readingPreferences": "Reading preferences",
+  "settings.enterFullscreen": "Enter full screen",
+  "settings.exitFullscreen": "Exit full screen",
+  "settings.fullscreenError": "Could not change full screen mode.",
   "about.aboutAmbra": "About Ambra",
   "library.sortBy": "Sort by",
   "library.expand": "Expand library into a full browser tab",
