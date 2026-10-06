@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+import { appendFileSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const libraryTest =
+  /^apps\/e2e\/tests\/(?:library-[^/]+|book-details-presentation|book-metadata-display|native-library-import|review-invitation|library-review-keyboard|reader-library|reader-back-to-library|library-scrubber-progress)\.spec\.ts$/;
+
+function isDocumentation(file) {
+  return (
+    file.endsWith(".md") ||
+    file === "LICENSE" ||
+    file === "THIRD_PARTY_NOTICES.md" ||
+    file.startsWith("docs/")
+  );
+}
+
+function isLocalization(file) {
+  return (
+    file.startsWith("apps/extension/src/i18n/") ||
+    file === "apps/e2e/tests/library-localization.spec.ts"
+  );
+}
+
+function isLibrary(file) {
+  return file.startsWith("apps/extension/src/library/") || libraryTest.test(file);
+}
+
+export function selectBrowserSuites(changedFiles, forceFull = false) {
+  const files = [...new Set(changedFiles.map((file) => file.trim()).filter(Boolean))].sort();
+  let mode;
+  if (forceFull || files.length === 0) mode = "full";
+  else if (files.every(isDocumentation)) mode = "none";
+  else if (files.every((file) => isDocumentation(file) || isLocalization(file))) {
+    mode = "localization";
+  } else if (
+    files.every((file) => isDocumentation(file) || isLocalization(file) || isLibrary(file))
+  ) {
+    mode = "library";
+  } else mode = "full";
+
+  return {
+    mode,
+    run_browser: mode !== "none",
+    run_reader: mode === "full",
+    run_library: mode === "full" || mode === "library",
+    run_localization: mode === "localization",
+    files,
+  };
+}
+
+function run() {
+  const forceFull = process.argv.includes("--full");
+  const files = forceFull ? [] : readFileSync(0, "utf8").split(/\r?\n/);
+  const selection = selectBrowserSuites(files, forceFull);
+  const output = [
+    `mode=${selection.mode}`,
+    `run_browser=${selection.run_browser}`,
+    `run_reader=${selection.run_reader}`,
+    `run_library=${selection.run_library}`,
+    `run_localization=${selection.run_localization}`,
+  ].join("\n");
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${output}\n`);
+  console.log(
+    JSON.stringify(
+      {
+        ...selection,
+        reason: forceFull
+          ? "manual, called, or unbounded run"
+          : `${selection.files.length} changed file(s)`,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) run();
