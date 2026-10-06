@@ -34,9 +34,10 @@ local runs default to one worker, while CI runs most files on two isolated
 workers) and is meant as an occasional, broader regression gate — after a batch
 of pagination/rendering/interaction work, before a release, or when
 investigating a reported navigation bug. Tests that enforce wall-clock budgets
-or deliberately hold rendering work in flight run serially in CI to avoid
-measuring contention from an unrelated Chromium instance. `@ambra/engine`'s
-unit tests remain the fast, every-iteration signal.
+or deliberately hold rendering work in flight, plus coverage that repeatedly
+switches the runtime locale, run serially in CI to avoid measuring contention
+from an unrelated Chromium instance. `@ambra/engine`'s unit tests remain the
+fast, every-iteration signal.
 
 Protected CI selects the smallest safe browser surface from the pull request or
 push diff:
