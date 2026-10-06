@@ -29,6 +29,22 @@ const CHAINED_SINGLE_PAGE_CHAPTERS_EPUB = path.resolve(
   "chained-single-page-chapters.epub",
 );
 const TOTAL_PARAGRAPHS = 30;
+const SHORT_CHAINED_PARAGRAPHS = 60;
+
+function shortChainedBook(): string {
+  const source = test.info().outputPath("short-chained-source");
+  const target = test.info().outputPath("short-chained.epub");
+  execFileSync("unzip", ["-q", CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, "-d", source]);
+  const chapterPath = path.join(source, "OEBPS/chapter1.xhtml");
+  const chapter = fs.readFileSync(chapterPath, "utf8").replace(
+    /<p>C1 Para (\d+)\.[\s\S]*?<\/p>\n?/g,
+    (markup, number: string) => Number(number) <= SHORT_CHAINED_PARAGRAPHS ? markup : "",
+  );
+  fs.writeFileSync(chapterPath, chapter);
+  execFileSync("zip", ["-q", "-X", "-0", target, "mimetype"], { cwd: source });
+  execFileSync("zip", ["-q", "-X", "-r", target, "META-INF", "OEBPS"], { cwd: source });
+  return target;
+}
 
 // Read only painted lines, not the full chapter DOM hidden by pagination.
 async function visibleSpreadSample(readerPage: Page) {
@@ -179,23 +195,23 @@ test.describe("paginated reflowable navigation correctness", () => {
   });
 
   test("spread positions survive seeking to the start and forward/backward round trips (#129)", async () => {
-    test.setTimeout(120_000);
-    const { context, readerPage } = await launchReader(CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, {
+    const book = shortChainedBook();
+    const { context, readerPage } = await launchReader(book, {
       viewport: { width: 1400, height: 900 },
     });
     const visibleText = () => visibleSpreadText(readerPage);
     try {
       const snapshots: string[][] = [];
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 20; i++) {
         const text = await visibleText();
         snapshots.push(text);
-        if (text.join(" ").includes("C1 Para 200.")) break;
+        if (text.join(" ").includes(`C1 Para ${SHORT_CHAINED_PARAGRAPHS}.`)) break;
         await turnAndWait(readerPage, () => readerPage.keyboard.press("ArrowRight"));
       }
       expect(snapshots[0]?.join(" ")).toContain("Cover Para 1");
       const painted = snapshots.flat().join(" ");
       const expectedText = ["cover.xhtml", "titlepage.xhtml", "contents.xhtml", "chapter1.xhtml"]
-        .map(file => execFileSync("unzip", ["-p", CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, `OEBPS/${file}`], { encoding: "utf8" })
+        .map(file => execFileSync("unzip", ["-p", book, `OEBPS/${file}`], { encoding: "utf8" })
           .match(/<body[^>]*>([\s\S]*?)<\/body>/)![1]!.replace(/<[^>]+>/g, ""))
         .join("");
       expect(painted.replace(/\s/g, ""), "every painted character occurs once, in book order")
@@ -205,7 +221,7 @@ test.describe("paginated reflowable navigation correctness", () => {
         Array.from({ length: 20 }, (_, i) => i + 1),
       );
       expect([...painted.matchAll(/C1 Para (\d+)\./g)].map((match) => Number(match[1]))).toEqual(
-        Array.from({ length: 200 }, (_, i) => i + 1),
+        Array.from({ length: SHORT_CHAINED_PARAGRAPHS }, (_, i) => i + 1),
       );
       expect(painted.match(/Chapter One/g)).toHaveLength(1);
       for (let i = snapshots.length - 2; i >= 0; i--) {

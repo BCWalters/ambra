@@ -29,12 +29,30 @@ swallowed," directly against real rendered output.
 
 ## When to run this
 
-**Not on every iteration.** This spins up real Chromium instances (slow,
-one worker at a time — see `playwright.config.ts`) and is meant as an
-occasional, broader regression gate — after a batch of pagination/
-rendering/interaction work, before a release, or when investigating a
-reported navigation bug. `@ambra/engine`'s unit tests remain the fast,
-every-iteration signal.
+**Not on every iteration.** This spins up real Chromium instances (slow;
+local runs default to one worker, while CI runs most files on two isolated
+workers) and is meant as an occasional, broader regression gate — after a batch
+of pagination/rendering/interaction work, before a release, or when
+investigating a reported navigation bug. Tests that enforce wall-clock budgets
+or deliberately hold rendering work in flight, plus coverage that repeatedly
+switches the runtime locale, run serially in CI to avoid measuring contention
+from an unrelated Chromium instance. `@ambra/engine`'s unit tests remain the
+fast, every-iteration signal.
+
+Protected CI selects the smallest safe browser surface from the pull request or
+push diff:
+
+- Markdown/documentation-only changes skip browser tests.
+- Changes confined to `apps/extension/src/i18n` run focused Library and shared
+  shell localization coverage.
+- Changes confined to `apps/extension/src/library` and Library-specific browser
+  tests run the Library suite.
+- Shared UI, reader, engine, dependency, manifest, workflow, release, and
+  unclassified changes run the complete protected browser suite.
+
+The selector fails closed: mixed or empty/unknown diffs run everything.
+Manually dispatched and called workflows also run everything, so final release
+candidates never use a reduced browser suite.
 
 ## Running it
 
