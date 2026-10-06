@@ -64,8 +64,10 @@ The automated run is expected to fail the **release** gate while required
 criteria remain unassessed, or when a native criterion fails. Its worksheet,
 observations and scorecard are still archived. This is not a failed ordinary
 pull-request CI run and is not a complete conformance claim. Set
-`automated_core=false` to prepare only the manual kit without launching
-Chromium. The profile is separate from ordinary browser test discovery; its
+`automated_core=false` to prepare the manual kit and unassessed scorecard
+without launching Chromium. Its incomplete-release gate remains red until
+the required manual evidence is supplied. The profile is separate from
+ordinary browser test discovery; its
 changes retain lint/type/unit-tool validation without unnecessary product
 browser runs when no product code changed.
 

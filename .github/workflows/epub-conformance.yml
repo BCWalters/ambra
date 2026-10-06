@@ -117,7 +117,7 @@ jobs:
           --output dist/conformance/epub-3.4-assessment.json
           --evidence "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - name: Generate scorecard and enforce incomplete-release gate
-        if: ${{ !cancelled() && steps.core_merge.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare_kit.outcome == 'success' && (!inputs.automated_core || steps.core_merge.outcome == 'success') }}
         run: >-
           node scripts/epub-conformance.mjs report
           --suite "$RUNNER_TEMP/epub-tests"
