@@ -222,8 +222,11 @@ A further prepared milestone applies the same restrictive policy through
 Chromium's iframe `csp` attribute before any navigation. This covers XML/SVG
 roots without an HTML head; XHTML retains its meta policy as defense in depth.
 The common host also serves fixed, paginated, scroll, roll and table views.
-Native fixtures require a real enforcing CSP event and no network request for
-an unrewritten remote URL, alongside successful packaged-image decoding.
+Native fixtures require a real enforcing event from the expected CSP and a CDP
+loading failure explicitly blocked by CSP for an unrewritten remote URL,
+alongside successful packaged-image decoding. Logical request attempts are not
+network dispatch: the safety-net interception route must never handle the probe,
+and there must be no response.
 Protected Chromium validation is required before treating this experimental
 browser mechanism as verified. This does not implement external SVG graphs,
 unique publication origins, or scripting.

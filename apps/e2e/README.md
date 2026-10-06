@@ -79,8 +79,11 @@ It does not claim support for nested documents or media/spatial CFI offsets.
 `resource-policy.spec.ts` additionally exercises Chromium's frame-level required
 CSP on XHTML and headless SVG roots. After verifying a packaged image actually
 decodes, it introduces an unrewritten remote image URL through the trusted test
-driver. It requires a native enforcing CSP violation and zero network requests,
-not a sanitized attribute or simulated event. This covers the common rendering
+driver. It requires a native enforcing violation from the expected CSP and a
+CDP loading failure explicitly blocked by CSP, with no network dispatch/response.
+Playwright can report a logical request attempt even when CSP prevents dispatch;
+the safety-net route must never handle that attempt. This is not a sanitized
+attribute or simulated event. This covers the common rendering
 host; external SVG graph rewriting remains a separate compatibility gap.
 
 The opt-in release profile in `assessment/core-media.spec.ts` uses
