@@ -11,7 +11,7 @@ export async function dependencyNotices(root, inventory, overrides) {
   for (const dependency of Object.values(inventory)
     .flat()
     .sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!["MIT", "Apache-2.0", "BSD-3-Clause", "0BSD"].includes(dependency.license)) {
+    if (!["MIT", "Apache-2.0", "BSD-3-Clause", "0BSD", "ISC"].includes(dependency.license)) {
       throw new Error(`Review the new dependency license before packaging: ${dependency.name}`);
     }
     for (const directory of dependency.paths) {

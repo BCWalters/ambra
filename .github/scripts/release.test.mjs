@@ -70,6 +70,14 @@ test("dependency notices include installed texts and pinned overrides, failing c
     assert.ok(bundled.includes("example@1.0.0"));
     assert.ok(bundled.includes(license.trim()));
     assert.ok(bundled.includes(notice.trim()));
+    const iscBundled = await dependencyNotices(
+      directory,
+      { ISC: [{ ...inventory.MIT[0], license: "ISC" }] },
+      {},
+    );
+    assert.ok(iscBundled.includes("License: ISC"));
+    assert.ok(iscBundled.includes(license.trim()));
+    assert.ok(iscBundled.includes(notice.trim()));
     await rm(path.join(dependencyPath, "LICENSE"));
     await assert.rejects(dependencyNotices(directory, inventory, {}), /Missing installed license/);
     await assert.rejects(
