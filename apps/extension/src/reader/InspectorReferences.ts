@@ -1,4 +1,4 @@
-import { resolveEpubPath } from "@ambra/engine";
+import { classifyEpubReference } from "@ambra/engine";
 import { buildInspectorSourceMap, InspectorSourceMappingError, type InspectorSourceElement } from "./InspectorSourceMap.js";
 
 export interface InspectorReference {
@@ -25,7 +25,6 @@ interface MarkupToken {
   attributes: Map<string, { start: number; valueStart: number; value: string }>;
 }
 
-const externalUrl = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 const space = /[\t\n\f\r ]/;
 
 function failure(message: string): never {
@@ -34,8 +33,9 @@ function failure(message: string): never {
 
 function localPath(base: string | undefined, value: string): string | undefined {
   const href = value.trim().replace(/[\t\r\n]/g, "");
-  if (base === undefined || !href || externalUrl.test(href)) return undefined;
-  return resolveEpubPath(base, href);
+  if (base === undefined || !href) return undefined;
+  const reference = classifyEpubReference(base, href);
+  return reference.kind === "package" ? reference.path : reference.kind === "fragment" ? base : undefined;
 }
 
 function resolveBase(base: string | undefined, value: string): string | undefined {

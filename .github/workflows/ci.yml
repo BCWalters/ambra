@@ -61,14 +61,32 @@ jobs:
       - name: Install Chromium
         if: steps.browser-suites.outputs.run_browser == 'true'
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
-      - name: Verify EPUB resources and reader regressions
+      - name: Verify audio resource failures before codec preparation
         if: steps.browser-suites.outputs.run_reader == 'true'
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
           AMBRA_E2E_HEADLESS: "1"
         run: >-
           pnpm --filter @ambra/e2e exec playwright test
+          media-overlay-playback.spec.ts --grep @audio-resource-conformance --workers=1
+      - name: Prepare synthetic EPUB codec fixtures
+        if: steps.browser-suites.outputs.run_reader == 'true'
+        run: |
+          if ! command -v ffmpeg || ! command -v cjxl ||
+             ! /usr/bin/python3 -c 'import fontTools, brotli'; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg libjxl-tools python3-fonttools python3-brotli
+          fi
+      - name: Verify EPUB resources and reader regressions
+        if: steps.browser-suites.outputs.run_reader == 'true'
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
+          AMBRA_E2E_HEADLESS: "1"
+          AMBRA_E2E_MEDIA_PYTHON: /usr/bin/python3
+        run: >-
+          pnpm --filter @ambra/e2e exec playwright test
           css-resources.spec.ts primary-reading-order.spec.ts
+          resource-fallbacks.spec.ts resource-policy.spec.ts
           reader-shortcuts-help.spec.ts inspector-docking.spec.ts narration-discovery.spec.ts
           --workers=2
       - name: Test the packaged production build
@@ -164,7 +182,9 @@ jobs:
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
           AMBRA_E2E_HEADLESS: "1"
-        run: pnpm --filter @ambra/e2e exec playwright test media-overlay-playback.spec.ts --workers=2
+        run: >-
+          pnpm --filter @ambra/e2e exec playwright test
+          media-overlay-playback.spec.ts --grep-invert @audio-resource-conformance --workers=1
       - name: Verify image viewer transparency
         if: steps.browser-suites.outputs.run_reader == 'true'
         env:

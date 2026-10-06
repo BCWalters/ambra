@@ -1,5 +1,5 @@
 import { EpubContainer } from "../container/EpubContainer.js";
-import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
+import { classifyEpubReference, type NonPackageEpubReference } from "../container/EpubReference.js";
 import {
   getChildElementsByNS,
   getDescendantElementsByNS,
@@ -44,6 +44,7 @@ export class NavPoint {
     public readonly children: readonly NavPoint[],
     /** Semantic roles on an EPUB navigation link, notably bodymatter/backmatter landmarks. */
     public readonly epubTypes: readonly string[] = [],
+    public readonly externalReference?: NonPackageEpubReference,
   ) {}
 
   public get isLinked(): boolean {
@@ -159,11 +160,17 @@ export class NavigationDocument {
 
     let path: string | undefined;
     let fragment: string | undefined;
+    let externalReference: NonPackageEpubReference | undefined;
     const href = anchor?.getAttribute("href");
     if (href) {
-      const split = splitHrefFragment(href);
-      path = resolveEpubPath(navDocPath, split.path);
-      fragment = split.fragment;
+      const reference = classifyEpubReference(navDocPath, href);
+      if (reference.kind === "package" || reference.kind === "fragment") {
+        path = reference.kind === "package" ? reference.path : navDocPath;
+        fragment = reference.fragment;
+      } else {
+        path = reference.url;
+        externalReference = reference;
+      }
     }
 
     const nestedOl = getFirstChildElementByNS(liEl, XHTML_NAMESPACE, "ol");
@@ -172,7 +179,7 @@ export class NavigationDocument {
     const epubTypes = anchor
       ? (getNamespacedAttribute(anchor, OPS_NAMESPACE, "type") ?? "").split(/\s+/).filter(Boolean)
       : [];
-    return new NavPoint(label, path, fragment, children, epubTypes);
+    return new NavPoint(label, path, fragment, children, epubTypes, externalReference);
   }
 
   // ---- NCX fallback ----
@@ -210,19 +217,19 @@ export class NavigationDocument {
   }
 
   private static parseNcxNavPoint(navPointEl: Element, ncxPath: string): NavPoint {
-    const { path, fragment, label } = NavigationDocument.parseNcxLabelAndTarget(
+    const { path, fragment, label, externalReference } = NavigationDocument.parseNcxLabelAndTarget(
       navPointEl,
       ncxPath,
     );
     const children = getChildElementsByNS(navPointEl, NCX_NAMESPACE, "navPoint").map((child) =>
       NavigationDocument.parseNcxNavPoint(child, ncxPath),
     );
-    return new NavPoint(label, path, fragment, children);
+    return new NavPoint(label, path, fragment, children, [], externalReference);
   }
 
   private static parseNcxLabeledTarget(targetEl: Element, ncxPath: string): NavPoint {
-    const { path, fragment, label } = NavigationDocument.parseNcxLabelAndTarget(targetEl, ncxPath);
-    return new NavPoint(label, path, fragment, []);
+    const { path, fragment, label, externalReference } = NavigationDocument.parseNcxLabelAndTarget(targetEl, ncxPath);
+    return new NavPoint(label, path, fragment, [], [], externalReference);
   }
 
   /** Shared shape of NCX `<navPoint>` and `<pageTarget>`: both have a
@@ -230,7 +237,7 @@ export class NavigationDocument {
   private static parseNcxLabelAndTarget(
     el: Element,
     ncxPath: string,
-  ): { label: string; path: string | undefined; fragment: string | undefined } {
+  ): { label: string; path: string | undefined; fragment: string | undefined; externalReference?: NonPackageEpubReference } {
     const navLabelEl = getFirstChildElementByNS(el, NCX_NAMESPACE, "navLabel");
     const textEl = navLabelEl
       ? getFirstChildElementByNS(navLabelEl, NCX_NAMESPACE, "text")
@@ -242,13 +249,19 @@ export class NavigationDocument {
 
     let path: string | undefined;
     let fragment: string | undefined;
+    let externalReference: NonPackageEpubReference | undefined;
     if (src) {
-      const split = splitHrefFragment(src);
-      path = resolveEpubPath(ncxPath, split.path);
-      fragment = split.fragment;
+      const reference = classifyEpubReference(ncxPath, src);
+      if (reference.kind === "package" || reference.kind === "fragment") {
+        path = reference.kind === "package" ? reference.path : ncxPath;
+        fragment = reference.fragment;
+      } else {
+        path = reference.url;
+        externalReference = reference;
+      }
     }
 
-    return { label, path, fragment };
+    return { label, path, fragment, externalReference };
   }
 }
 

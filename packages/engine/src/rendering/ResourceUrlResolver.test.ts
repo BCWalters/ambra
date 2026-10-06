@@ -5,6 +5,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ContentLoader } from "../content/ContentLoader.js";
 import { ManifestItem } from "../container/PackageDocument.js";
+import type { ResourceCapabilities } from "./ResourceCapabilities.js";
+import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
+import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
+import { classifyEpubReference } from "../container/EpubReference.js";
 import {
   ResourceResolutionCancelledError,
   ResourceResolutionError,
@@ -159,12 +163,19 @@ describe("ResourceUrlResolver", () => {
     expect(revokeSpy).toHaveBeenCalledExactlyOnceWith(url);
   });
 
-  function cssGraph(files: Record<string, { type: string; text: string }>) {
+  function cssGraph(
+    files: Record<string, { type: string; text: string; fallback?: string }>,
+    capabilities: ResourceCapabilities = { supports: async () => true },
+  ) {
     const blobs: Blob[] = [];
-    vi.spyOn(loader.packageDocument, "findManifestItemByPath").mockImplementation(path => {
+    const find = (path: string) => {
       const file = files[path];
-      return file ? new ManifestItem(path, path, file.type, new Set()) : undefined;
-    });
+      const location = classifyEpubReference("package.opf", path);
+      return file ? new ManifestItem(path, path, file.type, new Set(), file.fallback, undefined,
+        location.kind === "package" || location.kind === "fragment" ? undefined : location) : undefined;
+    };
+    vi.spyOn(loader.packageDocument, "findManifestItemByPath").mockImplementation(find);
+    vi.spyOn(loader.packageDocument, "getManifestItem").mockImplementation(find);
     const load = vi.spyOn(loader, "loadResourceBytes").mockImplementation(async path => {
       const file = files[path];
       if (!file) throw new ResourceResolutionError(`Missing ${path}`);
@@ -175,7 +186,7 @@ describe("ResourceUrlResolver", () => {
       blobs.push(blob);
       return `blob:resource-${blobs.length}`;
     });
-    return { blobs, load, resolver: new ResourceUrlResolver(loader) };
+    return { blobs, load, resolver: new ResourceUrlResolver(loader, capabilities) };
   }
 
   it("resolves nested imports, images, fonts, spaces and SVG fragments relative to each sheet", async () => {
@@ -241,7 +252,7 @@ describe("ResourceUrlResolver", () => {
     resolver.dispose();
   });
 
-  it("does not alias external URLs to packaged resources and preserves data/local fragments", async () => {
+  it("removes blocked external and data URLs without aliasing archive files, while preserving local fragments", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { load, resolver } = cssGraph({});
     const css = await resolver.rewriteCss(
@@ -249,9 +260,10 @@ describe("ResourceUrlResolver", () => {
       "EPUB/chapter.xhtml",
     );
     expect(css).toContain('url("#shadow")');
-    expect(css).toContain('url("data:image/png;base64,AAAA")');
+    expect(css).not.toContain("data:");
+    expect(css).not.toContain("https:");
     expect(load).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("External CSS resource remains blocked"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("(policy;"));
     resolver.dispose();
   });
 
@@ -267,7 +279,7 @@ describe("ResourceUrlResolver", () => {
   it("CSS font references use de-obfuscated IDPF and Adobe bytes before creating blobs", async () => {
     const container = await EpubContainer.open(await loadFixture("font-obfuscation.epub"));
     const fonts = await ContentLoader.create(container);
-    const resolver = new ResourceUrlResolver(fonts);
+    const resolver = new ResourceUrlResolver(fonts, { supports: async () => true });
     const captured: Blob[] = [];
     vi.spyOn(URL, "createObjectURL").mockImplementation(blob => {
       if (!(blob instanceof Blob)) throw new Error("Expected font Blob.");
@@ -284,6 +296,66 @@ describe("ResourceUrlResolver", () => {
       expect(blob.type).toBe("font/otf");
       expect(new Uint8Array(await blob.arrayBuffer())).toEqual(plaintext);
     }
+    resolver.dispose();
+  });
+
+  it("resolves fallback stylesheet dependencies relative to the selected sheet and detects alias cycles", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { blobs, load, resolver } = cssGraph({
+      "foreign.bin": { type: "application/foreign", text: "", fallback: "styles/main.css" },
+      "styles/main.css": { type: "text/css", text: '@import "../foreign.bin";p{background:url(image.bin)}@font-face{src:url(font.bin) format("foreign")}' },
+      "styles/image.bin": { type: "application/foreign", text: "", fallback: "image.svg" },
+      "styles/font.bin": { type: "application/foreign", text: "", fallback: "font.woff2" },
+      "image.svg": { type: "image/svg+xml", text: "<svg/>" },
+      "font.woff2": { type: "font/woff2", text: "font" },
+    }, { supports: async type => type !== "application/foreign" });
+    const result = await resolver.resolveForConsumer("foreign.bin", "stylesheet");
+    expect(result).toMatchObject({ path: "styles/main.css", mediaType: "text/css" });
+    expect(load.mock.calls.map(call => call[0])).toEqual(["styles/main.css", "image.svg", "font.woff2"]);
+    expect(await blobs.at(-1)!.text()).toContain('background:url("blob:resource-1")');
+    expect(await blobs.at(-1)!.text()).not.toContain("@import");
+    expect(await blobs.at(-1)!.text()).not.toContain("format");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Cyclic CSS import omitted"));
+    resolver.dispose();
+  });
+
+  it("does not abort unrelated markup for exhausted fallbacks but retains direct missing-resource errors and raw resolution", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver } = cssGraph({
+      "bad.bin": { type: "application/foreign", text: "original bytes" },
+      "good.png": { type: "image/png", text: "supported bytes" },
+    }, { supports: async type => type === "image/png" });
+    const document = new DOMParser().parseFromString(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="bad.bin"/><img src="good.png"/></body></html>',
+      "application/xhtml+xml",
+    );
+    const references = findResourceReferencesInDocument(document, "chapter.xhtml");
+    const results = await resolver.resolveReferences(references);
+    expect(results.get(resourceResolutionKey("bad.bin", "image"))).toBeNull();
+    expect(results.get(resourceResolutionKey("good.png", "image"))?.mediaType).toBe("image/png");
+    await expect(resolver.resolve("bad.bin")).resolves.toMatch(/^blob:/);
+    await expect(resolver.resolveForConsumer("missing.png", "image")).rejects.toThrow("No manifest item");
+    resolver.dispose();
+  });
+
+  it("never aliases non-package markup URLs to archive paths and can select a declared remote resource's local fallback", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver, load } = cssGraph({
+      "https://example.test/image.png": { type: "image/png", text: "must not be read", fallback: "good.png" },
+      "good.png": { type: "image/png", text: "image bytes" },
+    });
+    const document = new DOMParser().parseFromString(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="https://example.test/image.png"/>' +
+      '<img src="file:///good.png"/><img src="data:image/png;base64,SECRET"/><img src="//example.test/good.png"/><img src="good.png"/></body></html>',
+      "application/xhtml+xml",
+    );
+    const references = findResourceReferencesInDocument(document, "chapter.xhtml", { includeUnavailable: true });
+    const results = await resolver.resolveReferences(references);
+    expect(results.get(resourceResolutionKey("https://example.test/image.png", "image"))?.path).toBe("good.png");
+    expect([...results.values()].filter(result => result === null)).toHaveLength(3);
+    expect(load.mock.calls.map(call => call[0])).toEqual(["good.png"]);
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET");
+    await expect(resolver.resolve("https://example.test/image.png")).rejects.toThrow("https URL policy");
     resolver.dispose();
   });
 });

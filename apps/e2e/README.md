@@ -53,11 +53,30 @@ push diff:
 - Shared UI, reader, engine, dependency, manifest, workflow, release, and
   unclassified changes run the complete protected browser suite.
 
+Native audio-resource failure checks run in an isolated early gate, before the
+optional codec-tool preparation and broad packaged-browser stage. They
+distinguish undecodable resources rejected by capability preflight (no playback
+source assigned) from genuine native
+failures after valid playback has started. Both must retain explicit compact
+error controls and no unhandled exceptions. The later narration gate excludes
+those tagged cases, avoiding duplicate execution while preserving isolated
+timing/playback coverage.
+
 The selector fails closed: mixed or empty/unknown diffs run everything.
 Manually dispatched and called workflows also run everything, so final release
 candidates never use a reduced browser suite.
 
 ## Running it
+
+`resource-fallbacks.spec.ts` generates original geometric fonts, solid-color
+AVIF/JPEG XL/video, and silent AAC-LC/Opus MP4 fixtures. Its GitHub CI prerequisite
+step checks for FFmpeg, `cjxl`, FontTools and Brotli and installs only missing
+tooling on the disposable runner. CI uses `/usr/bin/python3`; other environments
+can set `AMBRA_E2E_MEDIA_PYTHON` to a Python interpreter with FontTools/Brotli.
+The suite verifies consumer-aware fallback selection and reports actual native
+image capabilities separately; selecting an SVG fallback is not a JPEG XL
+conformance pass. For this conformance work, execute browser/unit tests on GitHub,
+not on the developer's Mac.
 
 ### Approved features and local simulation controls
 

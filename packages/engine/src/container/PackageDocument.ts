@@ -1,4 +1,4 @@
-import { resolveEpubPath } from "./EpubPath.js";
+import { classifyEpubReference, type NonPackageEpubReference } from "./EpubReference.js";
 import { getDescendantElementsByNS, getFirstDescendantElementByNS, getNamespacedAttribute } from "./Xml.js";
 import { elementCfiSteps } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
@@ -87,6 +87,7 @@ export class ManifestItem {
      * this content document, if any. Absent for the overwhelming
      * majority of manifest items. */
     public readonly mediaOverlayId: string | undefined = undefined,
+    public readonly location: NonPackageEpubReference | undefined = undefined,
   ) {}
 
   public hasProperty(property: string): boolean {
@@ -842,9 +843,12 @@ export class PackageDocument {
       // Manifest hrefs are relative to the OPF file's own directory, not
       // the archive root — resolveEpubPath resolves relative to opfPath's
       // directory (dropping opfPath's own final path segment).
-      const path = resolveEpubPath(opfPath, href);
+      const reference = classifyEpubReference(opfPath, href);
+      const path = reference.kind === "package" ? reference.path
+        : reference.kind === "fragment" ? opfPath : reference.url;
 
-      return new ManifestItem(id, path, mediaType, properties, fallback, mediaOverlayId);
+      return new ManifestItem(id, path, mediaType, properties, fallback, mediaOverlayId,
+        reference.kind === "package" || reference.kind === "fragment" ? undefined : reference);
     });
   }
 

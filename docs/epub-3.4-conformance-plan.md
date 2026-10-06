@@ -23,17 +23,13 @@ content, EPUB Navigation Documents, NCX fallback, reflowable and fixed-layout
 presentation, RTL spreads, recorded-audio Media Overlays, EPUB CFI locators,
 annotations, font de-obfuscation algorithms, and accessible reader controls.
 
-The first two audited blockers, `rendition:layout=roll` and packaged CSS
-resource graphs, are implemented and covered by original synthetic browser
-fixtures. The remaining main conformance
-blockers are:
-
-1. sequential navigation that includes `linear="no"` spine items;
-2. no foreign-resource fallback traversal;
-3. a visible gutter between paired fixed-layout pages;
-4. no ZIP64 v1 support;
-5. incomplete URL-scheme handling and core-media capability detection;
-6. incomplete package direction and ordered rendition-property processing.
+Roll layout, packaged CSS resource graphs, primary reading order, gapless
+fixed-layout spreads, ZIP64/OCF processing, ordered rendition properties,
+metadata whitespace, and metadata direction/language are implemented and
+protected-CI validated. The remaining Phase 1 work concerns foreign-resource
+fallbacks and core media capabilities, URL schemes/remote-resource policy, and
+vertical-writing pagination. Regression validation is not a replacement for
+a new package-bound official conformance assessment.
 
 Scripting and remote resources are product-policy decisions as well as
 compatibility work. They are not prerequisites for a secure, useful reader,
@@ -114,6 +110,48 @@ failures stop CI early without duplicating coverage or weakening the remaining
 checks. Shell restoration checks explicitly reveal auto-hidden toolbar controls;
 docking and post-reload playback checks wait for reader layout readiness.
 
+#### C34-04 implementation and assessment expectations
+
+Consumer-aware resource fallback selection is prepared for protected remote
+validation. Markup images and responsive candidates, video posters, media
+sources, linked/inline CSS imports and URLs, font-face sources, and Media
+Overlay audio select the first supported manifest candidate in source order.
+Image and font candidates are checked with the actual image/FontFace decoder;
+audio/video candidates require native MIME acceptance and decoded data without
+playback. This includes AVIF, JPEG XL, AAC-LC MP4 and Opus MP4. Capability checks
+are bounded, cancellable, session-cached and never request remote URLs.
+
+Stylesheets resolve dependencies relative to the selected fallback stylesheet,
+not the original alias. Selected source MIME hints are updated and obsolete
+CSS font format hints are removed. Missing fallback targets, cycles, and exhausted
+chains produce precise diagnostics and an accessible, localized notice without
+aborting unrelated chapter content. Missing direct markup/archive resources
+and unexpected failures still propagate. Raw Inspector/archive access and the
+existing URL revocation lifecycle remain independent of rendering selection.
+
+Image-backed objects render as images without enabling `object-src` or weakening
+the sandbox. Unsupported document/plugin objects retain their fallback children.
+This does **not** implement nested XHTML/SVG content-document object rendering,
+plugins, bindings, or scripted handlers; those remain explicit policy/compatibility
+gaps. Image replacements retain the object's element position and identifying,
+presentation and accessibility attributes, but do not expose its fallback text
+as rendered text when the image succeeds.
+
+Synthetic packaged-browser fixtures cover reflowable, fixed and roll layouts,
+all four font formats, AVIF/JPEG XL, genuine silent AAC-LC and Opus MP4 resources,
+video, object images, responsive candidates, CSS alias cycles, missing/exhausted
+chains, and fallback Media Overlay playback. All media/font fixtures are generated
+from original geometry, silence and solid colors on GitHub. No local browser or
+unit tests are used for this work.
+
+Fallback support must not be scored as JPEG XL decoder support. A Chromium build
+without a JPEG XL decoder can select an available image fallback, but a standalone
+JPEG XL criterion still fails. The original 2.2.0 assessment remains six required
+passes/five failures among eleven assessed criteria, with 194 criteria unassessed.
+Future release scoring must verify the pinned official foreign-resource and core
+media criteria against the actual packaged build. C34-04 remains open until the
+remaining native-decoder/object-policy gaps and official evidence are resolved.
+
 #### C34-05 implementation and assessment expectations
 
 Fixed-layout pairs now share the full available width without a reserved gutter
@@ -137,6 +175,48 @@ browser-window orientation lock. Regression coverage exercises ordered pairs,
 aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
 still need release assessment; these synthetic checks do not alter the score.
 
+#### C34-07 implementation and assessment expectations
+
+A shared URL classifier and conservative resource-policy milestone are prepared.
+URL preprocessing happens before scheme detection, including embedded tabs/newlines
+and leading/trailing C0/space characters. Package references retain URL-aware
+percent decoding; fragment-only references remain in-document. HTTP(S), file,
+data, protocol-relative and unsupported schemes never alias ZIP filenames.
+Remote manifest locations retain their URL identity and may select a usable
+packaged manifest fallback without fetching the original.
+
+The product policy remains offline-only for automatic publication subresources.
+Controlled HTTPS fetching is **not enabled**: there is no implicit consent,
+network retry, or remote-data cache. Existing `remote-resources` declarations
+remain diagnostics, not permission grants. HTTPS support remains a recommended
+compatibility gap and would require separate consent/privacy/offline design.
+
+Data URLs remain blocked for automatic resources and book-initiated navigation:
+the permitted data-type allowlist is empty and the decoded-payload limit is zero
+(no payload decoding). Supporting selected embedded data types later must not
+enable top-level content-document/data navigation. File URLs are blocked for both
+automatic resources and reader-controlled link actions. Only explicitly activated
+HTTP(S)/email hyperlinks can leave the publication; protocol-relative hyperlinks
+use HTTPS, and new windows retain `noopener,noreferrer`.
+
+Blocked resource attributes/candidates and CSS alternatives are removed with
+diagnostics and localized accessible notices; unrelated content remains readable.
+Unsupported hyperlink destinations become safe fragment placeholders that retain
+keyboard/link affordances and announce the policy instead of opening their
+original destination. The raw publication DOM/source and Inspector archive APIs
+remain independent. HTML posters, image-backed object/embed elements, unsupported
+iframe documents/srcdoc, and SVG image/use/feImage references are covered.
+
+This milestone does not implement nested document rendering, arbitrary external
+SVG presentation-attribute graphs, inherited resource `xml:base`, or remote/data
+loading. Those surfaces remain explicit compatibility/policy gaps; C34-07 stays
+open rather than implying complete URL/resource conformance. Prepared synthetic
+XHTML/SVG browser fixtures verify no actual requests for the exercised blocked
+resources, safe external-link dispatch, local remote-resource fallbacks and SVG
+symbol references. Their regression results do not change the original partial
+official score; the pinned file/data/navigation criteria require a separate
+package-bound assessment.
+
 #### C34-08 implementation and assessment expectations
 
 Package and metadata-element `dir` and `xml:lang` are retained with each nonempty
@@ -156,7 +236,7 @@ Content-resource language/direction is not inferred from package metadata or
 informational `dc:language`.
 
 Generated Arabic, Hebrew, Persian, mixed-script and unknown-value regressions
-are prepared for protected remote validation. They are not official conformance
+passed protected remote validation in #355. They are not official conformance
 passes; release assessments must still evaluate the corresponding criteria.
 
 #### C34-19 implementation and assessment expectations
@@ -167,12 +247,13 @@ This includes identifiers, dates, repeated creator/subject/contributor values,
 refinements, and legacy meta `content` attributes. Meaningful non-ASCII spaces
 are preserved. Unique-identifier selection, main-title/creator source order,
 optional empty-value handling, and required-value errors remain unchanged.
-Regression coverage is prepared for protected remote validation; official
+Regression coverage passed protected remote validation in #355; official
 criterion assessment and the release conformance score remain separate.
 
 #### C34-06 implementation and assessment expectations
 
-C34-06 implementation is prepared but still awaits protected remote validation.
+C34-06 is implemented and protected-CI validated in #355, including the actual
+65,536-entry archive fixture.
 ZIP64 v1 EOCD/locator and conditional extended information fields are parsed
 without rounding unsigned integers. ZIP32 behavior, Store/Deflate, CRC checking,
 and supplied-buffer boundaries remain covered. Native ZIP encryption, unsupported

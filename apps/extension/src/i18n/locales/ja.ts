@@ -107,6 +107,8 @@ export const ja: StringCatalog = {
   "narration.loading": "朗読を読み込み中…",
   "narration.browsing": "朗読とは別の箇所を読んでいます。",
   "narration.error": "朗読を再生できませんでした。",
+  "reader.blockedLink": "安全のため、この本からファイル、データ、未対応のリンクは開けません。",
+  "reader.unsupportedResources": "この本の一部の画像、フォント、メディアは未対応で、利用できる代替リソースもありません。読書は続けられます。",
   "library.pageTitle": "Ambra — ライブラリ",
   "library.toolbar": "ライブラリの操作",
   "library.sortNewest": "追加日（新しい順）",
