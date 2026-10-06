@@ -199,215 +199,213 @@ describe("ZipArchive", () => {
       view.setUint32(eocdOffset + 16, 0xffffffff, true);
     });
 
-    describe("ZIP64 v1 and OCF ZIP constraints", () => {
-      const fieldCombinations = [
-        [],
-        ["uncompressedSize"],
-        ["compressedSize"],
-        ["localHeaderOffset"],
-        ["diskNumber"],
-        ["compressedSize", "localHeaderOffset"],
-        ["uncompressedSize", "compressedSize", "localHeaderOffset", "diskNumber"],
-      ] satisfies readonly Zip64FixtureField[][];
-      it.each(fieldCombinations.map((fields) => ({ fields })))(
-        "expands only sentinel fields in their specified order: %j",
-        async ({ fields }) => {
-          const fixture = singleEntryZipFixture({ zip64: true, fields });
-          const archive = ZipArchive.open(fixture.bytes);
-          archive.validateOcfHeaders();
-          expect(archive.entries).toHaveLength(1);
-          expect(await archive.requireEntry("file.txt").readText()).toBe("hello");
-        },
-      );
+    expect(() => ZipArchive.open(bytes)).toThrow(ZipFormatError);
+  });
 
-      it("reads ZIP64 records relative to a supplied nonzero-offset view", async () => {
-        const fixture = singleEntryZipFixture({ zip64: true });
-        const surrounding = new Uint8Array(fixture.bytes.length + 80);
-        surrounding.set(fixture.bytes, 40);
-        const archive = ZipArchive.open(surrounding.subarray(40, 40 + fixture.bytes.length));
-        expect(await archive.requireEntry("file.txt").readText()).toBe("hello");
-      });
-
-      it("supports a ZIP64 entry count above the ZIP32 maximum", async () => {
-        const count = 65_536;
-        const entries = Object.fromEntries(
-          Array.from({ length: count }, (_, index) => [`f${index}`, new Uint8Array()]),
-        );
-        const archive = ZipArchive.open(zip64Envelope(zipSync(entries, { level: 0 }), count));
-        expect(archive.entries).toHaveLength(count);
-        expect(await archive.requireEntry(`f${count - 1}`).read()).toEqual(new Uint8Array());
-      });
-
-      it.each([24, 32, 40, 48])("rejects unsafe ZIP64 EOCD integers at field %s", (offset) => {
-        const fixture = singleEntryZipFixture({ zip64: true });
-        new DataView(fixture.bytes.buffer).setBigUint64(
-          fixture.zip64EndOffset + offset,
-          2n ** 53n,
-          true,
-        );
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("safe integer");
-      });
-
-      it("rejects an unsafe ZIP64 locator offset", () => {
-        const fixture = singleEntryZipFixture({ zip64: true });
-        new DataView(fixture.bytes.buffer).setBigUint64(
-          fixture.zip64LocatorOffset + 8,
-          2n ** 53n,
-          true,
-        );
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("safe integer");
-      });
-
-      it("rejects unsafe extended-information sizes before decompression", () => {
-        const fixture = singleEntryZipFixture({ zip64: true });
-        new DataView(fixture.bytes.buffer).setBigUint64(
-          fixture.centralExtraOffset + 4,
-          2n ** 53n,
-          true,
-        );
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("safe integer");
-      });
-
-      it("rejects a truncated ZIP64 record and unsupported version 2", () => {
-        const short = singleEntryZipFixture({ zip64: true });
-        new DataView(short.bytes.buffer).setBigUint64(short.zip64EndOffset + 4, 43n, true);
-        expect(() => ZipArchive.open(short.bytes)).toThrow("bounds");
-        const version2 = singleEntryZipFixture({ zip64: true });
-        new DataView(version2.bytes.buffer).setUint16(version2.zip64EndOffset + 14, 62, true);
-        expect(() => ZipArchive.open(version2.bytes)).toThrow("only v1");
-      });
-
-      it("rejects missing and truncated ZIP64 entry extra fields", () => {
-        const missing = singleEntryZipFixture({ zip64: true });
-        new DataView(missing.bytes.buffer).setUint16(missing.centralExtraOffset, 2, true);
-        expect(() => ZipArchive.open(missing.bytes)).toThrow("Missing required ZIP64");
-        const short = singleEntryZipFixture({ zip64: true, fields: ["uncompressedSize"] });
-        new DataView(short.bytes.buffer).setUint16(short.centralExtraOffset + 2, 7, true);
-        new DataView(short.bytes.buffer).setUint16(short.directoryOffset + 30, 11, true);
-        expect(() => ZipArchive.open(short.bytes)).toThrow("Truncated ZIP64");
-      });
-
-      it.each([16, 20])("rejects ZIP64 multi-disk fields at offset %s", (offset) => {
-        const fixture = singleEntryZipFixture({ zip64: true });
-        new DataView(fixture.bytes.buffer).setUint32(fixture.zip64EndOffset + offset, 1, true);
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("Multi-disk");
-      });
-
-      it("rejects a multi-disk ZIP64 locator and inconsistent legacy count", () => {
-        const fixture = singleEntryZipFixture({ zip64: true });
-        const view = new DataView(fixture.bytes.buffer);
-        view.setUint32(fixture.zip64LocatorOffset + 16, 2, true);
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("Multi-disk");
-        view.setUint32(fixture.zip64LocatorOffset + 16, 1, true);
-        view.setUint16(fixture.endOffset + 10, 2, true);
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("disagree");
-      });
-
-      it.each([1, 0x40, 0x2000])("rejects native encryption flag %s in either header", (flag) => {
-        const central = singleEntryZipFixture();
-        new DataView(central.bytes.buffer).setUint16(central.directoryOffset + 8, flag, true);
-        expect(() => ZipArchive.open(central.bytes)).toThrow("encryption");
-        const local = singleEntryZipFixture();
-        new DataView(local.bytes.buffer).setUint16(6, flag, true);
-        expect(() => ZipArchive.open(local.bytes).validateOcfHeaders()).toThrow("encryption");
-      });
-
-      it.each([0, 21, 46, 62])("rejects unsupported version %s in either header", (version) => {
-        const central = singleEntryZipFixture();
-        new DataView(central.bytes.buffer).setUint16(central.directoryOffset + 6, version, true);
-        expect(() => ZipArchive.open(central.bytes)).toThrow("version-needed-to-extract");
-        const local = singleEntryZipFixture();
-        new DataView(local.bytes.buffer).setUint16(4, version, true);
-        expect(() => ZipArchive.open(local.bytes).validateOcfHeaders()).toThrow(
-          "version-needed-to-extract",
-        );
-      });
-
-      it.each([1, 9, 99])("rejects unsupported compression method %s", (method) => {
-        const fixture = singleEntryZipFixture({ method });
-        expect(() => ZipArchive.open(fixture.bytes)).toThrow("Unsupported compression");
-      });
-
-      it("requires strict UTF-8 names without stripping a filename's BOM character", async () => {
-        expect(() =>
-          ZipArchive.open(singleEntryZipFixture({ nameBytes: new Uint8Array([0xff]) }).bytes),
-        ).toThrow("UTF-8");
-        const archive = ZipArchive.open(singleEntryZipFixture({ name: "\uFEFFfile.txt" }).bytes);
-        expect(await archive.requireEntry("\uFEFFfile.txt").readText()).toBe("hello");
-        expect(archive.getEntry("file.txt")).toBeUndefined();
-      });
-
-      for (const width of [32, 64] as const) {
-        for (const signed of [false, true]) {
-          it(`reads ${signed ? "signed" : "unsigned"} ${width}-bit data descriptors`, async () => {
-            const fixture = singleEntryZipFixture({
-              zip64: width === 64,
-              descriptor: width,
-              signedDescriptor: signed,
-            });
-            const archive = ZipArchive.open(fixture.bytes);
-            archive.validateOcfHeaders();
-            expect(await archive.requireEntry("file.txt").readText()).toBe("hello");
-          });
-        }
-      }
-
-      it("rejects a descriptor that disagrees with central metadata", () => {
-        const fixture = singleEntryZipFixture({ descriptor: 32 });
-        new DataView(fixture.bytes.buffer).setUint32(fixture.descriptorOffset + 4, 123, true);
-        expect(() => ZipArchive.open(fixture.bytes).validateOcfHeaders()).toThrow(
-          "data descriptor",
-        );
-      });
-
-      it.each([
-        { maxEntryCount: 0 },
-        { maxEntryUncompressedBytes: 4 },
-        { maxTotalUncompressedBytes: 4 },
-      ])("enforces configured resource limits: %j", (limits) => {
-        expect(() => ZipArchive.open(singleEntryZipFixture().bytes, limits)).toThrow("configured");
-      });
-
-      it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
-        "rejects invalid limits: %s",
-        (limit) => {
-          expect(() =>
-            ZipArchive.open(singleEntryZipFixture().bytes, { maxEntryCount: limit }),
-          ).toThrow(RangeError);
-        },
-      );
-
-      it("bounds actual Deflate output rather than trusting declared small sizes", async () => {
-        const data = new Uint8Array(32_768).fill(65);
-        const fixture = singleEntryZipFixture({
-          data,
-          compressedData: deflateRawSync(data),
-          method: 8,
-        });
-        const view = new DataView(fixture.bytes.buffer);
-        view.setUint32(22, 1, true);
-        view.setUint32(fixture.directoryOffset + 24, 1, true);
-        const archive = ZipArchive.open(fixture.bytes, { maxEntryUncompressedBytes: 1 });
-        await expect(archive.requireEntry("file.txt").read()).rejects.toThrow(
-          "Deflate output exceeds",
-        );
-      });
-
-      it("preserves successful Deflate and CRC verification for ZIP64 entries", async () => {
-        const data = new TextEncoder().encode("ZIP64 Deflate content ".repeat(200));
-        const fixture = singleEntryZipFixture({
-          data,
-          compressedData: deflateRawSync(data),
-          method: 8,
-          zip64: true,
-        });
+  describe("ZIP64 v1 and OCF ZIP constraints", () => {
+    const fieldCombinations = [
+      [],
+      ["uncompressedSize"],
+      ["compressedSize"],
+      ["localHeaderOffset"],
+      ["diskNumber"],
+      ["compressedSize", "localHeaderOffset"],
+      ["uncompressedSize", "compressedSize", "localHeaderOffset", "diskNumber"],
+    ] satisfies readonly Zip64FixtureField[][];
+    it.each(fieldCombinations.map((fields) => ({ fields })))(
+      "expands only sentinel fields in their specified order: %j",
+      async ({ fields }) => {
+        const fixture = singleEntryZipFixture({ zip64: true, fields });
         const archive = ZipArchive.open(fixture.bytes);
         archive.validateOcfHeaders();
-        expect(await archive.requireEntry("file.txt").read()).toEqual(data);
-      });
+        expect(archive.entries).toHaveLength(1);
+        expect(await archive.requireEntry("file.txt").readText()).toBe("hello");
+      },
+    );
+
+    it("reads ZIP64 records relative to a supplied nonzero-offset view", async () => {
+      const fixture = singleEntryZipFixture({ zip64: true });
+      const surrounding = new Uint8Array(fixture.bytes.length + 80);
+      surrounding.set(fixture.bytes, 40);
+      const archive = ZipArchive.open(surrounding.subarray(40, 40 + fixture.bytes.length));
+      expect(await archive.requireEntry("file.txt").readText()).toBe("hello");
     });
 
-    expect(() => ZipArchive.open(bytes)).toThrow(ZipFormatError);
+    it("supports a ZIP64 entry count above the ZIP32 maximum", async () => {
+      const count = 65_536;
+      const entries = Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [`f${index}`, new Uint8Array()]),
+      );
+      const archive = ZipArchive.open(zip64Envelope(zipSync(entries, { level: 0 }), count));
+      expect(archive.entries).toHaveLength(count);
+      expect(await archive.requireEntry(`f${count - 1}`).read()).toEqual(new Uint8Array());
+    });
+
+    it.each([24, 32, 40, 48])("rejects unsafe ZIP64 EOCD integers at field %s", (offset) => {
+      const fixture = singleEntryZipFixture({ zip64: true });
+      new DataView(fixture.bytes.buffer).setBigUint64(
+        fixture.zip64EndOffset + offset,
+        2n ** 53n,
+        true,
+      );
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("safe integer");
+    });
+
+    it("rejects an unsafe ZIP64 locator offset", () => {
+      const fixture = singleEntryZipFixture({ zip64: true });
+      new DataView(fixture.bytes.buffer).setBigUint64(
+        fixture.zip64LocatorOffset + 8,
+        2n ** 53n,
+        true,
+      );
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("safe integer");
+    });
+
+    it("rejects unsafe extended-information sizes before decompression", () => {
+      const fixture = singleEntryZipFixture({ zip64: true });
+      new DataView(fixture.bytes.buffer).setBigUint64(
+        fixture.centralExtraOffset + 4,
+        2n ** 53n,
+        true,
+      );
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("safe integer");
+    });
+
+    it("rejects a truncated ZIP64 record and unsupported version 2", () => {
+      const short = singleEntryZipFixture({ zip64: true });
+      new DataView(short.bytes.buffer).setBigUint64(short.zip64EndOffset + 4, 43n, true);
+      expect(() => ZipArchive.open(short.bytes)).toThrow("bounds");
+      const version2 = singleEntryZipFixture({ zip64: true });
+      new DataView(version2.bytes.buffer).setUint16(version2.zip64EndOffset + 14, 62, true);
+      expect(() => ZipArchive.open(version2.bytes)).toThrow("only v1");
+    });
+
+    it("rejects missing and truncated ZIP64 entry extra fields", () => {
+      const missing = singleEntryZipFixture({ zip64: true });
+      new DataView(missing.bytes.buffer).setUint16(missing.centralExtraOffset, 2, true);
+      expect(() => ZipArchive.open(missing.bytes)).toThrow("Missing required ZIP64");
+      const short = singleEntryZipFixture({ zip64: true, fields: ["uncompressedSize"] });
+      new DataView(short.bytes.buffer).setUint16(short.centralExtraOffset + 2, 7, true);
+      new DataView(short.bytes.buffer).setUint16(short.directoryOffset + 30, 11, true);
+      expect(() => ZipArchive.open(short.bytes)).toThrow("Truncated ZIP64");
+    });
+
+    it.each([16, 20])("rejects ZIP64 multi-disk fields at offset %s", (offset) => {
+      const fixture = singleEntryZipFixture({ zip64: true });
+      new DataView(fixture.bytes.buffer).setUint32(fixture.zip64EndOffset + offset, 1, true);
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("Multi-disk");
+    });
+
+    it("rejects a multi-disk ZIP64 locator and inconsistent legacy count", () => {
+      const fixture = singleEntryZipFixture({ zip64: true });
+      const view = new DataView(fixture.bytes.buffer);
+      view.setUint32(fixture.zip64LocatorOffset + 16, 2, true);
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("Multi-disk");
+      view.setUint32(fixture.zip64LocatorOffset + 16, 1, true);
+      view.setUint16(fixture.endOffset + 10, 2, true);
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("disagree");
+    });
+
+    it.each([1, 0x40, 0x2000])("rejects native encryption flag %s in either header", (flag) => {
+      const central = singleEntryZipFixture();
+      new DataView(central.bytes.buffer).setUint16(central.directoryOffset + 8, flag, true);
+      expect(() => ZipArchive.open(central.bytes)).toThrow("encryption");
+      const local = singleEntryZipFixture();
+      new DataView(local.bytes.buffer).setUint16(6, flag, true);
+      expect(() => ZipArchive.open(local.bytes).validateOcfHeaders()).toThrow("encryption");
+    });
+
+    it.each([0, 21, 46, 62])("rejects unsupported version %s in either header", (version) => {
+      const central = singleEntryZipFixture();
+      new DataView(central.bytes.buffer).setUint16(central.directoryOffset + 6, version, true);
+      expect(() => ZipArchive.open(central.bytes)).toThrow("version-needed-to-extract");
+      const local = singleEntryZipFixture();
+      new DataView(local.bytes.buffer).setUint16(4, version, true);
+      expect(() => ZipArchive.open(local.bytes).validateOcfHeaders()).toThrow(
+        "version-needed-to-extract",
+      );
+    });
+
+    it.each([1, 9, 99])("rejects unsupported compression method %s", (method) => {
+      const fixture = singleEntryZipFixture({ method });
+      expect(() => ZipArchive.open(fixture.bytes)).toThrow("Unsupported compression");
+    });
+
+    it("requires strict UTF-8 names without stripping a filename's BOM character", async () => {
+      expect(() =>
+        ZipArchive.open(singleEntryZipFixture({ nameBytes: new Uint8Array([0xff]) }).bytes),
+      ).toThrow("UTF-8");
+      const archive = ZipArchive.open(singleEntryZipFixture({ name: "\uFEFFfile.txt" }).bytes);
+      expect(await archive.requireEntry("\uFEFFfile.txt").readText()).toBe("hello");
+      expect(archive.getEntry("file.txt")).toBeUndefined();
+    });
+
+    for (const width of [32, 64] as const) {
+      for (const signed of [false, true]) {
+        it(`reads ${signed ? "signed" : "unsigned"} ${width}-bit data descriptors`, async () => {
+          const fixture = singleEntryZipFixture({
+            zip64: width === 64,
+            descriptor: width,
+            signedDescriptor: signed,
+          });
+          const archive = ZipArchive.open(fixture.bytes);
+          archive.validateOcfHeaders();
+          expect(await archive.requireEntry("file.txt").readText()).toBe("hello");
+        });
+      }
+    }
+
+    it("rejects a descriptor that disagrees with central metadata", () => {
+      const fixture = singleEntryZipFixture({ descriptor: 32 });
+      new DataView(fixture.bytes.buffer).setUint32(fixture.descriptorOffset + 4, 123, true);
+      expect(() => ZipArchive.open(fixture.bytes).validateOcfHeaders()).toThrow("data descriptor");
+    });
+
+    it.each([
+      { maxEntryCount: 0 },
+      { maxEntryUncompressedBytes: 4 },
+      { maxTotalUncompressedBytes: 4 },
+    ])("enforces configured resource limits: %j", (limits) => {
+      expect(() => ZipArchive.open(singleEntryZipFixture().bytes, limits)).toThrow("configured");
+    });
+
+    it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
+      "rejects invalid limits: %s",
+      (limit) => {
+        expect(() =>
+          ZipArchive.open(singleEntryZipFixture().bytes, { maxEntryCount: limit }),
+        ).toThrow(RangeError);
+      },
+    );
+
+    it("bounds actual Deflate output rather than trusting declared small sizes", async () => {
+      const data = new Uint8Array(32_768).fill(65);
+      const fixture = singleEntryZipFixture({
+        data,
+        compressedData: deflateRawSync(data),
+        method: 8,
+      });
+      const view = new DataView(fixture.bytes.buffer);
+      view.setUint32(22, 1, true);
+      view.setUint32(fixture.directoryOffset + 24, 1, true);
+      const archive = ZipArchive.open(fixture.bytes, { maxEntryUncompressedBytes: 1 });
+      await expect(archive.requireEntry("file.txt").read()).rejects.toThrow(
+        "Deflate output exceeds",
+      );
+    });
+
+    it("preserves successful Deflate and CRC verification for ZIP64 entries", async () => {
+      const data = new TextEncoder().encode("ZIP64 Deflate content ".repeat(200));
+      const fixture = singleEntryZipFixture({
+        data,
+        compressedData: deflateRawSync(data),
+        method: 8,
+        zip64: true,
+      });
+      const archive = ZipArchive.open(fixture.bytes);
+      archive.validateOcfHeaders();
+      expect(await archive.requireEntry("file.txt").read()).toEqual(data);
+    });
   });
 
   it("reports unsupported multi-disk records as ZipFormatError", () => {
