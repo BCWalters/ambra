@@ -1,4 +1,4 @@
-import { EpubCfi } from "@ambra/engine";
+import { EpubCfi, EpubContainer } from "@ambra/engine";
 import type { HighlightStyle, BookIdentifier, AccessibilityMetadata, MetadataLocalization } from "@ambra/engine";
 import type { LocalePreference } from "../i18n/Locale.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
@@ -86,7 +86,7 @@ export interface BookMetadata {
    * by the Library's own details flyout). `undefined` for books imported
    * before this field existed. */
   readonly identifiers: readonly BookIdentifier[] | undefined;
-  /** EPUB Accessibility 1.1 metadata (see `AccessibilityMetadata`) —
+  /** EPUB Accessibility 1.2 metadata (see `AccessibilityMetadata`) —
    * `undefined` for books imported before this field existed, or that
    * declare none. */
   readonly accessibility: AccessibilityMetadata | undefined;
@@ -443,6 +443,23 @@ export class LibraryDatabase {
    * open `PackageDocument` (description, publisher, every identifier). */
   public getBookMetadata(id: string): Promise<BookMetadata | undefined> {
     return this.get<BookMetadata>(BOOKS_STORE, id);
+  }
+
+  public async refreshAccessibilityMetadata(bookId: string): Promise<void> {
+    const book = await this.getBookMetadata(bookId);
+    if (!book) throw new Error("Cannot refresh accessibility metadata: the library record is missing.");
+    if (book.accessibility?.declarations !== undefined) return;
+    const file = await this.getBookFile(bookId);
+    if (!file) throw new Error("Cannot refresh accessibility metadata: the stored EPUB file is missing.");
+    const container = await EpubContainer.open(new Uint8Array(await file.arrayBuffer()));
+    const pkg = await container.getPackageDocument();
+    await this.updateBookMetadata(bookId, current => current.accessibility?.declarations !== undefined
+      ? current : {
+        ...current,
+        accessibility: pkg.metadata.accessibility,
+        metadataLocalization: current.metadataLocalization ?? pkg.metadata.localization,
+      });
+    this.booksChanged();
   }
 
   public dismissNarrationNotice(bookId: string): Promise<void> {

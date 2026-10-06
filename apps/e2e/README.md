@@ -62,6 +62,14 @@ error controls and no unhandled exceptions. The later narration gate excludes
 those tagged cases, avoiding duplicate execution while preserving isolated
 timing/playback coverage.
 
+`navigation-accessibility-conformance.spec.ts` uses original EPUB2,
+hybrid Nav/NCX, and modern Nav fixtures. It checks actual auxiliary-list target
+activation, explicit navigation recovery, publisher-claim presentation in both
+Reader and Library, and local refresh of older cached metadata. Publisher
+report/contact strings stay inert: the fixtures assert that no requests or
+active metadata links are introduced. These regressions run early in protected
+CI; they are not substitutes for the pinned official release assessment.
+
 The selector fails closed: mixed or empty/unknown diffs run everything.
 Manually dispatched and called workflows also run everything, so final release
 candidates never use a reduced browser suite.

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { FC } from "react";
 import { Body1, Button, Caption1, Tooltip } from "@fluentui/react-components";
 import { DismissRegular, HomeRegular, PinOffRegular, PinRegular } from "@fluentui/react-icons";
-import { NavPoint } from "@ambra/engine";
+import { NavPoint, type AuxiliaryNavigationList } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SELECTED_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
@@ -136,6 +136,7 @@ const NavTree: FC<NavTreeProps> = ({ items, currentPath, onSelect, depth, pageNu
 
 export interface TocPanelProps {
   items: readonly NavPoint[];
+  additionalLists?: readonly AuxiliaryNavigationList[] | undefined;
   /** Full target (path and optional fragment) of the current TOC entry. */
   currentPath: string | undefined;
   /** Archive-relative path of the book's very first spine item (see
@@ -200,6 +201,7 @@ export interface TocPanelProps {
  * product direction. */
 export const TocPanel: FC<TocPanelProps> = ({
   items,
+  additionalLists = [],
   currentPath,
   firstSpinePath,
   pageNumbers,
@@ -396,6 +398,21 @@ export const TocPanel: FC<TocPanelProps> = ({
             pageNumbers={pageNumbers}
             accent={chromeTheme.accentForeground}
           />
+          {additionalLists.map((list, index) => (
+            <details key={index} style={{ marginTop: 12 }}>
+              <summary style={{ padding: "7px 10px", cursor: "pointer" }}>
+                {list.label || t("toc.otherNavigation")}
+              </summary>
+              <NavTree
+                items={list.items}
+                currentPath={currentPath}
+                onSelect={onSelect}
+                depth={0}
+                pageNumbers={pageNumbers}
+                accent={chromeTheme.accentForeground}
+              />
+            </details>
+          ))}
         </div>
       </nav>
     </>

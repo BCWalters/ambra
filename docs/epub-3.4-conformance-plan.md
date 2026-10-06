@@ -284,6 +284,30 @@ device. Synthetic coverage does not change the official conformance score.
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
 | C34-17 | Outdated and deprecated vocabulary policy         | Document and test intentional support or non-support for outdated rendition properties, prefixed CSS, `epub:switch`, `epub:trigger`, bindings, tours, and superseded metadata. | [#344](https://github.com/BCWalters/ambra/issues/344) |
 
+#### C34-15/C34-16 prepared implementation
+
+Accessibility 1.2 publisher claims now retain repeatable sufficient-access-mode
+alternatives, conformance, certifiers, dates, credentials, reports and contacts,
+including IDs, refinements and per-value language/direction. Refined claims are
+not incorrectly promoted to global publication claims. Reader and Library use
+the same accessible presentation, with explicit publisher provenance and no
+independent WCAG/certification claim. Missing claims and unavailable legacy
+cached metadata are distinct; old stored records refresh lazily from local EPUB
+bytes without overwriting concurrent enrichment or reviving deleted books.
+Report/contact values are inert text and never initiate network requests.
+
+Malformed, missing and empty modern Nav can recover to a valid packaged NCX
+with diagnostics and a localized notice. Unexpected errors still propagate.
+NCX auxiliary lists appear in separate labeled disclosures; OPF2 guide becomes
+fallback landmarks without duplicating authored modern landmarks. Versioned
+EPUB2/hybrid/modern fixtures verify source priority, actual fragment activation,
+blocked legacy targets and shared accessibility presentation/cache refresh.
+
+These additions are prepared for protected remote validation under #339/#343.
+They do not change the official score. The maintained
+[legacy compatibility inventory](epub-legacy-compatibility.md) records tours and
+other intentional omissions separately from current-spec requirements.
+
 ### Phase 3: measurable conformance process
 
 Complete the existing-suite timing, redundancy, parallelism, and change-selection
@@ -404,7 +428,7 @@ Currently supported or partially supported:
 
 Not currently supported:
 
-- OPF2 guide, tours, and NCX `navList`;
+- OPF2 tours (guide and NCX `navList` support are prepared under C34-16);
 - package collections;
 - bindings;
 - `epub:switch` and `epub:trigger`;
@@ -417,6 +441,9 @@ Not currently supported:
 HTML-syntax content documents are not a gap: EPUB 3.4 requires XML/XHTML
 content. Digital-signature validation, RDFa/Microdata/ITS processing, form
 submission, general TTS, and DRM are optional or outside Ambra's intended core.
+
+The detailed, maintained policy and focused test references are in the
+[legacy compatibility inventory](epub-legacy-compatibility.md).
 
 ## Definition of done for an implementation issue
 

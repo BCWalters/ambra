@@ -29,7 +29,10 @@ export {
   NavigationList,
   NavPoint,
 } from "./navigation/NavigationDocument.js";
-export type { NavigationListType } from "./navigation/NavigationDocument.js";
+export type { NavigationListType,
+  AuxiliaryNavigationList,
+} from "./navigation/NavigationDocument.js";
+export type { GuideReference } from "./container/PackageDocument.js";
 export {
   ContentLoader,
   ContentDocument,

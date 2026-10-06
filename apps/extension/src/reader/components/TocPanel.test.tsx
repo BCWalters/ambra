@@ -6,6 +6,34 @@ import { NavPoint } from "@ambra/engine";
 import { TocPanel } from "./TocPanel.js";
 
 describe("Contents presentation", () => {
+  it("exposes labeled legacy lists as separate native disclosures, retaining primary contents", () => {
+    const markup = renderToStaticMarkup(
+      <TocPanel
+        items={[new NavPoint("Chapter", "chapter.xhtml", undefined, [])]}
+        additionalLists={[
+          {
+            label: "Illustrations",
+            items: [new NavPoint("Figure one", "chapter.xhtml", "figure", [])],
+          },
+        ]}
+        currentPath={undefined}
+        firstSpinePath="chapter.xhtml"
+        pageNumbers={new Map()}
+        onSelect={vi.fn()}
+        open
+        pinned={false}
+        onTogglePin={vi.fn()}
+        onRequestClose={vi.fn()}
+        scrubberVisible={false}
+      />,
+    );
+    const container = document.createElement("div");
+    container.innerHTML = markup;
+    expect(container.querySelector("summary")?.textContent).toBe("Illustrations");
+    expect(container.querySelector("details")?.hasAttribute("open")).toBe(false);
+    expect(container.querySelector("details button")?.textContent).toContain("Figure one");
+    expect(container.querySelector("nav")?.textContent).toContain("Chapter");
+  });
   it("restores a retained dock without stealing focus from the other panel or reading surface", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");

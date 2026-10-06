@@ -14,7 +14,8 @@ import { PaneDisclosure } from "../../components/PaneSections.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 import { BookSaveAsAction } from "../../components/BookSaveAsAction.js";
 import { FriendlyError } from "./FriendlyError.js";
-import { metadataPropertyContext, metadataTextContext } from "@ambra/engine";
+import { metadataTextContext } from "@ambra/engine";
+import { BookAccessibilityRows } from "../../components/BookAccessibilityRows.js";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -231,11 +232,10 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
               )}
 
               {(knownIdentifiers.length > 0 || details.fileName || onSaveAs || details.fileSizeBytes !== undefined || details.rights ||
-                details.accessibility.accessibilitySummary || details.accessibility.accessibilityFeatures.length > 0) && (
+                details.accessibility.accessibilitySummary || details.accessibility.accessibilityFeatures.length > 0 || (details.accessibility.declarations?.length ?? 0) > 0) && (
                 <PaneDisclosure title={t("bookDetails.publicationDetails")}>
                   <BookRightsRow label={t("bookDetails.rights")} value={details.rights} context={metadataTextContext(details.metadataLocalization, "rights", details.rights, 0)} />
-                  <DetailRow small label={t("bookDetails.accessibilitySummary")} value={details.accessibility.accessibilitySummary} context={metadataPropertyContext(details.metadataLocalization, "schema:accessibilitySummary", details.accessibility.accessibilitySummary)} />
-                  <DetailRow small label={t("bookDetails.accessibilityFeatures")} value={details.accessibility.accessibilityFeatures.join(", ")} />
+                  <BookAccessibilityRows metadata={details.accessibility} localization={details.metadataLocalization} />
                   <DetailRow
                     small
                     label={t("bookDetails.fileSize")}
