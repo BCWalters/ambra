@@ -23,17 +23,13 @@ content, EPUB Navigation Documents, NCX fallback, reflowable and fixed-layout
 presentation, RTL spreads, recorded-audio Media Overlays, EPUB CFI locators,
 annotations, font de-obfuscation algorithms, and accessible reader controls.
 
-The first two audited blockers, `rendition:layout=roll` and packaged CSS
-resource graphs, are implemented and covered by original synthetic browser
-fixtures. The remaining main conformance
-blockers are:
-
-1. sequential navigation that includes `linear="no"` spine items;
-2. no foreign-resource fallback traversal;
-3. a visible gutter between paired fixed-layout pages;
-4. no ZIP64 v1 support;
-5. incomplete URL-scheme handling and core-media capability detection;
-6. incomplete package direction and ordered rendition-property processing.
+Roll layout, packaged CSS resource graphs, primary reading order, gapless
+fixed-layout spreads, ZIP64/OCF processing, ordered rendition properties,
+metadata whitespace, and metadata direction/language are implemented and
+protected-CI validated. The remaining Phase 1 work concerns foreign-resource
+fallbacks and core media capabilities, URL schemes/remote-resource policy, and
+vertical-writing pagination. Regression validation is not a replacement for
+a new package-bound official conformance assessment.
 
 Scripting and remote resources are product-policy decisions as well as
 compatibility work. They are not prerequisites for a secure, useful reader,
@@ -114,6 +110,48 @@ failures stop CI early without duplicating coverage or weakening the remaining
 checks. Shell restoration checks explicitly reveal auto-hidden toolbar controls;
 docking and post-reload playback checks wait for reader layout readiness.
 
+#### C34-04 implementation and assessment expectations
+
+Consumer-aware resource fallback selection is prepared for protected remote
+validation. Markup images and responsive candidates, video posters, media
+sources, linked/inline CSS imports and URLs, font-face sources, and Media
+Overlay audio select the first supported manifest candidate in source order.
+Image and font candidates are checked with the actual image/FontFace decoder;
+audio/video candidates require native MIME acceptance and decoded data without
+playback. This includes AVIF, JPEG XL, AAC-LC MP4 and Opus MP4. Capability checks
+are bounded, cancellable, session-cached and never request remote URLs.
+
+Stylesheets resolve dependencies relative to the selected fallback stylesheet,
+not the original alias. Selected source MIME hints are updated and obsolete
+CSS font format hints are removed. Missing fallback targets, cycles, and exhausted
+chains produce precise diagnostics and an accessible, localized notice without
+aborting unrelated chapter content. Missing direct markup/archive resources
+and unexpected failures still propagate. Raw Inspector/archive access and the
+existing URL revocation lifecycle remain independent of rendering selection.
+
+Image-backed objects render as images without enabling `object-src` or weakening
+the sandbox. Unsupported document/plugin objects retain their fallback children.
+This does **not** implement nested XHTML/SVG content-document object rendering,
+plugins, bindings, or scripted handlers; those remain explicit policy/compatibility
+gaps. Image replacements retain the object's element position and identifying,
+presentation and accessibility attributes, but do not expose its fallback text
+as rendered text when the image succeeds.
+
+Synthetic packaged-browser fixtures cover reflowable, fixed and roll layouts,
+all four font formats, AVIF/JPEG XL, genuine silent AAC-LC and Opus MP4 resources,
+video, object images, responsive candidates, CSS alias cycles, missing/exhausted
+chains, and fallback Media Overlay playback. All media/font fixtures are generated
+from original geometry, silence and solid colors on GitHub. No local browser or
+unit tests are used for this work.
+
+Fallback support must not be scored as JPEG XL decoder support. A Chromium build
+without a JPEG XL decoder can select an available image fallback, but a standalone
+JPEG XL criterion still fails. The original 2.2.0 assessment remains six required
+passes/five failures among eleven assessed criteria, with 194 criteria unassessed.
+Future release scoring must verify the pinned official foreign-resource and core
+media criteria against the actual packaged build. C34-04 remains open until the
+remaining native-decoder/object-policy gaps and official evidence are resolved.
+
 #### C34-05 implementation and assessment expectations
 
 Fixed-layout pairs now share the full available width without a reserved gutter
@@ -172,7 +210,8 @@ criterion assessment and the release conformance score remain separate.
 
 #### C34-06 implementation and assessment expectations
 
-C34-06 implementation is prepared but still awaits protected remote validation.
+C34-06 is implemented and protected-CI validated in #355, including the actual
+65,536-entry archive fixture.
 ZIP64 v1 EOCD/locator and conditional extended information fields are parsed
 without rounding unsigned integers. ZIP32 behavior, Store/Deflate, CRC checking,
 and supplied-buffer boundaries remain covered. Native ZIP encryption, unsupported

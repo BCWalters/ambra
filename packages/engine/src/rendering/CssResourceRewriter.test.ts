@@ -74,4 +74,23 @@ describe("publisher CSS resource rewriting", () => {
       throw new Error("Unexpected graph error");
     })).rejects.toThrow("Unexpected graph error");
   });
+
+  it("uses font consumers, removes stale format hints, and preserves usable comma-separated alternatives", async () => {
+    const resolve = vi.fn(async (href: string) => href === "missing.bin" ? undefined : `blob:${href}`);
+    const css = await rewriteCssResources(
+      '@font-face{font-family:Test;src:url(missing.bin) format("foreign"),url(font.bin) format("foreign")}' +
+      'p{background-image:url(missing.bin),url(image.bin);color:red;--resource:url(variable.bin);mask:var(--mask,url(nested.bin))}',
+      resolve,
+    );
+    expect(resolve).toHaveBeenCalledWith("font.bin", false, "font");
+    expect(resolve).toHaveBeenCalledWith("image.bin", false, "image");
+    expect(resolve).toHaveBeenCalledWith("variable.bin", false, "auto");
+    expect(resolve).toHaveBeenCalledWith("nested.bin", false, "image");
+    expect(css).not.toContain("missing.bin");
+    expect(css).not.toContain('format("foreign")');
+    expect(css).toContain('src:url("blob:font.bin")');
+    expect(css).toContain('background-image:url("blob:image.bin")');
+    expect(css).toContain('mask:var(--mask,url("blob:nested.bin"))');
+    expect(css).toContain("color:red");
+  });
 });

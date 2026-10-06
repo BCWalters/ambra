@@ -48,6 +48,9 @@ export {
   ADOBE_FONT_OBFUSCATION_ALGORITHM_URI,
 } from "./encryption/FontDeobfuscator.js";
 export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/ResourceUrlResolver.js";
+export { ResourceFallbackSelector, UnsupportedResourceError, resourceResolutionKey } from "./rendering/ResourceFallbackSelector.js";
+export { BrowserResourceCapabilities } from "./rendering/ResourceCapabilities.js";
+export type { ResourceCapabilities, ResourceConsumer } from "./rendering/ResourceCapabilities.js";
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { ReadingTheme, defaultFontFamilyForPlatform } from "./rendering/ReadingTheme.js";

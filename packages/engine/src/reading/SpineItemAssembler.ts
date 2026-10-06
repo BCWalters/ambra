@@ -18,7 +18,7 @@ export async function loadAssembledSpineItem(
 ): Promise<string> {
   const spineDoc = await contentLoader.loadSpineDocument(spineIndex);
   const references = contentLoader.findResourceReferences(spineDoc);
-  const resourceUrls = await resolver.resolveAll(references.map((ref) => ref.path));
+  const resourceResolutions = await resolver.resolveReferences(references);
   const publisherCss = new Map<string, string>();
   for (const style of Array.from(spineDoc.document.querySelectorAll("style"))) {
     const source = style.textContent ?? "";
@@ -31,7 +31,7 @@ export async function loadAssembledSpineItem(
       source, await resolver.rewriteCss(source, spineDoc.manifestItem.path, true),
     );
   }
-  return ContentDocumentAssembler.assemble(spineDoc, resourceUrls, {
-    ...options, publisherCss, publisherStyleAttributes,
+  return ContentDocumentAssembler.assemble(spineDoc, new Map(), {
+    ...options, publisherCss, publisherStyleAttributes, resourceResolutions,
   });
 }

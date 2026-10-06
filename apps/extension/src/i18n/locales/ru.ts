@@ -107,6 +107,7 @@ export const ru: StringCatalog = {
   "narration.loading": "Загрузка озвучки…",
   "narration.browsing": "Вы читаете в другом месте, не совпадающем с озвучкой.",
   "narration.error": "Не удалось воспроизвести озвучку.",
+  "reader.unsupportedResources": "Некоторые изображения, шрифты или медиафайлы этой книги не поддерживаются и не имеют доступной замены. Вы можете продолжить чтение.",
   "library.pageTitle": "Ambra — Библиотека",
   "library.toolbar": "Действия библиотеки",
   "library.sortNewest": "Дата добавления (сначала новые)",

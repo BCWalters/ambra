@@ -59,6 +59,16 @@ candidates never use a reduced browser suite.
 
 ## Running it
 
+`resource-fallbacks.spec.ts` generates original geometric fonts, solid-color
+AVIF/JPEG XL/video, and silent AAC-LC/Opus MP4 fixtures. Its GitHub CI prerequisite
+step checks for FFmpeg, `cjxl`, FontTools and Brotli and installs only missing
+tooling on the disposable runner. CI uses `/usr/bin/python3`; other environments
+can set `AMBRA_E2E_MEDIA_PYTHON` to a Python interpreter with FontTools/Brotli.
+The suite verifies consumer-aware fallback selection and reports actual native
+image capabilities separately; selecting an SVG fallback is not a JPEG XL
+conformance pass. For this conformance work, execute browser/unit tests on GitHub,
+not on the developer's Mac.
+
 ### Approved features and local simulation controls
 
 Build an isolated extension with `VITE_AMBRA_LOCAL_FEATURES=1 pnpm --filter

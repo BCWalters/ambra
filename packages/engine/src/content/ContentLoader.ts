@@ -5,7 +5,8 @@ import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
 import { getDescendantElementsByNS, getNamespacedAttributeName } from "../container/Xml.js";
 import type { EncryptionDocument } from "../encryption/EncryptionDocument.js";
 import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
-import { srcsetUrlRanges, type SrcsetUrlRange } from "./Srcset.js";
+import { srcsetCandidateRanges, type SrcsetUrlRange } from "./Srcset.js";
+import type { ResourceConsumer } from "../rendering/ResourceCapabilities.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -48,8 +49,10 @@ export interface ResourceReference {
   readonly element: Element;
   readonly attributeName: string;
   readonly path: string;
+  readonly consumer: ResourceConsumer;
   /** A URL within a multi-candidate attribute, rather than its entire value. */
   readonly attributeRange?: SrcsetUrlRange;
+  readonly candidateRange?: SrcsetUrlRange;
 }
 
 const RESOURCE_ATTRIBUTE_SELECTORS: readonly { selector: string; attribute: string }[] = [
@@ -57,6 +60,7 @@ const RESOURCE_ATTRIBUTE_SELECTORS: readonly { selector: string; attribute: stri
   { selector: "source", attribute: "src" },
   { selector: "audio", attribute: "src" },
   { selector: "video", attribute: "src" },
+  { selector: "video", attribute: "poster" },
   { selector: "track", attribute: "src" },
   { selector: 'link[rel~="stylesheet"]', attribute: "href" },
   { selector: "object", attribute: "data" },
@@ -235,7 +239,7 @@ export function findResourceReferencesInDocument(
 
   for (const element of Array.from(document.querySelectorAll("img[srcset], picture > source[srcset]"))) {
     const srcset = element.getAttribute("srcset")!;
-    for (const range of srcsetUrlRanges(srcset)) {
+    for (const range of srcsetCandidateRanges(srcset)) {
       const url = srcset.slice(range.start, range.end);
       // Only packaged candidates use the archive resolver. Other schemes stay
       // subject to the existing CSP; they must not alias an archive filename.
@@ -246,7 +250,9 @@ export function findResourceReferencesInDocument(
         element,
         attributeName: "srcset",
         path: resolveEpubPath(documentPath, rawPath),
+        consumer: "image",
         attributeRange: { start: range.start, end: range.start + rawPath.length },
+        candidateRange: { start: range.start, end: range.candidateEnd },
       });
     }
   }
@@ -285,5 +291,19 @@ function resolveReference(
     return undefined;
   }
 
-  return { element, attributeName, path: resolveEpubPath(documentPath, rawPath) };
+  return { element, attributeName, path: resolveEpubPath(documentPath, rawPath), consumer: referenceConsumer(element, attributeName) };
+}
+
+function referenceConsumer(element: Element, attribute: string): ResourceConsumer {
+  if (attribute === "poster") return "image";
+  switch (element.localName) {
+    case "audio": return "audio";
+    case "video": return "video";
+    case "source": return element.parentElement?.localName === "audio" ? "audio"
+      : element.parentElement?.localName === "video" ? "video" : "image";
+    case "link": return "stylesheet";
+    case "object": return "object";
+    case "track": return "track";
+    default: return "image";
+  }
 }

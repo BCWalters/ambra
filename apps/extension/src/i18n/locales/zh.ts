@@ -107,6 +107,7 @@ export const zh: StringCatalog = {
   "narration.loading": "正在加载朗读…",
   "narration.browsing": "你正在阅读朗读位置以外的内容。",
   "narration.error": "无法播放朗读。",
+  "reader.unsupportedResources": "本书的部分图片、字体或媒体不受支持，且没有可用的替代资源。你可以继续阅读。",
   "library.pageTitle": "Ambra — 书库",
   "library.toolbar": "书库操作",
   "library.sortNewest": "添加日期（从新到旧）",

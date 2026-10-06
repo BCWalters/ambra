@@ -1,4 +1,4 @@
-import { adjacentPrimarySpineIndex, MediaOverlayPlayer, SmilDocument } from "@ambra/engine";
+import { adjacentPrimarySpineIndex, MediaOverlayPlayer, ResourceFallbackSelector, SmilDocument } from "@ambra/engine";
 import type { ContentLoader, PackageDocument, SmilPar } from "@ambra/engine";
 
 export interface NarrationTarget {
@@ -31,6 +31,7 @@ export interface MediaOverlayNarrationContext {
   onTarget: (target: NarrationTarget, follow: boolean) => Promise<void>;
   notify: () => void;
   audio?: NarrationAudio;
+  resourceSelector?: Pick<ResourceFallbackSelector, "select">;
 }
 
 interface Cursor {
@@ -44,6 +45,8 @@ interface Cursor {
 export class MediaOverlayNarration {
   private readonly audio: NarrationAudio;
   private readonly ownedAudio: HTMLAudioElement | undefined;
+  private readonly ownedResourceSelector: ResourceFallbackSelector | undefined;
+  private readonly resourceSelector: Pick<ResourceFallbackSelector, "select">;
   private readonly associations: number[];
   private readonly documents = new Map<string, Promise<readonly SmilPar[]>>();
   private cursor: Cursor | undefined;
@@ -81,6 +84,10 @@ export class MediaOverlayNarration {
   };
 
   public constructor(private readonly ctx: MediaOverlayNarrationContext) {
+    if (!ctx.resourceSelector) {
+      this.ownedResourceSelector = new ResourceFallbackSelector(ctx.pkg, path => ctx.loader.loadResourceBytes(path));
+    }
+    this.resourceSelector = ctx.resourceSelector ?? this.ownedResourceSelector!;
     if (!ctx.audio) {
       this.ownedAudio = new Audio();
       this.ownedAudio.hidden = true;
@@ -238,6 +245,7 @@ export class MediaOverlayNarration {
     this.audio.removeAttribute("src");
     this.audio.load();
     this.ownedAudio?.remove();
+    this.ownedResourceSelector?.dispose();
     if (this.sourceUrl) URL.revokeObjectURL(this.sourceUrl);
     this.sourceUrl = undefined;
     this.source = undefined;
@@ -392,11 +400,8 @@ export class MediaOverlayNarration {
 
   private async prepareSource(path: string, generation: number): Promise<void> {
     if (this.source !== path || this.audio.error) {
-      const item = this.ctx.pkg.findManifestItemByPath(path);
-      if (!item || !item.mediaType.startsWith("audio/")) {
-        throw new Error(`The narration audio resource "${path}" is missing from the publication manifest.`);
-      }
-      const bytes = await this.ctx.loader.loadResourceBytes(path);
+      const item = await this.resourceSelector.select(path, "audio");
+      const bytes = await this.ctx.loader.loadResourceBytes(item.path);
       if (!this.current(generation)) return;
       const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: item.mediaType }));
       const oldUrl = this.sourceUrl;

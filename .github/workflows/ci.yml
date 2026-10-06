@@ -61,14 +61,24 @@ jobs:
       - name: Install Chromium
         if: steps.browser-suites.outputs.run_browser == 'true'
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+      - name: Prepare synthetic EPUB codec fixtures
+        if: steps.browser-suites.outputs.run_reader == 'true'
+        run: |
+          if ! command -v ffmpeg || ! command -v cjxl ||
+             ! /usr/bin/python3 -c 'import fontTools, brotli'; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg libjxl-tools python3-fonttools python3-brotli
+          fi
       - name: Verify EPUB resources and reader regressions
         if: steps.browser-suites.outputs.run_reader == 'true'
         env:
           AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
           AMBRA_E2E_HEADLESS: "1"
+          AMBRA_E2E_MEDIA_PYTHON: /usr/bin/python3
         run: >-
           pnpm --filter @ambra/e2e exec playwright test
           css-resources.spec.ts primary-reading-order.spec.ts
+          resource-fallbacks.spec.ts
           reader-shortcuts-help.spec.ts inspector-docking.spec.ts narration-discovery.spec.ts
           --workers=2
       - name: Test the packaged production build

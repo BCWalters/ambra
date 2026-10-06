@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ContentDocument, ContentLoader } from "../content/ContentLoader.js";
 import { ContentDocumentAssembler } from "./ContentDocumentAssembler.js";
+import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
+import type { ResolvedResource } from "./ResourceUrlResolver.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
   const buffer = await readFile(
@@ -85,6 +87,49 @@ describe("ContentDocumentAssembler", () => {
     // The assembler re-parses from rawText rather than mutating doc.document.
     const img = doc.document.querySelector("img");
     expect(img?.getAttribute("src")).toBe("images/photo.png");
+  });
+
+  it("rewrites consumer-specific fallbacks, MIME hints and fragments while removing exhausted srcset candidates", async () => {
+    const fixture = await loader.loadSpineDocument(0);
+    const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Fallbacks</title></head><body>
+      <picture><source id="picture" type="image/jxl" media="(min-width:1px)"
+        srcset="bad.jxl 1x, foreign.bin#view 2x, bad.jxl 3x"/>
+      <img id="image" src="foreign.bin#view" alt="Illustration"/></picture>
+      <audio><source id="audio" src="foreign.bin" type="application/foreign"/></audio>
+      <video id="video" src="bad.jxl" poster="foreign.bin"/>
+      <object id="object" class="illustration" width="80" data="foreign.bin#view" type="application/foreign">Object alternative</object>
+      <object id="unavailable" data="bad.jxl">Keep this alternative</object>
+    </body></html>`;
+    const original = new DOMParser().parseFromString(raw, "application/xhtml+xml");
+    const doc = new ContentDocument(fixture.manifestItem, original, raw);
+    const resolutions = new Map<string, ResolvedResource | null>();
+    const image = { url: "blob:image", path: "fallback.svg", mediaType: "image/svg+xml" };
+    for (const consumer of ["image", "object"] as const) {
+      resolutions.set(resourceResolutionKey("OEBPS/foreign.bin", consumer), image);
+      resolutions.set(resourceResolutionKey("OEBPS/bad.jxl", consumer), null);
+    }
+    resolutions.set(resourceResolutionKey("OEBPS/foreign.bin", "audio"),
+      { url: "blob:audio", path: "fallback.mp4", mediaType: "audio/mp4" });
+    resolutions.set(resourceResolutionKey("OEBPS/bad.jxl", "video"), null);
+    const assembled = ContentDocumentAssembler.assemble(doc, new Map(), { resourceResolutions: resolutions });
+    const output = new DOMParser().parseFromString(assembled, "application/xhtml+xml");
+    expect(output.getElementById("picture")?.getAttribute("srcset")?.trim()).toBe("blob:image#view 2x,");
+    expect(output.getElementById("picture")?.getAttribute("type")).toBe("image/svg+xml");
+    expect(output.getElementById("picture")?.getAttribute("media")).toBe("(min-width:1px)");
+    expect(output.getElementById("image")?.getAttribute("src")).toBe("blob:image#view");
+    expect(output.getElementById("audio")?.getAttribute("src")).toBe("blob:audio");
+    expect(output.getElementById("audio")?.getAttribute("type")).toBe("audio/mp4");
+    expect(output.getElementById("video")?.hasAttribute("src")).toBe(false);
+    expect(output.getElementById("video")?.getAttribute("poster")).toBe("blob:image");
+    expect(output.getElementById("object")?.localName).toBe("img");
+    expect(output.getElementById("object")?.getAttribute("alt")).toBe("Object alternative");
+    expect(output.getElementById("object")?.getAttribute("width")).toBe("80");
+    expect(output.getElementById("object")?.getAttribute("src")).toBe("blob:image#view");
+    expect(output.getElementById("unavailable")?.textContent).toBe("Keep this alternative");
+    expect(output.getElementById("unavailable")?.hasAttribute("data")).toBe(false);
+    expect(output.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).not.toContain("object-src");
+    expect(original.getElementById("object")?.localName).toBe("object");
+    expect(original.getElementById("picture")?.getAttribute("type")).toBe("image/jxl");
   });
 
   it("leaves a reference untouched when no URL is provided for its path", async () => {

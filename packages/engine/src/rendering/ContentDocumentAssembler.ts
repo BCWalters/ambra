@@ -3,6 +3,8 @@ import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
 import { EPUB_CSS_RESET } from "./EpubCssReset.js";
 import { ReadingTheme } from "./ReadingTheme.js";
 import { HighlightTheme } from "./HighlightTheme.js";
+import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
+import type { ResolvedResource } from "./ResourceUrlResolver.js";
 
 /**
  * A minimal, restrictive Content-Security-Policy applied to every document
@@ -47,6 +49,7 @@ export class ContentDocumentAssembler {
       applyReadingTheme?: boolean;
       publisherCss?: ReadonlyMap<string, string>;
       publisherStyleAttributes?: ReadonlyMap<string, string>;
+      resourceResolutions?: ReadonlyMap<string, ResolvedResource | null>;
     } = {},
   ): string {
     // Re-parse from the original raw text rather than cloning
@@ -56,16 +59,56 @@ export class ContentDocumentAssembler {
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
 
     const references = findResourceReferencesInDocument(doc, contentDocument.manifestItem.path);
+    const sourceTypes = new Map<Element, Set<string>>();
+    const objectImages = new Map<Element, string>();
     // Replace candidates from right to left so original URL offsets stay valid.
     for (const reference of references.reverse()) {
-      const url = resourceUrls.get(reference.path);
-      if (url) {
-        const { element, attributeName, attributeRange } = reference;
+      const resolution = options.resourceResolutions?.get(resourceResolutionKey(reference.path, reference.consumer));
+      const { element, attributeName, attributeRange, candidateRange } = reference;
+      if (resolution === null) {
         const value = element.getAttribute(attributeName)!;
+        if (candidateRange) {
+          const remaining = value.slice(0, candidateRange.start) + value.slice(candidateRange.end);
+          if (/^[\t\n\f\r ,]*$/.test(remaining)) element.removeAttribute(attributeName);
+          else element.setAttribute(attributeName, remaining);
+        } else {
+          element.removeAttribute(attributeName);
+        }
+        if (element.localName === "source" || element.localName === "object") element.removeAttribute("type");
+        continue;
+      }
+      const url = resolution?.url ?? resourceUrls.get(reference.path);
+      if (url) {
+        const value = element.getAttribute(attributeName)!;
+        const fragment = attributeRange ? "" : value.includes("#") ? value.slice(value.indexOf("#")) : "";
         element.setAttribute(attributeName, attributeRange
           ? value.slice(0, attributeRange.start) + url + value.slice(attributeRange.end)
-          : url);
+          : url + fragment);
+        if (resolution && element.localName === "source") {
+          const types = sourceTypes.get(element) ?? new Set<string>();
+          types.add(resolution.mediaType);
+          sourceTypes.set(element, types);
+        }
+        if (resolution && element.localName === "object") objectImages.set(element, url + fragment);
       }
+    }
+    for (const [source, types] of sourceTypes) {
+      if (types.size === 1) source.setAttribute("type", [...types][0]!);
+      else source.removeAttribute("type");
+    }
+    // Render image objects with <img>, not object-src: allowing nested
+    // documents would bypass the assembler's resource rewriting and CSP.
+    for (const [object, url] of objectImages) {
+      const image = doc.createElementNS(object.namespaceURI, "img");
+      for (const attribute of Array.from(object.attributes)) {
+        if (!["data", "type", "classid", "codebase", "archive", "name"].includes(attribute.name) &&
+            !attribute.name.toLowerCase().startsWith("on")) {
+          image.setAttribute(attribute.name, attribute.value);
+        }
+      }
+      image.setAttribute("src", url);
+      image.setAttribute("alt", object.getAttribute("aria-label") ?? object.textContent?.trim() ?? "");
+      object.replaceWith(image);
     }
     for (const style of Array.from(doc.querySelectorAll("style"))) {
       const rewritten = options.publisherCss?.get(style.textContent ?? "");

@@ -403,6 +403,13 @@ export class ReaderController {
     rootFilePath: string,
     private readonly fileSizeBytes: number,
   ) {
+    resolver.fallbackSelector.onUnsupported(error => {
+      if (this.operations.disposed) return;
+      this.diagnostics.record(error.message);
+      if (this.errorSeverity && this.errorSeverity !== "info") return;
+      this.setNotification(this.translate("reader.unsupportedResources"), "info");
+      this.notify();
+    });
     this.narrationReading = new NarrationReadingBridge(contentLoader, locatorResolver, {
       activeClass: pkg.metadata.mediaOverlayActiveClass,
       playbackActiveClass: pkg.metadata.metaEntries.find(entry => entry.key === "media:playback-active-class")?.value,
@@ -414,6 +421,7 @@ export class ReaderController {
     });
     this.narration = new MediaOverlayNarration({
       pkg, loader: contentLoader,
+      resourceSelector: resolver.fallbackSelector,
       onTarget: (target, follow) => this.narrationReading.update(target, follow),
       notify: () => this.notify(),
     });
@@ -434,7 +442,7 @@ export class ReaderController {
       navigate: async (spineIndex, cfi) => {
         this.suspendNarrationFollowing();
         await this.openSpineItem(spineIndex, { bridgeCfi: cfi, history: "jump" });
-        if (this.error) throw new Error(this.error);
+        if (this.error && this.errorSeverity !== "info") throw new Error(this.error);
         if (this.operations.disposed ||
             !this.contentDocumentViews().some(view => view.spineIndex === spineIndex)) {
           throw new Error("The reading location changed before navigation completed.");
@@ -1402,7 +1410,7 @@ export class ReaderController {
     }
     await this.openSpineItem(target.spineIndex, { fragment: target.fragment, automatic: true });
     if (this.operations.disposed || !this.narration.snapshot.following) return;
-    if (this.error) throw new Error(this.error);
+    if (this.error && this.errorSeverity !== "info") throw new Error(this.error);
     const document = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex)?.document;
     if (!document || (target.fragment && !document.getElementById(target.fragment))) {
       throw new Error(`The narrated passage ${target.path}#${target.fragment ?? ""} was not found.`);

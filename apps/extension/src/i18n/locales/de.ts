@@ -107,6 +107,7 @@ export const de: StringCatalog = {
   "narration.loading": "Audio wird geladen…",
   "narration.browsing": "Du liest an einer anderen Stelle als die Vorlesestimme.",
   "narration.error": "Das Audio konnte nicht abgespielt werden.",
+  "reader.unsupportedResources": "Einige Bilder, Schriftarten oder Medien in diesem Buch werden nicht unterstützt und haben keinen nutzbaren Ersatz. Sie können weiterlesen.",
   "library.pageTitle": "Ambra — Bibliothek",
   "library.toolbar": "Bibliotheksaktionen",
   "library.sortNewest": "Hinzugefügt (neueste zuerst)",
