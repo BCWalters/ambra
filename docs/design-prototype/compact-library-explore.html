@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ambra | Compact library alternatives</title>
+  <link rel="stylesheet" href="compact-library-explore.css">
+  <script src="compact-library-explore.js" defer></script>
+</head>
+<body>
+  <main class="study">
+    <header class="review-header">
+      <p class="eyebrow">Compact library / unapproved alternatives / #351</p>
+      <h1>Books first. Everything else, quieter.</h1>
+      <p>Three ways to make the small window feel like a place to return to reading, rather than a collection of controls. Only the compact library is being explored; the full library and reader are unchanged.</p>
+      <p class="boundary">Standalone sample only. Nothing reads your files, changes Ambra, or stores preferences. These are choices to review, not a production implementation.</p>
+    </header>
+
+    <section class="scenario-bar" aria-label="Study controls">
+      <label for="sample-scenario">Sample
+        <select id="sample-scenario">
+          <option value="full">8 books</option>
+          <option value="small">2 books</option>
+          <option value="empty">Empty library</option>
+        </select>
+      </label>
+      <label for="preview-width">Compact width
+        <select id="preview-width">
+          <option value="360">360px</option>
+          <option value="320">320px</option>
+        </select>
+      </label>
+      <label for="interface-theme">Interface theme
+        <select id="interface-theme">
+          <option value="ambra">Ambra</option>
+          <option value="silver">Silver</option>
+          <option value="green">Green</option>
+          <option value="blue">Blue</option>
+          <option value="purple">Purple</option>
+        </select>
+      </label>
+      <button id="reset-sample" class="secondary" type="button">Reset sample</button>
+      <p id="appearance" class="muted">Appearance follows your browser.</p>
+    </section>
+
+    <div class="comparison-grid" id="comparison-grid"></div>
+
+    <section class="rationale" aria-labelledby="recommendation">
+      <h2 id="recommendation">Start with A; borrow B's calm list.</h2>
+      <p>A offers the clearest answer to “what should I click?” without making the rest of the library hard to reach. B is stronger if choosing between several reading lists matters more than resuming one book. C is the most visual, but long titles are slower to scan and fewer books fit.</p>
+      <p>In every option, Find &amp; sort is a closed, keyboard-accessible disclosure. Search state stays visible when it is closed, with an immediate clear action. Import, discovery, settings and help remain available without becoming the visual center.</p>
+      <p>Try a list with no books, a search with no results, sorting by author, opening a book, importing an original sample book, and Escape from the disclosures/dialog. Changes are in memory and shared sample books only; each option keeps its own list/search/order.</p>
+      <p class="boundary">English-only study. Fixed-height frames illustrate popup geometry, not a native Chrome action popup. Dialogs belong to this comparison page. Real popup sizing, all nine locales, visual/AT behavior, real files and persistence still need implementation validation after an owner decision. No local browser tests were run for this study.</p>
+      <p><a href="index.html">Reviewed main prototype</a> · <a href="inspector-explore.html">Separate Inspector exploration</a> · <a href="credits.html">Existing cover credits and provenance</a></p>
+    </section>
+    <p id="announcement" role="status" aria-live="polite"></p>
+  </main>
+
+  <dialog id="study-dialog" aria-labelledby="dialog-heading">
+    <h2 id="dialog-heading"></h2>
+    <div id="dialog-content"></div>
+    <form method="dialog"><button class="secondary" type="submit">Close</button></form>
+  </dialog>
+</body>
+</html>
