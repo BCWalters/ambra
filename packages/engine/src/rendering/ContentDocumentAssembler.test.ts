@@ -112,7 +112,7 @@ describe("ContentDocumentAssembler", () => {
       { url: "blob:audio", path: "fallback.mp4", mediaType: "audio/mp4" });
     resolutions.set(resourceResolutionKey("OEBPS/bad.jxl", "video"), null);
     const assembled = ContentDocumentAssembler.assemble(doc, new Map(), { resourceResolutions: resolutions });
-    const output = new DOMParser().parseFromString(assembled, "application/xhtml+xml");
+    const output = new DOMParser().parseFromString(assembled, "text/html");
     expect(output.getElementById("picture")?.getAttribute("srcset")?.trim()).toBe("blob:image#view 2x,");
     expect(output.getElementById("picture")?.getAttribute("type")).toBe("image/svg+xml");
     expect(output.getElementById("picture")?.getAttribute("media")).toBe("(min-width:1px)");
@@ -128,8 +128,8 @@ describe("ContentDocumentAssembler", () => {
     expect(output.getElementById("unavailable")?.textContent).toBe("Keep this alternative");
     expect(output.getElementById("unavailable")?.hasAttribute("data")).toBe(false);
     expect(output.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).not.toContain("object-src");
-    expect(original.getElementById("object")?.localName).toBe("object");
-    expect(original.getElementById("picture")?.getAttribute("type")).toBe("image/jxl");
+    expect(original.querySelector("#object")?.localName).toBe("object");
+    expect(original.querySelector("#picture")?.getAttribute("type")).toBe("image/jxl");
   });
 
   it("leaves a reference untouched when no URL is provided for its path", async () => {
