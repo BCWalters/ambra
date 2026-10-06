@@ -49,6 +49,8 @@ This is a pnpm workspace monorepo:
 - [Design system](docs/design-system.md) and [interactive prototype](docs/design-prototype/README.md)
   — approved target UX and a standalone review reference, separate from shipped
   extension behavior.
+- [EPUB 3.4 conformance plan](docs/epub-3.4-conformance-plan.md) — the current
+  specification audit, implementation phases, and release scorecard process.
 
 ## Getting started
 
