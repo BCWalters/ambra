@@ -400,6 +400,9 @@ export class MediaOverlayNarration {
 
   private async prepareSource(path: string, generation: number): Promise<void> {
     if (this.source !== path || this.audio.error) {
+      if (!this.ctx.pkg.findManifestItemByPath(path)) {
+        throw new Error(`The narration audio resource "${path}" is missing from the publication manifest.`);
+      }
       const item = await this.resourceSelector.select(path, "audio");
       const bytes = await this.ctx.loader.loadResourceBytes(item.path);
       if (!this.current(generation)) return;
