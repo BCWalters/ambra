@@ -1,0 +1,13 @@
+[
+  { "id": "cnt-css-fonts_ot", "kind": "font", "family": "Franky Toys" },
+  { "id": "cnt-css-fonts_tt", "kind": "font", "family": "Lobster" },
+  { "id": "cnt-css-fonts_woff", "kind": "font", "family": "Pacifico" },
+  { "id": "cnt-css-fonts_woff2", "kind": "font", "family": "Macondo" },
+  { "id": "pub-cmt-avif", "kind": "image" },
+  { "id": "pub-cmt-gif", "kind": "image" },
+  { "id": "pub-cmt-jpeg", "kind": "image" },
+  { "id": "pub-cmt-jxl", "kind": "image" },
+  { "id": "pub-cmt-png", "kind": "image" },
+  { "id": "pub-cmt-svg", "kind": "image" },
+  { "id": "pub-cmt-webp", "kind": "image" }
+]

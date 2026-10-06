@@ -76,6 +76,14 @@ cross-element/whitespace text assertion recovery, and exact adjacent-text
 before/after affinity. It uses original content and runs in the early CI gate.
 It does not claim support for nested documents or media/spatial CFI offsets.
 
+The opt-in release profile in `assessment/core-media.spec.ts` uses
+`epub-conformance.config.ts`, not ordinary test discovery. The main-only release
+assessment workflow runs it against the exact archived production package and
+pinned W3C publications. It records eleven native font/image criteria, leaves
+all other criteria unassessed, and archives factual evidence without including
+third-party publications or browser profiles. See the
+[release assessment procedure](../../docs/epub-3.4-conformance-runner.md).
+
 The selector fails closed: mixed or empty/unknown diffs run everything.
 Manually dispatched and called workflows also run everything, so final release
 candidates never use a reduced browser suite.

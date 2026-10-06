@@ -1,7 +1,12 @@
-name: Prepare EPUB 3.4 release assessment
+name: Assess EPUB 3.4 release candidate
 
 on:
   workflow_dispatch:
+    inputs:
+      automated_core:
+        description: Assess 11 pinned native font/image criteria (other criteria remain unassessed)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ jobs:
   prepare:
     name: Prepare conformance kit
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Restrict release assessments to main
         env:
@@ -41,7 +46,9 @@ jobs:
         env:
           VITE_AMBRA_LOCAL_FEATURES: "0"
         run: node .github/scripts/package-extension.mjs
-      - name: Check out pinned W3C test metadata
+      - name: Check out pinned W3C assessment sources
+        env:
+          AUTOMATED_CORE: ${{ inputs.automated_core }}
         run: |
           EPUB_TESTS_REVISION="$(
             node -e "console.log(JSON.parse(require('node:fs').readFileSync('conformance/epub-3.4/config.json')).suite.revision)"
@@ -49,24 +56,84 @@ jobs:
           git clone --filter=blob:none --no-checkout \
             https://github.com/w3c/epub-tests.git "$RUNNER_TEMP/epub-tests"
           git -C "$RUNNER_TEMP/epub-tests" sparse-checkout init --no-cone
-          printf '/tests/*/META-INF/container.xml\n/tests/**/*.opf\n' |
-            git -C "$RUNNER_TEMP/epub-tests" sparse-checkout set --no-cone --stdin
+          if [ "$AUTOMATED_CORE" = "true" ]; then
+            printf '/tests/\n/LICENSE*\n' |
+              git -C "$RUNNER_TEMP/epub-tests" sparse-checkout set --no-cone --stdin
+          else
+            printf '/tests/*/META-INF/container.xml\n/tests/**/*.opf\n' |
+              git -C "$RUNNER_TEMP/epub-tests" sparse-checkout set --no-cone --stdin
+          fi
           git -C "$RUNNER_TEMP/epub-tests" checkout --detach "$EPUB_TESTS_REVISION"
           test "$(git -C "$RUNNER_TEMP/epub-tests" rev-parse HEAD)" = "$EPUB_TESTS_REVISION"
       - name: Create package-bound manual worksheet
+        id: prepare_kit
         run: >-
           node scripts/epub-conformance.mjs prepare
           --suite "$RUNNER_TEMP/epub-tests"
           --release dist/beta-release/artifacts/release.json
           --output dist/conformance/epub-3.4-assessment.json
+      - name: Generate pinned core-media publications
+        if: inputs.automated_core
+        run: |
+          for TEST_ID in $(
+            node -e "console.log(JSON.parse(require('node:fs').readFileSync('conformance/epub-3.4/core-media-profile.json')).map(test => test.id).join(' '))"
+          ); do
+            test -f "$RUNNER_TEMP/epub-tests/tests/$TEST_ID/mimetype"
+            (
+              cd "$RUNNER_TEMP/epub-tests/tests/$TEST_ID"
+              zip -q -X -0 "../$TEST_ID.epub" mimetype
+              zip -q -r -X "../$TEST_ID.epub" META-INF EPUB
+            )
+          done
+      - name: Extract the exact validated production archive
+        if: inputs.automated_core
+        run: |
+          ARCHIVE="$(
+            node -e "console.log(JSON.parse(require('node:fs').readFileSync('dist/beta-release/artifacts/release.json')).archive)"
+          )"
+          mkdir "$RUNNER_TEMP/epub-core-extension"
+          unzip -q "dist/beta-release/artifacts/$ARCHIVE" -d "$RUNNER_TEMP/epub-core-extension"
+      - name: Install assessment Chromium
+        if: inputs.automated_core
+        run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+      - name: Assess official native font and image criteria
+        id: core_criteria
+        if: inputs.automated_core
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ runner.temp }}/epub-core-extension
+          AMBRA_E2E_HEADLESS: "1"
+          AMBRA_EPUB_TESTS_PATH: ${{ runner.temp }}/epub-tests
+          AMBRA_ASSESSMENT_PATH: ${{ github.workspace }}/dist/conformance/epub-3.4-assessment.json
+          AMBRA_ASSESSMENT_OUTPUT: ${{ github.workspace }}/dist/conformance/core-media
+          AMBRA_ASSESSMENT_EVIDENCE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: pnpm --filter @ambra/e2e exec playwright test --config epub-conformance.config.ts
+      - name: Merge complete package-bound criterion evidence
+        id: core_merge
+        if: ${{ !cancelled() && inputs.automated_core && steps.core_criteria.outcome != 'skipped' }}
+        run: >-
+          node scripts/epub-conformance-core.mjs
+          --assessment dist/conformance/epub-3.4-assessment.json
+          --observations dist/conformance/core-media
+          --output dist/conformance/epub-3.4-assessment.json
+          --evidence "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Generate scorecard and enforce incomplete-release gate
+        if: ${{ !cancelled() && steps.core_merge.outcome == 'success' }}
+        run: >-
+          node scripts/epub-conformance.mjs report
+          --suite "$RUNNER_TEMP/epub-tests"
+          --release dist/beta-release/artifacts/release.json
+          --assessment dist/conformance/epub-3.4-assessment.json
+          --output dist/conformance/report
       - name: Archive assessment kit
+        if: ${{ !cancelled() && steps.prepare_kit.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: epub-3.4-assessment-kit-${{ github.sha }}
           path: |
             dist/beta-release/artifacts/
-            dist/conformance/epub-3.4-assessment.json
+            dist/conformance/
             conformance/epub-3.4/config.json
+            conformance/epub-3.4/core-media-profile.json
             docs/epub-3.4-conformance-runner.md
           if-no-files-found: error
           retention-days: 30
