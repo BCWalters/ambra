@@ -132,6 +132,7 @@ export interface StringCatalog {
   "narration.browsing": string;
   "narration.error": string;
   "reader.unsupportedResources": string;
+  "reader.blockedLink": string;
   "library.pageTitle": string;
   "library.toolbar": string;
   "library.sortNewest": string;
@@ -659,6 +660,7 @@ export const en: StringCatalog = {
   "narration.browsing": "Browsing away from narration.",
   "narration.error": "Narration could not be played.",
   "reader.unsupportedResources": "Some images, fonts, or media in this book are unsupported and have no usable fallback. You can continue reading.",
+  "reader.blockedLink": "For your safety, this book cannot open file, data, or unsupported links.",
   "library.pageTitle": "Ambra — Library",
   "library.toolbar": "Library actions",
   "library.sortNewest": "Date added (newest first)",

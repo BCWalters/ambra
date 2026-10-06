@@ -175,6 +175,48 @@ browser-window orientation lock. Regression coverage exercises ordered pairs,
 aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
 still need release assessment; these synthetic checks do not alter the score.
 
+#### C34-07 implementation and assessment expectations
+
+A shared URL classifier and conservative resource-policy milestone are prepared.
+URL preprocessing happens before scheme detection, including embedded tabs/newlines
+and leading/trailing C0/space characters. Package references retain URL-aware
+percent decoding; fragment-only references remain in-document. HTTP(S), file,
+data, protocol-relative and unsupported schemes never alias ZIP filenames.
+Remote manifest locations retain their URL identity and may select a usable
+packaged manifest fallback without fetching the original.
+
+The product policy remains offline-only for automatic publication subresources.
+Controlled HTTPS fetching is **not enabled**: there is no implicit consent,
+network retry, or remote-data cache. Existing `remote-resources` declarations
+remain diagnostics, not permission grants. HTTPS support remains a recommended
+compatibility gap and would require separate consent/privacy/offline design.
+
+Data URLs remain blocked for automatic resources and book-initiated navigation:
+the permitted data-type allowlist is empty and the decoded-payload limit is zero
+(no payload decoding). Supporting selected embedded data types later must not
+enable top-level content-document/data navigation. File URLs are blocked for both
+automatic resources and reader-controlled link actions. Only explicitly activated
+HTTP(S)/email hyperlinks can leave the publication; protocol-relative hyperlinks
+use HTTPS, and new windows retain `noopener,noreferrer`.
+
+Blocked resource attributes/candidates and CSS alternatives are removed with
+diagnostics and localized accessible notices; unrelated content remains readable.
+Unsupported hyperlink destinations become safe fragment placeholders that retain
+keyboard/link affordances and announce the policy instead of opening their
+original destination. The raw publication DOM/source and Inspector archive APIs
+remain independent. HTML posters, image-backed object/embed elements, unsupported
+iframe documents/srcdoc, and SVG image/use/feImage references are covered.
+
+This milestone does not implement nested document rendering, arbitrary external
+SVG presentation-attribute graphs, inherited resource `xml:base`, or remote/data
+loading. Those surfaces remain explicit compatibility/policy gaps; C34-07 stays
+open rather than implying complete URL/resource conformance. Prepared synthetic
+XHTML/SVG browser fixtures verify no actual requests for the exercised blocked
+resources, safe external-link dispatch, local remote-resource fallbacks and SVG
+symbol references. Their regression results do not change the original partial
+official score; the pinned file/data/navigation criteria require a separate
+package-bound assessment.
+
 #### C34-08 implementation and assessment expectations
 
 Package and metadata-element `dir` and `xml:lang` are retained with each nonempty

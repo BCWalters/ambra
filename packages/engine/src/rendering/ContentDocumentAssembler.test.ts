@@ -140,6 +140,27 @@ describe("ContentDocumentAssembler", () => {
     expect(assembled).toContain('src="images/photo.png"');
   });
 
+  it("replaces unsafe hyperlink destinations without losing link affordances or mutating publication source", async () => {
+    const fixture = await loader.loadSpineDocument(0);
+    const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>URL policy</title></head><body>
+      <a id="file" href=" file:///tmp/book ">File</a><a id="data" href="data:text/html,hello">Data</a>
+      <a id="script" href="java&#10;script:void(0)">Unsupported</a>
+      <a id="https" href="https://example.test/link">HTTPS</a><a id="local" href="#passage">Local</a>
+      <iframe srcdoc="&lt;p&gt;Nested content&lt;/p&gt;"/>
+    </body></html>`;
+    const original = new DOMParser().parseFromString(raw, "application/xhtml+xml");
+    const doc = new ContentDocument(fixture.manifestItem, original, raw);
+    const output = new DOMParser().parseFromString(ContentDocumentAssembler.assemble(doc, new Map()), "text/html");
+    for (const id of ["file", "data", "script"]) {
+      expect(output.getElementById(id)?.getAttribute("href")).toBe("#");
+      expect(output.getElementById(id)?.hasAttribute("data-ambra-blocked-link")).toBe(true);
+    }
+    expect(output.getElementById("https")?.getAttribute("href")).toBe("https://example.test/link");
+    expect(output.getElementById("local")?.getAttribute("href")).toBe("#passage");
+    expect(output.querySelector("iframe")?.hasAttribute("srcdoc")).toBe(false);
+    expect(original.querySelector("#file")?.getAttribute("href")).toBe(" file:///tmp/book ");
+  });
+
   it("injects a restrictive Content-Security-Policy meta tag", async () => {
     const doc = await loader.loadSpineDocument(0);
 

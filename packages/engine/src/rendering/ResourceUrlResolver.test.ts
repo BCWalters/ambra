@@ -8,6 +8,7 @@ import { ManifestItem } from "../container/PackageDocument.js";
 import type { ResourceCapabilities } from "./ResourceCapabilities.js";
 import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
 import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
+import { classifyEpubReference } from "../container/EpubReference.js";
 import {
   ResourceResolutionCancelledError,
   ResourceResolutionError,
@@ -169,7 +170,9 @@ describe("ResourceUrlResolver", () => {
     const blobs: Blob[] = [];
     const find = (path: string) => {
       const file = files[path];
-      return file ? new ManifestItem(path, path, file.type, new Set(), file.fallback) : undefined;
+      const location = classifyEpubReference("package.opf", path);
+      return file ? new ManifestItem(path, path, file.type, new Set(), file.fallback, undefined,
+        location.kind === "package" || location.kind === "fragment" ? undefined : location) : undefined;
     };
     vi.spyOn(loader.packageDocument, "findManifestItemByPath").mockImplementation(find);
     vi.spyOn(loader.packageDocument, "getManifestItem").mockImplementation(find);
@@ -249,7 +252,7 @@ describe("ResourceUrlResolver", () => {
     resolver.dispose();
   });
 
-  it("does not alias external URLs to packaged resources and preserves data/local fragments", async () => {
+  it("removes blocked external and data URLs without aliasing archive files, while preserving local fragments", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { load, resolver } = cssGraph({});
     const css = await resolver.rewriteCss(
@@ -257,9 +260,10 @@ describe("ResourceUrlResolver", () => {
       "EPUB/chapter.xhtml",
     );
     expect(css).toContain('url("#shadow")');
-    expect(css).toContain('url("data:image/png;base64,AAAA")');
+    expect(css).not.toContain("data:");
+    expect(css).not.toContain("https:");
     expect(load).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("External CSS resource remains blocked"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("(policy;"));
     resolver.dispose();
   });
 
@@ -331,6 +335,27 @@ describe("ResourceUrlResolver", () => {
     expect(results.get(resourceResolutionKey("good.png", "image"))?.mediaType).toBe("image/png");
     await expect(resolver.resolve("bad.bin")).resolves.toMatch(/^blob:/);
     await expect(resolver.resolveForConsumer("missing.png", "image")).rejects.toThrow("No manifest item");
+    resolver.dispose();
+  });
+
+  it("never aliases non-package markup URLs to archive paths and can select a declared remote resource's local fallback", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver, load } = cssGraph({
+      "https://example.test/image.png": { type: "image/png", text: "must not be read", fallback: "good.png" },
+      "good.png": { type: "image/png", text: "image bytes" },
+    });
+    const document = new DOMParser().parseFromString(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="https://example.test/image.png"/>' +
+      '<img src="file:///good.png"/><img src="data:image/png;base64,SECRET"/><img src="//example.test/good.png"/><img src="good.png"/></body></html>',
+      "application/xhtml+xml",
+    );
+    const references = findResourceReferencesInDocument(document, "chapter.xhtml", { includeUnavailable: true });
+    const results = await resolver.resolveReferences(references);
+    expect(results.get(resourceResolutionKey("https://example.test/image.png", "image"))?.path).toBe("good.png");
+    expect([...results.values()].filter(result => result === null)).toHaveLength(3);
+    expect(load.mock.calls.map(call => call[0])).toEqual(["good.png"]);
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET");
+    await expect(resolver.resolve("https://example.test/image.png")).rejects.toThrow("https URL policy");
     resolver.dispose();
   });
 });

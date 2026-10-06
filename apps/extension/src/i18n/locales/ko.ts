@@ -107,6 +107,7 @@ export const ko: StringCatalog = {
   "narration.loading": "낭독을 불러오는 중…",
   "narration.browsing": "낭독 위치와 다른 곳을 읽고 있습니다.",
   "narration.error": "낭독을 재생할 수 없습니다.",
+  "reader.blockedLink": "안전을 위해 이 책에서는 파일, 데이터 또는 지원되지 않는 링크를 열 수 없습니다.",
   "reader.unsupportedResources": "이 책의 일부 이미지, 글꼴 또는 미디어는 지원되지 않으며 사용할 수 있는 대체 리소스가 없습니다. 계속 읽을 수 있습니다.",
   "library.pageTitle": "Ambra — 라이브러리",
   "library.toolbar": "라이브러리 작업",

@@ -107,6 +107,7 @@ export const es: StringCatalog = {
   "narration.loading": "Cargando narración…",
   "narration.browsing": "Estás leyendo en un lugar distinto al de la narración.",
   "narration.error": "No se pudo reproducir la narración.",
+  "reader.blockedLink": "Por tu seguridad, este libro no puede abrir enlaces de archivos, datos o tipos no compatibles.",
   "reader.unsupportedResources": "Algunas imágenes, fuentes o archivos multimedia de este libro no son compatibles y no tienen una alternativa utilizable. Puedes seguir leyendo.",
   "library.pageTitle": "Ambra — Biblioteca",
   "library.toolbar": "Acciones de la biblioteca",

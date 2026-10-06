@@ -1,5 +1,6 @@
 export type ResourceConsumer =
-  "image" | "font" | "audio" | "video" | "stylesheet" | "object" | "track" | "auto";
+  "image" | "font" | "audio" | "video" | "stylesheet" | "object" | "track"   | "document"
+  | "auto";
 
 export interface ResourceCapabilities {
   supports(
@@ -31,6 +32,7 @@ export class BrowserResourceCapabilities implements ResourceCapabilities {
     signal: AbortSignal,
   ): Promise<boolean> {
     signal.throwIfAborted();
+    if (consumer === "document") return false;
     const type = mediaType.split(";")[0]!.trim().toLowerCase();
     if (consumer === "auto") {
       consumer = FONT_TYPES.has(type) ? "font" : type === "text/css" ? "stylesheet" : "image";

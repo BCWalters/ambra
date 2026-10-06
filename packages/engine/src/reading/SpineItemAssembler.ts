@@ -17,7 +17,7 @@ export async function loadAssembledSpineItem(
   options: { applyReadingTheme?: boolean } = {},
 ): Promise<string> {
   const spineDoc = await contentLoader.loadSpineDocument(spineIndex);
-  const references = contentLoader.findResourceReferences(spineDoc);
+  const references = contentLoader.findResourceReferences(spineDoc, { includeUnavailable: true });
   const resourceResolutions = await resolver.resolveReferences(references);
   const publisherCss = new Map<string, string>();
   for (const style of Array.from(spineDoc.document.querySelectorAll("style"))) {

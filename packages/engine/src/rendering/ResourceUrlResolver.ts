@@ -1,6 +1,5 @@
 import { ContentLoader } from "../content/ContentLoader.js";
 import { EpubContainerError } from "../container/EpubContainer.js";
-import { resolveEpubPath } from "../container/EpubPath.js";
 import { ZipFormatError, ZipIntegrityError } from "../container/ZipArchive.js";
 import { UnsupportedEncryptionAlgorithmError } from "../encryption/FontDeobfuscator.js";
 import { CssSyntaxError } from "postcss";
@@ -11,6 +10,7 @@ import {
   ResourceFallbackSelector, ResourceResolutionError, ResourceResolutionCancelledError,
   UnsupportedResourceError, resourceResolutionKey,
 } from "./ResourceFallbackSelector.js";
+import { classifyEpubReference } from "../container/EpubReference.js";
 export { ResourceResolutionError, ResourceResolutionCancelledError } from "./ResourceFallbackSelector.js";
 
 export interface ResolvedResource {
@@ -54,6 +54,11 @@ export class ResourceUrlResolver {
     const resolved = new Map<string, ResolvedResource | null>();
     await Promise.all([...requests].map(async ([key, ref]) => {
       try {
+        if (ref.location && !this.contentLoader.packageDocument.findManifestItemByPath(ref.path)) {
+          this.fallbackSelector.reportUnavailable(ref.location.kind === "data" ? "[data URL]" : ref.path, ref.consumer);
+          resolved.set(key, null);
+          return;
+        }
         resolved.set(key, await this.resolveForConsumer(ref.path, ref.consumer));
       } catch (error) {
         if (error instanceof UnsupportedResourceError) {
@@ -87,6 +92,7 @@ export class ResourceUrlResolver {
     if (!manifestItem) {
       throw new ResourceResolutionError(`No manifest item found for resource path: ${path}`);
     }
+    if (manifestItem.location) throw new ResourceResolutionError(`Publication resource is blocked by the ${manifestItem.location.kind} URL policy.`);
 
     let cancel!: () => void;
     const promise = new Promise<string>((resolve, reject) => {
@@ -143,17 +149,15 @@ export class ResourceUrlResolver {
     if (this.disposed) throw new ResourceResolutionCancelledError();
     try {
       return await rewriteCssResources(source, async (href, importing, consumer = "image") => {
-        if (!href || href.startsWith("#")) return href;
-        if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) {
-          if (!/^data:/i.test(href)) {
-            console.warn(`External CSS resource remains blocked by content policy: ${href}`);
-          }
-          return href;
+        const reference = classifyEpubReference(documentPath, href);
+        if (reference.kind === "fragment") return href;
+        const path = reference.kind === "package" ? reference.path : reference.url.split("#")[0]!;
+        if (reference.kind !== "package" && !this.contentLoader.packageDocument.findManifestItemByPath(path)) {
+          this.fallbackSelector.reportUnavailable(reference.kind === "data" ? "[data URL]" : path, importing ? "stylesheet" : consumer);
+          return undefined;
         }
         const hash = href.indexOf("#");
-        const reference = hash < 0 ? href : href.slice(0, hash);
         const fragment = hash < 0 ? "" : href.slice(hash);
-        const path = resolveEpubPath(documentPath, reference);
         try {
           const item = await this.fallbackSelector.select(path, importing ? "stylesheet" : consumer);
           if (ancestors.has(item.path)) {

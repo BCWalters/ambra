@@ -5,6 +5,8 @@ import { ReadingTheme } from "./ReadingTheme.js";
 import { HighlightTheme } from "./HighlightTheme.js";
 import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
 import type { ResolvedResource } from "./ResourceUrlResolver.js";
+import { classifyEpubReference, externalNavigationUrl } from "../container/EpubReference.js";
+import { getNamespacedAttributeName } from "../container/Xml.js";
 
 /**
  * A minimal, restrictive Content-Security-Policy applied to every document
@@ -57,8 +59,19 @@ export class ContentDocumentAssembler {
     // to mutate — the original parsed document is left untouched for other
     // consumers (e.g. future CFI resolution) that need pristine hrefs.
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
+    for (const frame of Array.from(doc.querySelectorAll("iframe[srcdoc]"))) frame.removeAttribute("srcdoc");
+    for (const anchor of Array.from(doc.querySelectorAll("a"))) {
+      const attribute = anchor.hasAttribute("href") ? "href"
+        : getNamespacedAttributeName(anchor, "http://www.w3.org/1999/xlink", "href");
+      if (!attribute) continue;
+      const reference = classifyEpubReference(contentDocument.manifestItem.path, anchor.getAttribute(attribute)!);
+      if (reference.kind !== "package" && reference.kind !== "fragment" && !externalNavigationUrl(reference)) {
+        anchor.setAttribute(attribute, "#");
+        anchor.setAttribute("data-ambra-blocked-link", reference.kind);
+      }
+    }
 
-    const references = findResourceReferencesInDocument(doc, contentDocument.manifestItem.path);
+    const references = findResourceReferencesInDocument(doc, contentDocument.manifestItem.path, { includeUnavailable: true });
     const sourceTypes = new Map<Element, Set<string>>();
     const objectImages = new Map<Element, string>();
     // Replace candidates from right to left so original URL offsets stay valid.
@@ -74,7 +87,7 @@ export class ContentDocumentAssembler {
         } else {
           element.removeAttribute(attributeName);
         }
-        if (element.localName === "source" || element.localName === "object") element.removeAttribute("type");
+        if (["source", "object", "embed"].includes(element.localName)) element.removeAttribute("type");
         continue;
       }
       const url = resolution?.url ?? resourceUrls.get(reference.path);
@@ -89,7 +102,7 @@ export class ContentDocumentAssembler {
           types.add(resolution.mediaType);
           sourceTypes.set(element, types);
         }
-        if (resolution && element.localName === "object") objectImages.set(element, url + fragment);
+        if (resolution && ["object", "embed"].includes(element.localName)) objectImages.set(element, url + fragment);
       }
     }
     for (const [source, types] of sourceTypes) {

@@ -23,11 +23,11 @@ export class UnsupportedResourceError extends ResourceResolutionError {
   public constructor(
     public readonly path: string,
     public readonly consumer: ResourceConsumer,
-    public readonly reason: "exhausted" | "missing-target" | "cycle",
+    public readonly reason: "exhausted" | "missing-target" | "cycle" | "policy",
     public readonly chain: readonly string[],
   ) {
     super(
-      `No supported ${consumer} resource for "${path}" (${reason}; fallback chain: ${chain.join(" -> ")}).`,
+      `No supported ${consumer} resource for "${/^data:/i.test(path) ? "[data URL]" : path}" (${reason}; fallback chain: ${chain.join(" -> ")}).`,
     );
     this.name = "UnsupportedResourceError";
   }
@@ -50,6 +50,15 @@ export class ResourceFallbackSelector {
   public onUnsupported(listener: (error: UnsupportedResourceError) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  public reportUnavailable(path: string, consumer: ResourceConsumer): void {
+    const key = resourceResolutionKey(path, consumer);
+    if (this.notified.has(key)) return;
+    this.notified.add(key);
+    const error = new UnsupportedResourceError(path, consumer, "policy", []);
+    console.warn(error.message);
+    for (const listener of this.listeners) listener(error);
   }
 
   public async select(path: string, consumer: ResourceConsumer): Promise<ManifestItem> {
@@ -108,7 +117,9 @@ export class ResourceFallbackSelector {
       chain.push(item.id);
       seen.add(item.id);
       const candidate = item;
-      if (
+      if (candidate.location) {
+        console.warn(`Publication resource candidate "${candidate.id}" is blocked by the ${candidate.location.kind} URL policy.`);
+      } else if (
         await this.capabilities.supports(
           candidate.mediaType,
           consumer,

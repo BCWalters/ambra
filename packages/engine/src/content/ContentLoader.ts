@@ -1,12 +1,13 @@
 import { EpubContainer } from "../container/EpubContainer.js";
 import type { ZipEntry } from "../container/ZipArchive.js";
 import { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
-import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
+import { splitHrefFragment } from "../container/EpubPath.js";
 import { getDescendantElementsByNS, getNamespacedAttributeName } from "../container/Xml.js";
 import type { EncryptionDocument } from "../encryption/EncryptionDocument.js";
 import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
 import { srcsetCandidateRanges, type SrcsetUrlRange } from "./Srcset.js";
 import type { ResourceConsumer } from "../rendering/ResourceCapabilities.js";
+import { classifyEpubReference, type NonPackageEpubReference } from "../container/EpubReference.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -53,6 +54,7 @@ export interface ResourceReference {
   /** A URL within a multi-candidate attribute, rather than its entire value. */
   readonly attributeRange?: SrcsetUrlRange;
   readonly candidateRange?: SrcsetUrlRange;
+  readonly location?: NonPackageEpubReference;
 }
 
 const RESOURCE_ATTRIBUTE_SELECTORS: readonly { selector: string; attribute: string }[] = [
@@ -64,6 +66,8 @@ const RESOURCE_ATTRIBUTE_SELECTORS: readonly { selector: string; attribute: stri
   { selector: "track", attribute: "src" },
   { selector: 'link[rel~="stylesheet"]', attribute: "href" },
   { selector: "object", attribute: "data" },
+  { selector: "embed", attribute: "src" },
+  { selector: "iframe", attribute: "src" },
 ];
 
 /**
@@ -161,7 +165,7 @@ export class ContentLoader {
    * silently degrading into a cryptic XHTML-parse failure. */
   private resolveSupportedContentDocumentItem(manifestItem: ManifestItem): ManifestItem {
     const chain = this.pkg.resolveManifestItemChain(manifestItem);
-    const supported = chain.find((item) => SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES.has(item.mediaType));
+    const supported = chain.find((item) => !item.location && SUPPORTED_CONTENT_DOCUMENT_MEDIA_TYPES.has(item.mediaType));
     if (!supported) {
       throw new ContentLoaderError(
         `No renderable content document for manifest item "${manifestItem.id}" ` +
@@ -177,6 +181,8 @@ export class ContentLoader {
    * callers always get plain, usable bytes regardless of whether the
    * underlying resource happened to be obfuscated in the source file. */
   public async loadResourceBytes(path: string): Promise<Uint8Array> {
+    const location = this.pkg.findManifestItemByPath(path)?.location;
+    if (location) throw new ContentLoaderError(`Publication resource is blocked by the ${location.kind} URL policy.`);
     const bytes = await this.container.requireEntry(path).read();
 
     const encryptionEntry = this.encryptionDocument?.getEntry(path);
@@ -200,10 +206,11 @@ export class ContentLoader {
    * audio/video, stylesheets, embedded SVG images) within `contentDocument`, resolved to
    * archive-relative paths. Hyperlinks (`<a href>`) are deliberately
    * excluded — they're navigation, not embedded resources. */
-  public findResourceReferences(contentDocument: ContentDocument): ResourceReference[] {
+  public findResourceReferences(contentDocument: ContentDocument, options: { includeUnavailable?: boolean } = {}): ResourceReference[] {
     return findResourceReferencesInDocument(
       contentDocument.document,
       contentDocument.manifestItem.path,
+      options,
     );
   }
 
@@ -225,12 +232,13 @@ export class ContentLoader {
 export function findResourceReferencesInDocument(
   document: Document,
   documentPath: string,
+  options: { includeUnavailable?: boolean } = {},
 ): ResourceReference[] {
   const references: ResourceReference[] = [];
 
   for (const { selector, attribute } of RESOURCE_ATTRIBUTE_SELECTORS) {
     for (const element of Array.from(document.querySelectorAll(selector))) {
-      const reference = resolveReference(element, attribute, documentPath);
+      const reference = resolveReference(element, attribute, documentPath, options.includeUnavailable);
       if (reference) {
         references.push(reference);
       }
@@ -243,13 +251,16 @@ export function findResourceReferencesInDocument(
       const url = srcset.slice(range.start, range.end);
       // Only packaged candidates use the archive resolver. Other schemes stay
       // subject to the existing CSP; they must not alias an archive filename.
-      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) continue;
+      const classified = classifyEpubReference(documentPath, url);
+      if (classified.kind === "fragment") continue;
+      if (classified.kind !== "package" && !options.includeUnavailable) continue;
       const { path: rawPath } = splitHrefFragment(url);
       if (!rawPath) continue;
       references.push({
         element,
         attributeName: "srcset",
-        path: resolveEpubPath(documentPath, rawPath),
+        path: classified.kind === "package" ? classified.path : classified.url.split("#")[0]!,
+        location: classified.kind === "package" ? undefined : classified,
         consumer: "image",
         attributeRange: { start: range.start, end: range.start + rawPath.length },
         candidateRange: { start: range.start, end: range.candidateEnd },
@@ -259,12 +270,12 @@ export function findResourceReferencesInDocument(
 
   // SVG <image> elements use either a bare `href` (SVG2) or the legacy
   // `xlink:href` (SVG1.1, still the common case in real-world EPUBs).
-  for (const imageEl of getDescendantElementsByNS(document, SVG_NAMESPACE, "image")) {
+  for (const imageEl of ["image", "use", "feImage"].flatMap(name => getDescendantElementsByNS(document, SVG_NAMESPACE, name))) {
     const attribute =
       (imageEl.hasAttribute("href") ? "href" : undefined) ??
       getNamespacedAttributeName(imageEl, XLINK_NAMESPACE, "href");
     if (attribute) {
-      const reference = resolveReference(imageEl, attribute, documentPath);
+      const reference = resolveReference(imageEl, attribute, documentPath, options.includeUnavailable);
       if (reference) {
         references.push(reference);
       }
@@ -278,20 +289,23 @@ function resolveReference(
   element: Element,
   attributeName: string,
   documentPath: string,
+  includeUnavailable = false,
 ): ResourceReference | undefined {
   const rawValue = element.getAttribute(attributeName);
   if (!rawValue) {
     return undefined;
   }
 
-  const { path: rawPath } = splitHrefFragment(rawValue);
-  if (!rawPath) {
+  const reference = classifyEpubReference(documentPath, rawValue);
+  if (reference.kind === "fragment") {
     // Fragment-only value (e.g. an in-document href) — not an external
     // resource to load.
     return undefined;
   }
 
-  return { element, attributeName, path: resolveEpubPath(documentPath, rawPath), consumer: referenceConsumer(element, attributeName) };
+  if (reference.kind !== "package" && !includeUnavailable) return undefined;
+  return { element, attributeName, path: reference.kind === "package" ? reference.path : reference.url.split("#")[0]!,
+    location: reference.kind === "package" ? undefined : reference, consumer: referenceConsumer(element, attributeName) };
 }
 
 function referenceConsumer(element: Element, attribute: string): ResourceConsumer {
@@ -303,6 +317,8 @@ function referenceConsumer(element: Element, attribute: string): ResourceConsume
       : element.parentElement?.localName === "video" ? "video" : "image";
     case "link": return "stylesheet";
     case "object": return "object";
+    case "embed": return "object";
+    case "iframe": return "document";
     case "track": return "track";
     default: return "image";
   }

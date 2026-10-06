@@ -22,11 +22,11 @@ import {
   primarySpineIndices,
   ReadingTheme,
   ResourceUrlResolver,
-  resolveEpubPath,
+  classifyEpubReference,
+  externalNavigationUrl,
   RollContentHost,
   ScrollContentHost,
   serializeAnnotationCollection,
-  splitHrefFragment,
   SpreadPaginatedHost,
   ReflowableSpreadPlanner,
 } from "@ambra/engine";
@@ -1948,6 +1948,13 @@ export class ReaderController {
       const clickHandler = (event: MouseEvent): void => {
         const target = event.target as Element | null;
         const anchor = target?.closest?.("a");
+        if (anchor?.hasAttribute("data-ambra-blocked-link")) {
+          event.preventDefault();
+          this.setNotification(this.translate("reader.blockedLink"), "info");
+          this.diagnostics.record(`Blocked publication link: ${anchor.getAttribute("data-ambra-blocked-link")}`);
+          this.notify();
+          return;
+        }
         const href = anchor?.getAttribute("href") ?? anchor?.getAttributeNS("http://www.w3.org/1999/xlink", "href");
         if (!href) {
           const img = target?.closest?.("img");
@@ -1958,18 +1965,17 @@ export class ReaderController {
         }
         event.preventDefault();
 
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
-          // External URI, not an in-book path.
-          window.open(href, "_blank", "noopener,noreferrer");
-          return;
-        }
-
         const own = pathAndSpineIndexFor(iframeDocument);
         if (!own) {
           return;
         }
-        const { fragment } = splitHrefFragment(href);
-        const targetPath = resolveEpubPath(own.path, href);
+        const reference = classifyEpubReference(own.path, href);
+        if (reference.kind !== "package" && reference.kind !== "fragment") {
+          this.openExternalPublicationLink(reference);
+          return;
+        }
+        const fragment = reference.fragment;
+        const targetPath = reference.kind === "package" ? reference.path : own.path;
         const targetSpineIndex = this.pkg.spine.findIndex(
           (ref) => ref.manifestItem.path === targetPath,
         );
@@ -4505,6 +4511,10 @@ export class ReaderController {
   /** Navigates to a Table of Contents entry: loads its target spine item
    * (if not already open) and jumps to its fragment, if any. */
   public async goToNavPoint(navPoint: NavPoint): Promise<void> {
+    if (navPoint.externalReference) {
+      this.openExternalPublicationLink(navPoint.externalReference);
+      return;
+    }
     this.recordDiagnosticEvent({ kind: "navigation", source: "toc",
       targetSpine: this.pkg.spine.findIndex(ref => ref.manifestItem.path === navPoint.path) });
     if (!navPoint.path) {
@@ -4516,6 +4526,17 @@ export class ReaderController {
     }
     this.clearNavigationHighlights();
     await this.openSpineItem(spineIndex, { fragment: navPoint.fragment, history: "jump" });
+  }
+
+  private openExternalPublicationLink(reference: NonNullable<NavPoint["externalReference"]>): void {
+    const url = externalNavigationUrl(reference);
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      this.setNotification(this.translate("reader.blockedLink"), "info");
+      this.diagnostics.record(`Blocked publication link: ${reference.kind}`);
+      this.notify();
+    }
   }
 
   /** Reveals a newly loaded paginated host with the same page-turn

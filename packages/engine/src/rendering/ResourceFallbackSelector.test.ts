@@ -36,6 +36,19 @@ const item = (id: string, type: string, fallback?: string) =>
 afterEach(() => vi.restoreAllMocks());
 
 describe("consumer-aware foreign-resource fallback selection", () => {
+  it("skips policy-blocked manifest locations before probing or reading and selects their packaged fallback", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const original = new ManifestItem("remote", "https://example.test/image.png", "image/png", new Set(), "local",
+      undefined, { kind: "https", url: "https://example.test/image.png" });
+    const fallback = item("local", "image/png");
+    const { selector, capability, read, notify } = setup([original, fallback]);
+    expect(await selector.select(original.path, "image")).toBe(fallback);
+    expect(capability).toHaveBeenCalledTimes(1);
+    expect(read).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("https URL policy"));
+    selector.dispose();
+  });
   it("selects the first supported candidate in order and never inspects its unused broken tail", async () => {
     const original = item("foreign", "application/foreign", "unsupported");
     const unsupported = item("unsupported", "image/jxl", "supported");

@@ -78,7 +78,7 @@ jobs:
         run: >-
           pnpm --filter @ambra/e2e exec playwright test
           css-resources.spec.ts primary-reading-order.spec.ts
-          resource-fallbacks.spec.ts
+          resource-fallbacks.spec.ts resource-policy.spec.ts
           reader-shortcuts-help.spec.ts inspector-docking.spec.ts narration-discovery.spec.ts
           --workers=2
       - name: Test the packaged production build
