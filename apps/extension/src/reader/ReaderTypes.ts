@@ -153,6 +153,8 @@ export interface ReaderSnapshot {
   toc: readonly NavPoint[];
   spineIndex: number;
   spineLength: number;
+  /** Primary-order coarse progress; supplements stay at their insertion boundary. */
+  coarseBookFraction?: number;
   /** Manifest path of the current spine item, for `TocPanel` to
    * highlight the matching entry. */
   currentSpinePath: string | undefined;

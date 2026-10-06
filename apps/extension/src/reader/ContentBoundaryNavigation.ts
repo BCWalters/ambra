@@ -1,4 +1,4 @@
-import { markReaderOwnedContent } from "@ambra/engine";
+import { adjacentPrimarySpineIndex, markReaderOwnedContent } from "@ambra/engine";
 import type { ContentDocumentView, NavPoint, PackageDocument } from "@ambra/engine";
 import type { Translate } from "../i18n/LocaleContext.js";
 
@@ -7,7 +7,7 @@ export interface ContentBoundary {
   readonly nextSpineIndex?: number;
 }
 
-/** Like chapter/page navigation, boundaries follow the spine, including linear="no". */
+/** Boundaries follow primary reading order, retaining original package indices. */
 export function contentBoundary(
   spineIndex: number,
   fixedLayout: boolean,
@@ -15,7 +15,8 @@ export function contentBoundary(
   toc: readonly NavPoint[],
   translate: Translate,
 ): ContentBoundary {
-  const nextSpineIndex = spineIndex + 1;
+  const nextSpineIndex = adjacentPrimarySpineIndex(pkg.spine, spineIndex, 1);
+  if (nextSpineIndex === undefined) return { label: translate("readingBoundary.endOfBook") };
   const next = pkg.spine[nextSpineIndex];
   if (!next) return { label: translate("readingBoundary.endOfBook") };
   if (fixedLayout) return { label: translate("readingBoundary.nextPage"), nextSpineIndex };

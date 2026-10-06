@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { aggregateBookPosition, computePriorityOrder, resolveGlobalPage } from "./BookPagination.js";
 
+describe("primary-order page counts", () => {
+  const counts = [0, 3, 0, 2, 0];
+
+  it("counts only primary pages and gives supplements no book-wide page", () => {
+    expect(aggregateBookPosition(counts, 3, 1)).toEqual({ currentPage: 5, totalPages: 5 });
+    expect(aggregateBookPosition(counts, 2, 0)).toEqual({ currentPage: undefined, totalPages: 5 });
+  });
+
+  it("skips zero-count entries at both ends and in the middle, including overshoots", () => {
+    expect(resolveGlobalPage(counts, 0)).toEqual({ spineIndex: 1, pageIndexInItem: 0 });
+    expect(resolveGlobalPage(counts, 4)).toEqual({ spineIndex: 3, pageIndexInItem: 0 });
+    expect(resolveGlobalPage(counts, 100)).toEqual({ spineIndex: 3, pageIndexInItem: 1 });
+    expect(resolveGlobalPage([0, 0], 1)).toBeUndefined();
+  });
+});
+
 describe("computePriorityOrder", () => {
   it("starts with the current spine index", () => {
     expect(computePriorityOrder(2, 5)).toEqual([2, 3, 4, 1, 0]);

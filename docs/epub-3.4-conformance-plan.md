@@ -88,6 +88,25 @@ observed `pub-cmt-jxl` failing to decode, tracked by C34-04.
 Conformance work additionally exposed roll fragment targeting at fractional
 item boundaries, tracked in [#352](https://github.com/BCWalters/ambra/issues/352).
 
+#### C34-03 implementation and assessment expectations
+
+Primary-order traversal preserves original package spine indices and skips
+`linear="no"` during chapter/page turns, content-boundary navigation, spread
+pairing, continuous roll presentation, progress counting/seeking, and narration
+progression. Initial reading starts at the first primary item. Explicit TOC,
+link, history, and saved-CFI destinations retain supplemental access.
+
+Next/previous from a supplement chooses the nearest primary item in that
+direction. Supplements do not acquire a primary page number; coarse progress
+stays at their insertion boundary. Roll opens a directly requested supplement
+separately from the primary continuous canvas. All-non-linear publications have
+no sequential order or seekable progress and report the missing primary order
+on initial opening, rather than inventing one.
+
+Official `pkg-spine-nonlinear-activation` and `pkg-spine-order` criteria should improve,
+but synthetic regression coverage is not an official conformance score.
+Release assessments must still verify their individual criteria.
+
 ### Phase 2: architecture and recommended reading-system behavior
 
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |

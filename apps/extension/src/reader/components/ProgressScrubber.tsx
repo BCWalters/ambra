@@ -49,7 +49,7 @@ const useStyles = makeStyles({
 export interface ProgressScrubberProps {
   snapshot: Pick<ReaderSnapshot,
     "isFixedLayout" | "viewMode" | "pageIndex" | "pageCount" |
-    "bookPageIndex" | "bookPageCount" | "spineIndex" | "spineLength" |
+    "bookPageIndex" | "bookPageCount" | "spineIndex" | "spineLength" | "coarseBookFraction" |
     "pageProgressionDirection" | "bookmarks" | "bookmarkProgress" | "bookmarkLocations"
   >;
   markerStyle?: ProgressMarkerStyle;
@@ -95,6 +95,7 @@ function currentFraction(snapshot: ProgressScrubberProps["snapshot"]): number {
   ) {
     return snapshot.bookPageIndex / snapshot.bookPageCount;
   }
+  if (snapshot.coarseBookFraction !== undefined) return snapshot.coarseBookFraction;
   if (snapshot.spineLength > 0) {
     const chapterFraction = snapshot.pageCount > 0 ? snapshot.pageIndex / snapshot.pageCount : 0;
     return (snapshot.spineIndex + chapterFraction) / snapshot.spineLength;
@@ -442,7 +443,7 @@ export const ProgressScrubber: FC<ProgressScrubberProps> = ({
           current: snapshot.bookPageIndex,
           total: snapshot.bookPageCount,
         })} · ${Math.round(currentFraction(snapshot) * 100)}%`
-      : hasHidden ? t("scrubber.countingPages") : undefined;
+      : hasHidden && snapshot.bookPageCount === undefined ? t("scrubber.countingPages") : undefined;
   // Still exposed as one combined string for the slider's own
   // `aria-valuetext` (see below) — a screen reader doesn't care how the
   // two pieces are laid out visually, just that both are announced.

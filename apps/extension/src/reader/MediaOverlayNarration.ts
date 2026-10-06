@@ -1,4 +1,4 @@
-import { MediaOverlayPlayer, SmilDocument } from "@ambra/engine";
+import { adjacentPrimarySpineIndex, MediaOverlayPlayer, SmilDocument } from "@ambra/engine";
 import type { ContentLoader, PackageDocument, SmilPar } from "@ambra/engine";
 
 export interface NarrationTarget {
@@ -105,10 +105,11 @@ export class MediaOverlayNarration {
       following: this.following,
       rate: this.rate,
       hasTarget: this.target !== undefined,
-      hasPrevious: !!this.cursor && (this.cursor.index > 0 || this.cursor.association > 0),
+      hasPrevious: !!this.cursor && (this.cursor.index > 0 ||
+        this.adjacentAssociation(this.cursor.association, -1) !== undefined),
       hasNext: !!this.cursor && (
         this.cursor.index < this.cursor.clips.length - 1 ||
-        this.cursor.association < this.associations.length - 1
+        this.adjacentAssociation(this.cursor.association, 1) !== undefined
       ),
       ...(this.error ? { error: this.error } : {}),
     };
@@ -265,13 +266,22 @@ export class MediaOverlayNarration {
     return (await document).filter((par) => par.text.path === item.path);
   }
 
+  private adjacentAssociation(association: number, direction: 1 | -1): number | undefined {
+    for (let spineIndex = adjacentPrimarySpineIndex(this.ctx.pkg.spine, this.associations[association]!, direction);
+      spineIndex !== undefined; spineIndex = adjacentPrimarySpineIndex(this.ctx.pkg.spine, spineIndex, direction)) {
+      const next = this.associations.indexOf(spineIndex);
+      if (next >= 0) return next;
+    }
+    return undefined;
+  }
+
   private async neighbor(cursor: Cursor, direction: 1 | -1): Promise<Cursor | undefined> {
     const index = cursor.index + direction;
     if (index >= 0 && index < cursor.clips.length) return { ...cursor, index };
     for (
-      let association = cursor.association + direction;
-      association >= 0 && association < this.associations.length;
-      association += direction
+      let association = this.adjacentAssociation(cursor.association, direction);
+      association !== undefined;
+      association = this.adjacentAssociation(association, direction)
     ) {
       const clips = await this.loadClips(association);
       if (this.disposed) return undefined;

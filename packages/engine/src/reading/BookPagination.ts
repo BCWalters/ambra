@@ -78,7 +78,7 @@ export function aggregateBookPosition(
     totalPages += count;
   }
 
-  return { currentPage, totalPages };
+  return { currentPage: pageCounts[currentSpineIndex] === 0 ? undefined : currentPage, totalPages };
 }
 
 /** The inverse of `aggregateBookPosition`: given every spine item's page
@@ -104,6 +104,7 @@ export function resolveGlobalPage(
   }
   const clampedTarget = Math.max(1, Math.round(globalPageOneBased));
   let remaining = clampedTarget;
+  let lastPage: { spineIndex: number; pageIndexInItem: number } | undefined;
   for (let i = 0; i < pageCounts.length; i++) {
     const count = pageCounts[i];
     if (count === undefined) {
@@ -112,16 +113,12 @@ export function resolveGlobalPage(
     if (remaining <= count) {
       return { spineIndex: i, pageIndexInItem: Math.max(0, remaining - 1) };
     }
+    if (count > 0) lastPage = { spineIndex: i, pageIndexInItem: count - 1 };
     remaining -= count;
   }
   // The target was at or past the very end of the book — clamp to the
-  // last page of the last spine item rather than treating it as
+  // last page of the last participating spine item rather than treating it as
   // unresolved (a drag to the far right edge of the scrubber should
   // always land somewhere, not silently do nothing).
-  const lastIndex = pageCounts.length - 1;
-  const lastCount = pageCounts[lastIndex];
-  if (lastCount === undefined) {
-    return undefined;
-  }
-  return { spineIndex: lastIndex, pageIndexInItem: Math.max(0, lastCount - 1) };
+  return lastPage;
 }

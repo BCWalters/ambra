@@ -121,6 +121,7 @@ jobs:
           mixed-rendition-spreads.spec.ts
           roll-layout.spec.ts
           css-resources.spec.ts
+          primary-reading-order.spec.ts
           pagination-measurement.spec.ts
           responsive-images.spec.ts
           --workers=2

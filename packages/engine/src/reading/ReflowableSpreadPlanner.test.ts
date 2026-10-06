@@ -1,7 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 import { ReflowableSpreadPlanner, type ReflowableSpread } from "./ReflowableSpreadPlanner.js";
+import { adjacentPrimarySpineIndex } from "./PrimaryReadingOrder.js";
 
 describe("ReflowableSpreadPlanner", () => {
+  it("pairs only primary pages across supplements while keeping direct supplemental access", async () => {
+    const spine = [false, true, false, true, false].map(linear => ({ linear }));
+    const count = vi.fn(async (_index: number) => 1);
+    const planner = new ReflowableSpreadPlanner(count,
+      index => spine[index]?.linear === true,
+      (index, direction) => adjacentPrimarySpineIndex(spine, index, direction));
+    const primary = { first: { spineIndex: 1, pageIndex: 0 }, second: { spineIndex: 3, pageIndex: 0 } };
+    expect(await planner.containing({ spineIndex: 1, pageIndex: 0 })).toEqual(primary);
+    expect(await planner.containing({ spineIndex: 3, pageIndex: 0 })).toEqual(primary);
+    expect(await planner.turn(primary, 1)).toBeUndefined();
+    expect(await planner.turn(primary, -1)).toBeUndefined();
+    expect(count.mock.calls.map(call => call[0]).every(index => index === 1 || index === 3)).toBe(true);
+    expect(await planner.containing({ spineIndex: 2, pageIndex: 0 })).toEqual({
+      first: { spineIndex: 2, pageIndex: 0 }, second: undefined,
+    });
+    expect(await planner.adjacent({ spineIndex: 2, pageIndex: 0 }, 1)).toEqual({ spineIndex: 3, pageIndex: 0 });
+    expect(await planner.adjacent({ spineIndex: 2, pageIndex: 0 }, -1)).toEqual({ spineIndex: 1, pageIndex: 0 });
+  });
+
   it.each([[1, 1, 1, 7], [3, 4, 1, 1, 2], [2, 2], [1]])(
     "pairs every page exactly once and reverses identically: %j",
     async (...counts: number[]) => {

@@ -5,6 +5,7 @@ import type {
   RenditionSpread,
   SpineItemRef,
 } from "../container/PackageDocument.js";
+import { adjacentPrimarySpineIndex } from "./PrimaryReadingOrder.js";
 
 /** Below this width, readability takes priority over the author's spread hint. */
 const MIN_SPREAD_TOTAL_WIDTH = 700;
@@ -20,7 +21,7 @@ export interface FixedSpreadViewport {
   readonly packageRenditionSpread: RenditionSpread;
 }
 
-/** Pairs consecutive eligible FXL items, respecting direction and explicit sides.
+/** Pairs consecutive eligible primary FXL items, respecting direction and explicit sides.
  * Ineligible items break runs. Mismatched sides render singly rather than adding
  * blank filler pages, following Readium's convention where EPUB leaves discretion. */
 export class FixedLayoutSpreadPlanner {
@@ -52,11 +53,11 @@ export class FixedLayoutSpreadPlanner {
     }
 
     let runStart = spineIndex;
-    while (
-      runStart > 0 &&
-      FixedLayoutSpreadPlanner.isSpreadCandidate(spine, packageRenditionLayout, viewport, runStart - 1)
-    ) {
-      runStart--;
+    for (let previous = adjacentPrimarySpineIndex(spine, runStart, -1);
+      previous !== undefined &&
+      FixedLayoutSpreadPlanner.isSpreadCandidate(spine, packageRenditionLayout, viewport, previous);
+      previous = adjacentPrimarySpineIndex(spine, runStart, -1)) {
+      runStart = previous;
     }
 
     let i = runStart;
@@ -68,9 +69,9 @@ export class FixedLayoutSpreadPlanner {
         // boundary, but guards against ever looping past the run.
         break;
       }
-      const next = i + 1;
+      const next = adjacentPrimarySpineIndex(spine, i, 1);
       const canPairWithNext =
-        next < spine.length &&
+        next !== undefined &&
         FixedLayoutSpreadPlanner.isSpreadCandidate(spine, packageRenditionLayout, viewport, next) &&
         FixedLayoutSpreadPlanner.canPair(spine[i]!, spine[next]!, direction);
 
@@ -84,7 +85,10 @@ export class FixedLayoutSpreadPlanner {
         return { kind: "single", spineIndex };
       }
 
-      i = canPairWithNext ? i + 2 : i + 1;
+      const following = canPairWithNext && next !== undefined
+        ? adjacentPrimarySpineIndex(spine, next, 1) : next;
+      if (following === undefined) break;
+      i = following;
     }
 
     // Fell through without ever covering spineIndex (only reachable if
@@ -103,8 +107,8 @@ export class FixedLayoutSpreadPlanner {
     current: FixedSpread,
   ): FixedSpread | undefined {
     const lastIndex = current.kind === "single" ? current.spineIndex : Math.max(current.leftSpineIndex, current.rightSpineIndex);
-    const nextIndex = lastIndex + 1;
-    if (nextIndex >= spine.length) {
+    const nextIndex = adjacentPrimarySpineIndex(spine, lastIndex, 1);
+    if (nextIndex === undefined) {
       return undefined;
     }
     return FixedLayoutSpreadPlanner.spreadContaining(
@@ -126,8 +130,8 @@ export class FixedLayoutSpreadPlanner {
     current: FixedSpread,
   ): FixedSpread | undefined {
     const firstIndex = current.kind === "single" ? current.spineIndex : Math.min(current.leftSpineIndex, current.rightSpineIndex);
-    const previousIndex = firstIndex - 1;
-    if (previousIndex < 0) {
+    const previousIndex = adjacentPrimarySpineIndex(spine, firstIndex, -1);
+    if (previousIndex === undefined) {
       return undefined;
     }
     return FixedLayoutSpreadPlanner.spreadContaining(
@@ -146,7 +150,7 @@ export class FixedLayoutSpreadPlanner {
     index: number,
   ): boolean {
     const item = spine[index];
-    if (!item) {
+    if (!item || item.linear === false) {
       return false;
     }
     if (item.resolveRenditionLayout(packageRenditionLayout) !== "pre-paginated") {

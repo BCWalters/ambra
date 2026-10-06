@@ -73,6 +73,24 @@ describe("book-wide CFI page index", () => {
     return locators.generate(0, nodes.get(0)!, offset).cfi;
   }
 
+  it("never measures supplements, including after layout and disclosure invalidation", async () => {
+    const primary = loader.packageDocument.spine[0]!;
+    const supplement = new SpineItemRef(primary.manifestItem, false, new Set(), []);
+    estimator.dispose();
+    estimator = new BookPaginationEstimator(
+      loader, resources, [supplement, primary, supplement, primary, supplement], "reflowable", container,
+    );
+    await run();
+    expect(vi.mocked(PaginatedContentHost.prototype.open).mock.calls.map(call => call[2])).toEqual([1, 3]);
+    expect(estimator.positionFor(3, 0)).toEqual({ currentPage: 4, totalPages: 6 });
+    expect(estimator.positionFor(2, 0)).toEqual({ currentPage: undefined, totalPages: 6 });
+    expect(estimator.resolveGlobalPage(100)).toEqual({ spineIndex: 3, pageIndexInItem: 2 });
+    estimator.invalidateSpineItem(2);
+    expect(estimator.positionFor(2, 0).totalPages).toBe(6);
+    await run(900);
+    expect(vi.mocked(PaginatedContentHost.prototype.open).mock.calls.map(call => call[2])).toEqual([1, 3, 1, 3]);
+  });
+
   it("retains DOM-free figure membership for images, caption pages and legacy child offsets (#264)", async () => {
     let points: { cfi: string; page: number }[] = [];
     vi.mocked(PaginatedContentHost.prototype.open).mockImplementation(async function (this: PaginatedContentHost) {

@@ -94,6 +94,23 @@ afterEach(() => {
 });
 
 describe("MediaOverlayNarration", () => {
+  it("skips supplemental narration during progression but preserves explicit playback and return", async () => {
+    const { narration, audio, loader } = setup(undefined, { nonlinearLast: true });
+    await narration.playFrom(0);
+    await narration.next();
+    expect(narration.target?.fragment).toBe("b");
+    expect(narration.snapshot.hasNext).toBe(false);
+    audio.advance(2.02);
+    await flush();
+    expect(narration.snapshot.status).toBe("ended");
+    expect(loader.readArchiveFileText).not.toHaveBeenCalledWith("EPUB/m2.smil");
+    await narration.playFrom(2);
+    expect(narration.target?.fragment).toBe("c");
+    expect(narration.snapshot).toMatchObject({ hasPrevious: true, hasNext: true });
+    await narration.previous();
+    expect(narration.target).toEqual({ spineIndex: 0, path: "EPUB/c0.xhtml", fragment: "b" });
+  });
+
   it("owns a hidden observable audio element and removes it on disposal", () => {
     const { pkg, loader } = setup();
     const narration = new MediaOverlayNarration({

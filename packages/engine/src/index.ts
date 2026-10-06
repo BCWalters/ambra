@@ -99,6 +99,7 @@ export { RollContentHost } from "./reading/RollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";
 export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";
 export { ReflowableSpreadPlanner } from "./reading/ReflowableSpreadPlanner.js";
+export { adjacentPrimarySpineIndex, primarySpineIndices } from "./reading/PrimaryReadingOrder.js";
 export type { ReflowablePagePosition, ReflowableSpread } from "./reading/ReflowableSpreadPlanner.js";
 export { FixedSpreadHost } from "./reading/FixedSpreadHost.js";
 export { FixedLayoutSpreadPlanner } from "./reading/FixedLayoutSpreadPlanner.js";

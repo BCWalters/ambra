@@ -1,5 +1,6 @@
 import {
   AccessibilityController,
+  adjacentPrimarySpineIndex,
   AnnotationParseError,
   BookPaginationEstimator,
   ContentLoader,
@@ -17,6 +18,7 @@ import {
   NavigationList,
   PaginatedContentHost,
   parseAnnotationCollection,
+  primarySpineIndices,
   ReadingTheme,
   ResourceUrlResolver,
   resolveEpubPath,
@@ -729,6 +731,10 @@ export class ReaderController {
       const bookPageCount = bookWidePosition?.bookPageCount;
       const requestedLayout = this.pendingLayout?.configuration ?? this.currentLayout();
       const navigationPages = this.computeTocPageNumbers();
+      const primaryIndices = primarySpineIndices(this.pkg.spine);
+      const primaryOffset = primaryIndices.filter(index => index < this.spineIndex).length;
+      const chapterFraction = this.pkg.spine[this.spineIndex]?.linear !== false && pageCount > 0
+        ? pageIndex / pageCount : 0;
 
       this.cachedSnapshot = {
         hasRenderedContent: this.host !== undefined,
@@ -739,8 +745,10 @@ export class ReaderController {
         toc: this.navigation.toc.items,
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
+        coarseBookFraction: primaryIndices.length
+          ? (primaryOffset + chapterFraction) / primaryIndices.length : undefined,
         currentSpinePath: this.pkg.spine[this.spineIndex]?.manifestItem.path,
-        firstSpinePath: this.pkg.spine[0]?.manifestItem.path,
+        firstSpinePath: this.pkg.spine[primaryIndices[0] ?? -1]?.manifestItem.path,
         highlightedTocPath: this.tocHighlightPath(),
         tocPageNumbers: navigationPages,
         progressMarkers: this.progressMarkerStyle === "off" ? undefined : resolveProgressMarkers(
@@ -864,7 +872,7 @@ export class ReaderController {
   }
 
   /** Mounts the current view mode's content host into `containerEl` and
-   * opens a previously-saved reading position, or spine item 0. Call
+   * opens a previously-saved reading position, or the first primary item. Call
    * once, after the container div is available. */
   public async mount(containerEl: HTMLDivElement, width: number, height: number): Promise<void> {
     if (this.operations.disposed) return;
@@ -910,7 +918,16 @@ export class ReaderController {
     const resumed = await this.tryResume(resumeOperation);
     if (this.operations.disposed) return;
     if (!resumed && this.operations.owns(resumeOperation)) {
-      await this.openSpineItem(0);
+      const first = primarySpineIndices(this.pkg.spine)[0];
+      if (first === undefined) {
+        this.operations.finish(resumeOperation);
+        this.isLoading = false;
+        this.isLoadInFlight = false;
+        this.reportTransientError(new Error("The publication has no primary reading order."),
+          "open", "primary reading order");
+        return;
+      }
+      await this.openSpineItem(first);
     }
     const cfi = this.currentReadingCfi();
     if (cfi) this.readingHistory?.start(cfi);
@@ -2131,6 +2148,7 @@ export class ReaderController {
           const commit = this.readingHistory?.beginJump();
           // A spread's second document is the next reading stop, even in RTL.
           if (this.isFixedLayoutHost(host)) {
+            this.revealRollSpineItem(nextSpineIndex);
             const point = { node: destination.document.body ?? destination.document.documentElement, offset: 0, spineIndex: nextSpineIndex };
             this.accessibility.focusReadingPosition(destination.document, point);
             this.nativeReading.retain(point);
@@ -3062,6 +3080,9 @@ export class ReaderController {
         this.notify();
         await this.saveProgress(false, true);
       }
+      if (moved) return;
+      const next = adjacentPrimarySpineIndex(this.pkg.spine, this.spineIndex, direction);
+      if (next !== undefined) await this.openSpineItem(next, { landOnLastPage: direction === -1 });
       return;
     } else if (this.host instanceof FixedSpreadHost) {
       // Fixed-layout content has no in-chapter pagination step here:
@@ -3080,8 +3101,8 @@ export class ReaderController {
       return;
     }
 
-    const nextSpineIndex = this.spineIndex + direction;
-    if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
+    const nextSpineIndex = adjacentPrimarySpineIndex(this.pkg.spine, this.spineIndex, direction);
+    if (nextSpineIndex === undefined) {
       return;
     }
     await this.openSpineItem(nextSpineIndex, {
@@ -3179,16 +3200,20 @@ export class ReaderController {
       this.setUpDragPageTurn();
       this.restoreFocusAfterHostSwap(hadReadingFocus);
       const newIndices = newHost.spineIndices;
+      const primaryIndices = primarySpineIndices(this.pkg.spine);
+      const pageNumbers = newIndices.map(index =>
+        this.bookPagination?.positionFor(index, 0).currentPage ?? primaryIndices.indexOf(index) + 1);
+      const total = this.bookPagination?.positionFor(this.spineIndex, 0).totalPages ?? primaryIndices.length;
       this.announce(
         newIndices.length > 1
           ? this.translate("announcements.spreadOfTotal", {
-              first: newIndices[0]! + 1,
-              second: newIndices[1]! + 1,
-              total: this.pkg.spine.length,
+              first: pageNumbers[0]!,
+              second: pageNumbers[1]!,
+              total,
             })
           : this.translate("scrubber.pageOfTotal", {
-              current: newIndices[0]! + 1,
-              total: this.pkg.spine.length,
+              current: pageNumbers[0]!,
+              total,
             }),
       );
       this.notify();
@@ -3197,8 +3222,8 @@ export class ReaderController {
     }
 
     const edgeSpineIndex = direction === 1 ? Math.max(...indices) : Math.min(...indices);
-    const nextSpineIndex = edgeSpineIndex + direction;
-    if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
+    const nextSpineIndex = adjacentPrimarySpineIndex(this.pkg.spine, edgeSpineIndex, direction);
+    if (nextSpineIndex === undefined) {
       return;
     }
     await this.openSpineItem(nextSpineIndex, { landOnLastPage: direction === -1 });
@@ -3391,7 +3416,7 @@ export class ReaderController {
       return false;
     }
     const nextSpineItem = this.pkg.spine[nextSpineIndex];
-    if (!nextSpineItem) {
+    if (!nextSpineItem || nextSpineItem.linear === false) {
       return false;
     }
     const resolvedLayout = nextSpineItem.resolveRenditionLayout(this.pkg.metadata.renditionLayout);
@@ -3461,6 +3486,7 @@ export class ReaderController {
     return new ReflowableSpreadPlanner(
       (index) => this.spreadPageCount(index, operation),
       (index) => this.canMergeSpreadIntoNext(index),
+      (index, direction) => adjacentPrimarySpineIndex(this.pkg.spine, index, direction),
     );
   }
 
@@ -4326,7 +4352,13 @@ export class ReaderController {
     this.diagnostics.recordSurfaces(surfaces);
   }
 
-  /** Adjacent spine item, relative to actual reading focus, not a spread's visual primary. */
+  private revealRollSpineItem(spineIndex: number): void {
+    if (!(this.host instanceof RollContentHost)) return;
+    this.host.scrollToSpine(spineIndex);
+    this.spineIndex = spineIndex;
+  }
+
+  /** Adjacent primary item, relative to reading focus, not a spread's visual primary. */
   public async goToChapter(direction: 1 | -1, sourceDocument?: Document): Promise<void> {
     this.recordDiagnosticEvent({ kind: "navigation", source: "chapter" });
     await this.readingHistory?.settled();
@@ -4338,8 +4370,9 @@ export class ReaderController {
         return frame && frame.ownerDocument.activeElement === frame;
       });
     const native = this.nativeReading.current();
-    const nextSpineIndex = (source?.spineIndex ?? native?.spineIndex ?? this.spineIndex) + direction;
-    if (nextSpineIndex < 0 || nextSpineIndex >= this.pkg.spine.length) {
+    const nextSpineIndex = adjacentPrimarySpineIndex(this.pkg.spine,
+      source?.spineIndex ?? native?.spineIndex ?? this.spineIndex, direction);
+    if (nextSpineIndex === undefined) {
       return;
     }
     this.clearNavigationHighlights();
@@ -4347,6 +4380,7 @@ export class ReaderController {
       (this.isFixedLayoutHost(this.host) || view.page?.index === 0));
     if (destination) {
       const commit = this.readingHistory?.beginJump();
+      this.revealRollSpineItem(nextSpineIndex);
       const point = { spineIndex: nextSpineIndex, node: destination.document.body ?? destination.document.documentElement, offset: 0 };
       this.accessibility.focusReadingPosition(destination.document, point);
       this.nativeReading.retain(point);
@@ -4377,7 +4411,8 @@ export class ReaderController {
     }
     const { spineIndex: targetSpineIndex } = this.resolveSpineFraction(clamped);
     return {
-      position: { kind: "chapter", current: targetSpineIndex + 1, total: this.pkg.spine.length },
+      position: { kind: "chapter", current: primarySpineIndices(this.pkg.spine).indexOf(targetSpineIndex) + 1,
+        total: primarySpineIndices(this.pkg.spine).length },
       chapterLabel: this.seekChapterLabel(targetSpineIndex),
     };
   }
@@ -4391,6 +4426,7 @@ export class ReaderController {
     for (const point of points) {
       const index = this.pkg.spine.findIndex(ref => ref.manifestItem.path === point.path);
       if (index < 0 || index > spineIndex) continue;
+      if (this.pkg.spine[index]?.linear === false) continue;
       if (pages && globalPage !== undefined) {
         const page = point.target ? pages.get(point.target) : undefined;
         if (page === undefined || page > globalPage || page < bestPage) continue;
@@ -4442,14 +4478,15 @@ export class ReaderController {
    * `bookPagination` is incomplete. It treats the book as equal-width
    * spine slots so a target can still land partway through a chapter. */
   private resolveSpineFraction(clamped: number): { spineIndex: number; localFraction: number } {
-    const spineLength = this.pkg.spine.length;
+    const primaryIndices = primarySpineIndices(this.pkg.spine);
+    const spineLength = primaryIndices.length;
     if (spineLength <= 0) {
-      return { spineIndex: 0, localFraction: 0 };
+      throw new Error("The publication has no primary reading order.");
     }
     const scaled = clamped * spineLength;
     const spineIndex = Math.max(0, Math.min(spineLength - 1, Math.floor(scaled)));
     const localFraction = Math.max(0, Math.min(1, scaled - spineIndex));
-    return { spineIndex, localFraction };
+    return { spineIndex: primaryIndices[spineIndex]!, localFraction };
   }
 
   /** Navigates to a Table of Contents entry: loads its target spine item
@@ -4844,10 +4881,12 @@ export class ReaderController {
           await rollHost.open(
             this.contentLoader,
             this.resolver,
-            this.pkg.spine.map((_, index) => index),
+            this.pkg.spine[requestedSpineIndex]?.linear === false
+              ? [requestedSpineIndex] : primarySpineIndices(this.pkg.spine),
             this.pkg.metadata.renditionViewport,
           );
-          rollHost.scrollToSpine(requestedSpineIndex);
+          rollHost.scrollToSpine(requestedSpineIndex,
+            options.landOnLastPage ? 1 : (options.landOnFractionInItem ?? 0));
           spineIndex = requestedSpineIndex;
         } else if (resolvedLayout === "pre-paginated") {
           // Fixed-layout content always uses `FixedSpreadHost`;

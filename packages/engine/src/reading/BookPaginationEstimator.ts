@@ -101,10 +101,8 @@ function isFixedCanvasLayout(layout: RenditionLayout | undefined): boolean {
  *
  * Fixed-layout spine items are never measured this way — a fixed-layout
  * page has no reflow/pagination concept of its own, so each one simply
- * counts as exactly one page. Non-linear spine items are, for now,
- * counted the same as any other spine item; excluding them from the
- * book-wide count is a reasonable future refinement, not implemented
- * here.
+ * counts as exactly one page. Non-linear items have zero primary-order
+ * pages and are not measured; their original indices remain addressable.
  */
 export class BookPaginationEstimator {
   private pageCounts: (number | undefined)[];
@@ -141,7 +139,8 @@ export class BookPaginationEstimator {
 
   private initialPageCounts(): (number | undefined)[] {
     return this.spine.map(item =>
-      isFixedCanvasLayout(item.resolveRenditionLayout(this.packageDefaultLayout)) ? 1 : undefined,
+      item.linear === false ? 0 :
+        isFixedCanvasLayout(item.resolveRenditionLayout(this.packageDefaultLayout)) ? 1 : undefined,
     );
   }
 
@@ -370,6 +369,7 @@ export class BookPaginationEstimator {
 
   /** Unknown/missing anchors stay unknown rather than masquerading as the chapter's first page. */
   public pageIndexForFragment(spineIndex: number, fragment: string): number | undefined {
+    if (this.spine[spineIndex]?.linear === false) return undefined;
     if (isFixedCanvasLayout(this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout))) {
       return 0;
     }
@@ -430,7 +430,8 @@ export class BookPaginationEstimator {
   public invalidateSpineItem(spineIndex: number): void {
     this.cancelPendingMeasurement();
     this.pageCounts[spineIndex] =
-      isFixedCanvasLayout(this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout)) ? 1 : undefined;
+      this.spine[spineIndex]?.linear === false ? 0 :
+        isFixedCanvasLayout(this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout)) ? 1 : undefined;
     this.pageStarts[spineIndex] = undefined;
     this.pageStartAncestors[spineIndex] = undefined;
     this.fragmentPages[spineIndex] = undefined;
