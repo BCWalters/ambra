@@ -148,6 +148,7 @@ for (const { width, locale } of [
         await page.evaluate(locale => Reflect.get(window, "__readerController").library.setLocalePreference(locale), locale);
         await page.reload();
       }
+      await expect(page.locator("iframe").first()).toBeVisible();
       await exposeReaderController(page);
       await page.waitForFunction(() => {
         const c = Reflect.get(window, "__readerController");
