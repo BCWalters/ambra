@@ -1,5 +1,6 @@
 export { EpubContainer, EpubContainerError } from "./container/EpubContainer.js";
-export { ZipArchive, ZipEntry, ZipFormatError, ZipIntegrityError } from "./container/ZipArchive.js";
+export { ZipArchive, ZipEntry, ZipFormatError, ZipIntegrityError, DEFAULT_ZIP_ARCHIVE_LIMITS } from "./container/ZipArchive.js";
+export type { ZipArchiveLimits } from "./container/ZipArchive.js";
 export {
   PackageDocument,
   PackageDocumentError,

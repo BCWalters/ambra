@@ -170,6 +170,27 @@ optional empty-value handling, and required-value errors remain unchanged.
 Regression coverage is prepared for protected remote validation; official
 criterion assessment and the release conformance score remain separate.
 
+#### C34-06 implementation and assessment expectations
+
+C34-06 implementation is prepared but still awaits protected remote validation.
+ZIP64 v1 EOCD/locator and conditional extended information fields are parsed
+without rounding unsigned integers. ZIP32 behavior, Store/Deflate, CRC checking,
+and supplied-buffer boundaries remain covered. Native ZIP encryption, unsupported
+extraction versions/compression methods, multidisk records, malformed UTF-8
+names, inconsistent headers/descriptors, and archive extra data records are
+rejected explicitly. EPUB opening validates the first uncompressed `mimetype`
+entry, its local/central extra fields, and its exact ASCII contents.
+
+Default limits are 1,000,000 entries, 256 MiB uncompressed per entry, and 8 GiB
+declared uncompressed total. `ZipArchive.open` and `EpubContainer.open` accept
+explicit limit overrides for trusted inputs. Deflate output is streamed and
+stopped if it exceeds the declared, already-limited size. Archive input remains
+buffered, so browser allocation limits still apply; ZIP64 support does not imply
+unlimited memory. Regression fixtures cover an actual 65,536-entry directory,
+ZIP64 partial fields, signed/unsigned descriptors, unsafe integers, corruption,
+limits, and malformed mimetype entries. Tests run remotely, not on the developer
+device. Synthetic coverage does not change the official conformance score.
+
 ### Phase 2: architecture and recommended reading-system behavior
 
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |
