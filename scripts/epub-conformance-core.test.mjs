@@ -10,6 +10,10 @@ const release = {
   sha256: "exact-digest",
 };
 const ids = ["font", "image"];
+const criteria = [
+  { id: "font", kind: "font", family: "Original native family" },
+  { id: "image", kind: "image" },
+];
 const worksheet = {
   release,
   tests: {
@@ -34,9 +38,17 @@ const observation = (id) => ({
     evidence: evidenceUrl,
     trackingIssue: null,
   },
-  observations: { painted: true },
+  observations: {
+    fonts: id === "font" ? [{
+      family: "Original native family", status: "loaded",
+      used: true, painted: true, distinctGlyphs: true,
+    }] : [],
+    images: id === "font" ? [] : [{
+      complete: true, width: 32, height: 24, painted: true, packaged: true, decodeError: null,
+    }],
+  },
 });
-const merge = (records) => mergeCoreAssessment(worksheet, records, { ids, evidenceUrl });
+const merge = (records) => mergeCoreAssessment(worksheet, records, { criteria, evidenceUrl });
 
 test("merges only the named profile and preserves unassessed criteria and optional groups", () => {
   const result = merge(ids.map(observation));
@@ -51,6 +63,7 @@ test("preserves tracked native failures and explicit execution blockers", () => 
   const records = ids.map(observation);
   records[0].result.status = "fail";
   records[0].result.trackingIssue = "https://github.com/BCWalters/ambra/issues/328";
+  records[0].observations.fonts[0].status = "error";
   records[1].result.status = "not-run";
   records[1].result.reason = "Execution blocked.";
   records[1].observations = null;
@@ -58,6 +71,36 @@ test("preserves tracked native failures and explicit execution blockers", () => 
   const result = merge(records);
   assert.equal(result.tests.font.status, "fail");
   assert.equal(result.tests.image.status, "not-run");
+});
+
+test("rejects empty, malformed, wrong-kind and verdict-inconsistent native evidence", () => {
+  for (const mutate of [
+    record => { record.observations = {}; },
+    record => { record.observations.images = []; },
+    record => { record.observations.images[0].width = -1; },
+    record => { record.observations.images[0].painted = "true"; },
+    record => { record.observations.images[0].packaged = false; },
+    record => { record.observations.images[0].decodeError = "Native decode failure"; },
+    record => { record.observations.fonts = [observation("font").observations.fonts[0]]; },
+    record => {
+      record.result.status = "fail";
+      record.result.trackingIssue = "https://github.com/BCWalters/ambra/issues/328";
+    },
+  ]) {
+    const records = ids.map(observation);
+    mutate(records[1]);
+    assert.throws(() => merge(records));
+  }
+  for (const mutate of [
+    face => { face.family = "Different family"; },
+    face => { face.status = "invalid"; },
+    face => { face.used = "true"; },
+    face => { face.distinctGlyphs = false; },
+  ]) {
+    const records = ids.map(observation);
+    mutate(records[0].observations.fonts[0]);
+    assert.throws(() => merge(records));
+  }
 });
 
 test("rejects incomplete, duplicate, unknown and package-mismatched observations", () => {

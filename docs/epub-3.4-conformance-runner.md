@@ -56,7 +56,10 @@ browser/OS difference when comparing scores.
 
 Every observation is tied to the exact package fingerprint and workflow run.
 Missing/duplicate observations, mixed package/browser/OS provenance, missing
-failure issues and invented `not-applicable` verdicts are rejected. Execution
+failure issues and invented `not-applicable` verdicts are rejected. The collector
+validates the typed native measurements and rejects verdicts inconsistent with
+loaded/used/painted font glyphs or decoded/painted packaged images. Empty evidence
+cannot promote a pass. Execution
 errors remain explicit `not-run` blockers, never criterion passes. Other tests
 remain untouched; importing/opening a publication still does not score it.
 

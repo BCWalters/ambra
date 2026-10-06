@@ -12,10 +12,60 @@ function text(value, label) {
   return value;
 }
 
-export function mergeCoreAssessment(assessment, records, { ids, evidenceUrl }) {
-  if (!Array.isArray(ids) || ids.length === 0 || new Set(ids).size !== ids.length) {
-    throw new Error("The core-media profile must contain unique identifiers.");
+function nativeVerdict(observations, criterion) {
+  if (!Array.isArray(observations?.fonts) || !Array.isArray(observations.images)) {
+    throw new Error(`${criterion.id} lacks native font/image measurement arrays.`);
   }
+  if (criterion.kind === "font") {
+    if (observations.images.length !== 0) {
+      throw new Error(`${criterion.id} contains measurements for the wrong resource kind.`);
+    }
+    for (const face of observations.fonts) {
+      if (
+        typeof face?.family !== "string" ||
+        face.family.replace(/^['"]|['"]$/g, "") !== criterion.family ||
+        !["unloaded", "loading", "loaded", "error"].includes(face.status) ||
+        !["used", "painted", "distinctGlyphs"].every(field => typeof face[field] === "boolean")
+      ) {
+        throw new Error(`${criterion.id} has malformed native font measurements.`);
+      }
+    }
+    return observations.fonts.length > 0 && observations.fonts.every(
+      face => face.status === "loaded" && face.used && face.painted && face.distinctGlyphs,
+    );
+  }
+  if (observations.fonts.length !== 0) {
+    throw new Error(`${criterion.id} contains measurements for the wrong resource kind.`);
+  }
+  for (const image of observations.images) {
+    if (
+      !image ||
+      !["complete", "painted", "packaged"].every(field => typeof image[field] === "boolean") ||
+      !["width", "height"].every(field => Number.isSafeInteger(image[field]) && image[field] >= 0) ||
+      !(image.decodeError === null || typeof image.decodeError === "string")
+    ) {
+      throw new Error(`${criterion.id} has malformed native image measurements.`);
+    }
+  }
+  return observations.images.length > 0 && observations.images.every(
+    image => image.complete && image.width > 0 && image.height > 0 &&
+      image.painted && image.packaged && image.decodeError === null,
+  );
+}
+
+export function mergeCoreAssessment(assessment, records, { criteria, evidenceUrl }) {
+  if (
+    !Array.isArray(criteria) || criteria.length === 0 ||
+    criteria.some(criterion =>
+      !criterion || typeof criterion.id !== "string" || !/^[a-z0-9_-]+$/.test(criterion.id) ||
+      !["font", "image"].includes(criterion.kind) ||
+      (criterion.kind === "font" && (typeof criterion.family !== "string" || !criterion.family.trim())),
+    ) ||
+    new Set(criteria.map(criterion => criterion.id)).size !== criteria.length
+  ) {
+    throw new Error("The core-media profile must contain unique, typed criteria.");
+  }
+  const ids = criteria.map(criterion => criterion.id);
   if (!/^https:\/\/github\.com\/BCWalters\/ambra\/actions\/runs\/[1-9]\d*$/.test(evidenceUrl)) {
     throw new Error("A specific GitHub assessment run is required as evidence.");
   }
@@ -23,6 +73,7 @@ export function mergeCoreAssessment(assessment, records, { ids, evidenceUrl }) {
     throw new Error("An assessment worksheet and observation records are required.");
   }
   const expected = new Set(ids);
+  const byId = new Map(criteria.map(criterion => [criterion.id, criterion]));
   const seen = new Set();
   const merged = structuredClone(assessment);
   const environments = [];
@@ -60,11 +111,11 @@ export function mergeCoreAssessment(assessment, records, { ids, evidenceUrl }) {
     ) {
       throw new Error(`${record.id} requires a failure tracking issue.`);
     }
-    if (
-      result.status !== "not-run" &&
-      (!record.observations || typeof record.observations !== "object")
-    ) {
-      throw new Error(`${record.id} lacks its native measurement observations.`);
+    if (result.status !== "not-run") {
+      const passed = nativeVerdict(record.observations, byId.get(record.id));
+      if ((result.status === "pass") !== passed) {
+        throw new Error(`${record.id} verdict contradicts its native measurements.`);
+      }
     }
     const environment = record.environment;
     const testedAt = Date.parse(text(environment?.testedAt, `${record.id} testedAt`));
@@ -140,7 +191,7 @@ async function main() {
     ),
   );
   const result = mergeCoreAssessment(assessment, records, {
-    ids: profile.map((criterion) => criterion.id),
+    criteria: profile,
     evidenceUrl: values.evidence,
   });
   await mkdir(path.dirname(values.output), { recursive: true });
