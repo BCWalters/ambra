@@ -8,21 +8,23 @@ import { attachContentBoundary, contentBoundary, setContentBoundaryShortcut } fr
 const pkg = {
   spine: [
     { manifestItem: { path: "one.xhtml" } },
-    { manifestItem: { path: "two.xhtml" }, linear: false },
+    { manifestItem: { path: "supplement.xhtml" }, linear: false },
+    { manifestItem: { path: "two.xhtml" } },
+    { manifestItem: { path: "endnote.xhtml" }, linear: false },
   ],
 } as unknown as Pick<PackageDocument, "spine">;
 const translate = getTranslate("en");
 const toc = [new NavPoint("Second chapter", "two.xhtml", undefined, [])];
 
 describe("contentBoundary", () => {
-  it("names only the actual destination and follows the existing non-linear spine convention", () => {
+  it("names only the actual primary destination and skips non-linear documents", () => {
     expect(contentBoundary(0, false, pkg, toc, translate)).toEqual({
-      label: "Next chapter: Second chapter", nextSpineIndex: 1,
+      label: "Next chapter: Second chapter", nextSpineIndex: 2,
     });
     expect(contentBoundary(0, false, pkg, [new NavPoint("Earlier", "one.xhtml", undefined, [])], translate))
-      .toEqual({ label: "Next section", nextSpineIndex: 1 });
+      .toEqual({ label: "Next section", nextSpineIndex: 2 });
     expect(contentBoundary(0, false, pkg, [new NavPoint("Later section", "two.xhtml", "later", [])], translate))
-      .toEqual({ label: "Next section", nextSpineIndex: 1 });
+      .toEqual({ label: "Next section", nextSpineIndex: 2 });
   });
 
   it("finds nested document titles, translates labels, and uses pages for FXL", () => {
@@ -30,12 +32,13 @@ describe("contentBoundary", () => {
     expect(contentBoundary(0, false, pkg, nested, getTranslate("fr")).label)
       .toBe("Chapitre suivant : Second chapter");
     expect(contentBoundary(0, true, pkg, nested, translate))
-      .toEqual({ label: "Next page", nextSpineIndex: 1 });
+      .toEqual({ label: "Next page", nextSpineIndex: 2 });
   });
 
   it("has an end message without a destination at the final spine item", () => {
-    expect(contentBoundary(1, false, pkg, toc, translate)).toEqual({ label: "End of book" });
-    expect(contentBoundary(1, true, pkg, toc, translate)).toEqual({ label: "End of book" });
+    expect(contentBoundary(2, false, pkg, toc, translate)).toEqual({ label: "End of book" });
+    expect(contentBoundary(2, true, pkg, toc, translate)).toEqual({ label: "End of book" });
+    expect(contentBoundary(3, false, pkg, toc, translate)).toEqual({ label: "End of book" });
   });
 });
 

@@ -135,7 +135,7 @@ export class RollContentHost {
     const maximum = Math.max(0, this.totalHeight() - this.height);
     this.containerEl.scrollTop = Math.min(
       maximum,
-      this.offsetFor(item.spineIndex) + element.getBoundingClientRect().top * scale,
+      Math.ceil(this.offsetFor(item.spineIndex) + element.getBoundingClientRect().top * scale),
     );
   }
 
@@ -187,7 +187,7 @@ export class RollContentHost {
     const maximum = Math.max(0, this.totalHeight() - this.height);
     this.containerEl.scrollTop = Math.min(
       maximum,
-      this.offsetFor(spineIndex) + item.scaledHeight * fraction,
+      Math.ceil(this.offsetFor(spineIndex) + item.scaledHeight * fraction),
     );
   }
 

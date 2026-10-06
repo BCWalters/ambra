@@ -31,6 +31,33 @@ const RTL: PageProgressionDirection = "rtl";
 const WIDE: FixedSpreadViewport = { width: 1600, height: 1000, packageRenditionSpread: "both" };
 const NARROW: FixedSpreadViewport = { ...WIDE, width: 600 };
 
+describe("fixed primary reading order", () => {
+  const supplement = new SpineItemRef(item("supplement").manifestItem, false, new Set(), []);
+  const spine = [supplement, item("first"), supplement, item("second"), supplement];
+
+  it("pairs primary items across supplements but renders explicit supplements singly", () => {
+    for (const index of [1, 3]) {
+      expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, index))
+        .toEqual({ kind: "pair", leftSpineIndex: 1, rightSpineIndex: 3 });
+    }
+    expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, RTL, WIDE, 3))
+      .toEqual({ kind: "pair", leftSpineIndex: 3, rightSpineIndex: 1 });
+    expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, 2))
+      .toEqual({ kind: "single", spineIndex: 2 });
+  });
+
+  it("leaves supplements for the nearest primary item and skips non-linear book edges", () => {
+    expect(FixedLayoutSpreadPlanner.nextSpread(spine, PRE_PAGINATED, LTR, NARROW,
+      { kind: "single", spineIndex: 2 })).toEqual({ kind: "single", spineIndex: 3 });
+    expect(FixedLayoutSpreadPlanner.previousSpread(spine, PRE_PAGINATED, LTR, NARROW,
+      { kind: "single", spineIndex: 2 })).toEqual({ kind: "single", spineIndex: 1 });
+    expect(FixedLayoutSpreadPlanner.nextSpread(spine, PRE_PAGINATED, LTR, WIDE,
+      { kind: "pair", leftSpineIndex: 1, rightSpineIndex: 3 })).toBeUndefined();
+    expect(FixedLayoutSpreadPlanner.previousSpread(spine, PRE_PAGINATED, LTR, WIDE,
+      { kind: "pair", leftSpineIndex: 1, rightSpineIndex: 3 })).toBeUndefined();
+  });
+});
+
 describe("FixedLayoutSpreadPlanner.isSpreadModeEligible", () => {
   it("is never eligible for rendition:spread=none, regardless of size", () => {
     expect(FixedLayoutSpreadPlanner.isSpreadModeEligible("none", 4000, 2000)).toBe(false);

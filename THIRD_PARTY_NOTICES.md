@@ -8,13 +8,14 @@ book covers, downloaded descriptions, fonts, or other third-party works.
 ## Dependencies
 
 Production dependencies are permissively licensed. The installed lockfile
-inventory on 2026-09-23 (`pnpm licenses list --prod`) reports:
+inventory on 2026-10-06 (`pnpm licenses list --prod`) reports:
 
 | License | Packages |
 | --- | --- |
-| MIT | React, React DOM, Fluent UI components/icons, Griffel, xml-formatter, and other runtime dependencies |
+| MIT | React, React DOM, Fluent UI components/icons, Griffel, xml-formatter, PostCSS, postcss-value-parser, nanoid, and other runtime dependencies |
 | Apache-2.0 | `@swc/helpers` |
-| BSD-3-Clause | `highlight.js` |
+| BSD-3-Clause | `highlight.js`, `source-map-js` |
+| ISC | `picocolors` (PostCSS dependency; retain its installed copyright and permission notice) |
 | 0BSD | `tslib` |
 
 Each dependency remains under its own license. Distributable bundles must include

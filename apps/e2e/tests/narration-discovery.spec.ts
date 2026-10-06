@@ -148,6 +148,12 @@ for (const { width, locale } of [
         await page.evaluate(locale => Reflect.get(window, "__readerController").library.setLocalePreference(locale), locale);
         await page.reload();
       }
+      await expect(page.locator("iframe").first()).toBeVisible();
+      await exposeReaderController(page);
+      await page.waitForFunction(() => {
+        const c = Reflect.get(window, "__readerController");
+        return c?.host && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout && !c.isTurningPage;
+      });
       const t = getTranslate(locale);
       const strip = page.locator("[data-narration-controls]");
       await strip.getByRole("button", { name: t("narration.play"), exact: true }).click();

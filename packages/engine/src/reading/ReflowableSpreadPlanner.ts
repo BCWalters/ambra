@@ -17,6 +17,8 @@ export class ReflowableSpreadPlanner {
   public constructor(
     private readonly count: (spineIndex: number) => Promise<number>,
     private readonly eligible: (spineIndex: number) => boolean,
+    private readonly adjacentSpine: (index: number, direction: 1 | -1) => number | undefined =
+      (index, direction) => index + direction,
   ) {}
 
   public async adjacent(
@@ -27,18 +29,25 @@ export class ReflowableSpreadPlanner {
     if (pageIndex >= 0 && pageIndex < (await this.count(position.spineIndex))) {
       return { spineIndex: position.spineIndex, pageIndex };
     }
-    const spineIndex = position.spineIndex + direction;
-    if (!this.eligible(spineIndex)) return undefined;
+    const spineIndex = this.adjacentSpine(position.spineIndex, direction);
+    if (spineIndex === undefined || !this.eligible(spineIndex)) return undefined;
     return { spineIndex, pageIndex: direction === 1 ? 0 : (await this.count(spineIndex)) - 1 };
   }
 
   public async startingAt(first: ReflowablePagePosition): Promise<ReflowableSpread> {
-    return { first, second: await this.adjacent(first, 1) };
+    const second = await this.adjacent(first, 1);
+    return { first, second: !this.eligible(first.spineIndex) && second?.spineIndex !== first.spineIndex
+      ? undefined : second };
   }
 
   public async containing(position: ReflowablePagePosition): Promise<ReflowableSpread> {
     let offset = position.pageIndex;
-    for (let i = position.spineIndex - 1; this.eligible(i); i--) offset += await this.count(i);
+    if (this.eligible(position.spineIndex)) {
+      for (let i = this.adjacentSpine(position.spineIndex, -1);
+        i !== undefined && this.eligible(i); i = this.adjacentSpine(i, -1)) {
+        offset += await this.count(i);
+      }
+    }
     const first = offset % 2 === 0 ? position : ((await this.adjacent(position, -1)) ?? position);
     return this.startingAt(first);
   }
