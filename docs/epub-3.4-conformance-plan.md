@@ -81,6 +81,10 @@ potentially long official conformance workload.
 | ------ | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | C34-18 | Release conformance runner and scorecard | Provide a pinned, repeatable official-test-suite runner and archive a scored report for every release candidate. It may remain opt-in and must not block ordinary CI if runtime is excessive. | [#342](https://github.com/BCWalters/ambra/issues/342) |
 
+The implemented manual-first process, commands, pinned suite revision, report
+schema, and release gate are documented in the
+[EPUB 3.4 release conformance runner](epub-3.4-conformance-runner.md).
+
 ## Release conformance process
 
 The conformance run is a release requirement, not necessarily a per-commit CI
