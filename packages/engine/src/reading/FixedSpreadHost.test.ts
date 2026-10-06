@@ -14,6 +14,32 @@ describe("FixedSpreadHost child ownership", () => {
   const loader = {} as ContentLoader;
   const resolver = {} as ResourceUrlResolver;
 
+  it.each([
+    { width: 900, height: 900, rtl: false },
+    { width: 2200, height: 900, rtl: false },
+    { width: 900, height: 900, rtl: true },
+    { width: 2200, height: 900, rtl: true },
+  ])("shares the full available width without a gutter for unequal pages: %j", async ({ width, height, rtl }) => {
+    vi.spyOn(FixedContentHost.prototype, "open").mockResolvedValue();
+    vi.spyOn(FixedContentHost.prototype, "naturalSize", "get")
+      .mockReturnValueOnce({ width: 400, height: 800 })
+      .mockReturnValueOnce({ width: 600, height: 600 });
+    const scale = vi.spyOn(FixedContentHost.prototype, "applyExternalScale").mockImplementation(() => {});
+    const host = new FixedSpreadHost(width, height);
+    await host.open(loader, resolver, {
+      kind: "pair", leftSpineIndex: rtl ? 1 : 0, rightSpineIndex: rtl ? 0 : 1,
+    }, undefined);
+    const expectedScale = Math.min(width / 1000, height / 800);
+    expect(scale.mock.calls).toEqual([
+      [expectedScale, 400 * expectedScale, height],
+      [expectedScale, 600 * expectedScale, height],
+    ]);
+    expect(host.element.children).toHaveLength(2);
+    expect(host.element.style.flexDirection).toBe(rtl ? "row-reverse" : "row");
+    expect(FixedSpreadHost.GUTTER_WIDTH).toBe(0);
+    host.dispose();
+  });
+
   it.each(["ltr", "rtl"] as const)("keeps %s physical sides distinct from reading order and primary focus", async direction => {
     vi.spyOn(FixedContentHost.prototype, "open").mockImplementation(async function (this: FixedContentHost, _loader, _resolver, spineIndex) {
       const doc = document.implementation.createHTMLDocument(String(spineIndex));

@@ -123,6 +123,7 @@ jobs:
           reader-go-to-shortcuts.spec.ts
           keyboard-ownership.spec.ts
           fixed-layout-scrubber.spec.ts
+          fixed-layout-spread-hugging.spec.ts
           fixed-layout-edge-navigation.spec.ts
           svg-spine.spec.ts
           mixed-rendition-spreads.spec.ts

@@ -113,6 +113,15 @@ failures stop CI early without duplicating coverage or weakening the remaining
 checks. Shell restoration checks explicitly reveal auto-hidden toolbar controls;
 docking and post-reload playback checks wait for reader layout readiness.
 
+#### C34-05 implementation and assessment expectations
+
+Fixed-layout pairs now share the full available width without a reserved gutter
+or binding shadow. Their authored coordinate spaces meet directly in LTR and RTL;
+shared scaling, unequal intrinsic page sizes, outer centering, and single-page
+behavior are preserved. Protected geometry checks require less than one CSS
+pixel of separation before and after resizing, not merely a small-looking gap.
+The official pre-paginated spread criteria still require release assessment.
+
 ### Phase 2: architecture and recommended reading-system behavior
 
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |
