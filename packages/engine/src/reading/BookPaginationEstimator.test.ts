@@ -4,7 +4,7 @@ import { fileURLToPath, URL as NodeURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ContentLoader } from "../content/ContentLoader.js";
-import { SpineItemRef } from "../container/PackageDocument.js";
+import { SpineItemRef, type RenditionLayout } from "../container/PackageDocument.js";
 import { LocatorResolver } from "../locator/Locator.js";
 import { Page } from "../layout/Page.js";
 import { planPageBreaks } from "../layout/PaginationEngine.js";
@@ -291,10 +291,12 @@ describe("book-wide CFI page index", () => {
     expect(estimator.pageIndexForCfi(0, saved)).toBe(1);
   });
 
-  it("maps a fixed-layout spine item to its sole page without measuring a DOM", async () => {
+  it.each<RenditionLayout>(["pre-paginated", "roll"])(
+    "maps a %s spine item to its sole page without measuring a DOM",
+    async (layout) => {
     estimator.dispose();
     estimator = new BookPaginationEstimator(
-      loader, resources, loader.packageDocument.spine, "pre-paginated",
+      loader, resources, loader.packageDocument.spine, layout,
       container, undefined, locators,
     );
     const content = document.implementation.createHTMLDocument();
@@ -303,7 +305,8 @@ describe("book-wide CFI page index", () => {
     await run();
     expect(estimator.pageIndexForCfi(0, saved)).toBe(0);
     expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
-  });
+    },
+  );
 
   it("does not publish page boundaries from a superseded measurement", async () => {
     const open = vi.mocked(PaginatedContentHost.prototype.open);

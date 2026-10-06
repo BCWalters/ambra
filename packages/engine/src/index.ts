@@ -95,6 +95,7 @@ export type { MediaOverlayAudioHost, MediaOverlayClip } from "./media-overlay/Me
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";
 export type { PaginatedOpenOptions } from "./reading/PaginatedContentHost.js";
 export { ScrollContentHost } from "./reading/ScrollContentHost.js";
+export { RollContentHost } from "./reading/RollContentHost.js";
 export { FixedContentHost } from "./reading/FixedContentHost.js";
 export { SpreadPaginatedHost } from "./reading/SpreadPaginatedHost.js";
 export { ReflowableSpreadPlanner } from "./reading/ReflowableSpreadPlanner.js";

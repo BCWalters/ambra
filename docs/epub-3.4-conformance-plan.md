@@ -23,16 +23,17 @@ content, EPUB Navigation Documents, NCX fallback, reflowable and fixed-layout
 presentation, RTL spreads, recorded-audio Media Overlays, EPUB CFI locators,
 annotations, font de-obfuscation algorithms, and accessible reader controls.
 
-The main conformance blockers are:
+The first audited blocker, `rendition:layout=roll`, is implemented and covered
+by an original synthetic browser fixture. The remaining main conformance
+blockers are:
 
-1. no `rendition:layout=roll` presentation;
-2. no rewriting of packaged resources referenced from CSS;
-3. sequential navigation that includes `linear="no"` spine items;
-4. no foreign-resource fallback traversal;
-5. a visible gutter between paired fixed-layout pages;
-6. no ZIP64 v1 support;
-7. incomplete URL-scheme handling and core-media capability detection;
-8. incomplete package direction and ordered rendition-property processing.
+1. no rewriting of packaged resources referenced from CSS;
+2. sequential navigation that includes `linear="no"` spine items;
+3. no foreign-resource fallback traversal;
+4. a visible gutter between paired fixed-layout pages;
+5. no ZIP64 v1 support;
+6. incomplete URL-scheme handling and core-media capability detection;
+7. incomplete package direction and ordered rendition-property processing.
 
 Scripting and remote resources are product-policy decisions as well as
 compatibility work. They are not prerequisites for a secure, useful reader,
@@ -58,6 +59,13 @@ GitHub issue numbers change.
 | C34-08 | Package direction and metadata language           | Preserve package- and element-level direction/language and render internationalized metadata correctly.                                                       | [#332](https://github.com/BCWalters/ambra/issues/332) |
 | C34-09 | Ordered rendition-property resolution             | Preserve item property order and implement first-applicable-value behavior for conflicting layout, spread, and page-side values.                              | [#334](https://github.com/BCWalters/ambra/issues/334) |
 | C34-10 | Vertical-writing pagination                       | Add vertical CJK fixtures and correct paginated `vertical-rl` and `vertical-lr` measurement/navigation.                                                       | [#333](https://github.com/BCWalters/ambra/issues/333) |
+
+C34-01 is implemented. Ambra treats `roll` as a publication-wide layout,
+ignores incompatible item-level layout, spread, flow, and orientation
+overrides, and renders every spine document as a fixed-width canvas in one
+gapless vertical scrollport. The synthetic browser fixture covers mixed
+intrinsic heights, width fitting, scrollbar width, cross-spine fragments,
+iframe wheel input, resize and position restoration, and RTL content.
 
 ### Phase 2: architecture and recommended reading-system behavior
 
