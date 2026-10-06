@@ -141,7 +141,7 @@ for (const deviceScaleFactor of [1, 2]) {
                 const restricted = doc.querySelector<HTMLImageElement>("#restricted")!;
                 rows.push({ width, mode, images, fullyVisible, pages,
                   restrictedBlocked: restricted.complete && restricted.naturalWidth === 0,
-                  restrictedCandidates: restricted.srcset });
+                  restrictedCandidates: restricted.getAttribute("srcset") });
               } finally {
                 host.dispose();
                 host.element.remove();
@@ -172,7 +172,7 @@ for (const deviceScaleFactor of [1, 2]) {
         expect(row.pages).toBeGreaterThan(0);
         expect(row.fullyVisible).toBe(true);
         expect(row.restrictedBlocked).toBe(true);
-        expect(row.restrictedCandidates).toContain("https://example.invalid/one.svg 1x, data:image/svg+xml,");
+        expect(row.restrictedCandidates).toBeNull();
       }
       expect(results.cached).toBe(true);
       expect(results.revoked).toBe(true);
