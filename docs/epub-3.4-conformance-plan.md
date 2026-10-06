@@ -122,6 +122,20 @@ behavior are preserved. Protected geometry checks require less than one CSS
 pixel of separation before and after resizing, not merely a small-looking gap.
 The official pre-paginated spread criteria still require release assessment.
 
+#### C34-09 implementation and assessment expectations
+
+Manifest and spine property sets preserve XML token order. Item-level layout,
+spread, page-side, and orientation resolution now uses the first recognized value
+in that order, ignoring unknown values and preserving publication defaults.
+Conflicting effective values emit one diagnostic per group and spine item without
+rejecting the publication. Equivalent prefixed/unprefixed page-side aliases do not
+conflict; the deprecated portrait-spread value retains its existing `both`
+normalization. Publication-wide `roll` continues to ignore item-level layout
+overrides. Orientation remains an advisory value surfaced in inspection, not a
+browser-window orientation lock. Regression coverage exercises ordered pairs,
+aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
+still need release assessment; these synthetic checks do not alter the score.
+
 ### Phase 2: architecture and recommended reading-system behavior
 
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |

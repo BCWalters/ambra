@@ -99,9 +99,36 @@ export class ManifestItem {
   }
 }
 
+const SPINE_LAYOUT_PROPERTIES: ReadonlyMap<string, RenditionLayout> = new Map([
+  ["rendition:layout-pre-paginated", "pre-paginated"],
+  ["rendition:layout-reflowable", "reflowable"],
+]);
+const SPINE_SPREAD_PROPERTIES: ReadonlyMap<string, RenditionSpread> = new Map([
+  ["rendition:spread-none", "none"],
+  ["rendition:spread-landscape", "landscape"],
+  ["rendition:spread-both", "both"],
+  ["rendition:spread-auto", "auto"],
+  ["rendition:spread-portrait", "both"],
+]);
+const SPINE_PAGE_SIDE_PROPERTIES: ReadonlyMap<string, PageSpreadSide> = new Map([
+  ["page-spread-left", "left"],
+  ["rendition:page-spread-left", "left"],
+  ["page-spread-right", "right"],
+  ["rendition:page-spread-right", "right"],
+  ["page-spread-center", "center"],
+  ["rendition:page-spread-center", "center"],
+]);
+const SPINE_ORIENTATION_PROPERTIES: ReadonlyMap<string, RenditionOrientation> = new Map([
+  ["rendition:orientation-portrait", "portrait"],
+  ["rendition:orientation-landscape", "landscape"],
+  ["rendition:orientation-auto", "auto"],
+]);
+
 /** A single `<itemref>` in the OPF `<spine>`: one entry in the book's
  * linear (or non-linear) reading order, referencing a `ManifestItem`. */
 export class SpineItemRef {
+  private readonly reportedPropertyConflicts = new Set<string>();
+
   public constructor(
     public readonly manifestItem: ManifestItem,
     /** False for content excluded from the primary linear reading order
@@ -131,27 +158,13 @@ export class SpineItemRef {
     if (packageDefault === "roll") {
       return "roll";
     }
-    if (this.hasProperty("rendition:layout-pre-paginated")) {
-      return "pre-paginated";
-    }
-    if (this.hasProperty("rendition:layout-reflowable")) {
-      return "reflowable";
-    }
-    return packageDefault;
+    return this.firstPropertyValue("layout", SPINE_LAYOUT_PROPERTIES) ?? packageDefault;
   }
 
   /** This spine item's effective synthetic-spread hint. Viewport eligibility
    * and page-spread placement remain the spread planner's responsibility. */
   public resolveRenditionSpread(packageDefault: RenditionSpread): RenditionSpread {
-    for (const value of ["none", "landscape", "both", "auto"] as const) {
-      if (this.hasProperty(`rendition:spread-${value}`)) {
-        return value;
-      }
-    }
-    if (this.hasProperty("rendition:spread-portrait")) {
-      return "both";
-    }
-    return packageDefault;
+    return this.firstPropertyValue("spread", SPINE_SPREAD_PROPERTIES) ?? packageDefault;
   }
 
   /** This spine item's explicit `page-spread-*` override, or `undefined`
@@ -159,27 +172,10 @@ export class SpineItemRef {
    * back to the default left/right alternation). Checks both the
    * `rendition:`-prefixed and unprefixed property spellings — the spec
    * explicitly allows (and real books sometimes declare) both on the same
-   * itemref at once, "in case reading systems only support one of [the]
-   * properties" (e.g. `properties="rendition:page-spread-left
-   * page-spread-left"`), so this must never require exactly one spelling
-   * to be present. Only one *side* (left vs. right vs. center) is ever
-   * legal per itemref per spec — epubcheck rejects a book that declares
-   * conflicting sides — so encountering more than one here (a malformed
-   * book epubcheck would have already flagged) resolves by simple
-   * priority (left, then right, then center) rather than throwing; this
-   * engine already generally prefers tolerating malformed real-world
-   * input over failing to open a book at all. */
+   * itemref at once. Conflicting sides resolve to the first recognized
+   * token in source order, with a diagnostic rather than rejection. */
   public get pageSpread(): PageSpreadSide | undefined {
-    if (this.hasProperty("page-spread-left") || this.hasProperty("rendition:page-spread-left")) {
-      return "left";
-    }
-    if (this.hasProperty("page-spread-right") || this.hasProperty("rendition:page-spread-right")) {
-      return "right";
-    }
-    if (this.hasProperty("page-spread-center") || this.hasProperty("rendition:page-spread-center")) {
-      return "center";
-    }
-    return undefined;
+    return this.firstPropertyValue("page side", SPINE_PAGE_SIDE_PROPERTIES);
   }
 
   /** This spine item's effective `rendition:orientation`, applying its own
@@ -187,16 +183,36 @@ export class SpineItemRef {
    * present, else falling back to the publication-wide default — same
    * override shape as `resolveRenditionLayout`. */
   public resolveRenditionOrientation(packageDefault: RenditionOrientation): RenditionOrientation {
-    if (this.hasProperty("rendition:orientation-portrait")) {
-      return "portrait";
+    return this.firstPropertyValue("orientation", SPINE_ORIENTATION_PROPERTIES) ?? packageDefault;
+  }
+
+  private firstPropertyValue<Value extends string>(
+    group: string,
+    candidates: ReadonlyMap<string, Value>,
+  ): Value | undefined {
+    let selected: Value | undefined;
+    let selectedToken: string | undefined;
+    const ignored: string[] = [];
+    for (const token of this.properties) {
+      const value = candidates.get(token);
+      if (value === undefined) {
+        continue;
+      }
+      if (selected === undefined) {
+        selected = value;
+        selectedToken = token;
+      } else if (value !== selected) {
+        ignored.push(token);
+      }
     }
-    if (this.hasProperty("rendition:orientation-landscape")) {
-      return "landscape";
+    if (ignored.length > 0 && !this.reportedPropertyConflicts.has(group)) {
+      this.reportedPropertyConflicts.add(group);
+      console.warn(
+        `Conflicting ${group} properties for ${this.manifestItem.path}: ` +
+          `using first token "${selectedToken}", ignoring ${ignored.join(", ")}.`,
+      );
     }
-    if (this.hasProperty("rendition:orientation-auto")) {
-      return "auto";
-    }
-    return packageDefault;
+    return selected;
   }
 }
 

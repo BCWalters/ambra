@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL as NodeURL } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { EpubContainer } from "./EpubContainer.js";
 import {
   ManifestItem,
@@ -566,6 +566,146 @@ describe("PackageDocument rendition:orientation", () => {
     const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
 
     expect(pkg.spine[0]!.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("auto");
+  });
+});
+
+describe("SpineItemRef source-ordered overrides", () => {
+  function item(properties: string[]): SpineItemRef {
+    return new SpineItemRef(
+      new ManifestItem("page", "OEBPS/page.xhtml", "application/xhtml+xml", new Set()),
+      true,
+      new Set(properties),
+      [],
+    );
+  }
+
+  function orderedPairs(tokens: readonly string[]) {
+    return tokens.flatMap((first) =>
+      tokens.filter((second) => second !== first).map((second) => [first, second] as const),
+    );
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(orderedPairs(["rendition:layout-pre-paginated", "rendition:layout-reflowable"]))(
+    "uses layout %s before %s",
+    (first, second) => {
+      const ref = item(["rendition:layout-unknown", first, "unknown", second]);
+      expect(ref.resolveRenditionLayout("reflowable")).toBe(first.replace("rendition:layout-", ""));
+      expect(ref.resolveRenditionLayout("pre-paginated")).toBe(first.replace("rendition:layout-", ""));
+      expect(ref.resolveRenditionLayout("roll")).toBe("roll");
+      expect(console.warn).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(
+    orderedPairs([
+      "rendition:spread-none",
+      "rendition:spread-landscape",
+      "rendition:spread-both",
+      "rendition:spread-auto",
+      "rendition:spread-portrait",
+    ]),
+  )("uses spread %s before %s", (first, second) => {
+    const ref = item(["rendition:spread-unknown", first, "unknown", second]);
+    const value = first.replace("rendition:spread-", "");
+    expect(ref.resolveRenditionSpread("none")).toBe(value === "portrait" ? "both" : value);
+  });
+
+  it.each(
+    orderedPairs([
+      "page-spread-left",
+      "page-spread-right",
+      "page-spread-center",
+      "rendition:page-spread-left",
+      "rendition:page-spread-right",
+      "rendition:page-spread-center",
+    ]),
+  )("uses page side %s before %s", (first, second) => {
+    const ref = item(["page-spread-unknown", first, "unknown", second]);
+    expect(ref.pageSpread).toBe(first.replace(/^(rendition:)?page-spread-/, ""));
+  });
+
+  it.each(
+    orderedPairs([
+      "rendition:orientation-portrait",
+      "rendition:orientation-landscape",
+      "rendition:orientation-auto",
+    ]),
+  )("uses orientation %s before %s", (first, second) => {
+    const ref = item(["rendition:orientation-unknown", first, "unknown", second]);
+    expect(ref.resolveRenditionOrientation("auto")).toBe(
+      first.replace("rendition:orientation-", ""),
+    );
+  });
+
+  it("reports each conflicting group once without conflating independent groups", () => {
+    const ref = item([
+      "rendition:orientation-auto",
+      "rendition:spread-both",
+      "page-spread-right",
+      "rendition:layout-reflowable",
+      "rendition:orientation-portrait",
+      "rendition:spread-none",
+      "rendition:page-spread-left",
+      "rendition:layout-pre-paginated",
+    ]);
+    for (let i = 0; i < 3; i++) {
+      expect(ref.resolveRenditionLayout("pre-paginated")).toBe("reflowable");
+      expect(ref.resolveRenditionSpread("none")).toBe("both");
+      expect(ref.pageSpread).toBe("right");
+      expect(ref.resolveRenditionOrientation("portrait")).toBe("auto");
+    }
+    expect(console.warn).toHaveBeenCalledTimes(4);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('OEBPS/page.xhtml: using first token "rendition:layout-reflowable"'),
+    );
+  });
+
+  it("does not diagnose equivalent aliases or unknown properties as conflicting", () => {
+    const ref = item([
+      "rendition:page-spread-left",
+      "page-spread-left",
+      "rendition:spread-portrait",
+      "rendition:spread-both",
+      "rendition:layout-unknown",
+      "rendition:orientation-unknown",
+    ]);
+    expect(ref.pageSpread).toBe("left");
+    expect(ref.resolveRenditionSpread("auto")).toBe("both");
+    expect(ref.resolveRenditionLayout("pre-paginated")).toBe("pre-paginated");
+    expect(ref.resolveRenditionOrientation("landscape")).toBe("landscape");
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("preserves manifest and spine token order from XML, deduplicating without reordering", () => {
+    const xml = `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="uid">urn:uuid:ordered</dc:identifier>
+        <dc:title>Ordered properties</dc:title><dc:language>en</dc:language>
+      </metadata>
+      <manifest>
+        <item id="page" href="page.xhtml" media-type="application/xhtml+xml"
+          properties="unknown scripted svg scripted"/>
+      </manifest>
+      <spine><itemref idref="page"
+        properties="rendition:layout-reflowable unknown rendition:layout-pre-paginated rendition:layout-reflowable"/>
+      </spine>
+    </package>`;
+    const ref = PackageDocument.parse(xml, "OEBPS/content.opf").spine[0]!;
+    expect([...ref.manifestItem.properties]).toEqual(["unknown", "scripted", "svg"]);
+    expect([...ref.properties]).toEqual([
+      "rendition:layout-reflowable",
+      "unknown",
+      "rendition:layout-pre-paginated",
+    ]);
+    expect(ref.resolveRenditionLayout("pre-paginated")).toBe("reflowable");
   });
 });
 
