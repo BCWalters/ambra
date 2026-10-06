@@ -176,12 +176,12 @@ test("reader boundaries do not alter text, CFIs, page counts, or duplicate-sprea
   }
 });
 
-test("one-line sections expose a whole focused control, preserve their clip on blur, and include non-linear content", async () => {
+test("one-line sections preserve focused controls and clipping while retaining explicit supplemental access", async () => {
   const { context, readerPage: page } = await launchReader(path.join(fixtures, "reading-boundaries.epub"));
   try {
     await exposeReaderController(page);
     const frame = await frameFor(page, 0);
-    const next = frame.getByRole("button", { name: "Next section", exact: true });
+    const next = frame.getByRole("button", { name: "Next chapter: Final chapter", exact: true });
     const before = await page.evaluate(() => {
       const controller = Reflect.get(window, "__readerController");
       const view = controller.contentDocumentViews()[0];
@@ -215,6 +215,8 @@ test("one-line sections expose a whole focused control, preserve their clip on b
     })).toEqual(before);
     await next.focus();
     await next.press("Enter");
+    await expect.poll(() => focusedSpine(page)).toBe(2);
+    await page.evaluate(() => Reflect.get(window, "__readerController").openSpineItem(1));
     await expect.poll(() => focusedSpine(page)).toBe(1);
     const second = await frameFor(page, 1);
     const final = second.getByRole("button", { name: "Next chapter: Final chapter", exact: true });
@@ -270,18 +272,15 @@ test("a merged reflowable spread visits its next document without replacing the 
       const controller = Reflect.get(window, "__readerController");
       Reflect.set(window, "__boundaryHost", controller.host);
       return controller.contentDocumentViews().map((view: { spineIndex: number }) => view.spineIndex);
-    })).toEqual([0, 1]);
-    const first = (await frameFor(page, 0)).getByRole("button", { name: "Next section", exact: true });
+    })).toEqual([0, 2]);
+    const first = (await frameFor(page, 0)).getByRole("button", { name: "Next chapter: Final chapter", exact: true });
     await first.focus();
     await first.press("Enter");
-    await expect.poll(() => focusedSpine(page)).toBe(1);
+    await expect.poll(() => focusedSpine(page)).toBe(2);
     expect(await page.evaluate(() =>
       Reflect.get(window, "__readerController").host === Reflect.get(window, "__boundaryHost"),
     )).toBe(true);
-    const second = (await frameFor(page, 1)).getByRole("button", { name: "Next chapter: Final chapter", exact: true });
-    await second.focus();
-    await second.press("Enter");
-    await expect.poll(() => focusedSpine(page)).toBe(2);
+    await expect((await frameFor(page, 2)).getByText("End of book", { exact: true })).toHaveCount(1);
   } finally {
     await context.close();
   }
@@ -292,7 +291,7 @@ test("a failed boundary load retains the current document and allows retry", asy
   try {
     await exposeReaderController(page);
     const frame = await frameFor(page, 0);
-    const next = frame.getByRole("button", { name: "Next section", exact: true });
+    const next = frame.getByRole("button", { name: "Next chapter: Final chapter", exact: true });
     await page.evaluate(() => {
       const controller = Reflect.get(window, "__readerController");
       Reflect.set(window, "__boundaryOriginalLoad", controller.contentLoader.loadContentDocument);
@@ -308,7 +307,7 @@ test("a failed boundary load retains the current document and allows retry", asy
       controller.contentLoader.loadContentDocument = Reflect.get(window, "__boundaryOriginalLoad");
     });
     await next.press("Enter");
-    await expect.poll(() => focusedSpine(page)).toBe(1);
+    await expect.poll(() => focusedSpine(page)).toBe(2);
   } finally {
     await context.close();
   }
