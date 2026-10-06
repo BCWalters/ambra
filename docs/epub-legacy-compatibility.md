@@ -5,9 +5,10 @@ older publications. "Supported" describes the stated subset, not complete
 EPUB Reading System conformance. The tracked implementation plan is
 [#326](https://github.com/BCWalters/ambra/issues/326).
 
-The navigation and Accessibility 1.2 additions below are prepared for protected
-GitHub validation, not yet merged. Their regressions must pass before their
-tracking issues are closed or an assessment result is promoted.
+The navigation and Accessibility 1.2 additions below are merged in #357 and
+protected-CI validated. Tours remain intentionally unsupported without a claimed
+lawful real-corpus assessment. Regression success does not promote official
+legacy criteria, which remain unassessed in the eleven-criterion profile.
 
 | Feature | Policy / status | Applicability and evidence |
 | --- | --- | --- |
@@ -17,9 +18,9 @@ tracking issues are closed or an assessment result is promoted.
 | Legacy cover metadata | Supported | Legacy cover ID retained alongside current manifest cover-image handling; [package tests](../packages/engine/src/container/PackageDocument.test.ts). |
 | OPF2 `meta name` / `content` | Supported generic retention | [Package tests](../packages/engine/src/container/PackageDocument.test.ts). Recognized accessibility keys now also feed structured claims; unknown values remain Inspector metadata rather than being interpreted as instructions. |
 | NCX `navMap` / `pageList` | Supported | EPUB 3 Nav remains primary; [navigation tests](../packages/engine/src/navigation/NavigationDocument.test.ts). |
-| Malformed or missing declared Nav to valid NCX | Prepared | Explicit recovery diagnostic and localized reader notice, not a silent substitute; [navigation tests](../packages/engine/src/navigation/NavigationDocument.test.ts) and [versioned browser fixtures](../apps/e2e/tests/navigation-accessibility-conformance.spec.ts), tracked by #343. Unexpected runtime failures are not swallowed. |
-| NCX `navList` / `navTarget` | Prepared | Separate labeled disclosures, safe target classification and page-number lookup; same #343 fixtures. Valid modern Nav does not acquire duplicate NCX lists. |
-| OPF2 guide | Prepared | Fallback landmarks only when modern landmarks are absent; `text` maps to `bodymatter`, duplicate targets merge roles. Same #343 fixtures. |
+| Malformed or missing declared Nav to valid NCX | Supported | Explicit recovery diagnostic and localized reader notice, not a silent substitute; [navigation tests](../packages/engine/src/navigation/NavigationDocument.test.ts) and [versioned browser fixtures](../apps/e2e/tests/navigation-accessibility-conformance.spec.ts), tracked by #343. Unexpected runtime failures are not swallowed. |
+| NCX `navList` / `navTarget` | Supported | Separate labeled disclosures, safe target classification and page-number lookup; same #343 fixtures. Valid modern Nav does not acquire duplicate NCX lists. |
+| OPF2 guide | Supported | Fallback landmarks only when modern landmarks are absent; `text` maps to `bodymatter`, duplicate targets merge roles. Same #343 fixtures. |
 | OPF2 tours | Intentionally unsupported | Superseded navigation, not a requirement for EPUB 3.4 content. No lawful corpus evidence currently justifies a new tour UI. TOC and sequential reading remain independent. Reassess under #343 if actual affected books are provided. |
 | Package collections | Intentionally unsupported interpretation | Optional package organization; source remains available in Inspector. No collection-driven reader behavior is promised. |
 | `rendition:flow` | Intentionally unsupported author control | Outdated hint; reader-selected paginated/scroll behavior remains authoritative. Do not count ignored deprecated hints as current required-test failures. |

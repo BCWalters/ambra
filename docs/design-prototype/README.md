@@ -69,6 +69,33 @@ This checks sample search/filtering, reading-position isolation, source and
 preview switching, result navigation and keyboard focus, sample links, and
 responsive layouts. It does not validate EPUB parsing or live screen readers.
 
+## Compact-library alternatives
+
+Open [compact-library-explore.html](compact-library-explore.html) directly.
+This separate, unapproved #351 study compares three compact-library-only options:
+
+- **A: Return to reading (recommended)** - one clear resume action, then quiet
+  book rows and reading lists.
+- **B: List-first notebook** - list navigation first, with the books using
+  the rest of the space.
+- **C: Small bookshelf** - covers first and a single list chooser.
+
+All use the existing five palettes, browser-following light/dark appearance,
+approved local covers/provenance and original generated samples. Try 320/360px,
+empty/small/full libraries, filtering/sorting, switching lists, opening a sample
+and adding a generated sample. Search/sort are secondary disclosures, with a
+visible clear action when a closed disclosure still has an active query.
+
+Settings/help/discovery and import remain available without becoming the focal
+point. The full-library links open the reviewed prototype with its own separate
+sample. Sample reading uses original prose, not the selected real work's text.
+No network fetch, file access, storage, server or extension build is needed.
+
+This is not production compact UI and does not change the approved snapshot.
+The owner must choose before implementation. Only static syntax/lint/markup/asset
+checks are claimed; no local browser was launched. Native popup geometry, visual
+behavior, all nine locales and live assistive technology remain unvalidated.
+
 ## Optional prototype verification
 
 The reviewed snapshot passed 150 responsive cases, 1,327 interaction/layout/asset

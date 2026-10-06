@@ -7,9 +7,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 2,
   retries: 0,
-  outputDir: process.env.AMBRA_ASSESSMENT_OUTPUT
-    ? `${process.env.AMBRA_ASSESSMENT_OUTPUT}/playwright`
-    : "./conformance-results",
+  outputDir: "./test-results/epub-conformance",
   reporter: [["list"]],
   use: { trace: "off", screenshot: "off" },
 });

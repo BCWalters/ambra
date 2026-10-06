@@ -77,6 +77,8 @@ browser runs when no product code changed.
 The artifact does not include third-party publications, fonts, screenshots,
 browser profiles or browser traces. Source revision and factual native
 observations are sufficient to reproduce the named checks.
+Playwright's automatic failure context stays in the ignored test-results
+directory, outside the archived factual-observation directory.
 
 The same kit can be prepared locally from a clean release checkout:
 
