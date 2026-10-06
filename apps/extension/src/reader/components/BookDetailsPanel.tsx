@@ -92,6 +92,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
+  const uiTextContext = { direction: "auto", language: locale } as const;
   const chromeTheme = useChromeTheme();
   const asideRef = useRef<HTMLElement | null>(null);
   const restoreInspectorFocus = useRestoreFocusTarget();
@@ -239,6 +240,7 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                     small
                     label={t("bookDetails.fileSize")}
                     value={details.fileSizeBytes === undefined ? undefined : formatLibraryBytes(details.fileSizeBytes, locale)}
+                    context={uiTextContext}
                   />
                   <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} context={metadataTextContext(details.metadataLocalization, "identifier", isbn?.value, isbn ? details.identifiers.indexOf(isbn) : undefined)} />
                   {otherIdentifiers.map((id, index) => (

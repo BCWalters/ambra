@@ -74,6 +74,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
+  const uiTextContext = { direction: "auto", language: locale } as const;
   const open = book !== undefined;
   const [fileSize, setFileSize] = useState<number>();
   const [fileSizeError, setFileSizeError] = useState<string>();
@@ -152,7 +153,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 <BookMetadataText value={book.creator} context={metadataTextContext(book.metadataLocalization, "creator", book.creator, 0)} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
               )}
               <DetailRow label={t("bookDetails.publisher")} value={book.publisher} context={metadataTextContext(book.metadataLocalization, "publisher", book.publisher, 0)} compact />
-              {fileSize !== undefined && <DetailRow label={t("bookDetails.fileSize")} value={formatLibraryBytes(fileSize, locale)} compact />}
+              {fileSize !== undefined && <DetailRow label={t("bookDetails.fileSize")} value={formatLibraryBytes(fileSize, locale)} context={uiTextContext} compact />}
             </div>
           </div>
           {fileSizeError && <LibraryImportError message={fileSizeError} onDismiss={() => setFileSizeError(undefined)} />}
@@ -201,7 +202,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
                 onSaveAs={() => onSaveAs(book.id)}
                 renderError={(message, onDismiss) => <LibraryImportError message={message} onDismiss={onDismiss} />} />
             )}
-            <DetailRow small label={t("library.added")} value={new Date(book.addedAt).toLocaleDateString(locale)} />
+            <DetailRow small label={t("library.added")} value={new Date(book.addedAt).toLocaleDateString(locale)} context={uiTextContext} />
           </PaneDisclosure>
 
           {inspectionError && <LibraryImportError {...inspectionError} />}
