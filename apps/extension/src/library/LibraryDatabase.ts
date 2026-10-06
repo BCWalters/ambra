@@ -1,5 +1,5 @@
 import { EpubCfi } from "@ambra/engine";
-import type { HighlightStyle, BookIdentifier, AccessibilityMetadata } from "@ambra/engine";
+import type { HighlightStyle, BookIdentifier, AccessibilityMetadata, MetadataLocalization } from "@ambra/engine";
 import type { LocalePreference } from "../i18n/Locale.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { DEFAULT_BOOK_READING_SETTINGS, DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
@@ -35,6 +35,7 @@ function compareByCfiThenCreatedAt(cfiA: string, cfiB: string, fallbackA: number
  * without touching the (potentially large) book file/cover blobs, which
  * live in their own object stores. */
 export interface BookMetadata {
+  readonly metadataLocalization?: MetadataLocalization | undefined;
   readonly id: string;
   /** SHA-256 of the complete EPUB archive bytes, never its URL, filename,
    * title or OPF identifier. Absent on pre-v6 records until the next import.

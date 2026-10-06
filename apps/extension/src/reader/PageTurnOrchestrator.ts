@@ -1,4 +1,5 @@
 import { FixedContentHost, PaginatedContentHost, SpreadPaginatedHost } from "@ambra/engine";
+import type { MetadataTextContext } from "@ambra/engine";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
 import type { PageTurnAnimatorContext } from "./PageTurnAnimator.js";
 
@@ -21,6 +22,7 @@ export interface PageTurnOrchestratorContext extends PageTurnAnimatorContext {
  * state — the orchestrator itself never reaches back into spine/TOC/
  * pagination concerns, it just paints what it's given. */
 export interface PageTurnFurnitureInfo {
+  titleContext?: MetadataTextContext | undefined;
   title: string;
   chapterLabel: string;
   outgoingPage: number | undefined;
@@ -31,6 +33,7 @@ export interface PageTurnFurnitureInfo {
  * page numbers per side, and separate outgoing/incoming chapter labels
  * because a merge turn's incoming side belongs to the next chapter. */
 export interface SpreadPageTurnFurnitureInfo {
+  titleContext?: MetadataTextContext | undefined;
   title: string;
   outgoingChapterLabel: string;
   incomingChapterLabel: string;
@@ -241,7 +244,7 @@ export class PageTurnOrchestrator {
     newEl: HTMLElement,
     furniture: PageTurnFurnitureInfo,
   ): { outgoing: HTMLDivElement | undefined; incoming: HTMLDivElement | undefined } {
-    const header = { mode: "split" as const, left: furniture.title, right: furniture.chapterLabel };
+    const header = { mode: "split" as const, left: furniture.title, right: furniture.chapterLabel, leftContext: furniture.titleContext };
     const outgoing = this.animator.buildTurnFurnitureOverlay(oldEl, [
       {
         left: 0,
@@ -415,11 +418,13 @@ export class PageTurnOrchestrator {
         oldLeftColumnEl,
         furniture.title,
         furniture.outgoingPrimaryPage,
+        furniture.titleContext,
       );
       incomingLeftOverlay = this.buildSpreadColumnOverlay(
         newLeftColumnEl,
         furniture.title,
         furniture.incomingPrimaryPage,
+        furniture.titleContext,
       );
 
       this.stackOverlays(containerEl, outgoingOverlay, incomingOverlay, entering, false);
@@ -569,7 +574,7 @@ export class PageTurnOrchestrator {
       {
         left: this.ctx.rtl?.() ? columnWidth + gutter : 0,
         width: columnWidth,
-        header: { mode: "single" as const, text: furniture.title },
+        header: { mode: "single" as const, text: furniture.title, context: furniture.titleContext },
         footerText: primary !== undefined ? `Page ${primary}` : undefined,
       },
       {
@@ -604,12 +609,13 @@ export class PageTurnOrchestrator {
     columnEl: HTMLElement,
     text: string,
     pageNumber: number | undefined,
+    context?: MetadataTextContext | undefined,
   ): HTMLDivElement | undefined {
     return this.animator.buildTurnFurnitureOverlay(columnEl, [
       {
         left: 0,
         width: columnEl.getBoundingClientRect().width,
-        header: { mode: "single" as const, text },
+        header: { mode: "single" as const, text, context },
         footerText: pageNumber !== undefined ? `Page ${pageNumber}` : undefined,
       },
     ]);

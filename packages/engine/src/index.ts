@@ -11,6 +11,8 @@ export {
 } from "./container/PackageDocument.js";
 export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry, AccessibilityMetadata } from "./container/PackageDocument.js";
 export type { PackageMetadataOptions } from "./container/PackageDocument.js";
+export { metadataTextContext, metadataPropertyContext } from "./container/MetadataLocalization.js";
+export type { MetadataTextContext, LocalizedMetadataValue, MetadataLocalization } from "./container/MetadataLocalization.js";
 export type {
   RenditionSpread,
   RenditionOrientation,

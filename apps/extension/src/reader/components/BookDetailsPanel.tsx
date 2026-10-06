@@ -14,6 +14,7 @@ import { PaneDisclosure } from "../../components/PaneSections.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 import { BookSaveAsAction } from "../../components/BookSaveAsAction.js";
 import { FriendlyError } from "./FriendlyError.js";
+import { metadataPropertyContext, metadataTextContext } from "@ambra/engine";
 
 export interface BookDetailsPanelProps {
   /** Whether the panel should currently be shown at all. Always
@@ -216,32 +217,32 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                       shorthand Fluent's own typography presets already
                       set — mixing the two triggers a React dev-mode
                       warning about conflicting style updates. */}
-                  <BookMetadataText value={details.title} name={t("inspector.titleLabel")} kind="identity" heading style={{ margin: "0 0 4px" }} />
+                  <BookMetadataText value={details.title} context={metadataTextContext(details.metadataLocalization, "title", details.title, 0)} name={t("inspector.titleLabel")} kind="identity" heading style={{ margin: "0 0 4px" }} />
                   {details.creator && (
-                    <BookMetadataText value={details.creator} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
+                    <BookMetadataText value={details.creator} context={metadataTextContext(details.metadataLocalization, "creator", details.creator, 0)} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
                   )}
-                  <DetailRow label={t("bookDetails.publisher")} value={details.publisher} compact />
+                  <DetailRow label={t("bookDetails.publisher")} value={details.publisher} context={metadataTextContext(details.metadataLocalization, "publisher", details.publisher, 0)} compact />
                 </div>
               </div>
 
               {details.description && (
-                <BookDescription value={details.description} sourceName={details.descriptionSourceName} sourceUrl={details.descriptionSourceUrl} />
+                <BookDescription value={details.description} context={details.descriptionSourceName ? undefined : metadataTextContext(details.metadataLocalization, "description", details.description, 0)} sourceName={details.descriptionSourceName} sourceUrl={details.descriptionSourceUrl} />
               )}
 
               {(knownIdentifiers.length > 0 || details.fileName || onSaveAs || details.fileSizeBytes !== undefined || details.rights ||
                 details.accessibility.accessibilitySummary || details.accessibility.accessibilityFeatures.length > 0) && (
                 <PaneDisclosure title={t("bookDetails.publicationDetails")}>
-                  <BookRightsRow label={t("bookDetails.rights")} value={details.rights} />
-                  <DetailRow small label={t("bookDetails.accessibilitySummary")} value={details.accessibility.accessibilitySummary} />
+                  <BookRightsRow label={t("bookDetails.rights")} value={details.rights} context={metadataTextContext(details.metadataLocalization, "rights", details.rights, 0)} />
+                  <DetailRow small label={t("bookDetails.accessibilitySummary")} value={details.accessibility.accessibilitySummary} context={metadataPropertyContext(details.metadataLocalization, "schema:accessibilitySummary", details.accessibility.accessibilitySummary)} />
                   <DetailRow small label={t("bookDetails.accessibilityFeatures")} value={details.accessibility.accessibilityFeatures.join(", ")} />
                   <DetailRow
                     small
                     label={t("bookDetails.fileSize")}
                     value={details.fileSizeBytes === undefined ? undefined : formatLibraryBytes(details.fileSizeBytes, locale)}
                   />
-                  <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} />
+                  <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} context={metadataTextContext(details.metadataLocalization, "identifier", isbn?.value, isbn ? details.identifiers.indexOf(isbn) : undefined)} />
                   {otherIdentifiers.map((id, index) => (
-                    <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
+                    <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} context={metadataTextContext(details.metadataLocalization, "identifier", id.value, details.identifiers.indexOf(id))} />
                   ))}
                   <DetailRow small label={t("inspector.fileName")} value={details.fileName} />
                   {onSaveAs && (

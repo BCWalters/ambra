@@ -5,6 +5,8 @@ import type { LibraryBookViewModel } from "./useLibrary.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryProgress } from "./LibraryFormatting.js";
 import { EPUB_TOOLTIP_STYLE } from "../components/EpubTextStyles.js";
+import { metadataTextContext } from "@ambra/engine";
+import { metadataTextAttributes } from "../MetadataText.js";
 
 const GENERATED_COVER_COLORS = ["#40564e", "#55516b", "#69494b", "#40566b", "#735a35"] as const;
 
@@ -116,6 +118,8 @@ export const LibraryBookCard: FC<{
   const progress = book.progressFraction === undefined ? undefined : Math.round(book.progressFraction * 100);
   const resume = variant === "continue";
   const Title = resume ? "h3" : "p";
+  const titleContext = metadataTextContext(book.metadataLocalization, "title", book.title, 0);
+  const creatorContext = metadataTextContext(book.metadataLocalization, "creator", book.creator, 0);
   const detailsButton = (
     <Tooltip content={{ children: t("library.bookDetails", { title: book.title }), style: EPUB_TOOLTIP_STYLE }} relationship="label"
       visible={active && detailsTooltip} onVisibleChange={(_event, data) => setDetailsTooltip(data.visible)}>
@@ -153,15 +157,15 @@ export const LibraryBookCard: FC<{
             padding: compact ? 8 : "16px 14px", gap: compact ? 4 : 8,
             backgroundColor: generatedCoverColor(book.title), color: "#fff8e9",
           }}>
-            <span style={{ fontFamily: "Georgia, serif", fontSize: resume ? 12 : compact ? 9 : 18, lineHeight: 1.15,
+            <span {...metadataTextAttributes(titleContext, { fontFamily: "Georgia, serif", fontSize: resume ? 12 : compact ? 9 : 18, lineHeight: 1.15,
               flexShrink: 0, display: "-webkit-box", WebkitLineClamp: compact ? 3 : 4, WebkitBoxOrient: "vertical",
-              overflow: "hidden", overflowWrap: "anywhere" }}>{book.title}</span>
+              overflow: "hidden", overflowWrap: "anywhere" })}>{book.title}</span>
             <span data-cover-ornament="" style={{ width: compact ? 6 : 18, height: compact ? 6 : 18,
               border: "1px solid rgba(255, 248, 233, 0.55)", transform: "rotate(45deg)",
               alignSelf: "center", flexShrink: 0 }} />
-            <span style={{ fontSize: compact ? 6 : 10, lineHeight: 1.3, letterSpacing: compact ? 0 : 1,
+            <span {...metadataTextAttributes(creatorContext, { fontSize: compact ? 6 : 10, lineHeight: 1.3, letterSpacing: compact ? 0 : 1,
               textTransform: "uppercase", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-              overflow: "hidden", overflowWrap: "anywhere" }}>{book.creator}</span>
+              overflow: "hidden", overflowWrap: "anywhere" })}>{book.creator}</span>
           </span>
         )}
       </button>
@@ -169,14 +173,14 @@ export const LibraryBookCard: FC<{
         {resume && <span style={{ textTransform: "uppercase", letterSpacing: "1.8px", fontSize: 11,
           fontWeight: 650, color: "var(--colorNeutralForeground2)" }}>{t("library.continueReading")}</span>}
         <Title className={resume ? styles.continueTitle : undefined}
-          style={{ margin: resume ? "4px 0" : 0, fontWeight: resume ? 550 : 600, fontSize: resume ? undefined : 14,
+          {...metadataTextAttributes(titleContext, { margin: resume ? "4px 0" : 0, fontWeight: resume ? 550 : 600, fontSize: resume ? undefined : 14,
           lineHeight: resume ? 1.3 : "20px", height: resume ? undefined : 40,
-          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}>
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" })}>
           {book.title}
         </Title>
-        <p style={{ margin: 0, height: resume ? undefined : 18, lineHeight: resume ? "21px" : "18px",
+        <p {...metadataTextAttributes(creatorContext, { margin: 0, height: resume ? undefined : 18, lineHeight: resume ? "21px" : "18px",
           fontSize: resume ? 14 : 12, color: "var(--colorNeutralForeground2)",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{book.creator}</p>
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })}>{book.creator}</p>
         <div data-library-progress-track="" aria-hidden="true" style={{ height: 3,
           marginTop: resume ? 12 : 2, marginBottom: 2, maxWidth: resume ? 240 : undefined, width: "100%",
           background: "var(--colorNeutralStroke2)", borderRadius: 2 }}>

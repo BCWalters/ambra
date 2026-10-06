@@ -10,6 +10,7 @@ import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 import { BookSaveAsAction } from "../components/BookSaveAsAction.js";
 import { CHROME_BORDER } from "../reader/chromeTheme.js";
+import { metadataPropertyContext, metadataTextContext } from "@ambra/engine";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -146,11 +147,11 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
               />
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
-              <BookMetadataText value={book.title} name={t("inspector.titleLabel")} kind="identity" heading style={{ margin: "0 0 4px" }} />
+              <BookMetadataText value={book.title} context={metadataTextContext(book.metadataLocalization, "title", book.title, 0)} name={t("inspector.titleLabel")} kind="identity" heading style={{ margin: "0 0 4px" }} />
               {book.creator && (
-                <BookMetadataText value={book.creator} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
+                <BookMetadataText value={book.creator} context={metadataTextContext(book.metadataLocalization, "creator", book.creator, 0)} name={t("inspector.creator")} kind="identity" style={{ opacity: 0.75 }} />
               )}
-              <DetailRow label={t("bookDetails.publisher")} value={book.publisher} compact />
+              <DetailRow label={t("bookDetails.publisher")} value={book.publisher} context={metadataTextContext(book.metadataLocalization, "publisher", book.publisher, 0)} compact />
               {fileSize !== undefined && <DetailRow label={t("bookDetails.fileSize")} value={formatLibraryBytes(fileSize, locale)} compact />}
             </div>
           </div>
@@ -183,16 +184,16 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
           )}
 
           {description && (
-            <BookDescription value={description} sourceName={descriptionSourceName} sourceUrl={descriptionSourceUrl} />
+            <BookDescription value={description} context={book.description ? metadataTextContext(book.metadataLocalization, "description", book.description, 0) : undefined} sourceName={descriptionSourceName} sourceUrl={descriptionSourceUrl} />
           )}
 
           <PaneDisclosure title={t("bookDetails.publicationDetails")}>
-            <BookRightsRow label={t("bookDetails.rights")} value={book.rights} />
-            <DetailRow small label={t("bookDetails.accessibilitySummary")} value={book.accessibility?.accessibilitySummary} />
+            <BookRightsRow label={t("bookDetails.rights")} value={book.rights} context={metadataTextContext(book.metadataLocalization, "rights", book.rights, 0)} />
+            <DetailRow small label={t("bookDetails.accessibilitySummary")} value={book.accessibility?.accessibilitySummary} context={metadataPropertyContext(book.metadataLocalization, "schema:accessibilitySummary", book.accessibility?.accessibilitySummary)} />
             <DetailRow small label={t("bookDetails.accessibilityFeatures")} value={book.accessibility?.accessibilityFeatures.join(", ")} />
-            <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} />
+            <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} context={metadataTextContext(book.metadataLocalization, "identifier", isbn?.value, isbn ? book.identifiers?.indexOf(isbn) : undefined)} />
             {otherIdentifiers.map((id, index) => (
-              <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} />
+              <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} context={metadataTextContext(book.metadataLocalization, "identifier", id.value, book.identifiers?.indexOf(id))} />
             ))}
             <DetailRow small label={t("inspector.fileName")} value={book.fileName} />
             {onSaveAs && (

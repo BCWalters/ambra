@@ -137,6 +137,28 @@ browser-window orientation lock. Regression coverage exercises ordered pairs,
 aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
 still need release assessment; these synthetic checks do not alter the score.
 
+#### C34-08 implementation and assessment expectations
+
+Package and metadata-element `dir` and `xml:lang` are retained with each nonempty
+Dublin Core/meta value, including source IDs and alternate-script/refinement
+targets. Inheritance, explicit language clearing, automatic/unknown direction,
+and duplicate values with distinct contexts are preserved. Unknown direction
+is diagnosed and uses Unicode P2 processing through `dir="auto"`.
+
+New Library imports persist these contexts. Library cards/generated covers,
+Book Details, reader titles/running headers (including temporary animation
+overlays), and Inspector summaries apply value-local `dir`, `lang`, and bidi
+isolation without changing UI labels or spine page progression. Previously
+imported records without contexts use automatic direction/unknown language;
+reader and standalone Inspector sessions obtain contexts from the OPF.
+Fetched fallback descriptions do not inherit the publication's metadata context.
+Content-resource language/direction is not inferred from package metadata or
+informational `dc:language`.
+
+Generated Arabic, Hebrew, Persian, mixed-script and unknown-value regressions
+are prepared for protected remote validation. They are not official conformance
+passes; release assessments must still evaluate the corresponding criteria.
+
 #### C34-19 implementation and assessment expectations
 
 Dublin Core and OPF meta values now share exact ASCII whitespace stripping and

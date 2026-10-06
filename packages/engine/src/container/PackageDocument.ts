@@ -3,6 +3,7 @@ import { getDescendantElementsByNS, getFirstDescendantElementByNS, getNamespaced
 import { elementCfiSteps } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
 import { parseSmilClockValue } from "../media-overlay/SmilClockValue.js";
+import type { LocalizedMetadataValue, MetadataLocalization, MetadataTextContext } from "./MetadataLocalization.js";
 
 const OPF_NAMESPACE = "http://www.idpf.org/2007/opf";
 const DC_NAMESPACE = "http://purl.org/dc/elements/1.1/";
@@ -277,6 +278,7 @@ export interface AccessibilityMetadata {
  * element, plus the `rendition:*` metadata used to pick reflowable vs
  * fixed-layout rendering. */
 export interface PackageMetadataOptions {
+  readonly localization?: MetadataLocalization | undefined;
   readonly identifier: string;
   readonly title: string;
   readonly language: string;
@@ -298,6 +300,7 @@ export interface PackageMetadataOptions {
 }
 
 export class PackageMetadata implements PackageMetadataOptions {
+  public readonly localization: MetadataLocalization | undefined;
   /** The identifier referenced by package@unique-identifier, not necessarily
    * the first dc:identifier. Font deobfuscation depends on this exact value. */
   public readonly identifier: string;
@@ -337,6 +340,7 @@ export class PackageMetadata implements PackageMetadataOptions {
   public readonly accessibility: AccessibilityMetadata;
 
   public constructor(options: PackageMetadataOptions) {
+    this.localization = options.localization;
     this.identifier = options.identifier;
     this.title = options.title;
     this.language = options.language;
@@ -597,6 +601,7 @@ export class PackageDocument {
     const accessibility = PackageDocument.parseAccessibilityMetadata(metadataEl);
 
     return new PackageMetadata({
+      localization: PackageDocument.parseMetadataLocalization(packageEl, metadataEl),
       identifier,
       title,
       language,
@@ -623,12 +628,53 @@ export class PackageDocument {
    * its original publication date from other dates like this edition's
    * conversion date) over just taking the first `dc:date` present. */
   private static parseDate(metadataEl: Element): string | undefined {
-    const dateElements = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "date");
-    const publicationDate = dateElements.find(
-      (el) => getNamespacedAttribute(el, OPF_NAMESPACE, "event") === "publication",
-    );
-    const text = normalizeMetadataText((publicationDate ?? dateElements[0])?.textContent);
+    const text = normalizeMetadataText(publicationDateElement(metadataEl)?.textContent);
     return text || undefined;
+  }
+
+  private static parseMetadataLocalization(packageEl: Element, metadataEl: Element): MetadataLocalization {
+    const contexts = new WeakMap<Element, MetadataTextContext>();
+    const contextFor = (element: Element): MetadataTextContext => {
+      const cached = contexts.get(element);
+      if (cached) return cached;
+      const inherited = element.parentElement ? contextFor(element.parentElement) : undefined;
+      const declaredDirection = element.getAttribute("dir");
+      if (declaredDirection !== null && !["ltr", "rtl", "auto"].includes(declaredDirection)) {
+        console.warn(`Unknown package metadata direction ${JSON.stringify(declaredDirection)}; using auto.`);
+      }
+      const direction = declaredDirection === null ? inherited?.direction ?? "auto"
+        : declaredDirection === "ltr" || declaredDirection === "rtl" ? declaredDirection : "auto";
+      const language = getNamespacedAttribute(element, "http://www.w3.org/XML/1998/namespace", "lang")
+        ?? inherited?.language;
+      const context: MetadataTextContext = { direction, language };
+      contexts.set(element, context);
+      return context;
+    };
+    const dateElement = publicationDateElement(metadataEl);
+    const localizedValue = (element: Element, key: string, value: string): LocalizedMetadataValue => {
+      const refines = element.getAttribute("refines");
+      return {
+        ...contextFor(element),
+        key,
+        value,
+        id: element.getAttribute("id") ?? undefined,
+        refines: refines?.startsWith("#") ? refines.slice(1) : refines ?? undefined,
+        preferred: element === dateElement,
+      };
+    };
+    return {
+      package: contextFor(packageEl),
+      dcValues: getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "*").flatMap(element => {
+        const value = normalizeMetadataText(element.textContent);
+        return value === undefined ? [] : [localizedValue(element, element.localName, value)];
+      }),
+      metaValues: getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta").flatMap(element => {
+        const key = element.getAttribute("property") ?? element.getAttribute("name");
+        const value = normalizeMetadataText(element.getAttribute("property") !== null
+          ? element.textContent : element.getAttribute("content"));
+        return !key || value === undefined ? [] : [localizedValue(element, key, value)];
+      }),
+    };
   }
 
   /** Every `<meta>` element in the OPF metadata, captured generically —
@@ -845,6 +891,11 @@ function getRequiredChild(
 
 function normalizeMetadataText(value: string | null | undefined): string | undefined {
   return value?.replace(/[\t\n\f\r ]+/g, " ").replace(/^ | $/g, "") || undefined;
+}
+
+function publicationDateElement(metadataEl: Element): Element | undefined {
+  const dates = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "date");
+  return dates.find(element => getNamespacedAttribute(element, OPF_NAMESPACE, "event") === "publication") ?? dates[0];
 }
 
 function getFirstElementTextNS(
