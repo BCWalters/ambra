@@ -260,17 +260,50 @@ for (const browsing of ["page", "contents", "scrubber"] as const) {
   });
 }
 
-test("a real audio decode error stays explicit in compact controls without unhandled errors", async () => {
+test("invalid audio is rejected before playback assignment and stays explicit in compact controls", {
+  tag: "@audio-resource-conformance",
+}, async () => {
   const { readerPage: page, context } = await launchReader(
     path.join(fixtures, "media-overlay/invalid-audio.epub"),
   );
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   try {
+    await exposeReaderController(page);
     await page.mouse.move(350, 2);
     await button(page, "Play narration").click();
     await expect(controls(page).getByRole("status")).toHaveText("Narration could not be played.");
+    expect(await audioState(page)).toMatchObject({ source: "", error: null, paused: true });
+    expect(await page.evaluate(() =>
+      Reflect.get(window, "__readerController").narration.snapshot.error,
+    )).toContain("No supported audio resource");
+    await expect(button(page, "Play narration")).toBeVisible();
+    await button(page, "Collapse read-along controls").click();
+    await expect(controls(page)).toHaveAttribute("data-collapsed", "true");
+    await expect(controls(page).getByRole("status")).toHaveText("Narration could not be played.");
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
+test("a post-probe native audio failure stays explicit in compact controls without unhandled errors", {
+  tag: "@audio-resource-conformance",
+}, async () => {
+  const { readerPage: page, context } = await launchReader(narrated);
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await listen(page);
+    await page.locator(audioSelector).evaluate(element => {
+      const audio = element as HTMLAudioElement;
+      const url = URL.createObjectURL(new Blob(["Original undecodable audio"], { type: "audio/wav" }));
+      audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+      audio.src = url;
+      audio.load();
+    });
     await expect.poll(async () => (await audioState(page)).error).not.toBeNull();
+    await expect(controls(page).getByRole("status")).toHaveText("Narration could not be played.");
     expect((await audioState(page)).paused).toBe(true);
     await expect(button(page, "Play narration")).toBeVisible();
     await button(page, "Collapse read-along controls").click();

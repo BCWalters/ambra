@@ -53,6 +53,15 @@ push diff:
 - Shared UI, reader, engine, dependency, manifest, workflow, release, and
   unclassified changes run the complete protected browser suite.
 
+Native audio-resource failure checks run in an isolated early gate, before the
+optional codec-tool preparation and broad packaged-browser stage. They
+distinguish undecodable resources rejected by capability preflight (no playback
+source assigned) from genuine native
+failures after valid playback has started. Both must retain explicit compact
+error controls and no unhandled exceptions. The later narration gate excludes
+those tagged cases, avoiding duplicate execution while preserving isolated
+timing/playback coverage.
+
 The selector fails closed: mixed or empty/unknown diffs run everything.
 Manually dispatched and called workflows also run everything, so final release
 candidates never use a reduced browser suite.
