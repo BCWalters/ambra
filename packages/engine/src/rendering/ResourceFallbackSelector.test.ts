@@ -15,7 +15,7 @@ function setup(
 ) {
   const pkg = PackageDocument.parse(
     `<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
-    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:ambra:fallback-selector</dc:identifier></metadata>
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:ambra:fallback-selector</dc:identifier><dc:title>Fallback selection</dc:title><dc:language>en</dc:language></metadata>
     <manifest/><spine/></package>`,
     "package.opf",
   );
