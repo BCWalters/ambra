@@ -107,6 +107,10 @@ Official `pkg-spine-nonlinear-activation` and `pkg-spine-order` criteria should 
 but synthetic regression coverage is not an official conformance score.
 Release assessments must still verify their individual criteria.
 
+The small CSS/primary-order regression group runs once, before the broader
+protected reader browser suite, so these failures stop CI early without
+duplicating their coverage or weakening the remaining checks.
+
 ### Phase 2: architecture and recommended reading-system behavior
 
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |

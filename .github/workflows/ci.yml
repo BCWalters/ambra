@@ -61,6 +61,14 @@ jobs:
       - name: Install Chromium
         if: steps.browser-suites.outputs.run_browser == 'true'
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+      - name: Verify EPUB CSS and primary-order regressions
+        if: steps.browser-suites.outputs.run_reader == 'true'
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
+          AMBRA_E2E_HEADLESS: "1"
+        run: >-
+          pnpm --filter @ambra/e2e exec playwright test
+          css-resources.spec.ts primary-reading-order.spec.ts --workers=2
       - name: Test the packaged production build
         if: steps.browser-suites.outputs.run_reader == 'true'
         env:
@@ -120,8 +128,6 @@ jobs:
           svg-spine.spec.ts
           mixed-rendition-spreads.spec.ts
           roll-layout.spec.ts
-          css-resources.spec.ts
-          primary-reading-order.spec.ts
           pagination-measurement.spec.ts
           responsive-images.spec.ts
           --workers=2

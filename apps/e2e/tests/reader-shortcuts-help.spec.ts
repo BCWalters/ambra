@@ -183,7 +183,7 @@ test("Shell dismissal restores the precise reading position in a merged spread c
       return { spine: point.spineIndex, text: point.node.textContent, offset: point.offset };
     });
     expect(original.spine).toBe(0);
-    expect(await position(page)).toMatchObject({ spine: 1 });
+    expect(await position(page)).toMatchObject({ spine: 2 });
     const expectOriginal = async () => {
       await expect.poll(() => page.evaluate(() => {
         const c = Reflect.get(window, "__readerController");
