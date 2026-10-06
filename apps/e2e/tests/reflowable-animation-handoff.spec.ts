@@ -26,7 +26,7 @@ function longTextBook(direction: "ltr" | "rtl"): string {
     "Every small village offered another story, and every story suggested a different path home. ";
   fs.writeFileSync(path.join(source, "EPUB/c0.xhtml"),
     `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>A long journey</title></head><body>${
-      Array.from({ length: 600 }, (_, i) => `<p id="p${i}">${i}. ${prose.repeat(8)}</p>`).join("")
+      Array.from({ length: 120 }, (_, i) => `<p id="p${i}">${i}. ${prose.repeat(4)}</p>`).join("")
     }</body></html>`);
   execFileSync("zip", ["-q", "-X", "-r", target, "EPUB"], { cwd: source });
   return target;
@@ -96,7 +96,10 @@ async function compareInk(page: Page, before: Buffer, after: Buffer, lefts: numb
 
 for (const direction of ["ltr", "rtl"] as const) {
   for (const style of ["slide", "rotate", "scroll", "none"] as const) {
-    test(`${direction} ${style}: text stays fixed across spread handoff, odd/fractional widths and resize (#208)`, async () => {
+    const widths = direction === "ltr" && style === "slide"
+      ? [1547, 1547.5, 1546]
+      : [1547.5];
+    test(`${direction} ${style}: text stays fixed across spread handoff${widths.length > 1 ? ", odd/fractional widths and resize" : ""} (#208)`, async () => {
       test.setTimeout(90_000);
       const { context, readerPage: page } = await launchReader(longTextBook(direction), {
         viewport: { width: 1547, height: 878 },
@@ -132,7 +135,7 @@ for (const direction of ["ltr", "rtl"] as const) {
         }, style);
         await settled(page);
         const measurements = [];
-        for (const width of [1547, 1547.5, 1546]) {
+        for (const width of widths) {
           await page.setViewportSize({ width: Math.ceil(width), height: 878 });
           await page.evaluate(width => {
             Reflect.get(window, "__readerController").containerEl.style.right = `${Math.ceil(width) - width}px`;

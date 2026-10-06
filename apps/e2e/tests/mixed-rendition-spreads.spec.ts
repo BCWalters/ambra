@@ -201,9 +201,24 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       const expectChapters = async (chapters: string[]) => {
         await expect.poll(async () => (await visible(page, direction)).chapters).toEqual(chapters);
       };
+      const waitForSettled = async () => {
+        await exposeReaderController(page);
+        await page.waitForFunction(() => {
+          const controller = Reflect.get(window, "__readerController");
+          return controller?.host && !controller.isTurningPage && !controller.isLoadInFlight &&
+            !controller.isApplyingLayout && !controller.pendingLayout;
+        });
+      };
       const turn = async (forward: boolean) => {
+        await waitForSettled();
+        const before = JSON.stringify(await visible(page, direction));
         await page.keyboard.press(forward === (direction === "ltr") ? "ArrowRight" : "ArrowLeft");
-        await page.waitForTimeout(650);
+        await expect.poll(async () => JSON.stringify(await visible(page, direction))).not.toBe(before);
+        await waitForSettled();
+      };
+      const flushProgress = async () => {
+        await waitForSettled();
+        await page.evaluate(() => Reflect.get(window, "__readerController").flushProgress(true));
       };
       await expectChapters(["A", "B"]);
       await turn(true);
@@ -221,7 +236,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       await expectChapters(["R"]);
       await expect.poll(async () => (await visible(page, direction)).widths).toEqual([900]);
       await expect.poll(async () => (await visible(page, direction)).markers).toContain(anchor);
-      await page.waitForTimeout(800);
+      await flushProgress();
       await page.reload();
       await expectChapters(["R"]);
       await expect.poll(async () => (await visible(page, direction)).markers).toContain(anchor);
@@ -236,7 +251,7 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       await expectChapters(["D"]);
       await page.setViewportSize({ width: 900, height: 1400 });
       await expectChapters(["D"]);
-      await page.waitForTimeout(800);
+      await flushProgress();
       await page.reload();
       await expectChapters(["D"]);
       await turn(true);
@@ -265,8 +280,6 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       expect([...(await visible(page, direction)).markers, ...backwardTail]).toEqual(reflowMarkers);
       await turn(false);
       await expectChapters(["C"]);
-      await turn(false);
-      await expectChapters(["A", "B"]);
       await turn(false);
       await expectChapters(["A", "B"]);
       await expect(page.getByRole("alert")).toHaveCount(0);

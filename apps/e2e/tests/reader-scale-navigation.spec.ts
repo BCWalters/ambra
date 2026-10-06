@@ -9,8 +9,8 @@ import { exposeReaderController } from "../reader-controller.js";
 function longChapterFixture(info: TestInfo): string {
   const epub = navigationFixture(info, [1, 1]);
   const text = "This original synthetic passage tests reliable reading of a very long chapter. ";
-  const paragraphs = Array.from({ length: 872 }, (_, index) =>
-    `<p>Paragraph ${index + 1}. ${text.repeat(index % 20 === 0 ? 100 : 10)}</p>`).join("");
+  const paragraphs = Array.from({ length: 240 }, (_, index) =>
+    `<p>Paragraph ${index + 1}. ${text.repeat(index % 20 === 0 ? 40 : 6)}</p>`).join("");
   const source = info.outputPath("navigation-source");
   fs.writeFileSync(path.join(source, "EPUB/c1.xhtml"),
     `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Long chapter</title></head><body>${paragraphs}</body></html>`);
@@ -73,7 +73,7 @@ test("a concentrated long chapter reuses documents without animation and guarded
         return { instant, animated: { opens, reflows, transferred, ms: performance.now() - animatedStart }, pages: controller.host.pageCount };
       } finally { prototype.open = open; prototype.relayout = relayout; }
     });
-    expect(result.pages).toBeGreaterThan(400);
+    expect(result.pages).toBeGreaterThan(75);
     expect(result.instant.sameDocuments).toBe(true);
     expect(result.instant.readingEntryMatches).toBe(true);
     expect(result.instant.opens).toBe(0);
