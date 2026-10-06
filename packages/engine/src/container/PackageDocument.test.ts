@@ -88,6 +88,85 @@ describe("parseViewportDimensions", () => {
     expect(parseViewportDimensions("width=1000, height=1400")).toEqual({ width: 1000, height: 1400 });
   });
 
+  describe("PackageDocument metadata ASCII whitespace", () => {
+    function parse(metadata: string) {
+      return PackageDocument.parse(
+        `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="chosen">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">${metadata}</metadata>
+        <manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="c"/></spine></package>`,
+        "EPUB/package.opf",
+      ).metadata;
+    }
+
+    const required = '<dc:identifier id="chosen">urn:whitespace</dc:identifier><dc:title>Title</dc:title><dc:language>en</dc:language>';
+
+    it("normalizes canonical Dublin Core fields while retaining identifier and source-order priority", () => {
+      const metadata = parse(`
+        <dc:identifier id="other"> Other&#x9; identifier </dc:identifier>
+        <dc:identifier id="chosen"> Chosen&#xA; identifier </dc:identifier>
+        <dc:title> Title&#x9;&#xA;  one&#xD; </dc:title><dc:title>Second title</dc:title>
+        <dc:language> en </dc:language>
+        <dc:creator> Author&#x9;  A </dc:creator><dc:creator> Author&#xA;B </dc:creator>
+        <dc:contributor> Person&#xA; C </dc:contributor>
+        <dc:subject> One&#x9; subject </dc:subject>
+        <dc:description> Description&#xA;  words </dc:description>
+        <dc:publisher> Publisher&#x9; name </dc:publisher>
+        <dc:rights> Rights&#xD;&#xA; statement </dc:rights>
+        <dc:date>Earlier date</dc:date><dc:date opf:event="publication"> Publication&#xA; date </dc:date>
+      `);
+      expect(metadata.identifier).toBe("Chosen identifier");
+      expect(metadata.identifiers.map(({ value }) => value)).toEqual(["Other identifier", "Chosen identifier"]);
+      expect(metadata.title).toBe("Title one");
+      expect(metadata.language).toBe("en");
+      expect(metadata.creator).toBe("Author A");
+      expect(metadata.creators).toEqual(["Author A", "Author B"]);
+      expect(metadata.contributors).toEqual(["Person C"]);
+      expect(metadata.subjects).toEqual(["One subject"]);
+      expect(metadata.description).toBe("Description words");
+      expect(metadata.publisher).toBe("Publisher name");
+      expect(metadata.rights).toBe("Rights statement");
+      expect(metadata.date).toBe("Publication date");
+    });
+
+    it("normalizes current and legacy meta values before derived processing", () => {
+      const metadata = parse(`${required}
+        <meta property="media:narrator"> Narrator&#xA; name </meta>
+        <meta property="custom:value" refines="#chosen"> Refined&#x9; value </meta>
+        <meta name="legacy" content=" Legacy&#x9;&#xA; value "/>
+        <meta property="schema:accessibilitySummary"> Accessible&#xA; summary </meta>
+        <meta property="rendition:layout"> pre-paginated </meta>
+        <meta property="rendition:viewport"> width=400,&#xA; height=600 </meta>
+        <meta property="empty"> &#x9;&#xA; </meta>
+      `);
+      expect(metadata.mediaOverlayNarrator).toBe("Narrator name");
+      expect(metadata.metaEntries).toContainEqual({ key: "custom:value", value: "Refined value", refines: "chosen" });
+      expect(metadata.metaEntries).toContainEqual({ key: "legacy", value: "Legacy value", refines: undefined });
+      expect(metadata.metaEntries.some(({ key }) => key === "empty")).toBe(false);
+      expect(metadata.accessibility.accessibilitySummary).toBe("Accessible summary");
+      expect(metadata.renditionLayout).toBe("pre-paginated");
+      expect(metadata.renditionViewport).toEqual({ width: 400, height: 600 });
+    });
+
+    it("does not strip or collapse non-ASCII spaces", () => {
+      const metadata = parse(`
+        <dc:identifier id="chosen">&#xA0;chosen&#xA0;</dc:identifier>
+        <dc:title> &#xA0;Title&#xA0;&#xA0;words&#xA0; </dc:title><dc:language>en</dc:language>
+        <dc:creator>&#x2003;Author&#x2003;</dc:creator>
+      `);
+      expect(metadata.identifier).toBe("\u00A0chosen\u00A0");
+      expect(metadata.title).toBe("\u00A0Title\u00A0\u00A0words\u00A0");
+      expect(metadata.creator).toBe("\u2003Author\u2003");
+    });
+
+    it("omits empty optional values and still rejects an empty required title", () => {
+      expect(parse(`${required}<dc:description> &#x9;&#xA; </dc:description>`).description).toBeUndefined();
+      expect(() => parse(
+        '<dc:identifier id="chosen">id</dc:identifier><dc:title> &#x9;&#xA; </dc:title><dc:language>en</dc:language>',
+      )).toThrow(PackageDocumentError);
+    });
+  });
+
   it("parses width/height regardless of spacing/order", () => {
     expect(parseViewportDimensions("height=800,width=600")).toEqual({ width: 600, height: 800 });
   });

@@ -627,7 +627,7 @@ export class PackageDocument {
     const publicationDate = dateElements.find(
       (el) => getNamespacedAttribute(el, OPF_NAMESPACE, "event") === "publication",
     );
-    const text = (publicationDate ?? dateElements[0])?.textContent?.trim();
+    const text = normalizeMetadataText((publicationDate ?? dateElements[0])?.textContent);
     return text || undefined;
   }
 
@@ -641,9 +641,9 @@ export class PackageDocument {
     return metaElements
       .map((meta): OpfMetaEntry | undefined => {
         const key = meta.getAttribute("property") ?? meta.getAttribute("name");
-        const value = meta.getAttribute("property") !== null
-          ? meta.textContent?.trim()
-          : (meta.getAttribute("content")?.trim() ?? undefined);
+        const value = normalizeMetadataText(meta.getAttribute("property") !== null
+          ? meta.textContent
+          : meta.getAttribute("content"));
         if (!key || !value) {
           return undefined;
         }
@@ -662,7 +662,7 @@ export class PackageDocument {
   private static parseIdentifiers(metadataEl: Element): BookIdentifier[] {
     return getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "identifier")
       .map((el): BookIdentifier | undefined => {
-        const value = el.textContent?.trim();
+        const value = normalizeMetadataText(el.textContent);
         if (!value) {
           return undefined;
         }
@@ -688,13 +688,13 @@ export class PackageDocument {
 
     if (uniqueIdentifierId) {
       const match = identifierElements.find((el) => el.getAttribute("id") === uniqueIdentifierId);
-      const text = match?.textContent?.trim();
+      const text = normalizeMetadataText(match?.textContent);
       if (text) {
         return text;
       }
     }
 
-    const firstText = identifierElements[0]?.textContent?.trim();
+    const firstText = normalizeMetadataText(identifierElements[0]?.textContent);
     if (!firstText) {
       throw new PackageDocumentError(`OPF metadata at ${opfPath} has no dc:identifier element.`);
     }
@@ -706,7 +706,7 @@ export class PackageDocument {
     const layoutMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:layout",
     );
-    const content = layoutMeta?.textContent?.trim();
+    const content = normalizeMetadataText(layoutMeta?.textContent);
     return content === "pre-paginated" || content === "roll" ? content : "reflowable";
   }
 
@@ -724,7 +724,7 @@ export class PackageDocument {
     const spreadMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:spread",
     );
-    const content = spreadMeta?.textContent?.trim();
+    const content = normalizeMetadataText(spreadMeta?.textContent);
     if (content === "none" || content === "landscape" || content === "both") {
       return content;
     }
@@ -741,7 +741,7 @@ export class PackageDocument {
     const orientationMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:orientation",
     );
-    const content = orientationMeta?.textContent?.trim();
+    const content = normalizeMetadataText(orientationMeta?.textContent);
     return content === "portrait" || content === "landscape" ? content : "auto";
   }
 
@@ -757,7 +757,7 @@ export class PackageDocument {
     const viewportMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:viewport",
     );
-    return parseViewportDimensions(viewportMeta?.textContent);
+    return parseViewportDimensions(normalizeMetadataText(viewportMeta?.textContent));
   }
 
   /** Parses EPUB Accessibility 1.1's `schema:accessMode`/
@@ -771,7 +771,7 @@ export class PackageDocument {
     const valuesFor = (property: string): string[] =>
       metaElements
         .filter((meta) => meta.getAttribute("property") === property)
-        .map((meta) => meta.textContent?.trim())
+        .map((meta) => normalizeMetadataText(meta.textContent))
         .filter((value): value is string => !!value);
 
     return {
@@ -843,22 +843,26 @@ function getRequiredChild(
   return child;
 }
 
+function normalizeMetadataText(value: string | null | undefined): string | undefined {
+  return value?.replace(/[\t\n\f\r ]+/g, " ").replace(/^ | $/g, "") || undefined;
+}
+
 function getFirstElementTextNS(
   parent: Element,
   namespace: string,
   localName: string,
 ): string | undefined {
   const element = getFirstDescendantElementByNS(parent, namespace, localName);
-  return element?.textContent?.trim() || undefined;
+  return normalizeMetadataText(element?.textContent);
 }
 
-/** Every matching element's trimmed text content (not just the first) —
+/** Every matching element's normalized text content (not just the first) —
  * for repeatable Dublin Core elements like `dc:subject`/`dc:contributor`
  * where a book may legitimately declare several. Elements with no (or
  * all-whitespace) text content are skipped. */
 function getElementsTextNS(parent: Element, namespace: string, localName: string): string[] {
   return getDescendantElementsByNS(parent, namespace, localName)
-    .map((el) => el.textContent?.trim())
+    .map((el) => normalizeMetadataText(el.textContent))
     .filter((text): text is string => Boolean(text));
 }
 

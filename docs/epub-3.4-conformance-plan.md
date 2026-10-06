@@ -59,6 +59,7 @@ GitHub issue numbers change.
 | C34-08 | Package direction and metadata language           | Preserve package- and element-level direction/language and render internationalized metadata correctly.                                                       | [#332](https://github.com/BCWalters/ambra/issues/332) |
 | C34-09 | Ordered rendition-property resolution             | Preserve item property order and implement first-applicable-value behavior for conflicting layout, spread, and page-side values.                              | [#334](https://github.com/BCWalters/ambra/issues/334) |
 | C34-10 | Vertical-writing pagination                       | Add vertical CJK fixtures and correct paginated `vertical-rl` and `vertical-lr` measurement/navigation.                                                       | [#333](https://github.com/BCWalters/ambra/issues/333) |
+| C34-19 | Metadata ASCII whitespace normalization           | Strip and collapse ASCII whitespace in canonical Dublin Core/meta values without removing meaningful non-ASCII whitespace; preserve identifier and source-order behavior. | [#354](https://github.com/BCWalters/ambra/issues/354) |
 
 C34-01 is implemented. Ambra treats `roll` as a publication-wide layout,
 ignores incompatible item-level layout, spread, flow, and orientation
@@ -135,6 +136,17 @@ overrides. Orientation remains an advisory value surfaced in inspection, not a
 browser-window orientation lock. Regression coverage exercises ordered pairs,
 aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
 still need release assessment; these synthetic checks do not alter the score.
+
+#### C34-19 implementation and assessment expectations
+
+Dublin Core and OPF meta values now share exact ASCII whitespace stripping and
+collapse before canonical metadata or derived rendition/accessibility processing.
+This includes identifiers, dates, repeated creator/subject/contributor values,
+refinements, and legacy meta `content` attributes. Meaningful non-ASCII spaces
+are preserved. Unique-identifier selection, main-title/creator source order,
+optional empty-value handling, and required-value errors remain unchanged.
+Regression coverage is prepared for protected remote validation; official
+criterion assessment and the release conformance score remain separate.
 
 ### Phase 2: architecture and recommended reading-system behavior
 
