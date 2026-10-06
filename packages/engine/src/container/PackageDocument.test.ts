@@ -551,6 +551,14 @@ describe("PackageDocument accessibility metadata (EPUB Accessibility 1.1)", () =
       accessibilityFeatures: [],
       accessibilityHazards: [],
       accessibilitySummary: undefined,
+      accessModeSufficient: [],
+      conformsTo: [],
+      certifiedBy: [],
+      certificationDates: [],
+      certifierCredentials: [],
+      certifierReports: [],
+      contactEmails: [],
+      declarations: [],
     });
   });
 
@@ -583,6 +591,37 @@ describe("PackageDocument accessibility metadata (EPUB Accessibility 1.1)", () =
     expect(pkg.metadata.accessibility.accessibilitySummary).toBe(
       "This publication conforms to WCAG 2.1 Level AA.",
     );
+  });
+
+  it("retains repeated, multilingual and refined Accessibility 1.2 publisher declarations", () => {
+    const pkg = PackageDocument.parse(buildXml(`
+      <meta property="schema:accessModeSufficient">textual</meta>
+      <meta property="schema:accessModeSufficient">visual,textual</meta>
+      <meta property="dcterms:conformsTo">EPUB Accessibility 1.2 - WCAG 2.2 Level AA</meta>
+      <meta property="a11y:certifiedBy" id="certifier">Original publisher</meta>
+      <meta property="a11y:certificationDate">not-a-date</meta>
+      <meta property="a11y:certifierCredential" refines="#certifier">Declared credential</meta>
+      <meta property="a11y:certifierReport">https://example.invalid/report</meta>
+      <meta property="a11y:contactEmail">publisher@example.invalid</meta>
+      <meta property="schema:accessibilitySummary" xml:lang="fr" dir="ltr">Résumé déclaré</meta>
+      <meta property="schema:accessibilitySummary" xml:lang="ar" dir="rtl">ملخص الناشر</meta>
+      <meta property="schema:accessibilityHazard" refines="#chapter">unknown</meta>
+      <meta property="a11y:futureClaim">Retained extension</meta>
+    `), "EPUB/package.opf").metadata.accessibility;
+    expect(pkg.accessModeSufficient).toEqual(["textual", "visual,textual"]);
+    expect(pkg.conformsTo).toEqual(["EPUB Accessibility 1.2 - WCAG 2.2 Level AA"]);
+    expect(pkg.certifiedBy).toEqual(["Original publisher"]);
+    expect(pkg.certificationDates).toEqual(["not-a-date"]);
+    expect(pkg.certifierCredentials).toEqual([]);
+    expect(pkg.certifierReports).toEqual(["https://example.invalid/report"]);
+    expect(pkg.contactEmails).toEqual(["publisher@example.invalid"]);
+    expect(pkg.accessibilityHazards).toEqual([]);
+    expect(pkg.declarations).toContainEqual(expect.objectContaining({
+      key: "a11y:certifierCredential", refines: "certifier", value: "Declared credential",
+    }));
+    expect(pkg.declarations?.filter(meta => meta.key === "schema:accessibilitySummary").map(meta => [meta.language, meta.direction]))
+      .toEqual([["fr", "ltr"], ["ar", "rtl"]]);
+    expect(pkg.declarations).toContainEqual(expect.objectContaining({ key: "a11y:futureClaim", value: "Retained extension" }));
   });
 });
 

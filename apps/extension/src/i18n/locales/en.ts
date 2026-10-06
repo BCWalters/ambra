@@ -133,6 +133,22 @@ export interface StringCatalog {
   "narration.error": string;
   "reader.unsupportedResources": string;
   "reader.blockedLink": string;
+  "reader.navigationRecovered": string;
+  "toc.otherNavigation": string;
+  "bookDetails.a11yClaims": string;
+  "bookDetails.a11yDisclaimer": string;
+  "bookDetails.a11yMissing": string;
+  "bookDetails.a11yUnavailable": string;
+  "bookDetails.a11yAccessModes": string;
+  "bookDetails.a11ySufficient": string;
+  "bookDetails.a11yHazards": string;
+  "bookDetails.a11yConformance": string;
+  "bookDetails.a11yCertifier": string;
+  "bookDetails.a11yDate": string;
+  "bookDetails.a11yCredential": string;
+  "bookDetails.a11yReport": string;
+  "bookDetails.a11yContact": string;
+  "bookDetails.a11yAdditional": string;
   "library.pageTitle": string;
   "library.toolbar": string;
   "library.sortNewest": string;
@@ -661,6 +677,23 @@ export const en: StringCatalog = {
   "narration.error": "Narration could not be played.",
   "reader.unsupportedResources": "Some images, fonts, or media in this book are unsupported and have no usable fallback. You can continue reading.",
   "reader.blockedLink": "For your safety, this book cannot open file, data, or unsupported links.",
+  "reader.navigationRecovered":
+    "This book's modern Table of Contents could not be read. Its compatible Table of Contents is being used instead.",
+  "toc.otherNavigation": "Other navigation",
+  "bookDetails.a11yClaims": "Publisher-declared accessibility",
+  "bookDetails.a11yDisclaimer": "These claims are supplied by the publication. Ambra has not independently verified or certified them.",
+  "bookDetails.a11yMissing": "No accessibility claims were supplied. This does not establish whether the book is accessible.",
+  "bookDetails.a11yUnavailable": "Accessibility declarations are not yet available for this stored copy. This does not establish whether the book is accessible.",
+  "bookDetails.a11yAccessModes": "Access modes",
+  "bookDetails.a11ySufficient": "Sufficient access-mode alternatives",
+  "bookDetails.a11yHazards": "Declared accessibility hazards",
+  "bookDetails.a11yConformance": "Declared conformance",
+  "bookDetails.a11yCertifier": "Declared certifier",
+  "bookDetails.a11yDate": "Declared evaluation date",
+  "bookDetails.a11yCredential": "Certifier credential",
+  "bookDetails.a11yReport": "Evaluation report",
+  "bookDetails.a11yContact": "Accessibility contact",
+  "bookDetails.a11yAdditional": "Additional publisher declarations",
   "library.pageTitle": "Ambra — Library",
   "library.toolbar": "Library actions",
   "library.sortNewest": "Date added (newest first)",

@@ -1,3 +1,5 @@
+import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
+
 /** Thrown when the sandboxed content host fails to load a document (e.g.
  * the iframe's `error` event fires, or loading doesn't complete within the
  * timeout). */
@@ -42,11 +44,10 @@ const LOAD_TIMEOUT_MS = 10_000;
  *   the EPUB spec's requirement that content documents be well-formed
  *   XML, and avoiding any ambiguity from HTML-parsing XML-serialized
  *   markup (e.g. self-closing tag handling).
- * - Every resource the document references (images, fonts, stylesheets)
- *   is itself a `blob:` URL (see `ResourceUrlResolver`), so the frame
- *   never has occasion to reach the network at all; the CSP injected by
- *   `ContentDocumentAssembler` makes that a structural guarantee, not
- *   just an incidental one.
+ * - Packaged resources are rewritten to `blob:` URLs. Chromium's frame-level
+ *   required CSP blocks automatic network loads even for SVG roots without
+ *   an HTML head, and resources not handled by the assembler. XHTML also
+ *   retains the same policy in a meta element as defense in depth.
  */
 export class SandboxedContentHost {
   private readonly iframeEl: HTMLIFrameElement;
@@ -57,6 +58,7 @@ export class SandboxedContentHost {
   public constructor(ownerDocument: Document = document) {
     this.iframeEl = ownerDocument.createElement("iframe");
     this.iframeEl.setAttribute("sandbox", "allow-same-origin");
+    this.iframeEl.setAttribute("csp", CONTENT_SECURITY_POLICY);
     this.iframeEl.setAttribute("referrerpolicy", "no-referrer");
     // TODO(accessibility-layer): revisit this generic title once per-book/
     // per-chapter context is available (e.g. "<Book title> — <Chapter title>").

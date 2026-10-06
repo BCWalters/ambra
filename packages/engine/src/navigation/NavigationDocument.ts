@@ -1,4 +1,6 @@
 import { EpubContainer } from "../container/EpubContainer.js";
+import { ZipFormatError, ZipIntegrityError } from "../container/ZipArchive.js";
+import type { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
 import { classifyEpubReference, type NonPackageEpubReference } from "../container/EpubReference.js";
 import {
   getChildElementsByNS,
@@ -67,6 +69,11 @@ export class NavigationList {
   ) {}
 }
 
+export interface AuxiliaryNavigationList {
+  readonly label: string | undefined;
+  readonly items: readonly NavPoint[];
+}
+
 /**
  * A publication's navigation data: table of contents (required), plus
  * optional page list and landmarks. Parsed from either an EPUB3 Nav
@@ -78,6 +85,8 @@ export class NavigationDocument {
     public readonly toc: NavigationList,
     public readonly pageList: NavigationList | undefined,
     public readonly landmarks: NavigationList | undefined,
+    public readonly additionalLists: readonly AuxiliaryNavigationList[] = [],
+    public readonly diagnostics: readonly string[] = [],
   ) {}
 
   /** Loads a publication's navigation, preferring its EPUB3 Nav Document
@@ -87,21 +96,96 @@ export class NavigationDocument {
   public static async load(container: EpubContainer): Promise<NavigationDocument> {
     const pkg = await container.getPackageDocument();
 
+    const diagnostics: string[] = [];
+    let navigation: NavigationDocument | undefined;
     const navItem = pkg.findNavDocument();
     if (navItem) {
-      const xml = await container.requireEntry(navItem.path).readText();
-      return NavigationDocument.parseNavDocument(xml, navItem.path);
+      try {
+        navigation = NavigationDocument.parseNavDocument(
+          await this.readItem(container, navItem),
+          navItem.path,
+        );
+      } catch (error) {
+        if (!(
+          error instanceof NavigationDocumentError ||
+          error instanceof ZipFormatError ||
+          error instanceof ZipIntegrityError
+        ))
+          throw error;
+        diagnostics.push(error.message);
+      }
     }
 
     const ncxItem = pkg.findNcxDocument();
-    if (ncxItem) {
-      const xml = await container.requireEntry(ncxItem.path).readText();
-      return NavigationDocument.parseNcx(xml, ncxItem.path);
+    if (!navigation && ncxItem) {
+      navigation = NavigationDocument.parseNcx(
+        await this.readItem(container, ncxItem),
+        ncxItem.path,
+      );
     }
 
-    throw new NavigationDocumentError(
-      "No navigation found: package declares neither an EPUB3 Nav Document nor a fallback NCX.",
+    if (!navigation) {
+      throw new NavigationDocumentError(
+        diagnostics.length
+          ? diagnostics.join(" ")
+          : "No navigation found: package declares neither an EPUB3 Nav Document nor a fallback NCX.",
+      );
+    }
+    return new NavigationDocument(
+      navigation.toc,
+      navigation.pageList,
+      navigation.landmarks ?? this.guideLandmarks(pkg, container.rootFilePath),
+      navigation.additionalLists,
+      diagnostics,
     );
+  }
+
+  private static async readItem(container: EpubContainer, item: ManifestItem): Promise<string> {
+    if (item.location)
+      throw new NavigationDocumentError("Navigation declares a blocked non-package resource.");
+    const entry = container.getEntry(item.path);
+    if (!entry)
+      throw new NavigationDocumentError(`Declared navigation resource is missing: ${item.path}.`);
+    return entry.readText();
+  }
+
+  private static guideLandmarks(pkg: PackageDocument, opfPath: string): NavigationList | undefined {
+    const items = new Map<string, NavPoint>();
+    for (const guide of pkg.guide) {
+      const reference = classifyEpubReference(opfPath, guide.href);
+      const path =
+        reference.kind === "package"
+          ? reference.path
+          : reference.kind === "fragment"
+            ? opfPath
+            : reference.url;
+      const fragment =
+        reference.kind === "package" || reference.kind === "fragment"
+          ? reference.fragment
+          : undefined;
+      const externalReference =
+        reference.kind === "package" || reference.kind === "fragment" ? undefined : reference;
+      const type =
+        guide.type === "text"
+          ? "bodymatter"
+          : guide.type === "acknowledgements"
+            ? "acknowledgments"
+            : guide.type;
+      const key = JSON.stringify([path, fragment]);
+      const previous = items.get(key);
+      items.set(
+        key,
+        new NavPoint(
+          previous?.label || guide.title,
+          path,
+          fragment,
+          [],
+          [...new Set([...(previous?.epubTypes ?? []), ...(type ? [type] : [])])],
+          externalReference,
+        ),
+      );
+    }
+    return items.size ? new NavigationList("landmarks", [...items.values()]) : undefined;
   }
 
   // ---- EPUB3 Nav Document ----
@@ -124,6 +208,9 @@ export class NavigationDocument {
       );
     }
     const toc = new NavigationList("toc", NavigationDocument.parseNavList(tocNav, navDocPath));
+    if (!toc.items.length) {
+      throw new NavigationDocumentError(`Nav Document at ${navDocPath} has no usable TOC entries.`);
+    }
 
     const pageListNav = navElements.find((nav) => hasEpubType(nav, "page-list"));
     const pageList = pageListNav
@@ -213,7 +300,21 @@ export class NavigationDocument {
         )
       : undefined;
 
-    return new NavigationDocument(toc, pageList, undefined);
+    const additionalLists = getChildElementsByNS(rootEl, NCX_NAMESPACE, "navList")
+      .map((list) => {
+        const label = getFirstChildElementByNS(list, NCX_NAMESPACE, "navLabel");
+        return {
+          label: label
+            ? getFirstChildElementByNS(label, NCX_NAMESPACE, "text")?.textContent?.trim() ||
+              undefined
+            : undefined,
+          items: getChildElementsByNS(list, NCX_NAMESPACE, "navTarget").map((target) =>
+            NavigationDocument.parseNcxLabeledTarget(target, ncxPath),
+          ),
+        };
+      })
+      .filter((list) => list.items.length > 0);
+    return new NavigationDocument(toc, pageList, undefined, additionalLists);
   }
 
   private static parseNcxNavPoint(navPointEl: Element, ncxPath: string): NavPoint {

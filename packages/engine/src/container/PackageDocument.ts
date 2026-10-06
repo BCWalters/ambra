@@ -1,5 +1,9 @@
 import { classifyEpubReference, type NonPackageEpubReference } from "./EpubReference.js";
-import { getDescendantElementsByNS, getFirstDescendantElementByNS, getNamespacedAttribute } from "./Xml.js";
+import {
+  getChildElementsByNS,
+  getDescendantElementsByNS,
+  getFirstChildElementByNS, getFirstDescendantElementByNS, getNamespacedAttribute,
+} from "./Xml.js";
 import { elementCfiSteps } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
 import { parseSmilClockValue } from "../media-overlay/SmilClockValue.js";
@@ -257,7 +261,13 @@ export interface BookIdentifier {
   readonly scheme: string | undefined;
 }
 
-/** EPUB Accessibility 1.1 metadata, parsed from the schema.org `a11y`
+export interface GuideReference {
+  readonly type: string;
+  readonly title: string;
+  readonly href: string;
+}
+
+/** EPUB Accessibility 1.2 publisher claims, parsed from the schema.org and `a11y`
  * vocabulary's `<meta property="schema:...">` elements. All optional —
  * most real-world books declare none of this at all. */
 export interface AccessibilityMetadata {
@@ -273,6 +283,14 @@ export interface AccessibilityMetadata {
   /** `schema:accessibilitySummary` — free-text human-readable summary
    * of the book's accessibility, when the publisher provides one. */
   readonly accessibilitySummary: string | undefined;
+  readonly accessModeSufficient?: readonly string[];
+  readonly conformsTo?: readonly string[];
+  readonly certifiedBy?: readonly string[];
+  readonly certificationDates?: readonly string[];
+  readonly certifierCredentials?: readonly string[];
+  readonly certifierReports?: readonly string[];
+  readonly contactEmails?: readonly string[];
+  readonly declarations?: readonly LocalizedMetadataValue[];
 }
 
 /** Core Dublin Core / package metadata read from the OPF `<metadata>`
@@ -434,6 +452,7 @@ export class PackageDocument {
      * here rather than living on `PackageMetadata` alongside
      * `renditionSpread`/`renditionLayout`. */
     public readonly pageProgressionDirection: PageProgressionDirection,
+    public readonly guide: readonly GuideReference[] = [],
   ) {
     this.manifestById = new Map(manifestItems.map((item) => [item.id, item]));
   }
@@ -553,7 +572,26 @@ export class PackageDocument {
     const tocManifestId = spineEl.getAttribute("toc") ?? undefined;
     const pageProgressionDirection = PackageDocument.parsePageProgressionDirection(spineEl);
 
-    return new PackageDocument(metadata, manifestItems, spine, tocManifestId, pageProgressionDirection);
+    const guideEl = getFirstChildElementByNS(packageEl, OPF_NAMESPACE, "guide");
+    const guide = guideEl
+      ? getChildElementsByNS(guideEl, OPF_NAMESPACE, "reference").flatMap((reference) => {
+          const href = reference.getAttribute("href")?.trim();
+          if (!href) {
+            console.warn("Ignoring an OPF2 guide reference without an href.");
+            return [];
+          }
+          const type = reference.getAttribute("type")?.trim() ?? "";
+          return [{ href, type, title: reference.getAttribute("title")?.trim() || type }];
+        })
+      : [];
+    return new PackageDocument(
+      metadata,
+      manifestItems,
+      spine,
+      tocManifestId,
+      pageProgressionDirection,
+      guide,
+    );
   }
 
   /** Parses `<spine page-progression-direction="ltr"|"rtl"|"default">` —
@@ -599,10 +637,11 @@ export class PackageDocument {
     const contributors = getElementsTextNS(metadataEl, DC_NAMESPACE, "contributor");
     const metaEntries = PackageDocument.parseMetaEntries(metadataEl);
     const creators = getElementsTextNS(metadataEl, DC_NAMESPACE, "creator");
-    const accessibility = PackageDocument.parseAccessibilityMetadata(metadataEl);
+    const localization = PackageDocument.parseMetadataLocalization(packageEl, metadataEl);
+    const accessibility = PackageDocument.parseAccessibilityMetadata(localization);
 
     return new PackageMetadata({
-      localization: PackageDocument.parseMetadataLocalization(packageEl, metadataEl),
+      localization,
       identifier,
       title,
       language,
@@ -633,7 +672,10 @@ export class PackageDocument {
     return text || undefined;
   }
 
-  private static parseMetadataLocalization(packageEl: Element, metadataEl: Element): MetadataLocalization {
+  private static parseMetadataLocalization(
+    packageEl: Element,
+    metadataEl: Element,
+  ): MetadataLocalization {
     const contexts = new WeakMap<Element, MetadataTextContext>();
     const contextFor = (element: Element): MetadataTextContext => {
       const cached = contexts.get(element);
@@ -643,8 +685,10 @@ export class PackageDocument {
       if (declaredDirection !== null && !["ltr", "rtl", "auto"].includes(declaredDirection)) {
         console.warn(`Unknown package metadata direction ${JSON.stringify(declaredDirection)}; using auto.`);
       }
-      const direction = declaredDirection === null ? inherited?.direction ?? "auto"
-        : declaredDirection === "ltr" || declaredDirection === "rtl" ? declaredDirection : "auto";
+      const direction =
+        declaredDirection === null
+          ? (inherited?.direction ?? "auto")
+          : declaredDirection === "ltr" || declaredDirection === "rtl" ? declaredDirection : "auto";
       const language = getNamespacedAttribute(element, "http://www.w3.org/XML/1998/namespace", "lang")
         ?? inherited?.language;
       const context: MetadataTextContext = { direction, language };
@@ -652,14 +696,18 @@ export class PackageDocument {
       return context;
     };
     const dateElement = publicationDateElement(metadataEl);
-    const localizedValue = (element: Element, key: string, value: string): LocalizedMetadataValue => {
+    const localizedValue = (
+      element: Element,
+      key: string,
+      value: string,
+    ): LocalizedMetadataValue => {
       const refines = element.getAttribute("refines");
       return {
         ...contextFor(element),
         key,
         value,
         id: element.getAttribute("id") ?? undefined,
-        refines: refines?.startsWith("#") ? refines.slice(1) : refines ?? undefined,
+        refines: refines?.startsWith("#") ? refines.slice(1) : (refines ?? undefined),
         preferred: element === dateElement,
       };
     };
@@ -807,25 +855,25 @@ export class PackageDocument {
     return parseViewportDimensions(normalizeMetadataText(viewportMeta?.textContent));
   }
 
-  /** Parses EPUB Accessibility 1.1's `schema:accessMode`/
-   * `accessibilityFeature`/`accessibilityHazard`/`accessibilitySummary`
-   * `<meta property="...">` elements — unlike `rendition:layout`/
-   * `rendition:spread`, the first three are legitimately repeatable
-   * (a book can declare several access modes/features/hazards), so
-   * every matching element is collected rather than just the first. */
-  private static parseAccessibilityMetadata(metadataEl: Element): AccessibilityMetadata {
-    const metaElements = getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta");
+  private static parseAccessibilityMetadata(localization: MetadataLocalization): AccessibilityMetadata {
+    const declarations = localization.metaValues.filter(meta => meta.key.startsWith("schema:access") ||
+      meta.key.startsWith("a11y:") || meta.key === "dcterms:conformsTo");
     const valuesFor = (property: string): string[] =>
-      metaElements
-        .filter((meta) => meta.getAttribute("property") === property)
-        .map((meta) => normalizeMetadataText(meta.textContent))
-        .filter((value): value is string => !!value);
+      declarations.filter(meta => meta.key === property && !meta.refines).map(meta => meta.value);
 
     return {
       accessModes: valuesFor("schema:accessMode"),
       accessibilityFeatures: valuesFor("schema:accessibilityFeature"),
       accessibilityHazards: valuesFor("schema:accessibilityHazard"),
       accessibilitySummary: valuesFor("schema:accessibilitySummary")[0],
+      accessModeSufficient: valuesFor("schema:accessModeSufficient"),
+      conformsTo: valuesFor("dcterms:conformsTo"),
+      certifiedBy: valuesFor("a11y:certifiedBy"),
+      certificationDates: valuesFor("a11y:certificationDate"),
+      certifierCredentials: valuesFor("a11y:certifierCredential"),
+      certifierReports: valuesFor("a11y:certifierReport"),
+      contactEmails: valuesFor("a11y:contactEmail"),
+      declarations,
     };
   }
 
@@ -899,7 +947,9 @@ function normalizeMetadataText(value: string | null | undefined): string | undef
 
 function publicationDateElement(metadataEl: Element): Element | undefined {
   const dates = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "date");
-  return dates.find(element => getNamespacedAttribute(element, OPF_NAMESPACE, "event") === "publication") ?? dates[0];
+  return (
+    dates.find(element => getNamespacedAttribute(element, OPF_NAMESPACE, "event") === "publication") ?? dates[0]
+  );
 }
 
 function getFirstElementTextNS(

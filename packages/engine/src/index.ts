@@ -29,7 +29,10 @@ export {
   NavigationList,
   NavPoint,
 } from "./navigation/NavigationDocument.js";
-export type { NavigationListType } from "./navigation/NavigationDocument.js";
+export type { NavigationListType,
+  AuxiliaryNavigationList,
+} from "./navigation/NavigationDocument.js";
+export type { GuideReference } from "./container/PackageDocument.js";
 export {
   ContentLoader,
   ContentDocument,
@@ -73,8 +76,9 @@ export { globalTextOffsetToPosition, totalTextLength } from "./layout/DomTextWal
 export { ScrollViewEngine } from "./layout/ScrollViewEngine.js";
 export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } from "./layout/ScrollPositionTracker.js";
 export { Locator, LocatorResolver, LocatorResolutionError } from "./locator/Locator.js";
-export type { ResolvedLocator } from "./locator/Locator.js";
+export type { ResolvedLocator, ResolvedLocatorRange } from "./locator/Locator.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
+export type { CfiParameter, CfiTextAssertion } from "./locator/EpubCfi.js";
 export {
   parseAnnotationCollection,
   serializeAnnotationCollection,

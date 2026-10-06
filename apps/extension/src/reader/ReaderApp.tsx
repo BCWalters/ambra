@@ -629,15 +629,19 @@ const ReaderAppInner: FC = () => {
   return (
     <ReaderDiagnosticContext.Provider value={recordDiagnosticSurfaces}>
     <ChromeThemeProvider theme={snapshot.chromeTheme}>
-      {/* Unlike hidden, clip cannot pan the shell when focus/scrollIntoView
-          reaches a control in an entering or off-screen panel. */}
+      {/* Issue #98: a marker's `left`/`top` are computed for the page
+                that was on screen when they were placed, and don't track the
+                page-turn animation as it slides/flips/rotates the content
+                out from under them — simplest fix is to just not render any
+                until the incoming page has settled and fresh positions are
+                computed for it (see `updateNoteMarkers`'s callers). */}
       <div ref={layoutRef} style={{ position: "relative", height: "100vh", overflow: "clip" }}>
-        {/* The content row fills the entire viewport — the toolbar is an
-              absolutely-positioned overlay (see `Toolbar`), not a normal-flow
-              element pushing this row down, so it can fade in/out without
-              ever changing this row's size (which would otherwise trigger a
-              pointless relayout via the `ResizeObserver` below on every
-              fade). */}
+        {/* Issue #98: a marker's `left`/`top` are computed for the page
+                that was on screen when they were placed, and don't track the
+                page-turn animation as it slides/flips/rotates the content
+                out from under them — simplest fix is to just not render any
+                until the incoming page has settled and fresh positions are
+                computed for it (see `updateNoteMarkers`'s callers). */}
         <div ref={referenceRowRef} data-ambra-reference-row style={{
           position: "absolute", inset: 0, display: "flex",
           left: isInspectorOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
@@ -645,7 +649,8 @@ const ReaderAppInner: FC = () => {
         }}>
           <TocPanel
             items={snapshot.toc}
-            currentPath={snapshot.highlightedTocPath}
+              additionalLists={snapshot.additionalNavigation}
+              currentPath={snapshot.highlightedTocPath}
             firstSpinePath={snapshot.firstSpinePath}
             pageNumbers={snapshot.tocPageNumbers}
             open={isTocOpen}
@@ -667,7 +672,8 @@ const ReaderAppInner: FC = () => {
             scrubberVisible={scrubberVisible}
           />
 
-          {hasOpenedLibrary && <ReaderLibraryPanel
+          {hasOpenedLibrary && (
+              <ReaderLibraryPanel
             open={isLibraryOpen}
             currentBookId={currentBookId}
             scrubberVisible={scrubberVisible}
@@ -680,7 +686,8 @@ const ReaderAppInner: FC = () => {
               void activateLibraryBook(bookId).catch(error =>
                 setSeekError(error instanceof Error ? error.message : String(error)));
             }}
-          />}
+          />
+            )}
 
           <div
             style={{
@@ -691,29 +698,12 @@ const ReaderAppInner: FC = () => {
             aria-label={t("reader.bookContentAriaLabel")}
           >
             <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
-            {/* This div is owned entirely by imperative code (ReaderController
-                mounts the active content host's iframe into it) — it must never
-                receive React-rendered children, or React's reconciliation and
-                the controller's direct DOM mutations will conflict. `position:
-                absolute; inset: 0` (rather than percentage width/height) sizes
-                it reliably regardless of how many layers of flexbox surround
-                it, which is what a real-Chromium test caught going wrong.
-                Carries its own background (the active page color theme,
-                rather than "inheriting" it from the `role="main"` div around
-                it, since that div itself no longer paints one — see below) so
-                the bottom slack under a short last page and the spread gutter
-                between two columns (both of which show this div's background
-                through, not the content host's own) never visually mismatch
-                the page. `filter` lives here too, not on the `role="main"`
-                div around it: that outer div also contains the toolbar,
-                scrubber, and every other overlay panel, none of which should
-                ever dim along with the book's own content and margins (issue
-                #93) — scoping the `filter` to exactly this div (which a CSS
-                `filter` then applies to its *entire* rendered subtree,
-                including the content host's nested iframes — see
-                `ReadingTheme`'s own doc comment on `MIN_BRIGHTNESS`) dims
-                precisely the book's page(s) and the margins around them,
-                nothing else. */}
+            {/* Issue #98: a marker's `left`/`top` are computed for the page
+                that was on screen when they were placed, and don't track the
+                page-turn animation as it slides/flips/rotates the content
+                out from under them — simplest fix is to just not render any
+                until the incoming page has settled and fresh positions are
+                computed for it (see `updateNoteMarkers`'s callers). */}
             <div
               ref={contentHostRef}
               style={{
@@ -748,15 +738,15 @@ const ReaderAppInner: FC = () => {
                 transition: "transform 240ms ease",
               }}
             />
-            <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
-            {pageTurnGuideRun > 0 && pageTurnGuideController && (
+                <PageFurniture snapshot={snapshot} chromeVisible={chromeVisible} />
+                {pageTurnGuideRun > 0 && pageTurnGuideController && (
               <PageTurnGuide key={pageTurnGuideRun} controller={pageTurnGuideController}
                 hidden={help.view !== undefined || !!snapshot.isLoading || !!snapshot.error ||
                   isInspectorOpen || goToMode !== undefined || !!snapshot.imageViewer || !!snapshot.tableViewer ||
                   hasReferencePanel || toolbarMenu !== undefined || !!snapshot.selectionToolbar ||
                   !!snapshot.activeHighlight || !!snapshot.footnotePopup} />
             )}
-            {snapshot.isLoading && (
+                {snapshot.isLoading && (
               <Spinner
                 label={t(snapshot.loadingPhase === "navigating" ? "reader.navigating" : "reader.openingBook")}
                 style={{
@@ -768,11 +758,13 @@ const ReaderAppInner: FC = () => {
               />
             )}
 
-            {/* Scoped to this content pane (not the TOC panel beside it) —
-                the toolbar is positioned relative to *this* div so it never
-                overlaps the TOC panel's own clickable area when both are
-                open at once. */}
-            <Toolbar
+                {/* Issue #98: a marker's `left`/`top` are computed for the page
+                that was on screen when they were placed, and don't track the
+                page-turn animation as it slides/flips/rotates the content
+                out from under them — simplest fix is to just not render any
+                until the incoming page has settled and fresh positions are
+                computed for it (see `updateNoteMarkers`'s callers). */}
+                <Toolbar
               openMenu={toolbarMenu}
               onOpenMenuChange={changeToolbarMenu}
               snapshot={snapshot}
@@ -832,7 +824,7 @@ const ReaderAppInner: FC = () => {
               handlers={chromeHandlers}
             />
 
-            <HelpAboutFlyout
+                <HelpAboutFlyout
               open={help.view === "about"}
               focusShortcutsOnOpen={help.focusShortcutsOnOpen}
               onRequestClose={help.close}
@@ -844,7 +836,7 @@ const ReaderAppInner: FC = () => {
               onOpenReadingTips={help.openWelcome}
               getReaderDiagnostics={getDiagnosticsText}
             />
-            <ReadingWelcome
+                <ReadingWelcome
               open={help.view === "welcome"}
               scrolling={!snapshot.isFixedLayout && snapshot.viewMode === "scroll"}
               rtl={snapshot.pageProgressionDirection === "rtl"}
@@ -861,7 +853,7 @@ const ReaderAppInner: FC = () => {
                 }
               }}
             />
-            <KeyboardShortcutsDialog
+                <KeyboardShortcutsDialog
               open={help.view === "shortcuts"}
               onRequestClose={help.close}
               onOutsideClick={dismissHelpToContent}
@@ -869,7 +861,7 @@ const ReaderAppInner: FC = () => {
               pageProgressionDirection={snapshot.pageProgressionDirection}
             />
 
-            <BookDetailsPanel
+                <BookDetailsPanel
               open={isDetailsOpen}
               onRequestClose={() => {
                 closePanel("details");
@@ -884,7 +876,7 @@ const ReaderAppInner: FC = () => {
               scrubberVisible={scrubberVisible}
             />
 
-            <GoToDialog
+                <GoToDialog
               open={goToMode !== undefined}
               mode={goToMode ?? "page"}
               onOpenChange={(open) => {
@@ -902,7 +894,7 @@ const ReaderAppInner: FC = () => {
               }}
             />
 
-            <EpubInspectorPanel
+                <EpubInspectorPanel
               onFindReferences={findInspectionReferences}
               reader={inspectorReader}
               open={isInspectorOpen}
@@ -923,16 +915,16 @@ const ReaderAppInner: FC = () => {
               onGetPreviewUrl={getInspectionFilePreviewUrl}
             />
 
-            <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
-            <TableViewer table={snapshot.tableViewer} onRequestClose={closeTableViewer} onError={reportTableViewerError} />
+                <ImageViewer image={snapshot.imageViewer} onRequestClose={closeImageViewer} />
+                <TableViewer table={snapshot.tableViewer} onRequestClose={closeTableViewer} onError={reportTableViewerError} />
 
-            <SelectionToolbar
+                <SelectionToolbar
               state={snapshot.selectionToolbar}
               onPick={handleAddHighlight}
               onAddNote={handleAddHighlightWithNote}
             />
 
-            <HighlightActionPopup
+                <HighlightActionPopup
               state={snapshot.activeHighlight}
               onSetNote={setHighlightNote}
               onSetStyle={(id, style) => void setHighlightStyle(id, style)}
@@ -944,17 +936,17 @@ const ReaderAppInner: FC = () => {
               onDismiss={dismissActiveHighlight}
             />
 
-            <FootnotePopup state={snapshot.footnotePopup} onDismiss={dismissFootnotePopup} />
+                <FootnotePopup state={snapshot.footnotePopup} onDismiss={dismissFootnotePopup} />
 
-            {/* Issue #98: a marker's `left`/`top` are computed for the page
+                {/* Issue #98: a marker's `left`/`top` are computed for the page
                 that was on screen when they were placed, and don't track the
                 page-turn animation as it slides/flips/rotates the content
                 out from under them — simplest fix is to just not render any
                 until the incoming page has settled and fresh positions are
                 computed for it (see `updateNoteMarkers`'s callers). */}
-            <NoteMarkers markers={snapshot.isAnimatingPageTurn ? [] : snapshot.noteMarkers} onSelect={openHighlightPopup} />
+                <NoteMarkers markers={snapshot.isAnimatingPageTurn ? [] : snapshot.noteMarkers} onSelect={openHighlightPopup} />
 
-            <ProgressScrubber
+                <ProgressScrubber
               snapshot={snapshot}
               markerStyle={snapshot.progressMarkerStyle ?? "upcoming"}
               markerData={snapshot.progressMarkers}
@@ -976,7 +968,7 @@ const ReaderAppInner: FC = () => {
               onBookmarkChooserOpenChange={setBookmarkChooserOpen}
             />
 
-            {(seekError || (snapshot.error && snapshot.errorSeverity)) && (
+                {(seekError || (snapshot.error && snapshot.errorSeverity)) && (
               <FriendlyError
                 message={seekError ?? snapshot.error!}
                 notificationId={snapshot.errorNotificationId}
@@ -986,10 +978,10 @@ const ReaderAppInner: FC = () => {
                 getDiagnosticsText={getDiagnosticsText}
               />
             )}
-            </div>
-            {isNarrationOpen && snapshot.narration?.available && (
-              <div ref={narrationRegionRef} style={{ flexShrink: 0, minWidth: 0 }}>
-              <NarrationControls
+              </div>
+              {isNarrationOpen && snapshot.narration?.available && (
+                <div ref={narrationRegionRef} style={{ flexShrink: 0, minWidth: 0 }}>
+                  <NarrationControls
                 hasSelection={snapshot.hasReadingSelection === true}
                 state={snapshot.narration}
                 collapsed={isNarrationCollapsed}
@@ -1001,11 +993,11 @@ const ReaderAppInner: FC = () => {
                 onListenFromHere={() => narrationAction("here")}
                 onRateChange={setNarrationRate}
               />
-              </div>
-            )}
-          </div>
+                </div>
+              )}
+            </div>
 
-          <AnnotationsPanel
+            <AnnotationsPanel
             filterRequest={bookmarkFilterRequest
               ? { filter: "bookmarks", requestId: bookmarkFilterRequest } : undefined}
             bookmarks={snapshot.bookmarks}
@@ -1033,7 +1025,7 @@ const ReaderAppInner: FC = () => {
             scrubberVisible={scrubberVisible}
           />
 
-          <SearchPanel
+            <SearchPanel
             query={snapshot.searchQuery}
             results={snapshot.searchResults}
             isSearching={snapshot.isSearching}
@@ -1049,11 +1041,11 @@ const ReaderAppInner: FC = () => {
             inputFocusRequest={searchInputFocusRequest}
             scrubberVisible={scrubberVisible}
           />
-        </div>
+          </div>
 
-        <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
-      </div>
-    </ChromeThemeProvider>
+          <LiveRegion text={snapshot.announcement} announcementId={snapshot.announcementId} />
+        </div>
+      </ChromeThemeProvider>
     </ReaderDiagnosticContext.Provider>
   );
 };

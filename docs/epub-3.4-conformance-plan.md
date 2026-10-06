@@ -208,14 +208,34 @@ remain independent. HTML posters, image-backed object/embed elements, unsupporte
 iframe documents/srcdoc, and SVG image/use/feImage references are covered.
 
 This milestone does not implement nested document rendering, arbitrary external
-SVG presentation-attribute graphs, inherited resource `xml:base`, or remote/data
-loading. Those surfaces remain explicit compatibility/policy gaps; C34-07 stays
-open rather than implying complete URL/resource conformance. Prepared synthetic
+SVG presentation-attribute graphs, HTML `<base href>` processing, legacy
+`xml:base` compatibility, or remote/data loading. Those surfaces remain explicit
+compatibility/policy gaps; C34-07 stays open rather than implying complete
+URL/resource conformance. Prepared synthetic
 XHTML/SVG browser fixtures verify no actual requests for the exercised blocked
 resources, safe external-link dispatch, local remote-resource fallbacks and SVG
 symbol references. Their regression results do not change the original partial
 official score; the pinned file/data/navigation criteria require a separate
 package-bound assessment.
+
+A further prepared milestone applies the same restrictive policy through
+Chromium's iframe `csp` attribute before any navigation. This covers XML/SVG
+roots without an HTML head; XHTML retains its meta policy as defense in depth.
+The common host also serves fixed, paginated, scroll, roll and table views.
+Native fixtures require a real enforcing event from the expected CSP and a CDP
+loading failure explicitly blocked by CSP for an unrewritten remote URL,
+alongside successful packaged-image decoding. Logical request attempts are not
+network dispatch: the safety-net interception route must never handle the probe,
+and there must be no response.
+Protected Chromium validation is required before treating this experimental
+browser mechanism as verified. This does not implement external SVG graphs,
+unique publication origins, or scripting.
+
+HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
+Legacy `xml:base` is a separate unsupported compatibility surface:
+[EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)
+because HTML and SVG are removing support. Do not label it an additional
+mandatory modern feature or quietly count it as an assessed official failure.
 
 #### C34-08 implementation and assessment expectations
 
@@ -283,6 +303,50 @@ device. Synthetic coverage does not change the official conformance score.
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
 | C34-17 | Outdated and deprecated vocabulary policy         | Document and test intentional support or non-support for outdated rendition properties, prefixed CSS, `epub:switch`, `epub:trigger`, bindings, tours, and superseded metadata. | [#344](https://github.com/BCWalters/ambra/issues/344) |
+
+#### C34-15/C34-16 prepared implementation
+
+Accessibility 1.2 publisher claims now retain repeatable sufficient-access-mode
+alternatives, conformance, certifiers, dates, credentials, reports and contacts,
+including IDs, refinements and per-value language/direction. Refined claims are
+not incorrectly promoted to global publication claims. Reader and Library use
+the same accessible presentation, with explicit publisher provenance and no
+independent WCAG/certification claim. Missing claims and unavailable legacy
+cached metadata are distinct; old stored records refresh lazily from local EPUB
+bytes without overwriting concurrent enrichment or reviving deleted books.
+Report/contact values are inert text and never initiate network requests.
+
+Malformed, missing and empty modern Nav can recover to a valid packaged NCX
+with diagnostics and a localized notice. Unexpected errors still propagate.
+NCX auxiliary lists appear in separate labeled disclosures; OPF2 guide becomes
+fallback landmarks without duplicating authored modern landmarks. Versioned
+EPUB2/hybrid/modern fixtures verify source priority, actual fragment activation,
+blocked legacy targets and shared accessibility presentation/cache refresh.
+
+These additions are prepared for protected remote validation under #339/#343.
+They do not change the official score. The maintained
+[legacy compatibility inventory](epub-legacy-compatibility.md) records tours and
+other intentional omissions separately from current-spec requirements.
+
+#### C34-13 prepared recovery milestone
+
+The CFI profile now preserves text-location assertions, open parameters and side
+bias across point/range serialization and annotation source re-anchoring. Unique
+ID assertions recover shifted content elements; unique normalized text context
+can recover offsets across element boundaries and collapsed XML whitespace.
+Missing or ambiguous recovery targets fail explicitly, rather than selecting a
+plausible occurrence. UTF-16 offsets remain unchanged.
+
+Direct asynchronous and already-loaded-document range APIs resolve both
+endpoints against one document and reject reversed ranges. Native fixtures check
+actual paginated ID recovery, exact range text, text correction and before/after
+text-node affinity. Generated locators retain their existing compact format and
+do not incur whole-document context indexing on ordinary pagination.
+
+This is a prepared #340 milestone, not complete CFI support or an official
+score improvement. Nested indirections, temporal/spatial/combined offsets,
+image-alt addressing, package-tree recovery and full page-break affinity still
+need implementation and protected evidence.
 
 ### Phase 3: measurable conformance process
 
@@ -404,7 +468,7 @@ Currently supported or partially supported:
 
 Not currently supported:
 
-- OPF2 guide, tours, and NCX `navList`;
+- OPF2 tours (guide and NCX `navList` support are prepared under C34-16);
 - package collections;
 - bindings;
 - `epub:switch` and `epub:trigger`;
@@ -417,6 +481,9 @@ Not currently supported:
 HTML-syntax content documents are not a gap: EPUB 3.4 requires XML/XHTML
 content. Digital-signature validation, RDFa/Microdata/ITS processing, form
 submission, general TTS, and DRM are optional or outside Ambra's intended core.
+
+The detailed, maintained policy and focused test references are in the
+[legacy compatibility inventory](epub-legacy-compatibility.md).
 
 ## Definition of done for an implementation issue
 

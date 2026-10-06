@@ -7,22 +7,7 @@ import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
 import type { ResolvedResource } from "./ResourceUrlResolver.js";
 import { classifyEpubReference, externalNavigationUrl } from "../container/EpubReference.js";
 import { getNamespacedAttributeName } from "../container/Xml.js";
-
-/**
- * A minimal, restrictive Content-Security-Policy applied to every document
- * injected into the sandboxed rendering surface, as defense-in-depth on
- * top of the iframe's `sandbox` attribute (which already fully disables
- * scripting on its own — see `SandboxedContentHost`). Since every resource
- * reference is rewritten to a `blob:` URL before assembly, nothing in the
- * assembled document should ever need to reach the network; this policy
- * makes that structurally true rather than just incidental. `style-src`
- * allows `'unsafe-inline'` because real-world EPUB content legitimately
- * uses inline `<style>` blocks — CSS injection is a materially lower-severity
- * risk than script execution, which remains fully blocked.
- */
-const CONTENT_SECURITY_POLICY =
-  "default-src 'none'; script-src 'none'; img-src blob:; style-src blob: 'unsafe-inline'; " +
-  "font-src blob:; media-src blob:; base-uri 'none'; form-action 'none';";
+import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
 
 /**
  * Assembles a self-contained, sandboxed-iframe-ready XHTML document from a

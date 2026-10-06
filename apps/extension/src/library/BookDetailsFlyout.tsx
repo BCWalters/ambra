@@ -10,7 +10,8 @@ import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
 import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 import { BookSaveAsAction } from "../components/BookSaveAsAction.js";
 import { CHROME_BORDER } from "../reader/chromeTheme.js";
-import { metadataPropertyContext, metadataTextContext } from "@ambra/engine";
+import { metadataTextContext } from "@ambra/engine";
+import { BookAccessibilityRows } from "../components/BookAccessibilityRows.js";
 
 /** `dc:identifier` values some EPUB-generation tools/starter templates
  * leave behind unedited — meaningless to a reader, so filtered out of
@@ -47,6 +48,7 @@ export interface BookDetailsFlyoutProps {
   onRemove?: (() => void) | undefined;
   onGetFileSize?: ((bookId: string) => Promise<number | undefined>) | undefined;
   onEnrichDescription?: ((bookId: string) => Promise<void>) | undefined;
+  onRefreshAccessibility?: ((bookId: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -71,6 +73,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   onRemove,
   onGetFileSize,
   onEnrichDescription,
+  onRefreshAccessibility,
 }) => {
   const t = useTranslation();
   const { locale } = useLocale();
@@ -79,6 +82,16 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
   const [fileSize, setFileSize] = useState<number>();
   const [fileSizeError, setFileSizeError] = useState<string>();
   const [descriptionError, setDescriptionError] = useState<string>();
+  const [accessibilityError, setAccessibilityError] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    setAccessibilityError(undefined);
+    if (book && onRefreshAccessibility) void onRefreshAccessibility(book.id).catch((error: unknown) => {
+      console.warn("Accessibility metadata refresh failed.", error);
+      if (active) setAccessibilityError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { active = false; };
+  }, [book?.id, onRefreshAccessibility]);
   useEffect(() => {
     let active = true;
     setDescriptionError(undefined);
@@ -158,6 +171,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
           </div>
           {fileSizeError && <LibraryImportError message={fileSizeError} onDismiss={() => setFileSizeError(undefined)} />}
           {descriptionError && <LibraryImportError message={descriptionError} onDismiss={() => setDescriptionError(undefined)} />}
+          {accessibilityError && <LibraryImportError message={accessibilityError} onDismiss={() => setAccessibilityError(undefined)} />}
 
           {progressPercent !== undefined && (
             <div style={{ marginBottom: 20 }}>
@@ -190,8 +204,7 @@ export const BookDetailsFlyout: FC<BookDetailsFlyoutProps> = ({
 
           <PaneDisclosure title={t("bookDetails.publicationDetails")}>
             <BookRightsRow label={t("bookDetails.rights")} value={book.rights} context={metadataTextContext(book.metadataLocalization, "rights", book.rights, 0)} />
-            <DetailRow small label={t("bookDetails.accessibilitySummary")} value={book.accessibility?.accessibilitySummary} context={metadataPropertyContext(book.metadataLocalization, "schema:accessibilitySummary", book.accessibility?.accessibilitySummary)} />
-            <DetailRow small label={t("bookDetails.accessibilityFeatures")} value={book.accessibility?.accessibilityFeatures.join(", ")} />
+            <BookAccessibilityRows metadata={book.accessibility} localization={book.metadataLocalization} />
             <DetailRow small label={t("bookDetails.isbn")} value={isbn?.value} context={metadataTextContext(book.metadataLocalization, "identifier", isbn?.value, isbn ? book.identifiers?.indexOf(isbn) : undefined)} />
             {otherIdentifiers.map((id, index) => (
               <DetailRow small key={index} label={id.scheme ?? t("bookDetails.identifier")} value={id.value} context={metadataTextContext(book.metadataLocalization, "identifier", id.value, book.identifiers?.indexOf(id))} />

@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import { strToU8, zipSync } from "fflate";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { NavigationDocument, NavigationDocumentError } from "./NavigationDocument.js";
 
@@ -10,6 +11,40 @@ async function loadFixture(name: string): Promise<Uint8Array> {
     fileURLToPath(new NodeURL(`../../test/fixtures/${name}`, import.meta.url)),
   );
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+}
+
+const recoveryNcx = `<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/"><navMap>
+  <navPoint id="chapter"><navLabel><text>Compatible chapter</text></navLabel><content src="chapter.xhtml"/></navPoint>
+  </navMap><navList><navLabel><text>Illustrations</text></navLabel><navTarget id="figure">
+  <navLabel><text>Figure one</text></navLabel><content src="chapter.xhtml#figure"/></navTarget></navList></ncx>`;
+const validNav = `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">Modern chapter</a></li></ol></nav></body></html>`;
+
+async function recoveryFixture(
+  nav: string | undefined,
+  ncx = recoveryNcx,
+  guide = "",
+): Promise<EpubContainer> {
+  const files: Record<string, Uint8Array> = {
+    mimetype: strToU8("application/epub+zip"),
+    "META-INF/container.xml":
+      strToU8(`<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+      <rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`),
+    "EPUB/package.opf":
+      strToU8(`<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:ambra:original-nav-recovery</dc:identifier>
+      <dc:title>Original navigation recovery</dc:title><dc:language>en</dc:language></metadata><manifest>
+      <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+      <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+      <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+      <spine toc="ncx"><itemref idref="chapter"/></spine>${guide}</package>`),
+    "EPUB/toc.ncx": strToU8(ncx),
+    "EPUB/chapter.xhtml": strToU8(
+      `<html xmlns="http://www.w3.org/1999/xhtml"><body><p id="figure">Original content</p></body></html>`,
+    ),
+  };
+  if (nav !== undefined) files["EPUB/nav.xhtml"] = strToU8(nav);
+  return EpubContainer.open(zipSync(files, { level: 0 }));
 }
 
 describe("NavigationDocument.load (EPUB3 Nav Document, nested TOC fixture)", () => {
@@ -101,6 +136,63 @@ describe("NavigationDocument.load error handling", () => {
     const container = await EpubContainer.open(await loadFixture("no-navigation.epub"));
 
     await expect(NavigationDocument.load(container)).rejects.toThrow(NavigationDocumentError);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["malformed", "<html"],
+    ["missing toc", '<html xmlns="http://www.w3.org/1999/xhtml"><body/></html>'],
+    ["empty toc", validNav.replace('<li><a href="chapter.xhtml">Modern chapter</a></li>', "")],
+  ])("uses NCX for a %s Nav, retaining a visible recovery diagnostic", async (_name, xml) => {
+    const nav = await NavigationDocument.load(await recoveryFixture(xml));
+    expect(nav.toc.items[0]?.label).toBe("Compatible chapter");
+    expect(nav.diagnostics).toHaveLength(1);
+    expect(nav.additionalLists[0]).toMatchObject({
+      label: "Illustrations",
+      items: [{ path: "EPUB/chapter.xhtml", fragment: "figure", label: "Figure one" }],
+    });
+  });
+
+  it("keeps valid modern Nav primary and does not duplicate NCX lists", async () => {
+    const nav = await NavigationDocument.load(await recoveryFixture(validNav));
+    expect(nav.toc.items[0]?.label).toBe("Modern chapter");
+    expect(nav.additionalLists).toEqual([]);
+    expect(nav.diagnostics).toEqual([]);
+  });
+
+  it("fails explicitly when neither declared navigation resource can be processed", async () => {
+    await expect(NavigationDocument.load(await recoveryFixture("<html", "<ncx"))).rejects.toThrow(
+      NavigationDocumentError,
+    );
+  });
+
+  it("maps OPF2 guide targets into landmarks, resolving fragments and merging duplicate roles", async () => {
+    const guide = `<guide><reference type="text" title="Start" href="chapter.xhtml#figure"/>
+      <reference type="loi" title="Same destination" href="chapter.xhtml#figure"/>
+      <reference type="cover" title="Cover" href="chapter.xhtml"/></guide>`;
+    const nav = await NavigationDocument.load(await recoveryFixture(validNav, recoveryNcx, guide));
+    expect(nav.landmarks?.items).toHaveLength(2);
+    expect(nav.landmarks?.items[0]).toMatchObject({
+      label: "Start",
+      path: "EPUB/chapter.xhtml",
+      fragment: "figure",
+      epubTypes: ["bodymatter", "loi"],
+    });
+  });
+
+  it("does not supplement an authored modern landmarks list with a superseded guide", async () => {
+    const modern = validNav.replace(
+      "</body>",
+      `<nav epub:type="landmarks"><ol><li><a href="chapter.xhtml">Modern landmark</a></li></ol></nav></body>`,
+    );
+    const nav = await NavigationDocument.load(
+      await recoveryFixture(
+        modern,
+        recoveryNcx,
+        '<guide><reference type="cover" title="Old cover" href="chapter.xhtml"/></guide>',
+      ),
+    );
+    expect(nav.landmarks?.items.map((item) => item.label)).toEqual(["Modern landmark"]);
   });
 });
 

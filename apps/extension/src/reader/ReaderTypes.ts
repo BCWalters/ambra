@@ -1,5 +1,6 @@
 import type {
   AccessibilityMetadata,
+  AuxiliaryNavigationList,
   BookIdentifier,
   FontFamilyChoice,
   NavPoint,
@@ -156,6 +157,7 @@ export interface ReaderSnapshot {
   hasReadingSelection?: boolean;
   title: string;
   toc: readonly NavPoint[];
+  additionalNavigation?: readonly AuxiliaryNavigationList[];
   spineIndex: number;
   spineLength: number;
   /** Primary-order coarse progress; supplements stay at their insertion boundary. */

@@ -60,17 +60,37 @@ describe("EpubCfi.parse / toString round-trip", () => {
     expect(cfi.characterOffset).toBe(3);
   });
 
-  it("strips a trailing side-bias parameter from an id assertion", () => {
+  it("retains a trailing side-bias parameter separately from an id assertion", () => {
     const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2[;s=b])");
 
     expect(cfi.contentSteps[1]?.idAssertion).toBeUndefined();
+    expect(cfi.sideBias).toBe("b");
+    expect(cfi.toString()).toBe("epubcfi(/6/4!/4/2[;s=b])");
   });
 
   it("distinguishes an escaped semicolon in an ID from a side-bias parameter", () => {
     const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2[a^;b;s=b])");
 
     expect(cfi.contentSteps[1]?.idAssertion).toBe("a;b");
-    expect(cfi.toString()).toBe("epubcfi(/6/4!/4/2[a^;b])");
+    expect(cfi.toString()).toBe("epubcfi(/6/4!/4/2[a^;b;s=b])");
+  });
+
+  it.each([
+    "epubcfi(/6/4!/4/2/1:5[before,after;s=a])",
+    "epubcfi(/6/4!/4/2/1:5[before])",
+    "epubcfi(/6/4!/4/2/1:5[,after])",
+    "epubcfi(/6/4!/4/2/1:5[;s=b])",
+    "epubcfi(/6/4!/4/2/1:5[before^,part,after^;part;x-origin=one^,two,three])",
+    "epubcfi(/6/4!/4/2/1:5[before\ntext,after])",
+  ])("preserves text assertions and open parameters in %s", value => {
+    expect(EpubCfi.parse(value).toString()).toBe(value);
+  });
+
+  it("does not include text assertions, parameters or side bias in comparison", () => {
+    expect(EpubCfi.compare(
+      "epubcfi(/6/4!/4/2/1:5[before,after;s=a])",
+      "epubcfi(/6/4!/4/2/1:5[other,text;s=b])",
+    )).toBe(0);
   });
 
   it.each(["a]b", "a[b", "a^b", "a;b", "a,b", "a(b)", "a=b", "a!b", "a/b", "a:b"])(
@@ -95,6 +115,8 @@ describe("EpubCfi.parse / toString round-trip", () => {
     "epubcfi(/6/4!/4[a^x])",
     "epubcfi(/6/4!/4[a^])",
     "epubcfi(/6/4!/4[a][b])",
+    "epubcfi(/6/4!/4/1:5[one][two])",
+    "epubcfi(/6/4!/4/1:5[one^[two][three])",
     "epubcfi(/6/4!/4[a[b]])",
     "epubcfi(/6/4!/4[a]])",
     "epubcfi(/6/4!/4/1:)",
@@ -102,6 +124,11 @@ describe("EpubCfi.parse / toString round-trip", () => {
     "epubcfi(/6/4!/4!/2)",
     "epubcfi(/6/9007199254740992!/4)",
     "epubcfi(/6/4!/4/1:9007199254740992)",
+    "epubcfi(/6/4!/4/1:5[one,two,three])",
+    "epubcfi(/6/4!/4/1:5[;s=wrong])",
+    "epubcfi(/6/4!/4/1:5[;s=a,b])",
+    "epubcfi(/6/4!/4/1:5[;s=a;s=b])",
+    "epubcfi(/6/4!/4/1:5[;unknown])",
   ])("rejects malformed or unsupported point syntax %s", (value) => {
     expect(() => EpubCfi.parse(value)).toThrow(EpubCfiParseError);
   });
@@ -189,6 +216,19 @@ describe("EpubCfi.compare", () => {
 });
 
 describe("EpubCfi.joinRange / parseRange", () => {
+  it("preserves both endpoints' text assertions and parameters across a range round trip", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!/4/2/1:3[a^,b,c;s=a])");
+    const end = EpubCfi.parse("epubcfi(/6/4!/4/2/1:10[d,e;s=b])");
+    const restored = EpubCfi.parseRange(EpubCfi.joinRange(start, end));
+    expect(restored.start.toString()).toBe(start.toString());
+    expect(restored.end.toString()).toBe(end.toString());
+  });
+
+  it("keeps element side bias on endpoint tails rather than moving it into the common prefix", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!/4/2[;s=a])");
+    const end = EpubCfi.parse("epubcfi(/6/4!/4/2[;s=b])");
+    expect(EpubCfi.joinRange(start, end)).toBe("epubcfi(/6/4!/4,/2[;s=a],/2[;s=b])");
+  });
   it("rejects a whole-document itemref as a content-range endpoint", () => {
     expect(() => EpubCfi.joinRange(
       EpubCfi.parse("epubcfi(/6/4)"), EpubCfi.parse("epubcfi(/6/4!/2/1:3)"),

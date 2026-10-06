@@ -64,6 +64,7 @@ export interface UseLibraryResult {
   saveBookAs: (id: string) => Promise<void>;
   getBookFileSize?: (id: string) => Promise<number | undefined>;
   enrichDescription: (id: string) => Promise<void>;
+  refreshBookAccessibility?: (id: string) => Promise<void>;
   /** App-global settings, shared live with open readers. */
   chromeTheme: ChromeThemeChoice;
   settings: GlobalReadingSettings;
@@ -343,6 +344,12 @@ export function useLibrary(): UseLibraryResult {
     await refresh(db);
   }, [db, ownsDatabase, refresh]);
 
+  const refreshBookAccessibility = useCallback(async (id: string): Promise<void> => {
+    if (!db || !ownsDatabase(db)) throw new Error(translateRef.current("library.notReady"));
+    await db.refreshAccessibilityMetadata(id);
+    if (ownsDatabase(db)) await refresh(db);
+  }, [db, ownsDatabase, refresh]);
+
   const saveBookAs = useCallback(async (id: string): Promise<void> => {
     if (!db || !ownsDatabase(db)) {
       throw new Error(translateRef.current("library.notReady"));
@@ -559,6 +566,7 @@ export function useLibrary(): UseLibraryResult {
     saveBookAs,
     getBookFileSize,
     enrichDescription,
+    refreshBookAccessibility,
     chromeTheme: settings.chromeTheme,
     settings,
     setSettings,

@@ -11,6 +11,10 @@ const browserIndependentTooling = new Set([
   ".github/workflows/epub-conformance.yml",
   "scripts/epub-conformance.mjs",
   "scripts/epub-conformance.test.mjs",
+  "scripts/epub-conformance-core.mjs",
+  "scripts/epub-conformance-core.test.mjs",
+  "apps/e2e/epub-conformance.config.ts",
+  "apps/e2e/assessment/core-media.spec.ts",
 ]);
 
 function isDocumentation(file) {
