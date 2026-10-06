@@ -16,11 +16,14 @@ test("#193 filename tooltips stay beside the text in both docks", async () => {
     viewport: { width: 1400, height: 900 },
   });
   try {
+    await exposeReaderController(page);
     await page.getByRole("button", { name: "Book details", exact: true }).click();
     await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
     const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
     for (const side of ["left", "right"]) {
       await inspector.getByRole("button", { name: `Dock ${side}`, exact: true }).click();
+      await expect(inspector).toHaveAttribute("data-inspector-view", `dock-${side}`);
+      await settle(page);
       const name = inspector.locator('button[data-file-path="mimetype"]').getByText("mimetype", { exact: true });
       await name.hover({ position: { x: 12, y: 6 } });
       const tooltip = page.getByRole("tooltip", { name: "mimetype", exact: true });

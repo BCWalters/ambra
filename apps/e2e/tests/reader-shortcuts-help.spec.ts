@@ -24,6 +24,12 @@ async function settled(page: Page) {
   });
 }
 
+async function revealToolbar(page: Page) {
+  await page.mouse.move(10, 10);
+  await expect(bookmark(page).locator("..")).toHaveCSS("pointer-events", "auto");
+  await expect(bookmark(page).locator("..")).toHaveCSS("opacity", "1");
+}
+
 // Observe the mounted controller, but never stub dispatch or navigation: every
 // tested command below enters through a real shell/iframe keyboard event.
 async function position(page: Page) {
@@ -228,6 +234,7 @@ test("Shell dismissal restores the precise reading position in a merged spread c
     }
     for (const title of ["Contents", "Annotations", "Book details"]) {
       await test.step(`${title} returns to the companion caret`, async () => {
+        await revealToolbar(page);
         await page.getByRole("button", { name: title, exact: true }).click();
         await page.keyboard.press("Escape");
         await expectOriginal();
@@ -235,6 +242,7 @@ test("Shell dismissal restores the precise reading position in a merged spread c
     }
     for (const mode of ["Full screen", "Dock left", "Dock right", "Popover view"]) {
       await test.step(`Inspector ${mode} returns to the companion caret`, async () => {
+        await revealToolbar(page);
         await page.getByRole("button", { name: "Book details", exact: true }).click();
         await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
         const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });

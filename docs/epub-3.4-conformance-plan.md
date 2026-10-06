@@ -107,9 +107,11 @@ Official `pkg-spine-nonlinear-activation` and `pkg-spine-order` criteria should 
 but synthetic regression coverage is not an official conformance score.
 Release assessments must still verify their individual criteria.
 
-The small CSS/primary-order regression group runs once, before the broader
-protected reader browser suite, so these failures stop CI early without
-duplicating their coverage or weakening the remaining checks.
+CSS/primary-order and interacting shell, Inspector-docking, and narration
+regressions run once, before the broader protected reader browser suite, so these
+failures stop CI early without duplicating coverage or weakening the remaining
+checks. Shell restoration checks explicitly reveal auto-hidden toolbar controls;
+docking and post-reload playback checks wait for reader layout readiness.
 
 ### Phase 2: architecture and recommended reading-system behavior
 
