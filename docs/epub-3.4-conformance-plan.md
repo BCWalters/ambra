@@ -308,6 +308,26 @@ They do not change the official score. The maintained
 [legacy compatibility inventory](epub-legacy-compatibility.md) records tours and
 other intentional omissions separately from current-spec requirements.
 
+#### C34-13 prepared recovery milestone
+
+The CFI profile now preserves text-location assertions, open parameters and side
+bias across point/range serialization and annotation source re-anchoring. Unique
+ID assertions recover shifted content elements; unique normalized text context
+can recover offsets across element boundaries and collapsed XML whitespace.
+Missing or ambiguous recovery targets fail explicitly, rather than selecting a
+plausible occurrence. UTF-16 offsets remain unchanged.
+
+Direct asynchronous and already-loaded-document range APIs resolve both
+endpoints against one document and reject reversed ranges. Native fixtures check
+actual paginated ID recovery, exact range text, text correction and before/after
+text-node affinity. Generated locators retain their existing compact format and
+do not incur whole-document context indexing on ordinary pagination.
+
+This is a prepared #340 milestone, not complete CFI support or an official
+score improvement. Nested indirections, temporal/spatial/combined offsets,
+image-alt addressing, package-tree recovery and full page-break affinity still
+need implementation and protected evidence.
+
 ### Phase 3: measurable conformance process
 
 Complete the existing-suite timing, redundancy, parallelism, and change-selection

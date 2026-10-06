@@ -70,6 +70,12 @@ report/contact strings stay inert: the fixtures assert that no requests or
 active metadata links are introduced. These regressions run early in protected
 CI; they are not substitutes for the pinned official release assessment.
 
+`cfi-recovery-conformance.spec.ts` checks an actual painted landing after ID
+correction, direct native DOM ranges in both loaded and provided documents,
+cross-element/whitespace text assertion recovery, and exact adjacent-text
+before/after affinity. It uses original content and runs in the early CI gate.
+It does not claim support for nested documents or media/spatial CFI offsets.
+
 The selector fails closed: mixed or empty/unknown diffs run everything.
 Manually dispatched and called workflows also run everything, so final release
 candidates never use a reduced browser suite.

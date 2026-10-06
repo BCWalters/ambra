@@ -1,13 +1,35 @@
+export interface CfiParameter {
+  readonly name: string;
+  readonly values: readonly string[];
+}
+
+export interface CfiTextAssertion {
+  readonly preceding: string;
+  readonly following?: string;
+  readonly parameters: readonly CfiParameter[];
+}
+
+function escapeAssertion(value: string): string {
+  return value.replace(/[\^[\](),;=]/g, "^$&");
+}
+
+function serializeParameters(parameters: readonly CfiParameter[]): string {
+  return parameters.map(parameter =>
+    `;${escapeAssertion(parameter.name)}=${parameter.values.map(escapeAssertion).join(",")}`,
+  ).join("");
+}
+
 /** A single `/N[id]` step in a CFI path: a child-node index (see
  * `CfiTree.childStepIndex`) plus an optional XML ID assertion. */
 export class CfiStep {
   public constructor(
     public readonly index: number,
     public readonly idAssertion?: string,
+    public readonly parameters: readonly CfiParameter[] = [],
   ) {}
 
   public toString(): string {
-    const assertion = this.idAssertion?.replace(/[\^[\](),;=]/g, "^$&");
+    const assertion = escapeAssertion(this.idAssertion ?? "") + serializeParameters(this.parameters);
     return `/${this.index}${assertion ? `[${assertion}]` : ""}`;
   }
 }
@@ -57,28 +79,46 @@ function splitOutsideAssertions(segment: string, delimiter: string, cfiString: s
   return parts;
 }
 
-function parseIdAssertion(assertion: string | undefined, cfiString: string): string | undefined {
-  if (assertion === undefined) {
-    return undefined;
-  }
-  let id = "";
-  let inParameters = false;
-  for (let i = 0; i < assertion.length; i++) {
-    let char = assertion[i]!;
-    if (char === "^") {
-      char = assertion[++i]!;
-    } else if (char === ";") {
-      // Preserve the existing point-CFI profile: parameters (including
-      // side bias) are accepted but not retained in the value object.
-      inParameters = true;
-    } else if (char === "[" || char === "]") {
-      throw new EpubCfiParseError(`Malformed CFI assertion in "${cfiString}".`);
-    }
-    if (!inParameters) {
-      id += char;
+function splitAssertion(value: string, delimiter: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === "^") i++;
+    else if (value[i] === delimiter) {
+      parts.push(value.slice(start, i));
+      start = i + 1;
     }
   }
-  return id.trim() || undefined;
+  parts.push(value.slice(start));
+  return parts;
+}
+
+function unescapeAssertion(value: string): string {
+  return value.replace(/\^([\^[\](),;=])/g, "$1");
+}
+
+function parseAssertion(assertion: string, cfiString: string): {
+  value: string;
+  parameters: readonly CfiParameter[];
+} {
+  const [value = "", ...parts] = splitAssertion(assertion, ";");
+  const parameters = parts.map(part => {
+    const pair = splitAssertion(part, "=");
+    if (pair.length !== 2 || !pair[0] || !pair[1]) {
+      throw new EpubCfiParseError(`Malformed CFI parameter in "${cfiString}".`);
+    }
+    return {
+      name: unescapeAssertion(pair[0]),
+      values: splitAssertion(pair[1], ",").map(unescapeAssertion),
+    };
+  });
+  const biases = parameters.filter(parameter => parameter.name === "s");
+  if (biases.length > 1 || biases.some(parameter =>
+    parameter.values.length !== 1 || !["a", "b"].includes(parameter.values[0]!),
+  )) {
+    throw new EpubCfiParseError(`Invalid CFI side bias in "${cfiString}".`);
+  }
+  return { value, parameters };
 }
 
 function parseInteger(value: string, cfiString: string): number {
@@ -102,7 +142,12 @@ function parseSteps(segment: string, cfiString: string): CfiStep[] {
     if (!match) {
       throw new EpubCfiParseError(`Malformed CFI step syntax in "${cfiString}".`);
     }
-    return new CfiStep(parseInteger(match[1]!, cfiString), parseIdAssertion(match[2], cfiString));
+    const assertion = parseAssertion(match[2] ?? "", cfiString);
+    return new CfiStep(
+      parseInteger(match[1]!, cfiString),
+      unescapeAssertion(assertion.value).trim() || undefined,
+      assertion.parameters,
+    );
   });
 }
 
@@ -112,14 +157,10 @@ function parseSteps(segment: string, cfiString: string): CfiStep[] {
  * a path through the OPF package document's `<spine>` to a specific
  * `itemref` (`packageSteps`), an indirection into that spine item's content
  * document, a path within it (`contentSteps`), and an optional trailing
- * character offset. Multiple levels of indirection are out of scope for
- * Wave 1 — see the `cfi-test-suite` work item for where this is expected
- * to grow. Range CFIs (`,` start/end forms) are supported only at the
- * string level, via `joinRange`/`parseRange` — for annotation export/
- * import interop (issues #107/#108), not for resolving a range directly
- * against a live DOM (every other call site in this app still stores and
- * resolves a highlight as two independent point CFIs — see `Highlight`'s
- * own doc comment for why that remains functionally equivalent here).
+ * character offset with optional text assertions and parameters. Multiple
+ * indirections and temporal/spatial offsets remain outside this profile.
+ * Range CFIs (`,` start/end forms) use `joinRange`/`parseRange`, with direct
+ * DOM resolution provided by `LocatorResolver`.
  * A package-only path addresses the spine itemref itself, representing
  * the whole content document without inventing an empty indirection.
  */
@@ -128,24 +169,45 @@ export class EpubCfi {
     public readonly packageSteps: readonly CfiStep[],
     public readonly contentSteps: readonly CfiStep[],
     public readonly characterOffset?: number,
+    public readonly textAssertion?: CfiTextAssertion,
   ) {}
+
+  public get sideBias(): "a" | "b" | undefined {
+    const parameters = this.textAssertion?.parameters ?? this.contentSteps.at(-1)?.parameters;
+    const value = parameters?.find(parameter => parameter.name === "s")?.values[0];
+    return value === "a" || value === "b" ? value : undefined;
+  }
+
+  private offsetSuffix(): string {
+    if (this.textAssertion && this.characterOffset === undefined) {
+      throw new EpubCfiParseError("A text assertion requires a character offset.");
+    }
+    if (this.characterOffset === undefined) return "";
+    const assertion = this.textAssertion;
+    const text = assertion
+      ? `[${escapeAssertion(assertion.preceding)}${
+          assertion.following === undefined ? "" : `,${escapeAssertion(assertion.following)}`
+        }${serializeParameters(assertion.parameters)}]`
+      : "";
+    return `:${this.characterOffset}${text}`;
+  }
 
   public toString(): string {
     const packagePart = this.packageSteps.map((step) => step.toString()).join("");
     if (this.contentSteps.length === 0) {
-      if (this.characterOffset !== undefined) {
+      if (this.characterOffset !== undefined || this.textAssertion !== undefined) {
         throw new EpubCfiParseError("A spine itemref location cannot have a character offset.");
       }
       return `epubcfi(${packagePart})`;
     }
     const contentPart = this.contentSteps.map((step) => step.toString()).join("");
-    const offsetPart = this.characterOffset !== undefined ? `:${this.characterOffset}` : "";
+    const offsetPart = this.offsetSuffix();
     return `epubcfi(${packagePart}!${contentPart}${offsetPart})`;
   }
 
   public static parse(cfiString: string): EpubCfi {
     const trimmed = cfiString.trim();
-    const wrapperMatch = /^epubcfi\((.*)\)$/.exec(trimmed);
+    const wrapperMatch = /^epubcfi\(([\s\S]*)\)$/.exec(trimmed);
     if (!wrapperMatch) {
       throw new EpubCfiParseError(
         `Not a well-formed CFI (missing epubcfi(...) wrapper): "${cfiString}"`,
@@ -173,9 +235,25 @@ export class EpubCfi {
       throw new EpubCfiParseError(`Malformed CFI character offset in "${cfiString}".`);
     }
     const contentPart = offsetParts[0]!;
-    const characterOffset = offsetParts[1] === undefined
-      ? undefined
-      : parseInteger(offsetParts[1], cfiString);
+    let characterOffset: number | undefined;
+    let textAssertion: CfiTextAssertion | undefined;
+    if (offsetParts[1] !== undefined) {
+      const match = /^(\d+)(?:\[([\s\S]*)\])?$/.exec(offsetParts[1]);
+      if (!match) throw new EpubCfiParseError(`Malformed CFI character offset in "${cfiString}".`);
+      characterOffset = parseInteger(match[1]!, cfiString);
+      if (match[2] !== undefined) {
+        const assertion = parseAssertion(match[2], cfiString);
+        const text = splitAssertion(assertion.value, ",");
+        if (text.length > 2) {
+          throw new EpubCfiParseError(`Malformed CFI text assertion in "${cfiString}".`);
+        }
+        textAssertion = {
+          preceding: unescapeAssertion(text[0]!),
+          following: text[1] === undefined ? undefined : unescapeAssertion(text[1]),
+          parameters: assertion.parameters,
+        };
+      }
+    }
 
     const packageSteps = parseSteps(packagePart, cfiString);
     const contentSteps = parseSteps(contentPart, cfiString);
@@ -184,7 +262,7 @@ export class EpubCfi {
       throw new EpubCfiParseError(`CFI is missing package or content steps: "${cfiString}"`);
     }
 
-    return new EpubCfi(packageSteps, contentSteps, characterOffset);
+    return new EpubCfi(packageSteps, contentSteps, characterOffset, textAssertion);
   }
 
   /** Orders two CFI strings by book reading order — earlier spine item
@@ -254,8 +332,8 @@ export class EpubCfi {
     while (
       commonLength < start.contentSteps.length &&
       commonLength < end.contentSteps.length &&
-      start.contentSteps[commonLength]!.index === end.contentSteps[commonLength]!.index &&
-      start.contentSteps[commonLength]!.idAssertion === end.contentSteps[commonLength]!.idAssertion
+      start.contentSteps[commonLength]!.toString() === end.contentSteps[commonLength]!.toString() &&
+      !start.contentSteps[commonLength]!.parameters.some(parameter => parameter.name === "s")
     ) {
       commonLength++;
     }
@@ -264,13 +342,13 @@ export class EpubCfi {
       .slice(0, commonLength)
       .map((step) => step.toString())
       .join("");
-    const tailPart = (steps: readonly CfiStep[], offset: number | undefined): string =>
-      steps
+    const tailPart = (point: EpubCfi): string =>
+      point.contentSteps
         .slice(commonLength)
         .map((step) => step.toString())
-        .join("") + (offset !== undefined ? `:${offset}` : "");
-    const startTail = tailPart(start.contentSteps, start.characterOffset);
-    const endTail = tailPart(end.contentSteps, end.characterOffset);
+        .join("") + point.offsetSuffix();
+    const startTail = tailPart(start);
+    const endTail = tailPart(end);
     return `epubcfi(${packagePart}!${commonPart},${startTail},${endTail})`;
   }
 
@@ -280,7 +358,7 @@ export class EpubCfi {
    * aware, since an id assertion's own contents are never split on). */
   public static parseRange(cfiString: string): { start: EpubCfi; end: EpubCfi } {
     const trimmed = cfiString.trim();
-    const wrapperMatch = /^epubcfi\((.*)\)$/.exec(trimmed);
+    const wrapperMatch = /^epubcfi\(([\s\S]*)\)$/.exec(trimmed);
     if (!wrapperMatch) {
       throw new EpubCfiParseError(
         `Not a well-formed CFI (missing epubcfi(...) wrapper): "${cfiString}"`,

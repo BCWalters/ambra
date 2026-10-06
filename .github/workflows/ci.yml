@@ -88,6 +88,7 @@ jobs:
           css-resources.spec.ts primary-reading-order.spec.ts
           resource-fallbacks.spec.ts resource-policy.spec.ts
           navigation-accessibility-conformance.spec.ts
+          cfi-recovery-conformance.spec.ts
           reader-shortcuts-help.spec.ts inspector-docking.spec.ts narration-discovery.spec.ts
           --workers=2
       - name: Test the packaged production build
