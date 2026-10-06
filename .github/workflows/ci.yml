@@ -119,6 +119,7 @@ jobs:
           fixed-layout-edge-navigation.spec.ts
           svg-spine.spec.ts
           mixed-rendition-spreads.spec.ts
+          roll-layout.spec.ts
           pagination-measurement.spec.ts
           responsive-images.spec.ts
           --workers=2

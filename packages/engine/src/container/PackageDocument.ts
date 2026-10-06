@@ -17,10 +17,10 @@ export class PackageDocumentError extends Error {
   }
 }
 
-/** The rendition layout mode declared by `<meta property="rendition:layout">`,
- * either at the package level (default for the whole book) or overridden per
- * spine item — the central signal for reflowable vs fixed-layout rendering. */
-export type RenditionLayout = "reflowable" | "pre-paginated";
+/** The rendition layout mode declared by `<meta property="rendition:layout">`.
+ * EPUB 3.4's `roll` value is publication-wide: item-level layout overrides do
+ * not alter its continuous fixed-width presentation. */
+export type RenditionLayout = "reflowable" | "pre-paginated" | "roll";
 
 /** The publication-wide `rendition:spread` hint (`<meta property=
  * "rendition:spread">`): whether/when a fixed-layout reading system should
@@ -128,6 +128,9 @@ export class SpineItemRef {
    * `rendition:layout-*` override property if present, else falling back to
    * the publication-wide default passed in from `PackageDocument`. */
   public resolveRenditionLayout(packageDefault: RenditionLayout): RenditionLayout {
+    if (packageDefault === "roll") {
+      return "roll";
+    }
     if (this.hasProperty("rendition:layout-pre-paginated")) {
       return "pre-paginated";
     }
@@ -688,7 +691,7 @@ export class PackageDocument {
       (meta) => meta.getAttribute("property") === "rendition:layout",
     );
     const content = layoutMeta?.textContent?.trim();
-    return content === "pre-paginated" ? "pre-paginated" : "reflowable";
+    return content === "pre-paginated" || content === "roll" ? content : "reflowable";
   }
 
   /** Parses the package-level `rendition:spread` property — see

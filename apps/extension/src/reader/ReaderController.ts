@@ -20,6 +20,7 @@ import {
   ReadingTheme,
   ResourceUrlResolver,
   resolveEpubPath,
+  RollContentHost,
   ScrollContentHost,
   serializeAnnotationCollection,
   splitHrefFragment,
@@ -204,6 +205,7 @@ export class ReaderController {
     | FixedContentHost
     | SpreadPaginatedHost
     | FixedSpreadHost
+    | RollContentHost
     | undefined;
   /** The wrapper `stageHiddenHostElement` created around `this.host`'s
    * element — removed once `this.host` is replaced. `this.host.element`
@@ -664,14 +666,18 @@ export class ReaderController {
       !(
         this.host instanceof PaginatedContentHost ||
         this.host instanceof SpreadPaginatedHost ||
-        this.host instanceof FixedSpreadHost
+        this.host instanceof FixedSpreadHost ||
+        this.host instanceof RollContentHost
       )
     ) {
       return undefined;
     }
-    const spineIndex = this.isFixedLayoutHost(this.host)
-      ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
-      : this.spineIndex;
+    const spineIndex =
+      this.host instanceof RollContentHost
+        ? this.host.currentSpineIndex ?? this.spineIndex
+        : this.isFixedLayoutHost(this.host)
+          ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
+          : this.spineIndex;
     // Explicit fragment jumps may insert a local page boundary so the target
     // appears at the top. Whole-book numbering must still use the same natural
     // pagination as the TOC, rather than counting that temporary extra page.
@@ -743,7 +749,7 @@ export class ReaderController {
         // The default spine index is provisional until initial/resume loading
         // commits a host. Do not announce or display that placeholder chapter.
         currentChapterLabel: this.host ? this.chapterLabel(this.spineIndex) : "",
-        viewMode: this.host instanceof ScrollContentHost ? "scroll"
+        viewMode: this.host instanceof ScrollContentHost || this.host instanceof RollContentHost ? "scroll"
           : this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ? "paginated"
             : this.viewMode,
         isFixedLayout: this.isFixedLayoutHost(this.host),
@@ -1051,7 +1057,7 @@ export class ReaderController {
    * `flushProgress` for the reader page to call on visibility/unload. */
   private async saveProgress(throwOnError = false, navigation = false): Promise<void> {
     if (navigation && !this.isApplyingLayout) this.notifyNavigation();
-    const native = this.nativeReading.current();
+    const native = this.host instanceof RollContentHost ? undefined : this.nativeReading.current();
     const position = native ?? this.host?.currentPosition();
     if (!position) {
       return;
@@ -1552,21 +1558,23 @@ export class ReaderController {
   }
 
   private isFixedLayoutHost(
-    host:
-      | FixedContentHost
-      | SpreadPaginatedHost
-      | FixedSpreadHost
-      | PaginatedContentHost
-      | ScrollContentHost
-      | undefined,
-  ): host is FixedContentHost | FixedSpreadHost {
-    return host instanceof FixedContentHost || host instanceof FixedSpreadHost;
+    host: ReadingHost | undefined,
+  ): host is FixedContentHost | FixedSpreadHost | RollContentHost {
+    return (
+      host instanceof FixedContentHost ||
+      host instanceof FixedSpreadHost ||
+      host instanceof RollContentHost
+    );
   }
 
   /** Primary content document; spread hosts use their primary column only. */
   private primaryContentDocument(): Document | undefined {
     if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
       return this.host.primaryContentDocument();
+    }
+    if (this.host instanceof RollContentHost) {
+      const current = this.host.currentSpineIndex;
+      return this.host.documentViews().find(view => view.spineIndex === current)?.document;
     }
     return this.host?.element.contentDocument ?? undefined;
   }
@@ -2041,7 +2049,9 @@ export class ReaderController {
         cleanups.push(() => iframeDocument.removeEventListener("selectionchange", selectionChange));
       }
       const scrollIntent = (): void => {
-        if (this.host instanceof ScrollContentHost) this.suspendNarrationFollowing();
+        if (this.host instanceof ScrollContentHost || this.host instanceof RollContentHost) {
+          this.suspendNarrationFollowing();
+        }
       };
       const scrollKeyIntent = (event: KeyboardEvent): void => {
         if (!event.defaultPrevented && [" ", "PageDown", "PageUp", "Home", "End", "ArrowDown", "ArrowUp"].includes(event.key)
@@ -2073,6 +2083,23 @@ export class ReaderController {
         iframeDocument.removeEventListener("touchmove", scrollIntent);
         iframeDocument.removeEventListener("keydown", scrollKeyIntent);
       });
+    }
+    if (this.host instanceof RollContentHost) {
+      const host = this.host;
+      const syncRollPosition = (): void => {
+        const spineIndex = host.currentSpineIndex;
+        if (spineIndex === undefined || spineIndex === this.spineIndex) return;
+        this.spineIndex = spineIndex;
+        this.highlightInteraction.updateNoteMarkers();
+        this.notify();
+      };
+      const saveRollPosition = (): void => {
+        syncRollPosition();
+        void this.saveProgress(false, true);
+      };
+      cleanups.push(host.onScroll(syncRollPosition));
+      host.element.addEventListener("scrollend", saveRollPosition);
+      cleanups.push(() => host.element.removeEventListener("scrollend", saveRollPosition));
     }
 
     this.contentInteractionCleanup = () => {
@@ -2632,6 +2659,7 @@ export class ReaderController {
       | SpreadPaginatedHost
       | FixedSpreadHost
       | PaginatedContentHost
+      | RollContentHost
       | ScrollContentHost
       | undefined = this.host,
   ): void {
@@ -2677,6 +2705,7 @@ export class ReaderController {
       | SpreadPaginatedHost
       | FixedSpreadHost
       | PaginatedContentHost
+      | RollContentHost
       | ScrollContentHost
       | undefined = this.host,
   ): void {
@@ -3025,6 +3054,15 @@ export class ReaderController {
         current: this.host.currentPageIndex + 1,
         total: this.host.pageCount,
       });
+    } else if (this.host instanceof RollContentHost) {
+      moved = this.host.scrollByViewport(direction);
+      if (moved) {
+        const spineIndex = this.host.currentSpineIndex;
+        if (spineIndex !== undefined) this.spineIndex = spineIndex;
+        this.notify();
+        await this.saveProgress(false, true);
+      }
+      return;
     } else if (this.host instanceof FixedSpreadHost) {
       // Fixed-layout content has no in-chapter pagination step here:
       // `turnFixedSpread` either swaps to another spread or falls through to
@@ -4792,12 +4830,26 @@ export class ReaderController {
         | SpreadPaginatedHost
         | FixedSpreadHost
         | PaginatedContentHost
+        | RollContentHost
         | ScrollContentHost
         | undefined;
       let applyDisplaySettings = false;
       let readingPosition: DomBreakPoint | undefined;
       try {
-        if (resolvedLayout === "pre-paginated") {
+        if (resolvedLayout === "roll") {
+          const rollHost = new RollContentHost(this.width, this.height);
+          createdHost = rollHost;
+          stagingEl = this.stageHiddenHostElement(rollHost.element);
+          this.ownCandidate(operation, rollHost, stagingEl);
+          await rollHost.open(
+            this.contentLoader,
+            this.resolver,
+            this.pkg.spine.map((_, index) => index),
+            this.pkg.metadata.renditionViewport,
+          );
+          rollHost.scrollToSpine(requestedSpineIndex);
+          spineIndex = requestedSpineIndex;
+        } else if (resolvedLayout === "pre-paginated") {
           // Fixed-layout content always uses `FixedSpreadHost`;
           // normalize `spineIndex` to the opened spread's first item
           // afterwards.
@@ -5100,6 +5152,8 @@ export class ReaderController {
       this.host.goToPosition(resolved.node, offset);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(resolved.node, offset);
+    } else if (this.host instanceof RollContentHost) {
+      this.host.restorePosition(resolved.node);
     }
   }
 
@@ -5113,6 +5167,8 @@ export class ReaderController {
       this.host.goToPosition(target, 0);
     } else if (this.host instanceof ScrollContentHost) {
       this.host.restorePosition(target, 0);
+    } else if (this.host instanceof RollContentHost) {
+      this.host.restorePosition(target);
     }
     return target;
   }

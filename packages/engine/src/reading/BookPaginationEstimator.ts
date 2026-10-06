@@ -73,6 +73,10 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function isFixedCanvasLayout(layout: RenditionLayout | undefined): boolean {
+  return layout === "pre-paginated" || layout === "roll";
+}
+
 /**
  * Computes book-wide page numbers by background-paginating every
  * reflowable spine item at whatever single-column width the reader is
@@ -137,7 +141,7 @@ export class BookPaginationEstimator {
 
   private initialPageCounts(): (number | undefined)[] {
     return this.spine.map(item =>
-      item.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated" ? 1 : undefined,
+      isFixedCanvasLayout(item.resolveRenditionLayout(this.packageDefaultLayout)) ? 1 : undefined,
     );
   }
 
@@ -262,7 +266,7 @@ export class BookPaginationEstimator {
     signal: AbortSignal,
   ): Promise<MeasuredSpineItem> {
     signal.throwIfAborted();
-    if (spineItem.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
+    if (isFixedCanvasLayout(spineItem.resolveRenditionLayout(this.packageDefaultLayout))) {
       // Fixed-layout content is never reflowed/paginated — it's always
       // exactly one page.
       return { pageCount: 1 };
@@ -366,7 +370,7 @@ export class BookPaginationEstimator {
 
   /** Unknown/missing anchors stay unknown rather than masquerading as the chapter's first page. */
   public pageIndexForFragment(spineIndex: number, fragment: string): number | undefined {
-    if (this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
+    if (isFixedCanvasLayout(this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout))) {
       return 0;
     }
     return this.fragmentPages[spineIndex]?.get(fragment);
@@ -375,7 +379,7 @@ export class BookPaginationEstimator {
   /** Resolves a saved position without reloading a chapter or retaining its DOM. */
   public pageIndexForCfi(spineIndex: number, cfi: string): number | undefined {
     if (this.pageCounts[spineIndex] === 1 &&
-      this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated") {
+      isFixedCanvasLayout(this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout))) {
       return 0;
     }
     const starts = this.pageStarts[spineIndex];
@@ -426,7 +430,7 @@ export class BookPaginationEstimator {
   public invalidateSpineItem(spineIndex: number): void {
     this.cancelPendingMeasurement();
     this.pageCounts[spineIndex] =
-      this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout) === "pre-paginated" ? 1 : undefined;
+      isFixedCanvasLayout(this.spine[spineIndex]?.resolveRenditionLayout(this.packageDefaultLayout)) ? 1 : undefined;
     this.pageStarts[spineIndex] = undefined;
     this.pageStartAncestors[spineIndex] = undefined;
     this.fragmentPages[spineIndex] = undefined;

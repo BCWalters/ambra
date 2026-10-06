@@ -188,6 +188,37 @@ describe("PackageDocument (reflowable fixture)", () => {
   });
 });
 
+describe("PackageDocument (roll layout)", () => {
+  const xml = `<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:identifier id="id">roll</dc:identifier>
+      <dc:title>Roll</dc:title>
+      <dc:language>en</dc:language>
+      <meta property="rendition:layout">roll</meta>
+    </metadata>
+    <manifest>
+      <item id="first" href="first.xhtml" media-type="application/xhtml+xml"/>
+      <item id="second" href="second.xhtml" media-type="application/xhtml+xml"/>
+    </manifest>
+    <spine>
+      <itemref idref="first" properties="rendition:layout-pre-paginated rendition:spread-none"/>
+      <itemref idref="second" properties="rendition:layout-reflowable"/>
+    </spine>
+  </package>`;
+  const pkg = PackageDocument.parse(xml, "EPUB/package.opf");
+
+  it("preserves the publication-wide roll layout", () => {
+    expect(pkg.metadata.renditionLayout).toBe("roll");
+  });
+
+  it("ignores item-level layout overrides in a roll publication", () => {
+    expect(pkg.spine.map((item) => item.resolveRenditionLayout("roll"))).toEqual([
+      "roll",
+      "roll",
+    ]);
+  });
+});
+
 describe("PackageDocument (fixed-layout fixture)", () => {
   let pkg: PackageDocument;
 
