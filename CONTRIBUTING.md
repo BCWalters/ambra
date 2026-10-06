@@ -95,6 +95,12 @@ The MIT repository and Chrome Web Store listing are Public, as confirmed by the
 owner. Preserve the listing's visibility and existing item. Check the dashboard's
 current version and review status before uploading a new package.
 
+Run the release assessment described in the
+[EPUB 3.4 conformance plan](docs/epub-3.4-conformance-plan.md) against the final
+production package for each release candidate. The assessment may be opt-in or
+manually dispatched rather than part of ordinary branch CI, but its scored
+report and any accepted failures belong in the release checklist.
+
 ### Release versioning
 
 Choose the version for the complete release, not for each individual PR:
