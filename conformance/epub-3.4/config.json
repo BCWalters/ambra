@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "specifications": {
+    "epub": "https://www.w3.org/TR/2026/CR-epub-34-20260721/",
+    "readingSystems": "https://www.w3.org/TR/2026/CR-epub-rs-34-20260721/",
+    "accessibility": "https://www.w3.org/TR/2026/CR-epub-a11y-12-20260721/"
+  },
+  "suite": {
+    "repository": "https://github.com/w3c/epub-tests.git",
+    "revision": "54092b4233253e9aac80e93ec4782b380b4b3403",
+    "expectedTests": 205,
+    "expectedPublications": 206,
+    "identifierOverrides": {
+      "lay-pp-svg-icb_multi": "lay-pp-svg-icb_multi"
+    },
+    "titleOverrides": {
+      "lay-pp-svg-icb_multi": "lay-pp-svg-icb_multi"
+    },
+    "combinedIdentifiers": {
+      "pkg-unique-id": ["pkg-unique-id", "pkg-unique-id_duplicate"]
+    }
+  },
+  "optionalFeatureGroups": ["Media Overlays", "Scripting", "Structural Semantics"]
+}

@@ -5,7 +5,7 @@ import { selectBrowserSuites } from "./select-browser-suites.mjs";
 function expectMode(files, mode) {
   assert.deepEqual(selectBrowserSuites(files), {
     mode,
-    run_browser: mode !== "none",
+    run_browser: mode !== "none" && mode !== "tooling",
     run_reader: mode === "full",
     run_library: mode === "full" || mode === "library",
     run_localization: mode === "localization",
@@ -15,6 +15,21 @@ function expectMode(files, mode) {
 
 test("documentation-only changes skip browser tests", () => {
   expectMode(["README.md", "docs/epub-3.4-conformance-plan.md"], "none");
+});
+
+test("browser-independent release tooling skips browser tests", () => {
+  expectMode(
+    [
+      ".github/scripts/select-browser-suites.mjs",
+      ".github/scripts/select-browser-suites.test.mjs",
+      ".github/workflows/epub-conformance.yml",
+      "conformance/epub-3.4/config.json",
+      "scripts/epub-conformance.mjs",
+      "scripts/epub-conformance.test.mjs",
+      "docs/epub-3.4-conformance-runner.md",
+    ],
+    "tooling",
+  );
 });
 
 test("localization changes run focused localization coverage", () => {
@@ -54,6 +69,13 @@ test("shared, reader, engine, dependency, workflow, and release changes fail clo
 
 test("mixed Library and shared changes run the full suite", () => {
   expectMode(["apps/extension/src/library/LibraryApp.tsx", "packages/shell/src/theme.ts"], "full");
+});
+
+test("mixed browser-independent tooling and product changes run the full suite", () => {
+  expectMode(
+    ["scripts/epub-conformance.mjs", "apps/extension/src/reader/ReaderController.ts"],
+    "full",
+  );
 });
 
 test("empty and explicitly forced selections run the full suite", () => {

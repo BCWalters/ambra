@@ -51,6 +51,7 @@ and original synthetic tests to the tool so future contributors can find them.
 
    `pnpm test` covers unit tests, not Playwright. Real-book/live-network tests
    may need separate opt-in inputs; skipped tests are not passing evidence.
+
 4. Open a pull request describing the problem, approach, and actual validation.
    Changes to `main` must go through a PR and the configured branch checks.
    Documentation stating this policy is not a substitute for GitHub enforcement.
@@ -99,7 +100,9 @@ Run the release assessment described in the
 [EPUB 3.4 conformance plan](docs/epub-3.4-conformance-plan.md) against the final
 production package for each release candidate. The assessment may be opt-in or
 manually dispatched rather than part of ordinary branch CI, but its scored
-report and any accepted failures belong in the release checklist.
+report and any accepted failures belong in the release checklist. Use the
+[release conformance runner](docs/epub-3.4-conformance-runner.md) to prepare the
+package-bound worksheet and generate the JSON and Markdown reports.
 
 ### Release versioning
 

@@ -1,0 +1,72 @@
+name: Prepare EPUB 3.4 release assessment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epub-3-4-release-assessment
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare conformance kit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Restrict release assessments to main
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
+            echo "::error::EPUB release assessments must use merged main."
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.18.0
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 10.32.1
+          run_install: false
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build exact production package
+        env:
+          VITE_AMBRA_LOCAL_FEATURES: "0"
+        run: node .github/scripts/package-extension.mjs
+      - name: Check out pinned W3C test metadata
+        run: |
+          EPUB_TESTS_REVISION="$(
+            node -e "console.log(JSON.parse(require('node:fs').readFileSync('conformance/epub-3.4/config.json')).suite.revision)"
+          )"
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/w3c/epub-tests.git "$RUNNER_TEMP/epub-tests"
+          git -C "$RUNNER_TEMP/epub-tests" sparse-checkout init --no-cone
+          printf '/tests/*/META-INF/container.xml\n/tests/**/*.opf\n' |
+            git -C "$RUNNER_TEMP/epub-tests" sparse-checkout set --no-cone --stdin
+          git -C "$RUNNER_TEMP/epub-tests" checkout --detach "$EPUB_TESTS_REVISION"
+          test "$(git -C "$RUNNER_TEMP/epub-tests" rev-parse HEAD)" = "$EPUB_TESTS_REVISION"
+      - name: Create package-bound manual worksheet
+        run: >-
+          node scripts/epub-conformance.mjs prepare
+          --suite "$RUNNER_TEMP/epub-tests"
+          --release dist/beta-release/artifacts/release.json
+          --output dist/conformance/epub-3.4-assessment.json
+      - name: Archive assessment kit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: epub-3.4-assessment-kit-${{ github.sha }}
+          path: |
+            dist/beta-release/artifacts/
+            dist/conformance/epub-3.4-assessment.json
+            conformance/epub-3.4/config.json
+            docs/epub-3.4-conformance-runner.md
+          if-no-files-found: error
+          retention-days: 30
