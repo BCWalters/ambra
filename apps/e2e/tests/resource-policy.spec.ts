@@ -68,6 +68,79 @@ function fixture(info: TestInfo, svg: boolean): string {
 }
 
 for (const svg of [false, true]) {
+  test(`${svg ? "SVG" : "XHTML"}: native frame policy blocks resources outside assembler rewriting`, async ({
+    browserName: _browserName,
+  }, info) => {
+    const requests: string[] = [];
+    const { context, readerPage: page } = await launchReader(fixture(info, svg), {
+      beforeBookImport: async (library) => {
+        library.context().on("request", request => {
+          if (request.url().includes("resource-policy.invalid")) requests.push(request.url());
+        });
+        await library.context().route("**/resource-policy.invalid/**", route => route.abort());
+      },
+    });
+    try {
+      await exposeReaderController(page);
+      await expect.poll(() => page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        const doc: Document | undefined = controller.contentDocumentViews()[0]?.document;
+        return !controller.isLoadInFlight &&
+          (doc?.getElementById("local") as HTMLImageElement | null)?.naturalWidth === 32;
+      })).toBe(true);
+      const state = await page.evaluate(svgRoot => {
+        const controller = Reflect.get(window, "__readerController");
+        const doc: Document = controller.contentDocumentViews()[0].document;
+        const violations: { directive: string; blockedURI: string; disposition: string }[] = [];
+        Reflect.set(window, "__nativePolicyViolations", violations);
+        doc.addEventListener("securitypolicyviolation", event => {
+          violations.push({
+            directive: event.effectiveDirective,
+            blockedURI: event.blockedURI,
+            disposition: event.disposition,
+          });
+        });
+        // The browser receives the original URL, not an assembler-sanitized
+        // attribute. Observe a real CSP event rather than dispatching one.
+        const image = svgRoot
+          ? doc.createElementNS("http://www.w3.org/2000/svg", "image")
+          : doc.createElement("img");
+        image.setAttribute(svgRoot ? "href" : "src", "https://resource-policy.invalid/unrewritten.svg");
+        image.setAttribute("width", "32");
+        image.setAttribute("height", "24");
+        (doc.body ?? doc.documentElement).append(image);
+        return {
+          root: doc.documentElement.localName,
+          hasHead: doc.getElementsByTagName("head").length > 0,
+          policy: doc.defaultView!.frameElement!.getAttribute("csp"),
+        };
+      }, svg);
+      expect(state.root).toBe(svg ? "svg" : "html");
+      expect(state.hasHead).toBe(!svg);
+      expect(state.policy).toContain("img-src blob:");
+      await expect.poll(() => page.evaluate(() =>
+        Reflect.get(window, "__nativePolicyViolations").some(
+          (event: { directive: string; blockedURI: string; disposition: string }) =>
+            event.directive === "img-src" &&
+            ["https://resource-policy.invalid", "https://resource-policy.invalid/unrewritten.svg"]
+              .includes(event.blockedURI) &&
+            event.disposition === "enforce",
+        ),
+      )).toBe(true);
+      expect(requests).toEqual([]);
+      await info.attach("native-frame-policy.json", {
+        body: JSON.stringify({
+          ...state,
+          requests,
+          violations: await page.evaluate(() => Reflect.get(window, "__nativePolicyViolations")),
+        }),
+        contentType: "application/json",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   test(`${svg ? "SVG" : "XHTML"}: policy-blocked resources never become archive aliases or network loads`, async ({
     page: unusedPage,
   }, info) => {

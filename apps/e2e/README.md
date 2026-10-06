@@ -76,6 +76,13 @@ cross-element/whitespace text assertion recovery, and exact adjacent-text
 before/after affinity. It uses original content and runs in the early CI gate.
 It does not claim support for nested documents or media/spatial CFI offsets.
 
+`resource-policy.spec.ts` additionally exercises Chromium's frame-level required
+CSP on XHTML and headless SVG roots. After verifying a packaged image actually
+decodes, it introduces an unrewritten remote image URL through the trusted test
+driver. It requires a native enforcing CSP violation and zero network requests,
+not a sanitized attribute or simulated event. This covers the common rendering
+host; external SVG graph rewriting remains a separate compatibility gap.
+
 The opt-in release profile in `assessment/core-media.spec.ts` uses
 `epub-conformance.config.ts`, not ordinary test discovery. The main-only release
 assessment workflow runs it against the exact archived production package and

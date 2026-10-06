@@ -208,14 +208,31 @@ remain independent. HTML posters, image-backed object/embed elements, unsupporte
 iframe documents/srcdoc, and SVG image/use/feImage references are covered.
 
 This milestone does not implement nested document rendering, arbitrary external
-SVG presentation-attribute graphs, inherited resource `xml:base`, or remote/data
-loading. Those surfaces remain explicit compatibility/policy gaps; C34-07 stays
-open rather than implying complete URL/resource conformance. Prepared synthetic
+SVG presentation-attribute graphs, HTML `<base href>` processing, legacy
+`xml:base` compatibility, or remote/data loading. Those surfaces remain explicit
+compatibility/policy gaps; C34-07 stays open rather than implying complete
+URL/resource conformance. Prepared synthetic
 XHTML/SVG browser fixtures verify no actual requests for the exercised blocked
 resources, safe external-link dispatch, local remote-resource fallbacks and SVG
 symbol references. Their regression results do not change the original partial
 official score; the pinned file/data/navigation criteria require a separate
 package-bound assessment.
+
+A further prepared milestone applies the same restrictive policy through
+Chromium's iframe `csp` attribute before any navigation. This covers XML/SVG
+roots without an HTML head; XHTML retains its meta policy as defense in depth.
+The common host also serves fixed, paginated, scroll, roll and table views.
+Native fixtures require a real enforcing CSP event and no network request for
+an unrewritten remote URL, alongside successful packaged-image decoding.
+Protected Chromium validation is required before treating this experimental
+browser mechanism as verified. This does not implement external SVG graphs,
+unique publication origins, or scripting.
+
+HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
+Legacy `xml:base` is a separate unsupported compatibility surface:
+[EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)
+because HTML and SVG are removing support. Do not label it an additional
+mandatory modern feature or quietly count it as an assessed official failure.
 
 #### C34-08 implementation and assessment expectations
 
