@@ -115,6 +115,8 @@ describe("EpubCfi.parse / toString round-trip", () => {
     "epubcfi(/6/4!/4[a^x])",
     "epubcfi(/6/4!/4[a^])",
     "epubcfi(/6/4!/4[a][b])",
+    "epubcfi(/6/4!/4/1:5[one][two])",
+    "epubcfi(/6/4!/4/1:5[one^[two][three])",
     "epubcfi(/6/4!/4[a[b]])",
     "epubcfi(/6/4!/4[a]])",
     "epubcfi(/6/4!/4/1:)",

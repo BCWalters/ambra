@@ -43,6 +43,7 @@ export class EpubCfiParseError extends Error {
 }
 
 const ESCAPABLE_CHARACTERS = new Set("^[](),;=");
+const INTEGER_WITH_ASSERTION = /^(\d+)(?:\[((?:\^[\s\S]|[^[\]])*)\])?$/;
 
 /** Structural delimiters only count outside assertions; an escaped bracket
  * is assertion data, not a change in nesting. Shared by point and range CFIs. */
@@ -138,7 +139,7 @@ function parseSteps(segment: string, cfiString: string): CfiStep[] {
     throw new EpubCfiParseError(`Malformed CFI step syntax in "${cfiString}".`);
   }
   return parts.map((part) => {
-    const match = /^(\d+)(?:\[([\s\S]*)\])?$/.exec(part);
+    const match = INTEGER_WITH_ASSERTION.exec(part);
     if (!match) {
       throw new EpubCfiParseError(`Malformed CFI step syntax in "${cfiString}".`);
     }
@@ -238,7 +239,7 @@ export class EpubCfi {
     let characterOffset: number | undefined;
     let textAssertion: CfiTextAssertion | undefined;
     if (offsetParts[1] !== undefined) {
-      const match = /^(\d+)(?:\[([\s\S]*)\])?$/.exec(offsetParts[1]);
+      const match = INTEGER_WITH_ASSERTION.exec(offsetParts[1]);
       if (!match) throw new EpubCfiParseError(`Malformed CFI character offset in "${cfiString}".`);
       characterOffset = parseInteger(match[1]!, cfiString);
       if (match[2] !== undefined) {

@@ -299,19 +299,27 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
   });
 
   it("resolves a complete range directly in one document and rejects reverse endpoints", () => {
-    const doc = document.implementation.createHTMLDocument();
-    doc.body.innerHTML = '<p id="stable">alpha <em>beta</em> gamma</p>';
-    const paragraph = doc.getElementById("stable")!;
-    const start = EpubCfi.parse(resolver.generate(0, paragraph.firstChild!, 2).cfi);
-    const end = EpubCfi.parse(resolver.generate(0, paragraph.lastChild!, 4).cfi);
-    const resolved = resolver.resolveRangeInDocument(new Locator(EpubCfi.joinRange(start, end)), 0, doc);
-    expect(resolved.document).toBe(doc);
-    expect(resolved.range.toString()).toBe("pha beta gam");
-    expect(resolved.start.node).toBe(paragraph.firstChild);
-    expect(resolved.end.node).toBe(paragraph.lastChild);
-    expect(() => resolver.resolveRangeInDocument(
-      new Locator(EpubCfi.joinRange(end, start)), 0, doc,
-    )).toThrow(/reverse document order/);
+    // happy-dom binds Range to the window document. Independent-document
+    // range ownership is verified by the native Chromium fixture.
+    const doc = document;
+    const paragraph = doc.createElement("p");
+    paragraph.id = "range-stable";
+    paragraph.innerHTML = "alpha <em>beta</em> gamma";
+    doc.body.append(paragraph);
+    try {
+      const start = EpubCfi.parse(resolver.generate(0, paragraph.firstChild!, 2).cfi);
+      const end = EpubCfi.parse(resolver.generate(0, paragraph.lastChild!, 4).cfi);
+      const resolved = resolver.resolveRangeInDocument(new Locator(EpubCfi.joinRange(start, end)), 0, doc);
+      expect(resolved.document).toBe(doc);
+      expect(resolved.range.toString()).toBe("pha beta gam");
+      expect(resolved.start.node).toBe(paragraph.firstChild);
+      expect(resolved.end.node).toBe(paragraph.lastChild);
+      expect(() => resolver.resolveRangeInDocument(
+        new Locator(EpubCfi.joinRange(end, start)), 0, doc,
+      )).toThrow(/reverse document order/);
+    } finally {
+      paragraph.remove();
+    }
   });
 
   it("rejects a text offset beyond the addressed run rather than clamping it", async () => {
