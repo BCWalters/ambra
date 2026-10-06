@@ -2,7 +2,7 @@ import { expect, test, type TestInfo } from "@playwright/test";
 import { strToU8, zipSync } from "fflate";
 import fs from "node:fs";
 import { launchReader } from "../harness.js";
-import { exposeReaderController } from "../reader-controller.js";
+import { exposeReaderController, isReaderElementPainted } from "../reader-controller.js";
 
 type Profile = "epub2" | "missing-nav" | "malformed-nav" | "modern-nav";
 function publication(info: TestInfo, profile: Profile): string {
@@ -107,17 +107,13 @@ for (const profile of ["epub2", "missing-nav", "malformed-nav", "modern-nav"] as
             page.evaluate(() => {
               const controller = Reflect.get(window, "__readerController");
               return (
-                controller.snapshot.spineIndex === 1 &&
-                !controller.isLoadInFlight &&
-                controller
-                  .contentDocumentViews()
-                  .some((view: { document: Document }) =>
-                    view.document.getElementById("figure")?.checkVisibility(),
-                  )
+                controller.snapshot().currentSpinePath === "EPUB/two.xhtml" &&
+                !controller.isLoadInFlight
               );
             }),
           )
           .toBe(true);
+        await expect.poll(() => isReaderElementPainted(page, "figure")).toBe(true);
         await page.evaluate(() => {
           const controller = Reflect.get(window, "__readerController");
           return controller.goToNavPoint(controller.navigation.additionalLists[0].items[1]);
