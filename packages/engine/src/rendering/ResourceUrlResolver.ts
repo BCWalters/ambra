@@ -1,4 +1,10 @@
 import { ContentLoader } from "../content/ContentLoader.js";
+import { EpubContainerError } from "../container/EpubContainer.js";
+import { resolveEpubPath } from "../container/EpubPath.js";
+import { ZipFormatError, ZipIntegrityError } from "../container/ZipArchive.js";
+import { UnsupportedEncryptionAlgorithmError } from "../encryption/FontDeobfuscator.js";
+import { CssSyntaxError } from "postcss";
+import { rewriteCssResources } from "./CssResourceRewriter.js";
 
 /** Thrown when a resource reference can't be resolved to a manifest item
  * (and therefore has no known media type to serve it with). */
@@ -27,6 +33,7 @@ export class ResourceResolutionCancelledError extends ResourceResolutionError {
  */
 export class ResourceUrlResolver {
   private readonly urlsByPath = new Map<string, string>();
+  private readonly createdUrls = new Set<string>();
   private readonly pendingByPath = new Map<string, { promise: Promise<string>; cancel: () => void }>();
   private disposed = false;
 
@@ -68,8 +75,17 @@ export class ResourceUrlResolver {
     }
   }
 
-  private async createResourceUrl(path: string, mediaType: string): Promise<string> {
-    const bytes = await this.contentLoader.loadResourceBytes(path);
+  private async createResourceUrl(
+    path: string,
+    mediaType: string,
+    ancestors: ReadonlySet<string> = new Set(),
+  ): Promise<string> {
+    let bytes = await this.contentLoader.loadResourceBytes(path);
+    if (mediaType === "text/css") {
+      bytes = new TextEncoder().encode(await this.rewriteCss(
+        new TextDecoder().decode(bytes), path, false, new Set([...ancestors, path]),
+      ));
+    }
     if (this.disposed) {
       throw new ResourceResolutionCancelledError();
     }
@@ -78,10 +94,64 @@ export class ResourceUrlResolver {
     // (which includes SharedArrayBuffer), but BlobPart requires a
     // definite `ArrayBuffer`.
     const blob = new Blob([Uint8Array.from(bytes)], { type: mediaType });
+    const contextualStylesheet = mediaType === "text/css" && ancestors.size > 0;
+    const cached = contextualStylesheet ? undefined : this.urlsByPath.get(path);
+    if (cached) return cached;
     const url = URL.createObjectURL(blob);
 
-    this.urlsByPath.set(path, url);
+    this.createdUrls.add(url);
+    if (!contextualStylesheet) this.urlsByPath.set(path, url);
     return url;
+  }
+
+  /** Inline publisher CSS uses the same graph resolver as linked stylesheets. */
+  public async rewriteCss(
+    source: string,
+    documentPath: string,
+    declarations = false,
+    ancestors: ReadonlySet<string> = new Set(),
+  ): Promise<string> {
+    if (this.disposed) throw new ResourceResolutionCancelledError();
+    try {
+      return await rewriteCssResources(source, async (href, importing) => {
+        if (!href || href.startsWith("#")) return href;
+        if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) {
+          if (!/^data:/i.test(href)) {
+            console.warn(`External CSS resource remains blocked by content policy: ${href}`);
+          }
+          return href;
+        }
+        const hash = href.indexOf("#");
+        const reference = hash < 0 ? href : href.slice(0, hash);
+        const fragment = hash < 0 ? "" : href.slice(hash);
+        const path = resolveEpubPath(documentPath, reference);
+        if (ancestors.has(path)) {
+          console.warn(`Cyclic CSS import omitted: ${documentPath} -> ${path}`);
+          return undefined;
+        }
+        const item = this.contentLoader.packageDocument.findManifestItemByPath(path);
+        if (importing && item?.mediaType !== "text/css") {
+          console.warn(`CSS import does not reference a packaged stylesheet: ${documentPath} -> ${path}`);
+          return undefined;
+        }
+        try {
+          // Nested imports deliberately bypass public pending promises: two
+          // concurrently requested roots may import each other.
+          const url = item?.mediaType === "text/css"
+            ? await this.createResourceUrl(path, item.mediaType, ancestors)
+            : await this.resolve(path);
+          return url + fragment;
+        } catch (error) {
+          if (!isResourceFailure(error)) throw error;
+          console.warn(`Unable to resolve CSS resource ${href} from ${documentPath}.`, error);
+          return undefined;
+        }
+      }, declarations);
+    } catch (error) {
+      if (!(error instanceof CssSyntaxError)) throw error;
+      console.warn(`Invalid publisher CSS omitted from ${documentPath}.`, error);
+      return "";
+    }
   }
 
   /** Resolves several paths at once (in parallel), returning a map from
@@ -91,10 +161,16 @@ export class ResourceUrlResolver {
       throw new ResourceResolutionCancelledError();
     }
     const uniquePaths = [...new Set(paths)];
-    const resolved = await Promise.all(
-      uniquePaths.map(async (path) => [path, await this.resolve(path)] as const),
-    );
-    return new Map(resolved);
+    const resolved = new Map<string, string>();
+    await Promise.all(uniquePaths.map(async path => {
+      try {
+        resolved.set(path, await this.resolve(path));
+      } catch (error) {
+        if (!isResourceFailure(error)) throw error;
+        console.warn(`Unable to resolve packaged resource ${path}.`, error);
+      }
+    }));
+    return resolved;
   }
 
   /** Revokes every `blob:` URL this resolver has created. Must be called
@@ -109,9 +185,19 @@ export class ResourceUrlResolver {
       pending.cancel();
     }
     this.pendingByPath.clear();
-    for (const url of this.urlsByPath.values()) {
+    for (const url of this.createdUrls) {
       URL.revokeObjectURL(url);
     }
+    this.createdUrls.clear();
     this.urlsByPath.clear();
   }
+}
+
+function isResourceFailure(error: unknown): boolean {
+  if (error instanceof ResourceResolutionCancelledError) return false;
+  return error instanceof ResourceResolutionError ||
+    error instanceof EpubContainerError ||
+    error instanceof ZipFormatError ||
+    error instanceof ZipIntegrityError ||
+    error instanceof UnsupportedEncryptionAlgorithmError;
 }

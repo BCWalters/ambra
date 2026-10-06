@@ -23,17 +23,17 @@ content, EPUB Navigation Documents, NCX fallback, reflowable and fixed-layout
 presentation, RTL spreads, recorded-audio Media Overlays, EPUB CFI locators,
 annotations, font de-obfuscation algorithms, and accessible reader controls.
 
-The first audited blocker, `rendition:layout=roll`, is implemented and covered
-by an original synthetic browser fixture. The remaining main conformance
+The first two audited blockers, `rendition:layout=roll` and packaged CSS
+resource graphs, are implemented and covered by original synthetic browser
+fixtures. The remaining main conformance
 blockers are:
 
-1. no rewriting of packaged resources referenced from CSS;
-2. sequential navigation that includes `linear="no"` spine items;
-3. no foreign-resource fallback traversal;
-4. a visible gutter between paired fixed-layout pages;
-5. no ZIP64 v1 support;
-6. incomplete URL-scheme handling and core-media capability detection;
-7. incomplete package direction and ordered rendition-property processing.
+1. sequential navigation that includes `linear="no"` spine items;
+2. no foreign-resource fallback traversal;
+3. a visible gutter between paired fixed-layout pages;
+4. no ZIP64 v1 support;
+5. incomplete URL-scheme handling and core-media capability detection;
+6. incomplete package direction and ordered rendition-property processing.
 
 Scripting and remote resources are product-policy decisions as well as
 compatibility work. They are not prerequisites for a secure, useful reader,
@@ -66,6 +66,24 @@ overrides, and renders every spine document as a fixed-width canvas in one
 gapless vertical scrollport. The synthetic browser fixture covers mixed
 intrinsic heights, width fitting, scrollbar width, cross-spine fragments,
 iframe wheel input, resize and position restoration, and RTL content.
+
+C34-02 is implemented. Linked stylesheets, nested imports, inline style blocks,
+and style attributes resolve packaged images, fonts and SVG fragments relative
+to their own source document. CSS parsing preserves import conditions and
+distinguishes resource URLs from strings/comments. Cycles and missing resources
+are diagnosed without aborting the chapter; reader-session disposal revokes
+root and dependent blob URLs. IDPF and Adobe font de-obfuscation use the existing
+content-loader path. External and data references retain the existing CSP policy.
+
+The four official `cnt-css-fonts_ot`, `cnt-css-fonts_tt`, `cnt-css-fonts_woff`,
+and `cnt-css-fonts_woff2` tests changed from observed font-loading failures on
+the merged-main baseline to loaded faces with this implementation. These tests
+are expected to pass future release assessments, but partial browser probes
+do not imply a full 205-test conformance result. The Chromium baseline also
+observed `pub-cmt-jxl` failing to decode, tracked by C34-04.
+
+Conformance work additionally exposed roll fragment targeting at fractional
+item boundaries, tracked in [#352](https://github.com/BCWalters/ambra/issues/352).
 
 ### Phase 2: architecture and recommended reading-system behavior
 

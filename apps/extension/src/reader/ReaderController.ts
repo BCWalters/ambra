@@ -5031,7 +5031,7 @@ export class ReaderController {
       } else if (options.fragment) {
         const focusTarget = newHost instanceof PaginatedContentHost
           ? destinationDocument?.getElementById(options.fragment) ?? undefined
-          : this.goToFragment(options.fragment);
+          : this.goToFragment(options.fragment, requestedSpineIndex);
         this.setUpAccessibility(focusTarget, !options.automatic && !options.preserveFocus);
       } else {
         if (
@@ -5157,8 +5157,9 @@ export class ReaderController {
     }
   }
 
-  private goToFragment(fragment: string): Element | undefined {
-    const iframeDocument = this.primaryContentDocument();
+  private goToFragment(fragment: string, spineIndex: number): Element | undefined {
+    const iframeDocument = this.contentDocumentViews()
+      .find(view => view.spineIndex === spineIndex)?.document;
     const target = iframeDocument?.getElementById(fragment);
     if (!target) {
       return undefined;

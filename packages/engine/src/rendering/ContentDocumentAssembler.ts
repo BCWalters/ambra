@@ -43,7 +43,11 @@ export class ContentDocumentAssembler {
   public static assemble(
     contentDocument: ContentDocument,
     resourceUrls: ReadonlyMap<string, string>,
-    options: { applyReadingTheme?: boolean } = {},
+    options: {
+      applyReadingTheme?: boolean;
+      publisherCss?: ReadonlyMap<string, string>;
+      publisherStyleAttributes?: ReadonlyMap<string, string>;
+    } = {},
   ): string {
     // Re-parse from the original raw text rather than cloning
     // `contentDocument.document`, guaranteeing a fully independent DOM tree
@@ -62,6 +66,14 @@ export class ContentDocumentAssembler {
           ? value.slice(0, attributeRange.start) + url + value.slice(attributeRange.end)
           : url);
       }
+    }
+    for (const style of Array.from(doc.querySelectorAll("style"))) {
+      const rewritten = options.publisherCss?.get(style.textContent ?? "");
+      if (rewritten !== undefined) style.textContent = rewritten;
+    }
+    for (const element of Array.from(doc.querySelectorAll("[style]"))) {
+      const rewritten = options.publisherStyleAttributes?.get(element.getAttribute("style")!);
+      if (rewritten !== undefined) element.setAttribute("style", rewritten);
     }
 
     injectContentSecurityPolicy(doc);

@@ -32,9 +32,10 @@ or published.
 This is a pnpm workspace monorepo:
 
 - [`packages/engine`](./packages/engine) — the core EPUB3 engine (container/OPF/Nav
-  parsing, layout, pagination, CFI locators). Vanilla TypeScript, **zero runtime
-  dependencies** — built entirely on native browser APIs (`DecompressionStream`,
-  `DOMParser`). This package must never depend on React or any UI framework.
+  parsing, layout, pagination, CFI locators). Vanilla TypeScript using native
+  browser APIs (`DecompressionStream`, `DOMParser`) and PostCSS/value parsers
+  for publisher CSS resource graphs. This package must never depend on React
+  or any UI framework.
 - [`packages/shell`](./packages/shell) — semantic interface palettes and shared
   React/Fluent UI providers, including portal styling and browser-driven
   light/dark appearance. The pure `@ambra/shell/theme` entry avoids importing
