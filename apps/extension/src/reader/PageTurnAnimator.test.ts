@@ -32,6 +32,22 @@ afterEach(() => {
 });
 
 describe("PageTurnAnimator", () => {
+  it("preserves title language and direction in split and single temporary headers", () => {
+    const animator = new PageTurnAnimator(makeContext());
+    const titleContext = { direction: "rtl", language: "ar" } as const;
+    for (const header of [
+      { mode: "split", left: "Book title", right: "Chapter", leftContext: titleContext } as const,
+      { mode: "single", text: "Book title", context: titleContext } as const,
+    ]) {
+      const overlay = animator.buildTurnFurnitureOverlay(document.createElement("div"), [
+        { left: 0, width: 800, header, footerText: undefined },
+      ])!;
+      const title = overlay.querySelector("span")!;
+      expect(title.dir).toBe("rtl");
+      expect(title.lang).toBe("ar");
+      expect(title.style.unicodeBidi).toBe("isolate");
+    }
+  });
   it("mirrors RTL motion and hinges while preserving logical forward/backward", () => {
     const animator = new PageTurnAnimator(makeContext({ rtl: () => true, pageTurnAnimationStyle: () => "rotate" }));
     expect(animator.pageTurnPartialAmount(1, 0.5)).toBe(45);

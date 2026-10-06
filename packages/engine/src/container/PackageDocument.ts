@@ -3,6 +3,7 @@ import { getDescendantElementsByNS, getFirstDescendantElementByNS, getNamespaced
 import { elementCfiSteps } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
 import { parseSmilClockValue } from "../media-overlay/SmilClockValue.js";
+import type { LocalizedMetadataValue, MetadataLocalization, MetadataTextContext } from "./MetadataLocalization.js";
 
 const OPF_NAMESPACE = "http://www.idpf.org/2007/opf";
 const DC_NAMESPACE = "http://purl.org/dc/elements/1.1/";
@@ -99,9 +100,36 @@ export class ManifestItem {
   }
 }
 
+const SPINE_LAYOUT_PROPERTIES: ReadonlyMap<string, RenditionLayout> = new Map([
+  ["rendition:layout-pre-paginated", "pre-paginated"],
+  ["rendition:layout-reflowable", "reflowable"],
+]);
+const SPINE_SPREAD_PROPERTIES: ReadonlyMap<string, RenditionSpread> = new Map([
+  ["rendition:spread-none", "none"],
+  ["rendition:spread-landscape", "landscape"],
+  ["rendition:spread-both", "both"],
+  ["rendition:spread-auto", "auto"],
+  ["rendition:spread-portrait", "both"],
+]);
+const SPINE_PAGE_SIDE_PROPERTIES: ReadonlyMap<string, PageSpreadSide> = new Map([
+  ["page-spread-left", "left"],
+  ["rendition:page-spread-left", "left"],
+  ["page-spread-right", "right"],
+  ["rendition:page-spread-right", "right"],
+  ["page-spread-center", "center"],
+  ["rendition:page-spread-center", "center"],
+]);
+const SPINE_ORIENTATION_PROPERTIES: ReadonlyMap<string, RenditionOrientation> = new Map([
+  ["rendition:orientation-portrait", "portrait"],
+  ["rendition:orientation-landscape", "landscape"],
+  ["rendition:orientation-auto", "auto"],
+]);
+
 /** A single `<itemref>` in the OPF `<spine>`: one entry in the book's
  * linear (or non-linear) reading order, referencing a `ManifestItem`. */
 export class SpineItemRef {
+  private readonly reportedPropertyConflicts = new Set<string>();
+
   public constructor(
     public readonly manifestItem: ManifestItem,
     /** False for content excluded from the primary linear reading order
@@ -131,27 +159,13 @@ export class SpineItemRef {
     if (packageDefault === "roll") {
       return "roll";
     }
-    if (this.hasProperty("rendition:layout-pre-paginated")) {
-      return "pre-paginated";
-    }
-    if (this.hasProperty("rendition:layout-reflowable")) {
-      return "reflowable";
-    }
-    return packageDefault;
+    return this.firstPropertyValue("layout", SPINE_LAYOUT_PROPERTIES) ?? packageDefault;
   }
 
   /** This spine item's effective synthetic-spread hint. Viewport eligibility
    * and page-spread placement remain the spread planner's responsibility. */
   public resolveRenditionSpread(packageDefault: RenditionSpread): RenditionSpread {
-    for (const value of ["none", "landscape", "both", "auto"] as const) {
-      if (this.hasProperty(`rendition:spread-${value}`)) {
-        return value;
-      }
-    }
-    if (this.hasProperty("rendition:spread-portrait")) {
-      return "both";
-    }
-    return packageDefault;
+    return this.firstPropertyValue("spread", SPINE_SPREAD_PROPERTIES) ?? packageDefault;
   }
 
   /** This spine item's explicit `page-spread-*` override, or `undefined`
@@ -159,27 +173,10 @@ export class SpineItemRef {
    * back to the default left/right alternation). Checks both the
    * `rendition:`-prefixed and unprefixed property spellings — the spec
    * explicitly allows (and real books sometimes declare) both on the same
-   * itemref at once, "in case reading systems only support one of [the]
-   * properties" (e.g. `properties="rendition:page-spread-left
-   * page-spread-left"`), so this must never require exactly one spelling
-   * to be present. Only one *side* (left vs. right vs. center) is ever
-   * legal per itemref per spec — epubcheck rejects a book that declares
-   * conflicting sides — so encountering more than one here (a malformed
-   * book epubcheck would have already flagged) resolves by simple
-   * priority (left, then right, then center) rather than throwing; this
-   * engine already generally prefers tolerating malformed real-world
-   * input over failing to open a book at all. */
+   * itemref at once. Conflicting sides resolve to the first recognized
+   * token in source order, with a diagnostic rather than rejection. */
   public get pageSpread(): PageSpreadSide | undefined {
-    if (this.hasProperty("page-spread-left") || this.hasProperty("rendition:page-spread-left")) {
-      return "left";
-    }
-    if (this.hasProperty("page-spread-right") || this.hasProperty("rendition:page-spread-right")) {
-      return "right";
-    }
-    if (this.hasProperty("page-spread-center") || this.hasProperty("rendition:page-spread-center")) {
-      return "center";
-    }
-    return undefined;
+    return this.firstPropertyValue("page side", SPINE_PAGE_SIDE_PROPERTIES);
   }
 
   /** This spine item's effective `rendition:orientation`, applying its own
@@ -187,16 +184,36 @@ export class SpineItemRef {
    * present, else falling back to the publication-wide default — same
    * override shape as `resolveRenditionLayout`. */
   public resolveRenditionOrientation(packageDefault: RenditionOrientation): RenditionOrientation {
-    if (this.hasProperty("rendition:orientation-portrait")) {
-      return "portrait";
+    return this.firstPropertyValue("orientation", SPINE_ORIENTATION_PROPERTIES) ?? packageDefault;
+  }
+
+  private firstPropertyValue<Value extends string>(
+    group: string,
+    candidates: ReadonlyMap<string, Value>,
+  ): Value | undefined {
+    let selected: Value | undefined;
+    let selectedToken: string | undefined;
+    const ignored: string[] = [];
+    for (const token of this.properties) {
+      const value = candidates.get(token);
+      if (value === undefined) {
+        continue;
+      }
+      if (selected === undefined) {
+        selected = value;
+        selectedToken = token;
+      } else if (value !== selected) {
+        ignored.push(token);
+      }
     }
-    if (this.hasProperty("rendition:orientation-landscape")) {
-      return "landscape";
+    if (ignored.length > 0 && !this.reportedPropertyConflicts.has(group)) {
+      this.reportedPropertyConflicts.add(group);
+      console.warn(
+        `Conflicting ${group} properties for ${this.manifestItem.path}: ` +
+          `using first token "${selectedToken}", ignoring ${ignored.join(", ")}.`,
+      );
     }
-    if (this.hasProperty("rendition:orientation-auto")) {
-      return "auto";
-    }
-    return packageDefault;
+    return selected;
   }
 }
 
@@ -261,6 +278,7 @@ export interface AccessibilityMetadata {
  * element, plus the `rendition:*` metadata used to pick reflowable vs
  * fixed-layout rendering. */
 export interface PackageMetadataOptions {
+  readonly localization?: MetadataLocalization | undefined;
   readonly identifier: string;
   readonly title: string;
   readonly language: string;
@@ -282,6 +300,7 @@ export interface PackageMetadataOptions {
 }
 
 export class PackageMetadata implements PackageMetadataOptions {
+  public readonly localization: MetadataLocalization | undefined;
   /** The identifier referenced by package@unique-identifier, not necessarily
    * the first dc:identifier. Font deobfuscation depends on this exact value. */
   public readonly identifier: string;
@@ -321,6 +340,7 @@ export class PackageMetadata implements PackageMetadataOptions {
   public readonly accessibility: AccessibilityMetadata;
 
   public constructor(options: PackageMetadataOptions) {
+    this.localization = options.localization;
     this.identifier = options.identifier;
     this.title = options.title;
     this.language = options.language;
@@ -581,6 +601,7 @@ export class PackageDocument {
     const accessibility = PackageDocument.parseAccessibilityMetadata(metadataEl);
 
     return new PackageMetadata({
+      localization: PackageDocument.parseMetadataLocalization(packageEl, metadataEl),
       identifier,
       title,
       language,
@@ -607,12 +628,53 @@ export class PackageDocument {
    * its original publication date from other dates like this edition's
    * conversion date) over just taking the first `dc:date` present. */
   private static parseDate(metadataEl: Element): string | undefined {
-    const dateElements = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "date");
-    const publicationDate = dateElements.find(
-      (el) => getNamespacedAttribute(el, OPF_NAMESPACE, "event") === "publication",
-    );
-    const text = (publicationDate ?? dateElements[0])?.textContent?.trim();
+    const text = normalizeMetadataText(publicationDateElement(metadataEl)?.textContent);
     return text || undefined;
+  }
+
+  private static parseMetadataLocalization(packageEl: Element, metadataEl: Element): MetadataLocalization {
+    const contexts = new WeakMap<Element, MetadataTextContext>();
+    const contextFor = (element: Element): MetadataTextContext => {
+      const cached = contexts.get(element);
+      if (cached) return cached;
+      const inherited = element.parentElement ? contextFor(element.parentElement) : undefined;
+      const declaredDirection = element.getAttribute("dir");
+      if (declaredDirection !== null && !["ltr", "rtl", "auto"].includes(declaredDirection)) {
+        console.warn(`Unknown package metadata direction ${JSON.stringify(declaredDirection)}; using auto.`);
+      }
+      const direction = declaredDirection === null ? inherited?.direction ?? "auto"
+        : declaredDirection === "ltr" || declaredDirection === "rtl" ? declaredDirection : "auto";
+      const language = getNamespacedAttribute(element, "http://www.w3.org/XML/1998/namespace", "lang")
+        ?? inherited?.language;
+      const context: MetadataTextContext = { direction, language };
+      contexts.set(element, context);
+      return context;
+    };
+    const dateElement = publicationDateElement(metadataEl);
+    const localizedValue = (element: Element, key: string, value: string): LocalizedMetadataValue => {
+      const refines = element.getAttribute("refines");
+      return {
+        ...contextFor(element),
+        key,
+        value,
+        id: element.getAttribute("id") ?? undefined,
+        refines: refines?.startsWith("#") ? refines.slice(1) : refines ?? undefined,
+        preferred: element === dateElement,
+      };
+    };
+    return {
+      package: contextFor(packageEl),
+      dcValues: getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "*").flatMap(element => {
+        const value = normalizeMetadataText(element.textContent);
+        return value === undefined ? [] : [localizedValue(element, element.localName, value)];
+      }),
+      metaValues: getDescendantElementsByNS(metadataEl, OPF_NAMESPACE, "meta").flatMap(element => {
+        const key = element.getAttribute("property") ?? element.getAttribute("name");
+        const value = normalizeMetadataText(element.getAttribute("property") !== null
+          ? element.textContent : element.getAttribute("content"));
+        return !key || value === undefined ? [] : [localizedValue(element, key, value)];
+      }),
+    };
   }
 
   /** Every `<meta>` element in the OPF metadata, captured generically —
@@ -625,9 +687,9 @@ export class PackageDocument {
     return metaElements
       .map((meta): OpfMetaEntry | undefined => {
         const key = meta.getAttribute("property") ?? meta.getAttribute("name");
-        const value = meta.getAttribute("property") !== null
-          ? meta.textContent?.trim()
-          : (meta.getAttribute("content")?.trim() ?? undefined);
+        const value = normalizeMetadataText(meta.getAttribute("property") !== null
+          ? meta.textContent
+          : meta.getAttribute("content"));
         if (!key || !value) {
           return undefined;
         }
@@ -646,7 +708,7 @@ export class PackageDocument {
   private static parseIdentifiers(metadataEl: Element): BookIdentifier[] {
     return getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "identifier")
       .map((el): BookIdentifier | undefined => {
-        const value = el.textContent?.trim();
+        const value = normalizeMetadataText(el.textContent);
         if (!value) {
           return undefined;
         }
@@ -672,13 +734,13 @@ export class PackageDocument {
 
     if (uniqueIdentifierId) {
       const match = identifierElements.find((el) => el.getAttribute("id") === uniqueIdentifierId);
-      const text = match?.textContent?.trim();
+      const text = normalizeMetadataText(match?.textContent);
       if (text) {
         return text;
       }
     }
 
-    const firstText = identifierElements[0]?.textContent?.trim();
+    const firstText = normalizeMetadataText(identifierElements[0]?.textContent);
     if (!firstText) {
       throw new PackageDocumentError(`OPF metadata at ${opfPath} has no dc:identifier element.`);
     }
@@ -690,7 +752,7 @@ export class PackageDocument {
     const layoutMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:layout",
     );
-    const content = layoutMeta?.textContent?.trim();
+    const content = normalizeMetadataText(layoutMeta?.textContent);
     return content === "pre-paginated" || content === "roll" ? content : "reflowable";
   }
 
@@ -708,7 +770,7 @@ export class PackageDocument {
     const spreadMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:spread",
     );
-    const content = spreadMeta?.textContent?.trim();
+    const content = normalizeMetadataText(spreadMeta?.textContent);
     if (content === "none" || content === "landscape" || content === "both") {
       return content;
     }
@@ -725,7 +787,7 @@ export class PackageDocument {
     const orientationMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:orientation",
     );
-    const content = orientationMeta?.textContent?.trim();
+    const content = normalizeMetadataText(orientationMeta?.textContent);
     return content === "portrait" || content === "landscape" ? content : "auto";
   }
 
@@ -741,7 +803,7 @@ export class PackageDocument {
     const viewportMeta = metaElements.find(
       (meta) => meta.getAttribute("property") === "rendition:viewport",
     );
-    return parseViewportDimensions(viewportMeta?.textContent);
+    return parseViewportDimensions(normalizeMetadataText(viewportMeta?.textContent));
   }
 
   /** Parses EPUB Accessibility 1.1's `schema:accessMode`/
@@ -755,7 +817,7 @@ export class PackageDocument {
     const valuesFor = (property: string): string[] =>
       metaElements
         .filter((meta) => meta.getAttribute("property") === property)
-        .map((meta) => meta.textContent?.trim())
+        .map((meta) => normalizeMetadataText(meta.textContent))
         .filter((value): value is string => !!value);
 
     return {
@@ -827,22 +889,31 @@ function getRequiredChild(
   return child;
 }
 
+function normalizeMetadataText(value: string | null | undefined): string | undefined {
+  return value?.replace(/[\t\n\f\r ]+/g, " ").replace(/^ | $/g, "") || undefined;
+}
+
+function publicationDateElement(metadataEl: Element): Element | undefined {
+  const dates = getDescendantElementsByNS(metadataEl, DC_NAMESPACE, "date");
+  return dates.find(element => getNamespacedAttribute(element, OPF_NAMESPACE, "event") === "publication") ?? dates[0];
+}
+
 function getFirstElementTextNS(
   parent: Element,
   namespace: string,
   localName: string,
 ): string | undefined {
   const element = getFirstDescendantElementByNS(parent, namespace, localName);
-  return element?.textContent?.trim() || undefined;
+  return normalizeMetadataText(element?.textContent);
 }
 
-/** Every matching element's trimmed text content (not just the first) —
+/** Every matching element's normalized text content (not just the first) —
  * for repeatable Dublin Core elements like `dc:subject`/`dc:contributor`
  * where a book may legitimately declare several. Elements with no (or
  * all-whitespace) text content are skipped. */
 function getElementsTextNS(parent: Element, namespace: string, localName: string): string[] {
   return getDescendantElementsByNS(parent, namespace, localName)
-    .map((el) => el.textContent?.trim())
+    .map((el) => normalizeMetadataText(el.textContent))
     .filter((text): text is string => Boolean(text));
 }
 

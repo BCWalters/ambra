@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import { metadataTextAttributes } from "../../MetadataText.js";
 import { Caption1 } from "@fluentui/react-components";
 import { BookmarkFilled } from "@fluentui/react-icons";
 import { ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
@@ -131,7 +132,9 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
           { left: "auto", right: sideMargin, width: columnWidth },
         ]
       : [{ left: 0, right: 0, width: "auto" }];
-  const headerTexts = columnBands.length > 1 ? [snapshot.title, snapshot.currentChapterLabel] : undefined;
+  const headerTexts = columnBands.length > 1
+    ? [{ text: snapshot.title, context: snapshot.titleContext }, { text: snapshot.currentChapterLabel, context: undefined }]
+    : undefined;
   const footerNumbers = snapshot.spreadPageNumbers ? [...snapshot.spreadPageNumbers] :
     columnBands.length > 1
       ? snapshot.isPrimaryPageMergedTail
@@ -181,8 +184,8 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
                   overflow: "hidden",
                 }}
               >
-                <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0, textAlign: "center" }}>
-                  {headerTexts[index]}
+                <Caption1 as="span" truncate wrap={false} {...metadataTextAttributes(headerTexts[index]?.context, { ...textStyle, minWidth: 0, textAlign: "center" })}>
+                  {headerTexts[index]?.text}
                 </Caption1>
               </div>
             ))
@@ -205,7 +208,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
                 overflow: "hidden",
               }}
             >
-              <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, minWidth: 0 }}>
+              <Caption1 as="span" truncate wrap={false} {...metadataTextAttributes(snapshot.titleContext, { ...textStyle, minWidth: 0 })}>
                 {snapshot.title}
               </Caption1>
               <Caption1 as="span" truncate wrap={false} style={{ ...textStyle, textAlign: "right", minWidth: 0 }}>

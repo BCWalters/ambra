@@ -50,6 +50,7 @@ export async function importBook(
     new Blob([buffer], { type: "application/epub+zip" }),
     {
       title: pkg.metadata.title,
+      metadataLocalization: pkg.metadata.localization,
       creator: pkg.metadata.creator,
       identifier: pkg.metadata.identifier,
       fileName: file.name,

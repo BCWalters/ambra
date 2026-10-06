@@ -1,4 +1,4 @@
-import { ZipArchive, ZipEntry } from "./ZipArchive.js";
+import { ZipArchive, ZipEntry, type ZipArchiveLimits } from "./ZipArchive.js";
 import { PackageDocument } from "./PackageDocument.js";
 import { getFirstDescendantElementByNS } from "./Xml.js";
 import { EncryptionDocument } from "../encryption/EncryptionDocument.js";
@@ -37,8 +37,33 @@ export class EpubContainer {
   /** Opens `data` as a ZIP archive and resolves the OCF rootfile path from
    * `META-INF/container.xml`. Does not parse the OPF package document
    * itself — call `getPackageDocument()` for that, lazily. */
-  public static async open(data: ArrayBuffer | Uint8Array): Promise<EpubContainer> {
-    const archive = ZipArchive.open(data);
+  public static async open(
+    data: ArrayBuffer | Uint8Array,
+    limits: Partial<ZipArchiveLimits> = {},
+  ): Promise<EpubContainer> {
+    const archive = ZipArchive.open(data, limits);
+    archive.validateOcfHeaders();
+    const mimetype = archive.getEntry("mimetype");
+    if (!mimetype) {
+      throw new EpubContainerError("Missing required OCF entry: mimetype");
+    }
+    if (
+      mimetype.localHeaderOffset !== 0 ||
+      mimetype.compressionMethod !== 0 ||
+      mimetype.localExtraFieldLength !== 0 ||
+      mimetype.centralExtraFieldLength !== 0
+    ) {
+      throw new EpubContainerError(
+        "OCF mimetype must be the first, uncompressed ZIP entry with no extra field.",
+      );
+    }
+    const type = await mimetype.read();
+    const expected = new TextEncoder().encode("application/epub+zip");
+    if (type.length !== expected.length || !type.every((byte, index) => byte === expected[index])) {
+      throw new EpubContainerError(
+        "OCF mimetype must contain exactly application/epub+zip without a BOM or whitespace.",
+      );
+    }
     const rootFilePath = await EpubContainer.resolveRootFilePath(archive);
     return new EpubContainer(archive, rootFilePath);
   }

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL as NodeURL } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { EpubContainer } from "./EpubContainer.js";
 import {
   ManifestItem,
@@ -86,6 +86,85 @@ describe("PackageMetadata named options", () => {
 describe("parseViewportDimensions", () => {
   it("parses width/height from a comma-separated string", () => {
     expect(parseViewportDimensions("width=1000, height=1400")).toEqual({ width: 1000, height: 1400 });
+  });
+
+  describe("PackageDocument metadata ASCII whitespace", () => {
+    function parse(metadata: string) {
+      return PackageDocument.parse(
+        `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="chosen">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">${metadata}</metadata>
+        <manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/></manifest>
+        <spine><itemref idref="c"/></spine></package>`,
+        "EPUB/package.opf",
+      ).metadata;
+    }
+
+    const required = '<dc:identifier id="chosen">urn:whitespace</dc:identifier><dc:title>Title</dc:title><dc:language>en</dc:language>';
+
+    it("normalizes canonical Dublin Core fields while retaining identifier and source-order priority", () => {
+      const metadata = parse(`
+        <dc:identifier id="other"> Other&#x9; identifier </dc:identifier>
+        <dc:identifier id="chosen"> Chosen&#xA; identifier </dc:identifier>
+        <dc:title> Title&#x9;&#xA;  one&#xD; </dc:title><dc:title>Second title</dc:title>
+        <dc:language> en </dc:language>
+        <dc:creator> Author&#x9;  A </dc:creator><dc:creator> Author&#xA;B </dc:creator>
+        <dc:contributor> Person&#xA; C </dc:contributor>
+        <dc:subject> One&#x9; subject </dc:subject>
+        <dc:description> Description&#xA;  words </dc:description>
+        <dc:publisher> Publisher&#x9; name </dc:publisher>
+        <dc:rights> Rights&#xD;&#xA; statement </dc:rights>
+        <dc:date>Earlier date</dc:date><dc:date opf:event="publication"> Publication&#xA; date </dc:date>
+      `);
+      expect(metadata.identifier).toBe("Chosen identifier");
+      expect(metadata.identifiers.map(({ value }) => value)).toEqual(["Other identifier", "Chosen identifier"]);
+      expect(metadata.title).toBe("Title one");
+      expect(metadata.language).toBe("en");
+      expect(metadata.creator).toBe("Author A");
+      expect(metadata.creators).toEqual(["Author A", "Author B"]);
+      expect(metadata.contributors).toEqual(["Person C"]);
+      expect(metadata.subjects).toEqual(["One subject"]);
+      expect(metadata.description).toBe("Description words");
+      expect(metadata.publisher).toBe("Publisher name");
+      expect(metadata.rights).toBe("Rights statement");
+      expect(metadata.date).toBe("Publication date");
+    });
+
+    it("normalizes current and legacy meta values before derived processing", () => {
+      const metadata = parse(`${required}
+        <meta property="media:narrator"> Narrator&#xA; name </meta>
+        <meta property="custom:value" refines="#chosen"> Refined&#x9; value </meta>
+        <meta name="legacy" content=" Legacy&#x9;&#xA; value "/>
+        <meta property="schema:accessibilitySummary"> Accessible&#xA; summary </meta>
+        <meta property="rendition:layout"> pre-paginated </meta>
+        <meta property="rendition:viewport"> width=400,&#xA; height=600 </meta>
+        <meta property="empty"> &#x9;&#xA; </meta>
+      `);
+      expect(metadata.mediaOverlayNarrator).toBe("Narrator name");
+      expect(metadata.metaEntries).toContainEqual({ key: "custom:value", value: "Refined value", refines: "chosen" });
+      expect(metadata.metaEntries).toContainEqual({ key: "legacy", value: "Legacy value", refines: undefined });
+      expect(metadata.metaEntries.some(({ key }) => key === "empty")).toBe(false);
+      expect(metadata.accessibility.accessibilitySummary).toBe("Accessible summary");
+      expect(metadata.renditionLayout).toBe("pre-paginated");
+      expect(metadata.renditionViewport).toEqual({ width: 400, height: 600 });
+    });
+
+    it("does not strip or collapse non-ASCII spaces", () => {
+      const metadata = parse(`
+        <dc:identifier id="chosen">&#xA0;chosen&#xA0;</dc:identifier>
+        <dc:title> &#xA0;Title&#xA0;&#xA0;words&#xA0; </dc:title><dc:language>en</dc:language>
+        <dc:creator>&#x2003;Author&#x2003;</dc:creator>
+      `);
+      expect(metadata.identifier).toBe("\u00A0chosen\u00A0");
+      expect(metadata.title).toBe("\u00A0Title\u00A0\u00A0words\u00A0");
+      expect(metadata.creator).toBe("\u2003Author\u2003");
+    });
+
+    it("omits empty optional values and still rejects an empty required title", () => {
+      expect(parse(`${required}<dc:description> &#x9;&#xA; </dc:description>`).description).toBeUndefined();
+      expect(() => parse(
+        '<dc:identifier id="chosen">id</dc:identifier><dc:title> &#x9;&#xA; </dc:title><dc:language>en</dc:language>',
+      )).toThrow(PackageDocumentError);
+    });
   });
 
   it("parses width/height regardless of spacing/order", () => {
@@ -566,6 +645,146 @@ describe("PackageDocument rendition:orientation", () => {
     const pkg = PackageDocument.parse(xml, "OEBPS/content.opf");
 
     expect(pkg.spine[0]!.resolveRenditionOrientation(pkg.metadata.renditionOrientation)).toBe("auto");
+  });
+});
+
+describe("SpineItemRef source-ordered overrides", () => {
+  function item(properties: string[]): SpineItemRef {
+    return new SpineItemRef(
+      new ManifestItem("page", "OEBPS/page.xhtml", "application/xhtml+xml", new Set()),
+      true,
+      new Set(properties),
+      [],
+    );
+  }
+
+  function orderedPairs(tokens: readonly string[]) {
+    return tokens.flatMap((first) =>
+      tokens.filter((second) => second !== first).map((second) => [first, second] as const),
+    );
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(orderedPairs(["rendition:layout-pre-paginated", "rendition:layout-reflowable"]))(
+    "uses layout %s before %s",
+    (first, second) => {
+      const ref = item(["rendition:layout-unknown", first, "unknown", second]);
+      expect(ref.resolveRenditionLayout("reflowable")).toBe(first.replace("rendition:layout-", ""));
+      expect(ref.resolveRenditionLayout("pre-paginated")).toBe(first.replace("rendition:layout-", ""));
+      expect(ref.resolveRenditionLayout("roll")).toBe("roll");
+      expect(console.warn).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(
+    orderedPairs([
+      "rendition:spread-none",
+      "rendition:spread-landscape",
+      "rendition:spread-both",
+      "rendition:spread-auto",
+      "rendition:spread-portrait",
+    ]),
+  )("uses spread %s before %s", (first, second) => {
+    const ref = item(["rendition:spread-unknown", first, "unknown", second]);
+    const value = first.replace("rendition:spread-", "");
+    expect(ref.resolveRenditionSpread("none")).toBe(value === "portrait" ? "both" : value);
+  });
+
+  it.each(
+    orderedPairs([
+      "page-spread-left",
+      "page-spread-right",
+      "page-spread-center",
+      "rendition:page-spread-left",
+      "rendition:page-spread-right",
+      "rendition:page-spread-center",
+    ]),
+  )("uses page side %s before %s", (first, second) => {
+    const ref = item(["page-spread-unknown", first, "unknown", second]);
+    expect(ref.pageSpread).toBe(first.replace(/^(rendition:)?page-spread-/, ""));
+  });
+
+  it.each(
+    orderedPairs([
+      "rendition:orientation-portrait",
+      "rendition:orientation-landscape",
+      "rendition:orientation-auto",
+    ]),
+  )("uses orientation %s before %s", (first, second) => {
+    const ref = item(["rendition:orientation-unknown", first, "unknown", second]);
+    expect(ref.resolveRenditionOrientation("auto")).toBe(
+      first.replace("rendition:orientation-", ""),
+    );
+  });
+
+  it("reports each conflicting group once without conflating independent groups", () => {
+    const ref = item([
+      "rendition:orientation-auto",
+      "rendition:spread-both",
+      "page-spread-right",
+      "rendition:layout-reflowable",
+      "rendition:orientation-portrait",
+      "rendition:spread-none",
+      "rendition:page-spread-left",
+      "rendition:layout-pre-paginated",
+    ]);
+    for (let i = 0; i < 3; i++) {
+      expect(ref.resolveRenditionLayout("pre-paginated")).toBe("reflowable");
+      expect(ref.resolveRenditionSpread("none")).toBe("both");
+      expect(ref.pageSpread).toBe("right");
+      expect(ref.resolveRenditionOrientation("portrait")).toBe("auto");
+    }
+    expect(console.warn).toHaveBeenCalledTimes(4);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('OEBPS/page.xhtml: using first token "rendition:layout-reflowable"'),
+    );
+  });
+
+  it("does not diagnose equivalent aliases or unknown properties as conflicting", () => {
+    const ref = item([
+      "rendition:page-spread-left",
+      "page-spread-left",
+      "rendition:spread-portrait",
+      "rendition:spread-both",
+      "rendition:layout-unknown",
+      "rendition:orientation-unknown",
+    ]);
+    expect(ref.pageSpread).toBe("left");
+    expect(ref.resolveRenditionSpread("auto")).toBe("both");
+    expect(ref.resolveRenditionLayout("pre-paginated")).toBe("pre-paginated");
+    expect(ref.resolveRenditionOrientation("landscape")).toBe("landscape");
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("preserves manifest and spine token order from XML, deduplicating without reordering", () => {
+    const xml = `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:identifier id="uid">urn:uuid:ordered</dc:identifier>
+        <dc:title>Ordered properties</dc:title><dc:language>en</dc:language>
+      </metadata>
+      <manifest>
+        <item id="page" href="page.xhtml" media-type="application/xhtml+xml"
+          properties="unknown scripted svg scripted"/>
+      </manifest>
+      <spine><itemref idref="page"
+        properties="rendition:layout-reflowable unknown rendition:layout-pre-paginated rendition:layout-reflowable"/>
+      </spine>
+    </package>`;
+    const ref = PackageDocument.parse(xml, "OEBPS/content.opf").spine[0]!;
+    expect([...ref.manifestItem.properties]).toEqual(["unknown", "scripted", "svg"]);
+    expect([...ref.properties]).toEqual([
+      "rendition:layout-reflowable",
+      "unknown",
+      "rendition:layout-pre-paginated",
+    ]);
+    expect(ref.resolveRenditionLayout("pre-paginated")).toBe("reflowable");
   });
 });
 

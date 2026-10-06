@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { metadataTextAttributes } from "../../MetadataText.js";
 import type { FC, RefCallback } from "react";
 import {
   Body1,
@@ -318,7 +319,7 @@ export const Toolbar: FC<ToolbarProps> = ({
               alignItems: "center",
             }}
           >
-            <Body1 as="span" style={{ fontWeight: 600, padding: "2px 4px" }}>
+            <Body1 as="span" {...metadataTextAttributes(snapshot.titleContext, { fontWeight: 600, padding: "2px 4px" })}>
               {snapshot.title}
             </Body1>
             {snapshot.currentChapterLabel && <Caption1 as="span">{snapshot.currentChapterLabel}</Caption1>}
@@ -373,14 +374,14 @@ export const Toolbar: FC<ToolbarProps> = ({
               >
                 <Body1
                   as="span"
-                  style={{
+                  {...metadataTextAttributes(snapshot.titleContext, {
                     display: "block",
                     fontWeight: 600,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     maxWidth: "100%",
-                  }}
+                  })}
                 >
                   {snapshot.title}
                 </Body1>

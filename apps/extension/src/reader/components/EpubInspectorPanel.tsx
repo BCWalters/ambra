@@ -61,6 +61,8 @@ import type { InspectorFileCategory, SpecialFileKind } from "./inspectorFileKind
 import { classifyInspectionFile, guessMediaType, identifySpecialFiles } from "./inspectorFileKind.js";
 import { isNavigableLinkAttribute, resolveNavigableLinkTarget } from "./inspectorContentLinks.js";
 import { EPUB_TOOLTIP_STYLE } from "../../components/EpubTextStyles.js";
+import { metadataTextContext } from "@ambra/engine";
+import { metadataTextAttributes } from "../../MetadataText.js";
 
 
 hljs.registerLanguage("xml", xmlLanguage);
@@ -936,41 +938,45 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
           )}
           <tr>
             <th scope="row" style={metadataRowStyle}>{t("inspector.titleLabel")}</th>
-            <td>{data.title}</td>
+            <td><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "title", data.title, 0))}>{data.title}</span></td>
           </tr>
           {creators.length > 0 && (
             <tr>
               <th scope="row" style={metadataRowStyle}>{creators.length > 1 ? t("inspector.creators") : t("inspector.creator")}</th>
-              <td>{creators.join(", ")}</td>
+              <td>{creators.map((creator, index) => (
+                <span key={index}><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "creator", creator, index))}>{creator}</span>{index < creators.length - 1 ? ", " : ""}</span>
+              ))}</td>
             </tr>
           )}
           {data.contributors.length > 0 && (
             <tr>
               <th scope="row" style={metadataRowStyle}>{t("inspector.contributors")}</th>
-              <td>{data.contributors.join(", ")}</td>
+              <td>{data.contributors.map((contributor, index) => (
+                <span key={index}><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "contributor", contributor, index))}>{contributor}</span>{index < data.contributors.length - 1 ? ", " : ""}</span>
+              ))}</td>
             </tr>
           )}
           {data.publisher && (
             <tr>
               <th scope="row" style={metadataRowStyle}>{t("inspector.publisher")}</th>
-              <td>{data.publisher}</td>
+              <td><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "publisher", data.publisher, 0))}>{data.publisher}</span></td>
             </tr>
           )}
           {data.date && (
             <tr>
               <th scope="row" style={metadataRowStyle}>{t("inspector.date")}</th>
-              <td>{data.date}</td>
+              <td><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "date", data.date))}>{data.date}</span></td>
             </tr>
           )}
           {data.rights && (
             <tr>
               <th scope="row" style={metadataRowStyle}>{t("inspector.rights")}</th>
-              <td>{data.rights}</td>
+              <td><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "rights", data.rights, 0))}>{data.rights}</span></td>
             </tr>
           )}
           <tr>
             <th scope="row" style={metadataRowStyle}>{t("inspector.language")}</th>
-            <td>{data.language}</td>
+            <td><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "language", data.language, 0))}>{data.language}</span></td>
           </tr>
           <tr>
             <th scope="row" style={metadataRowStyle}>{t("inspector.renditionLayout")}</th>
@@ -987,7 +993,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
           {data.identifiers.map((id, index) => (
             <tr key={index}>
               <th scope="row" style={metadataRowStyle}>{id.scheme ?? t("inspector.identifier")}</th>
-              <td>{id.value}</td>
+              <td><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "identifier", id.value, index))}>{id.value}</span></td>
             </tr>
           ))}
         </tbody>
@@ -1000,7 +1006,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
           </Body1>
           <div style={{ margin: "0 0 20px" }}>
             {data.subjects.map((subject, index) => (
-              <Pill key={index}>{subject}</Pill>
+              <Pill key={index}><span {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "subject", subject, index))}>{subject}</span></Pill>
             ))}
           </div>
         </>
@@ -1011,7 +1017,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
           <Body1 as="p" block style={{ fontWeight: 600, margin: "0 0 4px" }}>
             {t("inspector.description")}
           </Body1>
-          <Body1 as="p" block style={{ margin: "0 0 20px", whiteSpace: "pre-wrap" }}>
+          <Body1 as="p" block {...metadataTextAttributes(metadataTextContext(data.metadataLocalization, "description", data.description, 0), { margin: "0 0 20px", whiteSpace: "pre-wrap" })}>
             {data.description}
           </Body1>
         </>
@@ -1034,7 +1040,7 @@ const MetadataTab: FC<{ data: EpubInspectionData; fileName: string | undefined }
               {data.metaEntries.map((entry, index) => (
                 <tr key={index}>
                   <td style={{ padding: "2px 12px 2px 0" }}>{entry.key}</td>
-                  <td style={{ padding: "2px 12px 2px 0" }}>{entry.value}</td>
+                  <td style={{ padding: "2px 12px 2px 0" }}><span {...metadataTextAttributes(data.metadataLocalization?.metaValues[index])}>{entry.value}</span></td>
                   <td>{entry.refines ?? ""}</td>
                 </tr>
               ))}

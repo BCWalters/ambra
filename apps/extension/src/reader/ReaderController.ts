@@ -14,6 +14,7 @@ import {
   isReaderOwnedContent,
   Locator,
   LocatorResolver,
+  metadataTextContext,
   NavigationDocument,
   NavigationList,
   PaginatedContentHost,
@@ -742,6 +743,7 @@ export class ReaderController {
         narrationNoticeVisible: this.narrationNoticeVisible && this.host !== undefined,
         hasReadingSelection: this.narration.snapshot.available && selectedReadingRange(this.contentDocumentViews()) !== undefined,
         title: this.pkg.metadata.title,
+        titleContext: metadataTextContext(this.pkg.metadata.localization, "title", this.pkg.metadata.title, 0),
         toc: this.navigation.toc.items,
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
@@ -3288,6 +3290,7 @@ export class ReaderController {
   ): PageTurnFurnitureInfo {
     return {
       title: this.pkg.metadata.title,
+      titleContext: metadataTextContext(this.pkg.metadata.localization, "title", this.pkg.metadata.title, 0),
       chapterLabel: this.chapterLabel(this.spineIndex),
       outgoingPage: this.furniturePageNumber(
         this.spineIndex,
@@ -3355,6 +3358,7 @@ export class ReaderController {
     return {
       title: this.pkg.metadata.title,
       outgoingChapterLabel: this.chapterLabel(this.spineIndex),
+      titleContext: metadataTextContext(this.pkg.metadata.localization, "title", this.pkg.metadata.title, 0),
       incomingChapterLabel: this.chapterLabel(incomingSpineIndex),
       outgoingPrimaryPage: outgoingPrimary,
       outgoingSecondaryPage: outgoingSecondary,
@@ -4237,6 +4241,7 @@ export class ReaderController {
       title: this.pkg.metadata.title,
       creator: this.pkg.metadata.creator,
       description: this.pkg.metadata.description ?? libraryRecord?.fetchedDescription,
+      metadataLocalization: this.pkg.metadata.localization,
       descriptionSourceName: hasOwnDescription ? undefined : libraryRecord?.fetchedDescriptionSourceName,
       descriptionSourceUrl: hasOwnDescription ? undefined : libraryRecord?.fetchedDescriptionSourceUrl,
       publisher: this.pkg.metadata.publisher,
@@ -4614,6 +4619,7 @@ export class ReaderController {
     }
 
     const title = this.pkg.metadata.title;
+    const titleContext = metadataTextContext(this.pkg.metadata.localization, "title", title, 0);
     const oldChapterLabel = this.chapterLabel(oldSpineIndex);
     const newChapterLabel = this.chapterLabel(newSpineIndex);
     let outgoingOverlay: HTMLDivElement | undefined;
@@ -4631,7 +4637,7 @@ export class ReaderController {
         {
           left: 0,
           width: columnWidth,
-          header: { mode: "single" as const, text: title },
+          header: { mode: "single" as const, text: title, context: titleContext },
           footerText: primary !== undefined ? `Page ${primary}` : undefined,
         },
         {
@@ -4680,7 +4686,7 @@ export class ReaderController {
         {
           left: 0,
           width: oldEl.getBoundingClientRect().width,
-          header: { mode: "split" as const, left: title, right: oldChapterLabel },
+          header: { mode: "split" as const, left: title, right: oldChapterLabel, leftContext: titleContext },
           footerText: oldNumber !== undefined ? `Page ${oldNumber}` : undefined,
         },
       ]);
@@ -4688,7 +4694,7 @@ export class ReaderController {
         {
           left: 0,
           width: newEl.getBoundingClientRect().width,
-          header: { mode: "split" as const, left: title, right: newChapterLabel },
+          header: { mode: "split" as const, left: title, right: newChapterLabel, leftContext: titleContext },
           footerText: newNumber !== undefined ? `Page ${newNumber}` : undefined,
         },
       ]);

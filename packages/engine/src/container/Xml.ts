@@ -16,7 +16,7 @@ export function getDescendantElementsByNS(
   localName: string,
 ): Element[] {
   return Array.from(root.querySelectorAll("*")).filter(
-    (element) => element.namespaceURI === namespaceURI && element.localName === localName,
+    (element) => element.namespaceURI === namespaceURI && (localName === "*" || element.localName === localName),
   );
 }
 
@@ -103,7 +103,9 @@ export function getNamespacedAttributeName(
 }
 
 function collectPrefixesForNamespace(element: Element, namespaceURI: string): Set<string> {
-  const prefixes = new Set<string>();
+  const prefixes = new Set<string>(
+    namespaceURI === "http://www.w3.org/XML/1998/namespace" ? ["xml"] : [],
+  );
   let current: Element | null = element;
 
   while (current) {

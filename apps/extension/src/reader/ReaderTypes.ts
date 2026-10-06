@@ -5,6 +5,8 @@ import type {
   NavPoint,
   OpfMetaEntry,
   PageTheme,
+  MetadataLocalization,
+  MetadataTextContext,
 } from "@ambra/engine";
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
@@ -30,6 +32,7 @@ export type ContentUiDismissal = (point?: Pick<PointerEvent, "clientX" | "client
 
 /** What the Book Details panel shows. */
 export interface BookDetails {
+  readonly metadataLocalization?: MetadataLocalization | undefined;
   readonly title: string;
   readonly creator: string | undefined;
   readonly description: string | undefined;
@@ -80,6 +83,7 @@ export interface EpubInspectionSpineItem {
 /** Everything the EPUB inspection panel shows: the archive's file list
  * plus parsed metadata/manifest/spine. */
 export interface EpubInspectionData {
+  readonly metadataLocalization?: MetadataLocalization | undefined;
   readonly files: readonly EpubInspectionFile[];
   readonly rootFilePath: string;
   readonly title: string;
@@ -144,6 +148,7 @@ export interface InspectorVisiblePage {
 }
 
 export interface ReaderSnapshot {
+  readonly titleContext?: MetadataTextContext | undefined;
   /** A real reading host has committed, independently of background page counting. */
   readonly hasRenderedContent: boolean;
   narration?: NarrationState;

@@ -59,6 +59,7 @@ GitHub issue numbers change.
 | C34-08 | Package direction and metadata language           | Preserve package- and element-level direction/language and render internationalized metadata correctly.                                                       | [#332](https://github.com/BCWalters/ambra/issues/332) |
 | C34-09 | Ordered rendition-property resolution             | Preserve item property order and implement first-applicable-value behavior for conflicting layout, spread, and page-side values.                              | [#334](https://github.com/BCWalters/ambra/issues/334) |
 | C34-10 | Vertical-writing pagination                       | Add vertical CJK fixtures and correct paginated `vertical-rl` and `vertical-lr` measurement/navigation.                                                       | [#333](https://github.com/BCWalters/ambra/issues/333) |
+| C34-19 | Metadata ASCII whitespace normalization           | Strip and collapse ASCII whitespace in canonical Dublin Core/meta values without removing meaningful non-ASCII whitespace; preserve identifier and source-order behavior. | [#354](https://github.com/BCWalters/ambra/issues/354) |
 
 C34-01 is implemented. Ambra treats `roll` as a publication-wide layout,
 ignores incompatible item-level layout, spread, flow, and orientation
@@ -112,6 +113,83 @@ regressions run once, before the broader protected reader browser suite, so thes
 failures stop CI early without duplicating coverage or weakening the remaining
 checks. Shell restoration checks explicitly reveal auto-hidden toolbar controls;
 docking and post-reload playback checks wait for reader layout readiness.
+
+#### C34-05 implementation and assessment expectations
+
+Fixed-layout pairs now share the full available width without a reserved gutter
+or binding shadow. Their authored coordinate spaces meet directly in LTR and RTL;
+shared scaling, unequal intrinsic page sizes, outer centering, and single-page
+behavior are preserved. Protected geometry checks require less than one CSS
+pixel of separation before and after resizing, not merely a small-looking gap.
+The official pre-paginated spread criteria still require release assessment.
+
+#### C34-09 implementation and assessment expectations
+
+Manifest and spine property sets preserve XML token order. Item-level layout,
+spread, page-side, and orientation resolution now uses the first recognized value
+in that order, ignoring unknown values and preserving publication defaults.
+Conflicting effective values emit one diagnostic per group and spine item without
+rejecting the publication. Equivalent prefixed/unprefixed page-side aliases do not
+conflict; the deprecated portrait-spread value retains its existing `both`
+normalization. Publication-wide `roll` continues to ignore item-level layout
+overrides. Orientation remains an advisory value surfaced in inspection, not a
+browser-window orientation lock. Regression coverage exercises ordered pairs,
+aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
+still need release assessment; these synthetic checks do not alter the score.
+
+#### C34-08 implementation and assessment expectations
+
+Package and metadata-element `dir` and `xml:lang` are retained with each nonempty
+Dublin Core/meta value, including source IDs and alternate-script/refinement
+targets. Inheritance, explicit language clearing, automatic/unknown direction,
+and duplicate values with distinct contexts are preserved. Unknown direction
+is diagnosed and uses Unicode P2 processing through `dir="auto"`.
+
+New Library imports persist these contexts. Library cards/generated covers,
+Book Details, reader titles/running headers (including temporary animation
+overlays), and Inspector summaries apply value-local `dir`, `lang`, and bidi
+isolation without changing UI labels or spine page progression. Previously
+imported records without contexts use automatic direction/unknown language;
+reader and standalone Inspector sessions obtain contexts from the OPF.
+Fetched fallback descriptions do not inherit the publication's metadata context.
+Content-resource language/direction is not inferred from package metadata or
+informational `dc:language`.
+
+Generated Arabic, Hebrew, Persian, mixed-script and unknown-value regressions
+are prepared for protected remote validation. They are not official conformance
+passes; release assessments must still evaluate the corresponding criteria.
+
+#### C34-19 implementation and assessment expectations
+
+Dublin Core and OPF meta values now share exact ASCII whitespace stripping and
+collapse before canonical metadata or derived rendition/accessibility processing.
+This includes identifiers, dates, repeated creator/subject/contributor values,
+refinements, and legacy meta `content` attributes. Meaningful non-ASCII spaces
+are preserved. Unique-identifier selection, main-title/creator source order,
+optional empty-value handling, and required-value errors remain unchanged.
+Regression coverage is prepared for protected remote validation; official
+criterion assessment and the release conformance score remain separate.
+
+#### C34-06 implementation and assessment expectations
+
+C34-06 implementation is prepared but still awaits protected remote validation.
+ZIP64 v1 EOCD/locator and conditional extended information fields are parsed
+without rounding unsigned integers. ZIP32 behavior, Store/Deflate, CRC checking,
+and supplied-buffer boundaries remain covered. Native ZIP encryption, unsupported
+extraction versions/compression methods, multidisk records, malformed UTF-8
+names, inconsistent headers/descriptors, and archive extra data records are
+rejected explicitly. EPUB opening validates the first uncompressed `mimetype`
+entry, its local/central extra fields, and its exact ASCII contents.
+
+Default limits are 1,000,000 entries, 256 MiB uncompressed per entry, and 8 GiB
+declared uncompressed total. `ZipArchive.open` and `EpubContainer.open` accept
+explicit limit overrides for trusted inputs. Deflate output is streamed and
+stopped if it exceeds the declared, already-limited size. Archive input remains
+buffered, so browser allocation limits still apply; ZIP64 support does not imply
+unlimited memory. Regression fixtures cover an actual 65,536-entry directory,
+ZIP64 partial fields, signed/unsigned descriptors, unsafe integers, corruption,
+limits, and malformed mimetype entries. Tests run remotely, not on the developer
+device. Synthetic coverage does not change the official conformance score.
 
 ### Phase 2: architecture and recommended reading-system behavior
 

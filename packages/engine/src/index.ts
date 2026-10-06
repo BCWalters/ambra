@@ -1,5 +1,6 @@
 export { EpubContainer, EpubContainerError } from "./container/EpubContainer.js";
-export { ZipArchive, ZipEntry, ZipFormatError, ZipIntegrityError } from "./container/ZipArchive.js";
+export { ZipArchive, ZipEntry, ZipFormatError, ZipIntegrityError, DEFAULT_ZIP_ARCHIVE_LIMITS } from "./container/ZipArchive.js";
+export type { ZipArchiveLimits } from "./container/ZipArchive.js";
 export {
   PackageDocument,
   PackageDocumentError,
@@ -11,6 +12,8 @@ export {
 } from "./container/PackageDocument.js";
 export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry, AccessibilityMetadata } from "./container/PackageDocument.js";
 export type { PackageMetadataOptions } from "./container/PackageDocument.js";
+export { metadataTextContext, metadataPropertyContext } from "./container/MetadataLocalization.js";
+export type { MetadataTextContext, LocalizedMetadataValue, MetadataLocalization } from "./container/MetadataLocalization.js";
 export type {
   RenditionSpread,
   RenditionOrientation,
