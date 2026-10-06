@@ -166,8 +166,9 @@ export class ResourceUrlResolver {
       try {
         resolved.set(path, await this.resolve(path));
       } catch (error) {
-        if (!isResourceFailure(error)) throw error;
-        console.warn(`Unable to resolve packaged resource ${path}.`, error);
+        const stylesheet = this.contentLoader.packageDocument.findManifestItemByPath(path)?.mediaType === "text/css";
+        if (!stylesheet || !isResourceFailure(error)) throw error;
+        console.warn(`Unable to resolve packaged stylesheet ${path}.`, error);
       }
     }));
     return resolved;

@@ -219,10 +219,25 @@ describe("ResourceUrlResolver", () => {
     const { blobs, resolver } = cssGraph({
       "main.css": { type: "text/css", text: '@import "missing.css"; p{background:url(missing.png);color:red}' },
     });
-    const urls = await resolver.resolveAll(["main.css", "missing-image.png"]);
+    const urls = await resolver.resolveAll(["main.css"]);
     expect(urls.size).toBe(1);
     expect(await blobs[0]!.text()).toContain("color:red");
     expect(warn).toHaveBeenCalled();
+    resolver.dispose();
+  });
+
+  it("preserves explicit failures for missing markup resources while allowing a missing declared stylesheet", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver } = cssGraph({});
+    vi.spyOn(loader.packageDocument, "findManifestItemByPath").mockImplementation(path =>
+      path === "missing.css" ? new ManifestItem(path, path, "text/css", new Set()) : undefined);
+    await expect(resolver.resolveAll(["missing.css"])).resolves.toEqual(new Map());
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("Unable to resolve packaged stylesheet missing.css"), expect.anything(),
+    );
+    await expect(resolver.resolveAll(["missing-image.png"])).rejects.toThrow(
+      "No manifest item found for resource path: missing-image.png",
+    );
     resolver.dispose();
   });
 

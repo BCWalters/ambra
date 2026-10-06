@@ -74,6 +74,9 @@ distinguishes resource URLs from strings/comments. Cycles and missing resources
 are diagnosed without aborting the chapter; reader-session disposal revokes
 root and dependent blob URLs. IDPF and Adobe font de-obfuscation use the existing
 content-loader path. External and data references retain the existing CSP policy.
+Missing CSS dependencies and declared stylesheets emit diagnostics without
+aborting a chapter; missing markup resources retain their explicit load failures,
+including responsive-image candidates, rather than silently dropping attributes.
 
 The four official `cnt-css-fonts_ot`, `cnt-css-fonts_tt`, `cnt-css-fonts_woff`,
 and `cnt-css-fonts_woff2` tests changed from observed font-loading failures on
