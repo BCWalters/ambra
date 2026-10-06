@@ -56,6 +56,28 @@ describe("native resource capability probes", () => {
     expect(revoke).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts a successfully decoded zero-sized SVG rather than confusing layout dimensions with decoder support", async () => {
+    const image = document.createElement("img");
+    vi.stubGlobal(
+      "Image",
+      class {
+        constructor() {
+          return image;
+        }
+      },
+    );
+    const pending = capabilities.supports(
+      "image/svg+xml",
+      "image",
+      read,
+      new AbortController().signal,
+    );
+    await Promise.resolve();
+    expect(image.naturalWidth).toBe(0);
+    image.dispatchEvent(new Event("load"));
+    expect(await pending).toBe(true);
+  });
+
   it.each(["font/otf", "font/ttf", "font/woff", "font/woff2"])(
     "tests %s with FontFace without installing it into document fonts",
     async (type) => {

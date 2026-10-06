@@ -236,7 +236,7 @@ Content-resource language/direction is not inferred from package metadata or
 informational `dc:language`.
 
 Generated Arabic, Hebrew, Persian, mixed-script and unknown-value regressions
-are prepared for protected remote validation. They are not official conformance
+passed protected remote validation in #355. They are not official conformance
 passes; release assessments must still evaluate the corresponding criteria.
 
 #### C34-19 implementation and assessment expectations
@@ -247,7 +247,7 @@ This includes identifiers, dates, repeated creator/subject/contributor values,
 refinements, and legacy meta `content` attributes. Meaningful non-ASCII spaces
 are preserved. Unique-identifier selection, main-title/creator source order,
 optional empty-value handling, and required-value errors remain unchanged.
-Regression coverage is prepared for protected remote validation; official
+Regression coverage passed protected remote validation in #355; official
 criterion assessment and the release conformance score remain separate.
 
 #### C34-06 implementation and assessment expectations

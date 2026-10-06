@@ -1,6 +1,5 @@
 export type ResourceConsumer =
-  "image" | "font" | "audio" | "video" | "stylesheet" | "object" | "track"   | "document"
-  | "auto";
+  "image" | "font" | "audio" | "video" | "stylesheet" | "object" | "track" | "document" | "auto";
 
 export interface ResourceCapabilities {
   supports(
@@ -63,11 +62,11 @@ export class BrowserResourceCapabilities implements ResourceCapabilities {
       if (!type.startsWith("image/")) return false;
       const bytes = await read();
       signal.throwIfAborted();
-      const url = URL.createObjectURL(new Blob([Uint8Array.from(bytes)], { type: mediaType }));
       const image = new Image();
+      const url = URL.createObjectURL(new Blob([Uint8Array.from(bytes)], { type: mediaType }));
       try {
         return await this.probe(signal, (complete) => {
-          image.onload = () => complete(image.naturalWidth > 0 && image.naturalHeight > 0);
+          image.onload = () => complete(true);
           image.onerror = () => complete(false);
           image.src = url;
           return () => {
@@ -80,8 +79,7 @@ export class BrowserResourceCapabilities implements ResourceCapabilities {
         URL.revokeObjectURL(url);
       }
     }
-    if (!type.startsWith(`${consumer}/`) && !(consumer === "audio" && type === "application/ogg"))
-      return false;
+    if (!type.startsWith(`${consumer}/`) && type !== "application/ogg") return false;
     const media = document.createElement(consumer);
     if (!media.canPlayType(mediaType)) return false;
     const bytes = await read();
