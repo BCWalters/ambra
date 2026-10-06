@@ -141,6 +141,7 @@ test("EPUB 3.4 roll is gapless, width-fitted, navigable, RTL-safe, and resize-st
 
     await page.evaluate(() => Reflect.get(window, "__readerController").flushProgress(true));
     await page.reload();
+    await expect.poll(async () => (await geometry(page)).frames.length).toBe(3);
     await exposeReaderController(page);
     await expect
       .poll(() =>
