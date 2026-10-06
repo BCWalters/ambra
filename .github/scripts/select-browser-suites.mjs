@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 const libraryTest =
   /^apps\/e2e\/tests\/(?:library-[^/]+|book-details-presentation|book-metadata-display|native-library-import|review-invitation|library-review-keyboard|reader-library|reader-back-to-library|library-scrubber-progress)\.spec\.ts$/;
 
+const browserIndependentTooling = new Set([
+  ".github/scripts/select-browser-suites.mjs",
+  ".github/scripts/select-browser-suites.test.mjs",
+  ".github/workflows/epub-conformance.yml",
+  "scripts/epub-conformance.mjs",
+  "scripts/epub-conformance.test.mjs",
+]);
+
 function isDocumentation(file) {
   return (
     file.endsWith(".md") ||
@@ -12,6 +20,10 @@ function isDocumentation(file) {
     file === "THIRD_PARTY_NOTICES.md" ||
     file.startsWith("docs/")
   );
+}
+
+function isBrowserIndependentTooling(file) {
+  return file.startsWith("conformance/epub-3.4/") || browserIndependentTooling.has(file);
 }
 
 function isLocalization(file) {
@@ -30,7 +42,9 @@ export function selectBrowserSuites(changedFiles, forceFull = false) {
   let mode;
   if (forceFull || files.length === 0) mode = "full";
   else if (files.every(isDocumentation)) mode = "none";
-  else if (files.every((file) => isDocumentation(file) || isLocalization(file))) {
+  else if (files.every((file) => isDocumentation(file) || isBrowserIndependentTooling(file))) {
+    mode = "tooling";
+  } else if (files.every((file) => isDocumentation(file) || isLocalization(file))) {
     mode = "localization";
   } else if (
     files.every((file) => isDocumentation(file) || isLocalization(file) || isLibrary(file))
@@ -40,7 +54,7 @@ export function selectBrowserSuites(changedFiles, forceFull = false) {
 
   return {
     mode,
-    run_browser: mode !== "none",
+    run_browser: mode !== "none" && mode !== "tooling",
     run_reader: mode === "full",
     run_library: mode === "full" || mode === "library",
     run_localization: mode === "localization",

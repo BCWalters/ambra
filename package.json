@@ -13,8 +13,6 @@
     "dev": "pnpm --filter @ambra/extension run dev",
     "test": "pnpm run test:tools && pnpm -r run test",
     "test:tools": "node --test scripts/*.test.mjs",
-    "conformance:epub34": "node scripts/epub-conformance.mjs report",
-    "conformance:epub34:prepare": "node scripts/epub-conformance.mjs prepare",
     "scan:epubs": "node scripts/scan-epubs.mjs",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",

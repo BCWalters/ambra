@@ -47,6 +47,9 @@ push diff:
   shell localization coverage.
 - Changes confined to `apps/extension/src/library` and Library-specific browser
   tests run the Library suite.
+- Changes confined to the EPUB release-conformance runner and browser-suite
+  selector run lint, type-check, and unit/tool tests without building the
+  extension or launching Chromium.
 - Shared UI, reader, engine, dependency, manifest, workflow, release, and
   unclassified changes run the complete protected browser suite.
 

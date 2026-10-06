@@ -52,7 +52,7 @@ git clone https://github.com/w3c/epub-tests.git /path/to/epub-tests
 git -C /path/to/epub-tests checkout --detach \
   54092b4233253e9aac80e93ec4782b380b4b3403
 
-pnpm conformance:epub34:prepare \
+node scripts/epub-conformance.mjs prepare \
   --suite /path/to/epub-tests \
   --release dist/beta-release/artifacts/release.json \
   --output dist/conformance/epub-3.4-assessment.json
@@ -97,7 +97,7 @@ supported cannot contain a failed or unrun test.
 Run one report command against the completed worksheet and the exact package:
 
 ```sh
-pnpm conformance:epub34 \
+node scripts/epub-conformance.mjs report \
   --suite /path/to/epub-tests \
   --release /path/to/assessment-kit/dist/beta-release/artifacts/release.json \
   --assessment /path/to/assessment-kit/dist/conformance/epub-3.4-assessment.json \
