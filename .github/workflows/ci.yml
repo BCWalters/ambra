@@ -98,7 +98,6 @@ jobs:
           page-turn-margin.spec.ts
           page-turn-viewport.spec.ts
           scrubber-bookmarks.spec.ts
-          scrubber-seek.spec.ts
           scrubber-fast-release.spec.ts
           library-scrubber-progress.spec.ts
           bookmark-panel.spec.ts
@@ -111,13 +110,11 @@ jobs:
           spread-resize-stability.spec.ts
           reflowable-animation-handoff.spec.ts
           toolbar-startup.spec.ts
-          reader-diagnostics.spec.ts
           inspector-docking.spec.ts
           inspector-reading-links.spec.ts
           inspector-page-boundaries.spec.ts
           reader-go-to-shortcuts.spec.ts
           keyboard-ownership.spec.ts
-          reader-scale-navigation.spec.ts
           fixed-layout-scrubber.spec.ts
           fixed-layout-edge-navigation.spec.ts
           svg-spine.spec.ts
@@ -125,6 +122,18 @@ jobs:
           pagination-measurement.spec.ts
           responsive-images.spec.ts
           --workers=2
+      # These tests intentionally hold work in flight, inspect a bounded event
+      # buffer, or enforce a hard wall-clock budget. Keep them off a contended
+      # Chromium worker while the rest of the file-level suite runs in parallel.
+      - name: Verify contention-sensitive reader flows
+        if: steps.browser-suites.outputs.run_reader == 'true'
+        env:
+          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
+          AMBRA_E2E_HEADLESS: "1"
+        run: >-
+          pnpm --filter @ambra/e2e exec playwright test
+          reader-diagnostics.spec.ts reader-scale-navigation.spec.ts scrubber-seek.spec.ts
+          --workers=1
       - name: Keep bookmark panel review screenshots
         if: steps.browser-suites.outputs.run_reader == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
