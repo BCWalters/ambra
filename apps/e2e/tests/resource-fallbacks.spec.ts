@@ -210,9 +210,17 @@ for (const layout of ["reflowable", "pre-paginated", "roll"]) {
           sandbox: doc.defaultView?.frameElement?.getAttribute("sandbox"),
         };
       });
-      expect(result.images.map((image) => [image.width, image.height])).toEqual(
-        Array.from({ length: 5 }, () => [32, 24]),
-      );
+      await info.attach("resource-fallback-evidence.json", {
+        body: JSON.stringify(result),
+        contentType: "application/json",
+      });
+      expect(result.images.map((image) => [image.width, image.height])).toEqual([
+        [32, 24],
+        [32, 24],
+        [32, 24],
+        [16, 12],
+        [32, 24],
+      ]);
       expect(result.images.find((image) => image.id === "avif")?.type).toBe(
         result.nativeTypes.avif ? "image/avif" : "image/svg+xml",
       );
