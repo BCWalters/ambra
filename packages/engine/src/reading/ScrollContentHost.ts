@@ -1,4 +1,5 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
+import { contentDocumentRoot } from "../content/ContentDocumentRoot.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
 import { makeOverflowingPreElementsFocusable } from "../rendering/PreOverflowFocusability.js";
@@ -50,7 +51,7 @@ export class ScrollContentHost {
     }
     this.disclosureCleanup = disclosures?.attach(spineIndex, iframeDocument);
 
-    this.engine = ScrollViewEngine.prepare(iframeDocument.body);
+    this.engine = ScrollViewEngine.prepare(contentDocumentRoot(iframeDocument));
     makeOverflowingPreElementsFocusable(iframeDocument);
   }
 
@@ -88,7 +89,7 @@ export class ScrollContentHost {
     const scrollingElement = iframeDocument.scrollingElement ?? iframeDocument.documentElement;
     scrollingElement.scrollTop = 0;
 
-    this.engine = ScrollViewEngine.prepare(iframeDocument.body);
+    this.engine = ScrollViewEngine.prepare(contentDocumentRoot(iframeDocument));
     if (preserve) {
       this.engine.restorePosition(preserve.node, preserve.offset ?? 0);
     }

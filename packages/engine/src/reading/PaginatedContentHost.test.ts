@@ -8,28 +8,31 @@ import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
 import type { ContentLoader } from "../content/ContentLoader.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import type { DisclosureState } from "./DisclosureState.js";
+import { contentDocumentRoot } from "../content/ContentDocumentRoot.js";
 
-function fixture() {
+function fixture(svg = false) {
   const host = new PaginatedContentHost(600, 900);
-  const doc = document.implementation.createHTMLDocument();
-  doc.body.textContent = "Original viewport-relative page content.";
+  const doc = svg ? document.implementation.createDocument("http://www.w3.org/2000/svg", "svg")
+    : document.implementation.createHTMLDocument();
+  const body = contentDocumentRoot(doc);
+  body.textContent = "Original viewport-relative page content.";
   Object.defineProperty(host.element, "contentDocument", { value: doc });
   Reflect.set(host, "insetTop", 80);
   Reflect.set(host, "insetBottom", 80);
   Reflect.set(host, "pages", [
-    new Page(0, { node: doc.body }, { node: doc.body, offset: 1 }, 0, 600),
-    new Page(1, { node: doc.body }, { node: doc.body, offset: 1 }, 600, 1000),
+    new Page(0, { node: body }, { node: body, offset: 1 }, 0, 600),
+    new Page(1, { node: body }, { node: body, offset: 1 }, 600, 1000),
   ]);
-  doc.body.getBoundingClientRect = () => ({
+  body.getBoundingClientRect = () => ({
     top: host.currentPageIndex === 0 ? 80 : -520,
   }) as DOMRect;
   host.goToPageIndex(0);
-  return { host, body: doc.body };
+  return { host, body };
 }
 
 describe("paginated viewport and animation paint clipping", () => {
-  it("configures after disclosures and before the only initial pagination", async () => {
-    const { host, body } = fixture();
+  it.each([false, true])("configures XHTML/SVG (SVG=%s) after disclosures before pagination", async svg => {
+    const { host, body } = fixture(svg);
     const doc = body.ownerDocument;
     const assemble = vi.spyOn(SpineItemAssembler, "loadAssembledSpineItem").mockResolvedValue("");
     const render = vi.spyOn(SandboxedContentHost.prototype, "render").mockResolvedValue();
@@ -39,7 +42,8 @@ describe("paginated viewport and animation paint clipping", () => {
       expect(body.dataset.disclosure).toBe("applied");
       body.dataset.configured = "true";
     });
-    const paginate = vi.spyOn(PaginationEngine, "paginate").mockImplementation(() => {
+    const paginate = vi.spyOn(PaginationEngine, "paginate").mockImplementation(root => {
+      expect(root).toBe(body);
       expect(body.dataset.configured).toBe("true");
       return [];
     });
@@ -49,6 +53,7 @@ describe("paginated viewport and animation paint clipping", () => {
       expect(attach).toHaveBeenCalledWith(0, doc);
       expect(configure).toHaveBeenCalledOnce();
       expect(paginate).toHaveBeenCalledOnce();
+      expect(body.style.overflow).toBe("hidden");
     } finally {
       assemble.mockRestore();
       render.mockRestore();
@@ -57,10 +62,11 @@ describe("paginated viewport and animation paint clipping", () => {
     }
   });
 
-  it("sets the new iframe height before measuring viewport-relative publication styles", () => {
-    const { host } = fixture();
+  it.each([false, true])("sets the XHTML/SVG (SVG=%s) iframe height before resize measurement", svg => {
+    const { host, body } = fixture(svg);
     const pages = Reflect.get(host, "pages") as Page[];
-    const paginate = vi.spyOn(PaginationEngine, "paginate").mockImplementation(() => {
+    const paginate = vi.spyOn(PaginationEngine, "paginate").mockImplementation(root => {
+      expect(root).toBe(body);
       expect(host.element.style.width).toBe("580px");
       expect(host.element.style.height).toBe("1000px");
       return pages;
@@ -74,8 +80,8 @@ describe("paginated viewport and animation paint clipping", () => {
     }
   });
 
-  it("keeps the pagination viewport while clipping short and later pages exactly", () => {
-    const { host, body } = fixture();
+  it.each([false, true])("keeps XHTML/SVG (SVG=%s) viewport and exact later-page paint clips", svg => {
+    const { host, body } = fixture(svg);
     expect(host.element.style.height).toBe("900px");
     expect(host.element.style.clipPath).toBe("inset(80px 0 220px 0)");
     host.goToPageIndex(1);

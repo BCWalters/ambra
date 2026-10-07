@@ -5,6 +5,7 @@ import {
   totalTextLength,
 } from "./DomTextWalker.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
+import { isSvgRoot } from "../content/ContentDocumentRoot.js";
 import { measureSimpleTableRows } from "./SimpleTable.js";
 import type { DomBreakPoint, DomPositionRange, PositionOverride } from "./Page.js";
 import { compareDomPositions } from "./ScrollPositionTracker.js";
@@ -265,6 +266,7 @@ function* collectLeaves(
 }
 
 function positionBefore(element: Element): DomBreakPoint {
+  if (element === element.ownerDocument.documentElement) return { node: element, offset: 0 };
   const parent = element.parentNode;
   if (!parent) {
     throw new Error(
@@ -577,7 +579,7 @@ function* chunkMeasurements(
   const viewportWidth = ownerDocument.documentElement.clientWidth;
 
   const groups = avoidanceGroups(bodyElement, getComputedStyle(bodyElement), parents);
-  const leaves = includeRoot && (isAtomic(bodyElement, pageHeight) || isLeaf(bodyElement))
+  const leaves = (includeRoot || isSvgRoot(bodyElement)) && (isAtomic(bodyElement, pageHeight) || isLeaf(bodyElement))
     ? [{ leaf: bodyElement, groups }] : collectLeaves(bodyElement, groups, pageHeight);
   for (const measured of leaves) {
     yield undefined;
