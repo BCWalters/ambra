@@ -169,7 +169,7 @@ test.describe("Library book focus and safe removal", () => {
       }, { title, creator });
       await page.goto(`${page.url()}${fullTab ? "?view=tab" : ""}`);
       const cover = page.locator("[data-library-collection]").getByRole("button", { name: new RegExp(`^Open ${title}`) });
-      const card = page.locator("[data-library-book]").filter({ has: cover });
+      const card = cover.locator("..");
       const coverTitle = cover.locator("[data-generated-cover] > span").first();
       await expect(coverTitle).toHaveText(title);
       await expect(coverTitle).toHaveCSS("-webkit-line-clamp", fullTab ? "4" : "3");
