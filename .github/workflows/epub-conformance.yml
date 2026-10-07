@@ -114,7 +114,10 @@ jobs:
           unzip -q "dist/beta-release/artifacts/$ARCHIVE" -d "$RUNNER_TEMP/epub-core-extension"
       - name: Install assessment Chromium
         if: inputs.automated_core
-        run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+        timeout-minutes: 5
+        run: |
+          sudo -n install -m 644 .github/apt-network.conf /etc/apt/apt.conf.d/80-ambra-network
+          pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
       - name: Assess official native criteria
         id: core_criteria
         if: inputs.automated_core
