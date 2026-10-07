@@ -1,6 +1,6 @@
 export interface RequiredNativeCriterion {
   readonly id: string;
-  readonly kind: "document" | "math" | "svg" | "media" | "rejection";
+  readonly kind: "document" | "math" | "svg" | "media" | "image" | "rejection";
 }
 export const requiredNativeCriteria: readonly RequiredNativeCriterion[];
 export const requiredFoundationCriteria: readonly import("./epub-conformance-foundations.mjs").FoundationCriterion[];

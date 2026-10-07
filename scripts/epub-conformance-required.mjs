@@ -29,6 +29,12 @@ const groups = {
   math: ["cnt-mathml-support"],
   svg: ["cnt-svg-support", "cnt-svg-embedded", "cnt-svg-css", "cnt-svg-css-inclusion"],
   media: ["pub-cmt-mp3", "pub-cmt-mp4", "pub-cmt-opus"],
+  image: [
+    "ocf-url_link-relative",
+    "ocf-url_link-path-absolute",
+    "ocf-url_link-leaking-relative",
+    "pub-foreign_image",
+  ],
   rejection: ["ocf-zip-comp", "ocf-zip-mult"],
 };
 const methods = Object.fromEntries(
@@ -188,7 +194,7 @@ export function requiredNativeVerdict(value, criterion) {
   const positive = (v) => Number.isFinite(v) && v > 0;
   if (value?.openingError !== undefined) {
     if (
-      !["document", "svg"].includes(criterion.kind) ||
+      !["document", "svg", "image"].includes(criterion.kind) ||
       value.kind !== criterion.kind ||
       !Array.isArray(value.sourceSpine) ||
       !value.sourceSpine.length ||
@@ -279,6 +285,33 @@ export function requiredNativeVerdict(value, criterion) {
   )
     return false;
   if (criterion.kind === "document") return true;
+  if (criterion.kind === "image") {
+    if (
+      !Array.isArray(value.images) ||
+      !value.images.length ||
+      !Array.isArray(value.expectedImages) ||
+      value.images.length !== value.expectedImages.length ||
+      value.expectedImages.some(image => !image || !validDigest(image.expectedHash) ||
+        typeof image.sourcePath !== "string" || !image.sourcePath ||
+        typeof image.expectedPath !== "string" || !image.expectedPath) ||
+      value.images.some(image =>
+        !image ||
+        !validDigest(image.expectedHash) ||
+        !(image.actualHash === null || validDigest(image.actualHash)) ||
+        typeof image.sourcePath !== "string" || !image.sourcePath ||
+        typeof image.expectedPath !== "string" || !image.expectedPath ||
+        !["decoded", "painted"].every(key => typeof image[key] === "boolean") ||
+        !["naturalWidth", "naturalHeight"].every(key =>
+          Number.isSafeInteger(image[key]) && image[key] >= 0) ||
+        !(image.error === null || (typeof image.error === "string" && image.error.trim())))
+    ) throw new Error(`${criterion.id} has malformed native image measurements.`);
+    return value.images.every((image, index) =>
+      image.expectedHash === value.expectedImages[index].expectedHash &&
+      image.sourcePath === value.expectedImages[index].sourcePath &&
+      image.expectedPath === value.expectedImages[index].expectedPath &&
+      image.actualHash === image.expectedHash && image.decoded && image.painted &&
+      positive(image.naturalWidth) && positive(image.naturalHeight) && image.error === null);
+  }
   if (criterion.kind === "math") {
     const { math } = value;
     if (

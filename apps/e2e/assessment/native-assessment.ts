@@ -2,6 +2,7 @@ import { expect, type TestInfo } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
@@ -34,10 +35,16 @@ export async function assessNativeCriterion(
   const worksheet: { release: unknown } = JSON.parse(
     fs.readFileSync(requiredAssessmentPath("AMBRA_ASSESSMENT_PATH"), "utf8"),
   );
-  const evidence = process.env.AMBRA_ASSESSMENT_EVIDENCE_URL;
+  const local = process.env.AMBRA_ASSESSMENT_LOCAL === "1";
+  if (local && process.env.GITHUB_ACTIONS === "true") {
+    throw new Error("Local exploratory evidence cannot replace hosted release assessment.");
+  }
+  const evidence = local ? pathToFileURL(`${output}${path.sep}`).href :
+    process.env.AMBRA_ASSESSMENT_EVIDENCE_URL;
   if (
-    !evidence ||
+    !evidence || (!local &&
     !/^https:\/\/github\.com\/BCWalters\/ambra\/actions\/runs\/[1-9]\d*$/.test(evidence)
+    )
   )
     throw new Error("An exact GitHub assessment-run evidence URL is required.");
   fs.mkdirSync(output, { recursive: true });
@@ -87,6 +94,7 @@ export async function assessNativeCriterion(
           id,
           release: worksheet.release,
           environment: {
+            execution: local ? "local-exploratory" : "hosted",
             testedAt: new Date().toISOString(),
             browser: { name: "Chromium", version: browserVersion },
             os: { name: os.type(), version: os.release() },
