@@ -222,7 +222,8 @@ test("closing an unused importer leaves the original browser window open", async
     }, extensionId);
     const importer = await opened;
     const closed = importer.waitForEvent("close");
-    await importer.getByRole("button", { name: "Close", exact: true }).click();
+    // Observe closure instead of waiting for post-click work in the destroyed target.
+    await importer.getByRole("button", { name: "Close", exact: true }).click({ noWaitAfter: true });
     await closed;
     expect(page.isClosed()).toBe(false);
     await expect(page.getByRole("button", { name: "Open Reading Entry", exact: true })).toBeVisible();
