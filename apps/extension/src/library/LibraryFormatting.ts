@@ -1,4 +1,12 @@
 import type { Locale } from "../i18n/Locale.js";
+import type { Translate } from "../i18n/translate.js";
+
+export function formatLibraryBookCount(count: number, locale: Locale, t: Translate): string {
+  const category = new Intl.PluralRules(locale).select(count);
+  const key = category === "one" ? "library.bookCountOne" : category === "few" ? "library.bookCountFew"
+    : category === "many" ? "library.bookCountMany" : "library.bookCountOther";
+  return t(key, { count: new Intl.NumberFormat(locale).format(count) });
+}
 
 export function formatLibraryBytes(bytes: number, locale: Locale): string {
   const units = ["byte", "kilobyte", "megabyte", "gigabyte", "terabyte"];

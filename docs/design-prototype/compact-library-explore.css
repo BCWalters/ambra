@@ -37,6 +37,7 @@ h1 { font-size: clamp(25px, 4vw, 36px); line-height: 1.2; font-weight: 600; lett
 h2 { font-size: 19px; font-weight: 600; }
 h3 { font-size: 18px; font-weight: 600; }
 .study { max-width: 1280px; margin: auto; padding: 32px 24px; }
+.study-symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
 .review-header { max-width: 840px; }
 .review-header p { margin: 12px 0; }
 .eyebrow { text-transform: uppercase; letter-spacing: 1.4px; font-size: 11px; color: var(--muted); }
@@ -54,9 +55,11 @@ h3 { font-size: 18px; font-weight: 600; }
 .option > header p { margin: 8px 0 16px; color: var(--muted); font-size: 13px; max-width: 360px; }
 .recommendation { display: inline-block; margin-left: 6px; font-size: 11px; color: var(--accent); font-weight: 500; }
 .app { width: var(--preview-width); max-width: 100%; height: 560px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
-.brand-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
+.brand-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; }
 .brand { display: flex; align-items: center; gap: 7px; font-size: 19px; font-weight: 620; letter-spacing: -.5px; }
 .brand img { width: 24px; height: 24px; }
+.header-library { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 6px 4px; border-radius: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; text-decoration: none; }
+.header-library:hover { color: var(--ink); background: var(--hover); text-decoration: underline; }
 .app-menu { position: relative; }
 .app-menu summary { display: flex; align-items: center; justify-content: center; border-radius: 6px; width: 36px; height: 36px; list-style: none; }
 .app-menu summary::-webkit-details-marker { display: none; }
@@ -65,6 +68,10 @@ h3 { font-size: 18px; font-weight: 600; }
 .app-menu-panel a:hover { background: var(--hover); }
 .library-heading { padding: 4px 14px 10px; position: relative; }
 .heading-row h3 { padding-right: 88px; }
+.flat-first .library-heading { padding-bottom: 4px; }
+.flat-first .library-title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; min-height: 32px; padding-right: 88px; }
+.flat-first .library-title-line h3 { padding-right: 0; }
+.flat-first .library-title-line .result-count { margin-top: 0; white-space: nowrap; }
 .tools > summary { position: absolute; right: 14px; top: 1px; border-radius: 5px; font-size: 12px; padding: 6px 3px; min-height: 36px; }
 .tool-panel { display: grid; gap: 8px; margin-top: 8px; }
 .tool-panel label { display: grid; gap: 4px; font-size: 12px; }
@@ -80,13 +87,15 @@ h3 { font-size: 18px; font-weight: 600; }
 .group-picker { display: flex; align-items: center; gap: 8px; padding: 0 14px 10px; font-size: 12px; }
 .group-picker select { flex: 1; }
 .app-scroll { flex: 1; min-height: 0; overflow: auto; padding: 6px 14px 12px; scrollbar-gutter: stable; }
+.flat-first .app-scroll { padding-top: 0; }
 .filter-note { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 8px; }
 .filter-note span { overflow-wrap: anywhere; min-width: 0; }
 .filter-note button { flex-shrink: 0; color: var(--accent); }
 .section-label { font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin: 10px 0 4px; }
 .resume { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; margin: 4px 0 14px; background: var(--inset); }
+.flat-first .resume { margin-top: 2px; }
 .resume strong { display: block; font: 600 18px/1.3 Georgia, serif; margin: 5px 0; overflow-wrap: anywhere; }
-.resume .primary { width: 100%; margin-top: 9px; }
+.resume .primary { display: block; width: 100%; margin-top: 9px; }
 .resume .book-status { margin-top: 5px; }
 .cover { width: 44px; height: 66px; border: 1px solid #0002; border-radius: 2px 5px 5px 2px; display: flex; flex-direction: column; justify-content: space-between; padding: 6px 4px; background: var(--cover, #40564e); color: #fff; overflow: hidden; flex-shrink: 0; }
 .cover strong { font: 600 9px/1.3 Georgia, serif; overflow-wrap: anywhere; }
@@ -97,6 +106,17 @@ h3 { font-size: 18px; font-weight: 600; }
 .resume .cover.artwork { padding: 0; }
 .resume .cover strong { font-size: 13px; color: #fff; margin: 0; }
 .resume .cover small { font-size: 8px; }
+.resume-compact { width: 100%; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 10px; text-align: left; }
+.resume-compact:hover { background: var(--selected); border-color: var(--accent); }
+.resume-copy { min-width: 0; }
+.resume-label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; color: var(--accent); font-size: 11px; line-height: 1.4; }
+.resume-compact strong { font-size: 15px; margin: 3px 0; }
+.resume-compact .book-author { margin: 2px 0 0; font-size: 11px; line-height: 1.4; }
+.resume-compact .progress-line { margin-top: 6px; }
+.resume-compact .cover { width: 44px; height: 66px; padding: 6px 4px; }
+.resume-compact .cover.artwork { padding: 0; }
+.resume-compact .cover strong { font-size: 9px; }
+.resume-compact .cover small { font-size: 6px; }
 .book-list { list-style: none; padding: 0; margin: 0; }
 .book-row { width: 100%; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 12px; text-align: left; padding: 10px 2px; border-bottom: 1px solid var(--line); border-radius: 0; }
 .book-row:hover { background: var(--hover); }
@@ -104,7 +124,7 @@ h3 { font-size: 18px; font-weight: 600; }
 .book-author { display: block; font-size: 12px; color: var(--muted); margin: 3px 0; overflow-wrap: anywhere; }
 .book-status { display: block; font-size: 11px; color: var(--muted); }
 .current-label { color: var(--accent); }
-.progress-line { height: 3px; background: var(--line); margin-top: 7px; border-radius: 3px; overflow: hidden; }
+.progress-line { display: block; width: 100%; height: 3px; background: var(--line); margin-top: 7px; border-radius: 3px; overflow: hidden; }
 .progress-line span { display: block; height: 100%; background: var(--accent-fill); width: var(--progress); }
 .cover-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 10px; list-style: none; margin: 4px 0; padding: 0; }
 .cover-grid > li { min-width: 0; }
@@ -119,11 +139,17 @@ h3 { font-size: 18px; font-weight: 600; }
 .app-footer { padding: 10px 12px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .app-footer a { color: var(--ink); font-size: 12px; text-decoration: none; min-height: 36px; display: flex; align-items: center; padding: 6px; border-radius: 5px; }
 .app-footer a:hover { background: var(--hover); }
+.app-footer .find-books { padding: 8px 14px; border: 1px solid var(--accent); color: var(--on-accent); background: var(--accent-fill); }
+.app-footer .find-books:hover { background: var(--accent-fill); box-shadow: inset 0 0 0 1px var(--on-accent); }
 .app-footer button { font-size: 12px; }
 .empty { padding: 28px 6px; text-align: center; }
 .empty h3 { font-size: 17px; margin-bottom: 8px; }
 .empty p { color: var(--muted); font-size: 13px; margin: 8px 0 16px; }
 .empty a { display: inline-block; margin-top: 12px; font-size: 12px; }
+.empty-library { min-height: 204px; padding: 24px 8px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.empty-library .empty-art { width: 120px; max-width: 100%; height: auto; flex-shrink: 0; margin-bottom: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.empty-library h3 { font-size: 16px; }
+.empty-library p { max-width: 240px; margin-top: 0; }
 .rationale { margin-top: 36px; max-width: 880px; }
 .rationale p { margin-top: 12px; }
 dialog { width: 440px; max-width: calc(100% - 24px); max-height: calc(100% - 32px); overflow: auto; padding: 24px; color: var(--ink); background: var(--surface); border: 1px solid var(--control-line); border-radius: 12px; }

@@ -153,7 +153,7 @@ test("first successful reading only; acknowledge once, reload, reopen, and open 
     await expect(app.libraryPage.getByRole("main").getByRole("button", { name: /^Open /i })).toHaveCount(2);
     const firstUrl = page.url();
     await page.close();
-    await app.libraryPage.getByRole("main").getByRole("button", { name: /^Open /i }).first().click();
+    await app.libraryPage.getByRole("main").getByRole("button", { name: /^Open Reading Entry\b/ }).click();
     await expect.poll(() => app.context.pages().filter(p => p.url().includes("/reader/")).length).toBe(1);
     const nextReader = app.context.pages().find(p => p.url().includes("/reader/"))!;
     await expect(nextReader.locator("iframe").first()).toBeAttached();

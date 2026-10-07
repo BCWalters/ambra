@@ -6,7 +6,7 @@ import { useLibrary, type UseLibraryResult, type LibraryBookViewModel } from "./
 import { CATALOGS, getTranslate } from "../i18n/translate.js";
 import { SUPPORTED_LOCALES, type Locale } from "../i18n/Locale.js";
 import { DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
-import { formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
+import { formatLibraryBookCount, formatLibraryBytes, formatLibraryProgress } from "./LibraryFormatting.js";
 import { generatedCoverColor } from "./LibraryBookCard.js";
 
 const language = vi.hoisted(() => ({ locale: "en" as Locale }));
@@ -268,6 +268,53 @@ describe("Library localization and action ownership", () => {
     state.isFullTab = false;
     await render();
     expect(container.querySelector('section[aria-label="Continue reading"]')).toBeNull();
+  });
+
+  it.each(SUPPORTED_LOCALES)("uses compact D navigation, cardinal counts and one resume action in %s", async locale => {
+    language.locale = locale;
+    state.isFullTab = false;
+    const t = getTranslate(locale);
+    await render();
+    expect(container.querySelector("[data-library-book-count]")?.textContent).toBe(formatLibraryBookCount(0, locale, t));
+    expect(container.querySelector("footer")?.contains(button(t("library.importEpub")))).toBe(true);
+    expect(container.querySelector("footer")?.contains(button(t("library.findBooks")))).toBe(true);
+    expect(container.querySelector("header")?.contains(button(t("library.fullLibrary")))).toBe(true);
+    state.books = [{ ...book("Resume"), lastReadAt: 20, progressFraction: 0.29 }];
+    await render();
+    expect(container.querySelector("[data-library-book-count]")?.textContent).toBe(formatLibraryBookCount(1, locale, t));
+    const resume = container.querySelector("[data-library-continue]")!;
+    const open = resume.querySelector<HTMLButtonElement>("[data-book-open]")!;
+    expect(container.querySelectorAll('[data-book-open="Resume"]')).toHaveLength(1);
+    expect(open.querySelector("button")).toBeNull();
+    expect(resume.querySelector("[data-library-continue-actions]")).toBeNull();
+    expect(open.querySelector("[data-library-progress-track]")?.getAttribute("aria-hidden")).toBe("true");
+    expect(button(t("library.bookDetails", { title: "Resume" })).closest("[data-book-open]")).toBeNull();
+    await act(async () => open.click());
+    expect(state.openBook).toHaveBeenCalledExactlyOnceWith("Resume");
+    const toggle = button(t("library.findAndSort"));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("[data-library-filters]")?.parentElement?.hidden).toBe(true);
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(container.querySelector('input[type="search"]'));
+    await act(async () => container.querySelector('input[type="search"]')!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    ));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("keeps the latest unfinished popup book separate and promotes the next after completion", async () => {
+    state.isFullTab = false;
+    state.books = [{ ...book("Older"), lastReadAt: 10, progressFraction: 0.1 },
+      { ...book("Resume"), lastReadAt: 20, progressFraction: 0.29 },
+      { ...book("Finished"), lastReadAt: 30, progressFraction: 1 }, book("Unread")];
+    await render();
+    expect(container.querySelector("[data-library-continue]")?.getAttribute("data-library-book")).toBe("Resume");
+    expect(container.querySelectorAll("[data-library-book]")).toHaveLength(4);
+    state.books = state.books.map(book => book.id === "Resume" ? { ...book, progressFraction: 1 } : book);
+    await render();
+    expect(container.querySelector("[data-library-continue]")?.getAttribute("data-library-book")).toBe("Older");
   });
 
   it.each(SUPPORTED_LOCALES)("offers a prominent localized resume card without inventing chapter metadata in %s", async locale => {

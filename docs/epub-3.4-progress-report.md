@@ -226,6 +226,6 @@ not modern required failures.
 There is no complete EPUB 3.4 conformance claim and no store release from this
 work. The owner requested a release hold. The separate
 [compact-library alternatives](design-prototype/compact-library-explore.html)
-for #351 compare a resume-first layout, a list-first layout and a cover shelf.
-They are standalone samples only; production implementation awaits the owner's
-choice.
+for #351 retain four standalone options. The owner selected **D: Just keep
+reading** for the popup and embedded reader library, without Continue Reading
+in the embedded panel. This UX work does not change the EPUB assessment above.

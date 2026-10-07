@@ -49,7 +49,13 @@ test("French local-import completion remains localized and compact Library keybo
     const help = page.getByRole("button", { name: "Help & About", exact: true });
     await help.focus();
     await help.press("Tab");
-    await expect(page.getByRole("button", { name: "Find books", exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Find & sort", exact: true })).toBeFocused();
+    const findBooks = page.getByRole("button", { name: "Find books", exact: true });
+    for (let remaining = await page.getByRole("button").count();
+      remaining > 0 && !(await findBooks.evaluate(element => element === document.activeElement)); remaining--) {
+      await page.keyboard.press("Tab");
+    }
+    await expect(findBooks).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeFocused();
     expect(await help.evaluate(element => {
