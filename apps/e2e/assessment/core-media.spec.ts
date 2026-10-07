@@ -1,10 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
-import { exposeReaderController } from "../reader-controller.js";
+import { assessNativeCriterion } from "./native-assessment.js";
 
 interface Criterion {
   readonly id: string;
@@ -42,47 +39,12 @@ function criteria(): Criterion[] {
   });
 }
 
-function requiredPath(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is required for the opt-in assessment.`);
-  return path.resolve(value);
-}
-
 for (const criterion of criteria()) {
   test(`official core-media criterion: ${criterion.id}`, async ({
     browserName: _browserName,
   }, info) => {
-    const output = requiredPath("AMBRA_ASSESSMENT_OUTPUT");
-    const worksheetPath = requiredPath("AMBRA_ASSESSMENT_PATH");
-    const suite = requiredPath("AMBRA_EPUB_TESTS_PATH");
-    const worksheet: { release: unknown } = JSON.parse(fs.readFileSync(worksheetPath, "utf8"));
-    const evidenceUrl = process.env.AMBRA_ASSESSMENT_EVIDENCE_URL;
-    if (
-      !evidenceUrl ||
-      !/^https:\/\/github\.com\/BCWalters\/ambra\/actions\/runs\/[1-9]\d*$/.test(evidenceUrl)
-    ) {
-      throw new Error("An exact GitHub assessment-run evidence URL is required.");
-    }
-    fs.mkdirSync(output, { recursive: true });
-    let launched: Awaited<ReturnType<typeof launchReader>> | undefined;
-    let browserVersion: string | null = null;
-    let observations: unknown = null;
-    let result = {
-      status: "not-run",
-      method: "automated",
-      reason: "Criterion execution did not complete.",
-      evidence: evidenceUrl,
-      trackingIssue: null as string | null,
-    };
-    try {
-      launched = await launchReader(path.join(suite, "tests", `${criterion.id}.epub`), {
-        viewport: { width: 900, height: 900 },
-      });
+    await assessNativeCriterion(criterion.id, info, async launched => {
       const page = launched.readerPage;
-      const session = await launched.context.newCDPSession(page);
-      browserVersion = (await session.send("Browser.getVersion")).product;
-      await session.detach();
-      await exposeReaderController(page);
       const measured = await page.evaluate(async ({ kind, family }) => {
         const controller = Reflect.get(window, "__readerController");
         const painted = (element: Element, doc: Document): boolean => {
@@ -192,7 +154,6 @@ for (const criterion of criteria()) {
         }
         return { fonts, images };
       }, criterion);
-      observations = measured;
       const passed =
         criterion.kind === "font"
           ? measured.fonts.length > 0 &&
@@ -210,47 +171,15 @@ for (const criterion of criteria()) {
                 image.packaged &&
                 image.decodeError === null,
             );
-      result = {
-        ...result,
-        status: passed ? "pass" : "fail",
+      return {
+        observations: measured,
+        passed,
         reason:
           criterion.kind === "font"
             ? "Named check core-media.spec.ts requires the pinned font to be natively loaded, used by authored visible content, and rasterize original probe glyphs differently from generic serif. See archived observations."
             : "Named check core-media.spec.ts requires every pinned image to decode from a packaged blob and pass native hit-testing in both the content frame and shell. See archived observations.",
-        trackingIssue: passed ? null : "https://github.com/BCWalters/ambra/issues/328",
+        trackingIssue: "https://github.com/BCWalters/ambra/issues/328",
       };
-      await info.attach(`${criterion.id}-observed.json`, {
-        body: JSON.stringify(measured),
-        contentType: "application/json",
-      });
-      console.log(`${criterion.id}: ${result.status}: ${JSON.stringify(measured)}`);
-    } catch (error) {
-      result.status = "not-run";
-      result.trackingIssue = null;
-      result.reason = `Execution blocked before criterion assessment: ${error instanceof Error ? error.message : String(error)}.`;
-      console.error(`${criterion.id}: ${result.reason}`);
-      throw error;
-    } finally {
-      fs.writeFileSync(
-        path.join(output, `${criterion.id}.json`),
-        JSON.stringify(
-          {
-            id: criterion.id,
-            release: worksheet.release,
-            environment: {
-              testedAt: new Date().toISOString(),
-              browser: { name: "Chromium", version: browserVersion },
-              os: { name: os.type(), version: os.release() },
-            },
-            result,
-            observations,
-          },
-          null,
-          2,
-        ),
-      );
-      if (launched) await launched.context.close();
-    }
-    expect(result.status, `${criterion.id}: official criterion verdict`).toBe("pass");
+    });
   });
 }

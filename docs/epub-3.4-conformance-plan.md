@@ -44,6 +44,26 @@ compatibility work. They are not prerequisites for a secure, useful reader,
 but unsupported features and their fallback behavior must be handled
 explicitly.
 
+### Owner-approved next milestone and policies
+
+- Broaden measured coverage before selecting the next rendering implementation.
+  The opt-in release workflow now defines ten additional required
+  package/metadata, navigation and roll checks alongside the original eleven
+  media checks. See the [runner methods](epub-3.4-conformance-runner.md).
+  Until a merged-main run produces evidence, the historical 10/11 result above
+  remains the last measured result; 21 checks is planned coverage, not a score.
+- Keep publication scripting disabled for now; revisit only with compelling
+  feedback. Required publication-origin isolation remains open in #338.
+- Use browser-native JPEG XL support when available; do not bundle a custom
+  decoder. Keep the unsupported required criterion visible as a failure.
+- Keep deprecated omissions explicit and add legacy behavior only with
+  evidence of useful compatibility, rather than treating obsolete features as
+  prerequisites for modern conformance.
+- Remote open-source fonts and direct inline video are compelling use cases.
+  HTTPS/per-book permission, privacy and offline fallback need a separate
+  design in #336. This milestone does not enable network fetching or establish
+  a consent/default policy. Scripted third-party players are a separate scope.
+
 ## Work plan
 
 Each item has a stable audit ID so release reports can refer to it even if

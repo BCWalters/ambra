@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { foundationVerdict, isFoundationCriterion, isFoundationId } from "./epub-conformance-foundations.mjs";
 
 const releaseFields = ["archive", "version", "commit", "sha256"];
 const verdicts = new Set(["pass", "fail", "not-run"]);
@@ -13,6 +14,7 @@ function text(value, label) {
 }
 
 function nativeVerdict(observations, criterion) {
+  if (isFoundationCriterion(criterion)) return foundationVerdict(observations, criterion);
   if (!Array.isArray(observations?.fonts) || !Array.isArray(observations.images)) {
     throw new Error(`${criterion.id} lacks native font/image measurement arrays.`);
   }
@@ -58,7 +60,8 @@ export function mergeCoreAssessment(assessment, records, { criteria, evidenceUrl
     !Array.isArray(criteria) || criteria.length === 0 ||
     criteria.some(criterion =>
       !criterion || typeof criterion.id !== "string" || !/^[a-z0-9_-]+$/.test(criterion.id) ||
-      !["font", "image"].includes(criterion.kind) ||
+      (isFoundationId(criterion.id) && !isFoundationCriterion(criterion)) ||
+      (!["font", "image"].includes(criterion.kind) && !isFoundationCriterion(criterion)) ||
       (criterion.kind === "font" && (typeof criterion.family !== "string" || !criterion.family.trim())),
     ) ||
     new Set(criteria.map(criterion => criterion.id)).size !== criteria.length
@@ -151,13 +154,13 @@ export function mergeCoreAssessment(assessment, records, { criteria, evidenceUrl
   }
   merged.environment = {
     testedAt: new Date(latest).toISOString(),
-    tester: "Ambra GitHub automated core-media assessment",
+    tester: "Ambra GitHub automated native assessment",
     browser: environments[0],
     os: operatingSystem,
     runner: {
       mode: "automated",
       configuration:
-        "core-media.spec.ts: exact production archive; isolated persistent Chromium profiles; 900x900 viewport; 11 pinned font/image criteria with native glyph/paint observations. All other criteria remain unchanged and unassessed by this profile.",
+        `Exact production archive; isolated persistent Chromium profiles; 900x900 viewport; ${criteria.length} pinned native criteria. core-media.spec.ts retains font/image glyph/paint methods.${criteria.some(isFoundationCriterion) ? " foundations.spec.ts uses independently parsed source metadata, native controls, content language/direction, and roll geometry/decode/asset hashes." : ""} No live assistive-technology claim. Other criteria remain unchanged and unassessed by this profile.`,
     },
   };
   return merged;
@@ -170,6 +173,7 @@ async function main() {
       observations: { type: "string" },
       output: { type: "string" },
       evidence: { type: "string" },
+      foundations: { type: "boolean", default: false },
     },
     allowPositionals: false,
   });
@@ -181,6 +185,11 @@ async function main() {
       "utf8",
     ),
   );
+  if (values.foundations) {
+    profile.push(...JSON.parse(await readFile(
+      new URL("../conformance/epub-3.4/foundations-profile.json", import.meta.url), "utf8",
+    )));
+  }
   const assessment = JSON.parse(await readFile(values.assessment, "utf8"));
   const files = (await readdir(values.observations))
     .filter((file) => file.endsWith(".json"))

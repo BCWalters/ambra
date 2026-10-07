@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       automated_core:
-        description: Assess 11 pinned native font/image criteria (other criteria remain unassessed)
+        description: Assess 21 pinned native media, metadata, navigation and roll criteria
         type: boolean
         default: true
 
@@ -72,11 +72,11 @@ jobs:
           --suite "$RUNNER_TEMP/epub-tests"
           --release dist/beta-release/artifacts/release.json
           --output dist/conformance/epub-3.4-assessment.json
-      - name: Generate pinned core-media publications
+      - name: Generate pinned native assessment publications
         if: inputs.automated_core
         run: |
           for TEST_ID in $(
-            node -e "console.log(JSON.parse(require('node:fs').readFileSync('conformance/epub-3.4/core-media-profile.json')).map(test => test.id).join(' '))"
+            node -e "console.log(['core-media','foundations'].flatMap(name => JSON.parse(require('node:fs').readFileSync('conformance/epub-3.4/' + name + '-profile.json'))).map(test => test.id).join(' '))"
           ); do
             test -f "$RUNNER_TEMP/epub-tests/tests/$TEST_ID/mimetype"
             (
@@ -96,7 +96,7 @@ jobs:
       - name: Install assessment Chromium
         if: inputs.automated_core
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
-      - name: Assess official native font and image criteria
+      - name: Assess official native media and foundation criteria
         id: core_criteria
         if: inputs.automated_core
         env:
@@ -112,6 +112,7 @@ jobs:
         if: ${{ !cancelled() && inputs.automated_core && steps.core_criteria.outcome != 'skipped' }}
         run: >-
           node scripts/epub-conformance-core.mjs
+          --foundations
           --assessment dist/conformance/epub-3.4-assessment.json
           --observations dist/conformance/core-media
           --output dist/conformance/epub-3.4-assessment.json
@@ -134,6 +135,7 @@ jobs:
             dist/conformance/
             conformance/epub-3.4/config.json
             conformance/epub-3.4/core-media-profile.json
+            conformance/epub-3.4/foundations-profile.json
             docs/epub-3.4-conformance-runner.md
           if-no-files-found: error
           retention-days: 30
