@@ -1,5 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -74,6 +82,13 @@ export async function generatePublication(suite, directory, outputDirectory) {
   mkdirSync(outputDirectory, { recursive: true });
   const output = path.resolve(outputDirectory, `${directory}.epub`);
   if (existsSync(output)) throw new Error(`Publication output already exists: ${output}`);
+  if (
+    directory === "ocf-zip-mult" &&
+    readdirSync(outputDirectory).some(
+      (name) => name === `${directory}.zip` || new RegExp(`^${directory}\\.z\\d{2}$`).test(name),
+    )
+  )
+    throw new Error("Segmented publication output already exists.");
   if (readFileSync(path.join(source, "mimetype"), "utf8").trim() !== "application/epub+zip")
     throw new Error(`Missing EPUB mimetype: ${directory}`);
   const entries = readdirSync(source).filter((name) => name !== "mimetype" && name !== ".DS_Store");
@@ -86,7 +101,7 @@ export async function generatePublication(suite, directory, outputDirectory) {
   const temporary =
     directory === "ocf-zip-mult" ? mkdtempSync(path.join(os.tmpdir(), "ambra-segmented-")) : null;
   try {
-    const archive = temporary ? path.join(temporary, "original.epub") : output;
+    const archive = temporary ? path.join(temporary, "original.zip") : output;
     zip(["-q", "-X", "-0", archive, "mimetype"]);
     zip([
       "-q",
@@ -98,7 +113,11 @@ export async function generatePublication(suite, directory, outputDirectory) {
       "-x",
       "*.DS_Store",
     ]);
-    if (temporary) zip(["-q", "-s", "64k", archive, "--out", output]);
+    if (temporary) {
+      const split = path.resolve(outputDirectory, `${directory}.zip`);
+      zip(["-q", "-s", "64k", archive, "--out", split]);
+      renameSync(split, output);
+    }
     const properties = await archiveProperties(output);
     if (directory === "ocf-zip-comp" && !properties.compressionMethods.includes(12))
       throw new Error("BZIP2 fixture generation did not retain unsupported compression.");
