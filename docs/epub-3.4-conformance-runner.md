@@ -96,7 +96,7 @@ unassessed. The collector's `--foundations` flag requires all 21 records;
 without it, existing eleven-record media-only collection remains supported.
 
 [Merged-main run 37623541718](https://github.com/BCWalters/ambra/actions/runs/37623541718)
-has now measured the full profile: 20 passes and the native JPEG XL failure.
+measured the historical 21-method profile: 20 passes and the native JPEG XL failure.
 All ten additions pass; the original eleven remain 10/11. See the
 [progress report](epub-3.4-progress-report.md) for coverage, exact package
 fingerprint, environment and the distinct historical comparison. The red
@@ -143,6 +143,16 @@ plus 39 additions. This is a method count, **not a measured score**:
   contain the word "compression". Other version errors do not qualify.
   Ordinary ZIP regeneration must not turn these
   intentionally invalid fixtures into valid ones.
+
+[Merged-main run 37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454)
+now executes all 60 methods: **56 pass, four fail, zero execution blockers**.
+All original 21 statuses are unchanged. Three newly measured standalone-SVG
+cases surface `Cannot read properties of null (reading 'style')` in the actual
+reader ([#367](https://github.com/BCWalters/ambra/issues/367)); JPEG XL is the
+unchanged fourth failure. Native audio and both deliberately invalid archive
+cases pass. Required verdict coverage is 60/139 (43.17%), not 139/139.
+See the [progress report](epub-3.4-progress-report.md) for the complete category
+table, exact archive fingerprint and retained exploratory outcomes.
 
 The other **79 rows remain manual/pending automation**, not passed and not
 silently waived. Their procedures cover authored visual/layout comparisons,
