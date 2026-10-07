@@ -15,7 +15,7 @@ import {
 } from "./native-assessment.js";
 import { openAssessmentPublication } from "./publication-opening.js";
 
-async function expectations(page: Page, id: string) {
+async function expectations(page: Page, id: string, imageAssessment = false) {
   const root = path.join(requiredAssessmentPath("AMBRA_EPUB_TESTS_PATH"), "tests", id);
   const xml: Record<string, string> = {};
   const hashes: Record<string, string> = {};
@@ -33,7 +33,7 @@ async function expectations(page: Page, id: string) {
   };
   read(root);
   return page.evaluate(
-    async ({ xml, hashes }) => {
+    async ({ xml, hashes, imageAssessment }) => {
       const parser = new DOMParser();
       const parse = (name: string) => {
         if (!Object.hasOwn(xml, name)) throw new Error(`Missing original XML: ${name}`);
@@ -99,6 +99,33 @@ async function expectations(page: Page, id: string) {
           if (!expectedHash) throw new Error("Missing original media bytes.");
           return { expectedHash };
         });
+        const images = imageAssessment ? Array.from(doc.querySelectorAll("img")).map(element => {
+          const src = element.getAttribute("src");
+          if (!src) throw new Error("Missing original image URL.");
+          const sourcePath = resolve(src, file);
+          const originalImage = manifest.find(item => {
+            const href = item.getAttribute("href");
+            return href && resolve(href, packagePath) === sourcePath;
+          });
+          if (!originalImage) throw new Error(`Original image is absent from the manifest: ${sourcePath}`);
+          let image: Element = originalImage;
+          const visited = new Set<Element>();
+          while (!["image/jpeg", "image/png"].includes(image.getAttribute("media-type") ?? "")) {
+            if (visited.has(image)) throw new Error("Original image fallback chain is cyclic.");
+            visited.add(image);
+            const fallback: string | null = image.getAttribute("fallback");
+            const next: Element | undefined = manifest.find(item => item.getAttribute("id") === fallback);
+            if (!fallback || !next) throw new Error(`Missing original image fallback: ${sourcePath}`);
+            image = next;
+          }
+          const href = image.getAttribute("href");
+          if (!href) throw new Error("Missing original image fallback URL.");
+          const expectedPath = resolve(href, packagePath);
+          const expectedHash = hashes[expectedPath];
+          if (!expectedHash) throw new Error(`Missing expected original image bytes: ${expectedPath}`);
+          return { src, sourcePath, expectedPath, expectedHash };
+        }) : [];
+        if (imageAssessment && !images.length) throw new Error("Original image criterion has no authored image.");
         const shapeHashes = await Promise.all(
           Array.from(doc.querySelectorAll("path.fil0")).map(async (shape) =>
             Array.from(
@@ -118,13 +145,14 @@ async function expectations(page: Page, id: string) {
           contentPath: file,
           expectedTextHash,
           media,
+          images,
           shapeHashes,
         });
       }
       if (!documents.length) throw new Error("Empty original spine.");
       return documents;
     },
-    { xml, hashes },
+    { xml, hashes, imageAssessment },
   );
 }
 
@@ -248,8 +276,9 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
             trackingIssue: "https://github.com/BCWalters/ambra/issues/326",
           };
         }
-        const source = await expectations(page, criterion.id);
-        if (["cnt-svg-support", "cnt-svg-css", "pkg-spine-order-svg"].includes(criterion.id)) {
+        const source = await expectations(page, criterion.id, criterion.kind === "image");
+        if (criterion.kind === "image" ||
+          ["cnt-svg-support", "cnt-svg-css", "pkg-spine-order-svg"].includes(criterion.id)) {
           const opened = await openAssessmentPublication(launched, criterion.id);
           if (opened.status === "rejected") {
             return {
@@ -274,6 +303,7 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
         let math: unknown;
         const shapes: unknown[] = [];
         const media: unknown[] = [];
+        const images: unknown[] = [];
         for (const [index, expected] of source.entries()) {
           if (index > 0) {
             await page.evaluate(() => Reflect.get(window, "__readerController").goToChapter(1));
@@ -292,6 +322,67 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
             expectedTextHash: expected.expectedTextHash,
             painted: await paintedDocument(page, index, measured),
           });
+          for (const [ordinal, original] of expected.images.entries()) {
+            const observed = await page.evaluate(async ({ index, ordinal }) => {
+              const views: { document: Document; spineIndex: number }[] =
+                Reflect.get(window, "__readerController").contentDocumentViews();
+              const doc = views.find(view => view.spineIndex === index)?.document;
+              if (!doc) throw new Error("Native image content document is absent.");
+              const image = doc.querySelectorAll("img")[ordinal];
+              if (!image) {
+                const error = `Native authored image ${ordinal} is absent.`;
+                console.error(error);
+                return { actualHash: null, decoded: false, painted: false,
+                  naturalWidth: 0, naturalHeight: 0, error, geometry: null };
+              }
+              let error: string | null = null;
+              let decoded = false;
+              try {
+                await image.decode();
+                decoded = true;
+              } catch (failure) {
+                if (!(failure instanceof DOMException) || failure.name !== "EncodingError") throw failure;
+                error = `${failure.name}: ${failure.message}`;
+                console.error(`Native image decoding failed: ${error}`);
+              }
+              const src = image.currentSrc || image.src;
+              if (!src) throw new Error("Native image has no assigned resource URL.");
+              const response = await fetch(src);
+              if (!response.ok) throw new Error(`Native image resource returned HTTP ${response.status}.`);
+              const actualHash = Array.from(new Uint8Array(await crypto.subtle.digest(
+                "SHA-256", await response.arrayBuffer(),
+              ))).map(byte => byte.toString(16).padStart(2, "0")).join("");
+              const frame = doc.defaultView?.frameElement;
+              if (!(frame instanceof HTMLIFrameElement)) throw new Error("Native image frame is absent.");
+              const rect = (element: Element) => {
+                const box = element.getBoundingClientRect();
+                return { x: box.x, y: box.y, width: box.width, height: box.height };
+              };
+              return {
+                actualHash, decoded, painted: image.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+                naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight, error,
+                geometry: {
+                  frame: rect(frame), image: rect(image),
+                  clientWidth: frame.clientWidth, clientHeight: frame.clientHeight,
+                  viewport: { width: innerWidth, height: innerHeight },
+                  clip: { x: 0, y: 0, width: innerWidth, height: innerHeight },
+                },
+              };
+            }, { index, ordinal });
+            const point = observed.geometry && rollImageHitPoint(observed.geometry);
+            const painted = observed.painted && !!point && await page.evaluate(({ index, ordinal, point }) => {
+              const views: { document: Document; spineIndex: number }[] =
+                Reflect.get(window, "__readerController").contentDocumentViews();
+              const doc = views.find(view => view.spineIndex === index)?.document;
+              const image = doc?.querySelectorAll("img")[ordinal];
+              const frame = doc?.defaultView?.frameElement;
+              return !!image && !!frame &&
+                doc?.elementFromPoint(point.document.x, point.document.y) === image &&
+                frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
+                document.elementFromPoint(point.viewport.x, point.viewport.y) === frame;
+            }, { index, ordinal, point });
+            images.push({ ...original, ...observed, painted, point });
+          }
           if (criterion.kind === "math") {
             const geometry = await page.evaluate(() => {
               const views: { document: Document }[] = Reflect.get(
@@ -512,7 +603,9 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
           math,
           shapes,
           media,
+          images,
           sourceSpine: source.map((item) => item.path),
+          expectedImages: source.flatMap(item => item.images),
           acceptedSpinePaths: source.map((item) => [...new Set([item.path, item.contentPath])]),
           readingOrder,
           expectedShapeHashes: source.flatMap((item) => item.shapeHashes),
@@ -526,6 +619,7 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
         };
       },
       criterion.kind === "rejection" ||
+        criterion.kind === "image" ||
         ["cnt-svg-support", "cnt-svg-css", "pkg-spine-order-svg"].includes(criterion.id)
         ? { publicationId: "cnt-xhtml-support" }
         : {},

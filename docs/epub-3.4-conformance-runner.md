@@ -111,8 +111,10 @@ covering **139 identifiers / 140 publications**, including both originals for
 normative references, method, subject and explicit procedure. Inventory coverage
 is not executed-verdict coverage.
 
-The expanded registry currently has **60 automated methods**: the unchanged 21
-plus 39 additions. This is a method count, **not a measured score**:
+The expanded registry currently has **64 automated methods**: the unchanged 21
+plus 43 additions. This is a method count, **not a measured score**. The latest
+published merged-main result below remains the historical 60-method run until
+the new methods are assessed against a fresh exact production package:
 
 - Source-derived original document text and complete spine order, including
   unknown collection/manifest/meta/spine properties, backward package version,
@@ -122,6 +124,12 @@ plus 39 additions. This is a method count, **not a measured score**:
   the expected path/index, original text hash and scaled paired paint point.
 - Presentation MathML with native namespace, painted equation and a superscript
   positioned above and smaller than its base.
+- Three OCF image-reference cases (relative, archive-root absolute, and excess
+  parent segments) plus the non-spine PSD-to-PNG manifest fallback. Expectations
+  use the original raw XHTML/OPF and browser-standard URL resolution independently
+  of Ambra's resolver. Every selected image must match the original expected
+  target's SHA-256, decode natively and paint at the same child/shell hit point.
+  Import alone is insufficient; surfaced import/reader errors remain failures.
 - Standalone/included SVG and its CSS pattern cases, requiring original path
   geometry hashes, native fill/pattern resolution and paired shape hit points.
   Standalone opening uses an explicit native import/open observer: a surfaced
@@ -154,8 +162,11 @@ cases pass. Required verdict coverage is 60/139 (43.17%), not 139/139.
 See the [progress report](epub-3.4-progress-report.md) for the complete category
 table, exact archive fingerprint and retained exploratory outcomes.
 
-The other **79 rows remain manual/pending automation**, not passed and not
-silently waived. Their procedures cover authored visual/layout comparisons,
+In that published run, **79 rows remain unassessed**, not passed and not
+silently waived. Four now have newly registered image URL/fallback methods;
+their verdicts still require fresh package-bound execution. The remaining
+**75 rows have procedures but no criterion-specific automated method**.
+Those procedures cover authored visual/layout comparisons,
 SMIL/audio synchronization and listening, duplicate-publication/bookmark/link
 behavior, physical progression, resource restrictions, structural semantics and
 per-reference scripting/origin applicability. A pending automated method is not
@@ -169,6 +180,13 @@ native record and the complete exact-package-bound inventory. It rejects missing
 procedures, duplicate source directories, renamed kinds and incomplete records.
 Manual rows receive explicit pending reasons and retain any already evidenced
 manual result; registering a procedure never promotes it to a pass.
+
+Developers may explicitly set `AMBRA_ASSESSMENT_LOCAL=1` when running focused
+native probes against an isolated, fingerprinted package. Those records carry
+`execution: local-exploratory` and a local `file:` evidence URI; no hosted run is
+invented. Local mode is forbidden inside GitHub Actions, and the release
+collector rejects local evidence rather than promoting it into a published
+release score. Keep exploratory output separate from the official kit.
 
 All 140 publications are generated outside the immutable source checkout, so the
 upstream segmented volume is preserved. `AMBRA_ASSESSMENT_PUBLICATIONS_PATH`

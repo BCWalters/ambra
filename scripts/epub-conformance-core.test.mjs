@@ -144,3 +144,10 @@ test("rejects mixed provenance, untracked failures, invented not-applicable resu
     assert.throws(() => merge(records));
   }
 });
+
+test("local exploratory file evidence cannot be promoted into the hosted release score", () => {
+  const records = ids.map(observation);
+  records[0].result.evidence = "file:///local-exploratory-evidence/";
+  records[0].environment.execution = "local-exploratory";
+  assert.throws(() => merge(records));
+});

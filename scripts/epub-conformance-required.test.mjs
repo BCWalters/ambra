@@ -32,11 +32,39 @@ const reading = {
 
 test("expanded registry has unique, typed methods, including additional foundation cases", () => {
   const all = [...requiredNativeCriteria, ...requiredFoundationCriteria];
-  assert.equal(all.length, 39);
+  assert.equal(all.length, 43);
   assert.equal(new Set(all.map((test) => test.id)).size, all.length);
   assert.ok(requiredNativeCriteria.every(isRequiredNativeCriterion));
   assert.ok(requiredFoundationCriteria.every(isFoundationCriterion));
   assert.equal(isRequiredNativeCriterion({ id: "cnt-mathml-support", kind: "document" }), false);
+});
+
+test("image URL and non-spine fallback verdicts require every original target, native decode and paired paint", () => {
+  const original = { sourcePath: "EPUB/original.psd", expectedPath: "EPUB/fallback.png", expectedHash: digest };
+  const value = {
+    kind: "image", documents: documents(), ...reading, expectedImages: [original],
+    images: [{ ...original, actualHash: digest, decoded: true, painted: true,
+      naturalWidth: 200, naturalHeight: 200, error: null }],
+  };
+  for (const id of ["ocf-url_link-relative", "ocf-url_link-path-absolute",
+    "ocf-url_link-leaking-relative", "pub-foreign_image"]) {
+    assert.equal(requiredNativeVerdict(value, criterion(id)), true);
+    for (const change of [
+      { actualHash: "b".repeat(64) }, { actualHash: null }, { decoded: false },
+      { painted: false }, { naturalWidth: 0 }, { naturalHeight: 0 },
+      { error: "EncodingError: image cannot be decoded" }, { expectedPath: "EPUB/wrong.png" },
+      { sourcePath: "EPUB/wrong.psd" }, { expectedHash: "b".repeat(64) },
+    ]) {
+      assert.equal(requiredNativeVerdict({ ...value, images: [{ ...value.images[0], ...change }] }, criterion(id)), false);
+    }
+    for (const change of [
+      { images: [] }, { expectedImages: [] },
+      { images: [{ ...value.images[0], actualHash: "bad digest" }] },
+      { images: [{ ...value.images[0], decoded: "true" }] },
+      { images: [{ ...value.images[0], naturalWidth: NaN }] },
+      { expectedImages: [{ ...original, expectedHash: "bad digest" }] },
+    ]) assert.throws(() => requiredNativeVerdict({ ...value, ...change }, criterion(id)), /malformed/);
+  }
 });
 
 test("document verdict requires original text, actual paint and independently expected path", () => {
