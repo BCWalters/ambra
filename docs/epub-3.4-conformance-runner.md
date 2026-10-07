@@ -45,7 +45,8 @@ Download `epub-3.4-assessment-kit-<commit>`. Preserve its
 records the Ambra commit, version, archive name, and SHA-256; the report command
 rejects a different or dirty package.
 
-The default `automated_core=true` profile reassesses the same eleven criteria
+The default `automated_core=true` profile assesses 21 required criteria. It
+retains the same eleven media criteria
 as the initial baseline: OpenType, TrueType, WOFF, WOFF2, AVIF, GIF, JPEG, JPEG XL,
 PNG, SVG and WebP. Font checks now require the expected native face to be loaded
 and used in painted authored content, with an original glyph probe differing
@@ -54,12 +55,45 @@ native hit-testing in both frame and shell. These are stronger measurements
 than the initial decode/loading-only baseline; record that methodology and any
 browser/OS difference when comparing scores.
 
+The separate `foundations-profile.json` adds ten named checks:
+
+- Package: `pkg-title-order`, `pkg-creator-order`, `pkg-meta-whitespace`,
+  `pkg-dir_creator-rtl`, `pkg-dir_but_not_content`, `pkg-lang_but_not_content`.
+  Expectations come from inert parsing of the pinned raw OPF, independently
+  of Ambra's parser. Visible, hit-tested Library metadata must use the first
+  title/creator, normalized ASCII whitespace and the creator's declared RTL
+  direction. Displaying only the first creator is allowed by the criterion.
+  Unannotated content must not inherit package direction/language. The
+  language check records authored-paragraph ancestor and DOM/frame annotations,
+  its computed direction, paint and original text SHA-256, and the actual English browser
+  locale; it does **not** claim live screen-reader or speech-language testing.
+- Navigation: `nav-access`, `nav-activation`. The authored TOC must be available
+  through painted native controls. Activation uses real control clicks and
+  verifies the independently derived archive path, spine index, document title
+  and painted target in the live document, not just successful import.
+- Roll: `lay-roll-embedded-images`, `lay-roll-embedded-images-svg`. All authored
+  spine frames must fit the viewport width, preserve their source intrinsic
+  aspect ratios and meet adjacent frames within **one CSS pixel**. Every
+  embedded image must decode natively, paint after scrolling into view and
+  match its original source SHA-256. No external image URLs are fetched by
+  these probes. The SVG test's description says "pre-paginated", but its actual
+  package declares `rendition:layout=roll`; the check follows that declaration.
+
+The ten additions increase possible required coverage from 11/139 (7.91%) to
+21/139 (15.11%); these are profile sizes, **not measured pass results**. Report
+the original eleven separately when comparing, and distinguish newly assessed
+criteria from actual fail-to-pass improvements. Execution blockers remain
+unassessed. The collector's `--foundations` flag requires all 21 records;
+without it, existing eleven-record media-only collection remains supported.
+
 Every observation is tied to the exact package fingerprint and workflow run.
 Missing/duplicate observations, mixed package/browser/OS provenance, missing
 failure issues and invented `not-applicable` verdicts are rejected. The collector
 validates the typed native measurements and rejects verdicts inconsistent with
 loaded/used/painted font glyphs or decoded/painted packaged images. Empty evidence
-cannot promote a pass. Execution
+cannot promote a pass. Foundation measurements also reject malformed source
+expectations, wrong kinds, invalid geometry/hashes and inconsistent verdicts.
+Execution
 errors remain explicit `not-run` blockers, never criterion passes. Other tests
 remain untouched; importing/opening a publication still does not score it.
 

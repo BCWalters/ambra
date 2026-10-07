@@ -19,8 +19,13 @@ const browserIndependentTooling = new Set([
   "scripts/epub-conformance.test.mjs",
   "scripts/epub-conformance-core.mjs",
   "scripts/epub-conformance-core.test.mjs",
+  "scripts/epub-conformance-foundations.mjs",
+  "scripts/epub-conformance-foundations.d.mts",
+  "scripts/epub-conformance-foundations.test.mjs",
   "apps/e2e/epub-conformance.config.ts",
   "apps/e2e/assessment/core-media.spec.ts",
+  "apps/e2e/assessment/foundations.spec.ts",
+  "apps/e2e/assessment/native-assessment.ts",
 ]);
 
 function isDocumentation(file) {

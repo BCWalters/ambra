@@ -1,0 +1,12 @@
+[
+  { "id": "nav-access", "kind": "navigation" },
+  { "id": "nav-activation", "kind": "navigation" },
+  { "id": "pkg-title-order", "kind": "package" },
+  { "id": "pkg-creator-order", "kind": "package" },
+  { "id": "pkg-meta-whitespace", "kind": "package" },
+  { "id": "pkg-dir_creator-rtl", "kind": "package" },
+  { "id": "pkg-dir_but_not_content", "kind": "package" },
+  { "id": "pkg-lang_but_not_content", "kind": "package" },
+  { "id": "lay-roll-embedded-images", "kind": "roll" },
+  { "id": "lay-roll-embedded-images-svg", "kind": "roll" }
+]
