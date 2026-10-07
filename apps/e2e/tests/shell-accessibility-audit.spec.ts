@@ -20,6 +20,8 @@ for (const { surface, entryName } of settingsEntries) {
     const page = surface === "Library" ? libraryPage : readerPage;
     try {
       await page.bringToFront();
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      await page.mouse.move(0, 0);
       if (surface === "Reader") await page.mouse.move(10, 2);
       if (surface === "Library" && entryName === "Sort library") await expandLibraryTools(page);
       const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
