@@ -150,7 +150,8 @@ export const LibraryBookCard: FC<{
   );
   // Keep the trigger connected when a row becomes the compact resume card.
   const compactDetails = compactLayout ? (
-    <span key="details" style={{ position: "absolute", display: "flex",
+    <span key="details" style={{ position: "absolute", display: "flex", alignItems: "center",
+      height: resume ? undefined : 28,
       right: resume ? 4 : 0, bottom: resume ? 4 : 8 }}>{detailsButton}</span>
   ) : undefined;
   const cover = book.cardCoverUrl ? (
