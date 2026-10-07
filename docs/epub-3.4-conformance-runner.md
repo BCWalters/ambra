@@ -78,6 +78,9 @@ The separate `foundations-profile.json` adds ten named checks:
   match its original source SHA-256. No external image URLs are fetched by
   these probes. The SVG test's description says "pre-paginated", but its actual
   package declares `rendition:layout=roll`; the check follows that declaration.
+  Raw-source TOC targets use the standalone SVG root for SVG documents without
+  a fragment, rather than requiring an XHTML body. Missing fragments and
+  unsupported document roots still block source expectation generation.
 
 The ten additions increase possible required coverage from 11/139 (7.91%) to
 21/139 (15.11%); these are profile sizes, **not measured pass results**. Report
