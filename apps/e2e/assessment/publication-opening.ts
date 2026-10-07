@@ -20,7 +20,7 @@ export async function openAssessmentPublication(
   await expect(input).toBeEnabled();
   await input.setInputFiles(assessmentPublication(id));
   const error = libraryPage.getByRole("alert");
-  const open = status.getByRole("button", { name: /^Open /i }).first();
+  const open = status.getByRole("button", { name: /^Read now\b/i }).first();
   await expect
     .poll(async () => (await error.count()) > 0 || (await open.count()) > 0, { timeout: 20_000 })
     .toBe(true);
