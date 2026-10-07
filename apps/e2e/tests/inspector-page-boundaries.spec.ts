@@ -38,6 +38,13 @@ async function pageStartVisible(page: Page) {
   });
 }
 
+async function selectFile(page: Page, path: string) {
+  // A hovered path's scrollable tooltip can cover the neighboring file row.
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.locator(`button[data-file-path="${path}"]`).click();
+}
+
 async function verifyMarkers(page: Page) {
   await settle(page);
   const visible: { path: string; pageIndex: number }[] = await page.evaluate(async () =>
@@ -47,7 +54,7 @@ async function verifyMarkers(page: Page) {
   await expect(page.locator("span").filter({ hasText: /^Page \d+$/ })).toHaveCount(pageCount);
   let interiorTextMarkers = 0;
   for (let index = 0; index < pageCount; index += 1) {
-    await page.locator(`button[data-file-path="${visible[index]!.path}"]`).click();
+    await selectFile(page, visible[index]!.path);
     await expect(page.locator("[data-page-boundary]")).toHaveCount(
       visible.filter(candidate => candidate.path === visible[index]!.path).length * 2,
     );
@@ -228,9 +235,9 @@ test("a cross-chapter spread marks each visible page in its own source file", as
     await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
     const inspector = await openInspector(page);
     await verifyMarkers(page);
-    await inspector.locator('button[data-file-path="EPUB/c0.xhtml"]').click();
+    await selectFile(page, "EPUB/c0.xhtml");
     await expect(inspector.locator('[data-page-boundary="start"]')).toHaveAttribute("data-label", "[3 start]");
-    await inspector.locator('button[data-file-path="EPUB/c1.xhtml"]').click();
+    await selectFile(page, "EPUB/c1.xhtml");
     await expect(inspector.locator("pre.ambra-hljs")).toContainText("Chapter 2");
     await expect(inspector.locator('[data-page-boundary="start"]')).toHaveAttribute("data-label", "[4 start]");
     await expect(inspector.locator("[data-page-boundary]")).toHaveCount(2);
