@@ -102,7 +102,11 @@ async function sourceExpectations(page: Page, id: string) {
         const fragment = target.hash ? decodeURIComponent(target.hash.slice(1)) : null;
         const targetElement = fragment
           ? doc.getElementById(fragment)
-          : doc.getElementsByTagNameNS("*", "body")[0]?.firstElementChild;
+          : doc.getElementsByTagNameNS("*", "body")[0]?.firstElementChild ??
+            (doc.documentElement.localName === "svg" &&
+              doc.documentElement.namespaceURI === "http://www.w3.org/2000/svg"
+              ? doc.documentElement
+              : null);
         if (!targetElement) throw new Error("Missing pinned navigation target element.");
         return {
           label: link.textContent!.trim().replace(/\s+/g, " "),
