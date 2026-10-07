@@ -131,9 +131,11 @@ glyph size is not hit-target size. Meet WCAG 2.2 AA target-size requirements;
 prefer larger touch targets where space permits. Reduce motion without changing
 reading geometry to animate chrome.
 
-Keep at least 160px for a compact Library collection. In short windows or at
-high zoom, let the outer Library scroll rather than compressing its books
-behind the sticky search/sort controls.
+Compact Library collections use the available height and scroll independently
+between fixed navigation and discovery/import actions. Find & sort starts
+collapsed; expand it to reveal Search and Sort together. Do not enforce a
+160px collection minimum that pushes actions outside a native popup or reader
+panel. Keep books at their natural readable height rather than squeezing rows.
 
 Compound Fluent Input/SearchBox controls own focus on their rounded outer
 wrapper. Do not add the generic focus-ring backing shadow to the inner text
@@ -184,14 +186,38 @@ the control itself, including over arbitrary covers, not only in a tooltip.
   translated equivalents. Supported files remain EPUB; discovery instructions,
   recovery messages, and the file picker retain that format guidance.
   Progress sits beneath covers. Search and Sort stay together.
-- Compact popup: a readable cover-and-metadata list, not the old three-column
-  cover grid. Keep Find books and Import together above the collection, including
-  empty/small libraries. The book list scrolls independently; preserve actual
-  native-popup sizing and validate the normal 360x480 and 320px presentations.
-- Compact popup and in-reader library have a visible Sort action beside Search.
+- Compact popup: owner-approved **D: Just keep reading**. Put the localized
+  book count beside Your library, using correct singular/plural forms. Keep
+  **Full library** in the top header before settings/help, with its existing
+  accessible new-tab name. The latest unfinished book with real saved progress
+  gets one compact whole-card resume button with a 44x66px decorative cover,
+  title/author and block-level progress track. Book details remains a separate
+  keyboard action; do not nest it in the resume button or duplicate the book
+  in the flat list. Searching shows matching rows instead of the resume card.
+  Keep each book and its Details trigger keyed continuously when progress
+  promotes a row to Continue Reading, so keyboard focus and modal return are
+  preserved even when the presentation changes.
+  Other rows use 44x66px covers and naturally sized metadata.
+- Popup and in-reader library keep the prominent **Find books** action beside
+  **Import book** at the bottom, including empty libraries. The original empty
+  illustration and guidance remain. Popup imports still open the persistent
+  import window; embedded imports retain the native picker. The list scrolls
+  independently; preserve native 360x480 and 320px presentations and short
+  reader panels.
+- Compact popup and in-reader library have a collapsed **Find & sort**
+  disclosure. Opening focuses Search; Escape clears a query first, then
+  collapses the disclosure and restores its button focus. In the reader a
+  subsequent Escape closes the panel; child menus/dialogs retain Escape
+  ownership. Keep an active query and clear action visible when collapsed.
+  Clearing Search returns focus to its input. Use SearchBox's forwarded input
+  ref rather than overriding its input-slot ref, preserving Fluent's internal
+  clear-action focus handling.
   All three views share the current library ordering: Newest added, Oldest added,
   Title A-Z, Author A-Z. Reuse existing persistence rather than inventing
   independent per-surface preferences. Filtering retains the selected order.
+- The embedded library shares this compact chrome without a Continue Reading
+  card or a second Library heading. Full library sits beside Close in its
+  existing header; saved state and same-tab activation remain intact.
 - Reader Library opens a left-side browsing panel without replacing/reloading the
   reader or changing position. Full-page and popup Library retain existing
   new-tab opening behavior; embedded Library deliberately owns this reader tab.

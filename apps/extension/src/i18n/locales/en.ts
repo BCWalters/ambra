@@ -193,6 +193,13 @@ export interface StringCatalog {
   "library.readNowBook": string;
   "library.inspectorNotReady": string;
   "library.bookCount": string;
+  "library.bookCountOne": string;
+  "library.bookCountFew": string;
+  "library.bookCountMany": string;
+  "library.bookCountOther": string;
+  "library.yourLibrary": string;
+  "library.findAndSort": string;
+  "library.fullLibraryLabel": string;
   "library.storageUsedOf": string;
   "library.storageUsed": string;
   "library.progress": string;
@@ -738,6 +745,13 @@ export const en: StringCatalog = {
   "library.readNowBook": "Read now: {title}",
   "library.inspectorNotReady": "The Inspector isn't ready yet.",
   "library.bookCount": "Books: {count}",
+  "library.bookCountOne": "{count} book",
+  "library.bookCountFew": "{count} books",
+  "library.bookCountMany": "{count} books",
+  "library.bookCountOther": "{count} books",
+  "library.yourLibrary": "Your library",
+  "library.findAndSort": "Find & sort",
+  "library.fullLibraryLabel": "Full library",
   "library.storageUsedOf": "{used} used of {available} available",
   "library.storageUsed": "{used} used",
   "library.progress": "Progress",

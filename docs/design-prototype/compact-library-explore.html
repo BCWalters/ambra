@@ -8,11 +8,28 @@
   <script src="compact-library-explore.js" defer></script>
 </head>
 <body>
+  <svg class="study-symbols" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="empty-book-art" viewBox="0 0 320 200">
+        <ellipse cx="162" cy="98" rx="102" ry="83" fill="var(--selected)" stroke="none" opacity=".65"/>
+        <ellipse cx="161" cy="173" rx="121" ry="7" fill="var(--ink)" stroke="none" opacity=".07"/>
+        <path d="M39 63Q104 39 159 68Q217 39 281 63L281 160Q216 144 159 173Q105 145 39 160Z" fill="var(--accent-fill)" stroke="var(--accent)" stroke-width="2"/>
+        <path d="M48 54Q106 34 159 62L159 162Q105 137 48 151Z" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>
+        <path d="M159 62Q211 35 272 54L272 151Q213 137 159 162Z" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>
+        <path d="M159 63V161" stroke="var(--accent)" stroke-width="2"/>
+        <g stroke="var(--muted)" opacity=".35" stroke-width="2">
+          <path d="M67 76Q106 67 139 83M67 91Q106 82 139 98M67 106Q106 97 132 110M67 126Q101 119 126 130"/>
+          <path d="M181 83Q216 68 252 76M181 98Q216 83 252 91M181 113Q216 98 252 106M181 133Q208 121 235 126"/>
+        </g>
+        <path d="M211 49L211 102L222 93L233 98L233 47Q222 47 211 49Z" fill="var(--accent-fill)" stroke="var(--accent)" stroke-width="1.5"/>
+      </symbol>
+    </defs>
+  </svg>
   <main class="study">
     <header class="review-header">
       <p class="eyebrow">Compact library / unapproved alternatives / #351</p>
       <h1>Books first. Everything else, quieter.</h1>
-      <p>Three ways to make the small window feel like a place to return to reading, rather than a collection of controls. Only the compact library is being explored; the full library and reader are unchanged.</p>
+      <p>Four ways to make the small window feel like a place to return to reading, rather than a collection of controls. The new D option removes the separate lists entirely. Only the compact library is being explored; the full library and reader are unchanged.</p>
       <p class="boundary">Standalone sample only. Nothing reads your files, changes Ambra, or stores preferences. These are choices to review, not a production implementation.</p>
     </header>
 
@@ -46,8 +63,9 @@
     <div class="comparison-grid" id="comparison-grid"></div>
 
     <section class="rationale" aria-labelledby="recommendation">
-      <h2 id="recommendation">Start with A; borrow B's calm list.</h2>
-      <p>A offers the clearest answer to “what should I click?” without making the rest of the library hard to reach. B is stronger if choosing between several reading lists matters more than resuming one book. C is the most visual, but long titles are slower to scan and fewer books fit.</p>
+      <h2 id="recommendation">Try D: just keep reading.</h2>
+      <p>D keeps a small, clickable Continue Reading card and a flat list underneath, without tabs, categories or an All list. The whole card resumes reading, so there is no separate button row. Find &amp; sort starts collapsed; Find books is the prominent bottom action beside Import book, including for an empty library. Full library is a quiet link in the top header, just before the options menu.</p>
+      <p>The original A, B and C remain for comparison. A adds reading-list shortcuts, B emphasizes those lists, and C favors cover recognition.</p>
       <p>In every option, Find &amp; sort is a closed, keyboard-accessible disclosure. Search state stays visible when it is closed, with an immediate clear action. Import, discovery, settings and help remain available without becoming the visual center.</p>
       <p>Try a list with no books, a search with no results, sorting by author, opening a book, importing an original sample book, and Escape from the disclosures/dialog. Changes are in memory and shared sample books only; each option keeps its own list/search/order.</p>
       <p class="boundary">English-only study. Fixed-height frames illustrate popup geometry, not a native Chrome action popup. Dialogs belong to this comparison page. Real popup sizing, all nine locales, visual/AT behavior, real files and persistence still need implementation validation after an owner decision. No local browser tests were run for this study.</p>

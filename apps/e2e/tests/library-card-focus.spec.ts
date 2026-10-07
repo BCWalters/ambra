@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
+import { expandLibraryTools } from "../library-tools.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -52,13 +53,11 @@ test.describe("Library book focus and safe removal", () => {
           const collection = page.getByRole("main");
           await collection.evaluate(element => { element.scrollTop = 160; });
           expect(await collection.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
-          const filters = page.locator("[data-library-filters]");
-          await expect(filters).toHaveCSS("padding-bottom", "12px");
-          const bounds = (await filters.boundingBox())!;
-          const search = (await page.getByRole("searchbox").boundingBox())!;
-          expect(bounds.y + bounds.height - search.y - search.height).toBeGreaterThanOrEqual(12);
+          const heading = page.locator("[data-library-popup-heading]");
+          const bounds = (await heading.boundingBox())!;
+          await expect(page.locator("[data-library-tools-toggle]")).toHaveAttribute("aria-expanded", "false");
           expect(await page.evaluate(({ x, y }) =>
-            !!document.elementFromPoint(x, y)?.closest("[data-library-filters]"),
+            !!document.elementFromPoint(x, y)?.closest("[data-library-popup-heading]"),
           { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height - 6 })).toBe(true);
           await page.screenshot({ path: test.info().outputPath("compact-library-scroll-gap.png") });
         }
@@ -124,6 +123,7 @@ test.describe("Library book focus and safe removal", () => {
       await expect(metadata).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(details).toBeFocused();
+      await expandLibraryTools(page);
       await page.getByRole("button", { name: "Sort library", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Title (A–Z)", exact: true }).click();
       await second.press("Delete");
@@ -147,7 +147,8 @@ test.describe("Library book focus and safe removal", () => {
     } finally { await context.close(); }
   });
 
-  test("long generated titles reserve aligned rows, preserve accessible names and keep useful details", async () => {
+  for (const fullTab of [false, true]) {
+  test(`${fullTab ? "full tab" : "compact"}: long generated titles preserve bounds, accessible names and useful details`, async () => {
     const { context, libraryPage: page, readerPage } = await launchReader(book, { viewport: { width: 360, height: 480 } });
     const title = "UnbrokenBookTitle".repeat(100);
     const creator = "長い著者".repeat(100);
@@ -167,24 +168,29 @@ test.describe("Library book focus and safe removal", () => {
           transaction.onabort = () => reject(transaction.error);
         });
       }, { title, creator });
-      await page.reload();
-      const cover = page.getByRole("button", { name: new RegExp(`^Open ${title}`) });
+      await page.goto(`${page.url()}${fullTab ? "?view=tab" : ""}`);
+      const cover = page.locator("[data-library-collection]").getByRole("button", { name: new RegExp(`^Open ${title}`) });
       const card = cover.locator("..");
       const coverTitle = cover.locator("[data-generated-cover] > span").first();
       await expect(coverTitle).toHaveText(title);
-      await expect(coverTitle).toHaveCSS("-webkit-line-clamp", "3");
+      await expect(coverTitle).toHaveCSS("-webkit-line-clamp", fullTab ? "4" : "3");
       expect(await cover.locator("[data-generated-cover]").evaluate(element =>
         element.scrollHeight <= element.clientHeight && element.scrollWidth <= element.clientWidth)).toBe(true);
-      await expect(card.locator("p").first()).toHaveCSS("height", "40px");
-      const author = card.locator("p").nth(1);
+      const metadataTitle = fullTab ? card.locator("p").first() : card.locator("strong");
+      if (fullTab) await expect(metadataTitle).toHaveCSS("height", "40px");
+      else {
+        await expect(metadataTitle).toHaveText(title);
+        expect((await metadataTitle.boundingBox())!.height).toBeLessThanOrEqual(40);
+      }
+      const author = fullTab ? card.locator("p").nth(1) : card.locator("strong + span");
       await expect(author).toHaveText(creator);
-      await expect(author).toHaveCSS("height", "18px");
+      await expect(author).toHaveCSS("height", fullTab ? "18px" : "16px");
       await expect(author).toHaveCSS("white-space", "nowrap");
       expect(await card.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await cover.focus();
       await page.keyboard.press("Tab");
-      const details = page.getByRole("button", { name: `${title} details`, exact: true });
+      const details = card.getByRole("button", { name: `${title} details`, exact: true });
       await expect(details).toBeFocused();
       await expect(details).toHaveCSS("outline-style", "solid");
       await details.press("Enter");
@@ -198,4 +204,5 @@ test.describe("Library book focus and safe removal", () => {
       await expect(metadata.getByText(creator, { exact: true })).toHaveText(creator);
     } finally { await context.close(); }
   });
+  }
 });

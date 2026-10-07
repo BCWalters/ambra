@@ -60,15 +60,17 @@ export const ReaderLibraryPanel: FC<ReaderLibraryPanelProps> = ({
           display: open ? "flex" : "none", flexDirection: "column", overflow: "hidden",
           boxSizing: "border-box", background: palette.surface, color: palette.text,
           borderRight: `1px solid ${palette.border}`, boxShadow: CHROME_SHADOW }}>
-        <header style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
-          flexShrink: 0, borderBottom: `1px solid ${palette.border}` }}>
-          <h2 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 16, lineHeight: "24px", overflowWrap: "anywhere" }}>
-            {t("toolbar.backToLibrary")}
-          </h2>
-          <Button ref={closeRef} appearance="subtle" icon={<DismissRegular />} aria-label={t("highlight.close")} onClick={onRequestClose} />
-        </header>
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-          <LibraryApp embedded={{ open, onActivateBook, currentBookId }} />
+          <LibraryApp embedded={{ open, onActivateBook, currentBookId, renderHeader: fullLibraryAction => (
+            <header style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+              flexShrink: 0, borderBottom: `1px solid ${palette.border}` }}>
+              <h2 style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 16, lineHeight: "24px", overflowWrap: "anywhere" }}>
+                {t("toolbar.backToLibrary")}
+              </h2>
+              {fullLibraryAction}
+              <Button ref={closeRef} appearance="subtle" icon={<DismissRegular />} aria-label={t("highlight.close")} onClick={onRequestClose} />
+            </header>
+          ) }} />
         </div>
       </nav>
     </>

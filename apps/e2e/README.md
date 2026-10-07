@@ -45,13 +45,26 @@ push diff:
 - Markdown/documentation-only changes skip browser tests.
 - Changes confined to `apps/extension/src/i18n` run focused Library and shared
   shell localization coverage.
-- Changes confined to `apps/extension/src/library` and Library-specific browser
-  tests run the Library suite.
+- Changes confined to `apps/extension/src/library`, the embedded
+  `ReaderLibraryPanel`, `library-tools.ts`, and explicitly wired Library browser
+  tests run Library, localization, and focused reader-integration coverage.
+  Integration includes metadata/cards, first-reading welcome, shell
+  accessibility, embedded/back-to-Library navigation, saved progress, and Save
+  as. Full runs cover those cases in their existing Reader stages, without
+  repeating the focused integration stage.
 - Changes confined to the EPUB release-conformance runner and browser-suite
   selector run lint, type-check, and unit/tool tests without building the
   extension or launching Chromium.
 - Shared UI, reader, engine, dependency, manifest, workflow, release, and
   unclassified changes run the complete protected browser suite.
+
+Library/import and Library-localization checks run immediately after Chromium
+setup, before the long Reader stage, so Library failures do not wait behind
+unrelated pagination, codec, narration, and annotation checks. Keep
+Library-specific test helpers out of the shared browser harness: changing the
+harness correctly requires full coverage. The selector's hosted unit tests
+check that every focused Library spec is wired to an eligible workflow stage.
+Workflow edits remain full-suite changes; this is not a general opt-out.
 
 Native audio-resource failure checks run in an isolated early gate, before the
 optional codec-tool preparation and broad packaged-browser stage. They

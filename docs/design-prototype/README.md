@@ -72,9 +72,25 @@ responsive layouts. It does not validate EPUB parsing or live screen readers.
 ## Compact-library alternatives
 
 Open [compact-library-explore.html](compact-library-explore.html) directly.
-This separate, unapproved #351 study compares three compact-library-only options:
+This separate #351 study compares four compact-library options. The owner
+selected D for the production popup and embedded reader library; A/B/C remain
+unapproved alternatives.
 
-- **A: Return to reading (recommended)** - one clear resume action, then quiet
+- **D: Just keep reading (new, shown first)** - collapsed Find & sort, a small
+  clickable Continue Reading card and a flat list below. The entire card is a
+  keyboard-accessible resume button, with no separate button row. Find books is
+  the prominent fixed-bottom action beside Import, including in the empty state;
+  it opens the reviewed discovery preview in a new tab. Full library is a
+  quiet new-tab link in the top header before the options menu, not beside the
+  book count. The count shares the Your library title line, with tighter spacing
+  above the resume card; longer search/sort counts can wrap rather than clip.
+  The empty state reuses the reviewed open-book
+  illustration and "No books yet" guidance; the bottom import label is
+  **Import book** in both empty and populated states.
+  No category tabs/list chooser/All action; open the full library for its larger
+  view. Sorting changes the flat list without displacing the resume block;
+  searching shows matching rows without duplicating the resume book.
+- **A: Return to reading** - one clear resume action, then quiet
   book rows and reading lists.
 - **B: List-first notebook** - list navigation first, with the books using
   the rest of the space.
@@ -91,10 +107,14 @@ point. The full-library links open the reviewed prototype with its own separate
 sample. Sample reading uses original prose, not the selected real work's text.
 No network fetch, file access, storage, server or extension build is needed.
 
-This is not production compact UI and does not change the approved snapshot.
-The owner must choose before implementation. Only static syntax/lint/markup/asset
-checks are claimed; no local browser was launched. Native popup geometry, visual
-behavior, all nine locales and live assistive technology remain unvalidated.
+The study itself remains a simulation and does not change the original reviewed
+snapshot. Production D uses real saved progress, localized cardinal counts,
+existing ordering and discovery, a separate Book details action, and the
+persistent popup importer. The embedded library shares the compact chrome but
+has no Continue Reading card. Focused unit and protected hosted browser checks
+cover production navigation, disclosure focus, 320/360px geometry and all nine
+locales. No local browser was launched; live assistive-technology validation
+remains a manual release check.
 
 ## Optional prototype verification
 

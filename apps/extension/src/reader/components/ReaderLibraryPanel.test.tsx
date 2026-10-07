@@ -33,6 +33,8 @@ describe("Reader library reference panel", () => {
     return event;
   }
   async function query(value: string) {
+    const toggle = button("Find & sort");
+    if (toggle.getAttribute("aria-expanded") === "false") await act(async () => toggle.click());
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search(), value);
       search().dispatchEvent(new Event("input", { bubbles: true }));
@@ -102,8 +104,13 @@ describe("Reader library reference panel", () => {
     expect(document.title).toBe("Reading First");
     const collection = container.querySelector<HTMLElement>("[data-library-collection]")!;
     expect(collection.style.flexDirection).toBe("column");
-    expect(collection.parentElement!.style.minHeight).toBe("160px");
-    expect(collection.parentElement!.parentElement!.style.overflow).toBe("auto");
+    expect(parseFloat(collection.parentElement!.style.minHeight)).toBe(0);
+    expect(collection.parentElement!.parentElement!.style.overflow).toBe("hidden");
+    expect(panel().querySelector("[data-library-continue]")).toBeNull();
+    expect(button("Find & sort").getAttribute("aria-expanded")).toBe("false");
+    expect(panel().querySelector("header")?.contains(button("Open library in new tab"))).toBe(true);
+    expect(panel().querySelector("footer")?.contains(button("Find books"))).toBe(true);
+    expect(panel().querySelector("footer")?.contains(button("Import book"))).toBe(true);
     expect(cover("First").getAttribute("aria-current")).toBe("true");
     await render({ open: false, scrubberVisible: false });
     expect(panel().style.bottom).toBe("calc(8px + var(--ambra-narration-height, 0px))");
@@ -145,6 +152,9 @@ describe("Reader library reference panel", () => {
     expect(search().value).toBe("");
     expect(props.onRequestClose).not.toHaveBeenCalled();
     await key(search());
+    expect(button("Find & sort").getAttribute("aria-expanded")).toBe("false");
+    expect(props.onRequestClose).not.toHaveBeenCalled();
+    await key(button("Find & sort"));
     expect(props.onRequestClose).toHaveBeenCalledTimes(1);
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(disposed).not.toHaveBeenCalled();
@@ -238,6 +248,7 @@ describe("Reader library reference panel", () => {
     const error = [...container.querySelectorAll('[role="alert"]')].find((node) => node.textContent?.includes("Import failed"))!;
     await act(async () => error.querySelector<HTMLButtonElement>("button")!.click());
     expect(state.dismissError).toHaveBeenCalledTimes(1);
+    await act(async () => button("Find & sort").click());
     await act(async () => button("Sort library").click());
     const choices = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
     expect(choices).toHaveLength(4);
@@ -315,7 +326,10 @@ describe("Reader library reference panel", () => {
   it.each([{ repeat: true }, { isComposing: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }])(
     "ignores guarded Escape %j", async (options) => {
       await render({ open: true });
-      await key(document, options);
+      await query("Second");
+      await key(search(), options);
+      expect(search().value).toBe("Second");
+      expect(button("Find & sort").getAttribute("aria-expanded")).toBe("true");
       expect(props.onRequestClose).not.toHaveBeenCalled();
     },
   );
