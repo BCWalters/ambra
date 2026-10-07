@@ -120,6 +120,11 @@ test("reflowable SVG stays native through paging, scrolling, resize and resume",
       };
     });
     const assertOriginal = async (spine: number, mode = "paginated") => {
+      await page.waitForFunction(() => {
+        const controller = Reflect.get(window, "__readerController");
+        return controller?.host && !controller.isLoadInFlight && !controller.isTurningPage &&
+          !controller.isApplyingLayout && !controller.pendingLayout;
+      });
       await expect(frame.contentFrame().locator(":root")).toHaveAttribute("xmlns", "http://www.w3.org/2000/svg");
       await expect.poll(async () => {
         const state = await inspect();
