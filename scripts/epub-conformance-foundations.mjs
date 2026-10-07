@@ -46,6 +46,31 @@ function renderedText(value) {
   );
 }
 
+export function rollImageHitPoint({ frame, image, clip, viewport, clientWidth, clientHeight }) {
+  const rectangle = (value) => value && [value.x, value.y, value.width, value.height].every(finite) &&
+    value.width >= 0 && value.height >= 0;
+  if (![frame, image, clip].every(rectangle) || !viewport ||
+    ![viewport.width, viewport.height, clientWidth, clientHeight].every(finite) ||
+    viewport.width <= 0 || viewport.height <= 0 || clientWidth <= 0 || clientHeight <= 0)
+    throw new Error("Invalid native roll paint geometry.");
+  if (frame.width === 0 || frame.height === 0) return null;
+  const scaleX = frame.width / clientWidth;
+  const scaleY = frame.height / clientHeight;
+  const left = Math.max(0, clip.x, frame.x, frame.x + image.x * scaleX);
+  const right = Math.min(viewport.width, clip.x + clip.width, frame.x + frame.width,
+    frame.x + (image.x + image.width) * scaleX);
+  const top = Math.max(0, clip.y, frame.y, frame.y + image.y * scaleY);
+  const bottom = Math.min(viewport.height, clip.y + clip.height, frame.y + frame.height,
+    frame.y + (image.y + image.height) * scaleY);
+  if (right <= left || bottom <= top) return null;
+  const x = (left + right) / 2;
+  const y = (top + bottom) / 2;
+  return {
+    viewport: { x, y },
+    document: { x: (x - frame.x) / scaleX, y: (y - frame.y) / scaleY },
+  };
+}
+
 export function foundationVerdict(observations, criterion) {
   if (!isFoundationCriterion(criterion)) throw new Error("Unknown foundation criterion.");
   const { id, kind } = criterion;
