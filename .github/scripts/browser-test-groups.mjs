@@ -18,7 +18,7 @@ const core = [
     "reader-ui-dismissal", "reference-panel-coexistence", "shell-reflow-accessibility",
   ],
   [
-    "pagination-measurement", "reflowable-animation-handoff", "spread-resize-stability",
+    "reflowable-animation-handoff", "spread-resize-stability",
     "fixed-layout-scrubber", "fixed-layout-spread-hugging", "fixed-layout-edge-navigation",
     "mixed-rendition-spreads", "roll-layout", "svg-spine", "responsive-images",
     "inspector-reading-links", "inspector-page-boundaries",
@@ -88,7 +88,7 @@ export const browserGroups = [
   {
     id: "contention-sensitive",
     modes: ["full"],
-    steps: [step("isolated-input-budgets", ["reader-diagnostics", "reader-scale-navigation", "scrubber-seek"], 1)],
+    steps: [step("isolated-input-budgets", ["reader-diagnostics", "reader-scale-navigation", "scrubber-seek", "pagination-measurement"], 1)],
   },
   {
     id: "narration",

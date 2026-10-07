@@ -68,6 +68,16 @@ Every production group verifies the archive's commit, producer SHA-256 and
 release checksums before extraction; only the explicit local-feature group
 builds its separate development package.
 
+Pagination measurement's input/long-task probes run in the one-worker
+contention-sensitive group. Their foreground responsiveness thresholds remain
+strict; the thousand-page cancellation probe gives the independent background
+canonical index up to 30 seconds to finish, rather than treating the default
+10-second assertion timeout as a background-throughput requirement.
+Ubuntu package downloads have 30-second network timeouts, no automatic retries
+and fail on incomplete index updates. Browser and codec installation steps are
+bounded to five minutes in CI, so a stalled mirror cannot consume the entire
+30-minute browser job. The conformance workflow uses the same network policy.
+
 The protected `Validate and package` check is an always-run aggregate that
 fails unless preparation and every selected browser group succeed. Existing
 documentation/tooling/Library/localization selection stays fail-closed, and
@@ -1002,8 +1012,9 @@ filter tabs or chips. The panel shares single-reference-panel ownership with
 Contents, Search, and Library.
 
 The CI reader matrix includes this spec plus annotation mutation, import/export
-and embedded-annotation regression suites. Its `bookmark-panel-review-<sha>`
-artifact retains the six review screenshots. For a targeted run, point
+and embedded-annotation regression suites. Its
+`browser-evidence-<run>-<attempt>-reader-core-4` artifact retains the six review
+screenshots. For a targeted run, point
 `AMBRA_E2E_EXTENSION_PATH` at an isolated packaged build and run:
 
 ```sh

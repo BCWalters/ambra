@@ -123,10 +123,14 @@ jobs:
           CI_PACKAGE_COMMIT: ${{ needs.prepare.outputs.package_commit }}
           CI_PACKAGE_SHA256: ${{ needs.prepare.outputs.package_sha256 }}
         run: node .github/scripts/restore-ci-package.mjs
+      - name: Bound Ubuntu package downloads
+        run: sudo -n install -m 644 .github/apt-network.conf /etc/apt/apt.conf.d/80-ambra-network
       - name: Install Chromium
+        timeout-minutes: 5
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
       - name: Prepare synthetic EPUB codec fixtures
         if: matrix.codecs
+        timeout-minutes: 5
         run: |
           if ! command -v ffmpeg || ! command -v cjxl ||
              ! /usr/bin/python3 -c 'import fontTools, brotli'; then

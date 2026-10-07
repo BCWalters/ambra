@@ -37,8 +37,10 @@ test("full matrix preserves every legacy protected file invocation, including in
     [...legacyFullFiles].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
-  assert.equal(core.length, 52);
+  assert.equal(core.length, 51);
   assert.equal(new Set(core).size, core.length);
+  assert.ok(selected("full").find(group => group.id === "contention-sensitive")
+    .steps.some(step => step.files.includes("pagination-measurement") && step.workers === 1));
 });
 
 test("selection preserves focused modes and rejects unknown modes and groups", () => {
@@ -114,4 +116,17 @@ test("workflow preserves required-check name, non-cancelling shards and same-pac
 test("browser execution matches the package's local-feature mode", () => {
   const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
   assert.match(workflow, /name: Run selected browser group without retries\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
+});
+
+test("Ubuntu package setup fails closed within bounded network and step deadlines", () => {
+  const config = readFileSync(new URL("../apt-network.conf", import.meta.url), "utf8");
+  assert.match(config, /Acquire::http::Timeout "30";/);
+  assert.match(config, /Acquire::https::Timeout "30";/);
+  assert.match(config, /Acquire::Retries "0";/);
+  assert.match(config, /APT::Update::Error-Mode "any";/);
+  for (const name of ["ci.yml", "epub-conformance.yml"]) {
+    const workflow = readFileSync(new URL(`../workflows/${name}`, import.meta.url), "utf8");
+    assert.match(workflow, /sudo -n install -m 644 \.github\/apt-network\.conf \/etc\/apt\/apt\.conf\.d\/80-ambra-network/);
+    assert.match(workflow, /timeout-minutes: 5\s+run: (?:\|[\s\S]*?|\s*)pnpm --filter @ambra\/e2e exec playwright install --with-deps chromium/);
+  }
 });
