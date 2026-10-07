@@ -16,24 +16,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Validate and package
+  prepare:
+    name: Lint, types, units and package
     runs-on: ubuntu-24.04
-    # Packaged browser coverage can exceed 45m before setup and local-feature
-    # checks. Retain headroom without dropping coverage.
-    timeout-minutes: 60
+    timeout-minutes: 20
+    outputs:
+      run_browser: ${{ steps.browser-suites.outputs.run_browser }}
+      matrix: ${{ steps.browser-groups.outputs.matrix }}
+      package_commit: ${{ steps.package-identity.outputs.commit }}
+      package_sha256: ${{ steps.package-identity.outputs.sha256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24.18.0
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: 11.11.0
           run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
       - name: Select browser suites
         id: browser-suites
         env:
@@ -47,6 +51,11 @@ jobs:
             git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- |
               node .github/scripts/select-browser-suites.mjs
           fi
+      - name: Select independently rerunnable browser groups
+        id: browser-groups
+        env:
+          BROWSER_MODE: ${{ steps.browser-suites.outputs.mode }}
+        run: node .github/scripts/browser-test-groups.mjs --plan "$BROWSER_MODE"
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint, types, and unit tests
@@ -58,216 +67,17 @@ jobs:
       - name: Build isolated store package
         if: steps.browser-suites.outputs.run_browser == 'true'
         run: node .github/scripts/package-extension.mjs
-      - name: Install Chromium
+      - name: Record package identity
+        id: package-identity
         if: steps.browser-suites.outputs.run_browser == 'true'
-        run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
-      - name: Verify Library first-run and import flows
-        if: steps.browser-suites.outputs.run_library == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          library-discovery.spec.ts library-import-announcements.spec.ts
-          library-lifecycle.spec.ts library-transactions.spec.ts library-ux.spec.ts
-          library-covers.spec.ts library-search.spec.ts library-compact.spec.ts
-          library-description.spec.ts book-details-presentation.spec.ts library-inspector.spec.ts
-          native-library-import.spec.ts review-invitation.spec.ts
-          library-file-drop.spec.ts page-turn-guide.spec.ts
-          footnote-noteref.spec.ts note-save-lifecycle.spec.ts
-          --workers=2
-      - name: Verify Library localization
-        if: steps.browser-suites.outputs.run_library == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: pnpm --filter @ambra/e2e exec playwright test library-localization.spec.ts --workers=1
-      - name: Verify Library reader integration
-        if: steps.browser-suites.outputs.run_library_integration == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          book-opening.spec.ts book-metadata-display.spec.ts library-card-focus.spec.ts
-          first-reading-welcome.spec.ts shell-accessibility-audit.spec.ts
-          reader-library.spec.ts reader-back-to-library.spec.ts
-          library-scrubber-progress.spec.ts library-save-as.spec.ts
-          epub-direct-import.spec.ts reader-save-as.spec.ts
-          --workers=2
-      - name: Verify audio resource failures before codec preparation
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          media-overlay-playback.spec.ts --grep @audio-resource-conformance --workers=1
-      - name: Prepare synthetic EPUB codec fixtures
-        if: steps.browser-suites.outputs.run_reader == 'true'
         run: |
-          if ! command -v ffmpeg || ! command -v cjxl ||
-             ! /usr/bin/python3 -c 'import fontTools, brotli'; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg libjxl-tools python3-fonttools python3-brotli
-          fi
-      - name: Verify EPUB resources and reader regressions
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-          AMBRA_E2E_MEDIA_PYTHON: /usr/bin/python3
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          css-resources.spec.ts primary-reading-order.spec.ts
-          resource-fallbacks.spec.ts resource-policy.spec.ts
-          navigation-accessibility-conformance.spec.ts
-          cfi-recovery-conformance.spec.ts
-          svg-spine.spec.ts
-          reader-shortcuts-help.spec.ts inspector-docking.spec.ts narration-discovery.spec.ts
-          --workers=2
-      - name: Test the packaged production build
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          book-opening.spec.ts
-          book-metadata-display.spec.ts
-          library-card-focus.spec.ts
-          navigation-correctness.spec.ts
-          browser-reading-history.spec.ts
-          toc-fragments.spec.ts
-          settings-focus.spec.ts
-          settings-ownership.spec.ts
-          settings-lifecycle.spec.ts
-          reader-preferences.spec.ts
-          single-page-setting.spec.ts
-          reader-viewport-stability.spec.ts
-          content-boundary-navigation.spec.ts
-          disclosure-interaction.spec.ts
-          native-reading-resume.spec.ts
-          shell-accessibility-audit.spec.ts
-          shell-reflow-accessibility.spec.ts
-          first-reading-welcome.spec.ts
-          harness-lifecycle.spec.ts
-          reader-ui-dismissal.spec.ts
-          reference-panel-coexistence.spec.ts
-          reader-library.spec.ts
-          reader-back-to-library.spec.ts
-          popup-hover-ownership.spec.ts
-          margin-selection.spec.ts
-          page-turn-margin.spec.ts
-          page-turn-viewport.spec.ts
-          scrubber-bookmarks.spec.ts
-          scrubber-fast-release.spec.ts
-          library-scrubber-progress.spec.ts
-          bookmark-panel.spec.ts
-          annotation-mutation-lifecycle.spec.ts
-          annotation-export-import.spec.ts
-          embedded-annotations.spec.ts
-          page-theme.spec.ts
-          spread-gutter-navigation.spec.ts
-          outer-margin-navigation.spec.ts
-          spread-resize-stability.spec.ts
-          reflowable-animation-handoff.spec.ts
-          toolbar-startup.spec.ts
-          inspector-reading-links.spec.ts
-          inspector-page-boundaries.spec.ts
-          reader-go-to-shortcuts.spec.ts
-          keyboard-ownership.spec.ts
-          fixed-layout-scrubber.spec.ts
-          fixed-layout-spread-hugging.spec.ts
-          fixed-layout-edge-navigation.spec.ts
-          svg-spine.spec.ts
-          mixed-rendition-spreads.spec.ts
-          roll-layout.spec.ts
-          pagination-measurement.spec.ts
-          responsive-images.spec.ts
-          --workers=2
-      - name: Keep bookmark panel review screenshots
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: bookmark-panel-review-${{ github.sha }}
-          path: apps/e2e/test-results/bookmark-panel-*/bookmark-cards-*.png
-          if-no-files-found: error
-          retention-days: 14
-      - name: Keep reading welcome previews
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: reading-welcome-${{ github.sha }}
-          path: apps/e2e/test-results/first-reading-welcome-*/welcome-*.png
-          if-no-files-found: error
-          retention-days: 14
-      # These tests intentionally hold work in flight, inspect a bounded event
-      # buffer, or enforce a hard wall-clock budget. Keep them off a contended
-      # Chromium worker while the rest of the file-level suite runs in parallel.
-      - name: Verify contention-sensitive reader flows
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          reader-diagnostics.spec.ts reader-scale-navigation.spec.ts scrubber-seek.spec.ts
-          --workers=1
-      - name: Verify recorded narration
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          media-overlay-playback.spec.ts --grep-invert @audio-resource-conformance --workers=1
-      - name: Verify image viewer transparency
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: pnpm --filter @ambra/e2e exec playwright test image-viewer.spec.ts --grep '#226' --workers=2
-      - name: Verify encoded EPUB fragments
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: pnpm --filter @ambra/e2e exec playwright test content-stress.spec.ts --grep '#228' --workers=2
-      - name: Verify table viewer
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: pnpm --filter @ambra/e2e exec playwright test table-viewer.spec.ts --workers=2
-      - name: Verify Inspector and import feedback
-        if: steps.browser-suites.outputs.run_reader == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: |
-          pnpm --filter @ambra/e2e exec playwright test epub-inspector.spec.ts --grep '#181' --workers=2
-          pnpm --filter @ambra/e2e exec playwright test epub-direct-import.spec.ts library-save-as.spec.ts reader-save-as.spec.ts --workers=2
-      - name: Verify localized Library and shell surfaces
-        if: steps.browser-suites.outputs.run_localization == 'true'
-        env:
-          AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
-          AMBRA_E2E_HEADLESS: "1"
-        run: >-
-          pnpm --filter @ambra/e2e exec playwright test
-          library-localization.spec.ts shell-reflow-accessibility.spec.ts
-          --grep 'localizes|locales|Help & About'
-          --workers=1
-      - name: Verify local review simulation controls
-        if: steps.browser-suites.outputs.run_library == 'true'
-        env:
-          VITE_AMBRA_LOCAL_FEATURES: "1"
-          AMBRA_E2E_EXTENSION_PATH: ${{ runner.temp }}/ambra-local-features
-          AMBRA_E2E_HEADLESS: "1"
-        run: |
-          pnpm --filter @ambra/extension build --outDir "$AMBRA_E2E_EXTENSION_PATH"
-          pnpm --filter @ambra/e2e exec playwright test review-invitation.spec.ts library-review-keyboard.spec.ts --workers=2
-      - name: Keep verified package
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync } from "node:fs";
+            const release = JSON.parse(readFileSync("dist/beta-release/artifacts/release.json", "utf8"));
+            if (release.dirty) throw new Error("CI package must come from a clean checkout.");
+            appendFileSync(process.env.GITHUB_OUTPUT, `commit=${release.commit}\nsha256=${release.sha256}\n`);
+          '
+      - name: Keep package candidate for exact-byte browser validation
         if: steps.browser-suites.outputs.run_browser == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -275,11 +85,102 @@ jobs:
           path: dist/beta-release/artifacts/
           if-no-files-found: error
           retention-days: 14
-      - name: Keep failed browser diagnostics
-        if: failure() && steps.browser-suites.outputs.run_browser == 'true'
+
+  browser:
+    name: Browser regressions (${{ matrix.id }})
+    needs: prepare
+    if: needs.prepare.outputs.run_browser == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      AMBRA_E2E_EXTENSION_PATH: ${{ github.workspace }}/dist/beta-release/extension
+      AMBRA_E2E_HEADLESS: "1"
+      AMBRA_E2E_MEDIA_PYTHON: /usr/bin/python3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 11.11.0
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: beta-release-${{ github.sha }}
+          path: dist/beta-release/artifacts/
+      - name: Verify and restore the exact prepared package
+        env:
+          CI_PACKAGE_COMMIT: ${{ needs.prepare.outputs.package_commit }}
+          CI_PACKAGE_SHA256: ${{ needs.prepare.outputs.package_sha256 }}
+        run: node .github/scripts/restore-ci-package.mjs
+      - name: Install Chromium
+        run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+      - name: Prepare synthetic EPUB codec fixtures
+        if: matrix.codecs
+        run: |
+          if ! command -v ffmpeg || ! command -v cjxl ||
+             ! /usr/bin/python3 -c 'import fontTools, brotli'; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg libjxl-tools python3-fonttools python3-brotli
+          fi
+      - name: Build separate local-feature review package
+        if: matrix.localFeatures
+        env:
+          VITE_AMBRA_LOCAL_FEATURES: "1"
+        run: |
+          pnpm --filter @ambra/extension build --outDir "${{ runner.temp }}/ambra-local-features"
+          echo "AMBRA_E2E_EXTENSION_PATH=${{ runner.temp }}/ambra-local-features" >> "$GITHUB_ENV"
+      - name: Run selected browser group without retries
+        env:
+          BROWSER_GROUP: ${{ matrix.id }}
+        run: node .github/scripts/browser-test-groups.mjs --run "$BROWSER_GROUP"
+      - name: Keep browser timings and review evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: browser-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: browser-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: |
+            apps/e2e/ci-browser-results/
+            apps/e2e/test-results/**/bookmark-cards-*.png
+            apps/e2e/test-results/**/welcome-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Keep failed browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
           path: apps/e2e/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  validate:
+    name: Validate and package
+    needs: [prepare, browser]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.18.0
+      - name: Require all selected validation groups
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          RUN_BROWSER: ${{ needs.prepare.outputs.run_browser }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          BROWSER_MATRIX: ${{ needs.prepare.outputs.matrix }}
+        run: node .github/scripts/verify-ci-outcome.mjs
