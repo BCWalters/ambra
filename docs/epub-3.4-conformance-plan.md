@@ -33,9 +33,12 @@ work includes native JPEG XL/nested documents, HTML bases/SVG graphs,
 publication origins, vertical pagination and the advanced behaviors below.
 Regression validation is not a replacement for official criterion assessment.
 
-The merged-main eleven-criterion assessment improved from 6/11 (54.55%) to
+The historical merged-main eleven-criterion assessment improved from 6/11 (54.55%) to
 10/11 (90.91%): all four embedded-font criteria now pass, while direct JPEG XL
-still fails. All other 194 identifiers remain unassessed. See the
+still fails. The broader main run 37623541718 now passes 20/21 (95.24%),
+including all ten newly measured metadata/navigation/roll criteria; the same
+eleven media criteria remain unchanged. Required coverage is 21/139 (15.11%):
+118 required criteria and 184 total identifiers remain unassessed. See the
 [progress and before/after report](epub-3.4-progress-report.md) for exact package,
 browser/OS, methodology, evidence and remaining coverage.
 
@@ -44,14 +47,16 @@ compatibility work. They are not prerequisites for a secure, useful reader,
 but unsupported features and their fallback behavior must be handled
 explicitly.
 
-### Owner-approved next milestone and policies
+### Owner-approved measured milestone and policies
 
 - Broaden measured coverage before selecting the next rendering implementation.
   The opt-in release workflow now defines ten additional required
   package/metadata, navigation and roll checks alongside the original eleven
   media checks. See the [runner methods](epub-3.4-conformance-runner.md).
-  Until a merged-main run produces evidence, the historical 10/11 result above
-  remains the last measured result; 21 checks is planned coverage, not a score.
+  This milestone is measured in merged-main run 37623541718: all ten additions
+  pass. They were previously unassessed, not prior failures. The original
+  eleven still score 10/11; the expanded profile scores 20/21. The package,
+  exact run, browser/OS and method limitations are preserved in the report.
 - Keep publication scripting disabled for now; revisit only with compelling
   feedback. Required publication-origin isolation remains open in #338.
 - Use browser-native JPEG XL support when available; do not bundle a custom
@@ -176,7 +181,8 @@ Fallback support must not be scored as JPEG XL decoder support. A Chromium build
 without a JPEG XL decoder can select an available image fallback, but a standalone
 JPEG XL criterion still fails. The original 2.2.0 baseline scored six required
 passes/five failures; the merged-main reassessment scores ten passes/one failure
-among the same eleven criteria, with 194 identifiers still unassessed.
+among the same eleven criteria. The broader profile now scores 20/21, with
+184 total identifiers unassessed; the required JPEG XL failure is unchanged.
 Future release scoring must verify the pinned official foreign-resource and core
 media criteria against the actual packaged build. C34-04 remains open until the
 remaining native-decoder/object-policy gaps and official evidence are resolved.
