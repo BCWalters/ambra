@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { currentPageLabel, launchReader } from "../harness.js";
+import { currentPageLabel, expandLibraryTools, launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
 
@@ -101,11 +101,12 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
   test("sorting by title reorders the grid and the choice persists across a reload", async () => {
     const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
+      await libraryPage.goto(`${libraryPage.url()}?view=tab`);
       await libraryPage.locator('input[type="file"]').setInputFiles([TWO_CHAPTER]);
 
       const titlesInOrder = () =>
         libraryPage
-          .locator("p")
+          .locator("[data-library-collection] p")
           .evaluateAll((nodes, titles) =>
             nodes
               .map((n) => n.textContent?.trim())
@@ -116,6 +117,7 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
       // Newest-first and alphabetical order must disagree for these fixtures.
       await expect.poll(titlesInOrder).toEqual([TWO_CHAPTER_TITLE, LONG_CONTENT_TITLE]);
 
+      await expandLibraryTools(libraryPage);
       await libraryPage.getByRole("button", { name: "Sort library" }).click();
       await libraryPage.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
       await expect.poll(titlesInOrder).toEqual([LONG_CONTENT_TITLE, TWO_CHAPTER_TITLE]);

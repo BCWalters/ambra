@@ -1,9 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FC } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type FC, type ReactNode } from "react";
 import {
   Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle,
   SearchBox, Spinner, Title2, Tooltip, useRestoreFocusSource, useRestoreFocusTarget,
 } from "@fluentui/react-components";
-import { DocumentAddRegular, GlobeRegular, QuestionCircleRegular, WindowNewRegular } from "@fluentui/react-icons";
+import { ChevronDownRegular, ChevronUpRegular, DocumentAddRegular, GlobeRegular, QuestionCircleRegular, WindowNewRegular } from "@fluentui/react-icons";
 import { useLibrary, type UseLibraryResult } from "./useLibrary.js";
 import { useLibraryInspector } from "./useLibraryInspector.js";
 import { BookDetailsFlyout } from "./BookDetailsFlyout.js";
@@ -27,7 +27,7 @@ import { matchReaderCommand } from "../shortcuts/ReaderCommands.js";
 import { AmbraMarkIcon } from "../reader/components/AmbraMarkIcon.js";
 import { useChromeToolbarStyles } from "../components/ChromeToolbarStyles.js";
 import { useLocale, useTranslation } from "../i18n/LocaleContext.js";
-import { formatLibraryBytes } from "./LibraryFormatting.js";
+import { formatLibraryBookCount, formatLibraryBytes } from "./LibraryFormatting.js";
 import { ReviewInvitationCard } from "./ReviewInvitationCard.js";
 import { useLibraryFileDrop } from "./useLibraryFileDrop.js";
 import { LibraryFileDropOverlay } from "./LibraryFileDropOverlay.js";
@@ -38,6 +38,7 @@ export interface EmbeddedLibraryOptions {
   open: boolean;
   onActivateBook: (bookId: string) => void;
   currentBookId?: string | undefined;
+  renderHeader?: ((fullLibraryAction: ReactNode) => ReactNode) | undefined;
 }
 
 export interface LibraryAppProps {
@@ -57,17 +58,21 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   } = library;
   const isFullTab = !isEmbedded && library.isFullTab;
   const isActionPopup = !isEmbedded && !isFullTab;
+  const isCompact = !isFullTab;
   const openBook = embedded?.onActivateBook ?? library.openBook;
   const CollectionContainer = isEmbedded ? "div" : "main";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolbarImportRef = useRef<HTMLButtonElement>(null);
   const libraryHeadingRef = useRef<HTMLDivElement>(null);
   const collectionRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const compactToolsRef = useRef<HTMLButtonElement>(null);
   const removeCancelRef = useRef<HTMLButtonElement>(null);
   const restoreAboutFocus = useRestoreFocusTarget();
   const restoreDiscoveryFocus = useRestoreFocusTarget();
   const restoreRemoveFocus = useRestoreFocusSource();
   const [query, setQuery] = useState("");
+  const [compactToolsOpen, setCompactToolsOpen] = useState(false);
   const [discoveryOpen, setDiscoveryOpen] = useState(() =>
     new URLSearchParams(window.location.search).get("discover") === "1");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -80,11 +85,15 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   const pendingRemovalFocus = useRef<{ removed: string; next?: string } | undefined>(undefined);
   const resultsId = useId();
   const importStatusId = useId();
+  const compactToolsId = useId();
   const hasQuery = query.trim().length > 0;
   const visibleBooks = useMemo(() => filterLibraryBooks(books, query, locale), [books, query, locale]);
-  const continueBook = useMemo(() => books.filter((book) => book.lastReadAt !== undefined)
+  const continueBook = useMemo(() => books.filter((book) => book.lastReadAt !== undefined &&
+    (!isActionPopup || book.progressFraction === undefined || book.progressFraction < 1))
     .reduce<(typeof books)[number] | undefined>((latest, book) =>
-      !latest || (book.lastReadAt ?? 0) > (latest.lastReadAt ?? 0) ? book : latest, undefined), [books]);
+      !latest || (book.lastReadAt ?? 0) > (latest.lastReadAt ?? 0) ? book : latest, undefined), [books, isActionPopup]);
+  const popupContinueBook = isActionPopup && !hasQuery ? continueBook : undefined;
+  const collectionBooks = popupContinueBook ? visibleBooks.filter((book) => book.id !== popupContinueBook.id) : visibleBooks;
   const detailsBook = books.find((book) => book.id === detailsBookId);
   const removalBook = books.find((book) => book.id === removeBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
@@ -103,6 +112,9 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   useEffect(() => {
     if (!isLoading && books.length === 0) setQuery("");
   }, [isLoading, books.length]);
+  useEffect(() => {
+    if (compactToolsOpen) searchInputRef.current?.focus();
+  }, [compactToolsOpen]);
   useEffect(() => {
     if (active) return;
     setDetailsBookId(undefined);
@@ -176,17 +188,59 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     void importFiles(Array.from(files));
     event.target.value = "";
   };
+  const discoveryAction = (
+    <Button {...restoreDiscoveryFocus} appearance={isCompact ? "primary" : "secondary"} icon={<GlobeRegular />} aria-haspopup="dialog"
+      onClick={() => isFullTab ? setDiscoveryOpen(true) : openInFullTab(true)}
+      style={{ minWidth: 0, whiteSpace: "normal" }}>
+      {t("library.findBooks")}
+    </Button>
+  );
+  const importAction = (
+    <Button ref={toolbarImportRef} appearance={isCompact ? "secondary" : "primary"} icon={<DocumentAddRegular />}
+      title={isActionPopup ? t("library.importWindowAction") : undefined}
+      disabled={!canImport} onClick={() => {
+        // A native chooser can destroy the action popup before files are returned.
+        if (isActionPopup) openInFullTab("import");
+        else fileInputRef.current?.click();
+      }} style={{ minWidth: 0, whiteSpace: "normal" }}>
+      {t("library.importEpub")}
+    </Button>
+  );
+  const searchAndSort = (
+    <div data-library-filters="" style={{ display: "flex", alignItems: "center", gap: 4,
+      marginBottom: isFullTab ? 12 : 0,
+      background: palette.backgroundSolid }}>
+      <SearchBox value={query} input={{ ref: searchInputRef }} onChange={(_event, data) => setQuery(data.value)}
+        aria-label={t("library.search")} aria-controls={resultsId} placeholder={t("library.searchPlaceholder")}
+        dismiss={{ "aria-label": t("library.clearSearch") }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing &&
+            !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+            event.target instanceof HTMLInputElement && query) {
+            event.preventDefault(); event.stopPropagation(); setQuery("");
+          }
+        }} style={{ flex: 1, minWidth: 0, maxWidth: 440 }} />
+      <LibrarySortMenu sort={sort} onChange={setSort} active={active && (!isCompact || compactToolsOpen)} />
+    </div>
+  );
+  const fullLibraryAction = (
+    <Button appearance="subtle" size="small" icon={<WindowNewRegular />} iconPosition="after"
+      aria-label={t("library.fullLibrary")} title={t("library.fullLibrary")} onClick={() => openInFullTab()}
+      style={{ minWidth: 0, whiteSpace: "normal" }}>{t("library.fullLibraryLabel")}</Button>
+  );
 
   return (
     <div ref={dropTargetRef} style={{
       position: isEmbedded ? "relative" : undefined,
       minWidth: 0, minHeight: isFullTab ? "100vh" : 0, height: isEmbedded ? "100%" : isFullTab ? undefined : "100dvh",
-      overflow: isFullTab ? undefined : "auto",
+      overflow: isCompact ? "hidden" : undefined,
       background: palette.backgroundSolid, color: "var(--colorNeutralForeground1)", display: "flex", flexDirection: "column",
       marginLeft: inspector.isOpen && inspectorView === "dock-left" ? INSPECTOR_DOCK_WIDTH : 0,
       marginRight: inspector.isOpen && inspectorView === "dock-right" ? INSPECTOR_DOCK_WIDTH : 0,
     }}>
       <LibraryFileDropOverlay active={isDraggingFiles} contained={isEmbedded} />
+      {isEmbedded && (embedded.renderHeader ? embedded.renderHeader(fullLibraryAction) :
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 12px", flexShrink: 0 }}>{fullLibraryAction}</div>)}
       {!isEmbedded && <header className={toolbarStyles.root} role="toolbar" aria-label={t("library.toolbar")}
         style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
           flexShrink: 0, borderBottom: `1px solid ${CHROME_BORDER}` }}>
@@ -197,6 +251,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
           </Title2>
         </div>
         <div style={{ flex: 1 }} />
+        {isActionPopup && fullLibraryAction}
         <AmbraSettingsPopover settings={settings} onChange={setSettings} disabled={isLoading}
           showFullscreen={!isActionPopup}
           onOpenChange={(open) => { setSettingsOpen(open); if (open) setHelpTooltip(false); }} />
@@ -209,29 +264,47 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
         </Tooltip>
       </header>}
 
-      <div style={{ padding: isFullTab ? "20px 24px 0" : "12px 12px 0", flexShrink: 0 }}>
+      <div style={{ padding: isCompact ? 0 : "20px 24px 0", flexShrink: 0 }}>
+        {isFullTab &&
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
-          <Button {...restoreDiscoveryFocus} appearance="secondary" icon={<GlobeRegular />} aria-haspopup="dialog"
-            onClick={() => isFullTab ? setDiscoveryOpen(true) : openInFullTab(true)}>
-            {t("library.findBooks")}
-          </Button>
-          <Button ref={toolbarImportRef} appearance="primary" icon={<DocumentAddRegular />}
-            title={isActionPopup ? t("library.importWindowAction") : undefined}
-            disabled={!canImport} onClick={() => {
-              // A native chooser can destroy the action popup before files are returned.
-              // The persistent importer waits for a fresh user click to choose files.
-              if (isActionPopup) openInFullTab("import");
-              else fileInputRef.current?.click();
-            }}>
-            {t("library.importEpub")}
-          </Button>
-        </div>
+          {discoveryAction}{importAction}
+        </div>}
         <input ref={fileInputRef} type="file" accept=".epub" multiple disabled={!canImport} style={{ display: "none" }} onChange={handleFileChange} />
       </div>
 
+      {isCompact && <div data-library-popup-heading="" style={{ padding: "4px 12px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0 8px" }}>
+            {!isEmbedded && <h2 style={{ margin: 0, fontSize: 18, lineHeight: "28px", overflowWrap: "anywhere" }}>{t("library.yourLibrary")}</h2>}
+            {!isLoading && <span data-library-book-count="" style={{ fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
+              {formatLibraryBookCount(books.length, locale, t)}
+            </span>}
+          </div>
+          {books.length > 0 && <Button ref={compactToolsRef} appearance="subtle" size="small"
+            data-library-tools-toggle=""
+            icon={compactToolsOpen ? <ChevronUpRegular /> : <ChevronDownRegular />} iconPosition="after"
+            aria-expanded={compactToolsOpen} aria-controls={compactToolsId}
+            onClick={() => setCompactToolsOpen((open) => !open)}
+            style={{ minWidth: 0, maxWidth: "45%", whiteSpace: "normal" }}>
+            {t("library.findAndSort")}
+          </Button>}
+        </div>
+        {books.length > 0 && <div id={compactToolsId} hidden={!compactToolsOpen} style={{ marginTop: 8 }}
+          onKeyDown={(event) => {
+            if (!compactToolsOpen || event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing ||
+              event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+              document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]')) return;
+            event.preventDefault(); event.stopPropagation();
+            setCompactToolsOpen(false);
+            compactToolsRef.current?.focus();
+          }}>
+          {searchAndSort}
+        </div>}
+      </div>}
+
       <CollectionContainer aria-label={t("library.pageTitle")} style={{ padding: isFullTab ? "0 24px 24px" : "0 12px 12px",
-        // Short windows and high zoom scroll the outer surface instead of hiding books behind the filters.
-        flex: 1, minHeight: isFullTab ? 0 : 160, overflowY: isFullTab ? undefined : "auto" }}>
+        // Compact surfaces scroll books between fixed navigation and import/discovery actions.
+        flex: 1, minHeight: 0, overflowY: isFullTab ? undefined : "auto" }}>
         <LibraryImportStatus activities={importActivities} books={books} onOpenBook={openBook}
           onDismissCompleted={dismissCompletedImports} onCancelDownload={cancelDownload}
           isBookOpenDisabled={isBookOpenDisabled} busyMessageId={importStatusId}
@@ -247,29 +320,25 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
                   onRequestRemove={() => requestRemove(continueBook.id)} onShowDetails={() => setDetailsBookId(continueBook.id)} />
               </section>
             )}
-            <div data-library-filters="" style={{ display: "flex", alignItems: "center", gap: 4,
-              marginBottom: isFullTab ? 12 : 0, paddingBottom: isFullTab ? 0 : 12,
-              position: isFullTab ? undefined : "sticky", top: 0, zIndex: 1, background: palette.backgroundSolid }}>
-              <SearchBox value={query} onChange={(_event, data) => setQuery(data.value)}
-                aria-label={t("library.search")} aria-controls={resultsId} placeholder={t("library.searchPlaceholder")}
-                dismiss={{ "aria-label": t("library.clearSearch") }}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape" && !event.nativeEvent.isComposing && event.target instanceof HTMLInputElement && query) {
-                    event.preventDefault(); event.stopPropagation(); setQuery("");
-                  }
-                }} style={{ flex: 1, minWidth: 0, maxWidth: 440 }} />
-              <LibrarySortMenu sort={sort} onChange={setSort} active={active} />
-            </div>
+            {isFullTab && searchAndSort}
             <div role="status" aria-label={t("library.search")} aria-atomic="true" style={{ fontSize: 12,
               color: "var(--colorNeutralForeground2)", marginBottom: hasQuery ? 12 : 0 }}>
               {hasQuery && t("library.searchResults", { shown: new Intl.NumberFormat(locale).format(visibleBooks.length),
                 total: new Intl.NumberFormat(locale).format(books.length) })}
+              {isCompact && hasQuery && !compactToolsOpen && <Button appearance="subtle" size="small"
+                aria-label={t("library.clearSearch")} onClick={() => { setQuery(""); compactToolsRef.current?.focus(); }}>
+                {t("library.clearSearch")}
+              </Button>}
             </div>
             <div ref={collectionRef} id={resultsId} data-library-collection style={{ display: "flex", flexDirection: isFullTab ? "row" : "column",
               flexWrap: isFullTab ? "wrap" : undefined, gap: isFullTab ? 24 : 0, alignItems: "start" }}>
+              {popupContinueBook && <LibraryBookCard key={popupContinueBook.id} book={popupContinueBook} compact compactLayout variant="continue"
+                onOpen={() => openBook(popupContinueBook.id)}
+                onRequestRemove={() => requestRemove(popupContinueBook.id)} onShowDetails={() => setDetailsBookId(popupContinueBook.id)} />}
               {visibleBooks.length === 0 && <p style={{ margin: 0 }}>{t("library.searchNoResults")}</p>}
-              {visibleBooks.map((book) => (
-                <LibraryBookCard key={book.id} book={book} compact={!isFullTab} current={book.id === embedded?.currentBookId} active={active}
+              {collectionBooks.map((book) => (
+                <LibraryBookCard key={book.id} book={book} compact={!isFullTab} compactLayout={isCompact}
+                  current={book.id === embedded?.currentBookId} active={active}
                   openDisabled={isBookOpenDisabled(book.id)}
                   openDescriptionId={isBookOpenDisabled(book.id) ? importStatusId : undefined}
                   onOpen={() => openBook(book.id)}
@@ -334,14 +403,15 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
       </>}
 
       <footer style={{ flexShrink: 0, background: palette.backgroundSolid, borderTop: `1px solid ${CHROME_BORDER}`, padding: "8px 12px" }}>
-        {books.length > 0 && <div style={{ fontSize: 12, color: "var(--colorNeutralForeground2)", marginBottom: isFullTab ? 0 : 8 }}>
+        {isFullTab && books.length > 0 && <div style={{ fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
           {t("library.bookCount", { count: new Intl.NumberFormat(locale).format(books.length) })}
           {storageUsage && <> · {storageUsage.quotaBytes !== undefined
             ? t("library.storageUsedOf", { used: formatLibraryBytes(storageUsage.usageBytes, locale), available: formatLibraryBytes(storageUsage.quotaBytes, locale) })
             : t("library.storageUsed", { used: formatLibraryBytes(storageUsage.usageBytes, locale) })}</>}
         </div>}
-        {!isFullTab && <Button appearance="secondary" icon={<WindowNewRegular />} onClick={() => openInFullTab()}
-          style={{ width: "100%" }}>{t("library.fullLibrary")}</Button>}
+        {isCompact && <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}>
+          {discoveryAction}{importAction}
+        </div>}
       </footer>
     </div>
   );

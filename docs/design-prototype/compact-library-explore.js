@@ -26,6 +26,7 @@
     { id: "all", label: "All", accepts: () => true },
   ];
   const options = [
+    { id: "d", title: "D. Just keep reading", heading: "Your library", group: "all", description: "A small, clickable Continue Reading card, then a flat list. Find & sort stays collapsed; Find books and Import stay visible at the bottom.", className: "resume-first flat-first" },
     { id: "a", title: "A. Return to reading", heading: "Your library", group: "reading", description: "One obvious place to resume. Smaller reading lists follow; the utility controls step back.", className: "resume-first" },
     { id: "b", title: "B. List-first notebook", heading: "Reading lists", group: "reading", description: "Reading lists are the navigation. A calm, cover-and-title list uses the rest of the window.", className: "list-first" },
     { id: "c", title: "C. Small bookshelf", heading: "Your bookshelf", group: "all", description: "Recognize covers first. One list chooser replaces a row of filters; the current book stays marked.", className: "shelf-first" },
@@ -60,20 +61,21 @@
   }
 
   required("#comparison-grid").innerHTML = options.map(option => {
-    const listControls = option.id === "c"
+    const listControls = option.id === "d" ? "" : option.id === "c"
       ? `<label class="group-picker" for="list-${option.id}">Reading list<select id="list-${option.id}" data-list="${option.id}">${groups.map(group => `<option value="${group.id}">${group.label}</option>`).join("")}</select></label>`
       : `<nav class="lists" aria-label="Reading lists">${groups.filter(group => option.id === "b" || group.id !== "finished").map(group => `<button type="button" data-group="${group.id}" aria-controls="books-${option.id}" aria-pressed="false"></button>`).join("")}</nav>`;
-    return `<article class="option">
-      <header><h2>${option.title}${option.id === "a" ? '<span class="recommendation">Recommended</span>' : ""}</h2><p>${option.description}</p></header>
+    return `<article class="option" id="option-${option.id}">
+      <header><h2>${option.title}${option.id === "d" ? '<span class="recommendation">New simpler option</span>' : ""}</h2><p>${option.description}</p></header>
       <section class="app ${option.className}" data-option="${option.id}" aria-labelledby="heading-${option.id}">
         <header class="brand-bar"><span class="brand"><img src="assets/ambra-icon.png" alt="">ambra</span>
+          ${option.id === "d" ? '<a class="header-library" href="index.html?view=library" target="_blank" rel="noopener noreferrer" aria-label="Open full library preview (new tab)">Full library <span aria-hidden="true">&#8599;</span></a>' : ""}
           <details class="app-menu"><summary aria-label="Ambra options" title="Ambra options">...</summary><div class="app-menu-panel">
             <button type="button" data-action="settings">Settings</button>
             <button type="button" data-action="help">Help &amp; about</button>
             <a href="index.html?view=library&amp;discovery=open" target="_blank" rel="noopener noreferrer">Find books in full preview</a>
           </div></details>
         </header>
-        <div class="library-heading"><div class="heading-row"><h3 id="heading-${option.id}">${option.heading}</h3>
+        <div class="library-heading"><div class="heading-row"><div class="library-title-line"><h3 id="heading-${option.id}">${option.heading}</h3>${option.id === "d" ? '<span class="result-count"></span>' : ""}</div>
           <details class="tools" id="tools-${option.id}"><summary>Find &amp; sort</summary>
           <div class="tool-panel">
             <label for="query-${option.id}">Search title or author<input id="query-${option.id}" type="search" placeholder="Title or author" data-query="${option.id}" aria-controls="books-${option.id}"></label>
@@ -81,11 +83,13 @@
               <option value="recent">Last opened</option><option value="title">Title</option><option value="author">Author</option>
             </select></label><button type="button" data-action="clear-search">Clear search</button></div>
           </div></details>
-        </div><span class="result-count"></span>
+        </div>${option.id === "d" ? "" : '<span class="result-count"></span>'}
         </div>
         ${listControls}
         <div class="app-scroll" id="books-${option.id}" role="region" aria-label="${option.title} books"></div>
-        <footer class="app-footer"><a href="index.html?view=library" target="_blank" rel="noopener noreferrer" title="Open reviewed full-library prototype with its own sample">Open full library</a><button type="button" data-action="import">Import</button></footer>
+        <footer class="app-footer">${option.id === "d"
+          ? '<a class="find-books primary" href="index.html?view=library&amp;discovery=open" target="_blank" rel="noopener noreferrer" aria-label="Find books in the full-library preview (new tab)">Find books</a>'
+          : '<a href="index.html?view=library" target="_blank" rel="noopener noreferrer" title="Open reviewed full-library prototype with its own sample">Open full library</a>'}<button type="button" data-action="import">${option.id === "d" ? "Import book" : "Import"}</button></footer>
       </section>
     </article>`;
   }).join("");
@@ -110,8 +114,18 @@
         ${tiles ? "" : progress(book)}
       </span></button></li>`;
   }
-  function emptyContent(current) {
-    if (books.length === 0) return `<div class="empty"><h3>Your next chapter starts here.</h3><p>Add an original sample book to try this layout. No file will be read.</p><button class="primary" type="button" data-action="import">Import a sample book</button><br><a href="index.html?view=library&amp;discovery=open" target="_blank" rel="noopener noreferrer">Find books in the full preview</a></div>`;
+  function resumeCard(book, compact) {
+    if (compact) return `<button class="resume resume-compact" type="button" data-book-id="${book.id}" aria-label="Continue reading ${escapeHtml(book.title)} by ${escapeHtml(book.author)}, ${progressText(book)} (prototype sample)">
+      ${cover(book)}<span class="resume-copy"><span class="resume-label"><span>Continue reading</span><span>${progressText(book)}</span></span>
+      <strong>${escapeHtml(book.title)}</strong><span class="book-author">${escapeHtml(book.author)}</span>${progress(book)}</span>
+    </button>`;
+    return `<div class="resume">${cover(book)}<div><p class="eyebrow">Continue reading</p><strong>${escapeHtml(book.title)}</strong><span class="book-author">${escapeHtml(book.author)}</span><span class="book-status">${progressText(book)}</span>${progress(book)}<button class="primary" type="button" data-book-id="${book.id}">Continue reading</button></div></div>`;
+  }
+  function emptyContent(current, option) {
+    if (books.length === 0) {
+      if (option.id === "d") return '<div class="empty empty-library"><svg class="empty-art" viewBox="0 0 320 200" aria-hidden="true" focusable="false"><use href="#empty-book-art"/></svg><h3>No books yet</h3><p>Find an EPUB or import a file to start reading.</p></div>';
+      return `<div class="empty"><h3>Your next chapter starts here.</h3><p>Add an original sample book to try this layout. No file will be read.</p><button class="primary" type="button" data-action="import">Import a sample book</button><br><a href="index.html?view=library&amp;discovery=open" target="_blank" rel="noopener noreferrer">Find books in the full preview</a></div>`;
+    }
     if (current.query.trim()) return `<div class="empty"><h3>No matching books</h3><p>Try another title or author, or clear the search.</p><button class="secondary" type="button" data-action="clear-search">Clear search</button></div>`;
     return `<div class="empty"><h3>Nothing in ${escapeHtml(getGroup(current.group).label)} yet</h3><p>Your other reading lists are still here.</p><button class="secondary" type="button" data-action="show-all">See all books</button></div>`;
   }
@@ -123,9 +137,9 @@
     root.querySelector(".result-count").textContent =
       `${visible.length} ${hasQuery ? "matches" : "books"}${current.order === "recent" ? "" : ` · by ${current.order}`}`;
     root.querySelector(".tools").hidden = books.length === 0;
-    root.querySelector(".app-footer [data-action='import']").hidden = books.length === 0;
+    root.querySelector(".app-footer [data-action='import']").hidden = books.length === 0 && option.id !== "d";
     const lists = root.querySelector(".lists, .group-picker");
-    lists.hidden = books.length === 0;
+    if (lists) lists.hidden = books.length === 0;
     for (const group of groups) {
       const count = books.filter(group.accepts).length;
       const button = root.querySelector(`[data-group="${group.id}"]`);
@@ -140,14 +154,14 @@
     if (picker) picker.value = current.group;
     const filter = hasQuery
       ? `<div class="filter-note"><span>Search: ${escapeHtml(current.query.trim())}</span><button type="button" data-action="clear-search">Clear</button></div>` : "";
-    let content = visible.length === 0 ? emptyContent(current) : "";
-    if (visible.length > 0 && option.id === "a") {
-      const resume = !hasQuery && current.order === "recent"
+    let content = visible.length === 0 ? emptyContent(current, option) : "";
+    if (visible.length > 0 && (option.id === "a" || option.id === "d")) {
+      const resume = !hasQuery && (current.order === "recent" || option.id === "d")
         ? visible.find(book => book.id === resumeId && book.progress !== null && book.progress < 100)
         : undefined;
       const others = resume ? visible.filter(book => book.id !== resume.id) : visible;
-      if (resume) content += `<div class="resume">${cover(resume)}<div><p class="eyebrow">Continue reading</p><strong>${escapeHtml(resume.title)}</strong><span class="book-author">${escapeHtml(resume.author)}</span><span class="book-status">${progressText(resume)}</span>${progress(resume)}<button class="primary" type="button" data-book-id="${resume.id}">Continue reading</button></div></div>`;
-      if (others.length) content += `${resume ? '<p class="section-label">Also on this list</p>' : ""}<ul class="book-list">${others.map(book => bookButton(book)).join("")}</ul>`;
+      if (resume) content += resumeCard(resume, option.id === "d");
+      if (others.length) content += `${resume ? `<p class="section-label">${option.id === "d" ? "More books" : "Also on this list"}</p>` : ""}<ul class="book-list">${others.map(book => bookButton(book)).join("")}</ul>`;
     } else if (visible.length > 0) {
       content = `<ul class="${option.id === "c" ? "cover-grid" : "book-list"}">${visible.map(book => bookButton(book, option.id === "c")).join("")}</ul>`;
     }
@@ -291,7 +305,7 @@
     if (origin.bookId && origin.option) {
       const root = app(origin.option);
       const target = root.querySelector(`[data-book-id="${origin.bookId}"]`) ??
-        root.querySelector("[data-group][aria-pressed='true'], [data-list]");
+        root.querySelector("[data-group][aria-pressed='true'], [data-list], .tools > summary");
       if (!target) throw new Error("No focus return target after sample reading.");
       target.focus();
     } else if (origin.trigger.isConnected && !origin.trigger.hidden) {

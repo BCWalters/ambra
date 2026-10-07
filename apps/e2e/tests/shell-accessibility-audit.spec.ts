@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { expandLibraryTools, launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { getChromeTheme } from "../../extension/src/reader/chromeTheme.js";
 
@@ -21,6 +21,7 @@ for (const { surface, entryName } of settingsEntries) {
     try {
       await page.bringToFront();
       if (surface === "Reader") await page.mouse.move(10, 2);
+      if (surface === "Library" && entryName === "Sort library") await expandLibraryTools(page);
       const trigger = page.getByRole("button", { name: "Ambra settings", exact: true });
       const tooltipName = entryName === "Ambra settings" || entryName === "Help & About" ? entryName : undefined;
       if (entryName) {

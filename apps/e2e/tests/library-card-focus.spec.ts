@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { expandLibraryTools, launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -52,13 +52,11 @@ test.describe("Library book focus and safe removal", () => {
           const collection = page.getByRole("main");
           await collection.evaluate(element => { element.scrollTop = 160; });
           expect(await collection.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
-          const filters = page.locator("[data-library-filters]");
-          await expect(filters).toHaveCSS("padding-bottom", "12px");
-          const bounds = (await filters.boundingBox())!;
-          const search = (await page.getByRole("searchbox").boundingBox())!;
-          expect(bounds.y + bounds.height - search.y - search.height).toBeGreaterThanOrEqual(12);
+          const heading = page.locator("[data-library-popup-heading]");
+          const bounds = (await heading.boundingBox())!;
+          await expect(page.locator("[data-library-tools-toggle]")).toHaveAttribute("aria-expanded", "false");
           expect(await page.evaluate(({ x, y }) =>
-            !!document.elementFromPoint(x, y)?.closest("[data-library-filters]"),
+            !!document.elementFromPoint(x, y)?.closest("[data-library-popup-heading]"),
           { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height - 6 })).toBe(true);
           await page.screenshot({ path: test.info().outputPath("compact-library-scroll-gap.png") });
         }
@@ -124,6 +122,7 @@ test.describe("Library book focus and safe removal", () => {
       await expect(metadata).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(details).toBeFocused();
+      await expandLibraryTools(page);
       await page.getByRole("button", { name: "Sort library", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Title (A–Z)", exact: true }).click();
       await second.press("Delete");

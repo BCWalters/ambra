@@ -24,6 +24,14 @@ export interface LaunchedReader {
   extensionId: string;
 }
 
+export async function expandLibraryTools(page: Page): Promise<void> {
+  const toggle = page.locator("[data-library-tools-toggle]");
+  if (await toggle.count() && await toggle.getAttribute("aria-expanded") === "false") {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  }
+}
+
 /** Use only after Library has initialized the real preference store. */
 export async function seedReadingWelcomeAcknowledgement(page: Page): Promise<void> {
   await page.evaluate(async () => {

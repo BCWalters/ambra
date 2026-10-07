@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { expandLibraryTools, launchReader } from "../harness.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -9,7 +9,7 @@ const FIRST = path.resolve(here, "../fixtures/long-content.epub");
 const SECOND = path.resolve(here, "../fixtures/two-chapter.epub");
 const TITLE = "Ambra Long Content Test Fixture";
 
-test("short compact Library keeps books and footer reachable below the sticky filters", async () => {
+test("short compact Library keeps books and fixed navigation reachable with collapsed tools", async () => {
   const { context, libraryPage: page } = await launchReader(FIRST, { viewport: { width: 320, height: 256 } });
   try {
     await page.bringToFront();
@@ -17,8 +17,9 @@ test("short compact Library keeps books and footer reachable below the sticky fi
     await open.focus();
     await expect(open).toBeInViewport({ ratio: 1 });
     const cover = (await open.boundingBox())!;
-    const filters = (await page.locator("[data-library-filters]").boundingBox())!;
-    expect(cover.y + cover.height / 2).toBeGreaterThanOrEqual(filters.y + filters.height);
+    await expect(page.getByRole("button", { name: "Find & sort", exact: true })).toHaveAttribute("aria-expanded", "false");
+    const heading = (await page.locator("[data-library-popup-heading]").boundingBox())!;
+    expect(cover.y + cover.height / 2).toBeGreaterThanOrEqual(heading.y + heading.height);
     const expand = page.getByRole("button", { name: "Open library in new tab", exact: true });
     await expand.focus();
     await expect(expand).toBeInViewport({ ratio: 1 });
@@ -47,6 +48,7 @@ for (const width of [360, 1200]) {
       await page.locator('input[type="file"]').setInputFiles(SECOND);
       const covers = page.locator("[data-library-collection]").getByRole("button", { name: /^Open / });
       await expect(covers).toHaveCount(2);
+      await expandLibraryTools(page);
       await page.getByRole("button", { name: "Sort library", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Title (A–Z)" }).click();
       await expect(covers.first()).toHaveAccessibleName(new RegExp(`^Open ${TITLE}`));
@@ -145,6 +147,7 @@ for (const width of [360, 1200]) {
 test("active library searches follow imports and removals without confusing no matches with an empty library (#269)", async () => {
   const { context, libraryPage: page } = await launchReader(FIRST);
   try {
+    await expandLibraryTools(page);
     const search = page.getByRole("searchbox", { name: "Search library" });
     const covers = page.getByRole("main").getByRole("button", { name: /^Open / });
     await search.fill("two-chapter");
@@ -178,6 +181,7 @@ test("active library searches follow imports and removals without confusing no m
 test("library search relabels live in French without changing its query, and clears on reload (#269)", async () => {
   const { context, libraryPage: page } = await launchReader(FIRST, { viewport: { width: 360, height: 750 } });
   try {
+    await expandLibraryTools(page);
     await page.getByRole("searchbox", { name: "Search library" }).fill("lovelace");
     await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
     await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr");
@@ -193,6 +197,7 @@ test("library search relabels live in French without changing its query, and cle
     await search.fill("missing");
     await expect(page.getByText(t("library.searchNoResults"))).toBeVisible();
     await page.reload();
+    await expandLibraryTools(page);
     await expect(search).toHaveValue("");
     await expect(page.getByRole("button", { name: t("library.openBook", { title: TITLE }), exact: true })).toBeVisible();
   } finally {

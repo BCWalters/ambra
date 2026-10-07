@@ -88,7 +88,7 @@ test("French Library localizes live, preserves toolbar order and persists across
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
     await expect(page).toHaveTitle(t("library.pageTitle"));
     const toolbar = page.getByRole("toolbar", { name: t("library.toolbar") });
-    const names = [t("settings.ambraTitle"), t("about.title")];
+    const names = [t("library.fullLibrary"), t("settings.ambraTitle"), t("about.title")];
     await expect(toolbar.getByRole("button")).toHaveCount(names.length);
     for (let index = 0; index < names.length; index++) {
       await expect(toolbar.getByRole("button").nth(index)).toHaveAccessibleName(names[index]!);

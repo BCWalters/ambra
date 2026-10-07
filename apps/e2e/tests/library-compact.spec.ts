@@ -2,9 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
+import { exposeReaderController } from "../reader-controller.js";
+import { formatLibraryBookCount, formatLibraryProgress } from "../../extension/src/library/LibraryFormatting.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
 import { SUPPORTED_LOCALES, type Locale } from "../../extension/src/i18n/Locale.js";
-import type { BookMetadata } from "../../extension/src/library/LibraryDatabase.js";
+import type { BookMetadata, ReadingProgress } from "../../extension/src/library/LibraryDatabase.js";
 
 const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/long-content.epub");
 
@@ -53,7 +55,12 @@ async function expectFixedChrome(page: Page, locale: Locale, height: number) {
   expect(await full.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
   const footer = (await page.getByRole("contentinfo").boundingBox())!;
   expect(footer.y + footer.height).toBeLessThanOrEqual(height + 1);
-  expect((await full.boundingBox())!.y).toBeGreaterThanOrEqual(footer.y);
+  expect((await full.boundingBox())!.y).toBeLessThan(bounds.y + bounds.height);
+  for (const label of [t("library.findBooks"), t("library.importEpub")]) {
+    const action = (await page.getByRole("button", { name: label, exact: true }).boundingBox())!;
+    expect(action.y).toBeGreaterThanOrEqual(footer.y);
+    expect(action.y + action.height).toBeLessThanOrEqual(footer.y + footer.height);
+  }
   expect(await page.evaluate(() => ({
     scrollY, overflow: document.documentElement.scrollWidth > innerWidth,
   }))).toEqual({ scrollY: 0, overflow: false });
@@ -67,7 +74,7 @@ for (const width of [320, 360]) {
     try {
       await seedLayoutMetadata(page);
       await expect(page.getByRole("main").getByRole("button", { name: /^Open / })).toHaveCount(12);
-      const firstRows = await page.getByRole("main").getByRole("button", { name: /^Open / }).evaluateAll((nodes) =>
+      const firstRows = await page.locator('[data-library-book]:not([data-library-continue]) [data-book-open]').evaluateAll((nodes) =>
         nodes.slice(0, 4).map((node) => {
           const { x, y, width, height } = node.getBoundingClientRect();
           return { x, y, width, height };
@@ -75,7 +82,7 @@ for (const width of [320, 360]) {
       expect(firstRows[1]!.y).toBeGreaterThan(firstRows[0]!.y);
       expect(firstRows[2]!.y).toBeGreaterThan(firstRows[1]!.y);
       expect(firstRows[3]!.y).toBeGreaterThan(firstRows[0]!.y);
-      expect(firstRows[0]!.width).toBe(56);
+      expect(firstRows[0]!.width).toBe(44);
       expect(firstRows[0]!.width / firstRows[0]!.height).toBeCloseTo(2 / 3, 2);
       await page.screenshot({ path: testInfo.outputPath(`compact-list-${width}.png`) });
 
@@ -87,8 +94,16 @@ for (const width of [320, 360]) {
         await page.keyboard.press("Escape");
         locale = next;
         await expect(page.locator("html")).toHaveAttribute("lang", locale);
+        await expect(page.locator("[data-library-book-count]")).toHaveText(formatLibraryBookCount(12, locale, getTranslate(locale)));
         await expectFixedChrome(page, locale, 480);
+        const toggle = page.getByRole("button", { name: getTranslate(locale)("library.findAndSort"), exact: true });
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
+        await expect(page.getByRole("button", { name: getTranslate(locale)("library.sort"), exact: true })).toBeHidden();
+        await toggle.click();
         await expect(page.getByRole("button", { name: getTranslate(locale)("library.sort"), exact: true })).toBeVisible();
+        await page.getByRole("searchbox", { name: getTranslate(locale)("library.search") }).press("Escape");
+        await expect(toggle).toBeFocused();
+        await expect(toggle).toHaveAttribute("aria-expanded", "false");
         await expect(page.getByRole("button", { name: getTranslate(locale)("library.findBooks"), exact: true })).toBeVisible();
         await expect(page.getByRole("button", { name: getTranslate(locale)("library.importEpub"), exact: true })).toBeVisible();
       }
@@ -98,7 +113,7 @@ for (const width of [320, 360]) {
       await page.mouse.wheel(0, 1500);
       await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
       await expectFixedChrome(page, locale, 480);
-      await expect(page.getByRole("button", { name: getTranslate(locale)("library.sort"), exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: getTranslate(locale)("library.findAndSort"), exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`compact-scrolled-${width}.png`) });
 
       const t = getTranslate(locale);
@@ -113,6 +128,83 @@ for (const width of [320, 360]) {
       await expect(cover.getByText("Compact layout 1", { exact: true })).toHaveCSS("-webkit-line-clamp", "4");
       await expect(cover.getByText("Layout author", { exact: true })).toBeVisible();
       expect(await full.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const width of [320, 360]) {
+  test(`${width}px compact resume is one bounded keyboard action with real progress in all nine locales`, async () => {
+    const twoChapter = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
+    const title = "Ambra Two-Chapter Spread Test Fixture";
+    const { context, libraryPage: page, readerPage } = await launchReader(twoChapter, { viewport: { width, height: 480 } });
+    try {
+      await exposeReaderController(readerPage);
+      await readerPage.evaluate(async () => Reflect.get(window, "__readerController").goToChapter(1));
+      await expect.poll(() => readerPage.evaluate(async () => {
+        const controller = Reflect.get(window, "__readerController");
+        await controller.flushProgress();
+        const progress: ReadingProgress | undefined = await controller.library.getProgress(controller.bookId);
+        return progress?.fractionComplete;
+      })).toBeGreaterThan(0);
+      const fraction = await readerPage.evaluate(async () => {
+        const controller = Reflect.get(window, "__readerController");
+        const progress: ReadingProgress | undefined = await controller.library.getProgress(controller.bookId);
+        if (progress?.fractionComplete === undefined) throw new Error("Saved native resume progress is missing");
+        return progress.fractionComplete;
+      });
+      expect(fraction).toBeLessThan(1);
+      await readerPage.close();
+      await page.reload();
+      const card = page.locator("[data-library-continue]");
+      const open = card.locator("[data-book-open]");
+      await expect(card).toHaveCount(1);
+      await expect(page.locator("[data-library-book-count]")).toHaveText("1 book");
+      await expect(page.locator("[data-library-book]")).toHaveCount(1);
+      await expect(open.locator("button")).toHaveCount(0);
+      let locale: Locale = "en";
+      for (const next of SUPPORTED_LOCALES) {
+        const previous = getTranslate(locale);
+        await page.getByRole("button", { name: previous("settings.ambraTitle"), exact: true }).click();
+        await page.getByRole("combobox", { name: previous("settings.language"), exact: true }).selectOption(next);
+        await page.keyboard.press("Escape");
+        locale = next;
+        const t = getTranslate(locale);
+        await expect(page.locator("[data-library-book-count]")).toHaveText(formatLibraryBookCount(1, locale, t));
+        await expect(open).toHaveAccessibleName(t("library.openBookProgress", {
+          title, progress: formatLibraryProgress(Math.round(fraction * 100) / 100, locale),
+        }));
+        await expect(open).toBeInViewport({ ratio: 1 });
+        expect((await card.boundingBox())!.height).toBeLessThanOrEqual(128);
+        const track = open.locator("[data-library-progress-track]");
+        await expect(track).toHaveCSS("display", "block");
+        const bounds = (await track.boundingBox())!;
+        expect(bounds.height).toBe(3);
+        expect(bounds.width).toBeGreaterThan(100);
+        expect((await track.locator("span").boundingBox())!.width / bounds.width)
+          .toBeCloseTo(Math.round(fraction * 100) / 100, 2);
+        const details = card.getByRole("button", { name: t("library.bookDetails", { title }), exact: true });
+        expect(await details.evaluate(node => node.closest("[data-book-open]") === null)).toBe(true);
+        await expectFixedChrome(page, locale, 480);
+      }
+      const t = getTranslate(locale);
+      await page.emulateMedia({ forcedColors: "active" });
+      await open.focus();
+      await expect(open).toHaveCSS("outline-style", "solid");
+      await open.press("Tab");
+      const details = card.getByRole("button", { name: t("library.bookDetails", { title }), exact: true });
+      await expect(details).toBeFocused();
+      await details.press("Enter");
+      await expect(page.getByRole("dialog", { name: t("toolbar.bookDetails"), exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(details).toBeFocused();
+      await details.press("Shift+Tab");
+      await expect(open).toBeFocused();
+      await page.emulateMedia({ forcedColors: "none" });
+      const opened = context.waitForEvent("page");
+      await open.press("Enter");
+      await expect((await opened).locator("[data-ambra-toolbar-title]")).toContainText("Chapter Two");
     } finally {
       await context.close();
     }
@@ -177,7 +269,8 @@ test("native Chrome action popup has stable preferred dimensions and keeps navig
       await expect.poll(geometry).toMatchObject({
         language: next, width: 360, height: 480, footerBottom: 480, bodyScroll: 0, covers: 12,
       });
-      const labels = [getTranslate(next)("library.importEpub"), getTranslate(next)("library.findBooks"), getTranslate(next)("library.sort")];
+      const labels = [getTranslate(next)("library.importEpub"), getTranslate(next)("library.findBooks"),
+        getTranslate(next)("library.findAndSort"), getTranslate(next)("library.fullLibrary")];
       expect(await page.evaluate((labels) => {
         const view = chrome.extension.getViews({ type: "popup" })[0]!;
         return labels.every((label) => {
@@ -198,8 +291,13 @@ test("native Chrome action popup has stable preferred dimensions and keeps navig
     });
     await testInfo.attach("native-popup-layout", { body: JSON.stringify(await geometry()), contentType: "application/json" });
     const opened = context.waitForEvent("page");
-    await page.evaluate(() =>
-      chrome.extension.getViews({ type: "popup" })[0]!.document.querySelector<HTMLButtonElement>("footer button")!.click());
+    await page.evaluate(label => {
+      const view = chrome.extension.getViews({ type: "popup" })[0]!;
+      const button = [...view.document.querySelectorAll<HTMLButtonElement>("header button")]
+        .find(node => node.getAttribute("aria-label") === label);
+      if (!button) throw new Error("Native popup full-library navigation missing");
+      button.click();
+    }, getTranslate(locale)("library.fullLibrary"));
     const full = await opened;
     await expect(full).toHaveURL(/\?view=tab$/);
     await expect(full.locator("[data-library-collection] [data-book-open]")).toHaveCount(12);
