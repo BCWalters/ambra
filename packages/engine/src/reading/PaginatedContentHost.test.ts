@@ -12,7 +12,7 @@ import { contentDocumentRoot } from "../content/ContentDocumentRoot.js";
 
 function fixture(svg = false) {
   const host = new PaginatedContentHost(600, 900);
-  const doc = svg ? document.implementation.createDocument("http://www.w3.org/2000/svg", "svg")
+  const doc = svg ? new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg"/>', "application/xhtml+xml")
     : document.implementation.createHTMLDocument();
   const body = contentDocumentRoot(doc);
   body.textContent = "Original viewport-relative page content.";

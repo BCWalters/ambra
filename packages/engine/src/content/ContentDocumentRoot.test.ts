@@ -8,15 +8,18 @@ it("uses the existing XHTML body without changing its root", () => {
   expect(isSvgRoot(doc.documentElement)).toBe(false);
 });
 
-it("uses an original SVG document element without inserting a body", () => {
-  const doc = document.implementation.createDocument("http://www.w3.org/2000/svg", "svg");
-  const root = contentDocumentRoot(doc);
-  expect(isSvgRoot(root)).toBe(true);
-  expect(root).toBe(doc.documentElement);
-  expect(doc.body).toBeNull();
-  root.style.transform = "translateY(20px)";
-  expect(root.style.transform).toBe("translateY(20px)");
-});
+it.each(["image/svg+xml", "application/xhtml+xml"] as const)(
+  "uses original SVG parsed as %s without inserting a body",
+  (type) => {
+    const doc = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg"/>', type);
+    const root = contentDocumentRoot(doc);
+    expect(isSvgRoot(root)).toBe(true);
+    expect(root).toBe(doc.documentElement);
+    expect(doc.body).toBeNull();
+    root.style.transform = "translateY(20px)";
+    expect(root.style.transform).toBe("translateY(20px)");
+  },
+);
 
 it("rejects an unsupported XML root explicitly", () => {
   const doc = document.implementation.createDocument("urn:foreign", "svg");
