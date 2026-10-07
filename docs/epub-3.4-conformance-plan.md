@@ -37,6 +37,9 @@ Standalone SVG in a reflowable spine uses its original namespaced SVG root,
 not an inserted XHTML body. Pagination measures it atomically and retains a
 root-element reading anchor; paging paint, resize, overlays, animation and
 continuous-scroll position tracking use the same content-root selection.
+Reader-owned image-control styles use the SVG namespace when no XHTML head
+exists, without adding a head/body or changing authored artwork. SVG regression
+also runs in the early reader gate; the full protected suite remains required.
 Fixed-layout and roll rendering retain their existing paths. Hosted regression
 and exact-package reassessment are required before promoting the three opening
 failures tracked in #367 to passes.

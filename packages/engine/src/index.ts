@@ -43,6 +43,7 @@ export {
 export type { ResourceReference } from "./content/ContentLoader.js";
 export { findTextMatchesInDocument } from "./content/DocumentTextSearch.js";
 export { markReaderOwnedContent, isReaderOwnedContent } from "./content/ReaderOwnedContent.js";
+export { contentDocumentRoot } from "./content/ContentDocumentRoot.js";
 export type { DocumentTextMatch } from "./content/DocumentTextSearch.js";
 export { EncryptionDocument, EncryptionDocumentError } from "./encryption/EncryptionDocument.js";
 export type { EncryptedResourceEntry } from "./encryption/EncryptionDocument.js";
