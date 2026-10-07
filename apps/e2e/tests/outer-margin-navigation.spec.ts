@@ -314,7 +314,7 @@ for (const rtl of [false, true]) {
       // Width-fitted artwork retains both physical outer-edge targets.
       await page.setViewportSize({ width: 1200, height: 900 });
       await settle(page);
-      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").width)).toBe(1200);
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").appliedWidth)).toBe(1200);
       await settle(page);
       await page.mouse.move(600, 400);
       await expect(page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })

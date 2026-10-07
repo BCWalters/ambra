@@ -2,5 +2,6 @@
 .reader-profiles/
 test-results/
 playwright-report/
+ci-browser-results/
 node_modules/
 real-books/

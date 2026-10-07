@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { selectBrowserSuites } from "./select-browser-suites.mjs";
+import { browserGroups, browserMatrix } from "./browser-test-groups.mjs";
 
 function expectMode(files, mode) {
   assert.deepEqual(selectBrowserSuites(files), {
@@ -104,15 +105,14 @@ test("CI workflow changes still force full validation alongside Library changes"
 });
 
 test("every focused Library spec is wired to an eligible workflow stage", () => {
-  const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
-  const libraryStages = workflow.split(/^ {6}- name: /m).filter(stage =>
-    /if: steps\.browser-suites\.outputs\.run_library(?:_integration)? == 'true'/.test(stage));
+  const groupIds = browserMatrix("library").include.map(group => group.id);
+  const files = browserGroups.filter(group => groupIds.includes(group.id))
+    .flatMap(group => group.steps.flatMap(step => step.files.map(file => `${file}.spec.ts`)));
   for (const file of readdirSync(new URL("../../apps/e2e/tests/", import.meta.url))) {
     if (!file.endsWith(".spec.ts")) continue;
     if (selectBrowserSuites([`apps/e2e/tests/${file}`]).mode !== "library") continue;
-    assert.ok(libraryStages.some(stage => stage.includes(file)), `${file} must run in Library mode`);
+    assert.ok(files.includes(file), `${file} must run in Library mode`);
   }
-  assert.ok(workflow.indexOf("- name: Verify Library first-run") < workflow.indexOf("- name: Test the packaged"));
 });
 
 test("mixed Library and shared changes run the full suite", () => {

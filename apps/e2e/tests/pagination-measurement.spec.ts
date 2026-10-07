@@ -1567,6 +1567,7 @@ test("foreground measurement keeps animated and disclosure-started animation ato
 });
 
 test("packaged long chapter navigation yields to input and retires superseded hosts (#260)", async () => {
+  test.setTimeout(90_000);
   const filename = test.info().outputPath("large-original.epub");
   fs.writeFileSync(filename, Buffer.from(book(Array.from({ length: 12 }, (_, index) =>
     `<p id="p${index}">${"An original long paragraph follows the reader through a quiet invented landscape. ".repeat(350)}</p>`).join("")), "base64"));
@@ -1644,7 +1645,7 @@ test("packaged long chapter navigation yields to input and retires superseded ho
     expect(cancellation).toMatchObject({ first: false, second: true, retainedVisible: true, retired: true, page: 3, frames: 1 });
     expect(cancellation.error).toBeUndefined();
     await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController")
-      .bookPagination.positionFor(0, 0).totalPages)).toBeGreaterThan(300);
+      .bookPagination.positionFor(0, 0).totalPages), { timeout: 30_000 }).toBeGreaterThan(300);
   } finally { await context.close(); }
 });
 

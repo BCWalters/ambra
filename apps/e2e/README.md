@@ -58,9 +58,46 @@ push diff:
 - Shared UI, reader, engine, dependency, manifest, workflow, release, and
   unclassified changes run the complete protected browser suite.
 
-Library/import and Library-localization checks run immediately after Chromium
-setup, before the long Reader stage, so Library failures do not wait behind
-unrelated pagination, codec, narration, and annotation checks. Keep
+CI builds one clean production archive, then runs selected browser groups on
+separate standard Ubuntu runners. Four disjoint Reader groups replace the
+single long Reader stage; Library, resources, narration, tools, local-feature
+controls and contention-sensitive checks have independently rerunnable jobs.
+At most eight browser jobs run concurrently, with the existing one/two-worker
+limits within each runner. A failure does not cancel the other selected groups.
+Every production group verifies the archive's commit, producer SHA-256 and
+release checksums before extraction; only the explicit local-feature group
+builds its separate development package.
+
+Pagination measurement's input/long-task probes run in the one-worker
+contention-sensitive group. Their foreground responsiveness thresholds remain
+strict; the thousand-page cancellation probe gives the independent background
+canonical index up to 30 seconds to finish, rather than treating the default
+10-second assertion timeout as a background-throughput requirement.
+Ubuntu package downloads have 30-second network timeouts, no automatic retries
+and fail on incomplete index updates. Browser and codec installation steps are
+bounded to five minutes in CI, so a stalled mirror cannot consume the entire
+30-minute browser job. The conformance workflow uses the same network policy.
+
+The protected `Validate and package` check is an always-run aggregate that
+fails unless preparation and every selected browser group succeed. Existing
+documentation/tooling/Library/localization selection stays fail-closed, and
+release workflows still wait for the complete reusable CI workflow. The
+uploaded package is a candidate until all required groups pass.
+
+For an unchanged commit, GitHub's **Re-run failed jobs** reruns the failed group
+and aggregate, not the successful groups or package build. A new commit still
+requires fresh validation: successful tests of old code are not reused as proof
+for new code. Group JSON reports, wall-clock timings, failure traces and review
+screenshots are retained separately, so later invocations cannot erase earlier
+evidence. Tests that produce bookmark/welcome review images must still produce
+those files; optional artifact upload does not replace that check.
+
+Standard GitHub-hosted runner minutes are free for this public repository;
+larger runners are not being enabled. Parallel jobs remain subject to account
+concurrency and artifact/cache storage limits. Wall-clock improvement must be
+measured in hosted runs, not inferred from the number of shards.
+
+Keep
 Library-specific test helpers out of the shared browser harness: changing the
 harness correctly requires full coverage. The selector's hosted unit tests
 check that every focused Library spec is wired to an eligible workflow stage.
@@ -975,8 +1012,9 @@ filter tabs or chips. The panel shares single-reference-panel ownership with
 Contents, Search, and Library.
 
 The CI reader matrix includes this spec plus annotation mutation, import/export
-and embedded-annotation regression suites. Its `bookmark-panel-review-<sha>`
-artifact retains the six review screenshots. For a targeted run, point
+and embedded-annotation regression suites. Its
+`browser-evidence-<run>-<attempt>-reader-core-4` artifact retains the six review
+screenshots. For a targeted run, point
 `AMBRA_E2E_EXTENSION_PATH` at an isolated packaged build and run:
 
 ```sh
