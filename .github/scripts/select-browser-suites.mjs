@@ -33,6 +33,7 @@ const browserIndependentTooling = new Set([
   "scripts/epub-conformance-publications.d.mts",
   "scripts/epub-conformance-publications.test.mjs",
   "apps/e2e/assessment/required.spec.ts",
+  "apps/e2e/assessment/publication-opening.ts",
 ]);
 
 function isDocumentation(file) {

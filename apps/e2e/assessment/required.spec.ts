@@ -13,6 +13,7 @@ import {
   assessmentPublication,
   requiredAssessmentPath,
 } from "./native-assessment.js";
+import { openAssessmentPublication } from "./publication-opening.js";
 
 async function expectations(page: Page, id: string) {
   const root = path.join(requiredAssessmentPath("AMBRA_EPUB_TESTS_PATH"), "tests", id);
@@ -214,7 +215,9 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
     await assessNativeCriterion(
       criterion.id,
       info,
-      async ({ readerPage: page, libraryPage }) => {
+      async (launched) => {
+        let page = launched.readerPage;
+        const { libraryPage } = launched;
         if (criterion.kind === "rejection") {
           const file = assessmentPublication(criterion.id);
           const properties = await archiveProperties(file);
@@ -246,6 +249,22 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
           };
         }
         const source = await expectations(page, criterion.id);
+        if (["cnt-svg-support", "cnt-svg-css", "pkg-spine-order-svg"].includes(criterion.id)) {
+          const opened = await openAssessmentPublication(launched, criterion.id);
+          if (opened.status === "rejected") {
+            return {
+              observations: {
+                kind: criterion.kind,
+                sourceSpine: source.map((item) => item.path),
+                openingError: { stage: opened.stage, message: opened.message },
+              },
+              passed: false,
+              reason: `Native ${opened.stage} rejected original authored content: ${opened.message}`,
+              trackingIssue: "https://github.com/BCWalters/ambra/issues/326",
+            };
+          }
+          page = opened.page;
+        }
         const readingOrder: string[] = await page.evaluate(() =>
           Reflect.get(window, "__readerController").pkg.spine.map(
             (item: { manifestItem: { path: string } }) => item.manifestItem.path,
@@ -438,48 +457,52 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
               const box = await element.boundingBox();
               if (!box) throw new Error("Native media controls are not visible.");
               await element.click({ position: { x: 20, y: box.height / 2 } });
-              const signalPeak = await element.evaluate(async (element) => {
-                if (!(element instanceof HTMLMediaElement)) throw new Error("Not native media.");
-                const context = new AudioContext();
-                try {
-                  await context.resume();
-                  const analyser = context.createAnalyser();
-                  context.createMediaElementSource(element).connect(analyser);
-                  analyser.connect(context.destination);
-                  const data = new Float32Array(analyser.fftSize);
-                  let peak = 0;
-                  for (let sample = 0; sample < 8; sample++) {
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                    analyser.getFloatTimeDomainData(data);
-                    for (const value of data) peak = Math.max(peak, Math.abs(value));
-                  }
-                  return peak;
-                } finally {
-                  await context.close();
-                }
-              });
               await page.waitForTimeout(1_500);
               const observed = await element.evaluate(async (element) => {
                 if (!(element instanceof HTMLMediaElement)) throw new Error("Not native media.");
                 const response = await fetch(element.currentSrc);
                 if (!response.ok)
                   throw new Error(`Cannot inspect native media bytes: ${response.status}`);
+                const bytes = await response.arrayBuffer();
                 const actualHash = Array.from(
-                  new Uint8Array(
-                    await crypto.subtle.digest("SHA-256", await response.arrayBuffer()),
-                  ),
+                  new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
                 )
                   .map((byte) => byte.toString(16).padStart(2, "0"))
                   .join("");
+                let signalPeak = 0;
+                let decodingError: string | null = null;
+                try {
+                  const decoded = await new OfflineAudioContext(1, 1, 48_000).decodeAudioData(
+                    bytes,
+                  );
+                  for (let channel = 0; channel < decoded.numberOfChannels; channel++)
+                    for (const sample of decoded.getChannelData(channel))
+                      signalPeak = Math.max(signalPeak, Math.abs(sample));
+                } catch (error) {
+                  if (
+                    !(error instanceof DOMException) ||
+                    !["EncodingError", "NotSupportedError"].includes(error.name)
+                  )
+                    throw error;
+                  decodingError = `${error.name}: ${error.message}`;
+                  console.error(`Native PCM decoding failed: ${decodingError}`);
+                }
                 return {
                   actualHash,
+                  signalPeak,
                   after: element.currentTime,
                   readyState: element.readyState,
+                  muted: element.muted,
+                  paused: element.paused,
+                  ended: element.ended,
+                  volume: element.volume,
                   duration: Number.isFinite(element.duration) ? element.duration : 0,
-                  error: element.error ? `${element.error.code}: ${element.error.message}` : null,
+                  error: element.error
+                    ? `${element.error.code}: ${element.error.message}`
+                    : decodingError,
                 };
               });
-              media.push({ ...original, before, signalPeak, ...observed });
+              media.push({ ...original, before, ...observed });
             }
           }
         }
@@ -502,7 +525,10 @@ for (const criterion of process.env.AMBRA_ASSESSMENT_REQUIRED === "1"
           trackingIssue: "https://github.com/BCWalters/ambra/issues/326",
         };
       },
-      criterion.kind === "rejection" ? { publicationId: "cnt-xhtml-support" } : {},
+      criterion.kind === "rejection" ||
+        ["cnt-svg-support", "cnt-svg-css", "pkg-spine-order-svg"].includes(criterion.id)
+        ? { publicationId: "cnt-xhtml-support" }
+        : {},
     );
   });
 }

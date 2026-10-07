@@ -37,10 +37,12 @@ export async function archiveProperties(file) {
       throw new Error("Segmented central directory starts on a different volume.");
     let offset = bytes.readUInt32LE(end + 16);
     const methods = new Set();
+    const versions = new Set();
     for (let entry = 0; entry < bytes.readUInt16LE(end + 10); entry++) {
       if (offset + 46 > end || bytes.readUInt32LE(offset) !== 0x02014b50)
         throw new Error("Invalid segmented central directory entry.");
       methods.add(bytes.readUInt16LE(offset + 10));
+      versions.add(bytes.readUInt16LE(offset + 6));
       offset +=
         46 +
         bytes.readUInt16LE(offset + 28) +
@@ -48,19 +50,29 @@ export async function archiveProperties(file) {
         bytes.readUInt16LE(offset + 32);
     }
     if (offset !== end) throw new Error("Unexpected segmented central directory extent.");
-    return { multiDisk, compressionMethods: [...methods].sort((a, b) => a - b) };
+    return {
+      multiDisk,
+      compressionMethods: [...methods].sort((a, b) => a - b),
+      versionNeededValues: [...versions].sort((a, b) => a - b),
+    };
   }
   return new Promise((resolve, reject) => {
     yauzl.open(file, { lazyEntries: true }, (error, zip) => {
       if (error) return reject(error);
       const methods = new Set();
+      const versions = new Set();
       zip.on("error", reject);
       zip.on("entry", (entry) => {
         methods.add(entry.compressionMethod);
+        versions.add(entry.versionNeededToExtract);
         zip.readEntry();
       });
       zip.on("end", () =>
-        resolve({ multiDisk, compressionMethods: [...methods].sort((a, b) => a - b) }),
+        resolve({
+          multiDisk,
+          compressionMethods: [...methods].sort((a, b) => a - b),
+          versionNeededValues: [...versions].sort((a, b) => a - b),
+        }),
       );
       zip.readEntry();
     });
