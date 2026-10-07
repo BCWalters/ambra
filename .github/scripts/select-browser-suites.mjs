@@ -3,7 +3,13 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const libraryTest =
-  /^apps\/e2e\/tests\/(?:library-[^/]+|book-details-presentation|book-metadata-display|native-library-import|review-invitation|library-review-keyboard|reader-library|reader-back-to-library|library-scrubber-progress)\.spec\.ts$/;
+  /^apps\/e2e\/tests\/(?:library-(?:discovery|import-announcements|lifecycle|transactions|ux|covers|search|compact|description|inspector|file-drop|localization|card-focus|review-keyboard|scrubber-progress|save-as)|book-opening|book-details-presentation|book-metadata-display|epub-direct-import|native-library-import|review-invitation|reader-library|reader-back-to-library|reader-save-as|first-reading-welcome|shell-accessibility-audit)\.spec\.ts$/;
+
+const libraryIntegration = new Set([
+  "apps/e2e/library-tools.ts",
+  "apps/extension/src/reader/components/ReaderLibraryPanel.tsx",
+  "apps/extension/src/reader/components/ReaderLibraryPanel.test.tsx",
+]);
 
 const browserIndependentTooling = new Set([
   ".github/scripts/select-browser-suites.mjs",
@@ -38,7 +44,7 @@ function isLocalization(file) {
 }
 
 function isLibrary(file) {
-  return file.startsWith("apps/extension/src/library/") || libraryTest.test(file);
+  return file.startsWith("apps/extension/src/library/") || libraryTest.test(file) || libraryIntegration.has(file);
 }
 
 export function selectBrowserSuites(changedFiles, forceFull = false) {
@@ -61,6 +67,7 @@ export function selectBrowserSuites(changedFiles, forceFull = false) {
     run_browser: mode !== "none" && mode !== "tooling",
     run_reader: mode === "full",
     run_library: mode === "full" || mode === "library",
+    run_library_integration: mode === "library",
     run_localization: mode === "localization",
     files,
   };
@@ -75,6 +82,7 @@ function run() {
     `run_browser=${selection.run_browser}`,
     `run_reader=${selection.run_reader}`,
     `run_library=${selection.run_library}`,
+    `run_library_integration=${selection.run_library_integration}`,
     `run_localization=${selection.run_localization}`,
   ].join("\n");
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${output}\n`);

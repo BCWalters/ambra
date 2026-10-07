@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expandLibraryTools, launchReader } from "../harness.js";
+import { launchReader } from "../harness.js";
+import { expandLibraryTools } from "../library-tools.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));

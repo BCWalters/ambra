@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { currentPageLabel, expandLibraryTools, launchReader } from "../harness.js";
+import { currentPageLabel, launchReader } from "../harness.js";
+import { expandLibraryTools } from "../library-tools.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
 

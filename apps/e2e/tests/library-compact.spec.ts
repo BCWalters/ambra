@@ -218,35 +218,31 @@ test("compact resume promotion preserves the native Details trigger and modal fo
   const { context, libraryPage: page, readerPage } = await launchReader(twoChapter);
   try {
     await exposeReaderController(readerPage);
-    const id: string = await readerPage.evaluate(async () => {
+    const savedProgress: ReadingProgress = await readerPage.evaluate(async () => {
       const controller = Reflect.get(window, "__readerController");
-      await controller.goToChapter(1);
-      await controller.flushProgress();
-      return controller.bookId;
+      await controller.goToChapter(0);
+      await controller.flushProgress(true);
+      const progress: ReadingProgress | undefined = await controller.library.getProgress(controller.bookId);
+      if (!progress) throw new Error("Native focus-promotion progress is missing.");
+      return progress;
     });
+    if (savedProgress.fractionComplete !== undefined) expect(savedProgress.fractionComplete).toBeLessThan(1);
     await readerPage.close();
-    const setLastRead = async (lastReadAt: number | undefined) => page.evaluate(({ id, lastReadAt }) =>
+    const setProgress = async (progress: ReadingProgress | undefined) => page.evaluate(({ id, progress }) =>
       new Promise<void>((resolve, reject) => {
         const opening = indexedDB.open("ambra-library");
         opening.onerror = () => reject(opening.error);
         opening.onsuccess = () => {
           const db = opening.result;
-          const tx = db.transaction("books", "readwrite");
-          const store = tx.objectStore("books");
-          const request: IDBRequest<BookMetadata | undefined> = store.get(id);
-          request.onsuccess = () => {
-            if (!request.result) {
-              tx.abort();
-              reject(new Error("Original focus-promotion book is missing."));
-              return;
-            }
-            store.put({ ...request.result, lastReadAt });
-          };
+          const tx = db.transaction("readingProgress", "readwrite");
+          const store = tx.objectStore("readingProgress");
+          if (progress) store.put(progress);
+          else store.delete(id);
           tx.oncomplete = () => { db.close(); resolve(); };
           tx.onabort = () => { db.close(); reject(tx.error); };
         };
-      }), { id, lastReadAt });
-    await setLastRead(undefined);
+      }), { id: savedProgress.bookId, progress });
+    await setProgress(undefined);
     await page.reload();
     await expect(page.locator("[data-library-continue]")).toHaveCount(0);
     const card = page.locator("[data-library-book]");
@@ -260,7 +256,7 @@ test("compact resume promotion preserves the native Details trigger and modal fo
     await details.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Book details", exact: true });
     await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
-    await setLastRead(Date.now());
+    await setProgress({ ...savedProgress, updatedAt: Date.now() });
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(card).toHaveAttribute("data-library-continue", "");
     expect(await trigger.evaluate(element => element.isConnected)).toBe(true);
