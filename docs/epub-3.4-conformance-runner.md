@@ -94,6 +94,13 @@ criteria from actual fail-to-pass improvements. Execution blockers remain
 unassessed. The collector's `--foundations` flag requires all 21 records;
 without it, existing eleven-record media-only collection remains supported.
 
+[Merged-main run 37623541718](https://github.com/BCWalters/ambra/actions/runs/37623541718)
+has now measured the full profile: 20 passes and the native JPEG XL failure.
+All ten additions pass; the original eleven remain 10/11. See the
+[progress report](epub-3.4-progress-report.md) for coverage, exact package
+fingerprint, environment and the distinct historical comparison. The red
+release-completeness gate remains intentional.
+
 Every observation is tied to the exact package fingerprint and workflow run.
 Missing/duplicate observations, mixed package/browser/OS provenance, missing
 failure issues and invented `not-applicable` verdicts are rejected. The collector

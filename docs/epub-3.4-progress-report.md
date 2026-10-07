@@ -1,8 +1,8 @@
 # Ambra EPUB 3.4 progress and conformance report
 
-**Status: protected implementation merged; package-bound reassessment completed.**
+**Status: broader package-bound reassessment completed on merged main.**
 No store release has been created. The release-completeness gate remains red:
-direct JPEG XL fails and 128 required criteria remain unassessed.
+direct JPEG XL fails and 118 required criteria remain unassessed.
 
 ## Executive summary
 
@@ -19,14 +19,116 @@ protected gates passed. Early runs caught CFI grammar/emulator ownership, a stal
 navigation stub and an incorrect network-attempt counter; each was repaired
 without weakening native evidence.
 
-The comparable official profile improved from **6/11 (54.55%) to
+The latest expanded profile passes **20/21 (95.24%)**. All ten newly measured
+package/metadata, navigation and roll criteria pass. The original eleven remain
+10/11, with no regressions; JPEG XL is the only measured failure. Required
+coverage is now **21/139 (15.11%)**, not whole-specification conformance.
+
+The comparable historical official profile improved from **6/11 (54.55%) to
 10/11 (90.91%)**, a gain of **36.36 percentage points**. Four embedded-font
 criteria improved; none of the eleven regressed. This is not 90.91% of the whole
-specification. The pinned inventory contains 205 identifiers, and **194 remain
-unassessed**. Required coverage is still 11/139 (7.91%); overall identifier
-coverage is 11/205 (5.37%).
+specification. At that milestone 194 of the pinned inventory's 205 identifiers
+remained unassessed. The broader run below reduces that number to 184.
 
-## Before/after official assessment
+## Broader measured assessment: 2026-10-07
+
+[Run 37623541718](https://github.com/BCWalters/ambra/actions/runs/37623541718)
+measured all 21 criteria against the exact archived production package. The
+native runner passed 20 cases in 32.1 seconds; the whole opt-in workflow took
+1m21s. Collection and scorecard generation completed. Its red conclusion is
+intentional: direct JPEG XL fails and required coverage is incomplete.
+
+| Measure | Previous clean eleven-criterion worksheet | Expanded main assessment |
+| --- | --- | --- |
+| Required passes / failures | 10 / 1 | 20 / 1 |
+| Score among assessed required criteria | 90.91% (10/11) | 95.24% (20/21) |
+| Required criterion coverage | 11/139 (7.91%) | 21/139 (15.11%) |
+| Required criteria unassessed | 128 | 118 |
+| Overall identifier coverage | 11/205 (5.37%) | 21/205 (10.24%) |
+| All identifiers unassessed | 194 | 184 |
+| Recommended / optional / deprecated criteria assessed | 0 / 0 / 0 | 0 / 0 / 0 |
+| Complete conformance claim | No | No |
+
+**This is expanded measurement, not ten fail-to-pass improvements.** The same
+eleven media criteria have identical results in both worksheets: ten passes and
+the native JPEG XL failure. All ten additions were previously not run. Changing
+the denominator means the headline percentages are not a controlled
+before/after rendering improvement.
+
+| Newly assessed required criterion | Result |
+| --- | --- |
+| `pkg-title-order` | Pass |
+| `pkg-creator-order` | Pass |
+| `pkg-meta-whitespace` | Pass |
+| `pkg-dir_creator-rtl` | Pass |
+| `pkg-dir_but_not_content` | Pass |
+| `pkg-lang_but_not_content` | Pass |
+| `nav-access` | Pass |
+| `nav-activation` | Pass |
+| `lay-roll-embedded-images` | Pass |
+| `lay-roll-embedded-images-svg` | Pass |
+
+Expectations come from independently parsed raw pinned sources. Native
+measurements cover painted Library metadata, original content identity and
+direction/language annotations, actual TOC control activation, and all nine
+frames in each authored roll publication. Roll checks retain viewport-width
+fit, intrinsic aspect, aligned x, adjacent gaps <=1 CSS px, native image decode,
+original asset SHA-256 and corresponding hit-testing in both native documents.
+This is not a live assistive-technology or speech-language assessment.
+
+### Broader-run provenance
+
+| Field | Previous clean worksheet | Expanded main assessment |
+| --- | --- | --- |
+| Run | [37536783463](https://github.com/BCWalters/ambra/actions/runs/37536783463) | [37623541718](https://github.com/BCWalters/ambra/actions/runs/37623541718) |
+| Commit | `2700f468e227faf9382bbce4126611f7358b69f9` | `726b624fe0d386445ce647357276d022983e176a` |
+| Archive / version | `ambra-2.2.0.zip` / 2.2.0 | Same name/version; unreleased candidate, different fingerprint |
+| SHA-256 | `7de400b94a6986671bd5a6fd62b755873f70463d3af3b35604784c335464df9f` | `ea47476e5625c28041f6f89990be59304b5f7af92f85ebe79f4239bab267ed50` |
+| Browser | Chromium `Chrome/153.0.8010.12` | Same |
+| OS | Linux `6.17.0-1022-azure` | Same |
+| Assessed at | 2026-10-06T21:52:41.305Z | 2026-10-07T12:48:40.268Z |
+| Pinned suite | `54092b4233253e9aac80e93ec4782b380b4b3403` | Same |
+
+The downloaded production ZIP's SHA-256 was independently checked, along with
+all 21 records' release identity, exact run evidence and consistent browser/OS.
+Both roll records contain nine painted frames, decoded original assets and
+archived raw geometry/paired hit points. The workflow report has no `--previous`
+input, so its "new failure"/baseline wording is not a comparison claim; the
+same-eleven comparison above confirms JPEG XL is unchanged.
+
+The historical six-to-ten comparison below retains its original provenance.
+The clean worksheet in this section is a separate later eleven-criterion run,
+not a replacement identity for that historical report.
+
+### Measurement preparation and CI efficiency
+
+- #360 broadened the opt-in profile after protected tooling-only validation
+  passed in 2m32s, with no extension build or unrelated runtime browser suite.
+- The retained exploratory run 37621179852 recorded 19 passes, the JPEG XL
+  failure and an honest SVG-roll not-run: its raw-source TOC parser assumed an
+  XHTML body. #361 added strict namespaced SVG-root source handling.
+- Run 37622210921 recorded 18 passes and three failures. Both roll failures
+  affected only the final paint sample; all asset/decode/layout facts passed.
+  #362 corrected intrinsic-to-scaled iframe coordinate mapping and clipping,
+  requiring the same visible point in both native documents. Raw geometry and
+  paired points are now archived, and hosted scalar tests cover mapping,
+  clipping and invalid input. No verdict threshold or product rendering
+  changed. The final run supersedes those provisional measurement outcomes;
+  they remain retained and are not rewritten as passes.
+- Compact Library #359 merged after a fully green protected head. Library
+  checks now started at 2m50s instead of 32m42s and completed with localization
+  by 6m48s. That workflow-change validation still took 36m30s. Future
+  Library-only changes select Library plus explicitly wired reader integration;
+  shared harness/runtime, workflow and unknown changes still require full
+  coverage. No end-to-end timing is claimed for the future focused profile.
+
+The next useful step is broader CSS/text/SVG measurement rather than treating
+these new passes as new rendering fixes. Remote fonts and inline video still
+need the separate permission/privacy/offline policy design in #336. Publication
+scripting remains intentionally disabled; native JPEG XL waits for browser
+support. Those policies do not relabel unmeasured optional/deprecated criteria.
+
+## Historical before/after eleven-criterion assessment
 
 | Measure | Original 2.2.0 baseline | After |
 | --- | --- | --- |
