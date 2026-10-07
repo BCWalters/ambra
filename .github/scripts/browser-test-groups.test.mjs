@@ -110,3 +110,8 @@ test("workflow preserves required-check name, non-cancelling shards and same-pac
   assert.match(workflow, /BROWSER_MATRIX: \$\{\{ needs\.prepare\.outputs\.matrix \}\}/);
   assert.match(workflow, /browser-test-groups\.mjs --run/);
 });
+
+test("browser execution matches the package's local-feature mode", () => {
+  const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(workflow, /name: Run selected browser group without retries\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
+});

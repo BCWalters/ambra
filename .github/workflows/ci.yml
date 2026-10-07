@@ -143,6 +143,7 @@ jobs:
       - name: Run selected browser group without retries
         env:
           BROWSER_GROUP: ${{ matrix.id }}
+          VITE_AMBRA_LOCAL_FEATURES: ${{ matrix.localFeatures && '1' || '0' }}
         run: node .github/scripts/browser-test-groups.mjs --run "$BROWSER_GROUP"
       - name: Keep browser timings and review evidence
         if: always()
