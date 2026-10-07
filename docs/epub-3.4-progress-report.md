@@ -1,8 +1,8 @@
 # Ambra EPUB 3.4 progress and conformance report
 
-**Status: full required inventory and 60-method reassessment completed on merged main.**
+**Status: full required inventory and 64-method reassessment completed on merged main.**
 No store release has been created. The release-completeness gate remains red:
-four required criteria fail and 79 required criteria remain unassessed.
+native JPEG XL fails and 75 required criteria remain unassessed.
 
 ## Executive summary
 
@@ -19,22 +19,111 @@ protected gates passed. Early runs caught CFI grammar/emulator ownership, a stal
 navigation stub and an incorrect network-attempt counter; each was repaired
 without weakening native evidence.
 
-The latest expanded profile passes **56/60 (93.33%)**, with four failures and
+The latest expanded profile passes **63/64 (98.44%)**, with one failure and
 **no automated execution blockers**. All 139 required identifiers, representing
 140 original publications, now have explicit inventory entries and assessment
-procedures. Required verdict coverage is **60/139 (43.17%)**; the other 79 are
+procedures. Required verdict coverage is **64/139 (46.04%)**; the other 75 are
 pending manual review or further automation, not passed, waived or all inherently
-manual. The original 21 results remain unchanged at 20/21. The new failures are
-three standalone-SVG opening cases; direct JPEG XL remains the historical failure.
+manual. The original 21 results remain unchanged at 20/21. The three measured
+standalone-SVG failures are repaired and now pass; direct JPEG XL remains the
+historical failure.
 
 The comparable historical official profile improved from **6/11 (54.55%) to
 10/11 (90.91%)**, a gain of **36.36 percentage points**. Four embedded-font
 criteria improved; none of the eleven regressed. This is not 90.91% of the whole
 specification. At that milestone 194 of the pinned inventory's 205 identifiers
 remained unassessed. The historical 21-method run reduced that number to 184;
-the current 60-method run reduces it to 145.
+the initial 60-method run reduced it to 145; the current 64-method run reduces
+it to 141.
 
-## Full required scope and measured assessment: 2026-10-07
+## Latest merged-main assessment: 2026-10-07
+
+[#371](https://github.com/BCWalters/ambra/pull/371) repaired native standalone
+SVG body/head assumptions, root anchors and pagination geometry. Its unchanged
+head passed the full protected CI rerun before merge. Merged-main
+[run 37665451465](https://github.com/BCWalters/ambra/actions/runs/37665451465)
+then measured **59 pass, one fail, zero execution blockers** across the same
+60 criteria. Independent comparison with the historical 56/60 worksheet found
+exactly three changed verdicts: `cnt-svg-support`, `cnt-svg-css` and
+`pkg-spine-order-svg`, all fail to pass.
+
+[#375](https://github.com/BCWalters/ambra/pull/375) added four original-publication
+image methods. Fresh merged-main
+[run 37666174481](https://github.com/BCWalters/ambra/actions/runs/37666174481)
+measured **63 pass, one fail, zero execution blockers** across all 64 methods.
+The only changes from the preceding 60-method worksheet are four `not-run` to
+`pass` verdicts: `ocf-url_link-relative`, `ocf-url_link-path-absolute`,
+`ocf-url_link-leaking-relative` and `pub-foreign_image`. All preceding assessed
+verdicts are unchanged.
+
+The four methods independently resolve original XHTML/OPF image targets and
+manifest fallbacks, then require exact original asset hashes, native decode,
+positive dimensions and paired content-frame/shell hit tests. Import alone is
+not a pass. The PSD-to-PNG case measures a non-spine manifest fallback, not
+native PSD support.
+
+| Field | Latest verified assessment |
+| --- | --- |
+| Main source commit | `46d28870b19bc96136cdc22aaf376cdb97f32b3f` |
+| Archive | `ambra-2.2.0.zip`; clean production checkout |
+| Archive SHA-256 | `7d226c5d8b3cc1c1f86490b01a6c3ab596a5139ad87de3750e5716b0eb1da7c4` |
+| Suite revision | `54092b4233253e9aac80e93ec4782b380b4b3403` |
+| Browser | Chromium `Chrome/153.0.8010.12` |
+| OS | Linux `6.17.0-1022-azure` |
+| Assessment timestamp | `2026-10-07T18:24:33.130Z` |
+| Hosted run | `37666174481`; complete job 3m18s |
+| Required verdict coverage | 64/139 (46.04%); 75 pending |
+| Overall identifier verdict coverage | 64/205 (31.22%); 141 pending |
+| Score among assessed required criteria | 63/64 (98.44%); native JPEG XL fails |
+| Manual assessment evidence added by this run | None |
+| Complete conformance claim | No |
+
+The archive SHA-256 was independently recomputed. All 64 unique native records
+were checked against the same package, run URL, browser and OS, and their
+worksheet verdicts. Collection and artifact upload succeeded. The red workflow
+conclusion correctly retains the JPEG XL failure and incomplete required
+coverage; it is not an execution blocker or a full-conformance claim.
+
+### Current results across every required category
+
+| Category | Required | Pass | Fail | Pending |
+| --- | --- | --- | --- | --- |
+| Content Documents | 11 | 10 | 0 | 1 |
+| Fixed Layout | 4 | 0 | 0 | 4 |
+| Pre-paginated Layout | 21 | 0 | 0 | 21 |
+| Roll Layout | 4 | 2 | 0 | 2 |
+| Media Overlays | 16 | 0 | 0 | 16 |
+| Navigation Documents | 7 | 7 | 0 | 0 |
+| Open Container Format | 14 | 11 | 0 | 3 |
+| Package Documents | 15 | 11 | 0 | 4 |
+| Internationalization | 13 | 9 | 0 | 4 |
+| Structural Semantics | 1 | 0 | 0 | 1 |
+| Core Media Types | 10 | 9 | 1 | 0 |
+| Publication Resources | 7 | 0 | 0 | 7 |
+| Manifest Fallbacks | 5 | 4 | 0 | 1 |
+| Scripting | 11 | 0 | 0 | 11 |
+| **Total** | **139** | **63** | **1** | **75** |
+
+[#367](https://github.com/BCWalters/ambra/issues/367) is closed on the measured
+SVG fixes. Continuous centered SVG scroll presentation remains the separate
+[#373](https://github.com/BCWalters/ambra/issues/373) follow-up; passing SVG
+rendering criteria does not claim that UX has been implemented.
+
+Local exploratory runs are retained separately. The four new image methods
+passed locally before merge. A full macOS local run recorded 58 passes,
+four failures and two blockers: JPEG XL and three stalled native audio clocks
+failed, while the raw upstream compression/segmentation archives lacked the
+required deliberately invalid properties. These results were not waived or
+promoted. The fresh Linux run generated and inspected the correct fixtures and
+passed those five criteria. Neither native PCM evidence nor a playback clock
+is a physical-speaker listening claim.
+
+The [manual validation plan](epub-3.4-manual-validation.md) prioritizes original
+layout and listening checks, with explicit environment and evidence requirements.
+Manual campaigns on a different OS/browser remain separate from this hosted
+campaign because the current worksheet has one global environment.
+
+## Historical initial 60-method assessment: 2026-10-07
 
 [Run 37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454)
 executed all 60 registered methods against the exact archived production package
@@ -43,7 +132,7 @@ queue time. Collection, full inventory linking and artifact upload succeeded.
 Its red conclusion is expected because four criteria fail and coverage remains
 incomplete. This is not an assertion that all 139 assessments have been executed.
 
-| Measure                                                 | Historical 21-method run | Current expanded run |
+| Measure                                                 | Historical 21-method run | Initial expanded run |
 | ------------------------------------------------------- | ------------------------ | -------------------- |
 | Required passes / failures                              | 20 / 1                   | 56 / 4               |
 | Automated execution blockers                            | 0                        | 0                    |
@@ -120,7 +209,7 @@ silently turn unassessed requirements into passes.
 
 ### Exact expanded-run provenance
 
-| Field                          | Current expanded assessment                                                |
+| Field                          | Historical initial expanded assessment                                     |
 | ------------------------------ | -------------------------------------------------------------------------- |
 | Run                            | [37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454) |
 | Merged commit                  | `a087a86f79656e8255bc03bcb22cf8c872ff6883`                                 |
