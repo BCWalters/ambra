@@ -55,6 +55,7 @@ test("compression fixture contains actual BZIP2 streams, not relabelled Deflate"
   const { suite, output } = fixture(t, "ocf-zip-comp");
   const properties = await generatePublication(suite, "ocf-zip-comp", output);
   assert.deepEqual(properties.compressionMethods, [0, 12]);
+  assert.ok(properties.versionNeededValues.includes(46));
   const file = path.join(output, "ocf-zip-comp.epub");
   const observed = await entries(file);
   const compressed = observed.find((entry) => entry.compressionMethod === 12);
@@ -74,6 +75,7 @@ test("segmentation fixture retains real volumes and does not overwrite upstream 
   const properties = await generatePublication(suite, "ocf-zip-mult", output);
   assert.equal(properties.multiDisk, true);
   assert.deepEqual(properties.compressionMethods, [0, 8]);
+  assert.deepEqual(properties.versionNeededValues, [10, 20]);
   assert.equal(readFileSync(originalVolume, "utf8"), "Retained pinned source volume");
   assert.notEqual(path.dirname(output), suite);
 });

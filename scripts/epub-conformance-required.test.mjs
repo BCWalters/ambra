@@ -157,6 +157,10 @@ test("audio requires original bytes, actual advancing time and a nonzero native 
         readyState: 4,
         duration: 10,
         signalPeak: 0.1,
+        muted: false,
+        paused: false,
+        ended: false,
+        volume: 1,
         error: null,
       },
     ],
@@ -166,6 +170,9 @@ test("audio requires original bytes, actual advancing time and a nonzero native 
     { actualHash: "b".repeat(64) },
     { after: 0.249 },
     { signalPeak: 0 },
+    { muted: true },
+    { paused: true },
+    { volume: 0 },
     { readyState: 1 },
     { error: "Unsupported codec" },
   ])
@@ -186,10 +193,32 @@ test("rejection requires a real deliberately nonconforming archive and a related
     kind: "rejection",
     multiDisk: false,
     compressionMethods: [0, 12],
+    versionNeededValues: [10, 46],
     imported: false,
     error: "Unsupported compression method: 12",
   };
   assert.equal(requiredNativeVerdict(compression, criterion("ocf-zip-comp")), true);
+  assert.equal(
+    requiredNativeVerdict(
+      {
+        ...compression,
+        error: 'Unsupported ZIP version-needed-to-extract 46 for "EPUB/content_001.xhtml".',
+      },
+      criterion("ocf-zip-comp"),
+    ),
+    true,
+  );
+  assert.equal(
+    requiredNativeVerdict(
+      {
+        ...compression,
+        versionNeededValues: [10, 20],
+        error: "Unsupported ZIP version-needed-to-extract 46.",
+      },
+      criterion("ocf-zip-comp"),
+    ),
+    false,
+  );
   assert.equal(
     requiredNativeVerdict(
       { ...compression, error: "Unrelated failure" },
@@ -265,6 +294,37 @@ test("collector checks expanded verdicts against exact package-bound observation
         evidenceUrl,
       }),
     /unique, typed/,
+  );
+});
+
+test("a surfaced rejection of original content is a failure, not a setup timeout", () => {
+  const value = {
+    kind: "svg",
+    sourceSpine: ["EPUB/original.svg"],
+    openingError: { stage: "reader", message: "Unsupported content document." },
+  };
+  assert.equal(requiredNativeVerdict(value, criterion("cnt-svg-support")), false);
+  assert.throws(
+    () =>
+      requiredNativeVerdict(
+        {
+          ...value,
+          openingError: { stage: "reader", message: "" },
+        },
+        criterion("cnt-svg-support"),
+      ),
+    /opening-error/,
+  );
+  assert.throws(
+    () =>
+      requiredNativeVerdict(
+        {
+          ...value,
+          sourceSpine: [],
+        },
+        criterion("cnt-svg-support"),
+      ),
+    /opening-error/,
   );
 });
 

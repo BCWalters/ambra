@@ -186,6 +186,20 @@ export function requiredNativeVerdict(value, criterion) {
   if (!isRequiredNativeCriterion(criterion)) throw new Error("Unknown required native criterion.");
   const validDigest = (v) => typeof v === "string" && /^[a-f0-9]{64}$/.test(v);
   const positive = (v) => Number.isFinite(v) && v > 0;
+  if (value?.openingError !== undefined) {
+    if (
+      !["document", "svg"].includes(criterion.kind) ||
+      value.kind !== criterion.kind ||
+      !Array.isArray(value.sourceSpine) ||
+      !value.sourceSpine.length ||
+      value.sourceSpine.some((path) => typeof path !== "string" || !path) ||
+      !["import", "reader"].includes(value.openingError?.stage) ||
+      typeof value.openingError.message !== "string" ||
+      !value.openingError.message.trim()
+    )
+      throw new Error(`${criterion.id} has malformed native opening-error evidence.`);
+    return false;
+  }
   if (criterion.kind === "rejection") {
     if (
       value?.kind !== "rejection" ||
@@ -193,6 +207,9 @@ export function requiredNativeVerdict(value, criterion) {
       !Array.isArray(value.compressionMethods) ||
       !value.compressionMethods.length ||
       value.compressionMethods.some((method) => !Number.isSafeInteger(method) || method < 0) ||
+      !Array.isArray(value.versionNeededValues) ||
+      !value.versionNeededValues.length ||
+      value.versionNeededValues.some((version) => !Number.isSafeInteger(version) || version < 0) ||
       typeof value.error !== "string" ||
       typeof value.imported !== "boolean"
     )
@@ -200,7 +217,12 @@ export function requiredNativeVerdict(value, criterion) {
     if (criterion.id === "ocf-zip-comp") {
       if (value.multiDisk || !value.compressionMethods.includes(12))
         throw new Error("The compression fixture does not actually contain BZIP2 entries.");
-      return !value.imported && /compression/i.test(value.error);
+      return (
+        !value.imported &&
+        (/compression/i.test(value.error) ||
+          (value.versionNeededValues.includes(46) &&
+            /unsupported ZIP version-needed-to-extract 46\b/i.test(value.error)))
+      );
     }
 
     if (!value.multiDisk) throw new Error("The segmentation fixture is not multi-disk.");
@@ -328,6 +350,10 @@ export function requiredNativeVerdict(value, criterion) {
         !Number.isFinite(media.readyState) ||
         !Number.isFinite(media.duration) ||
         !Number.isFinite(media.signalPeak) ||
+        !["muted", "paused", "ended"].every((key) => typeof media[key] === "boolean") ||
+        !Number.isFinite(media.volume) ||
+        media.volume < 0 ||
+        media.volume > 1 ||
         !(media.error === null || typeof media.error === "string"),
     )
   )
@@ -339,6 +365,9 @@ export function requiredNativeVerdict(value, criterion) {
       media.readyState >= 2 &&
       positive(media.duration) &&
       media.after - media.before >= 0.25 &&
+      !media.muted &&
+      media.volume > 0 &&
+      (!media.paused || media.ended) &&
       media.signalPeak > 0.0001,
   );
 }

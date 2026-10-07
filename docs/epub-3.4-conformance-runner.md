@@ -124,9 +124,13 @@ plus 39 additions. This is a method count, **not a measured score**:
   positioned above and smaller than its base.
 - Standalone/included SVG and its CSS pattern cases, requiring original path
   geometry hashes, native fill/pattern resolution and paired shape hit points.
+  Standalone opening uses an explicit native import/open observer: a surfaced
+  rejection of the original content is a failure, not a generic iframe timeout.
 - MP3, MP4 audio and Opus: original resource hash, decoded media state,
-  advancing native clock and nonzero native PCM signal. This establishes
-  software playback, not a live physical-speaker or listening-session claim.
+  advancing native clock after a native playback-control click, and nonzero PCM
+  from Chromium's offline decoder of those exact bytes. This avoids a live
+  AudioContext/autoplay gate, does not reroute the player's output, and establishes
+  software decode/playback rather than a physical-speaker or listening-session claim.
 - The remaining five navigation cases, including hidden authored items and
   publisher list numbering, plus six element/root/auto title-direction cases.
   Bidi checks use the exact title and independently resolved computed direction;
@@ -134,7 +138,10 @@ plus 39 additions. This is a method count, **not a measured score**:
 - Real BZIP2 and segmented ZIP rejection. The generator preserves uncompressed
   first `mimetype`, arbitrary root directories and original source bytes.
   Compression and disk fields are inspected before import; a corresponding
-  surfaced error is required. Ordinary ZIP regeneration must not turn these
+  surfaced error is required. Rejecting BZIP2's inspected version-needed value
+  46 also satisfies the authored in-error outcome; its error need not literally
+  contain the word "compression". Other version errors do not qualify.
+  Ordinary ZIP regeneration must not turn these
   intentionally invalid fixtures into valid ones.
 
 The other **79 rows remain manual/pending automation**, not passed and not
