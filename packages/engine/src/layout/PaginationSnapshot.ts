@@ -1,4 +1,5 @@
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
+import { contentDocumentRoot } from "../content/ContentDocumentRoot.js";
 import { Page, type DomBreakPoint, type DomPositionRange, type PositionOverride } from "./Page.js";
 import { compareDomPositions } from "./ScrollPositionTracker.js";
 
@@ -47,7 +48,7 @@ export interface BodyPaint {
 }
 
 export function bodyPaint(document: Document): BodyPaint {
-  const style = document.body.style;
+  const style = contentDocumentRoot(document).style;
   return {
     transform: style.getPropertyValue("transform"),
     transformPriority: style.getPropertyPriority("transform"),

@@ -97,4 +97,23 @@ describe("outer page margins", () => {
     expect(frameContentBounds(frame)).toMatchObject({ left: 720, right: 1320 });
     vi.restoreAllMocks();
   });
+
+  it("reads standalone SVG root bounds without an HTML body or changing artwork", () => {
+    const doc = new DOMParser().parseFromString(
+      '<svg xmlns="http://www.w3.org/2000/svg" style="padding: 0 27px; border: 2px solid black"><path d="M0 0h20v20z"/></svg>',
+      "application/xhtml+xml",
+    );
+    const original = new XMLSerializer().serializeToString(doc);
+    const geometry = vi.spyOn(doc.documentElement, "getBoundingClientRect").mockReturnValue({
+      left: 84, right: 696,
+    } as DOMRect);
+    try {
+      expect(doc.body).toBeNull();
+      expect(reflowableContentBounds(doc)).toEqual({ left: 113, right: 667 });
+      expect(geometry).toHaveBeenCalledOnce();
+      expect(new XMLSerializer().serializeToString(doc)).toBe(original);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
 });

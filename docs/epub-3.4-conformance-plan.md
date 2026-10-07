@@ -33,6 +33,18 @@ work includes standalone SVG opening (#367), native JPEG XL/nested documents, HT
 publication origins, vertical pagination and the advanced behaviors below.
 Regression validation is not a replacement for official criterion assessment.
 
+Standalone SVG in a reflowable spine uses its original namespaced SVG root,
+not an inserted XHTML body. Pagination measures it atomically and retains a
+root-element reading anchor; paging paint, resize, overlays, animation and
+continuous-scroll position tracking and page-turn margin measurements use the
+same content-root selection.
+Reader-owned image-control styles use the SVG namespace when no XHTML head
+exists, without adding a head/body or changing authored artwork. SVG regression
+also runs in the early reader gate; the full protected suite remains required.
+Fixed-layout and roll rendering retain their existing paths. Hosted regression
+and exact-package reassessment are required before promoting the three opening
+failures tracked in #367 to passes.
+
 The historical merged-main eleven-criterion assessment improved from 6/11 (54.55%) to
 10/11 (90.91%): all four embedded-font criteria now pass, while direct JPEG XL
 still fails. The historical broader main run 37623541718 passes 20/21 (95.24%),

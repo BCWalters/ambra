@@ -1,4 +1,5 @@
 import type { ContentLoader } from "../content/ContentLoader.js";
+import { contentDocumentRoot } from "../content/ContentDocumentRoot.js";
 import type { ResourceUrlResolver } from "../rendering/ResourceUrlResolver.js";
 import { SandboxedContentHost } from "../rendering/SandboxedContentHost.js";
 import { ReadingTheme } from "../rendering/ReadingTheme.js";
@@ -54,8 +55,8 @@ export class PaginatedContentHost {
   private pages: Page[] = [];
   private pageIndex = 0;
   private disclosureCleanup: (() => void) | undefined;
-  private readerOverlay: { body: HTMLElement; clipPath: string; priority: string } | undefined;
-  private animationClip: { body: HTMLElement; clipPath: string; priority: string } | undefined;
+  private readerOverlay: { body: HTMLElement | SVGSVGElement; clipPath: string; priority: string } | undefined;
+  private animationClip: { body: HTMLElement | SVGSVGElement; clipPath: string; priority: string } | undefined;
   private measurementIdentity: string | undefined;
   private measurementPaint: BodyPaint | undefined;
   private measuredSnapshot: PaginationSnapshot | undefined;
@@ -165,7 +166,7 @@ export class PaginatedContentHost {
     // than one page — display is purely the transform/height PaginationEngine
     // computes per page (see `showCurrentPage`), not native scrolling.
     iframeDocument.documentElement.style.overflow = "hidden";
-    iframeDocument.body.style.overflow = "hidden";
+    contentDocumentRoot(iframeDocument).style.overflow = "hidden";
 
     // A real, confirmed bug (reported: duplicated lines of dialogue
     // straddling a spread's left/right columns in a book using an
@@ -210,7 +211,7 @@ export class PaginatedContentHost {
     if (this.forcedAnchor) this.measurementIdentity = undefined;
     this.pages = restoreSnapshotPages(iframeDocument, this.measurementIdentity, snapshot) ?? (paginationOptions
       ? await this.measureCooperatively(iframeDocument, paginationOptions)
-      : PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor));
+      : PaginationEngine.paginate(contentDocumentRoot(iframeDocument), this.pageContentHeight, this.forcedAnchor));
     signal?.throwIfAborted();
     this.measuredSnapshot = this.measurementIdentity
       ? snapshotPages(iframeDocument, this.measurementIdentity, this.pages)
@@ -228,7 +229,7 @@ export class PaginatedContentHost {
       // Check every attempt, including SMIL outside the Web Animations API.
       if (doc.fonts?.status === "loading" || hasPaginationAnimation(doc)) {
         this.measurementIdentity = undefined;
-        return PaginationEngine.paginate(doc.body, this.pageContentHeight, this.forcedAnchor);
+        return PaginationEngine.paginate(contentDocumentRoot(doc), this.pageContentHeight, this.forcedAnchor);
       }
       let changed = false;
       const observer = new MutationObserver(() => { changed = true; });
@@ -236,7 +237,7 @@ export class PaginatedContentHost {
       observer.observe(doc.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
       doc.fonts?.addEventListener("loadingdone", fontChange);
       try {
-        const pages = await PaginationEngine.paginateIncrementally(doc.body, this.pageContentHeight, options, this.forcedAnchor);
+        const pages = await PaginationEngine.paginateIncrementally(contentDocumentRoot(doc), this.pageContentHeight, options, this.forcedAnchor);
         if (!changed && observer.takeRecords().length === 0) return pages;
       } finally {
         observer.disconnect();
@@ -357,13 +358,13 @@ export class PaginatedContentHost {
     // Reset any transform left over from the previously-displayed page —
     // measureChunks/getClientRects must see the content in its natural,
     // untranslated layout position to measure correctly.
-    iframeDocument.body.style.transform = "";
+    contentDocumentRoot(iframeDocument).style.transform = "";
     makeOverflowingPreElementsFocusable(iframeDocument);
 
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.forcedAnchor = forceAnchor ? preserve : undefined;
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor);
+    this.pages = PaginationEngine.paginate(contentDocumentRoot(iframeDocument), this.pageContentHeight, this.forcedAnchor);
     if (preserve) {
       const found = PaginationEngine.findPageForPosition(
         this.pages,
@@ -447,11 +448,11 @@ export class PaginatedContentHost {
     // landed the first line of text noticeably too high, close enough to
     // sit under the toolbar, because the page it re-paginated from was
     // still visually shifted down from `open()`'s own initial page.
-    iframeDocument.body.style.transform = "";
+    contentDocumentRoot(iframeDocument).style.transform = "";
     this.refreshInsets(iframeDocument);
     ReadingTheme.applyPageContentHeight(iframeDocument, this.pageContentHeight);
     this.forcedAnchor = forceAnchor ? { node, offset } : undefined;
-    this.pages = PaginationEngine.paginate(iframeDocument.body, this.pageContentHeight, this.forcedAnchor);
+    this.pages = PaginationEngine.paginate(contentDocumentRoot(iframeDocument), this.pageContentHeight, this.forcedAnchor);
     const found = PaginationEngine.findPageForPosition(this.pages, node, offset, iframeDocument);
     if (found) {
       this.pageIndex = found.index;
@@ -472,7 +473,8 @@ export class PaginatedContentHost {
     if (!page) {
       return;
     }
-    const body = this.sandboxedHost.element.contentDocument?.body;
+    const document = this.sandboxedHost.element.contentDocument;
+    const body = document && contentDocumentRoot(document);
     if (body) {
       // Shift the content down by the top inset (on top of the page's own
       // display transform) so the first line lands `insetTop` px below
@@ -507,7 +509,8 @@ export class PaginatedContentHost {
   /** Top-layer UI escapes body clipping, but not the iframe's own clip. Give it
    * the reading pane while keeping publication paint confined to this page. */
   public revealReaderOverlay(): () => void {
-    const body = this.element.contentDocument?.body;
+    const document = this.element.contentDocument;
+    const body = document && contentDocumentRoot(document);
     if (!body) return () => {};
     const overlay = this.readerOverlay ?? {
       body,
@@ -551,7 +554,8 @@ export class PaginatedContentHost {
    * without changing its viewport or exposing adjacent-page text (#84).
    * The iframe's full-height opaque paper and existing backdrops remain. */
   public suppressClipPathForAnimation(): void {
-    const body = this.element.contentDocument?.body;
+    const document = this.element.contentDocument;
+    const body = document && contentDocumentRoot(document);
     if (!body) return;
     this.animationClip ??= {
       body,

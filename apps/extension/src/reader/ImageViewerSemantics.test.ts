@@ -6,6 +6,27 @@ import { prepareTableViewer } from "./TableViewerContent.js";
 
 afterEach(() => { document.body.innerHTML = ""; });
 
+it("installs reader-owned SVG styles without creating an HTML head or changing artwork", () => {
+  const doc = new DOMParser().parseFromString(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800"><defs><style>.art{fill:green}</style></defs><path class="art" d="M0 0h20v20z"/></svg>',
+    "application/xhtml+xml",
+  );
+  const original = new XMLSerializer().serializeToString(doc);
+  const artwork = doc.querySelector("path")!.outerHTML;
+  const cleanup = attachImageControlTheme(doc, getInterfaceTheme("ambra", "light"));
+  const style = doc.querySelector("style[data-ambra-image-controls]")!;
+  expect(doc.head).toBeNull();
+  expect(doc.body).toBeNull();
+  expect(style.namespaceURI).toBe("http://www.w3.org/2000/svg");
+  expect(isReaderOwnedContent(style)).toBe(true);
+  expect(style.textContent).toContain("img[data-ambra-image-zoom]:focus-visible");
+  updateImageControlTheme(doc, getInterfaceTheme("blue", "dark"));
+  expect(doc.querySelector("path")!.outerHTML).toBe(artwork);
+  expect(doc.querySelector("defs style")!.textContent).toBe(".art{fill:green}");
+  cleanup();
+  expect(new XMLSerializer().serializeToString(doc)).toBe(original);
+});
+
 it("themes only the image-button focus affordance and excludes it from publication clones", () => {
   document.body.innerHTML = '<table><tbody><tr><td><img src="blob:image" alt="Ink" style="color:red;filter:none" data-ambra-image-zoom></td></tr></tbody></table>';
   const table = document.querySelector("table")!;

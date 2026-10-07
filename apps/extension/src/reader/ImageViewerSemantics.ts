@@ -1,8 +1,8 @@
-import { isReaderOwnedContent, markReaderOwnedContent } from "@ambra/engine";
+import { contentDocumentRoot, isReaderOwnedContent, markReaderOwnedContent } from "@ambra/engine";
 import type { InterfaceTheme } from "@ambra/shell/theme";
 
 export function updateImageControlTheme(doc: Document, palette: InterfaceTheme): void {
-  const style = Array.from(doc.querySelectorAll<HTMLStyleElement>("style[data-ambra-image-controls]"))
+  const style = Array.from(doc.querySelectorAll("style[data-ambra-image-controls]"))
     .find(isReaderOwnedContent);
   if (!style) return;
   style.textContent = `
@@ -18,10 +18,12 @@ export function updateImageControlTheme(doc: Document, palette: InterfaceTheme):
 
 /** Only the reader's image-button focus affordance is styled, never artwork or publication roots. */
 export function attachImageControlTheme(doc: Document, palette: InterfaceTheme): () => void {
-  const style = doc.createElement("style");
-  style.dataset.ambraImageControls = "";
+  const parent = doc.head ?? contentDocumentRoot(doc);
+  const style = doc.head ? doc.createElement("style")
+    : doc.createElementNS(parent.namespaceURI, "style");
+  style.setAttribute("data-ambra-image-controls", "");
   markReaderOwnedContent(style);
-  doc.head.append(style);
+  parent.append(style);
   updateImageControlTheme(doc, palette);
   return () => style.remove();
 }
