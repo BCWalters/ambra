@@ -112,9 +112,8 @@ normative references, method, subject and explicit procedure. Inventory coverage
 is not executed-verdict coverage.
 
 The expanded registry currently has **64 automated methods**: the unchanged 21
-plus 43 additions. This is a method count, **not a measured score**. The latest
-published merged-main result below remains the historical 60-method run until
-the new methods are assessed against a fresh exact production package:
+plus 43 additions. The registry count alone is **not a measured score**.
+All 64 now have fresh exact-package merged-main verdicts:
 
 - Source-derived original document text and complete spine order, including
   unknown collection/manifest/meta/spine properties, backward package version,
@@ -152,20 +151,22 @@ the new methods are assessed against a fresh exact production package:
   Ordinary ZIP regeneration must not turn these
   intentionally invalid fixtures into valid ones.
 
-[Merged-main run 37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454)
-now executes all 60 methods: **56 pass, four fail, zero execution blockers**.
-All original 21 statuses are unchanged. Three newly measured standalone-SVG
-cases surface `Cannot read properties of null (reading 'style')` in the actual
-reader ([#367](https://github.com/BCWalters/ambra/issues/367)); JPEG XL is the
-unchanged fourth failure. Native audio and both deliberately invalid archive
-cases pass. Required verdict coverage is 60/139 (43.17%), not 139/139.
+[Merged-main run 37666174481](https://github.com/BCWalters/ambra/actions/runs/37666174481)
+executes all 64 methods: **63 pass, one fail, zero execution blockers**.
+All original 21 statuses are unchanged. The three standalone-SVG opening
+failures from historical run 37641226454 were repaired in #371 and independently
+remeasured as passes in run 37665451465; #367 is closed. The four image
+URL/fallback methods added by #375 also pass in the fresh 64-method run.
+JPEG XL is the unchanged remaining failure. Native audio and both deliberately
+invalid archive cases pass. Required verdict coverage is 64/139 (46.04%), not
+139/139.
 See the [progress report](epub-3.4-progress-report.md) for the complete category
 table, exact archive fingerprint and retained exploratory outcomes.
 
-In that published run, **79 rows remain unassessed**, not passed and not
-silently waived. Four now have newly registered image URL/fallback methods;
-their verdicts still require fresh package-bound execution. The remaining
-**75 rows have procedures but no criterion-specific automated method**.
+In the current measured run, **75 rows remain unassessed**, not passed and not
+silently waived. Those **75 rows have procedures but no criterion-specific
+automated method**. The historical 56/60 result and its 79 pending criteria
+remain preserved in the progress report.
 Those procedures cover authored visual/layout comparisons,
 SMIL/audio synchronization and listening, duplicate-publication/bookmark/link
 behavior, physical progression, resource restrictions, structural semantics and
@@ -238,6 +239,10 @@ node scripts/epub-conformance.mjs prepare \
 ```
 
 ## Run the official tests
+
+Use the [manual validation plan](epub-3.4-manual-validation.md) for prioritized
+original-publication sessions and provenance requirements. Keep manual campaigns
+with different browser/OS environments separate from the hosted worksheet.
 
 Generate the pinned test publications:
 
