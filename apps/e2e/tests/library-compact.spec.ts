@@ -94,6 +94,8 @@ for (const width of [320, 360]) {
         await page.keyboard.press("Escape");
         locale = next;
         await expect(page.locator("html")).toHaveAttribute("lang", locale);
+        await page.mouse.move(0, 0);
+        await expect(page.getByRole("tooltip")).toHaveCount(0);
         await expect(page.locator("[data-library-book-count]")).toHaveText(formatLibraryBookCount(12, locale, getTranslate(locale)));
         await expectFixedChrome(page, locale, 480);
         const toggle = page.getByRole("button", { name: getTranslate(locale)("library.findAndSort"), exact: true });

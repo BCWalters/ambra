@@ -212,7 +212,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     <div data-library-filters="" style={{ display: "flex", alignItems: "center", gap: 4,
       marginBottom: isFullTab ? 12 : 0,
       background: palette.backgroundSolid }}>
-      <SearchBox value={query} input={{ ref: searchInputRef }} onChange={(_event, data) => setQuery(data.value)}
+      <SearchBox value={query} ref={searchInputRef} onChange={(_event, data) => setQuery(data.value)}
         aria-label={t("library.search")} aria-controls={resultsId} placeholder={t("library.searchPlaceholder")}
         dismiss={{ "aria-label": t("library.clearSearch") }}
         onKeyDown={(event) => {

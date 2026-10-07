@@ -209,6 +209,9 @@ the control itself, including over arbitrary covers, not only in a tooltip.
   collapses the disclosure and restores its button focus. In the reader a
   subsequent Escape closes the panel; child menus/dialogs retain Escape
   ownership. Keep an active query and clear action visible when collapsed.
+  Clearing Search returns focus to its input. Use SearchBox's forwarded input
+  ref rather than overriding its input-slot ref, preserving Fluent's internal
+  clear-action focus handling.
   All three views share the current library ordering: Newest added, Oldest added,
   Title A-Z, Author A-Z. Reuse existing persistence rather than inventing
   independent per-surface preferences. Filtering retains the selected order.
