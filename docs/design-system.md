@@ -194,6 +194,9 @@ the control itself, including over arbitrary covers, not only in a tooltip.
   title/author and block-level progress track. Book details remains a separate
   keyboard action; do not nest it in the resume button or duplicate the book
   in the flat list. Searching shows matching rows instead of the resume card.
+  Keep each book and its Details trigger keyed continuously when progress
+  promotes a row to Continue Reading, so keyboard focus and modal return are
+  preserved even when the presentation changes.
   Other rows use 44x66px covers and naturally sized metadata.
 - Popup and in-reader library keep the prominent **Find books** action beside
   **Import book** at the bottom, including empty libraries. The original empty

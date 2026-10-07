@@ -93,7 +93,9 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
     .reduce<(typeof books)[number] | undefined>((latest, book) =>
       !latest || (book.lastReadAt ?? 0) > (latest.lastReadAt ?? 0) ? book : latest, undefined), [books, isActionPopup]);
   const popupContinueBook = isActionPopup && !hasQuery ? continueBook : undefined;
-  const collectionBooks = popupContinueBook ? visibleBooks.filter((book) => book.id !== popupContinueBook.id) : visibleBooks;
+  const collectionBooks = popupContinueBook
+    ? [popupContinueBook, ...visibleBooks.filter((book) => book.id !== popupContinueBook.id)]
+    : visibleBooks;
   const detailsBook = books.find((book) => book.id === detailsBookId);
   const removalBook = books.find((book) => book.id === removeBookId);
   const inspector = useLibraryInspector(detailsBook?.id, openInspectionSession);
@@ -332,12 +334,10 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
             </div>
             <div ref={collectionRef} id={resultsId} data-library-collection style={{ display: "flex", flexDirection: isFullTab ? "row" : "column",
               flexWrap: isFullTab ? "wrap" : undefined, gap: isFullTab ? 24 : 0, alignItems: "start" }}>
-              {popupContinueBook && <LibraryBookCard key={popupContinueBook.id} book={popupContinueBook} compact compactLayout variant="continue"
-                onOpen={() => openBook(popupContinueBook.id)}
-                onRequestRemove={() => requestRemove(popupContinueBook.id)} onShowDetails={() => setDetailsBookId(popupContinueBook.id)} />}
               {visibleBooks.length === 0 && <p style={{ margin: 0 }}>{t("library.searchNoResults")}</p>}
               {collectionBooks.map((book) => (
                 <LibraryBookCard key={book.id} book={book} compact={!isFullTab} compactLayout={isCompact}
+                  variant={book.id === popupContinueBook?.id ? "continue" : "collection"}
                   current={book.id === embedded?.currentBookId} active={active}
                   openDisabled={isBookOpenDisabled(book.id)}
                   openDescriptionId={isBookOpenDisabled(book.id) ? importStatusId : undefined}

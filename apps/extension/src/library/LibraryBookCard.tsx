@@ -148,6 +148,11 @@ export const LibraryBookCard: FC<{
         aria-label={t("library.bookDetails", { title: book.title })} onClick={() => { setDetailsTooltip(false); onShowDetails(); }} />
     </Tooltip>
   );
+  // Keep the trigger connected when a row becomes the compact resume card.
+  const compactDetails = compactLayout ? (
+    <span key="details" style={{ position: "absolute", display: "flex",
+      right: resume ? 4 : 0, bottom: resume ? 4 : 8 }}>{detailsButton}</span>
+  ) : undefined;
   const cover = book.cardCoverUrl ? (
     <img src={book.cardCoverUrl} alt="" style={{ display: "block", width: "auto", height: "auto",
       maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "3px 7px 7px 3px",
@@ -193,11 +198,12 @@ export const LibraryBookCard: FC<{
           </span>
         </span>
       </button>
-      <span style={{ position: "absolute", right: 4, bottom: 4 }}>{detailsButton}</span>
+      {compactDetails}
     </article>
   );
   return (
     <article data-library-book={book.id} data-library-continue={resume || undefined} className={resume ? styles.continueCard : undefined} style={{
+      position: compactLayout ? "relative" : undefined,
       minWidth: 0, width: compact ? "100%" : 140, display: "flex",
       flexDirection: compact ? "row" : "column", gap: resume ? undefined : compact ? 12 : 8,
       alignItems: resume ? "center" : undefined, flexWrap: resume ? "wrap" : undefined,
@@ -231,6 +237,7 @@ export const LibraryBookCard: FC<{
           {progress !== undefined && <div style={{ width: `${progress}%`, height: "100%", background: "var(--colorBrandBackground)", borderRadius: 2 }} />}
         </div>
         <div data-library-progress-status="" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 28,
+          paddingRight: compactLayout ? 28 : undefined, boxSizing: "border-box",
           maxWidth: resume ? 240 : undefined, width: "100%", marginTop: resume ? 4 : undefined }}>
           <span style={{ fontSize: 12, color: "var(--colorNeutralForeground2)" }}>
             {progress === undefined
@@ -238,9 +245,10 @@ export const LibraryBookCard: FC<{
               : resume ? t("library.percentRead", { progress: formatLibraryProgress(progress / 100, locale) })
                 : formatLibraryProgress(progress / 100, locale)}
           </span>
-          {detailsButton}
+          {!compactLayout && detailsButton}
         </div>
       </div>
+      {compactDetails}
       {resume && <div data-library-continue-actions="" className={styles.continueActions}>
         <Button appearance="secondary" icon={<ArrowRightRegular />} iconPosition="after"
           disabled={openDisabled} aria-describedby={openDescriptionId} onClick={onOpen}

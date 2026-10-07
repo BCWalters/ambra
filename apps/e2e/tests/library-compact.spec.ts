@@ -211,6 +211,67 @@ for (const width of [320, 360]) {
   });
 }
 
+test("compact resume promotion preserves the native Details trigger and modal focus return", async () => {
+  const twoChapter = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
+  const { context, libraryPage: page, readerPage } = await launchReader(twoChapter);
+  try {
+    await exposeReaderController(readerPage);
+    const id: string = await readerPage.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToChapter(1);
+      await controller.flushProgress();
+      return controller.bookId;
+    });
+    await readerPage.close();
+    const setLastRead = async (lastReadAt: number | undefined) => page.evaluate(({ id, lastReadAt }) =>
+      new Promise<void>((resolve, reject) => {
+        const opening = indexedDB.open("ambra-library");
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const db = opening.result;
+          const tx = db.transaction("books", "readwrite");
+          const store = tx.objectStore("books");
+          const request: IDBRequest<BookMetadata | undefined> = store.get(id);
+          request.onsuccess = () => {
+            if (!request.result) {
+              tx.abort();
+              reject(new Error("Original focus-promotion book is missing."));
+              return;
+            }
+            store.put({ ...request.result, lastReadAt });
+          };
+          tx.oncomplete = () => { db.close(); resolve(); };
+          tx.onabort = () => { db.close(); reject(tx.error); };
+        };
+      }), { id, lastReadAt });
+    await setLastRead(undefined);
+    await page.reload();
+    await expect(page.locator("[data-library-continue]")).toHaveCount(0);
+    const card = page.locator("[data-library-book]");
+    const open = card.locator("[data-book-open]");
+    const details = card.getByRole("button", { name: / details$/ });
+    await open.focus();
+    await open.press("Tab");
+    await expect(details).toBeFocused();
+    const trigger = await details.elementHandle();
+    if (!trigger) throw new Error("Native Details trigger is missing.");
+    await details.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Book details", exact: true });
+    await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+    await setLastRead(Date.now());
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(card).toHaveAttribute("data-library-continue", "");
+    expect(await trigger.evaluate(element => element.isConnected)).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(details).toBeFocused();
+    await details.press("Shift+Tab");
+    await expect(open).toBeFocused();
+  } finally {
+    await context.close();
+  }
+});
+
 test("native Chrome action popup has stable preferred dimensions and keeps navigation reachable (#270)", async ({ browserName: _browserName }, testInfo) => {
   const { context, libraryPage: page } = await launchReader(book, { viewport: null });
   try {
