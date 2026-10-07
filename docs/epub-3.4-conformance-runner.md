@@ -34,8 +34,8 @@ the **Assess EPUB 3.4 release candidate** workflow manually. It:
 2. builds and validates the production extension package;
 3. verifies the immutable W3C suite revision;
 4. creates a worksheet containing every pinned test;
-5. optionally assesses the eleven pinned core font/image criteria in actual
-   headless Chromium, producing package-bound observations and a scorecard; and
+5. inventories all 139 required identifiers, attaches explicit procedures, and
+   optionally runs the registered native methods in actual headless Chromium; and
 6. archives the package, package metadata, worksheet, runner configuration,
    and this procedure for 30 days.
 
@@ -45,7 +45,8 @@ Download `epub-3.4-assessment-kit-<commit>`. Preserve its
 records the Ambra commit, version, archive name, and SHA-256; the report command
 rejects a different or dirty package.
 
-The default `automated_core=true` profile assesses 21 required criteria. It
+With `required_assessment=false`, the `automated_core=true` profile assesses
+the original 21 required criteria. It
 retains the same eleven media criteria
 as the initial baseline: OpenType, TrueType, WOFF, WOFF2, AVIF, GIF, JPEG, JPEG XL,
 PNG, SVG and WebP. Font checks now require the expected native face to be loaded
@@ -100,6 +101,63 @@ All ten additions pass; the original eleven remain 10/11. See the
 [progress report](epub-3.4-progress-report.md) for coverage, exact package
 fingerprint, environment and the distinct historical comparison. The red
 release-completeness gate remains intentional.
+
+### Full required inventory and expanded methods
+
+`required_assessment=true` is the default for new dispatches. The kit includes
+`dist/conformance/required/required-plan.json` and `required-procedures.md`,
+covering **139 identifiers / 140 publications**, including both originals for
+`pkg-unique-id`. Every row retains its source directories, authored expectation,
+normative references, method, subject and explicit procedure. Inventory coverage
+is not executed-verdict coverage.
+
+The expanded registry currently has **60 automated methods**: the unchanged 21
+plus 39 additions. This is a method count, **not a measured score**:
+
+- Source-derived original document text and complete spine order, including
+  unknown collection/manifest/meta/spine properties, backward package version,
+  arbitrary/first rootfile selection, ancillary META-INF files, package-relative
+  locations, three foreign-document fallback cases, ordinary XHTML, XHTML/SVG
+  reading order and repeated spine occurrences. Each actual chapter must have
+  the expected path/index, original text hash and scaled paired paint point.
+- Presentation MathML with native namespace, painted equation and a superscript
+  positioned above and smaller than its base.
+- Standalone/included SVG and its CSS pattern cases, requiring original path
+  geometry hashes, native fill/pattern resolution and paired shape hit points.
+- MP3, MP4 audio and Opus: original resource hash, decoded media state,
+  advancing native clock and nonzero native PCM signal. This establishes
+  software playback, not a live physical-speaker or listening-session claim.
+- The remaining five navigation cases, including hidden authored items and
+  publisher list numbering, plus six element/root/auto title-direction cases.
+  Bidi checks use the exact title and independently resolved computed direction;
+  they do not claim a separate visual glyph-order or assistive-technology audit.
+- Real BZIP2 and segmented ZIP rejection. The generator preserves uncompressed
+  first `mimetype`, arbitrary root directories and original source bytes.
+  Compression and disk fields are inspected before import; a corresponding
+  surfaced error is required. Ordinary ZIP regeneration must not turn these
+  intentionally invalid fixtures into valid ones.
+
+The other **79 rows remain manual/pending automation**, not passed and not
+silently waived. Their procedures cover authored visual/layout comparisons,
+SMIL/audio synchronization and listening, duplicate-publication/bookmark/link
+behavior, physical progression, resource restrictions, structural semantics and
+per-reference scripting/origin applicability. A pending automated method is not
+presented as an unavoidable browser limitation. `lay-pp-layout-duplication`
+explicitly targets EPUBCheck; its validator evidence cannot establish an Ambra
+reading-system verdict. Conditional MUST assertions must be reviewed individually;
+disabling publication scripting does not waive unconditional origin requirements.
+
+The `--required --plan <required-plan.json>` collector demands every registered
+native record and the complete exact-package-bound inventory. It rejects missing
+procedures, duplicate source directories, renamed kinds and incomplete records.
+Manual rows receive explicit pending reasons and retain any already evidenced
+manual result; registering a procedure never promotes it to a pass.
+
+All 140 publications are generated outside the immutable source checkout, so the
+upstream segmented volume is preserved. `AMBRA_ASSESSMENT_PUBLICATIONS_PATH`
+selects this separate archive directory while `AMBRA_EPUB_TESTS_PATH` continues
+to supply independent raw expectations. With `automated_core=false`, the full
+inventory/procedures are still produced, but no native verdict is claimed.
 
 Every observation is tied to the exact package fingerprint and workflow run.
 Missing/duplicate observations, mixed package/browser/OS provenance, missing

@@ -42,6 +42,15 @@ eleven media criteria remain unchanged. Required coverage is 21/139 (15.11%):
 [progress and before/after report](epub-3.4-progress-report.md) for exact package,
 browser/OS, methodology, evidence and remaining coverage.
 
+The full required-assessment runner now inventories all 139 required identifiers
+across 140 publications and provides explicit per-identifier procedures. Its
+expanded registry has 60 automated methods, retaining the existing 21; the other
+79 are explicitly manual/pending automation. These are method/inventory counts,
+not new measured results, and do not supersede the verified 20/21 report above.
+Conditional scripting assertions, unconditional origins and the EPUBCheck-only
+assertion are distinguished without inventing not-applicable verdicts. See the
+[runner procedures](epub-3.4-conformance-runner.md#full-required-inventory-and-expanded-methods).
+
 Scripting and remote resources are product-policy decisions as well as
 compatibility work. They are not prerequisites for a secure, useful reader,
 but unsupported features and their fallback behavior must be handled
