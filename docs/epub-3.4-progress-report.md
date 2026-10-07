@@ -1,8 +1,8 @@
 # Ambra EPUB 3.4 progress and conformance report
 
-**Status: broader package-bound reassessment completed on merged main.**
+**Status: full required inventory and 60-method reassessment completed on merged main.**
 No store release has been created. The release-completeness gate remains red:
-direct JPEG XL fails and 118 required criteria remain unassessed.
+four required criteria fail and 79 required criteria remain unassessed.
 
 ## Executive summary
 
@@ -19,18 +19,148 @@ protected gates passed. Early runs caught CFI grammar/emulator ownership, a stal
 navigation stub and an incorrect network-attempt counter; each was repaired
 without weakening native evidence.
 
-The latest expanded profile passes **20/21 (95.24%)**. All ten newly measured
-package/metadata, navigation and roll criteria pass. The original eleven remain
-10/11, with no regressions; JPEG XL is the only measured failure. Required
-coverage is now **21/139 (15.11%)**, not whole-specification conformance.
+The latest expanded profile passes **56/60 (93.33%)**, with four failures and
+**no automated execution blockers**. All 139 required identifiers, representing
+140 original publications, now have explicit inventory entries and assessment
+procedures. Required verdict coverage is **60/139 (43.17%)**; the other 79 are
+pending manual review or further automation, not passed, waived or all inherently
+manual. The original 21 results remain unchanged at 20/21. The new failures are
+three standalone-SVG opening cases; direct JPEG XL remains the historical failure.
 
 The comparable historical official profile improved from **6/11 (54.55%) to
 10/11 (90.91%)**, a gain of **36.36 percentage points**. Four embedded-font
 criteria improved; none of the eleven regressed. This is not 90.91% of the whole
 specification. At that milestone 194 of the pinned inventory's 205 identifiers
-remained unassessed. The broader run below reduces that number to 184.
+remained unassessed. The historical 21-method run reduced that number to 184;
+the current 60-method run reduces it to 145.
 
-## Broader measured assessment: 2026-10-07
+## Full required scope and measured assessment: 2026-10-07
+
+[Run 37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454)
+executed all 60 registered methods against the exact archived production package
+on merged main. The native stage took 1m28s; the complete job took 2m33s, excluding
+queue time. Collection, full inventory linking and artifact upload succeeded.
+Its red conclusion is expected because four criteria fail and coverage remains
+incomplete. This is not an assertion that all 139 assessments have been executed.
+
+| Measure                                                 | Historical 21-method run | Current expanded run |
+| ------------------------------------------------------- | ------------------------ | -------------------- |
+| Required passes / failures                              | 20 / 1                   | 56 / 4               |
+| Automated execution blockers                            | 0                        | 0                    |
+| Score among assessed required criteria                  | 95.24% (20/21)           | 93.33% (56/60)       |
+| Required verdict coverage                               | 21/139 (15.11%)          | 60/139 (43.17%)      |
+| Required criteria unassessed                            | 118                      | 79                   |
+| Required identifiers / original publications catalogued | —                        | 139 / 140            |
+| Overall identifier verdict coverage                     | 21/205 (10.24%)          | 60/205 (29.27%)      |
+| All identifiers unassessed                              | 184                      | 145                  |
+| Complete conformance claim                              | No                       | No                   |
+
+**The changed percentage is not a rendering regression comparison.** The original
+21 have identical statuses, independently compared with run 37623541718. Of the
+39 newly measured criteria, 36 pass and three expose a previously unmeasured
+standalone-SVG opening failure. No product rendering change was made to raise
+these scores.
+
+### Results across every required category
+
+| Category              | Required | Pass   | Fail  | Pending |
+| --------------------- | -------- | ------ | ----- | ------- |
+| Content Documents     | 11       | 8      | 2     | 1       |
+| Fixed Layout          | 4        | 0      | 0     | 4       |
+| Pre-paginated Layout  | 21       | 0      | 0     | 21      |
+| Roll Layout           | 4        | 2      | 0     | 2       |
+| Media Overlays        | 16       | 0      | 0     | 16      |
+| Navigation Documents  | 7        | 7      | 0     | 0       |
+| Open Container Format | 14       | 8      | 0     | 6       |
+| Package Documents     | 15       | 10     | 1     | 4       |
+| Internationalization  | 13       | 9      | 0     | 4       |
+| Structural Semantics  | 1        | 0      | 0     | 1       |
+| Core Media Types      | 10       | 9      | 1     | 0       |
+| Publication Resources | 7        | 0      | 0     | 7       |
+| Manifest Fallbacks    | 5        | 3      | 0     | 2       |
+| Scripting             | 11       | 0      | 0     | 11      |
+| **Total**             | **139**  | **56** | **4** | **79**  |
+
+The package-bound kit includes the per-identifier `required-plan.json` and
+`required-procedures.md`, including original directory names, normative
+references, authored expected outcomes, applicability subjects and limitations.
+`pkg-unique-id` has two originals, explaining the 139/140 difference. No
+recommended, optional or deprecated criterion has been promoted to an assessed
+result by this expansion.
+
+Pending work includes reusable layout/spread/viewport methods, resource and
+origin behavior, identity/bookmark/link checks, structural semantics and
+overlay/scripting applicability. Some checks need visual, listening or
+assistive-technology evidence; others can be automated. Conditional requirements
+must be reviewed individually. `lay-pp-layout-duplication` explicitly targets
+EPUBCheck, so validator evidence is required rather than a reader-runtime pass.
+
+### Measured failures and policies
+
+| Criterion             | Actual evidence                                                                                                        | Follow-up                                                                           |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `cnt-svg-support`     | Original imports; reader surfaces `Cannot read properties of null (reading 'style')` before the expected frame appears | [#367](https://github.com/BCWalters/ambra/issues/367)                               |
+| `cnt-svg-css`         | Same surfaced opening error on the original standalone SVG/CSS fixture                                                 | [#367](https://github.com/BCWalters/ambra/issues/367)                               |
+| `pkg-spine-order-svg` | Same surfaced opening error before SVG/XHTML order can be traversed                                                    | [#367](https://github.com/BCWalters/ambra/issues/367)                               |
+| `pub-cmt-jxl`         | Unchanged native image decode/paint failure                                                                            | [#328](https://github.com/BCWalters/ambra/issues/328); await browser-native support |
+
+MP3, MP4 audio and Opus all pass: each original resource hash matches, the
+unmuted native player advances through its approximately 1.32-second clip, and
+Chromium's offline decoder yields nonzero PCM from those exact bytes. This is
+software decode/playback evidence, not a physical-speaker listening claim.
+Real BZIP2 and segmented ZIP rejection also pass with inspected archive fields
+and corresponding surfaced errors. The tests do not merely repackage invalid
+archives into conforming ones.
+
+Publication scripting remains intentionally disabled. Remote fonts/video still
+need the separate consent/privacy/offline design in
+[#336](https://github.com/BCWalters/ambra/issues/336). JPEG XL is not given a
+bundled decoder. Legacy omissions remain explicit; none of these policies
+silently turn unassessed requirements into passes.
+
+### Exact expanded-run provenance
+
+| Field                          | Current expanded assessment                                                |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| Run                            | [37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454) |
+| Merged commit                  | `a087a86f79656e8255bc03bcb22cf8c872ff6883`                                 |
+| Archive / version              | `ambra-2.2.0.zip` / 2.2.0; unreleased candidate                            |
+| Independently verified SHA-256 | `59bfa8c8bc1129f6ceb0913cd426f7bf705c4b8a4bc95175eec1a39bdef7e4d6`         |
+| Browser                        | Chromium `Chrome/153.0.8010.12`                                            |
+| OS                             | Linux `6.17.0-1022-azure`                                                  |
+| Last native record             | 2026-10-07T15:01:28.492Z                                                   |
+| Pinned suite                   | `54092b4233253e9aac80e93ec4782b380b4b3403`                                 |
+
+All 60 records share the exact package, suite/run evidence and browser/OS
+identity. The downloaded ZIP fingerprint was independently recomputed. The kit
+retains raw observations, generated reports, full procedures and the exact ZIP.
+The root worktree and live extension were not replaced by these assessment runs.
+
+### Retained exploratory outcomes and measurement repairs
+
+- [#364](https://github.com/BCWalters/ambra/pull/364) merged the complete
+  inventory, 140-publication generator and 60 methods after protected hosted CI.
+- [Run 37636626527](https://github.com/BCWalters/ambra/actions/runs/37636626527)
+  recorded 52 pass, two fail and six not-run. BZIP2 was correctly rejected, but
+  the measurement incorrectly required the error to contain "compression";
+  Ambra surfaced its actual unsupported extraction version 46 instead. Three
+  audio probes timed out in a live AudioContext method; three standalone SVG
+  openings lost the surfaced error during ordinary iframe setup.
+- [#365](https://github.com/BCWalters/ambra/pull/365) added extraction-version
+  inspection, original-byte offline PCM decoding plus actual unmuted player
+  state, and a native import/open error observer. Its hosted regression checks
+  passed. [Run 37639852558](https://github.com/BCWalters/ambra/actions/runs/37639852558)
+  recorded 56 pass, the unchanged JPEG XL failure and three SVG not-run outcomes.
+  The observer looked for the book-card "Open" label inside import status, whose
+  actual completion control is "Read now".
+- [#366](https://github.com/BCWalters/ambra/pull/366) corrected that selector
+  after protected CI passed. The final run captured the actual reader alerts and
+  produced all 60 verdicts. No product-rendering change, native publisher-script
+  execution or threshold relaxation was used to conceal those SVG failures.
+- The exploratory kits remain retained with their original identities and
+  outcomes; they are not overwritten or relabelled as the final run.
+
+## Historical broader measured assessment: 2026-10-07
 
 [Run 37623541718](https://github.com/BCWalters/ambra/actions/runs/37623541718)
 measured all 21 criteria against the exact archived production package. The
@@ -122,7 +252,7 @@ not a replacement identity for that historical report.
   shared harness/runtime, workflow and unknown changes still require full
   coverage. No end-to-end timing is claimed for the future focused profile.
 
-The next useful step is broader CSS/text/SVG measurement rather than treating
+At this historical milestone, the next step was broader CSS/text/SVG measurement rather than treating
 these new passes as new rendering fixes. Remote fonts and inline video still
 need the separate permission/privacy/offline policy design in #336. Publication
 scripting remains intentionally disabled; native JPEG XL waits for browser
