@@ -1,16 +1,16 @@
-import { isInteractiveContentTarget } from "@ambra/engine";
+import { contentDocumentRoot, isInteractiveContentTarget } from "@ambra/engine";
 
 export interface HorizontalBounds {
   left: number;
   right: number;
 }
 
-/** The reader's reflowable measure includes body padding and auto margins,
+/** The reader's reflowable measure includes root padding and auto margins,
  * not the whitespace within paragraphs, images, or short pages. */
 export function reflowableContentBounds(doc: Document): HorizontalBounds {
-  const body = doc.body;
-  const rect = body.getBoundingClientRect();
-  const style = doc.defaultView!.getComputedStyle(body);
+  const root = contentDocumentRoot(doc);
+  const rect = root.getBoundingClientRect();
+  const style = doc.defaultView!.getComputedStyle(root);
   return {
     left: rect.left + parseFloat(style.borderLeftWidth || "0") + parseFloat(style.paddingLeft || "0"),
     right: rect.right - parseFloat(style.borderRightWidth || "0") - parseFloat(style.paddingRight || "0"),
