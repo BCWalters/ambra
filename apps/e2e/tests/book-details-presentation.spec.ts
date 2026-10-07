@@ -40,9 +40,9 @@ test("metadata retains value-local language and bidi direction across Library, r
     await expect(value).toHaveCSS("unicode-bidi", "isolate");
   };
   try {
-    const card = libraryPage.locator('[data-library-book]:not([data-library-continue])').first();
-    await check(card.locator("p").filter({ hasText: title }), "ar");
-    await check(card.locator("p").filter({ hasText: author }), "he");
+    const card = libraryPage.locator("[data-library-book]").first();
+    await check(card.locator('[lang]:not([aria-hidden="true"] *)').filter({ hasText: title }), "ar");
+    await check(card.locator('[lang]:not([aria-hidden="true"] *)').filter({ hasText: author }), "he");
     await expect(readerPage.frameLocator("iframe").first().getByRole("heading", { name: "Original English chapter", exact: true })).toBeVisible();
     await exposeReaderController(readerPage);
     const sourceContext = await readerPage.evaluate(() => {
