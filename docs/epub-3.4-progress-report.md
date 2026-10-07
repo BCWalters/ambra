@@ -123,6 +123,50 @@ layout and listening checks, with explicit environment and evidence requirements
 Manual campaigns on a different OS/browser remain separate from this hosted
 campaign because the current worksheet has one global environment.
 
+### Protected CI reliability and measured duration
+
+[#374](https://github.com/BCWalters/ambra/pull/374) merged only after exact head
+`72c267b87170484ce6d01a79027d5491d16c4af3` passed the protected aggregate in
+[run 37671640242](https://github.com/BCWalters/ambra/actions/runs/37671640242),
+attempt 2. Its 11 browser groups retain all 94 protected file invocations and
+use at most eight concurrent standard hosted jobs. Production groups verify
+one shared clean package; local-feature controls use their explicit separate
+development package.
+
+Archived evidence independently confirms **591 passed test invocations,
+17 explicit skips and no test retries**, across all 11 groups and 16 steps.
+All six bookmark review images and three welcome previews were produced.
+This ordinary regression-suite count is not the 64-criterion EPUB score.
+
+The first attempt passed ten browser groups but hit the bounded Chromium
+installation deadline in reader-core-2. The real unchanged-head failed-job-only
+rerun retained preparation and all ten successful groups: their start and
+completion times are identical across attempts. Only reader-core-2 and the
+required aggregate re-executed. GitHub clones retained job IDs, so execution
+times, not ID differences, were used to verify reuse.
+
+| Observed validation duration | Time |
+| --- | --- |
+| Previous sequential protected green job, run 37656229357 | 37m4s |
+| New matrix first attempt, one installation failure | 11m52s |
+| Failed-job-only rerun through green aggregate | 5m35s |
+| First validation start to final green, including rerun delay | 18m46s |
+
+These are observed runs, not a controlled repeated benchmark or a guarantee
+that every run is faster. Earlier attempts exposed stalled Ubuntu mirror
+downloads and an unintended background-pagination assertion deadline.
+Shared 30-second APT network limits, fail-closed index updates and five-minute
+installation step limits now bound that infrastructure failure. Timing-sensitive
+pagination runs without a competing worker; foreground input and long-task
+budgets remain unchanged, while the independent thousand-page canonical index
+has a separate 30-second completion wait.
+
+The RTL resize race now waits for applied, not merely requested, width. Its
+local 30/30 before-and-after stress results are retained, but do not alone prove
+all intermittency eliminated. Standard hosted minutes for this public repository
+are free; concurrency and storage limits still apply. No larger paid runner or
+billing change was enabled.
+
 ## Historical initial 60-method assessment: 2026-10-07
 
 [Run 37641226454](https://github.com/BCWalters/ambra/actions/runs/37641226454)
