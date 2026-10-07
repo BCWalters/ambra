@@ -29,24 +29,30 @@ metadata whitespace, and metadata direction/language are implemented and
 protected-CI validated. Resource fallbacks/offline URL classification, navigation
 recovery, publisher accessibility claims, asserted CFI recovery/ranges and
 SVG-root resource policy are now protected-CI validated in #356/#357. Remaining
-work includes native JPEG XL/nested documents, HTML bases/SVG graphs,
+work includes standalone SVG opening (#367), native JPEG XL/nested documents, HTML bases/SVG graphs,
 publication origins, vertical pagination and the advanced behaviors below.
 Regression validation is not a replacement for official criterion assessment.
 
 The historical merged-main eleven-criterion assessment improved from 6/11 (54.55%) to
 10/11 (90.91%): all four embedded-font criteria now pass, while direct JPEG XL
-still fails. The broader main run 37623541718 now passes 20/21 (95.24%),
+still fails. The historical broader main run 37623541718 passes 20/21 (95.24%),
 including all ten newly measured metadata/navigation/roll criteria; the same
-eleven media criteria remain unchanged. Required coverage is 21/139 (15.11%):
-118 required criteria and 184 total identifiers remain unassessed. See the
+eleven media criteria remain unchanged. The latest expanded run 37641226454
+passes 56/60 (93.33%), with four failures and no automated execution blockers.
+Required verdict coverage is 60/139 (43.17%): 79 required criteria and 145 total
+identifiers remain unassessed. See the
 [progress and before/after report](epub-3.4-progress-report.md) for exact package,
 browser/OS, methodology, evidence and remaining coverage.
 
 The full required-assessment runner now inventories all 139 required identifiers
 across 140 publications and provides explicit per-identifier procedures. Its
 expanded registry has 60 automated methods, retaining the existing 21; the other
-79 are explicitly manual/pending automation. These are method/inventory counts,
-not new measured results, and do not supersede the verified 20/21 report above.
+79 are explicitly manual/pending automation. All 60 methods now have measured
+verdicts on the exact archived main package; the original 21 results are
+unchanged. The three newly measured failures are the standalone-SVG opening
+crash in #367, alongside the historical JPEG XL failure. Inventory completeness
+does not mean all 139 assessments have been executed, and pending automation
+is not presented as an unavoidable manual/browser limitation.
 Conditional scripting assertions, unconditional origins and the EPUBCheck-only
 assertion are distinguished without inventing not-applicable verdicts. See the
 [runner procedures](epub-3.4-conformance-runner.md#full-required-inventory-and-expanded-methods).
@@ -59,12 +65,13 @@ explicitly.
 ### Owner-approved measured milestone and policies
 
 - Broaden measured coverage before selecting the next rendering implementation.
-  The opt-in release workflow now defines ten additional required
-  package/metadata, navigation and roll checks alongside the original eleven
-  media checks. See the [runner methods](epub-3.4-conformance-runner.md).
-  This milestone is measured in merged-main run 37623541718: all ten additions
-  pass. They were previously unassessed, not prior failures. The original
-  eleven still score 10/11; the expanded profile scores 20/21. The package,
+  The opt-in release workflow now defines 60 native methods and procedures for
+  all 139 required identifiers. See the [runner methods](epub-3.4-conformance-runner.md).
+  Merged-main run 37641226454 measures 56 passes and four failures; no methods
+  remain execution-blocked. The original eleven still score 10/11, and the
+  original 21 still score 20/21. The additional 39 have 36 passes and three
+  standalone-SVG opening failures, not a regression of the original profile.
+  The 79 other required criteria remain pending. The package,
   exact run, browser/OS and method limitations are preserved in the report.
 - Keep publication scripting disabled for now; revisit only with compelling
   feedback. Required publication-origin isolation remains open in #338.
@@ -190,8 +197,9 @@ Fallback support must not be scored as JPEG XL decoder support. A Chromium build
 without a JPEG XL decoder can select an available image fallback, but a standalone
 JPEG XL criterion still fails. The original 2.2.0 baseline scored six required
 passes/five failures; the merged-main reassessment scores ten passes/one failure
-among the same eleven criteria. The broader profile now scores 20/21, with
-184 total identifiers unassessed; the required JPEG XL failure is unchanged.
+among the same eleven criteria. The current expanded profile scores 56/60, with
+145 total identifiers unassessed; the required JPEG XL failure is unchanged.
+Three newly measured standalone-SVG opening failures are tracked in #367.
 Future release scoring must verify the pinned official foreign-resource and core
 media criteria against the actual packaged build. C34-04 remains open until the
 remaining native-decoder/object-policy gaps and official evidence are resolved.
