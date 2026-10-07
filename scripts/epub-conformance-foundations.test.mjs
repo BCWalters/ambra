@@ -114,6 +114,30 @@ test("metadata order, whitespace and RTL use source expectations and painted UI"
   assert.equal(foundationVerdict(observed, criterion("pkg-dir_creator-rtl")), false);
 });
 
+test("expanded title direction follows independently resolved element/root direction", () => {
+  const observed = metadata();
+  observed.source.titleDir = "rtl";
+  observed.source.expectedTitleDirection = "rtl";
+  observed.rendered.title.direction = "rtl";
+  assert.equal(foundationVerdict(observed, criterion("pkg-dir_rtl-root-ltr")), true);
+  observed.rendered.title.direction = "ltr";
+  assert.equal(foundationVerdict(observed, criterion("pkg-dir_rtl-root-ltr")), false);
+  observed.source.titleDir = "auto";
+  observed.source.expectedTitleDirection = "ltr";
+  assert.equal(foundationVerdict(observed, criterion("pkg-dir-auto_root-rtl")), true);
+});
+
+test("hidden navigation entries remain accessible and publisher list numbering is ignored", () => {
+  const observed = navigation();
+  assert.equal(foundationVerdict(observed, criterion("nav-spine_in-spine-hidden-toc-css")), true);
+  observed.controls.listStyles = ["none"];
+  assert.equal(foundationVerdict(observed, criterion("nav-spine_in-spine-no-list-style")), true);
+  observed.controls.listStyles = ["decimal"];
+  assert.equal(foundationVerdict(observed, criterion("nav-spine_in-spine-no-list-style")), false);
+  observed.controls.labels = [];
+  assert.equal(foundationVerdict(observed, criterion("nav-spine_in-spine-hidden-toc-html")), false);
+});
+
 test("package language and direction cannot leak into unannotated content", () => {
   const observed = metadata();
   observed.source.dir = "rtl";

@@ -10,10 +10,16 @@ export function requiredAssessmentPath(name: string): string {
   if (!value) throw new Error(`${name} is required for the opt-in assessment.`);
   return path.resolve(value);
 }
+export function assessmentPublication(id: string): string {
+  if (!/^[a-z0-9_-]+$/.test(id)) throw new Error("Invalid assessment publication identifier.");
+  const directory = process.env.AMBRA_ASSESSMENT_PUBLICATIONS_PATH;
+  return path.join(directory ? path.resolve(directory) :
+    path.join(requiredAssessmentPath("AMBRA_EPUB_TESTS_PATH"), "tests"), `${id}.epub`);
+}
 
 interface Measurement {
   readonly observations: unknown;
-  readonly passed: boolean;
+  readonly passed: boolean | null;
   readonly reason: string;
   readonly trackingIssue: string;
 }
@@ -22,6 +28,7 @@ export async function assessNativeCriterion(
   id: string,
   info: TestInfo,
   measure: (launched: Awaited<ReturnType<typeof launchReader>>) => Promise<Measurement>,
+  options: { readonly publicationId?: string } = {},
 ): Promise<void> {
   const output = requiredAssessmentPath("AMBRA_ASSESSMENT_OUTPUT");
   const worksheet: { release: unknown } = JSON.parse(
@@ -46,7 +53,7 @@ export async function assessNativeCriterion(
   };
   try {
     launched = await launchReader(
-      path.join(requiredAssessmentPath("AMBRA_EPUB_TESTS_PATH"), "tests", `${id}.epub`),
+      assessmentPublication(options.publicationId ?? id),
       { viewport: { width: 900, height: 900 } },
     );
     const session = await launched.context.newCDPSession(launched.readerPage);
@@ -57,9 +64,9 @@ export async function assessNativeCriterion(
     observations = measured.observations;
     result = {
       ...result,
-      status: measured.passed ? "pass" : "fail",
+      status: measured.passed === null ? "not-run" : measured.passed ? "pass" : "fail",
       reason: measured.reason,
-      trackingIssue: measured.passed ? null : measured.trackingIssue,
+      trackingIssue: measured.passed === false ? measured.trackingIssue : null,
     };
     await info.attach(`${id}-observed.json`, {
       body: JSON.stringify(observations),

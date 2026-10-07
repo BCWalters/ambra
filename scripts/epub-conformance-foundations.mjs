@@ -9,6 +9,17 @@ const kinds = {
   "pkg-lang_but_not_content": "package",
   "lay-roll-embedded-images": "roll",
   "lay-roll-embedded-images-svg": "roll",
+  "nav-spine_in-spine": "navigation",
+  "nav-spine_not-in-spine": "navigation",
+  "nav-spine_in-spine-hidden-toc-css": "navigation",
+  "nav-spine_in-spine-hidden-toc-html": "navigation",
+  "nav-spine_in-spine-no-list-style": "navigation",
+  "pkg-dir_rtl-root-ltr": "package",
+  "pkg-dir_rtl-root-unset": "package",
+  "pkg-dir_unset-root-rtl": "package",
+  "pkg-dir_unset-root-unset": "package",
+  "pkg-dir-auto_root-rtl": "package",
+  "pkg-dir-auto_root-unset": "package",
 };
 const nullableText = (value) => value === null || typeof value === "string";
 const texts = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -108,6 +119,16 @@ export function foundationVerdict(observations, criterion) {
       requireShape(source.titles.length >= 2, id);
       return true;
     }
+    if (id.startsWith("pkg-dir_") || id.startsWith("pkg-dir-auto_")) {
+      if (id !== "pkg-dir_creator-rtl" && id !== "pkg-dir_but_not_content") {
+        requireShape(
+          nullableText(source.titleDir) &&
+          ["ltr", "rtl"].includes(source.expectedTitleDirection),
+          id,
+        );
+        return title.direction === source.expectedTitleDirection;
+      }
+    }
     if (
       id === "pkg-creator-order" ||
       id === "pkg-meta-whitespace" ||
@@ -183,8 +204,12 @@ export function foundationVerdict(observations, criterion) {
       controls.available &&
       controls.painted &&
       source.every((link) => controls.labels.includes(link.label));
-    if (id === "nav-access") {
+    if (id !== "nav-activation") {
       requireShape(activations.length === 0, id);
+      if (id === "nav-spine_in-spine-no-list-style") {
+        requireShape(texts(controls.listStyles) && controls.listStyles.length > 0, id);
+        return accessible && controls.listStyles.every(style => style === "none");
+      }
       return accessible;
     }
     requireShape(

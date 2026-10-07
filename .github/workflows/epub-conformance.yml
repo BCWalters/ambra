@@ -7,6 +7,10 @@ on:
         description: Assess 21 pinned native media, metadata, navigation and roll criteria
         type: boolean
         default: true
+      required_assessment:
+        description: Inventory all 139 required criteria and run expanded automated methods
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -72,9 +76,24 @@ jobs:
           --suite "$RUNNER_TEMP/epub-tests"
           --release dist/beta-release/artifacts/release.json
           --output dist/conformance/epub-3.4-assessment.json
+      - name: Inventory every required criterion and attach explicit procedures
+        if: inputs.required_assessment
+        run: >-
+          node scripts/epub-conformance-required.mjs
+          --suite "$RUNNER_TEMP/epub-tests"
+          --assessment dist/conformance/epub-3.4-assessment.json
+          --output dist/conformance/required
+          --evidence "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - name: Generate pinned native assessment publications
         if: inputs.automated_core
         run: |
+          if [ "${{ inputs.required_assessment }}" = "true" ]; then
+            node scripts/epub-conformance-publications.mjs \
+              --suite "$RUNNER_TEMP/epub-tests" \
+              --plan dist/conformance/required/required-plan.json \
+              --output "$RUNNER_TEMP/epub-required-publications"
+            exit 0
+          fi
           for TEST_ID in $(
             node -e "console.log(['core-media','foundations'].flatMap(name => JSON.parse(require('node:fs').readFileSync('conformance/epub-3.4/' + name + '-profile.json'))).map(test => test.id).join(' '))"
           ); do
@@ -96,7 +115,7 @@ jobs:
       - name: Install assessment Chromium
         if: inputs.automated_core
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
-      - name: Assess official native media and foundation criteria
+      - name: Assess official native criteria
         id: core_criteria
         if: inputs.automated_core
         env:
@@ -106,13 +125,15 @@ jobs:
           AMBRA_ASSESSMENT_PATH: ${{ github.workspace }}/dist/conformance/epub-3.4-assessment.json
           AMBRA_ASSESSMENT_OUTPUT: ${{ github.workspace }}/dist/conformance/core-media
           AMBRA_ASSESSMENT_EVIDENCE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AMBRA_ASSESSMENT_REQUIRED: ${{ inputs.required_assessment && '1' || '0' }}
+          AMBRA_ASSESSMENT_PUBLICATIONS_PATH: ${{ inputs.required_assessment && format('{0}/epub-required-publications', runner.temp) || '' }}
         run: pnpm --filter @ambra/e2e exec playwright test --config epub-conformance.config.ts
       - name: Merge complete package-bound criterion evidence
         id: core_merge
         if: ${{ !cancelled() && inputs.automated_core && steps.core_criteria.outcome != 'skipped' }}
         run: >-
           node scripts/epub-conformance-core.mjs
-          --foundations
+          ${{ inputs.required_assessment && '--required --plan dist/conformance/required/required-plan.json' || '--foundations' }}
           --assessment dist/conformance/epub-3.4-assessment.json
           --observations dist/conformance/core-media
           --output dist/conformance/epub-3.4-assessment.json
@@ -137,5 +158,7 @@ jobs:
             conformance/epub-3.4/core-media-profile.json
             conformance/epub-3.4/foundations-profile.json
             docs/epub-3.4-conformance-runner.md
+            scripts/epub-conformance-required.mjs
+            scripts/epub-conformance-publications.mjs
           if-no-files-found: error
           retention-days: 30

@@ -8,6 +8,7 @@ import {
   rollImageHitPoint,
 } from "../../../scripts/epub-conformance-foundations.mjs";
 import { assessNativeCriterion, requiredAssessmentPath } from "./native-assessment.js";
+import { requiredFoundationCriteria } from "../../../scripts/epub-conformance-required.mjs";
 
 const profile: unknown = JSON.parse(
   fs.readFileSync(
@@ -22,6 +23,7 @@ if (
   new Set(profile.map((item) => item.id)).size !== profile.length
 )
   throw new Error("Invalid native foundations profile.");
+if (process.env.AMBRA_ASSESSMENT_REQUIRED === "1") profile.push(...requiredFoundationCriteria);
 
 async function sourceExpectations(page: Page, id: string) {
   const directory = path.join(requiredAssessmentPath("AMBRA_EPUB_TESTS_PATH"), "tests", id);
@@ -175,6 +177,17 @@ async function sourceExpectations(page: Page, id: string) {
           dir: root.getAttribute("dir"),
           lang: xmlLanguage(root),
           creatorDir: dc("creator")[0]?.getAttribute("dir") ?? null,
+          titleDir: dc("title")[0]?.getAttribute("dir") ?? null,
+          expectedTitleDirection: (() => {
+            const dir = dc("title")[0]?.getAttribute("dir") ?? root.getAttribute("dir") ?? "ltr";
+            if (dir === "auto") {
+              const firstStrong = dc("title")[0]?.textContent?.match(/[A-Za-z\u0590-\u08ff]/)?.[0];
+              if (!firstStrong) throw new Error("Missing pinned bidi strong character.");
+              return /[\u0590-\u08ff]/.test(firstStrong) ? "rtl" : "ltr";
+            }
+            if (!["ltr", "rtl"].includes(dir)) throw new Error("Unsupported pinned title direction.");
+            return dir;
+          })(),
           contentUnannotated: unannotated,
         },
         navigation,
@@ -292,7 +305,7 @@ for (const criterion of profile) {
           found: boolean;
           painted: boolean;
         }[] = [];
-        let controls = { available, painted: false, labels: [] as string[] };
+        let controls = { available, painted: false, labels: [] as string[], listStyles: [] as string[] };
         if (available) {
           await button.click();
           const toc = page.getByRole("navigation", { name: "Table of contents" });
@@ -323,6 +336,7 @@ for (const criterion of profile) {
               );
               return {
                 label: button.querySelector("span")?.textContent?.trim().replace(/\s+/g, " ") ?? "",
+                listStyle: getComputedStyle(button.closest("li")!).listStyleType,
                 painted:
                   button.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
                   rect.width > 0 &&
@@ -339,6 +353,7 @@ for (const criterion of profile) {
               entries.length > 0 &&
               entries.every((entry) => entry.painted),
             labels: entries.map((entry) => entry.label),
+            listStyles: entries.map((entry) => entry.listStyle),
           };
           if (criterion.id === "nav-activation") {
             for (const [index, link] of source.navigation.entries()) {

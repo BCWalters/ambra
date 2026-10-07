@@ -26,6 +26,13 @@ const browserIndependentTooling = new Set([
   "apps/e2e/assessment/core-media.spec.ts",
   "apps/e2e/assessment/foundations.spec.ts",
   "apps/e2e/assessment/native-assessment.ts",
+  "scripts/epub-conformance-required.mjs",
+  "scripts/epub-conformance-required.d.mts",
+  "scripts/epub-conformance-required.test.mjs",
+  "scripts/epub-conformance-publications.mjs",
+  "scripts/epub-conformance-publications.d.mts",
+  "scripts/epub-conformance-publications.test.mjs",
+  "apps/e2e/assessment/required.spec.ts",
 ]);
 
 function isDocumentation(file) {

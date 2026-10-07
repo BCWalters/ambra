@@ -4,6 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { foundationVerdict, isFoundationCriterion, isFoundationId } from "./epub-conformance-foundations.mjs";
+import {
+  isRequiredNativeCriterion, isRequiredNativeId, requiredNativeVerdict, mergeRequiredPlan,
+  requiredNativeCriteria, requiredFoundationCriteria,
+} from "./epub-conformance-required.mjs";
 
 const releaseFields = ["archive", "version", "commit", "sha256"];
 const verdicts = new Set(["pass", "fail", "not-run"]);
@@ -15,6 +19,7 @@ function text(value, label) {
 
 function nativeVerdict(observations, criterion) {
   if (isFoundationCriterion(criterion)) return foundationVerdict(observations, criterion);
+  if (isRequiredNativeCriterion(criterion)) return requiredNativeVerdict(observations, criterion);
   if (!Array.isArray(observations?.fonts) || !Array.isArray(observations.images)) {
     throw new Error(`${criterion.id} lacks native font/image measurement arrays.`);
   }
@@ -61,7 +66,8 @@ export function mergeCoreAssessment(assessment, records, { criteria, evidenceUrl
     criteria.some(criterion =>
       !criterion || typeof criterion.id !== "string" || !/^[a-z0-9_-]+$/.test(criterion.id) ||
       (isFoundationId(criterion.id) && !isFoundationCriterion(criterion)) ||
-      (!["font", "image"].includes(criterion.kind) && !isFoundationCriterion(criterion)) ||
+      (isRequiredNativeId(criterion.id) && !isRequiredNativeCriterion(criterion)) ||
+      (!["font", "image"].includes(criterion.kind) && !isFoundationCriterion(criterion) && !isRequiredNativeCriterion(criterion)) ||
       (criterion.kind === "font" && (typeof criterion.family !== "string" || !criterion.family.trim())),
     ) ||
     new Set(criteria.map(criterion => criterion.id)).size !== criteria.length
@@ -174,6 +180,8 @@ async function main() {
       output: { type: "string" },
       evidence: { type: "string" },
       foundations: { type: "boolean", default: false },
+      required: { type: "boolean", default: false },
+      plan: { type: "string" },
     },
     allowPositionals: false,
   });
@@ -185,11 +193,12 @@ async function main() {
       "utf8",
     ),
   );
-  if (values.foundations) {
+  if (values.foundations || values.required) {
     profile.push(...JSON.parse(await readFile(
       new URL("../conformance/epub-3.4/foundations-profile.json", import.meta.url), "utf8",
     )));
   }
+  if (values.required) profile.push(...requiredFoundationCriteria, ...requiredNativeCriteria);
   const assessment = JSON.parse(await readFile(values.assessment, "utf8"));
   const files = (await readdir(values.observations))
     .filter((file) => file.endsWith(".json"))
@@ -199,10 +208,15 @@ async function main() {
       JSON.parse(await readFile(path.join(values.observations, file), "utf8")),
     ),
   );
-  const result = mergeCoreAssessment(assessment, records, {
+  let result = mergeCoreAssessment(assessment, records, {
     criteria: profile,
     evidenceUrl: values.evidence,
   });
+  if (values.required) {
+    if (!values.plan) throw new Error("--plan is required for the full required inventory.");
+    const plan = JSON.parse(await readFile(values.plan, "utf8"));
+    result = mergeRequiredPlan(result, plan, profile, values.evidence);
+  }
   await mkdir(path.dirname(values.output), { recursive: true });
   await writeFile(values.output, `${JSON.stringify(result, null, 2)}\n`);
   console.log(
