@@ -88,11 +88,11 @@ test("reflowable SVG stays native through paging, scrolling, resize and resume",
   const { context, readerPage: page } = await launchReader(book, { viewport: { width: 900, height: 900 } });
   try {
     await exposeReaderController(page);
-    const inspect = () => page.evaluate(() => {
+    const frame = page.getByRole("main").locator("iframe").first();
+    const inspect = () => frame.evaluate(frame => {
+      if (!(frame instanceof HTMLIFrameElement)) throw new Error("Content host is not an iframe.");
       const controller = Reflect.get(window, "__readerController");
-      const frame = [...document.querySelectorAll<HTMLIFrameElement>("main iframe")].find(frame =>
-        frame.contentDocument?.documentElement.localName === "svg");
-      if (!frame?.contentDocument) throw new Error("Original SVG frame is absent.");
+      if (!frame.contentDocument) throw new Error("Original SVG frame is absent.");
       const doc = frame.contentDocument;
       const root = doc.documentElement;
       const text = doc.querySelector("text");
@@ -120,6 +120,7 @@ test("reflowable SVG stays native through paging, scrolling, resize and resume",
       };
     });
     const assertOriginal = async (spine: number, mode = "paginated") => {
+      await expect(frame.contentFrame().locator(":root")).toHaveAttribute("xmlns", "http://www.w3.org/2000/svg");
       await expect.poll(async () => {
         const state = await inspect();
         return { spine: state.spine, mode: state.mode, painted: state.painted, positionRoot: state.positionRoot };
