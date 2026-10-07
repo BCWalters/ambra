@@ -81,6 +81,11 @@ The separate `foundations-profile.json` adds ten named checks:
   Raw-source TOC targets use the standalone SVG root for SVG documents without
   a fragment, rather than requiring an XHTML body. Missing fragments and
   unsupported document roots still block source expectation generation.
+  Paint hit-testing maps one point between the iframe's intrinsic coordinates
+  and its scaled outer rectangle, clipped to the actual roll scroller and
+  browser viewport. Both native documents must hit that same visible point.
+  Raw geometry and mapped points are archived alongside the unchanged byte
+  hashes, decode results, and layout thresholds.
 
 The ten additions increase possible required coverage from 11/139 (7.91%) to
 21/139 (15.11%); these are profile sizes, **not measured pass results**. Report

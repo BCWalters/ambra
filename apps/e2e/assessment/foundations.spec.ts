@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   foundationVerdict,
   isFoundationCriterion,
+  rollImageHitPoint,
 } from "../../../scripts/epub-conformance-foundations.mjs";
 import { assessNativeCriterion, requiredAssessmentPath } from "./native-assessment.js";
 
@@ -413,16 +414,16 @@ for (const criterion of profile) {
         });
         const frames = [];
         for (const [index, frame] of geometry.frames.entries()) {
-          const images = await page.evaluate(async (index) => {
+          const measurements = await page.evaluate(async (index) => {
             const frame = document.querySelectorAll<HTMLIFrameElement>("[data-ambra-roll] iframe")[
               index
             ];
             const doc = frame?.contentDocument;
             if (!frame || !doc) throw new Error("Mounted roll document unavailable.");
             const measurements = [];
-            for (const element of doc.querySelectorAll<HTMLElement | SVGImageElement>(
+            for (const [imageIndex, element] of doc.querySelectorAll<HTMLElement | SVGImageElement>(
               "img, image",
-            )) {
+            ).entries()) {
               const src =
                 element.getAttribute("src") ??
                 element.getAttribute("href") ??
@@ -454,28 +455,45 @@ for (const criterion of profile) {
               await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
               const rect = element.getBoundingClientRect();
               const box = frame.getBoundingClientRect();
-              const x = rect.left + rect.width / 2;
-              const y = Math.max(
-                rect.top + 1,
-                Math.min(rect.top + rect.height / 2, innerHeight - box.top - 2),
-              );
+              const scroller = document.querySelector("[data-ambra-roll]");
+              if (!scroller) throw new Error("Native roll scroller is missing.");
+              const clip = scroller.getBoundingClientRect();
+              const rectangle = ({ x, y, width, height }: DOMRect) => ({ x, y, width, height });
               measurements.push({
+                imageIndex,
                 sha256,
                 packaged,
                 error,
                 width: probe.naturalWidth,
                 height: probe.naturalHeight,
-                painted:
-                  rect.width > 0 &&
-                  rect.height > 0 &&
+                visible:
                   element.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
-                  frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
-                  element.contains(doc.elementFromPoint(x, y)) &&
-                  document.elementFromPoint(box.left + x, box.top + y) === frame,
+                  frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+                paintGeometry: {
+                  frame: rectangle(box),
+                  image: rectangle(rect),
+                  clip: rectangle(clip),
+                  viewport: { width: innerWidth, height: innerHeight },
+                  clientWidth: frame.clientWidth,
+                  clientHeight: frame.clientHeight,
+                },
               });
             }
             return measurements;
           }, index);
+          const images = [];
+          for (const { imageIndex, visible, paintGeometry, ...decoded } of measurements) {
+            const hitPoint = rollImageHitPoint(paintGeometry);
+            const painted = visible && hitPoint !== null && await page.evaluate(({ index, imageIndex, hitPoint }) => {
+              const frame = document.querySelectorAll<HTMLIFrameElement>("[data-ambra-roll] iframe")[index];
+              const doc = frame?.contentDocument;
+              const element = doc?.querySelectorAll("img, image")[imageIndex];
+              if (!frame || !doc || !element) throw new Error("Native roll paint target is missing.");
+              return element.contains(doc.elementFromPoint(hitPoint.document.x, hitPoint.document.y)) &&
+                document.elementFromPoint(hitPoint.viewport.x, hitPoint.viewport.y) === frame;
+            }, { index, imageIndex, hitPoint });
+            images.push({ ...decoded, painted, paintGeometry, hitPoint });
+          }
           frames.push({ ...frame, images });
         }
         observations = {

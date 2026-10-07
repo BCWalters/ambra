@@ -1,11 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { foundationVerdict, isFoundationCriterion } from "./epub-conformance-foundations.mjs";
+import { foundationVerdict, isFoundationCriterion, rollImageHitPoint } from "./epub-conformance-foundations.mjs";
 import { mergeCoreAssessment } from "./epub-conformance-core.mjs";
 
 const criterion = (id) => ({
   id,
   kind: id.startsWith("pkg-") ? "package" : id.startsWith("nav-") ? "navigation" : "roll",
+});
+const paintGeometry = () => ({
+  frame: { x: 10, y: 100, width: 300, height: 200 },
+  image: { x: 0, y: 0, width: 600, height: 400 },
+  clip: { x: 0, y: 120, width: 400, height: 140 },
+  viewport: { width: 400, height: 300 },
+  clientWidth: 600,
+  clientHeight: 400,
+});
+test("roll paint maps one visible point between scaled iframe and clipped reader viewport", () => {
+  assert.deepEqual(rollImageHitPoint(paintGeometry()), {
+    viewport: { x: 160, y: 190 },
+    document: { x: 300, y: 180 },
+  });
+  assert.deepEqual(rollImageHitPoint({ ...paintGeometry(), viewport: { width: 400, height: 160 } }), {
+    viewport: { x: 160, y: 140 },
+    document: { x: 300, y: 80 },
+  });
+});
+test("roll paint rejects invalid geometry and distinguishes fully clipped images", () => {
+  assert.equal(rollImageHitPoint({ ...paintGeometry(), clip: { x: 0, y: 0, width: 400, height: 80 } }), null);
+  assert.equal(rollImageHitPoint({ ...paintGeometry(), frame: { x: 10, y: 100, width: 0, height: 200 } }), null);
+  for (const clientWidth of [0, -1, NaN, Infinity]) {
+    assert.throws(() => rollImageHitPoint({ ...paintGeometry(), clientWidth }), /Invalid native roll paint geometry/);
+  }
 });
 const text = (value, dir = null) => ({
   text: value,
