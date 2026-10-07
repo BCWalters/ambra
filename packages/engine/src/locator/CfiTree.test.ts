@@ -82,6 +82,16 @@ describe("runCharacterOffset", () => {
 });
 
 describe("resolveTextRun / resolveOffsetInRun (round-trip with childStepIndex/runCharacterOffset)", () => {
+  it("applies before/after bias at adjacent text boundaries without changing default behavior", () => {
+    const doc = parseXhtmlFragment("<body>before<!-- split -->after</body>");
+    const body = doc.getElementsByTagName("body")[0]!;
+    const run = resolveTextRun(body, 1);
+    expect(resolveOffsetInRun(run, 6)).toEqual({ node: run[0], localOffset: 6 });
+    expect(resolveOffsetInRun(run, 6, "b")).toEqual({ node: run[0], localOffset: 6 });
+    expect(resolveOffsetInRun(run, 6, "a")).toEqual({ node: run[1], localOffset: 0 });
+    expect(resolveOffsetInRun(run, 11, "a")).toEqual({ node: run[1], localOffset: 5 });
+    expect(resolveOffsetInRun(run, 12, "a")).toBeUndefined();
+  });
   it("resolves a run addressed by an odd step index back to its text nodes", () => {
     const doc = parseXhtmlFragment("<body>before<em>x</em>between<em>y</em>after</body>");
     const body = doc.getElementsByTagName("body")[0]!;

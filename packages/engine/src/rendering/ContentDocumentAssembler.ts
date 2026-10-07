@@ -3,22 +3,11 @@ import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
 import { EPUB_CSS_RESET } from "./EpubCssReset.js";
 import { ReadingTheme } from "./ReadingTheme.js";
 import { HighlightTheme } from "./HighlightTheme.js";
-
-/**
- * A minimal, restrictive Content-Security-Policy applied to every document
- * injected into the sandboxed rendering surface, as defense-in-depth on
- * top of the iframe's `sandbox` attribute (which already fully disables
- * scripting on its own — see `SandboxedContentHost`). Since every resource
- * reference is rewritten to a `blob:` URL before assembly, nothing in the
- * assembled document should ever need to reach the network; this policy
- * makes that structurally true rather than just incidental. `style-src`
- * allows `'unsafe-inline'` because real-world EPUB content legitimately
- * uses inline `<style>` blocks — CSS injection is a materially lower-severity
- * risk than script execution, which remains fully blocked.
- */
-const CONTENT_SECURITY_POLICY =
-  "default-src 'none'; script-src 'none'; img-src blob:; style-src blob: 'unsafe-inline'; " +
-  "font-src blob:; media-src blob:; base-uri 'none'; form-action 'none';";
+import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
+import type { ResolvedResource } from "./ResourceUrlResolver.js";
+import { classifyEpubReference, externalNavigationUrl } from "../container/EpubReference.js";
+import { getNamespacedAttributeName } from "../container/Xml.js";
+import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
 
 /**
  * Assembles a self-contained, sandboxed-iframe-ready XHTML document from a
@@ -47,6 +36,7 @@ export class ContentDocumentAssembler {
       applyReadingTheme?: boolean;
       publisherCss?: ReadonlyMap<string, string>;
       publisherStyleAttributes?: ReadonlyMap<string, string>;
+      resourceResolutions?: ReadonlyMap<string, ResolvedResource | null>;
     } = {},
   ): string {
     // Re-parse from the original raw text rather than cloning
@@ -54,18 +44,69 @@ export class ContentDocumentAssembler {
     // to mutate — the original parsed document is left untouched for other
     // consumers (e.g. future CFI resolution) that need pristine hrefs.
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
+    for (const frame of Array.from(doc.querySelectorAll("iframe[srcdoc]"))) frame.removeAttribute("srcdoc");
+    for (const anchor of Array.from(doc.querySelectorAll("a"))) {
+      const attribute = anchor.hasAttribute("href") ? "href"
+        : getNamespacedAttributeName(anchor, "http://www.w3.org/1999/xlink", "href");
+      if (!attribute) continue;
+      const reference = classifyEpubReference(contentDocument.manifestItem.path, anchor.getAttribute(attribute)!);
+      if (reference.kind !== "package" && reference.kind !== "fragment" && !externalNavigationUrl(reference)) {
+        anchor.setAttribute(attribute, "#");
+        anchor.setAttribute("data-ambra-blocked-link", reference.kind);
+      }
+    }
 
-    const references = findResourceReferencesInDocument(doc, contentDocument.manifestItem.path);
+    const references = findResourceReferencesInDocument(doc, contentDocument.manifestItem.path, { includeUnavailable: true });
+    const sourceTypes = new Map<Element, Set<string>>();
+    const objectImages = new Map<Element, string>();
     // Replace candidates from right to left so original URL offsets stay valid.
     for (const reference of references.reverse()) {
-      const url = resourceUrls.get(reference.path);
-      if (url) {
-        const { element, attributeName, attributeRange } = reference;
+      const resolution = options.resourceResolutions?.get(resourceResolutionKey(reference.path, reference.consumer));
+      const { element, attributeName, attributeRange, candidateRange } = reference;
+      if (resolution === null) {
         const value = element.getAttribute(attributeName)!;
+        if (candidateRange) {
+          const remaining = value.slice(0, candidateRange.start) + value.slice(candidateRange.end);
+          if (/^[\t\n\f\r ,]*$/.test(remaining)) element.removeAttribute(attributeName);
+          else element.setAttribute(attributeName, remaining);
+        } else {
+          element.removeAttribute(attributeName);
+        }
+        if (["source", "object", "embed"].includes(element.localName)) element.removeAttribute("type");
+        continue;
+      }
+      const url = resolution?.url ?? resourceUrls.get(reference.path);
+      if (url) {
+        const value = element.getAttribute(attributeName)!;
+        const fragment = attributeRange ? "" : value.includes("#") ? value.slice(value.indexOf("#")) : "";
         element.setAttribute(attributeName, attributeRange
           ? value.slice(0, attributeRange.start) + url + value.slice(attributeRange.end)
-          : url);
+          : url + fragment);
+        if (resolution && element.localName === "source") {
+          const types = sourceTypes.get(element) ?? new Set<string>();
+          types.add(resolution.mediaType);
+          sourceTypes.set(element, types);
+        }
+        if (resolution && ["object", "embed"].includes(element.localName)) objectImages.set(element, url + fragment);
       }
+    }
+    for (const [source, types] of sourceTypes) {
+      if (types.size === 1) source.setAttribute("type", [...types][0]!);
+      else source.removeAttribute("type");
+    }
+    // Render image objects with <img>, not object-src: allowing nested
+    // documents would bypass the assembler's resource rewriting and CSP.
+    for (const [object, url] of objectImages) {
+      const image = doc.createElementNS(object.namespaceURI, "img");
+      for (const attribute of Array.from(object.attributes)) {
+        if (!["data", "type", "classid", "codebase", "archive", "name"].includes(attribute.name) &&
+            !attribute.name.toLowerCase().startsWith("on")) {
+          image.setAttribute(attribute.name, attribute.value);
+        }
+      }
+      image.setAttribute("src", url);
+      image.setAttribute("alt", object.getAttribute("aria-label") ?? object.textContent?.trim() ?? "");
+      object.replaceWith(image);
     }
     for (const style of Array.from(doc.querySelectorAll("style"))) {
       const rewritten = options.publisherCss?.get(style.textContent ?? "");

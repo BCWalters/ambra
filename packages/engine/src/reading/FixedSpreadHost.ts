@@ -10,7 +10,7 @@ import type { ContentDocumentView } from "./ContentDocumentView.js";
  * A two-page fixed-layout spread for wide reader panes: either one
  * `FixedContentHost` shown alone and centered (a `FixedSpread` of kind
  * `"single"` — a lone unpaired page, or one explicitly marked
- * `page-spread-center`), or two side by side with a gutter between them
+ * `page-spread-center`), or two directly adjacent pages
  * (a `FixedSpread` of kind `"pair"`, computed by `FixedLayoutSpreadPlanner`
  * — see its own doc comment for the full pairing algorithm this class is
  * deliberately *not* responsible for: this class only ever renders
@@ -29,10 +29,10 @@ import type { ContentDocumentView } from "./ContentDocumentView.js";
  * each other as the window widened, when spread-heavy fixed-layout
  * content (art spanning both pages, common in comics/picture books)
  * needs them to stay tightly adjacent regardless of window width, with
- * `GUTTER_WIDTH`'s own fixed-width shadow the only thing between them
- * and any extra space pushed to the *outside* edges of the whole
+ * no reserved width or shadow between them and any extra space pushed
+ * to the *outside* edges of the whole
  * spread instead. `layoutPair` computes the one scale that fits the
- * two pages' *combined* natural width (plus `GUTTER_WIDTH`) and each
+ * two pages' *combined* natural width and each
  * one's own natural height into the available pane, then sizes each
  * column's wrapper to exactly that page's own scaled width (rather
  * than a generic half-share) — the containing flex row's own
@@ -41,7 +41,7 @@ import type { ContentDocumentView } from "./ContentDocumentView.js";
  * only ever appearing outside it, never between the two pages.
  */
 export class FixedSpreadHost {
-  public static readonly GUTTER_WIDTH = 24;
+  public static readonly GUTTER_WIDTH = 0;
 
   private readonly containerEl: HTMLDivElement;
   private readonly ownerDocument: Document;
@@ -154,7 +154,7 @@ export class FixedSpreadHost {
 
   /** Loads `spread`'s spine item(s) and lays them out — one centered
    * `FixedContentHost` for a `"single"` spread, or two side by side
-   * (with `GUTTER_WIDTH` between them) for a `"pair"`. Both columns of a
+   * without an inter-page gap for a `"pair"`. Both columns of a
    * pair load concurrently (not sequentially) — nothing about showing
    * one depends on the other having finished first, unlike
    * `SpreadPaginatedHost`'s merged-tail case, so there's no reason to
@@ -207,19 +207,12 @@ export class FixedSpreadHost {
     rightWrapperEl.appendChild(right.element);
     this.rightWrapperEl = rightWrapperEl;
 
-    const gutter = this.ownerDocument.createElement("div");
-    gutter.style.width = `${FixedSpreadHost.GUTTER_WIDTH}px`;
-    gutter.style.flexShrink = "0";
-    gutter.style.alignSelf = "stretch";
-    gutter.style.background =
-      "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.08) 46%, rgba(0,0,0,0.14) 50%, rgba(0,0,0,0.08) 54%, transparent 100%)";
-
     // Keep native reading and tab order in spine order, independently of screen order.
     if (spread.rightSpineIndex < spread.leftSpineIndex) {
       this.containerEl.style.flexDirection = "row-reverse";
-      this.containerEl.append(rightWrapperEl, gutter, leftWrapperEl);
+      this.containerEl.append(rightWrapperEl, leftWrapperEl);
     } else {
-      this.containerEl.append(leftWrapperEl, gutter, rightWrapperEl);
+      this.containerEl.append(leftWrapperEl, rightWrapperEl);
     }
 
     // Concurrent, not sequential — see this method's own doc comment.
@@ -252,13 +245,11 @@ export class FixedSpreadHost {
    * `rightNaturalSize`, read once at `open` time — fixed-layout content
    * never changes its own intrinsic size, so there's nothing to
    * re-read on a later `resize`). Fits the two pages' *combined*
-   * natural width (plus `GUTTER_WIDTH`, which stays a fixed pixel
-   * width regardless of scale — a cosmetic seam between the pages, not
-   * part of either one's own content) and the *taller* of the two
+   * natural width and the *taller* of the two
    * pages' own natural heights into the available pane, then sizes
    * each column's wrapper to exactly that page's own scaled width (not
-   * a generic half-share) so the flex row hugs them together with only
-   * the gutter between them, letting the containing flex's own
+   * a generic half-share) so the flex row hugs them together without
+   * a gap, letting the containing flex's own
    * `justify-content: center` center the whole tightly-hugged unit as
    * one piece within the pane — any leftover space (whenever the pane's
    * own aspect ratio is wider than the combined spread's) only ever
@@ -281,7 +272,7 @@ export class FixedSpreadHost {
     const combinedNaturalWidth = this.leftNaturalSize.width + this.rightNaturalSize.width;
     const tallestNaturalHeight = Math.max(this.leftNaturalSize.height, this.rightNaturalSize.height);
     const scale = Math.min(
-      Math.max(1, this.width - FixedSpreadHost.GUTTER_WIDTH) / combinedNaturalWidth,
+      Math.max(1, this.width) / combinedNaturalWidth,
       this.height / tallestNaturalHeight,
     );
 
@@ -324,6 +315,6 @@ export class FixedSpreadHost {
    * width, once `layoutPair` has run (see this class's own doc
    * comment). */
   private static columnWidth(totalWidth: number): number {
-    return Math.max(1, Math.floor((totalWidth - FixedSpreadHost.GUTTER_WIDTH) / 2));
+    return Math.max(1, Math.floor(totalWidth / 2));
   }
 }

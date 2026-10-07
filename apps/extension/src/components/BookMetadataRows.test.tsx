@@ -23,6 +23,24 @@ describe("shared Book Details metadata rows", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("isolates metadata with its own direction/language without changing the UI label", () => {
+    act(() => root.render(<BookDetailRow label="Creator" value="Mixed author" context={{ direction: "rtl", language: "he" }} />));
+    const [label, value] = Array.from(container.querySelectorAll("p"));
+    expect(label?.hasAttribute("dir")).toBe(false);
+    expect(label?.hasAttribute("lang")).toBe(false);
+    expect(value?.getAttribute("dir")).toBe("rtl");
+    expect(value?.getAttribute("lang")).toBe("he");
+    expect(value?.style.unicodeBidi).toBe("isolate");
+  });
+
+  it("keeps automatic direction and unknown language for legacy or unspecified metadata", () => {
+    act(() => root.render(<BookMetadataText value="Title" heading />));
+    const heading = container.querySelector("h2")!;
+    expect(heading.getAttribute("dir")).toBe("auto");
+    expect(heading.getAttribute("lang")).toBe("");
+    expect(heading.style.unicodeBidi).toBe("isolate");
+  });
+
   it("preserves the complete wrapping Book details title without a disclosure or truncated accessible name", () => {
     const title = "ALongBookTitleWithoutSpaces".repeat(30);
     act(() => root.render(<BookMetadataText value={title} name="Title" kind="identity" heading />));

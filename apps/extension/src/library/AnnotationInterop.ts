@@ -251,7 +251,7 @@ function resolveSpineIndex(pkg: PackageDocument, source: string, cfi: EpubCfi): 
  * spine item once re-serialized. */
 function withSpineIndex(pkg: PackageDocument, cfi: EpubCfi, spineIndex: number): EpubCfi {
   const packageCfiSteps = pkg.spine[spineIndex]?.packageCfiSteps ?? cfi.packageSteps;
-  return new EpubCfi(packageCfiSteps, cfi.contentSteps, cfi.characterOffset);
+  return new EpubCfi(packageCfiSteps, cfi.contentSteps, cfi.characterOffset, cfi.textAssertion);
 }
 
 /** Commas inside ID assertions do not make a point CFI a range. */

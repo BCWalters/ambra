@@ -41,6 +41,7 @@ function makeDatabase() {
     subscribeBooks: vi.fn<LibraryDatabase["subscribeBooks"]>().mockReturnValue(vi.fn()),
     getDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
     deleteBook: vi.fn().mockResolvedValue(undefined),
+    refreshAccessibilityMetadata: vi.fn<LibraryDatabase["refreshAccessibilityMetadata"]>().mockResolvedValue(undefined),
     setDefaultLibrarySort: vi.fn().mockResolvedValue(undefined),
     getLocalePreference: vi.fn().mockResolvedValue("en"),
     setLocalePreference: vi.fn().mockResolvedValue(undefined),

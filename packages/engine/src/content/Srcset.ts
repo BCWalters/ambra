@@ -3,6 +3,10 @@ export interface SrcsetUrlRange {
   readonly end: number;
 }
 
+export interface SrcsetCandidateRange extends SrcsetUrlRange {
+  readonly candidateEnd: number;
+}
+
 const SPACE = /[\t\n\f\r ]/;
 const INTEGER = /^[0-9]+$/;
 const FLOAT = /^-?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
@@ -33,7 +37,11 @@ function validDescriptors(descriptors: readonly string[]): boolean {
  * whitespace and rejected candidates unchanged for the browser.
  * https://html.spec.whatwg.org/multipage/images.html#parse-a-srcset-attribute */
 export function srcsetUrlRanges(input: string): SrcsetUrlRange[] {
-  const ranges: SrcsetUrlRange[] = [];
+  return srcsetCandidateRanges(input).map(({ start, end }) => ({ start, end }));
+}
+
+export function srcsetCandidateRanges(input: string): SrcsetCandidateRange[] {
+  const ranges: SrcsetCandidateRange[] = [];
   let position = 0;
   while (position < input.length) {
     while (position < input.length && (SPACE.test(input[position]!) || input[position] === ",")) position++;
@@ -66,7 +74,7 @@ export function srcsetUrlRanges(input: string): SrcsetUrlRange[] {
       if (descriptor) descriptors.push(descriptor);
     }
     if (validDescriptors(descriptors)) {
-      ranges.push({ start, end });
+      ranges.push({ start, end, candidateEnd: position });
     } else {
       console.warn("Ignoring an invalid EPUB srcset candidate descriptor.");
     }

@@ -132,6 +132,7 @@ export function resolveElementChild(parent: Node, elementIndex: number): Element
 export function resolveOffsetInRun(
   run: readonly ChildNode[],
   cfiOffset: number,
+  sideBias?: "a" | "b",
 ): { node: ChildNode; localOffset: number } | undefined {
   if (!Number.isSafeInteger(cfiOffset) || cfiOffset < 0) {
     return undefined;
@@ -139,7 +140,7 @@ export function resolveOffsetInRun(
   let remaining = cfiOffset;
   for (const node of run) {
     const length = node.textContent?.length ?? 0;
-    if (remaining <= length) {
+    if (remaining < length || (remaining === length && (sideBias !== "a" || node === run.at(-1)))) {
       return { node, localOffset: remaining };
     }
     remaining -= length;

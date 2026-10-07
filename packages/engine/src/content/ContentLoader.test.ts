@@ -61,6 +61,23 @@ describe("ContentLoader", () => {
   });
 
   describe("findResourceReferences", () => {
+    it("distinguishes media sources, posters, picture sources, objects and track consumers", () => {
+      const document = new DOMParser().parseFromString(
+        `<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="same.bin"/></head><body>
+          <audio src="same.bin"><source src="same.bin"/></audio>
+          <video src="same.bin" poster="same.bin"><source src="same.bin"/><track src="same.bin"/></video>
+          <picture><source srcset="same.bin 1x"/><img src="same.bin"/></picture>
+          <object data="same.bin"/>
+        </body></html>`, "application/xhtml+xml",
+      );
+      const references = findResourceReferencesInDocument(document, "EPUB/chapter.xhtml");
+      expect(references.map(ref => [ref.element.localName, ref.attributeName, ref.consumer])).toEqual([
+        ["img", "src", "image"], ["source", "src", "audio"], ["source", "src", "video"],
+        ["audio", "src", "audio"], ["video", "src", "video"], ["video", "poster", "image"],
+        ["track", "src", "track"], ["link", "href", "stylesheet"], ["object", "data", "object"],
+        ["source", "srcset", "image"],
+      ]);
+    });
     it("discovers density and width candidates on images and picture sources", () => {
       const document = new DOMParser().parseFromString(
         `<html xmlns="http://www.w3.org/1999/xhtml"><body>

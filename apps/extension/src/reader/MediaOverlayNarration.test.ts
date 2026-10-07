@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PackageDocument } from "@ambra/engine";
+import { PackageDocument, ResourceFallbackSelector } from "@ambra/engine";
 import type { ContentLoader } from "@ambra/engine";
 import { MediaOverlayNarration } from "./MediaOverlayNarration";
 import type { NarrationAudio, NarrationState } from "./MediaOverlayNarration";
@@ -44,7 +44,7 @@ const instances: MediaOverlayNarration[] = [];
 
 function setup(
   overlays: Record<string, string> = { "EPUB/m0.smil": first, "EPUB/m2.smil": second },
-  options: { frontmatter?: boolean; nonlinearLast?: boolean } = {},
+  options: { frontmatter?: boolean; nonlinearLast?: boolean; audioFallback?: boolean } = {},
 ) {
   const pkg = PackageDocument.parse(`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">book</dc:identifier>
@@ -56,7 +56,7 @@ function setup(
       <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"/>
       <item id="m0" href="m0.smil" media-type="application/smil+xml"/>
       <item id="m2" href="m2.smil" media-type="application/smil+xml"/>
-      <item id="a1" href="one.mp3" media-type="audio/mpeg"/>
+      <item id="a1" href="one.mp3" media-type="${options.audioFallback ? "application/foreign" : "audio/mpeg"}"${options.audioFallback ? ' fallback="a2"' : ""}/>
       <item id="a2" href="two.mp3" media-type="audio/mpeg"/>
     </manifest><spine><itemref idref="c0"/><itemref idref="c1"/><itemref idref="c2"${options.nonlinearLast ? ' linear="no"' : ""}/><itemref idref="c3"/></spine></package>`, "EPUB/package.opf");
   const loader = {
@@ -72,6 +72,7 @@ function setup(
   const notify = vi.fn(() => states.push(narration.snapshot));
   const narration = new MediaOverlayNarration({
     pkg, loader: loader as unknown as ContentLoader, audio, onTarget, notify,
+    resourceSelector: new ResourceFallbackSelector(pkg, loader.loadResourceBytes, { supports: async type => type.startsWith("audio/") }),
   });
   instances.push(narration);
   return { narration, pkg, loader, audio, onTarget, notify, states };
@@ -94,6 +95,17 @@ afterEach(() => {
 });
 
 describe("MediaOverlayNarration", () => {
+  it("selects supported fallback audio without changing the authored SMIL identity or clip timing", async () => {
+    const { narration, loader, audio } = setup(undefined, { audioFallback: true });
+    await narration.playFrom(0);
+    expect(narration.snapshot.status).toBe("playing");
+    expect(loader.loadResourceBytes).toHaveBeenCalledExactlyOnceWith("EPUB/two.mp3");
+    expect(audio.seeks).toEqual([0]);
+    audio.advance(1.03);
+    await flush();
+    expect(narration.target?.fragment).toBe("b");
+    expect(loader.loadResourceBytes).toHaveBeenCalledTimes(1);
+  });
   it("skips supplemental narration during progression but preserves explicit playback and return", async () => {
     const { narration, audio, loader } = setup(undefined, { nonlinearLast: true });
     await narration.playFrom(0);

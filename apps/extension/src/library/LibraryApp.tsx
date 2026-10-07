@@ -52,7 +52,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
   useEffect(() => { if (!isEmbedded) document.title = t("library.pageTitle"); }, [t, isEmbedded]);
   const {
     books, isLoading, canImport, importActivities, dismissCompletedImports, cancelDownload,
-    error, errorHeadline, dismissError, importFiles, removeBook, saveBookAs, getBookFileSize, enrichDescription,
+    error, errorHeadline, dismissError, importFiles, removeBook, saveBookAs, getBookFileSize, enrichDescription, refreshBookAccessibility,
     settings, setSettings, sort, setSort, openInFullTab, storageUsage, openInspectionSession,
   } = library;
   const isFullTab = !isEmbedded && library.isFullTab;
@@ -291,6 +291,7 @@ const LibrarySurface: FC<{ library: UseLibraryResult; embedded?: EmbeddedLibrary
       <BookDetailsFlyout book={active ? detailsBook : undefined} inspectorOpen={inspector.isOpen}
         onRequestClose={() => setDetailsBookId(undefined)} onSaveAs={saveBookAs} onGetFileSize={getBookFileSize}
         onEnrichDescription={enrichDescription}
+        onRefreshAccessibility={refreshBookAccessibility}
         onRemove={detailsBook ? () => requestRemove(detailsBook.id) : undefined}
         accent={palette.actionBackground} accentForeground={palette.accentForeground} backgroundSolid={palette.backgroundSolid}
         onOpenInspector={isFullTab ? inspector.open : undefined}

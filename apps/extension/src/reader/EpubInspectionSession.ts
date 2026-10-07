@@ -56,6 +56,7 @@ export class EpubInspectionSession {
       ),
       rootFilePath: this.rootFilePath,
       title: this.pkg.metadata.title,
+      metadataLocalization: this.pkg.metadata.localization,
       identifiers: this.pkg.metadata.identifiers,
       language: this.pkg.metadata.language,
       creator: this.pkg.metadata.creator,

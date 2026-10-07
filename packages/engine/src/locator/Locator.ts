@@ -43,6 +43,29 @@ export interface ResolvedLocator {
   readonly characterOffset: number | undefined;
 }
 
+export interface ResolvedLocatorRange {
+  readonly start: ResolvedLocator;
+  readonly end: ResolvedLocator;
+  readonly document: Document;
+  readonly range: Range;
+}
+
+function normalizeAssertionText(text: string): string {
+  return text.replace(/[ \t\r\n]+/g, " ");
+}
+
+function rawTextBoundary(text: string, normalizedOffset: number): number | undefined {
+  if (normalizedOffset === 0) return 0;
+  let offset = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (/[ \t\r\n]/.test(text[i]!)) {
+      while (i + 1 < text.length && /[ \t\r\n]/.test(text[i + 1]!)) i++;
+    }
+    if (++offset === normalizedOffset) return i + 1;
+  }
+  return undefined;
+}
+
 /** Thrown when a `Locator`'s CFI is well-formed but doesn't resolve to a
  * real position in the given publication (e.g. it names a spine item or
  * DOM path that no longer exists, or an ID assertion doesn't match). */
@@ -170,6 +193,56 @@ export class LocatorResolver {
     return { start, end, document: contentDocument.document };
   }
 
+  public async resolveRange(locator: Locator): Promise<ResolvedLocatorRange> {
+    const { start, end } = this.parseRange(locator);
+    const pair = await this.resolvePair(new Locator(start.toString()), new Locator(end.toString()));
+    return { ...pair, range: this.createResolvedRange(pair.start, pair.end, pair.document) };
+  }
+
+  public resolveRangeInDocument(
+    locator: Locator,
+    spineIndex: number,
+    document: Document,
+  ): ResolvedLocatorRange {
+    const points = this.parseRange(locator);
+    const start = this.resolveInDocument(new Locator(points.start.toString()), spineIndex, document);
+    const end = this.resolveInDocument(new Locator(points.end.toString()), spineIndex, document);
+    return { start, end, document, range: this.createResolvedRange(start, end, document) };
+  }
+
+  private parseRange(locator: Locator): { start: EpubCfi; end: EpubCfi } {
+    try {
+      return EpubCfi.parseRange(locator.cfi);
+    } catch (error) {
+      if (error instanceof EpubCfiParseError) {
+        throw new LocatorResolutionError(`Invalid range CFI "${locator.cfi}": ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  private createResolvedRange(start: ResolvedLocator, end: ResolvedLocator, document: Document): Range {
+    for (const point of [start, end]) {
+      if (point.node.nodeType === ELEMENT_NODE && point.characterOffset !== undefined &&
+        point.characterOffset > point.node.childNodes.length) {
+        throw new LocatorResolutionError("An element character offset cannot be represented as a DOM range boundary.");
+      }
+    }
+    const first = document.createRange();
+    const last = document.createRange();
+    if (start.characterOffset === undefined) first.setStartBefore(start.node);
+    else first.setStart(start.node, start.characterOffset);
+    first.collapse(true);
+    if (end.characterOffset === undefined) last.setEndAfter(end.node);
+    else last.setEnd(end.node, end.characterOffset);
+    last.collapse(false);
+    if (first.compareBoundaryPoints(0, last) > 0) {
+      throw new LocatorResolutionError("Range CFI endpoints are in reverse document order.");
+    }
+    first.setEnd(last.endContainer, last.endOffset);
+    return first;
+  }
+
   /** Resolves `locator` against an already-available `document` for
    * `spineIndex`, without loading anything — the caller is responsible for
    * ensuring `document` really is that spine item's content (e.g. because
@@ -202,29 +275,22 @@ export class LocatorResolver {
     let current: Element = root;
     for (let i = 0; i < cfi.contentSteps.length - 1; i++) {
       const step = cfi.contentSteps[i]!;
-      const next = resolveElementChild(current, step.index / 2);
-      if (!next) {
-        throw new LocatorResolutionError(
-          `No element found at CFI step ${step.index} under <${current.tagName}>.`,
-        );
-      }
-      this.verifyIdAssertion(next, step.idAssertion);
-      current = next;
+      current = this.resolveElementStep(current, step, document);
     }
 
     const lastStep = cfi.contentSteps[cfi.contentSteps.length - 1]!;
     if (lastStep.index % 2 === 0) {
-      const element = resolveElementChild(current, lastStep.index / 2);
-      if (!element) {
-        throw new LocatorResolutionError(
-          `No element found at final CFI step ${lastStep.index} under <${current.tagName}>.`,
-        );
+      const element = this.resolveElementStep(current, lastStep, document);
+      if (cfi.textAssertion && (cfi.textAssertion.preceding || cfi.textAssertion.following)) {
+        throw new LocatorResolutionError("Text assertions on element character offsets are not supported.");
       }
-      this.verifyIdAssertion(element, lastStep.idAssertion);
       return { spineIndex, node: element, characterOffset: cfi.characterOffset };
     }
 
     const run = resolveTextRun(current, lastStep.index);
+    if (cfi.textAssertion && (cfi.textAssertion.preceding || cfi.textAssertion.following)) {
+      return this.resolveAssertedText(cfi, spineIndex, document, run);
+    }
     if (run.length === 0) {
       throw new LocatorResolutionError(
         `No text run found at final CFI step ${lastStep.index} under <${current.tagName}>.`,
@@ -233,24 +299,75 @@ export class LocatorResolver {
     if (cfi.characterOffset === undefined) {
       return { spineIndex, node: run[0]!, characterOffset: 0 };
     }
-    const resolved = resolveOffsetInRun(run, cfi.characterOffset);
+    const resolved = resolveOffsetInRun(run, cfi.characterOffset, cfi.sideBias);
     if (!resolved) {
       throw new LocatorResolutionError(`Character offset ${cfi.characterOffset} out of range.`);
     }
     return { spineIndex, node: resolved.node, characterOffset: resolved.localOffset };
   }
 
-  /** Verifies a step's XML ID assertion against the resolved element, when
-   * present. Mismatches throw rather than silently continue — self-healing
-   * resolution (searching the document for the asserted ID as a fallback,
-   * per the CFI spec's "Intended Target Location Correction") is a
-   * documented future enhancement, not implemented in Wave 1. */
-  private verifyIdAssertion(element: Element, idAssertion: string | undefined): void {
-    if (idAssertion !== undefined && element.getAttribute("id") !== idAssertion) {
-      throw new LocatorResolutionError(
-        `CFI id assertion "${idAssertion}" does not match resolved element's id "${element.getAttribute("id")}".`,
-      );
+  private resolveElementStep(parent: Element, step: CfiStep, document: Document): Element {
+    if (step.index % 2 !== 0) {
+      throw new LocatorResolutionError("A non-final CFI step must reference an element.");
     }
+    const positional = resolveElementChild(parent, step.index / 2);
+    if (step.idAssertion === undefined) {
+      if (positional) return positional;
+      throw new LocatorResolutionError(`No element found at CFI step ${step.index} under <${parent.tagName}>.`);
+    }
+    if (positional?.getAttribute("id") === step.idAssertion) return positional;
+    const candidates = [document.documentElement, ...document.querySelectorAll("[id]")].filter(
+      element => element.getAttribute("id") === step.idAssertion && !isReaderOwnedContent(element),
+    );
+    const unique = [...new Set(candidates)];
+    if (unique.length !== 1) {
+      throw new LocatorResolutionError(`Cannot recover CFI ID assertion "${step.idAssertion}": missing or ambiguous target.`);
+    }
+    return unique[0]!;
+  }
+
+  private resolveAssertedText(
+    cfi: EpubCfi,
+    spineIndex: number,
+    document: Document,
+    run: readonly ChildNode[],
+  ): ResolvedLocator {
+    const assertion = cfi.textAssertion!;
+    const preceding = normalizeAssertionText(assertion.preceding);
+    const following = normalizeAssertionText(assertion.following ?? "");
+    const nodes: Text[] = [];
+    const walker = document.createTreeWalker(document.documentElement, 12);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if ((node.nodeType === 3 || node.nodeType === 4) && !isReaderOwnedContent(node)) {
+        nodes.push(node as Text);
+      }
+    }
+    const raw = nodes.map(node => node.data).join("");
+    const normalized = normalizeAssertionText(raw);
+    let runStart: number | undefined;
+    let offset = 0;
+    for (const node of nodes) {
+      if (node === run[0]) runStart = offset;
+      offset += node.data.length;
+    }
+    const original = resolveOffsetInRun(run, cfi.characterOffset!, cfi.sideBias);
+    if (original && runStart !== undefined) {
+      const boundary = normalizeAssertionText(raw.slice(0, runStart + cfi.characterOffset!)).length;
+      if (normalized.slice(0, boundary).endsWith(preceding) &&
+        normalized.slice(boundary).startsWith(following)) {
+        return { spineIndex, node: original.node, characterOffset: original.localOffset };
+      }
+    }
+    const context = preceding + following;
+    const match = normalized.indexOf(context);
+    if (match === -1 || normalized.indexOf(context, match + 1) !== -1) {
+      throw new LocatorResolutionError("Cannot recover CFI text assertion: missing or ambiguous context.");
+    }
+    const absolute = rawTextBoundary(raw, match + preceding.length);
+    if (absolute === undefined) throw new LocatorResolutionError("Recovered CFI text offset is out of range.");
+    const corrected = resolveOffsetInRun(nodes, absolute, cfi.sideBias);
+    if (!corrected) throw new LocatorResolutionError("Recovered CFI text offset is out of range.");
+    return { spineIndex, node: corrected.node, characterOffset: corrected.localOffset };
   }
 
   private parseCfi(locator: Locator): EpubCfi {

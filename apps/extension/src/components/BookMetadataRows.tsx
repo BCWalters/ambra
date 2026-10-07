@@ -1,18 +1,20 @@
 import { useId, useMemo, useState, type CSSProperties, type FC } from "react";
 import { Body1, Body1Strong, Button, Caption1 } from "@fluentui/react-components";
 import { useTranslation } from "../i18n/LocaleContext.js";
-import { metadataTextSummary, type MetadataTextKind } from "../MetadataText.js";
+import { metadataTextAttributes, metadataTextSummary, type MetadataTextKind } from "../MetadataText.js";
+import type { MetadataTextContext } from "@ambra/engine";
 import { PaneCard } from "./PaneSections.js";
 
 export const BookDescription: FC<{
   value: string;
   sourceName?: string | undefined;
   sourceUrl?: string | undefined;
-}> = ({ value, sourceName, sourceUrl }) => {
+  context?: MetadataTextContext | undefined;
+}> = ({ value, sourceName, sourceUrl, context }) => {
   const t = useTranslation();
   return (
     <PaneCard title={t("inspector.description")}>
-      <BookMetadataText value={value} name={t("inspector.description")} kind="description" small style={{ lineHeight: 1.5 }} />
+      <BookMetadataText value={value} context={context} name={t("inspector.description")} kind="description" small style={{ lineHeight: 1.5 }} />
       {sourceName && (
         <Caption1 as="p" block style={{ margin: "8px 0 0", opacity: 0.75, overflowWrap: "anywhere" }}>
           {t("bookDetails.descriptionSourcePrefix")}{" "}
@@ -30,7 +32,8 @@ export const BookMetadataText: FC<{
   small?: boolean;
   heading?: boolean;
   style?: CSSProperties;
-}> = ({ value, name, kind = "detail", small, heading, style }) => {
+  context?: MetadataTextContext | undefined;
+}> = ({ value, name, kind = "detail", small, heading, style, context }) => {
   const t = useTranslation();
   const id = useId();
   const summary = useMemo(() => heading
@@ -47,7 +50,7 @@ export const BookMetadataText: FC<{
         id={id}
         as={heading ? "h2" : "p"}
         block
-        style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", ...style }}
+        {...metadataTextAttributes(context, { margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", ...style })}
       >
         {expanded ? summary.expanded : summary.preview}
       </ValueText>
@@ -75,9 +78,10 @@ interface BookDetailRowProps {
   small?: boolean;
   kind?: MetadataTextKind;
   name?: string | undefined;
+  context?: MetadataTextContext | undefined;
 }
 
-export const BookDetailRow: FC<BookDetailRowProps> = ({ label, value, compact, small, kind, name }) => {
+export const BookDetailRow: FC<BookDetailRowProps> = ({ label, value, compact, small, kind, name, context }) => {
   if (!value) return null;
   return (
     <div style={{ marginBottom: compact ? 4 : 12, marginTop: compact ? 6 : 0, overflowWrap: "anywhere" }}>
@@ -86,15 +90,16 @@ export const BookDetailRow: FC<BookDetailRowProps> = ({ label, value, compact, s
           {label}
         </Caption1>
       )}
-      <BookMetadataText value={value} name={name ?? label} {...(kind ? { kind } : {})} {...(small ? { small } : {})} />
+      <BookMetadataText value={value} context={context} name={name ?? label} {...(kind ? { kind } : {})} {...(small ? { small } : {})} />
     </div>
   );
 };
 
-export const BookRightsRow: FC<{ label: string; value: string | undefined }> = ({ label, value }) => (
+export const BookRightsRow: FC<{ label: string; value: string | undefined; context?: MetadataTextContext | undefined }> = ({ label, value, context }) => (
   <BookDetailRow
     label={label}
     value={value}
+    context={context}
     kind="rights"
     name={label}
     compact

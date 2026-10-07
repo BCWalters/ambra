@@ -23,17 +23,21 @@ content, EPUB Navigation Documents, NCX fallback, reflowable and fixed-layout
 presentation, RTL spreads, recorded-audio Media Overlays, EPUB CFI locators,
 annotations, font de-obfuscation algorithms, and accessible reader controls.
 
-The first two audited blockers, `rendition:layout=roll` and packaged CSS
-resource graphs, are implemented and covered by original synthetic browser
-fixtures. The remaining main conformance
-blockers are:
+Roll layout, packaged CSS resource graphs, primary reading order, gapless
+fixed-layout spreads, ZIP64/OCF processing, ordered rendition properties,
+metadata whitespace, and metadata direction/language are implemented and
+protected-CI validated. Resource fallbacks/offline URL classification, navigation
+recovery, publisher accessibility claims, asserted CFI recovery/ranges and
+SVG-root resource policy are now protected-CI validated in #356/#357. Remaining
+work includes native JPEG XL/nested documents, HTML bases/SVG graphs,
+publication origins, vertical pagination and the advanced behaviors below.
+Regression validation is not a replacement for official criterion assessment.
 
-1. sequential navigation that includes `linear="no"` spine items;
-2. no foreign-resource fallback traversal;
-3. a visible gutter between paired fixed-layout pages;
-4. no ZIP64 v1 support;
-5. incomplete URL-scheme handling and core-media capability detection;
-6. incomplete package direction and ordered rendition-property processing.
+The merged-main eleven-criterion assessment improved from 6/11 (54.55%) to
+10/11 (90.91%): all four embedded-font criteria now pass, while direct JPEG XL
+still fails. All other 194 identifiers remain unassessed. See the
+[progress and before/after report](epub-3.4-progress-report.md) for exact package,
+browser/OS, methodology, evidence and remaining coverage.
 
 Scripting and remote resources are product-policy decisions as well as
 compatibility work. They are not prerequisites for a secure, useful reader,
@@ -59,6 +63,7 @@ GitHub issue numbers change.
 | C34-08 | Package direction and metadata language           | Preserve package- and element-level direction/language and render internationalized metadata correctly.                                                       | [#332](https://github.com/BCWalters/ambra/issues/332) |
 | C34-09 | Ordered rendition-property resolution             | Preserve item property order and implement first-applicable-value behavior for conflicting layout, spread, and page-side values.                              | [#334](https://github.com/BCWalters/ambra/issues/334) |
 | C34-10 | Vertical-writing pagination                       | Add vertical CJK fixtures and correct paginated `vertical-rl` and `vertical-lr` measurement/navigation.                                                       | [#333](https://github.com/BCWalters/ambra/issues/333) |
+| C34-19 | Metadata ASCII whitespace normalization           | Strip and collapse ASCII whitespace in canonical Dublin Core/meta values without removing meaningful non-ASCII whitespace; preserve identifier and source-order behavior. | [#354](https://github.com/BCWalters/ambra/issues/354) |
 
 C34-01 is implemented. Ambra treats `roll` as a publication-wide layout,
 ignores incompatible item-level layout, spread, flow, and orientation
@@ -79,11 +84,11 @@ aborting a chapter; missing markup resources retain their explicit load failures
 including responsive-image candidates, rather than silently dropping attributes.
 
 The four official `cnt-css-fonts_ot`, `cnt-css-fonts_tt`, `cnt-css-fonts_woff`,
-and `cnt-css-fonts_woff2` tests changed from observed font-loading failures on
-the merged-main baseline to loaded faces with this implementation. These tests
-are expected to pass future release assessments, but partial browser probes
-do not imply a full 205-test conformance result. The Chromium baseline also
-observed `pub-cmt-jxl` failing to decode, tracked by C34-04.
+and `cnt-css-fonts_woff2` criteria changed from failures to actual package-bound
+passes in [assessment 37533910200](https://github.com/BCWalters/ambra/actions/runs/37533910200).
+The stronger native measurements require loaded faces, painted authored use and
+distinct original probe glyphs. This is not a full 205-test conformance result.
+Direct `pub-cmt-jxl` remains a failure, tracked by C34-04.
 
 Conformance work additionally exposed roll fragment targeting at fractional
 item boundaries, tracked in [#352](https://github.com/BCWalters/ambra/issues/352).
@@ -113,7 +118,197 @@ failures stop CI early without duplicating coverage or weakening the remaining
 checks. Shell restoration checks explicitly reveal auto-hidden toolbar controls;
 docking and post-reload playback checks wait for reader layout readiness.
 
-### Phase 2: architecture and recommended reading-system behavior
+#### C34-04 implementation and assessment expectations
+
+Consumer-aware resource fallback selection passed protected remote
+validation. Markup images and responsive candidates, video posters, media
+sources, linked/inline CSS imports and URLs, font-face sources, and Media
+Overlay audio select the first supported manifest candidate in source order.
+Image and font candidates are checked with the actual image/FontFace decoder;
+audio/video candidates require native MIME acceptance and decoded data without
+playback. This includes AVIF, JPEG XL, AAC-LC MP4 and Opus MP4. Capability checks
+are bounded, cancellable, session-cached and never request remote URLs.
+
+Stylesheets resolve dependencies relative to the selected fallback stylesheet,
+not the original alias. Selected source MIME hints are updated and obsolete
+CSS font format hints are removed. Missing fallback targets, cycles, and exhausted
+chains produce precise diagnostics and an accessible, localized notice without
+aborting unrelated chapter content. Missing direct markup/archive resources
+and unexpected failures still propagate. Raw Inspector/archive access and the
+existing URL revocation lifecycle remain independent of rendering selection.
+
+Image-backed objects render as images without enabling `object-src` or weakening
+the sandbox. Unsupported document/plugin objects retain their fallback children.
+This does **not** implement nested XHTML/SVG content-document object rendering,
+plugins, bindings, or scripted handlers; those remain explicit policy/compatibility
+gaps. Image replacements retain the object's element position and identifying,
+presentation and accessibility attributes, but do not expose its fallback text
+as rendered text when the image succeeds.
+
+Synthetic packaged-browser fixtures cover reflowable, fixed and roll layouts,
+all four font formats, AVIF/JPEG XL, genuine silent AAC-LC and Opus MP4 resources,
+video, object images, responsive candidates, CSS alias cycles, missing/exhausted
+chains, and fallback Media Overlay playback. All media/font fixtures are generated
+from original geometry, silence and solid colors on GitHub. No local browser or
+unit tests are used for this work.
+
+Fallback support must not be scored as JPEG XL decoder support. A Chromium build
+without a JPEG XL decoder can select an available image fallback, but a standalone
+JPEG XL criterion still fails. The original 2.2.0 baseline scored six required
+passes/five failures; the merged-main reassessment scores ten passes/one failure
+among the same eleven criteria, with 194 identifiers still unassessed.
+Future release scoring must verify the pinned official foreign-resource and core
+media criteria against the actual packaged build. C34-04 remains open until the
+remaining native-decoder/object-policy gaps and official evidence are resolved.
+
+#### C34-05 implementation and assessment expectations
+
+Fixed-layout pairs now share the full available width without a reserved gutter
+or binding shadow. Their authored coordinate spaces meet directly in LTR and RTL;
+shared scaling, unequal intrinsic page sizes, outer centering, and single-page
+behavior are preserved. Protected geometry checks require less than one CSS
+pixel of separation before and after resizing, not merely a small-looking gap.
+The official pre-paginated spread criteria still require release assessment.
+
+#### C34-09 implementation and assessment expectations
+
+Manifest and spine property sets preserve XML token order. Item-level layout,
+spread, page-side, and orientation resolution now uses the first recognized value
+in that order, ignoring unknown values and preserving publication defaults.
+Conflicting effective values emit one diagnostic per group and spine item without
+rejecting the publication. Equivalent prefixed/unprefixed page-side aliases do not
+conflict; the deprecated portrait-spread value retains its existing `both`
+normalization. Publication-wide `roll` continues to ignore item-level layout
+overrides. Orientation remains an advisory value surfaced in inspection, not a
+browser-window orientation lock. Regression coverage exercises ordered pairs,
+aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
+still need release assessment; these synthetic checks do not alter the score.
+
+#### C34-07 implementation and assessment expectations
+
+A shared URL classifier and conservative resource-policy milestone are implemented
+and protected-CI validated in #356/#357.
+URL preprocessing happens before scheme detection, including embedded tabs/newlines
+and leading/trailing C0/space characters. Package references retain URL-aware
+percent decoding; fragment-only references remain in-document. HTTP(S), file,
+data, protocol-relative and unsupported schemes never alias ZIP filenames.
+Remote manifest locations retain their URL identity and may select a usable
+packaged manifest fallback without fetching the original.
+
+The product policy remains offline-only for automatic publication subresources.
+Controlled HTTPS fetching is **not enabled**: there is no implicit consent,
+network retry, or remote-data cache. Existing `remote-resources` declarations
+remain diagnostics, not permission grants. HTTPS support remains a recommended
+compatibility gap and would require separate consent/privacy/offline design.
+
+Data URLs remain blocked for automatic resources and book-initiated navigation:
+the permitted data-type allowlist is empty and the decoded-payload limit is zero
+(no payload decoding). Supporting selected embedded data types later must not
+enable top-level content-document/data navigation. File URLs are blocked for both
+automatic resources and reader-controlled link actions. Only explicitly activated
+HTTP(S)/email hyperlinks can leave the publication; protocol-relative hyperlinks
+use HTTPS, and new windows retain `noopener,noreferrer`.
+
+Blocked resource attributes/candidates and CSS alternatives are removed with
+diagnostics and localized accessible notices; unrelated content remains readable.
+Unsupported hyperlink destinations become safe fragment placeholders that retain
+keyboard/link affordances and announce the policy instead of opening their
+original destination. The raw publication DOM/source and Inspector archive APIs
+remain independent. HTML posters, image-backed object/embed elements, unsupported
+iframe documents/srcdoc, and SVG image/use/feImage references are covered.
+
+This milestone does not implement nested document rendering, arbitrary external
+SVG presentation-attribute graphs, HTML `<base href>` processing, legacy
+`xml:base` compatibility, or remote/data loading. Those surfaces remain explicit
+compatibility/policy gaps; C34-07 stays open rather than implying complete
+URL/resource conformance. Protected synthetic
+XHTML/SVG browser fixtures verify no actual requests for the exercised blocked
+resources, safe external-link dispatch, local remote-resource fallbacks and SVG
+symbol references. Their regression results do not change the original partial
+official score; the pinned file/data/navigation criteria require a separate
+package-bound assessment.
+
+A further implemented milestone applies the same restrictive policy through
+Chromium's iframe `csp` attribute before any navigation. This covers XML/SVG
+roots without an HTML head; XHTML retains its meta policy as defense in depth.
+The common host also serves fixed, paginated, scroll, roll and table views.
+Native fixtures require a real enforcing event from the expected CSP and a CDP
+loading failure explicitly blocked by CSP for an unrewritten remote URL,
+alongside successful packaged-image decoding. Logical request attempts are not
+network dispatch: the safety-net interception route must never handle the probe,
+and there must be no response.
+[Protected run 37529036440](https://github.com/BCWalters/ambra/actions/runs/37529036440)
+verified this experimental Chromium mechanism; no cross-browser guarantee is
+claimed. This does not implement external SVG graphs,
+unique publication origins, or scripting.
+
+HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
+Legacy `xml:base` is a separate unsupported compatibility surface:
+[EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)
+because HTML and SVG are removing support. Do not label it an additional
+mandatory modern feature or quietly count it as an assessed official failure.
+
+#### C34-08 implementation and assessment expectations
+
+Package and metadata-element `dir` and `xml:lang` are retained with each nonempty
+Dublin Core/meta value, including source IDs and alternate-script/refinement
+targets. Inheritance, explicit language clearing, automatic/unknown direction,
+and duplicate values with distinct contexts are preserved. Unknown direction
+is diagnosed and uses Unicode P2 processing through `dir="auto"`.
+
+New Library imports persist these contexts. Library cards/generated covers,
+Book Details, reader titles/running headers (including temporary animation
+overlays), and Inspector summaries apply value-local `dir`, `lang`, and bidi
+isolation without changing UI labels or spine page progression. Previously
+imported records without contexts use automatic direction/unknown language;
+reader and standalone Inspector sessions obtain contexts from the OPF.
+Fetched fallback descriptions do not inherit the publication's metadata context.
+Content-resource language/direction is not inferred from package metadata or
+informational `dc:language`.
+
+Generated Arabic, Hebrew, Persian, mixed-script and unknown-value regressions
+passed protected remote validation in #355. They are not official conformance
+passes; release assessments must still evaluate the corresponding criteria.
+
+#### C34-19 implementation and assessment expectations
+
+Dublin Core and OPF meta values now share exact ASCII whitespace stripping and
+collapse before canonical metadata or derived rendition/accessibility processing.
+This includes identifiers, dates, repeated creator/subject/contributor values,
+refinements, and legacy meta `content` attributes. Meaningful non-ASCII spaces
+are preserved. Unique-identifier selection, main-title/creator source order,
+optional empty-value handling, and required-value errors remain unchanged.
+Regression coverage passed protected remote validation in #355; official
+criterion assessment and the release conformance score remain separate.
+
+#### C34-06 implementation and assessment expectations
+
+C34-06 is implemented and protected-CI validated in #355, including the actual
+65,536-entry archive fixture.
+ZIP64 v1 EOCD/locator and conditional extended information fields are parsed
+without rounding unsigned integers. ZIP32 behavior, Store/Deflate, CRC checking,
+and supplied-buffer boundaries remain covered. Native ZIP encryption, unsupported
+extraction versions/compression methods, multidisk records, malformed UTF-8
+names, inconsistent headers/descriptors, and archive extra data records are
+rejected explicitly. EPUB opening validates the first uncompressed `mimetype`
+entry, its local/central extra fields, and its exact ASCII contents.
+
+Default limits are 1,000,000 entries, 256 MiB uncompressed per entry, and 8 GiB
+declared uncompressed total. `ZipArchive.open` and `EpubContainer.open` accept
+explicit limit overrides for trusted inputs. Deflate output is streamed and
+stopped if it exceeds the declared, already-limited size. Archive input remains
+buffered, so browser allocation limits still apply; ZIP64 support does not imply
+unlimited memory. Regression fixtures cover an actual 65,536-entry directory,
+ZIP64 partial fields, signed/unsigned descriptors, unsafe integers, corruption,
+limits, and malformed mimetype entries. Tests run remotely, not on the developer
+device. Synthetic coverage does not change the official conformance score.
+
+### Phase 2: architecture and advanced reading-system behavior
+
+These items mix normative requirements, recommendations and optional behavior.
+In particular, unique publication origins are required; scripting support is
+recommended, not required. Do not interpret this phase heading as an applicability
+waiver.
 
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
@@ -124,6 +319,50 @@ docking and post-reload playback checks wait for reader layout readiness.
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
 | C34-17 | Outdated and deprecated vocabulary policy         | Document and test intentional support or non-support for outdated rendition properties, prefixed CSS, `epub:switch`, `epub:trigger`, bindings, tours, and superseded metadata. | [#344](https://github.com/BCWalters/ambra/issues/344) |
+
+#### C34-15/C34-16 implementation
+
+Accessibility 1.2 publisher claims now retain repeatable sufficient-access-mode
+alternatives, conformance, certifiers, dates, credentials, reports and contacts,
+including IDs, refinements and per-value language/direction. Refined claims are
+not incorrectly promoted to global publication claims. Reader and Library use
+the same accessible presentation, with explicit publisher provenance and no
+independent WCAG/certification claim. Missing claims and unavailable legacy
+cached metadata are distinct; old stored records refresh lazily from local EPUB
+bytes without overwriting concurrent enrichment or reviving deleted books.
+Report/contact values are inert text and never initiate network requests.
+
+Malformed, missing and empty modern Nav can recover to a valid packaged NCX
+with diagnostics and a localized notice. Unexpected errors still propagate.
+NCX auxiliary lists appear in separate labeled disclosures; OPF2 guide becomes
+fallback landmarks without duplicating authored modern landmarks. Versioned
+EPUB2/hybrid/modern fixtures verify source priority, actual fragment activation,
+blocked legacy targets and shared accessibility presentation/cache refresh.
+
+These additions passed protected remote validation in #357 under #339/#343.
+They do not change the official score. The maintained
+[legacy compatibility inventory](epub-legacy-compatibility.md) records tours and
+other intentional omissions separately from current-spec requirements.
+
+#### C34-13 implemented recovery milestone
+
+The CFI profile now preserves text-location assertions, open parameters and side
+bias across point/range serialization and annotation source re-anchoring. Unique
+ID assertions recover shifted content elements; unique normalized text context
+can recover offsets across element boundaries and collapsed XML whitespace.
+Missing or ambiguous recovery targets fail explicitly, rather than selecting a
+plausible occurrence. UTF-16 offsets remain unchanged.
+
+Direct asynchronous and already-loaded-document range APIs resolve both
+endpoints against one document and reject reversed ranges. Native fixtures check
+actual paginated ID recovery, exact range text, text correction and before/after
+text-node affinity. Generated locators retain their existing compact format and
+do not incur whole-document context indexing on ordinary pagination.
+
+This is a protected-CI validated #340 milestone, not complete CFI support or an official
+score improvement. Nested indirections, temporal/spatial/combined offsets,
+image-alt addressing, package-tree recovery and full page-break affinity still
+need implementation and protected evidence.
 
 ### Phase 3: measurable conformance process
 
@@ -245,7 +484,7 @@ Currently supported or partially supported:
 
 Not currently supported:
 
-- OPF2 guide, tours, and NCX `navList`;
+- OPF2 tours (guide and NCX `navList` support are implemented under C34-16);
 - package collections;
 - bindings;
 - `epub:switch` and `epub:trigger`;
@@ -258,6 +497,9 @@ Not currently supported:
 HTML-syntax content documents are not a gap: EPUB 3.4 requires XML/XHTML
 content. Digital-signature validation, RDFa/Microdata/ITS processing, form
 submission, general TTS, and DRM are optional or outside Ambra's intended core.
+
+The detailed, maintained policy and focused test references are in the
+[legacy compatibility inventory](epub-legacy-compatibility.md).
 
 ## Definition of done for an implementation issue
 

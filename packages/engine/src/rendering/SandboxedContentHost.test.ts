@@ -5,6 +5,7 @@ import {
   RenderingSurfaceError,
   SandboxedContentHost,
 } from "./SandboxedContentHost.js";
+import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -21,6 +22,19 @@ afterEach(() => {
 });
 
 describe("SandboxedContentHost lifetime", () => {
+  it("sets the shared required CSP before attachment or any XML-root navigation", async () => {
+    const host = new SandboxedContentHost();
+    expect(host.element.parentNode).toBeNull();
+    expect(host.element.getAttribute("src")).toBeNull();
+    expect(host.element.getAttribute("csp")).toBe(CONTENT_SECURITY_POLICY);
+    expect(host.element.getAttribute("sandbox")).toBe("allow-same-origin");
+    const render = host.render('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    expect(host.element.getAttribute("csp")).toBe(CONTENT_SECURITY_POLICY);
+    host.element.dispatchEvent(new Event("load"));
+    await render;
+    host.dispose();
+  });
+
   it("loads content, cleans its listeners/timer, and revokes its URL once on disposal", async () => {
     const host = new SandboxedContentHost();
     document.createElement("div").append(host.element);

@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { URL as NodeURL, fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ContentLoader, EpubContainer, LocatorResolver, NavPoint, PaginatedContentHost } from "@ambra/engine";
+import { ContentLoader, EpubContainer, LocatorResolver, NavigationDocument, NavigationList, NavPoint, PaginatedContentHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
 import { getTranslate } from "../i18n/translate.js";
+
+const tocNavigation = (items: readonly NavPoint[]) =>
+  new NavigationDocument(new NavigationList("toc", items), undefined, undefined);
 
 describe("fragment-aware TOC locations (#202)", () => {
   it("labels scrubber destinations by measured section pages, not the currently displayed subsection", () => {
@@ -14,7 +17,7 @@ describe("fragment-aware TOC locations (#202)", () => {
     Object.assign(reader, {
       translate: getTranslate("en"),
       pkg: { spine: [{ manifestItem: { path: "front.xhtml" } }, { manifestItem: { path: "text.xhtml" } }] },
-      navigation: { toc: { items: [beta, alpha, missing] } },
+      navigation: tocNavigation([beta, alpha, missing]),
       chapterLabel: () => "Currently displayed section",
       bookPagination: {
         positionFor: (spine: number, page: number) => ({ currentPage: spine === 0 ? 1 : page + 3, totalPages: 20 }),
@@ -30,11 +33,11 @@ describe("fragment-aware TOC locations (#202)", () => {
     expect(reader.previewSeek(10 / 20).chapterLabel).toBe("Alpha");
     expect(reader.previewSeek(11 / 20).chapterLabel).toBe("Beta");
     expect(reader.previewSeek(1).chapterLabel).toBe("Beta");
-    Object.assign(reader, { bookPagination: undefined, navigation: { toc: { items: [alpha, beta] } } });
+    Object.assign(reader, { bookPagination: undefined, navigation: tocNavigation([alpha, beta]) });
     expect(reader.previewSeek(0.75)).toEqual({
       position: { kind: "chapter", current: 2, total: 2 }, chapterLabel: "Alpha",
     });
-    Object.assign(reader, { navigation: { toc: { items: [] } } });
+    Object.assign(reader, { navigation: tocNavigation([]) });
     expect(reader.previewSeek(0.75).chapterLabel).toBe("");
   });
 
@@ -54,7 +57,7 @@ describe("fragment-aware TOC locations (#202)", () => {
     Object.assign(reader, {
       translate: getTranslate("en"),
       pkg, spineIndex: 0, locatorResolver: new LocatorResolver(pkg, loader),
-      navigation: { toc: { items: [beta, alpha, detail, missing] } },
+      navigation: tocNavigation([beta, alpha, detail, missing]),
       tocLocations: new WeakMap(),
       nativeReading: { current: () => undefined },
       contentDocumentViews: () => [{ document, spineIndex: 0, page: { startBreak: { node, offset: 0 } } }],
@@ -70,7 +73,7 @@ describe("fragment-aware TOC locations (#202)", () => {
     expect(label()).toBe("Start of book");
     Object.assign(reader, { translate: getTranslate("fr") });
     expect(label()).toBe(getTranslate("fr")("toc.startOfBook"));
-    Object.assign(reader, { navigation: { toc: { items: [] } } });
+    Object.assign(reader, { navigation: tocNavigation([]) });
     expect(label()).toBe("");
     const frame = globalThis.document.createElement("iframe");
     Object.assign(reader, { host: { element: frame } });

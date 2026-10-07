@@ -66,6 +66,12 @@ describe("Inspector markup references", () => {
     expect(targets('<root xml:base="//example.test/"><img src="a.png"/></root>')).toEqual([]);
   });
 
+  it("uses URL preprocessing before excluding disguised file/data/script references", () => {
+    const found = targets('<root><img src=" fi&#10;le:///tmp/pic.png "/><img src="data:image/png;base64,AAAA"/>' +
+      '<img src="//example.test/pic.png"/><img src="pic.png"/></root>');
+    expect(found.map(item => item.targetPath)).toEqual(["OEBPS/pic.png"]);
+  });
+
   it("honors nearest namespace declarations rather than matching any prefixed href", () => {
     const found = targets('<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink">'
       + '<image x:href="a.png"/><g xmlns:x="urn:unrelated"><image x:href="fake.png"/></g></svg>');

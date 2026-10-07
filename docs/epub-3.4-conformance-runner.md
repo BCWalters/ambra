@@ -28,13 +28,15 @@ also records two upstream identifier details:
 ## Prepare the exact assessment kit
 
 For a final release candidate, merge all release changes to `main`, then run
-the **Prepare EPUB 3.4 release assessment** workflow manually. It:
+the **Assess EPUB 3.4 release candidate** workflow manually. It:
 
 1. rejects non-`main` source refs;
 2. builds and validates the production extension package;
 3. verifies the immutable W3C suite revision;
-4. creates a worksheet containing every pinned test; and
-5. archives the package, package metadata, worksheet, runner configuration,
+4. creates a worksheet containing every pinned test;
+5. optionally assesses the eleven pinned core font/image criteria in actual
+   headless Chromium, producing package-bound observations and a scorecard; and
+6. archives the package, package metadata, worksheet, runner configuration,
    and this procedure for 30 days.
 
 Download `epub-3.4-assessment-kit-<commit>`. Preserve its
@@ -42,6 +44,41 @@ Download `epub-3.4-assessment-kit-<commit>`. Preserve its
 `dist/conformance/epub-3.4-assessment.json` worksheet together. The worksheet
 records the Ambra commit, version, archive name, and SHA-256; the report command
 rejects a different or dirty package.
+
+The default `automated_core=true` profile reassesses the same eleven criteria
+as the initial baseline: OpenType, TrueType, WOFF, WOFF2, AVIF, GIF, JPEG, JPEG XL,
+PNG, SVG and WebP. Font checks now require the expected native face to be loaded
+and used in painted authored content, with an original glyph probe differing
+from generic serif. Image checks require decoding from packaged blobs and
+native hit-testing in both frame and shell. These are stronger measurements
+than the initial decode/loading-only baseline; record that methodology and any
+browser/OS difference when comparing scores.
+
+Every observation is tied to the exact package fingerprint and workflow run.
+Missing/duplicate observations, mixed package/browser/OS provenance, missing
+failure issues and invented `not-applicable` verdicts are rejected. The collector
+validates the typed native measurements and rejects verdicts inconsistent with
+loaded/used/painted font glyphs or decoded/painted packaged images. Empty evidence
+cannot promote a pass. Execution
+errors remain explicit `not-run` blockers, never criterion passes. Other tests
+remain untouched; importing/opening a publication still does not score it.
+
+The automated run is expected to fail the **release** gate while required
+criteria remain unassessed, or when a native criterion fails. Its worksheet,
+observations and scorecard are still archived. This is not a failed ordinary
+pull-request CI run and is not a complete conformance claim. Set
+`automated_core=false` to prepare the manual kit and unassessed scorecard
+without launching Chromium. Its incomplete-release gate remains red until
+the required manual evidence is supplied. The profile is separate from
+ordinary browser test discovery; its
+changes retain lint/type/unit-tool validation without unnecessary product
+browser runs when no product code changed.
+
+The artifact does not include third-party publications, fonts, screenshots,
+browser profiles or browser traces. Source revision and factual native
+observations are sufficient to reproduce the named checks.
+Playwright's automatic failure context stays in the ignored test-results
+directory, outside the archived factual-observation directory.
 
 The same kit can be prepared locally from a clean release checkout:
 

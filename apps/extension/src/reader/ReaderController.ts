@@ -14,6 +14,7 @@ import {
   isReaderOwnedContent,
   Locator,
   LocatorResolver,
+  metadataTextContext,
   NavigationDocument,
   NavigationList,
   PaginatedContentHost,
@@ -21,11 +22,11 @@ import {
   primarySpineIndices,
   ReadingTheme,
   ResourceUrlResolver,
-  resolveEpubPath,
+  classifyEpubReference,
+  externalNavigationUrl,
   RollContentHost,
   ScrollContentHost,
   serializeAnnotationCollection,
-  splitHrefFragment,
   SpreadPaginatedHost,
   ReflowableSpreadPlanner,
 } from "@ambra/engine";
@@ -277,6 +278,7 @@ export class ReaderController {
    * actually finished loading, since `openSpineItem` itself
    * unconditionally clears `error`/`errorSeverity` at its start. */
   private pendingNavigationLoadError: string | undefined;
+  private pendingNavigationRecoveryNotice = false;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
   private readonly nativeReading = new NativeReadingPosition(
@@ -402,6 +404,13 @@ export class ReaderController {
     rootFilePath: string,
     private readonly fileSizeBytes: number,
   ) {
+    resolver.fallbackSelector.onUnsupported(error => {
+      if (this.operations.disposed) return;
+      this.diagnostics.record(error.message);
+      if (this.errorSeverity && this.errorSeverity !== "info") return;
+      this.setNotification(this.translate("reader.unsupportedResources"), "info");
+      this.notify();
+    });
     this.narrationReading = new NarrationReadingBridge(contentLoader, locatorResolver, {
       activeClass: pkg.metadata.mediaOverlayActiveClass,
       playbackActiveClass: pkg.metadata.metaEntries.find(entry => entry.key === "media:playback-active-class")?.value,
@@ -413,6 +422,7 @@ export class ReaderController {
     });
     this.narration = new MediaOverlayNarration({
       pkg, loader: contentLoader,
+      resourceSelector: resolver.fallbackSelector,
       onTarget: (target, follow) => this.narrationReading.update(target, follow),
       notify: () => this.notify(),
     });
@@ -421,7 +431,7 @@ export class ReaderController {
       documents: () => this.contentDocumentViews(),
       pageNumber: view => this.inspectorPageNumber(view),
       currentPosition: () => this.isFixedLayoutHost(this.host)
-        ? this.nativeReading.current() ?? this.host?.currentPosition()
+        ? (this.nativeReading.current() ?? this.host?.currentPosition())
         : this.host?.currentPosition(),
       isDisposed: () => this.operations.disposed,
       focus: (document, element) => {
@@ -433,7 +443,7 @@ export class ReaderController {
       navigate: async (spineIndex, cfi) => {
         this.suspendNarrationFollowing();
         await this.openSpineItem(spineIndex, { bridgeCfi: cfi, history: "jump" });
-        if (this.error) throw new Error(this.error);
+        if (this.error && this.errorSeverity !== "info") throw new Error(this.error);
         if (this.operations.disposed ||
             !this.contentDocumentViews().some(view => view.spineIndex === spineIndex)) {
           throw new Error("The reading location changed before navigation completed.");
@@ -455,8 +465,8 @@ export class ReaderController {
         return undefined;
       },
       spineIndex: () => this.isFixedLayoutHost(this.host)
-        ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
-        : this.spineIndex,
+        ? (this.nativeReading.current()?.spineIndex ?? this.spineIndex)
+          : this.spineIndex,
       spineIndexForCfi: (cfi) => this.pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps),
       chapterLabel: (spineIndex) => this.chapterLabel(spineIndex) || this.pkg.metadata.title,
       announce: (translationKey) => this.announce(this.translate(translationKey)),
@@ -557,6 +567,11 @@ export class ReaderController {
       buffer.byteLength,
     );
     try {
+      if (navigation.diagnostics.length) {
+        for (const diagnostic of navigation.diagnostics)
+          controller.diagnostics.record(`Navigation recovery: ${diagnostic}`);
+        controller.pendingNavigationRecoveryNotice = true;
+      }
       if (navigationLoadError) {
         controller.diagnostics.record(`NavigationDocument.load failed: ${navigationLoadError}`);
         // Not set directly on `error`/`errorSeverity` here: `mount` always
@@ -656,7 +671,8 @@ export class ReaderController {
    * `snapshot`'s `bookPageIndex`/`bookPageCount`, which this backs, and
    * `currentBookFraction`, which turns it into a 0–1 completion
    * fraction for persisted reading progress). */
-  private bookWidePagePosition(): { bookPageIndex: number | undefined; bookPageCount: number | undefined } | undefined {
+  private bookWidePagePosition():
+    { bookPageIndex: number | undefined; bookPageCount: number | undefined } | undefined {
     let pageIndex = 0;
     if (this.host instanceof PaginatedContentHost) {
       pageIndex = this.host.currentPageIndex;
@@ -676,9 +692,9 @@ export class ReaderController {
     }
     const spineIndex =
       this.host instanceof RollContentHost
-        ? this.host.currentSpineIndex ?? this.spineIndex
+        ? (this.host.currentSpineIndex ?? this.spineIndex)
         : this.isFixedLayoutHost(this.host)
-          ? this.nativeReading.current()?.spineIndex ?? this.spineIndex
+          ? (this.nativeReading.current()?.spineIndex ?? this.spineIndex)
           : this.spineIndex;
     // Explicit fragment jumps may insert a local page boundary so the target
     // appears at the top. Whole-book numbering must still use the same natural
@@ -742,7 +758,9 @@ export class ReaderController {
         narrationNoticeVisible: this.narrationNoticeVisible && this.host !== undefined,
         hasReadingSelection: this.narration.snapshot.available && selectedReadingRange(this.contentDocumentViews()) !== undefined,
         title: this.pkg.metadata.title,
+        titleContext: metadataTextContext(this.pkg.metadata.localization, "title", this.pkg.metadata.title, 0),
         toc: this.navigation.toc.items,
+        additionalNavigation: this.navigation.additionalLists,
         spineIndex: this.spineIndex,
         spineLength: this.pkg.spine.length,
         coarseBookFraction: primaryIndices.length
@@ -942,6 +960,11 @@ export class ReaderController {
       this.errorDetail = undefined;
       this.notify();
     }
+    if (this.pendingNavigationRecoveryNotice) {
+      this.pendingNavigationRecoveryNotice = false;
+      this.setNotification(this.translate("reader.navigationRecovered"), "info");
+      this.notify();
+    }
   }
 
   /** Creates the offscreen container `BookPaginationEstimator` mounts its
@@ -968,14 +991,18 @@ export class ReaderController {
       container,
       this.disclosures,
       this.locatorResolver,
-      new Map(this.pkg.spine.map((ref, index) => [
-        index,
-        ReaderController.flattenLinkedNavPoints([
-          ...this.navigation.toc.items, ...(this.navigation.landmarks?.items ?? []),
-        ])
-          .filter(point => point.path === ref.manifestItem.path && point.fragment)
-          .map(point => point.fragment!),
-      ])),
+      new Map(
+        this.pkg.spine.map((ref, index) => [
+          index,
+          ReaderController.flattenLinkedNavPoints([
+            ...this.navigation.toc.items,
+            ...(this.navigation.landmarks?.items ?? []),
+            ...this.navigation.additionalLists.flatMap((list) => list.items),
+          ])
+            .filter(point => point.path === ref.manifestItem.path && point.fragment)
+            .map((point) => point.fragment!),
+        ]),
+      ),
     );
   }
 
@@ -1126,9 +1153,10 @@ export class ReaderController {
   public pageTurnGuideGeometry() {
     if (!this.containerEl || !this.host || this.host instanceof ScrollContentHost ||
       this.isLoadInFlight) return undefined;
-    const bounds = this.host instanceof FixedContentHost
-      ? [frameContentBounds(this.host.element)]
-      : (this.turnMargins ?? this.pageMargins())?.bounds ?? [];
+    const bounds =
+      this.host instanceof FixedContentHost
+        ? [frameContentBounds(this.host.element)]
+        : ((this.turnMargins ?? this.pageMargins())?.bounds ?? []);
     return pageTurnGuideGeometry(this.containerEl.getBoundingClientRect(), bounds);
   }
 
@@ -1387,9 +1415,12 @@ export class ReaderController {
 
   private async navigateNarrationTarget(target: NarrationTarget): Promise<void> {
     const view = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex);
-    if (view && (this.host instanceof PaginatedContentHost || this.host instanceof ScrollContentHost)) {
-      const element = target.fragment ? view.document.getElementById(target.fragment)
-        : view.document.body ?? view.document.documentElement;
+    if (
+      view && (this.host instanceof PaginatedContentHost || this.host instanceof ScrollContentHost)
+    ) {
+      const element = target.fragment
+        ? view.document.getElementById(target.fragment)
+        : (view.document.body ?? view.document.documentElement);
       if (!element) throw new Error(`The narrated passage ${target.path}#${target.fragment ?? ""} was not found.`);
       if (this.host instanceof PaginatedContentHost) this.host.goToPosition(element, 0);
       else this.host.restorePosition(element, 0);
@@ -1400,7 +1431,7 @@ export class ReaderController {
     }
     await this.openSpineItem(target.spineIndex, { fragment: target.fragment, automatic: true });
     if (this.operations.disposed || !this.narration.snapshot.following) return;
-    if (this.error) throw new Error(this.error);
+    if (this.error && this.errorSeverity !== "info") throw new Error(this.error);
     const document = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex)?.document;
     if (!document || (target.fragment && !document.getElementById(target.fragment))) {
       throw new Error(`The narrated passage ${target.path}#${target.fragment ?? ""} was not found.`);
@@ -1510,7 +1541,7 @@ export class ReaderController {
     const view = this.contentDocumentViews().find(view => view.spineIndex === spineIndex);
     const native = this.nativeReading.current();
     const position = native?.spineIndex === spineIndex && native.node.ownerDocument === view?.document
-      ? native : view?.page?.startBreak ?? (spineIndex === this.spineIndex ? this.host?.currentPosition() : undefined);
+      ? native : (view?.page?.startBreak ?? (spineIndex === this.spineIndex ? this.host?.currentPosition() : undefined));
     const currentCfi = position && view && position.node.ownerDocument === view.document
       ? this.locatorResolver.generateBoundary(spineIndex, position.node, position.offset).cfi : undefined;
     const locations = view ? this.tocLocationsInDocument(view.document, spineIndex) : undefined;
@@ -1563,6 +1594,7 @@ export class ReaderController {
     }
     for (const point of ReaderController.flattenLinkedNavPoints([
       ...this.navigation.toc.items, ...(this.navigation.landmarks?.items ?? []),
+      ...this.navigation.additionalLists.flatMap((list) => list.items),
     ])) {
       if (!point.fragment || point.target === undefined) continue;
       const spineIndex = this.pkg.spine.findIndex(ref => ref.manifestItem.path === point.path);
@@ -1608,7 +1640,7 @@ export class ReaderController {
     const page = this.contentDocumentViews().find(view => view.document === document)?.page;
     const native = this.nativeReading.current();
     const position = native?.node.ownerDocument === document
-      ? native : page?.startBreak ?? this.host?.currentPosition();
+      ? native : (page?.startBreak ?? this.host?.currentPosition());
     if (position && position.node.ownerDocument === document) {
       this.accessibility.focusReadingPosition(document, position);
     } else {
@@ -1840,8 +1872,8 @@ export class ReaderController {
     // necessarily the chapter explicitly opened (including a book's first entry).
     const iframeDocument = readingSpineIndex === undefined
       ? this.primaryContentDocument()
-      : this.contentDocumentViews().find(view => view.spineIndex === readingSpineIndex)?.document
-        ?? this.primaryContentDocument();
+      : (this.contentDocumentViews().find(view => view.spineIndex === readingSpineIndex)?.document
+        ?? this.primaryContentDocument());
     if (!iframeDocument) {
       return;
     }
@@ -1938,6 +1970,13 @@ export class ReaderController {
       const clickHandler = (event: MouseEvent): void => {
         const target = event.target as Element | null;
         const anchor = target?.closest?.("a");
+        if (anchor?.hasAttribute("data-ambra-blocked-link")) {
+          event.preventDefault();
+          this.setNotification(this.translate("reader.blockedLink"), "info");
+          this.diagnostics.record(`Blocked publication link: ${anchor.getAttribute("data-ambra-blocked-link")}`);
+          this.notify();
+          return;
+        }
         const href = anchor?.getAttribute("href") ?? anchor?.getAttributeNS("http://www.w3.org/1999/xlink", "href");
         if (!href) {
           const img = target?.closest?.("img");
@@ -1948,18 +1987,17 @@ export class ReaderController {
         }
         event.preventDefault();
 
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
-          // External URI, not an in-book path.
-          window.open(href, "_blank", "noopener,noreferrer");
-          return;
-        }
-
         const own = pathAndSpineIndexFor(iframeDocument);
         if (!own) {
           return;
         }
-        const { fragment } = splitHrefFragment(href);
-        const targetPath = resolveEpubPath(own.path, href);
+        const reference = classifyEpubReference(own.path, href);
+        if (reference.kind !== "package" && reference.kind !== "fragment") {
+          this.openExternalPublicationLink(reference);
+          return;
+        }
+        const fragment = reference.fragment;
+        const targetPath = reference.kind === "package" ? reference.path : own.path;
         const targetSpineIndex = this.pkg.spine.findIndex(
           (ref) => ref.manifestItem.path === targetPath,
         );
@@ -2688,9 +2726,10 @@ export class ReaderController {
     if (documents.length === 0) {
       return;
     }
-    const scrollPosition = options.relayout && host instanceof ScrollContentHost
-      ? (host === this.host ? this.nativeReading.retainedForShell() : undefined) ?? host.currentPosition()
-      : undefined;
+    const scrollPosition =
+      options.relayout && host instanceof ScrollContentHost
+        ? ((host === this.host ? this.nativeReading.retainedForShell() : undefined) ?? host.currentPosition())
+        : undefined;
     for (const doc of documents) {
       ReadingTheme.applyFontScale(doc, this.fontScale);
       ReadingTheme.applyFontFamily(doc, this.fontFamily);
@@ -3288,6 +3327,7 @@ export class ReaderController {
   ): PageTurnFurnitureInfo {
     return {
       title: this.pkg.metadata.title,
+      titleContext: metadataTextContext(this.pkg.metadata.localization, "title", this.pkg.metadata.title, 0),
       chapterLabel: this.chapterLabel(this.spineIndex),
       outgoingPage: this.furniturePageNumber(
         this.spineIndex,
@@ -3355,6 +3395,7 @@ export class ReaderController {
     return {
       title: this.pkg.metadata.title,
       outgoingChapterLabel: this.chapterLabel(this.spineIndex),
+      titleContext: metadataTextContext(this.pkg.metadata.localization, "title", this.pkg.metadata.title, 0),
       incomingChapterLabel: this.chapterLabel(incomingSpineIndex),
       outgoingPrimaryPage: outgoingPrimary,
       outgoingSecondaryPage: outgoingSecondary,
@@ -3684,12 +3725,20 @@ export class ReaderController {
   private setUpPageBandClicks(): () => void {
     const containerEl = this.containerEl;
     if (!containerEl) return () => {};
-    return this.setUpMarginClicks(containerEl.parentElement ?? containerEl, containerEl.ownerDocument, false, start => {
-      const node = start.target as Node | null;
-      return !!node && (containerEl.contains(node) ||
-        node.nodeType === 1 && !!(node as Element).closest("[data-ambra-page-band]") &&
-        this.isPageTurnTarget(node));
-    });
+    return this.setUpMarginClicks(
+      containerEl.parentElement ?? containerEl,
+      containerEl.ownerDocument,
+      false,
+      (start) => {
+        const node = start.target as Node | null;
+        return (
+          !!node &&
+          (containerEl.contains(node) ||
+            (node.nodeType === 1 && !!(node as Element).closest("[data-ambra-page-band]") &&
+        this.isPageTurnTarget(node)))
+        );
+      },
+    );
   }
 
   /** Both chapter documents and the blank companion share the same
@@ -3767,7 +3816,7 @@ export class ReaderController {
     const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null;
     if (!frame) return x;
     const rect = frame.getBoundingClientRect();
-    return rect.left + x * rect.width / frame.clientWidth;
+    return rect.left + (x * rect.width) / frame.clientWidth;
   }
 
   private marginSide(doc: Document, x: number, y: number, parentX = this.pageClientX(doc, x)): -1 | 1 | undefined {
@@ -4038,10 +4087,12 @@ export class ReaderController {
 
   private isPageTurnTarget(target: EventTarget | null): boolean {
     const node = target as Node | null;
-    const element = node?.nodeType === 1 ? node as Element : node?.parentElement;
+    const element = node?.nodeType === 1 ? (node as Element) : node?.parentElement;
     if (!element) return true;
-    return !isInteractiveContentTarget(element) &&
-      (this.isFixedLayoutHost(this.host) || !element.closest("img"));
+    return (
+      !isInteractiveContentTarget(element) &&
+      (this.isFixedLayoutHost(this.host) || !element.closest("img"))
+    );
   }
 
   /** Both endpoints must be in the same outer margin or eligible edge space.
@@ -4237,6 +4288,7 @@ export class ReaderController {
       title: this.pkg.metadata.title,
       creator: this.pkg.metadata.creator,
       description: this.pkg.metadata.description ?? libraryRecord?.fetchedDescription,
+      metadataLocalization: this.pkg.metadata.localization,
       descriptionSourceName: hasOwnDescription ? undefined : libraryRecord?.fetchedDescriptionSourceName,
       descriptionSourceUrl: hasOwnDescription ? undefined : libraryRecord?.fetchedDescriptionSourceUrl,
       publisher: this.pkg.metadata.publisher,
@@ -4492,6 +4544,10 @@ export class ReaderController {
   /** Navigates to a Table of Contents entry: loads its target spine item
    * (if not already open) and jumps to its fragment, if any. */
   public async goToNavPoint(navPoint: NavPoint): Promise<void> {
+    if (navPoint.externalReference) {
+      this.openExternalPublicationLink(navPoint.externalReference);
+      return;
+    }
     this.recordDiagnosticEvent({ kind: "navigation", source: "toc",
       targetSpine: this.pkg.spine.findIndex(ref => ref.manifestItem.path === navPoint.path) });
     if (!navPoint.path) {
@@ -4503,6 +4559,17 @@ export class ReaderController {
     }
     this.clearNavigationHighlights();
     await this.openSpineItem(spineIndex, { fragment: navPoint.fragment, history: "jump" });
+  }
+
+  private openExternalPublicationLink(reference: NonNullable<NavPoint["externalReference"]>): void {
+    const url = externalNavigationUrl(reference);
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      this.setNotification(this.translate("reader.blockedLink"), "info");
+      this.diagnostics.record(`Blocked publication link: ${reference.kind}`);
+      this.notify();
+    }
   }
 
   /** Reveals a newly loaded paginated host with the same page-turn
@@ -4614,6 +4681,7 @@ export class ReaderController {
     }
 
     const title = this.pkg.metadata.title;
+    const titleContext = metadataTextContext(this.pkg.metadata.localization, "title", title, 0);
     const oldChapterLabel = this.chapterLabel(oldSpineIndex);
     const newChapterLabel = this.chapterLabel(newSpineIndex);
     let outgoingOverlay: HTMLDivElement | undefined;
@@ -4631,7 +4699,7 @@ export class ReaderController {
         {
           left: 0,
           width: columnWidth,
-          header: { mode: "single" as const, text: title },
+          header: { mode: "single" as const, text: title, context: titleContext },
           footerText: primary !== undefined ? `Page ${primary}` : undefined,
         },
         {
@@ -4680,7 +4748,7 @@ export class ReaderController {
         {
           left: 0,
           width: oldEl.getBoundingClientRect().width,
-          header: { mode: "split" as const, left: title, right: oldChapterLabel },
+          header: { mode: "split" as const, left: title, right: oldChapterLabel, leftContext: titleContext },
           footerText: oldNumber !== undefined ? `Page ${oldNumber}` : undefined,
         },
       ]);
@@ -4688,7 +4756,7 @@ export class ReaderController {
         {
           left: 0,
           width: newEl.getBoundingClientRect().width,
-          header: { mode: "split" as const, left: title, right: newChapterLabel },
+          header: { mode: "split" as const, left: title, right: newChapterLabel, leftContext: titleContext },
           footerText: newNumber !== undefined ? `Page ${newNumber}` : undefined,
         },
       ]);
@@ -5068,9 +5136,10 @@ export class ReaderController {
         }
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);
       } else if (options.fragment) {
-        const focusTarget = newHost instanceof PaginatedContentHost
-          ? destinationDocument?.getElementById(options.fragment) ?? undefined
-          : this.goToFragment(options.fragment, requestedSpineIndex);
+        const focusTarget =
+          newHost instanceof PaginatedContentHost
+            ? (destinationDocument?.getElementById(options.fragment) ?? undefined)
+            : this.goToFragment(options.fragment, requestedSpineIndex);
         this.setUpAccessibility(focusTarget, !options.automatic && !options.preserveFocus);
       } else {
         if (

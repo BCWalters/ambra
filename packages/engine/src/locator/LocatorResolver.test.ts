@@ -229,16 +229,97 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     const locator = resolver.generate(0, h1);
     // h1 has no id in this fixture, so any asserted id is a mismatch —
     // fabricate one by injecting a bracketed assertion into the last
-    // step, simulating a CFI generated against a differently-structured
-    // version of the same document. Per the resolver's documented,
-    // deliberate design, this must fail loudly rather than silently
-    // resolving positionally (self-healing correction is a documented
-    // future enhancement, not Wave 1 behavior).
+    // step. A missing asserted ID must not silently resolve positionally.
     const tamperedCfi = locator.cfi.replace(/(\/\d+)\)$/, "$1[bogus-id])");
 
     expect(() => resolver.resolveInDocument(new Locator(tamperedCfi), 0, doc.document)).toThrow(
       LocatorResolutionError,
     );
+  });
+
+  it("recovers shifted intermediate and final elements through their unique ID assertions", () => {
+    const old = document.implementation.createHTMLDocument();
+    old.body.innerHTML = '<section id="chapter"><p id="stable">Original target</p></section>';
+    const target = old.getElementById("stable")!;
+    const textLocator = resolver.generate(0, target.firstChild!, 4);
+    const elementLocator = resolver.generate(0, target);
+    const fresh = document.implementation.createHTMLDocument();
+    fresh.body.innerHTML = '<aside>Inserted</aside><section id="chapter"><p>New</p><p id="stable">Original target</p></section>';
+    expect(resolver.resolveInDocument(textLocator, 0, fresh)).toMatchObject({
+      node: fresh.getElementById("stable")!.firstChild,
+      characterOffset: 4,
+    });
+    expect(resolver.resolveInDocument(elementLocator, 0, fresh).node).toBe(fresh.getElementById("stable"));
+  });
+
+  it("rejects ambiguous and reader-owned ID recovery targets", () => {
+    const old = document.implementation.createHTMLDocument();
+    old.body.innerHTML = '<p id="stable">Original target</p>';
+    const locator = resolver.generate(0, old.getElementById("stable")!);
+    const fresh = document.implementation.createHTMLDocument();
+    fresh.body.innerHTML = '<p>Inserted</p><p id="stable">One</p><p id="stable">Two</p>';
+    expect(() => resolver.resolveInDocument(locator, 0, fresh)).toThrow(/ambiguous/);
+    fresh.body.innerHTML = '<p>Inserted</p><aside id="stable">Reader control</aside>';
+    markReaderOwnedContent(fresh.getElementById("stable")!);
+    expect(() => resolver.resolveInDocument(locator, 0, fresh)).toThrow(LocatorResolutionError);
+  });
+
+  it("corrects text assertions across element boundaries and collapsed XML whitespace", () => {
+    const old = document.implementation.createHTMLDocument();
+    old.body.innerHTML = '<p id="stable">Unique original target string.</p>';
+    const locator = resolver.generate(0, old.getElementById("stable")!.firstChild!, 16);
+    const asserted = new Locator(locator.cfi.replace(":16)", ":16[original ,target])"));
+    const fresh = document.implementation.createHTMLDocument();
+    fresh.body.innerHTML = '<p id="stable">Inserted Unique <em>original</em>\n \t target string.</p>';
+    const text = fresh.getElementById("stable")!.lastChild!;
+    const resolved = resolver.resolveInDocument(asserted, 0, fresh);
+    expect(resolved.node).toBe(text);
+    expect(resolved.characterOffset).toBe(text.textContent!.indexOf("target"));
+  });
+
+  it("rejects missing or ambiguous text context instead of choosing a plausible occurrence", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="stable">Inserted original target and original target</p>';
+    const locator = resolver.generate(0, doc.getElementById("stable")!.firstChild!, 0);
+    const asserted = new Locator(locator.cfi.replace(":0)", ":0[original ,target])"));
+    expect(() => resolver.resolveInDocument(asserted, 0, doc)).toThrow(/ambiguous/);
+    doc.getElementById("stable")!.textContent = "Missing context";
+    expect(() => resolver.resolveInDocument(asserted, 0, doc)).toThrow(LocatorResolutionError);
+  });
+
+  it("keeps UTF-16 offsets and matching assertions unchanged at an already valid position", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.textContent = "A\u{1f642}target";
+    const text = doc.body.firstChild!;
+    const locator = resolver.generate(0, text, 3);
+    const asserted = new Locator(locator.cfi.replace(":3)", ":3[A\u{1f642},target;s=a])"));
+    expect(resolver.resolveInDocument(asserted, 0, doc)).toMatchObject({
+      node: text, characterOffset: 3,
+    });
+  });
+
+  it("resolves a complete range directly in one document and rejects reverse endpoints", () => {
+    // happy-dom binds Range to the window document. Independent-document
+    // range ownership is verified by the native Chromium fixture.
+    const doc = document;
+    const paragraph = doc.createElement("p");
+    paragraph.id = "range-stable";
+    paragraph.innerHTML = "alpha <em>beta</em> gamma";
+    doc.body.append(paragraph);
+    try {
+      const start = EpubCfi.parse(resolver.generate(0, paragraph.firstChild!, 2).cfi);
+      const end = EpubCfi.parse(resolver.generate(0, paragraph.lastChild!, 4).cfi);
+      const resolved = resolver.resolveRangeInDocument(new Locator(EpubCfi.joinRange(start, end)), 0, doc);
+      expect(resolved.document).toBe(doc);
+      expect(resolved.range.toString()).toBe("pha beta gam");
+      expect(resolved.start.node).toBe(paragraph.firstChild);
+      expect(resolved.end.node).toBe(paragraph.lastChild);
+      expect(() => resolver.resolveRangeInDocument(
+        new Locator(EpubCfi.joinRange(end, start)), 0, doc,
+      )).toThrow(/reverse document order/);
+    } finally {
+      paragraph.remove();
+    }
   });
 
   it("rejects a text offset beyond the addressed run rather than clamping it", async () => {

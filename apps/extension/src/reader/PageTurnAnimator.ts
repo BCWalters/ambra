@@ -1,5 +1,6 @@
 import { PaginatedContentHost, ReadingTheme, SpreadPaginatedHost } from "@ambra/engine";
-import type { PageTheme } from "@ambra/engine";
+import type { PageTheme, MetadataTextContext } from "@ambra/engine";
+import { metadataTextAttributes } from "../MetadataText.js";
 import { HEADER_TEXT_TOP_OFFSET, PAGE_FURNITURE_TEXT_OPACITY } from "./furnitureLayout.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
@@ -106,7 +107,8 @@ export class PageTurnAnimator {
     bands: Array<{
       left: number;
       width: number;
-      header: { mode: "split"; left: string; right: string } | { mode: "single"; text: string };
+      header: { mode: "split"; left: string; right: string; leftContext?: MetadataTextContext | undefined }
+        | { mode: "single"; text: string; context?: MetadataTextContext | undefined };
       footerText: string | undefined;
     }>,
   ): HTMLDivElement | undefined {
@@ -153,6 +155,10 @@ export class PageTurnAnimator {
       if (band.header.mode === "split") {
         const left = document.createElement("span");
         left.style.cssText = textStyle;
+        const attributes = metadataTextAttributes(band.header.leftContext);
+        left.dir = attributes.dir;
+        left.lang = attributes.lang;
+        Object.assign(left.style, attributes.style);
         left.textContent = band.header.left;
         const right = document.createElement("span");
         right.style.cssText = `${textStyle} text-align: right;`;
@@ -161,6 +167,10 @@ export class PageTurnAnimator {
       } else {
         const span = document.createElement("span");
         span.style.cssText = `${textStyle} text-align: center;`;
+        const attributes = metadataTextAttributes(band.header.context);
+        span.dir = attributes.dir;
+        span.lang = attributes.lang;
+        Object.assign(span.style, attributes.style);
         span.textContent = band.header.text;
         header.append(span);
       }

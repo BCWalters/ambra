@@ -1,7 +1,8 @@
 import postcss from "postcss";
 import valueParser from "postcss-value-parser";
+import type { ResourceConsumer } from "./ResourceCapabilities.js";
 
-export type CssUrlResolver = (href: string, importing: boolean) => Promise<string | undefined>;
+export type CssUrlResolver = (href: string, importing: boolean, consumer?: ResourceConsumer) => Promise<string | undefined>;
 
 function decodeCssEscapes(value: string): string {
   return value.replace(/\\(?:([0-9a-f]{1,6})[ \t\r\n\f]?|(\r\n|[\r\n\f])|([\s\S]))/gi,
@@ -17,26 +18,45 @@ function decodeCssEscapes(value: string): string {
 
 /** Parses values rather than searching CSS text: quoted strings and comments
  * containing "url(...)" must never be treated as resource requests. */
-async function rewriteValue(value: string, resolve: CssUrlResolver, importing = false): Promise<string> {
+async function rewriteValue(value: string, resolve: CssUrlResolver, importing = false, consumer?: ResourceConsumer): Promise<string> {
   const parsed = valueParser(value);
-  const urls: valueParser.FunctionNode[] = [];
-  parsed.walk(node => {
+  const urls: { node: valueParser.FunctionNode; nodes: valueParser.Node[] }[] = [];
+  parsed.walk((node, _index, nodes) => {
     if (node.type === "function" && decodeCssEscapes(node.value).toLowerCase() === "url") {
-      urls.push(node);
+      urls.push({ node, nodes });
       return false;
     }
     return undefined;
   });
-  for (const node of urls) {
+  for (const { node, nodes } of urls) {
+    if (!nodes.includes(node)) continue;
     const meaningful = node.nodes.filter(child => child.type !== "comment" && child.type !== "space");
     const raw = meaningful.length === 1 && meaningful[0]?.type === "string"
       ? meaningful[0].value
       : valueParser.stringify(node.nodes).trim();
-    const resolved = await resolve(decodeCssEscapes(raw), importing);
+    const resolved = await resolve(decodeCssEscapes(raw), importing, consumer);
     if (resolved !== undefined) {
       node.value = "url";
       node.nodes = [{ type: "string", quote: '"', value: resolved.replace(/\\/g, "\\\\").replace(/"/g, '\\"'),
         sourceIndex: 0, sourceEndIndex: 0 }];
+      if (consumer === "font") {
+        const index = nodes.indexOf(node);
+        const next = nodes.slice(index + 1).find(child => child.type !== "space" && child.type !== "comment");
+        if (next?.type === "function" && decodeCssEscapes(next.value).toLowerCase() === "format") {
+          nodes.splice(nodes.indexOf(next), 1);
+        }
+      }
+    } else {
+      // Remove only this comma-delimited alternative, preserving other font
+      // sources or background layers when one resource is unavailable.
+      const index = nodes.indexOf(node);
+      let start = index;
+      let end = index + 1;
+      while (start > 0 && !(nodes[start - 1]?.type === "div" && nodes[start - 1]?.value === ",")) start--;
+      while (end < nodes.length && !(nodes[end]?.type === "div" && nodes[end]?.value === ",")) end++;
+      if (end < nodes.length) end++;
+      else if (start > 0) start--;
+      nodes.splice(start, end - start);
     }
   }
   return parsed.toString();
@@ -82,7 +102,12 @@ export async function rewriteCssResources(
     if (missing) rule.remove();
   }
   for (const declaration of values) {
-    declaration.value = await rewriteValue(declaration.value, resolve);
+    let parent = declaration.parent;
+    while (parent && parent.type !== "atrule" && parent.type !== "root") parent = parent.parent;
+    const font = parent?.type === "atrule" && decodeCssEscapes(parent.name).toLowerCase() === "font-face";
+    declaration.value = await rewriteValue(declaration.value, resolve, false,
+      font ? "font" : declaration.prop.startsWith("--") ? "auto" : "image");
+    if (!declaration.value.trim()) declaration.remove();
   }
   if (!declarations) return root.toString();
   const rule = root.first;

@@ -1,5 +1,6 @@
 export { EpubContainer, EpubContainerError } from "./container/EpubContainer.js";
-export { ZipArchive, ZipEntry, ZipFormatError, ZipIntegrityError } from "./container/ZipArchive.js";
+export { ZipArchive, ZipEntry, ZipFormatError, ZipIntegrityError, DEFAULT_ZIP_ARCHIVE_LIMITS } from "./container/ZipArchive.js";
+export type { ZipArchiveLimits } from "./container/ZipArchive.js";
 export {
   PackageDocument,
   PackageDocumentError,
@@ -11,6 +12,8 @@ export {
 } from "./container/PackageDocument.js";
 export type { RenditionLayout, ViewportSize, BookIdentifier, OpfMetaEntry, AccessibilityMetadata } from "./container/PackageDocument.js";
 export type { PackageMetadataOptions } from "./container/PackageDocument.js";
+export { metadataTextContext, metadataPropertyContext } from "./container/MetadataLocalization.js";
+export type { MetadataTextContext, LocalizedMetadataValue, MetadataLocalization } from "./container/MetadataLocalization.js";
 export type {
   RenditionSpread,
   RenditionOrientation,
@@ -18,13 +21,18 @@ export type {
   PageSpreadSide,
 } from "./container/PackageDocument.js";
 export { resolveEpubPath, directoryOf, splitHrefFragment } from "./container/EpubPath.js";
+export { classifyEpubReference, externalNavigationUrl } from "./container/EpubReference.js";
+export type { EpubReference, NonPackageEpubReference } from "./container/EpubReference.js";
 export {
   NavigationDocument,
   NavigationDocumentError,
   NavigationList,
   NavPoint,
 } from "./navigation/NavigationDocument.js";
-export type { NavigationListType } from "./navigation/NavigationDocument.js";
+export type { NavigationListType,
+  AuxiliaryNavigationList,
+} from "./navigation/NavigationDocument.js";
+export type { GuideReference } from "./container/PackageDocument.js";
 export {
   ContentLoader,
   ContentDocument,
@@ -45,6 +53,9 @@ export {
   ADOBE_FONT_OBFUSCATION_ALGORITHM_URI,
 } from "./encryption/FontDeobfuscator.js";
 export { ResourceUrlResolver, ResourceResolutionError } from "./rendering/ResourceUrlResolver.js";
+export { ResourceFallbackSelector, UnsupportedResourceError, resourceResolutionKey } from "./rendering/ResourceFallbackSelector.js";
+export { BrowserResourceCapabilities } from "./rendering/ResourceCapabilities.js";
+export type { ResourceCapabilities, ResourceConsumer } from "./rendering/ResourceCapabilities.js";
 export { ContentDocumentAssembler } from "./rendering/ContentDocumentAssembler.js";
 export { EPUB_CSS_RESET } from "./rendering/EpubCssReset.js";
 export { ReadingTheme, defaultFontFamilyForPlatform } from "./rendering/ReadingTheme.js";
@@ -65,8 +76,9 @@ export { globalTextOffsetToPosition, totalTextLength } from "./layout/DomTextWal
 export { ScrollViewEngine } from "./layout/ScrollViewEngine.js";
 export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } from "./layout/ScrollPositionTracker.js";
 export { Locator, LocatorResolver, LocatorResolutionError } from "./locator/Locator.js";
-export type { ResolvedLocator } from "./locator/Locator.js";
+export type { ResolvedLocator, ResolvedLocatorRange } from "./locator/Locator.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
+export type { CfiParameter, CfiTextAssertion } from "./locator/EpubCfi.js";
 export {
   parseAnnotationCollection,
   serializeAnnotationCollection,

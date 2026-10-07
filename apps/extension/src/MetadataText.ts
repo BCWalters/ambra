@@ -1,3 +1,18 @@
+import type { MetadataTextContext } from "@ambra/engine";
+import type { CSSProperties } from "react";
+
+export function metadataTextAttributes(context: MetadataTextContext | undefined, style?: CSSProperties): {
+  dir: MetadataTextContext["direction"];
+  lang: string;
+  style: CSSProperties;
+} {
+  return {
+    dir: context?.direction ?? "auto",
+    lang: context?.language ?? "",
+    style: { ...style, unicodeBidi: "isolate" },
+  };
+}
+
 export type MetadataTextKind = "description" | "rights" | "identity" | "detail";
 
 export const METADATA_TEXT_LIMITS = {

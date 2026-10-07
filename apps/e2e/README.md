@@ -53,11 +53,62 @@ push diff:
 - Shared UI, reader, engine, dependency, manifest, workflow, release, and
   unclassified changes run the complete protected browser suite.
 
+Native audio-resource failure checks run in an isolated early gate, before the
+optional codec-tool preparation and broad packaged-browser stage. They
+distinguish undecodable resources rejected by capability preflight (no playback
+source assigned) from genuine native
+failures after valid playback has started. Both must retain explicit compact
+error controls and no unhandled exceptions. The later narration gate excludes
+those tagged cases, avoiding duplicate execution while preserving isolated
+timing/playback coverage.
+
+`navigation-accessibility-conformance.spec.ts` uses original EPUB2,
+hybrid Nav/NCX, and modern Nav fixtures. It checks actual auxiliary-list target
+activation, explicit navigation recovery, publisher-claim presentation in both
+Reader and Library, and local refresh of older cached metadata. Publisher
+report/contact strings stay inert: the fixtures assert that no requests or
+active metadata links are introduced. These regressions run early in protected
+CI; they are not substitutes for the pinned official release assessment.
+
+`cfi-recovery-conformance.spec.ts` checks an actual painted landing after ID
+correction, direct native DOM ranges in both loaded and provided documents,
+cross-element/whitespace text assertion recovery, and exact adjacent-text
+before/after affinity. It uses original content and runs in the early CI gate.
+It does not claim support for nested documents or media/spatial CFI offsets.
+
+`resource-policy.spec.ts` additionally exercises Chromium's frame-level required
+CSP on XHTML and headless SVG roots. After verifying a packaged image actually
+decodes, it introduces an unrewritten remote image URL through the trusted test
+driver. It requires a native enforcing violation from the expected CSP and a
+CDP loading failure explicitly blocked by CSP, with no network dispatch/response.
+Playwright can report a logical request attempt even when CSP prevents dispatch;
+the safety-net route must never handle that attempt. This is not a sanitized
+attribute or simulated event. This covers the common rendering
+host; external SVG graph rewriting remains a separate compatibility gap.
+
+The opt-in release profile in `assessment/core-media.spec.ts` uses
+`epub-conformance.config.ts`, not ordinary test discovery. The main-only release
+assessment workflow runs it against the exact archived production package and
+pinned W3C publications. It records eleven native font/image criteria, leaves
+all other criteria unassessed, and archives factual evidence without including
+third-party publications or browser profiles. See the
+[release assessment procedure](../../docs/epub-3.4-conformance-runner.md).
+
 The selector fails closed: mixed or empty/unknown diffs run everything.
 Manually dispatched and called workflows also run everything, so final release
 candidates never use a reduced browser suite.
 
 ## Running it
+
+`resource-fallbacks.spec.ts` generates original geometric fonts, solid-color
+AVIF/JPEG XL/video, and silent AAC-LC/Opus MP4 fixtures. Its GitHub CI prerequisite
+step checks for FFmpeg, `cjxl`, FontTools and Brotli and installs only missing
+tooling on the disposable runner. CI uses `/usr/bin/python3`; other environments
+can set `AMBRA_E2E_MEDIA_PYTHON` to a Python interpreter with FontTools/Brotli.
+The suite verifies consumer-aware fallback selection and reports actual native
+image capabilities separately; selecting an SVG fallback is not a JPEG XL
+conformance pass. For this conformance work, execute browser/unit tests on GitHub,
+not on the developer's Mac.
 
 ### Approved features and local simulation controls
 
