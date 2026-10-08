@@ -34,7 +34,7 @@ function selected(mode) {
 
 test("full matrix preserves every legacy protected file invocation, including intentional duplicates", () => {
   assert.deepEqual(selected("full").flatMap(group => group.steps.flatMap(step => step.files)).sort(),
-    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl"].sort());
+    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
   assert.equal(core.length, 54);
@@ -49,6 +49,10 @@ test("approved reader polish runs in protected CI without optional original-publ
     assert.ok(args.includes(`${file}.spec.ts`), file);
   }
   assert.ok(!args.includes("--grep"));
+});
+
+test("packaged frame isolation and bounded recursion run in protected resource validation", () => {
+  assert.ok(browserArguments("resources")[0].args.includes("packaged-frames.spec.ts"));
 });
 
 test("selection preserves focused modes and rejects unknown modes and groups", () => {

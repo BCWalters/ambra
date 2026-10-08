@@ -11,6 +11,18 @@ afterEach(() => {
 });
 
 describe("native resource capability probes", () => {
+  it.each([
+    ["application/xhtml+xml", true],
+    ["image/svg+xml", true],
+    ["text/html", false],
+    ["application/pdf", false],
+    ["image/png", false],
+  ])("limits packaged document support for %s to %s", async (type, supported) => {
+    const bytes = vi.fn(read);
+    expect(await capabilities.supports(type, "document", bytes, new AbortController().signal)).toBe(supported);
+    expect(bytes).not.toHaveBeenCalled();
+  });
+
   it.each(["image/avif", "image/jxl", "image/png", "image/svg+xml"])(
     "uses the image consumer decoder for %s and revokes its probe URL",
     async (type) => {
