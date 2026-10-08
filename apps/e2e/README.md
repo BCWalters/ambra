@@ -23,8 +23,10 @@ new release score.
 The shared launcher waits for a committed reading host, not just an iframe or
 the absence of a delayed loading indicator. RTL fixtures declare progression
 in the EPUB package rather than mutating parsed metadata. Physical reading
-signatures exclude hidden staging and estimator frames, including frames
-hidden by an ancestor.
+signatures wait for idle navigation/animation and use only the committed host's
+documents, excluding outgoing animation, staging, and estimator frames
+(including frames hidden by an ancestor). Launcher lifecycle tests cover both
+the committed-host readiness gate and profile cleanup if that gate fails.
 
 Several real, user-reported bugs in this codebase's history were things no
 unit test could have caught, because they were about actual browser
