@@ -507,6 +507,13 @@ panel coordinator. Do not remove or force them into a generic panel incidentally
 Existing image/table viewers, footnotes, selection controls, Go to, welcome,
 errors, importing and Save as need a parity review, not speculative redesign.
 
+### Spread gutter
+
+Use a broad, symmetric, low-opacity shadow rather than a narrow dark crease.
+The reflowable spread gutter remains 40px wide; visual tuning must not change
+column widths, pagination, hit testing, or the inert center navigation zone.
+Check the result in light, sepia, and dark reading themes.
+
 ### First-reading margin guide
 
 The approved guide extends the existing reading welcome in every build,

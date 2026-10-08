@@ -503,6 +503,7 @@ test("EPUB anchor links share top-level history, while popup footnotes and broke
     ).toBeVisible();
     expect((await location(page)).length).toBe(a.length);
     expect((await location(page)).visual).toBe(a.visual);
+    await page.getByRole("alert").getByRole("button", { name: "Dismiss", exact: true }).click();
     const sameOrigin = await clickLink("Same chapter");
     await ready(page);
     const b = await location(page);

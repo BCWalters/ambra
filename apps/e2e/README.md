@@ -7,6 +7,27 @@ and can't observe real layout, paint, or interaction timing at all).
 
 ## Why this exists
 
+Reader polish regressions live in `tests/reader-error-recovery.spec.ts` (both
+blocking error surfaces, persistent navigation failures, usable Contents,
+previous-page dismissal, keyboard recovery, and same-tab Library navigation)
+and `tests/default-progression.spec.ts` (language-derived RTL, explicit
+overrides, physical page-number/scrubber direction, spread geometry, controls,
+reopening, and resize). The former has an opt-in original malformed-XML check:
+set `AMBRA_XML_NAMES_EPUB` to the pinned `pub-xml-names.epub`. The latter also
+has an opt-in source-bound check: set `AMBRA_DEFAULT_PROGRESSION_EPUB` to the
+original `pkg-spine-progression-default.epub` from the pinned assessment suite.
+Without that external publication, only that original-book check is skipped.
+These regressions do not rewrite historical assessment results or promote a
+new release score.
+
+The shared launcher waits for a committed reading host, not just an iframe or
+the absence of a delayed loading indicator. RTL fixtures declare progression
+in the EPUB package rather than mutating parsed metadata. Physical reading
+signatures wait for idle navigation/animation and use only the committed host's
+documents, excluding outgoing animation, staging, and estimator frames
+(including frames hidden by an ancestor). Launcher lifecycle tests cover both
+the committed-host readiness gate and profile cleanup if that gate fails.
+
 Several real, user-reported bugs in this codebase's history were things no
 unit test could have caught, because they were about actual browser
 rendering/interaction behavior, not engine logic:

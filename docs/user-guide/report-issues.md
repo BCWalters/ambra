@@ -24,6 +24,18 @@ For a feature request, explain the reading task you want to accomplish, what mak
 
 ## Share diagnostics carefully
 
+If a book or chapter cannot open, its friendly error stays visible instead of
+disappearing. The reader toolbar and Table of Contents remain available so you
+can try another chapter. If navigation failed after a page was already open,
+**Dismiss** returns to that previous page. Choose **Open library** to return to
+your books in the same tab. The error details and **Copy diagnostics** remain
+available before you leave; returning to the Library does not retry the failed
+book. If the publication itself could not open, only Library recovery is available.
+
+A failed layout or text-setting change keeps the readable page available and
+shows a temporary notice instead. It does not replace or dismiss an existing
+chapter error.
+
 **Help & About** offers a copy control for environment information or, when opened in the reader, reader diagnostics. Diagnostics are not sent automatically. They describe recent activity and can contain book details, paths, reading positions, and error information; the recent-event history resets when the reader reloads.
 
 **Do not post private books, notes, credentials, or full diagnostics without reviewing them.** Remove personal information, private passages, sensitive filenames or paths, and anything you do not have permission to share. Review screenshots and annotation exports too. The same care applies when sending email; do not assume email is a safe place for an unreviewed book or report.

@@ -17,6 +17,23 @@ function luminance(color: number[]) {
   return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
 }
 
+it.each(["ltr", "rtl"] as const)("places page numbers in physical %s order without reversing their values", pageProgressionDirection => {
+  const snapshot = {
+    pageTheme: "white", chromeTheme: "silver", viewMode: "paginated", isFixedLayout: false,
+    isSpread: true, paneWidth: 1400, pageProgressionDirection,
+    bookmarkedPages: [], title: "Publication", currentChapterLabel: "Chapter",
+    bookPageIndex: 7, bookPageCount: 20, spreadPageNumbers: [7, 8],
+  } as unknown as ReaderSnapshot;
+  const root = document.createElement("div");
+  root.innerHTML = renderToStaticMarkup(<PageFurniture snapshot={snapshot} chromeVisible={false} />);
+  const folios = [...root.querySelectorAll("span")].filter(span => /^Page \d+$/.test(span.textContent ?? ""));
+  expect(folios.map(span => span.textContent)).toEqual(
+    pageProgressionDirection === "rtl" ? ["Page 8", "Page 7"] : ["Page 7", "Page 8"],
+  );
+  expect(folios[0]?.parentElement?.style.left).toBe("0px");
+  expect(folios[1]?.parentElement?.style.right).toBe("0px");
+});
+
 it.each(["white", "sepia", "dark"] as const)("keeps static/animated furniture and themed bookmarks readable on %s pages", pageTheme => {
   const page = ReadingTheme.PAGE_THEMES[pageTheme];
   const pageLuminance = luminance(rgb(page.background));

@@ -295,12 +295,18 @@ test("a failed boundary load retains the current document and allows retry", asy
     await page.evaluate(() => {
       const controller = Reflect.get(window, "__readerController");
       Reflect.set(window, "__boundaryOriginalLoad", controller.contentLoader.loadContentDocument);
+      Reflect.set(window, "__boundaryRetainedHost", controller.host);
       controller.contentLoader.loadContentDocument = async () => { throw new Error("Boundary load test failure"); };
     });
     await next.focus();
     await next.press("Enter");
     await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").isLoadInFlight)).toBe(false);
+    await expect(page.getByRole("alert")).toContainText("Boundary load test failure");
+    await page.getByRole("alert").getByRole("button", { name: "Dismiss", exact: true }).click();
     expect(await focusedSpine(page)).toBe(0);
+    expect(await page.evaluate(() =>
+      Reflect.get(window, "__readerController").host === Reflect.get(window, "__boundaryRetainedHost"))).toBe(true);
+    await next.focus();
     await expect(next).toBeFocused();
     await page.evaluate(() => {
       const controller = Reflect.get(window, "__readerController");

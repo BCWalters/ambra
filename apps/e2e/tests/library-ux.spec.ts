@@ -172,7 +172,8 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
   test("focused-book Delete confirms before removing a book", async () => {
     const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
-      const cover = libraryPage.getByRole("button", { name: `Open ${LONG_CONTENT_TITLE}`, exact: true });
+      // The modal hides the unchanged collection from the accessibility tree.
+      const cover = libraryPage.getByRole("button", { name: `Open ${LONG_CONTENT_TITLE}`, exact: true, includeHidden: true });
       await expect(cover).toBeVisible();
       await cover.press("Delete");
       const confirm = libraryPage.getByRole("alertdialog");

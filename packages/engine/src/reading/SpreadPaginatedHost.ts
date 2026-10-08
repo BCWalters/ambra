@@ -39,7 +39,7 @@ export class SpreadPaginatedHost {
       flexShrink: "0",
       alignSelf: "stretch",
       background:
-        "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.06) 46%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.06) 54%, transparent 100%)",
+        "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.025) 25%, rgba(0,0,0,0.055) 50%, rgba(0,0,0,0.025) 75%, transparent 100%)",
     });
     this.containerEl = doc.createElement("div");
     Object.assign(this.containerEl.style, {

@@ -73,16 +73,31 @@ for (const direction of ["ltr", "rtl"]) {
   });
 }
 
+async function settled(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const controller = Reflect.get(window, "__readerController");
+    return controller.host && !controller.isLoadInFlight && !controller.isTurningPage &&
+      !controller.isApplyingLayout && !controller.pendingLayout &&
+      !controller.snapshot().isAnimatingPageTurn;
+  });
+}
+
 async function signature(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
-      .filter((frame) => getComputedStyle(frame).visibility !== "hidden")
+  await settled(page);
+  return page.evaluate(() => {
+    const documents = new Set<Document>(
+      Reflect.get(window, "__readerController").contentDocumentViews()
+        .map((view: { document: Document }) => view.document),
+    );
+    return Array.from(document.querySelectorAll("iframe"))
+      .filter((frame) => frame.contentDocument && documents.has(frame.contentDocument) &&
+        frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
       .sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x)
       .map((frame) => {
         const doc = frame.contentDocument!;
         return `${doc.querySelector("h1")?.textContent}:${doc.body.style.transform}`;
-      }),
-  );
+      });
+  });
 }
 
 for (const width of [760, 1400]) {
@@ -93,7 +108,7 @@ for (const width of [760, 1400]) {
       });
       const key = async (value: string) => {
         await page.keyboard.press(value);
-        await page.waitForTimeout(550);
+        await settled(page);
       };
       try {
         if (style !== "slide") {
@@ -109,6 +124,7 @@ for (const width of [760, 1400]) {
           (frame as HTMLIFrameElement).contentDocument!.body.focus();
         });
         const initial = await signature(page);
+        expect(initial).toHaveLength(width === 1400 ? 2 : 1);
         // The EPUB prose remains LTR; progression only mirrors page placement.
         expect(
           await page.evaluate(() =>
@@ -144,10 +160,10 @@ for (const width of [760, 1400]) {
         await key("Shift+Space");
         expect(await signature(page)).toEqual(initial);
         await clickReadingPage(page, "left");
-        await page.waitForTimeout(550);
+        await settled(page);
         expect(await signature(page)).toEqual(next);
         await clickReadingPage(page, "right");
-        await page.waitForTimeout(550);
+        await settled(page);
         expect(await signature(page)).toEqual(initial);
 
         // Swipe right is forward in RTL. Dispatch touch pointer events to
@@ -169,7 +185,7 @@ for (const width of [760, 1400]) {
             doc.dispatchEvent(event("pointermove", 700));
             doc.dispatchEvent(event("pointerup", 700));
           });
-        await page.waitForTimeout(650);
+        await settled(page);
         expect(await signature(page)).toEqual(next);
         await key("ArrowRight");
         expect(await signature(page)).toEqual(initial);
@@ -183,12 +199,12 @@ for (const width of [760, 1400]) {
         const slider = page.getByRole("slider", { name: "Position in book" });
         await slider.focus();
         await slider.press("End");
-        await page.waitForTimeout(700);
+        await settled(page);
         const box = await slider.boundingBox();
         expect(box).not.toBeNull();
         // Physical right edge seeks to the start in RTL.
         await page.mouse.click(box!.x + box!.width - 1, box!.y + box!.height / 2);
-        await page.waitForTimeout(700);
+        await settled(page);
         expect(await signature(page)).toEqual(initial);
       } finally {
         await context.close();

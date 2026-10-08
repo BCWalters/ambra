@@ -51,7 +51,7 @@ function setUp(mode: Mode, commonFirst = true) {
     width: 900,
     height: 700,
     operations: { disposed: false, begin: vi.fn(() => operation), owns: () => true },
-    pkg: { spine: [{ manifestItem: { path: "book.xhtml" } }], pageProgressionDirection: "ltr" },
+    pkg: { spine: [{ manifestItem: { path: "book.xhtml" } }], effectivePageProgressionDirection: "ltr" },
     contentPointerActivityId: 0,
     contentDocumentViews: () => views,
     allContentDocuments: () => [doc],
@@ -314,7 +314,7 @@ describe("content clicks dismiss chrome before navigating", () => {
 
   it("retains RTL navigation after consuming a fixed-layout tap", () => {
     const { controller, margin } = setUp("fixed");
-    controller.pkg.pageProgressionDirection = "rtl";
+    controller.pkg.effectivePageProgressionDirection = "rtl";
     controller.setUpDragPageTurn();
     controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
     tap(margin.target, margin.x);

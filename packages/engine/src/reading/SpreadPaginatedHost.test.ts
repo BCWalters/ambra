@@ -8,6 +8,19 @@ import { SpreadPaginatedHost } from "./SpreadPaginatedHost.js";
 
 afterEach(() => vi.restoreAllMocks());
 
+describe("spread gutter presentation", () => {
+  it("uses a softer symmetric shadow without changing column geometry", () => {
+    const host = new SpreadPaginatedHost(1400, 900);
+    const divider = host.element.children[1] as HTMLElement;
+    expect(divider.style.width).toBe(`${SpreadPaginatedHost.GUTTER_WIDTH}px`);
+    expect(SpreadPaginatedHost.effectiveColumnWidth(1400)).toBe(680);
+    expect(divider.style.background.replace(/\s/g, "")).toBe(
+      "linear-gradient(90deg,transparent0%,rgba(0,0,0,0.025)25%,rgba(0,0,0,0.055)50%,rgba(0,0,0,0.025)75%,transparent100%)",
+    );
+    host.dispose();
+  });
+});
+
 async function resizeFixture(crossChapter = false, paired = true) {
   vi.spyOn(PaginatedContentHost.prototype, "open").mockImplementation(async function (this: PaginatedContentHost) {
     const doc = document.implementation.createHTMLDocument();

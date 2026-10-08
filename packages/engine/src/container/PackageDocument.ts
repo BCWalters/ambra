@@ -57,9 +57,8 @@ export type RenditionOrientation = "portrait" | "landscape" | "auto";
  * synthetic spread — see `SpineItemRef.pageSpread` and
  * `FixedLayoutSpreadPlanner`. `"default"` (the OPF default, spec-wise
  * equivalent to omitting the attribute entirely) lets the reading system
- * choose; this engine treats it identically to `"ltr"`, the overwhelmingly
- * common case for the vast majority of scripts/books that don't declare
- * this attribute at all. */
+ * choose using the publication language; the resolved value is exposed
+ * separately as `effectivePageProgressionDirection`. */
 export type PageProgressionDirection = "ltr" | "rtl" | "default";
 
 /** One of the three mutually-exclusive `page-spread-*` spine itemref
@@ -434,6 +433,7 @@ export const NCX_MEDIA_TYPE = "application/x-dtbncx+xml";
 
 export class PackageDocument {
   private readonly manifestById: ReadonlyMap<string, ManifestItem>;
+  public readonly effectivePageProgressionDirection: "ltr" | "rtl";
 
   private constructor(
     public readonly metadata: PackageMetadata,
@@ -455,6 +455,25 @@ export class PackageDocument {
     public readonly guide: readonly GuideReference[] = [],
   ) {
     this.manifestById = new Map(manifestItems.map((item) => [item.id, item]));
+    this.effectivePageProgressionDirection = pageProgressionDirection === "default"
+      ? PackageDocument.defaultProgressionDirection(metadata.language)
+      : pageProgressionDirection;
+  }
+
+  private static defaultProgressionDirection(language: string): "ltr" | "rtl" {
+    try {
+      const locale: Intl.Locale & {
+        getTextInfo?: () => { direction: "ltr" | "rtl" };
+        readonly textInfo?: { direction: "ltr" | "rtl" };
+      } = new Intl.Locale(language);
+      const direction = locale.getTextInfo?.().direction ?? locale.textInfo?.direction;
+      if (direction === "ltr" || direction === "rtl") return direction;
+      console.warn("Locale text direction is unavailable; using LTR page progression.");
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      console.warn(`Invalid publication language "${language}"; using LTR page progression.`);
+    }
+    return "ltr";
   }
 
   public get manifest(): readonly ManifestItem[] {

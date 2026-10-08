@@ -41,6 +41,9 @@ class StubContext extends EventEmitter {
   public preferenceSeedCount = 0;
   public preferenceSeedFailure: Error | undefined;
   public readerReadinessFailure: Error | undefined;
+  public hostReadinessFailure: Error | undefined;
+  public controllerInspections = 0;
+  public readonly hostReadinessChecks: { expression: string; options: { timeout: number } }[] = [];
   public pageSubscribedBeforeOpen = false;
   public readonly readinessChecks: ReadinessCheck[] = [];
   public readonly input = new Locator();
@@ -48,6 +51,11 @@ class StubContext extends EventEmitter {
     url: () => "chrome-extension://test/src/reader/index.html",
     waitForURL: async () => {},
     waitForLoadState: async () => {},
+    evaluate: async () => { this.controllerInspections++; },
+    waitForFunction: async (callback: () => boolean, _argument: undefined, options: { timeout: number }) => {
+      this.hostReadinessChecks.push({ expression: callback.toString(), options });
+      if (this.hostReadinessFailure) throw this.hostReadinessFailure;
+    },
     getByRole: (role: string) => {
       if (this.readerReadinessFailure) throw this.readerReadinessFailure;
       return new Locator(`getByRole(${JSON.stringify(role)})`, this.readinessChecks);
@@ -124,6 +132,12 @@ test("successful context close removes only its own unique profile outside runne
   const { context } = await launchReader("unused.epub");
   expect(harness.context.preferenceSeedCount).toBe(1);
   expect(harness.context.pageSubscribedBeforeOpen).toBe(true);
+  expect(harness.context.controllerInspections).toBe(1);
+  expect(harness.context.hostReadinessChecks).toHaveLength(1);
+  expect(harness.context.hostReadinessChecks[0]!.options).toEqual({ timeout: 20_000 });
+  for (const gate of ["hasRenderedContent", "isLoadInFlight", "isApplyingLayout", "pendingLayout"]) {
+    expect(harness.context.hostReadinessChecks[0]!.expression).toContain(gate);
+  }
   expect(harness.context.readinessChecks).toMatchObject([
     {
       selector: 'getByRole("main").locator("iframe").first()',
@@ -169,6 +183,16 @@ test("reader-readiness failure closes the context and removes its profile", asyn
   harness.context.readerReadinessFailure = failure;
   await expect(launchReader("unused.epub")).rejects.toBe(failure);
   expect(harness.context.pageSubscribedBeforeOpen).toBe(true);
+  expect(harness.context.closeCount).toBe(1);
+  expect(fs.existsSync(harness.profiles[0]!)).toBe(false);
+});
+
+test("committed-host readiness failure closes the context and removes its profile", async ({ harness }) => {
+  const failure = new Error("Reading host never committed");
+  harness.context.hostReadinessFailure = failure;
+  await expect(launchReader("unused.epub")).rejects.toBe(failure);
+  expect(harness.context.controllerInspections).toBe(1);
+  expect(harness.context.hostReadinessChecks).toHaveLength(1);
   expect(harness.context.closeCount).toBe(1);
   expect(fs.existsSync(harness.profiles[0]!)).toBe(false);
 });

@@ -62,7 +62,7 @@ describe("ReaderController layout-only focus", () => {
     await controller.reopenForCurrentSize();
     expect(controller.locatorResolver.generate).toHaveBeenCalledWith(3, node, 7);
     expect(controller.openSpineItem).toHaveBeenCalledWith(3, {
-      bridgeCfi: "saved-position", preserveFocus: true,
+      bridgeCfi: "saved-position", preserveFocus: true, preserveReadingError: true,
     });
     expect(document.activeElement).toBe(control);
   });
@@ -78,7 +78,7 @@ describe("ReaderController layout-only focus", () => {
     expect(document.activeElement).toBe(element);
     await controller.reopenForCurrentSize();
     expect(controller.openSpineItem).toHaveBeenCalledWith(3, {
-      bridgeCfi: "saved-position", preserveFocus: false,
+      bridgeCfi: "saved-position", preserveFocus: false, preserveReadingError: true,
     });
   });
 
@@ -88,7 +88,7 @@ describe("ReaderController layout-only focus", () => {
     await controller.reopenForCurrentSize();
     expect(controller.locatorResolver.generate).toHaveBeenCalledWith(4, node, 12);
     expect(controller.openSpineItem).toHaveBeenCalledWith(4, {
-      bridgeCfi: "saved-position", preserveFocus: false,
+      bridgeCfi: "saved-position", preserveFocus: false, preserveReadingError: true,
     });
   });
 
@@ -98,7 +98,7 @@ describe("ReaderController layout-only focus", () => {
     await controller.reopenForCurrentSize(undefined, true);
     expect(controller.locatorResolver.generate).toHaveBeenCalledWith(3, node, 12);
     expect(controller.openSpineItem).toHaveBeenCalledWith(3, {
-      bridgeCfi: "saved-position", preserveFocus: false, preservePageBoundaries: true,
+      bridgeCfi: "saved-position", preserveFocus: false, preserveReadingError: true, preservePageBoundaries: true,
     });
   });
 
