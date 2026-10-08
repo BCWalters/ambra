@@ -5,6 +5,7 @@ import { applyActiveHighlightRange, applyHighlightRanges, applySearchMatchRanges
 import type { HighlightRangeEntry } from "./HighlightOverlap.js";
 import { findTextRangesInDocument } from "./findTextRangesInDocument.js";
 import type { ActiveHighlightState, NoteMarkerState, SelectionToolbarState } from "./ReaderTypes.js";
+import { visiblePageBounds } from "./VisiblePageBounds.js";
 
 /** What `HighlightInteraction` needs from `ReaderController`.
  * `activeHighlight`/`selectionToolbar`/`pendingSelectionRange` stay
@@ -132,7 +133,7 @@ export class HighlightInteraction {
         return;
       }
       const iframeRect = iframeEl.getBoundingClientRect();
-      const bounds = HighlightInteraction.visiblePageBounds(iframeEl, iframeRect.height);
+      const bounds = visiblePageBounds(iframeEl, iframeRect.height);
       for (const highlight of highlights) {
         if (highlight.note === undefined) {
           continue;
@@ -167,30 +168,13 @@ export class HighlightInteraction {
     this.markers = markers;
   }
 
-  /** The current page's visible vertical band, read off the iframe's
-   * `clip-path` (set by `PaginatedContentHost.showCurrentPage`) —
-   * falls back to the iframe's full box when there's no `clip-path`
-   * (continuous-scroll mode, or mid page-turn-animation). */
-  private static visiblePageBounds(iframeEl: HTMLIFrameElement, iframeHeight: number): { top: number; bottom: number } {
-    const clipPath = iframeEl.style.clipPath;
-    const numbers = Array.from(clipPath.matchAll(/(-?[\d.]+)px/g)).map((m) => Number(m[1]));
-    if (numbers.length === 0) {
-      return { top: 0, bottom: iframeHeight };
-    }
-    // 1-value: all sides equal. 2-value: [top/bottom, right/left].
-    // 3-value: [top, right/left, bottom]. 4-value: [top, right, bottom, left].
-    const top = numbers[0]!;
-    const bottom = numbers.length === 1 ? numbers[0]! : numbers.length === 2 ? numbers[0]! : numbers[2]!;
-    return { top, bottom: iframeHeight - bottom };
-  }
-
   private static visibleSelectionRect(range: Range, iframeEl: HTMLIFrameElement): {
     left: number; right: number; top: number; bottom: number;
   } | undefined {
     const frame = iframeEl.getBoundingClientRect();
     const viewport = iframeEl.ownerDocument.defaultView;
     if (!viewport) return undefined;
-    const page = HighlightInteraction.visiblePageBounds(iframeEl, frame.height);
+    const page = visiblePageBounds(iframeEl, frame.height);
     const bounds = {
       left: Math.max(0, -frame.left),
       right: Math.min(frame.width, viewport.innerWidth - frame.left),
