@@ -46,18 +46,17 @@ for (const { width, scale, justify } of [
         <p class="edge-end" style="text-align:left;margin:20px 0">End.</p>
         <button style="display:block;width:100%;height:30px">A publication control</button>
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" style="display:block;margin-left:auto"><rect width="32" height="32" fill="blue"/></svg>
-      </section>`);
+      </section>`, rtl ? "rtl" : "ltr");
     const { context, readerPage: page } = await launchReader(book, { viewport: { width, height: 900 } });
     try {
       await exposeReaderController(page);
-      await page.evaluate(async ({ rtl, scale }) => {
+      await page.evaluate(async scale => {
         const c = Reflect.get(window, "__readerController");
-        c.pkg.pageProgressionDirection = rtl ? "rtl" : "ltr";
         await c.setPageTurnAnimationStyle("none");
         await c.setFontScale(scale);
         await c.setContentWidth(44);
         await c.openSpineItem(0, { landOnPageIndex: 2 });
-      }, { rtl, scale });
+      }, scale);
       await settle(page);
       const geometry = await page.evaluate(() => {
         const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"))
@@ -154,16 +153,15 @@ for (const { width, scale, justify } of [
 for (const width of [360, 1100]) for (const rtl of [false, true]) {
   test(`${width}px ${rtl ? "RTL" : "LTR"}: wider edges navigate through the full-height reading pane`, async () => {
     const book = navigationFixture(test.info(), [12], (_chapter, index) =>
-      `<section style="height:600px;break-inside:avoid"><p>Original passage ${index}.</p></section>`);
+      `<section style="height:600px;break-inside:avoid"><p>Original passage ${index}.</p></section>`, rtl ? "rtl" : "ltr");
     const { context, readerPage: page } = await launchReader(book, { viewport: { width, height: 900 } });
     try {
       await exposeReaderController(page);
-      await page.evaluate(async rtl => {
+      await page.evaluate(async () => {
         const c = Reflect.get(window, "__readerController");
-        c.pkg.pageProgressionDirection = rtl ? "rtl" : "ltr";
         await c.setPageTurnAnimationStyle("none");
         await c.openSpineItem(0, { landOnPageIndex: 4 });
-      }, rtl);
+      });
       await settle(page);
       await observeTurns(page);
       const toolbar = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ }).locator("..");
@@ -211,17 +209,16 @@ for (const width of [360, 1100]) for (const rtl of [false, true]) {
 
 for (const rtl of [false, true]) {
   test(`single ${rtl ? "RTL" : "LTR"}: content beyond the expanded bands stays inert`, async () => {
-    const { context, readerPage: page } = await launchReader(navigationFixture(test.info(), [8]), {
+    const { context, readerPage: page } = await launchReader(navigationFixture(test.info(), [8], undefined, rtl ? "rtl" : "ltr"), {
       viewport: { width: 800, height: 900 },
     });
     try {
       await exposeReaderController(page);
-      await page.evaluate(async rtl => {
+      await page.evaluate(async () => {
         const c = Reflect.get(window, "__readerController");
-        c.pkg.pageProgressionDirection = rtl ? "rtl" : "ltr";
         await c.setPageTurnAnimationStyle("none");
         await c.openSpineItem(0, { landOnPageIndex: 2 });
-      }, rtl);
+      });
       await settle(page);
       const bounds = await page.evaluate(() => {
         const frame = document.querySelector("iframe")!;

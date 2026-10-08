@@ -5230,10 +5230,15 @@ export class ReaderController {
       const message = err instanceof Error ? err.message : String(err);
       if (this.operations.owns(operation)) {
         this.queuedTurn = undefined;
-        // A failed replacement leaves the previous host visible; only
-        // the very first load can leave the reader with nothing shown.
-        this.setNotification(message, this.host ? "navigationFailed" : "blocking");
-        this.errorDetail = undefined;
+        // Layout failures retain readable content and must not replace
+        // an earlier chapter error; only a first load leaves a blank reader.
+        if (!options.preserveReadingError ||
+          (this.errorSeverity !== "blocking" && this.errorSeverity !== "navigationFailed")) {
+          const severity = !this.host ? "blocking"
+            : options.preserveReadingError ? "transient" : "navigationFailed";
+          this.setNotification(message, severity);
+          this.errorDetail = undefined;
+        }
         this.diagnostics.record(
           `openSpineItem ERROR spineIndex=${spineIndex} message=${message} severity=${this.errorSeverity}`,
         );

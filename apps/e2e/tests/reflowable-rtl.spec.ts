@@ -76,7 +76,8 @@ for (const direction of ["ltr", "rtl"]) {
 async function signature(page: Page): Promise<string[]> {
   return page.evaluate(() =>
     Array.from(document.querySelectorAll("iframe"))
-      .filter((frame) => getComputedStyle(frame).visibility !== "hidden")
+      .filter((frame) => frame.closest('main, [role="main"]') &&
+        frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }))
       .sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x)
       .map((frame) => {
         const doc = frame.contentDocument!;

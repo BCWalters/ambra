@@ -9,6 +9,7 @@ export function navigationFixture(
   info: TestInfo,
   chapterPages: number[],
   renderPage?: (chapter: number, page: number) => string,
+  direction?: "ltr" | "rtl",
 ): string {
   const source = info.outputPath("navigation-source");
   fs.mkdirSync(path.join(source, "META-INF"), { recursive: true });
@@ -17,7 +18,7 @@ export function navigationFixture(
   fs.writeFileSync(path.join(source, "META-INF/container.xml"),
     `<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`);
   fs.writeFileSync(path.join(source, "EPUB/package.opf"),
-    `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:ambra:navigation-${chapterPages.join("-")}</dc:identifier><dc:title>Navigation boundaries</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">2026-09-23T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${chapterPages.map((_, i) => `<item id="c${i}" href="c${i}.xhtml" media-type="application/xhtml+xml" properties="svg"/>`).join("")}</manifest><spine>${chapterPages.map((_, i) => `<itemref idref="c${i}"/>`).join("")}</spine></package>`);
+    `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:ambra:navigation-${chapterPages.join("-")}</dc:identifier><dc:title>Navigation boundaries</dc:title><dc:language>en</dc:language><meta property="dcterms:modified">2026-09-23T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${chapterPages.map((_, i) => `<item id="c${i}" href="c${i}.xhtml" media-type="application/xhtml+xml" properties="svg"/>`).join("")}</manifest><spine${direction ? ` page-progression-direction="${direction}"` : ""}>${chapterPages.map((_, i) => `<itemref idref="c${i}"/>`).join("")}</spine></package>`);
   fs.writeFileSync(path.join(source, "EPUB/nav.xhtml"),
     `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol>${chapterPages.map((_, i) => `<li><a href="c${i}.xhtml">Chapter ${i + 1}</a></li>`).join("")}</ol></nav></body></html>`);
   chapterPages.forEach((count, chapter) => {

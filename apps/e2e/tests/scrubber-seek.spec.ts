@@ -367,15 +367,16 @@ test("failed chapter loads and rejected seeks restore actual position with a vis
     await settled(page);
     await expect(slider).toHaveAttribute("aria-valuenow", before!);
     await expect(
-      page.getByRole("status").filter({ hasText: "Chapter load failed for scrubber regression" }),
+      page.getByRole("alert").filter({ hasText: "Chapter load failed for scrubber regression" }),
     ).toBeVisible();
+    await page.getByRole("alert").getByRole("button", { name: "Dismiss", exact: true }).click();
     await page.evaluate(() => {
       const controller = Reflect.get(window, "__scrubberController");
-      controller.dismissError();
       controller.seekToFraction = async () => {
         throw new Error("Seek rejected for scrubber regression");
       };
     });
+    await slider.focus();
     await slider.press("End");
     await expect(slider).toHaveAttribute("aria-valuenow", before!);
     await expect(

@@ -134,6 +134,12 @@ export async function launchReader(
       timeout: 20_000,
     });
     await expect(readerPage.getByRole("progressbar")).toHaveCount(0, { timeout: 20_000 });
+    await exposeReaderController(readerPage);
+    await readerPage.waitForFunction(() => {
+      const controller = Reflect.get(window, "__readerController");
+      return controller.snapshot().hasRenderedContent &&
+        !controller.isLoadInFlight && !controller.isApplyingLayout && !controller.pendingLayout;
+    }, undefined, { timeout: 20_000 });
     if (options.firstReadingWelcome) {
       await expect(readerPage.locator('.reading-welcome[role="dialog"]')).toBeVisible();
     }
@@ -175,7 +181,7 @@ export async function clickForwardAndWait(
   const before = await currentPageLabel(readerPage);
   await exposeReaderController(readerPage);
   const rtl = await readerPage.evaluate(() =>
-    Reflect.get(window, "__readerController").pkg.pageProgressionDirection === "rtl");
+    Reflect.get(window, "__readerController").snapshot().pageProgressionDirection === "rtl");
   await clickReadingPage(readerPage, rtl ? "left" : "right");
   const start = Date.now();
   let after = before;
