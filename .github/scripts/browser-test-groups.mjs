@@ -75,7 +75,7 @@ export const browserGroups = [
     codecs: true,
     steps: [
       step("epub-resources", [
-        "css-resources", "primary-reading-order", "resource-fallbacks", "resource-policy",
+        "css-resources", "primary-reading-order", "resource-fallbacks", "resource-policy", "packaged-frames",
         "navigation-accessibility-conformance", "cfi-recovery-conformance",
         "svg-spine", "reader-shortcuts-help", "inspector-docking", "narration-discovery",
       ]),

@@ -23,7 +23,7 @@ export class UnsupportedResourceError extends ResourceResolutionError {
   public constructor(
     public readonly path: string,
     public readonly consumer: ResourceConsumer,
-    public readonly reason: "exhausted" | "missing-target" | "cycle" | "policy",
+    public readonly reason: "exhausted" | "missing-target" | "cycle" | "policy" | "depth-limit",
     public readonly chain: readonly string[],
   ) {
     super(
@@ -52,11 +52,16 @@ export class ResourceFallbackSelector {
     return () => this.listeners.delete(listener);
   }
 
-  public reportUnavailable(path: string, consumer: ResourceConsumer): void {
+  public reportUnavailable(
+    path: string,
+    consumer: ResourceConsumer,
+    reason: UnsupportedResourceError["reason"] = "policy",
+    chain: readonly string[] = [],
+  ): void {
     const key = resourceResolutionKey(path, consumer);
     if (this.notified.has(key)) return;
     this.notified.add(key);
-    const error = new UnsupportedResourceError(path, consumer, "policy", []);
+    const error = new UnsupportedResourceError(path, consumer, reason, chain);
     console.warn(error.message);
     for (const listener of this.listeners) listener(error);
   }

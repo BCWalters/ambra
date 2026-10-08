@@ -31,8 +31,8 @@ export class BrowserResourceCapabilities implements ResourceCapabilities {
     signal: AbortSignal,
   ): Promise<boolean> {
     signal.throwIfAborted();
-    if (consumer === "document") return false;
     const type = mediaType.split(";")[0]!.trim().toLowerCase();
+    if (consumer === "document") return type === "application/xhtml+xml" || type === "image/svg+xml";
     if (consumer === "auto") {
       consumer = FONT_TYPES.has(type) ? "font" : type === "text/css" ? "stylesheet" : "image";
     }

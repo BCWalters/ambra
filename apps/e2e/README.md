@@ -32,6 +32,16 @@ passing historical timing-conformance verdict. A passage spanning several
 pages is followed at the start of its authored SMIL target; without finer
 authored timing, this does not infer word-level page turns within one clip.
 
+Packaged-frame regressions in `tests/packaged-frames.spec.ts` cover static XHTML
+and SVG children, rewritten CSS/imports/images, opaque origins, disabled scripts,
+retained dimensions, recoverable child failures, cycles, and the eight-level
+nesting limit. Set `AMBRA_NESTED_FRAME_EPUB_DIR` to the local folder containing
+`scr-not-support_ccscript-modify-host.epub` and
+`scr-not-support_ccscript-modify-size.epub` to include both original W3C books.
+Without that folder, only the two external-book probes are skipped. The original
+static messages load; their disabled scripting probes are not executed. Neither
+these regressions nor the generated fixtures change the frozen 3.0.0 assessment.
+
 The shared launcher waits for a committed reading host, not just an iframe or
 the absence of a delayed loading indicator. RTL fixtures declare progression
 in the EPUB package rather than mutating parsed metadata. Physical reading

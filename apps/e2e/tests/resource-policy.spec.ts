@@ -218,10 +218,15 @@ for (const svg of [false, true]) {
       const state = await page.evaluate(() => {
         const controller = Reflect.get(window, "__readerController");
         const doc: Document = controller.contentDocumentViews()[0].document;
+        const packagedFrame = doc.getElementById("blocked-frame");
         return {
-          blocked: ["blocked-file", "blocked-data", "blocked-protocol", "blocked-frame"].map((id) =>
+          blocked: ["blocked-file", "blocked-data", "blocked-protocol"].map((id) =>
             doc.getElementById(id)?.getAttribute("src"),
           ),
+          packagedFrame: doc.getElementById("blocked-frame")?.getAttribute("src"),
+          sandbox: doc.getElementById("blocked-frame")?.getAttribute("sandbox"),
+          isolated: packagedFrame instanceof doc.defaultView!.HTMLIFrameElement &&
+            packagedFrame.contentDocument === null,
           srcdoc: doc.getElementById("blocked-frame")?.getAttribute("srcdoc"),
           links: ["file", "data", "unsupported"].map((id) =>
             doc.getElementById(id)?.getAttribute("href"),
@@ -231,7 +236,10 @@ for (const svg of [false, true]) {
           symbolWidth: doc.querySelector<SVGUseElement>("#use")!.getBBox().width,
         };
       });
-      expect(state.blocked).toEqual([null, null, null, null]);
+      expect(state.blocked).toEqual([null, null, null]);
+      expect(state.packagedFrame).toMatch(/^blob:/);
+      expect(state.sandbox).toBe("");
+      expect(state.isolated).toBe(true);
       expect(state.srcdoc).toBeNull();
       expect(state.links).toEqual(["#", "#", "#"]);
       expect(state.background).toBe("none");
