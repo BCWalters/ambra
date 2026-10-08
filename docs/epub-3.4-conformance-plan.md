@@ -302,6 +302,26 @@ verified this experimental Chromium mechanism; no cross-browser guarantee is
 claimed. This does not implement external SVG graphs,
 unique publication origins, or scripting.
 
+A subsequent 3.1 implementation supports static packaged XHTML/SVG iframe
+documents, including their packaged CSS, images and nested frames. Each child
+has an empty sandbox (no scripting or same-origin privilege), a restrictive
+required CSP, and no referrer; authored `srcdoc` and sandbox privileges are
+removed. Document fallback selection, missing/malformed-child notices and
+cycle detection preserve the readable host. Nesting is limited to eight child
+levels, each expanded child document/resource to 8 MiB, and the shared child
+assembly budget to 32 MiB, including reserved policy/reset overhead.
+
+Opaque children cannot consume extension-origin blob dependencies. Their
+prepared dependencies use internally generated data URLs instead. The main
+required/meta CSP therefore permits blob and data resource sources, while the
+child policy permits only data sources; Chromium otherwise inherits the main
+policy and blocks those dependencies. Scripts, remote fetches, plugins, forms
+and base URLs remain denied. Author-supplied data/file/remote resource references
+are still rejected during assembly, not enabled by this internal representation.
+Native regressions cover both original static iframe messages and generated
+resource/isolation cases; they do not execute the unsupported scripting probes,
+prove unique publication origins, or rewrite the frozen assessment.
+
 HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
 Legacy `xml:base` is a separate unsupported compatibility surface:
 [EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)

@@ -17,21 +17,5 @@ export async function loadAssembledSpineItem(
   options: { applyReadingTheme?: boolean } = {},
 ): Promise<string> {
   const spineDoc = await contentLoader.loadSpineDocument(spineIndex);
-  const references = contentLoader.findResourceReferences(spineDoc, { includeUnavailable: true });
-  const resourceResolutions = await resolver.resolveReferences(references);
-  const publisherCss = new Map<string, string>();
-  for (const style of Array.from(spineDoc.document.querySelectorAll("style"))) {
-    const source = style.textContent ?? "";
-    publisherCss.set(source, await resolver.rewriteCss(source, spineDoc.manifestItem.path));
-  }
-  const publisherStyleAttributes = new Map<string, string>();
-  for (const element of Array.from(spineDoc.document.querySelectorAll("[style]"))) {
-    const source = element.getAttribute("style")!;
-    publisherStyleAttributes.set(
-      source, await resolver.rewriteCss(source, spineDoc.manifestItem.path, true),
-    );
-  }
-  return ContentDocumentAssembler.assemble(spineDoc, new Map(), {
-    ...options, publisherCss, publisherStyleAttributes, resourceResolutions,
-  });
+  return ContentDocumentAssembler.prepare(spineDoc, resolver, options);
 }

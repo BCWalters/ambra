@@ -1,13 +1,17 @@
 import type { ContentDocument } from "../content/ContentLoader.js";
-import { findResourceReferencesInDocument } from "../content/ContentLoader.js";
+import { ContentLoaderError, findResourceReferencesInDocument } from "../content/ContentLoader.js";
 import { EPUB_CSS_RESET } from "./EpubCssReset.js";
 import { ReadingTheme } from "./ReadingTheme.js";
 import { HighlightTheme } from "./HighlightTheme.js";
 import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
-import type { ResolvedResource } from "./ResourceUrlResolver.js";
+import type { ResolvedResource, ResourceUrlResolver } from "./ResourceUrlResolver.js";
 import { classifyEpubReference, externalNavigationUrl } from "../container/EpubReference.js";
 import { getNamespacedAttributeName } from "../container/Xml.js";
-import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
+import { CONTENT_SECURITY_POLICY, NESTED_CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
+
+export const MAX_NESTED_DOCUMENT_BYTES = 8 * 1024 * 1024;
+export const MAX_NESTED_RESOURCE_BYTES = 32 * 1024 * 1024;
+export interface NestedResourceBudget { remaining: number }
 
 /**
  * Assembles a self-contained, sandboxed-iframe-ready XHTML document from a
@@ -22,6 +26,54 @@ import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
  * assembly steps under one clear, discoverable name.
  */
 export class ContentDocumentAssembler {
+  public static async prepare(
+    contentDocument: ContentDocument,
+    resolver: ResourceUrlResolver,
+    options: { applyReadingTheme?: boolean; nestedDocument?: boolean } = {},
+    documentAncestors: ReadonlySet<string> = new Set(),
+    budget: NestedResourceBudget = { remaining: MAX_NESTED_RESOURCE_BYTES },
+  ): Promise<string> {
+    const path = contentDocument.manifestItem.path;
+    const ancestors = new Set([...documentAncestors, path]);
+    const references = findResourceReferencesInDocument(
+      contentDocument.document, path, { includeUnavailable: true },
+    );
+    const nested = options.nestedDocument ?? false;
+    if (nested && contentDocument.rawText.length > MAX_NESTED_DOCUMENT_BYTES) {
+      throw new ContentLoaderError(`Packaged child document exceeds the ${MAX_NESTED_DOCUMENT_BYTES}-byte limit: ${path}`);
+    }
+    const resourceResolutions = await resolver.resolveReferences(references, ancestors, nested, budget);
+    const publisherCss = new Map<string, string>();
+    for (const style of Array.from(contentDocument.document.querySelectorAll("style"))) {
+      const source = style.textContent ?? "";
+      publisherCss.set(source, await resolver.rewriteCss(source, path, false, new Set(), nested, budget));
+    }
+    const publisherStyleAttributes = new Map<string, string>();
+    for (const element of Array.from(contentDocument.document.querySelectorAll("[style]"))) {
+      const source = element.getAttribute("style")!;
+      publisherStyleAttributes.set(source, await resolver.rewriteCss(source, path, true, new Set(), nested, budget));
+    }
+    if (nested) {
+      let expandedBytes = new TextEncoder().encode(contentDocument.rawText).byteLength + 16_384;
+      for (const reference of references) {
+        expandedBytes += resourceResolutions.get(resourceResolutionKey(reference.path, reference.consumer))?.url.length ?? 0;
+      }
+      for (const style of Array.from(contentDocument.document.querySelectorAll("style"))) {
+        expandedBytes += publisherCss.get(style.textContent ?? "")?.length ?? 0;
+      }
+      for (const element of Array.from(contentDocument.document.querySelectorAll("[style]"))) {
+        expandedBytes += publisherStyleAttributes.get(element.getAttribute("style")!)?.length ?? 0;
+      }
+      if (expandedBytes > MAX_NESTED_DOCUMENT_BYTES || expandedBytes > budget.remaining) {
+        throw new ContentLoaderError(`Packaged child resources exceed the bounded assembly budget: ${path}`);
+      }
+      budget.remaining -= expandedBytes;
+    }
+    return this.assemble(contentDocument, new Map(), {
+      ...options, publisherCss, publisherStyleAttributes, resourceResolutions,
+    });
+  }
+
   /** `resourceUrls` maps archive-relative resource paths (as produced by
    * `ContentLoader.findResourceReferences`) to their `blob:` URLs, e.g.
    * from `ResourceUrlResolver.resolveAll`. References with no entry in the
@@ -37,6 +89,7 @@ export class ContentDocumentAssembler {
       publisherCss?: ReadonlyMap<string, string>;
       publisherStyleAttributes?: ReadonlyMap<string, string>;
       resourceResolutions?: ReadonlyMap<string, ResolvedResource | null>;
+      nestedDocument?: boolean;
     } = {},
   ): string {
     // Re-parse from the original raw text rather than cloning
@@ -44,7 +97,12 @@ export class ContentDocumentAssembler {
     // to mutate — the original parsed document is left untouched for other
     // consumers (e.g. future CFI resolution) that need pristine hrefs.
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
-    for (const frame of Array.from(doc.querySelectorAll("iframe[srcdoc]"))) frame.removeAttribute("srcdoc");
+    for (const frame of Array.from(doc.querySelectorAll("iframe"))) {
+      frame.removeAttribute("srcdoc");
+      frame.setAttribute("sandbox", "");
+      frame.setAttribute("csp", NESTED_CONTENT_SECURITY_POLICY);
+      frame.setAttribute("referrerpolicy", "no-referrer");
+    }
     for (const anchor of Array.from(doc.querySelectorAll("a"))) {
       const attribute = anchor.hasAttribute("href") ? "href"
         : getNamespacedAttributeName(anchor, "http://www.w3.org/1999/xlink", "href");
@@ -63,6 +121,10 @@ export class ContentDocumentAssembler {
     for (const reference of references.reverse()) {
       const resolution = options.resourceResolutions?.get(resourceResolutionKey(reference.path, reference.consumer));
       const { element, attributeName, attributeRange, candidateRange } = reference;
+      if (element.localName === "iframe" && !resolution?.isolatedDocument) {
+        element.removeAttribute(attributeName);
+        continue;
+      }
       if (resolution === null) {
         const value = element.getAttribute(attributeName)!;
         if (candidateRange) {
@@ -117,7 +179,7 @@ export class ContentDocumentAssembler {
       if (rewritten !== undefined) element.setAttribute("style", rewritten);
     }
 
-    injectContentSecurityPolicy(doc);
+    injectContentSecurityPolicy(doc, options.nestedDocument ? NESTED_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY);
     injectCssReset(doc);
     // Reading theme (typography, margins, colors) applies to reflowable
     // content only, never fixed-layout — see `ReadingTheme`'s doc comment.
@@ -132,7 +194,7 @@ export class ContentDocumentAssembler {
   }
 }
 
-function injectContentSecurityPolicy(doc: Document): void {
+function injectContentSecurityPolicy(doc: Document, policy: string): void {
   const head = doc.getElementsByTagName("head")[0];
   if (!head) {
     return;
@@ -140,7 +202,7 @@ function injectContentSecurityPolicy(doc: Document): void {
 
   const meta = doc.createElement("meta");
   meta.setAttribute("http-equiv", "Content-Security-Policy");
-  meta.setAttribute("content", CONTENT_SECURITY_POLICY);
+  meta.setAttribute("content", policy);
   head.insertBefore(meta, head.firstChild);
 }
 

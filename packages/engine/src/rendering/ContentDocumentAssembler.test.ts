@@ -7,6 +7,7 @@ import { ContentDocument, ContentLoader } from "../content/ContentLoader.js";
 import { ContentDocumentAssembler } from "./ContentDocumentAssembler.js";
 import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
 import type { ResolvedResource } from "./ResourceUrlResolver.js";
+import { CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
 
 async function loadFixture(name: string): Promise<Uint8Array> {
   const buffer = await readFile(
@@ -72,7 +73,7 @@ describe("ContentDocumentAssembler", () => {
       expect(images[1]!.getAttribute("srcset")).toBe("data:image/png;base64,AAAA 1x, blob:photo 2x, missing.png 3x");
       expect(images[2]!.getAttribute("srcset")).toBe("https://example.test/images/photo.png 1x, blob:a-longer-double-image-url 2x");
       expect(output.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content"))
-        .toContain("img-src blob:;");
+        .toBe(CONTENT_SECURITY_POLICY);
     }
     expect(original.querySelector("img")?.getAttribute("srcset")).toBe("images/photo.png 1x,  images/double.png#view 2x");
     expect(doc.rawText).toBe(raw);
@@ -87,6 +88,41 @@ describe("ContentDocumentAssembler", () => {
     // The assembler re-parses from rawText rather than mutating doc.document.
     const img = doc.document.querySelector("img");
     expect(img?.getAttribute("src")).toBe("images/photo.png");
+  });
+
+  it("loads only assembled nested documents and overrides author sandbox, srcdoc and referrer settings", async () => {
+    const fixture = await loader.loadSpineDocument(0);
+    const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Nested</title></head><body>
+      <iframe id="safe" width="500" height="70" src="child.xhtml#text"
+        sandbox="allow-scripts allow-same-origin allow-top-navigation" referrerpolicy="unsafe-url"
+        srcdoc="&lt;script&gt;parent.injected=true&lt;/script&gt;"/>
+      <iframe id="raw" src="raw.xhtml"/>
+      <iframe id="blocked" src="https://example.test/frame"/>
+    </body></html>`;
+    const original = new DOMParser().parseFromString(raw, "application/xhtml+xml");
+    const source = new ContentDocument(fixture.manifestItem, original, raw);
+    const output = new DOMParser().parseFromString(ContentDocumentAssembler.assemble(
+      source, new Map([["OEBPS/raw.xhtml", "blob:unassembled"]]), {
+        resourceResolutions: new Map([
+          [resourceResolutionKey("OEBPS/child.xhtml", "document"), {
+            path: "OEBPS/child.xhtml", url: "blob:assembled", mediaType: "application/xhtml+xml", isolatedDocument: true,
+          }],
+        ]),
+      },
+    ), "text/html");
+    const frame = output.getElementById("safe")!;
+    expect(frame.getAttribute("src")).toBe("blob:assembled#text");
+    expect(frame.getAttribute("width")).toBe("500");
+    expect(frame.getAttribute("height")).toBe("70");
+    for (const child of Array.from(output.querySelectorAll("iframe"))) {
+      expect(child.getAttribute("sandbox")).toBe("");
+      expect(child.getAttribute("csp")).toContain("script-src 'none'");
+      expect(child.getAttribute("referrerpolicy")).toBe("no-referrer");
+      expect(child.hasAttribute("srcdoc")).toBe(false);
+    }
+    expect(output.getElementById("raw")!.hasAttribute("src")).toBe(false);
+    expect(output.getElementById("blocked")!.hasAttribute("src")).toBe(false);
+    expect(original.getElementById("safe")!.getAttribute("sandbox")).toContain("allow-scripts");
   });
 
   it("rewrites consumer-specific fallbacks, MIME hints and fragments while removing exhausted srcset candidates", async () => {
