@@ -62,7 +62,7 @@ describe("FriendlyError notification lifetime", () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
-  it.each(["blocking", "actionFailed"] as const)("does not auto-dismiss %s errors", (severity) => {
+  it.each(["blocking", "navigationFailed", "actionFailed"] as const)("does not auto-dismiss %s errors", (severity) => {
     render();
     render({ severity });
     act(() => vi.advanceTimersByTime(16000));
@@ -84,5 +84,32 @@ describe("FriendlyError notification lifetime", () => {
     expect(paragraphs[1]?.style.fontSize).toBe("12px");
     expect(paragraphs[1]?.style.overflowWrap).toBe("anywhere");
     expect(container.querySelector('[tabindex="-1"]')).toBe(document.activeElement);
+  });
+
+  it("offers a direct library link on blocking errors while preserving diagnostics and initial focus", () => {
+    render({ severity: "blocking", libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab" });
+    const link = container.querySelector("a");
+    expect(link?.textContent).toBe("Open library");
+    expect(link?.getAttribute("href")).toBe("chrome-extension://ambra/src/library/index.html?view=tab");
+    expect(link?.getAttribute("target")).toBeNull();
+    expect(container.querySelector("button")?.textContent).toBe("Copy diagnostics");
+    expect(container.querySelector('[tabindex="-1"]')).toBe(document.activeElement);
+  });
+
+  it("keeps navigation errors centered below reader chrome with library and dismissal recovery", () => {
+    render({ severity: "navigationFailed", libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab" });
+    const alert = container.querySelector<HTMLElement>('[role="alert"]')!;
+    expect(alert.style.inset).toBe("0");
+    expect(alert.style.zIndex).toBe("5");
+    expect(alert.textContent).toContain("snickerdoodles");
+    expect(alert.querySelector("a")?.textContent).toBe("Open library");
+    const dismiss = [...alert.querySelectorAll("button")].find(button => button.textContent === "Dismiss")!;
+    act(() => dismiss.click());
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it.each(["transient", "actionFailed", "info"] as const)("does not add a library action to %s notifications", severity => {
+    render({ severity, libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab" });
+    expect(container.querySelector("a")).toBeNull();
   });
 });

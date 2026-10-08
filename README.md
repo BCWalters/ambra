@@ -21,13 +21,16 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [3.0.0 release checklist](store-assets/RELEASE-3.0.0.md).
+and the [3.0.1 release checklist](store-assets/RELEASE-3.0.1.md).
+Version 3.0.1 improves reader error recovery, softens the spread gutter and
+infers default page progression from the publication language, including RTL
+page numbering and progress controls.
 Version 3.0.0 marks the start of Ambra's official EPUB conformance improvement
 effort, not a claim of full conformance. The
 [initial conformance report](docs/epub-conformance.md) publishes the measured
 baseline, manual self-assessment, known failures and unresolved cases.
-Version 2.0.0 was last confirmed live by the owner; verify the current dashboard
-version before uploading. Preparing a package does not mean it has been
+The owner reported 3.0.0 complete; verify the current dashboard version and
+review state before uploading 3.0.1. Preparing a package does not mean it has been
 uploaded, submitted or published.
 
 ## Structure

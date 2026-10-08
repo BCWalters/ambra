@@ -61,6 +61,7 @@ vi.mock("./components/ProgressScrubber.js", () => ({
   ProgressScrubber: (props: ProgressScrubberProps) =>
     <>
       <button data-testid="seek" onClick={() => void props.onSeek(0.3)}>Seek</button>
+      <button data-testid="seek-error" onClick={() => props.onSeekError(new Error("Unreadable seek destination"))}>Seek failure</button>
       <button data-testid="bookmark-chooser" data-dismiss-request={props.bookmarkChooserDismissRequest}
         onClick={() => props.onBookmarkChooserOpenChange(true)}>Bookmark chooser</button>
       <button data-testid="show-bookmarks" onClick={props.onShowBookmarks}>Show all bookmarks</button>
@@ -178,6 +179,35 @@ it("uses book preparation copy before the first snapshot", async () => {
   await act(async () => root.render(<ReaderApp />));
   expect(container.textContent).toContain("Getting your book ready…");
   expect(container.textContent).not.toContain("Loading…");
+});
+
+it.each(["blocking", "navigationFailed"] as const)("keeps chrome and Library recovery available during %s errors", async errorSeverity => {
+  vi.useFakeTimers();
+  try {
+    bridge.snapshot = { ...bridge.snapshot!, error: "Unreadable chapter", errorSeverity };
+    await act(async () => root.render(<ReaderApp />));
+    await act(async () => vi.advanceTimersByTime(10000));
+    expect(chromeVisible()).toBe(true);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("snickerdoodles");
+    expect(container.querySelector('[role="alert"] a')?.getAttribute("href")).toBe(
+      "chrome-extension://test/src/library/index.html?view=tab",
+    );
+    const toc = container.querySelector<HTMLButtonElement>('[data-testid="toolbar"] button')!;
+    await act(async () => toc.click());
+    expect(container.querySelector('[data-ambra-reference-panel="toc"]')).not.toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("does not resurrect a scrubber toast after recovering from its persistent reading error", async () => {
+  bridge.snapshot = { ...bridge.snapshot!, error: "Unreadable seek destination", errorSeverity: "navigationFailed" };
+  await act(async () => root.render(<ReaderApp />));
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="seek-error"]')!.click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("snickerdoodles");
+  bridge.snapshot = { ...bridge.snapshot, error: undefined, errorSeverity: undefined };
+  await act(async () => root.render(<ReaderApp />));
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
 it("automatically exposes paused read-along without autoplay, focus stealing, or a discovery notice", async () => {

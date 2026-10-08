@@ -224,8 +224,9 @@ export interface ReaderSnapshot {
   loadingPhase?: "opening" | "navigating";
   error: string | undefined;
   errorNotificationId: number;
-  /** "blocking" (nothing readable on screen), "transient" (a navigation
-   * failed but the previous content is still shown, auto-dismisses),
+  /** "blocking" (nothing readable on screen), "navigationFailed" (a
+   * persistent reading error with the previous page available on dismissal),
+   * "transient" (a nonblocking action failed, auto-dismisses),
    * "actionFailed" (a reader-initiated action, e.g. an annotation
    * import, produced nothing usable — weightier than "transient" and
    * doesn't auto-dismiss, since silently timing out on a deliberate
@@ -233,7 +234,7 @@ export interface ReaderSnapshot {
    * acknowledgement, e.g. "you already had all of these annotations" —
    * see issue #115 — same quiet placement/timing as "transient" but
    * without its "that didn't work" framing, since nothing failed). */
-  errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
+  errorSeverity: "blocking" | "navigationFailed" | "transient" | "actionFailed" | "info" | undefined;
   /** A smaller, de-emphasized technical detail shown alongside `error`
    * for "actionFailed" errors — see issue #119. */
   errorDetail: string | undefined;

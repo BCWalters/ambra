@@ -10,6 +10,7 @@ const core = [
     "book-metadata-display", "library-card-focus", "toolbar-startup",
     "reader-preferences", "reader-library", "reader-back-to-library",
     "page-turn-viewport", "outer-margin-navigation",
+    "reader-error-recovery", "default-progression", "reflowable-rtl",
   ],
   [
     "settings-focus", "settings-ownership", "settings-lifecycle", "single-page-setting",

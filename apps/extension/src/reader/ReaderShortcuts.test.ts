@@ -179,7 +179,7 @@ it("preserves precise native companion position through mode changes and does no
   await controller.setViewMode("scroll");
   expect(controller.locatorResolver.generate).toHaveBeenCalledWith(0, first.body, 0);
   expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(0, {
-    bridgeCfi: "native-companion-cfi", preserveFocus: false,
+    bridgeCfi: "native-companion-cfi", preserveFocus: false, preserveReadingError: true,
   });
   await controller.setViewMode("scroll");
   expect(controller.openSpineItem).toHaveBeenCalledTimes(1);

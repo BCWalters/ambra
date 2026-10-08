@@ -11,7 +11,7 @@ import { ErrorDetails } from "../../components/ErrorDetails.js";
  * long enough to read a short message and, if wanted, click "Copy
  * diagnostics", short enough not to linger as visual clutter over
  * content the reader has likely already resumed reading (the previous
- * chapter is still shown underneath — see `ReaderSnapshot.errorSeverity`'s
+ * page is still shown underneath — see `ReaderSnapshot.errorSeverity`'s
  * doc comment). */
 const TRANSIENT_AUTO_DISMISS_MS = 8000;
 
@@ -26,17 +26,17 @@ export interface FriendlyErrorProps {
    * always be the primary text a reader sees, with anything genuinely
    * technical demoted rather than hidden entirely. */
   detail?: string;
-  /** "blocking" shows the full illustrated card (nothing else is on
-   * screen to read); "transient" shows a small, quieter toast in the
-   * corner, since the reader still has their previous page in front of
-   * them and isn't actually stuck — see issue #27: these two situations
-   * shouldn't look equally alarming. "actionFailed" is a third size in
+  /** "blocking" shows the full illustrated card; "navigationFailed"
+   * uses the same persistent card but can be dismissed to the previous
+   * page. Both leave reader chrome usable. "transient" shows a small,
+   * quieter toast for nonblocking action failures. "actionFailed" is a size in
    * between: same corner placement as "transient", but with its own
    * illustration and headline, and — critically — no auto-dismiss (see
    * issue #114). "info" is a non-error acknowledgement: same placement/
    * timing as "transient", but without its "that didn't work" framing,
    * since nothing actually failed (see issue #115). */
-  severity: "blocking" | "transient" | "actionFailed" | "info";
+  severity: "blocking" | "navigationFailed" | "transient" | "actionFailed" | "info";
+  libraryHref?: string;
   onDismiss: () => void;
   /** Returns the current diagnostics trail (see `DiagnosticsLog`) plus
    * basic reader state, ready to copy to the clipboard — `undefined` if
@@ -60,6 +60,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   notificationId,
   detail,
   severity,
+  libraryHref,
   onDismiss,
   getDiagnosticsText,
 }) => {
@@ -82,21 +83,12 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   }, [severity, message, notificationId]);
 
 
-  // Moves keyboard focus onto the card itself for a "blocking" error —
-  // unlike "transient" (a small toast over content that's still there
-  // and still focused), a blocking error *replaces* the entire reading
-  // surface, so whatever previously had focus (the content iframe, a
-  // toolbar button) may no longer even exist. Without this, a keyboard
-  // or screen reader user has no obvious landing spot at all. `role`
-  // below (`alert`/`status`) means both cases are also announced the
-  // instant they appear regardless of focus — this is the *additional*
-  // step of giving a keyboard user something concrete to land on and Tab
-  // onward from.
+  // Focus the persistent reading error without disabling the reader chrome.
   useEffect(() => {
-    if (severity === "blocking") {
+    if (severity === "blocking" || severity === "navigationFailed") {
       headingRef.current?.focus();
     }
-  }, [severity]);
+  }, [severity, notificationId]);
 
   const copyDiagnostics = (): void => {
     const text = getDiagnosticsText();
@@ -109,14 +101,14 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
     });
   };
 
-  if (severity === "blocking") {
+  if (severity === "blocking" || severity === "navigationFailed") {
     return (
       <div
         role="alert"
         style={{
           position: "absolute",
           inset: 0,
-          zIndex: 15,
+          zIndex: 5,
           background: chromeTheme.backgroundSolid,
           display: "flex",
           flexDirection: "column",
@@ -136,9 +128,21 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         <ErrorDetails style={{ maxWidth: 360 }}>
           {message}
         </ErrorDetails>
-        <Button appearance="outline" size="small" onClick={copyDiagnostics}>
-          {copied ? "Copied!" : "Copy diagnostics"}
-        </Button>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
+          {libraryHref && (
+            <Button as="a" href={libraryHref} appearance="primary" size="small">
+              {t("library.openLibrary")}
+            </Button>
+          )}
+          <Button appearance="outline" size="small" onClick={copyDiagnostics}>
+            {copied ? "Copied!" : "Copy diagnostics"}
+          </Button>
+          {severity === "navigationFailed" && (
+            <Button appearance="subtle" size="small" onClick={onDismiss}>
+              {t("library.dismiss")}
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

@@ -7,7 +7,7 @@ import { ReaderOperations } from "./ReaderOperation.js";
 function setup(rtl = false) {
   const controller = Object.create(ReaderController.prototype);
   Object.assign(controller, {
-    pkg: { pageProgressionDirection: rtl ? "rtl" : "ltr" },
+    pkg: { effectivePageProgressionDirection: rtl ? "rtl" : "ltr" },
     marginSide: (_doc: Document, x: number, _y: number, parentX = x) =>
       outerMarginSide(parentX, [{ left: 40, right: 760 }]),
     turnPage: vi.fn(),

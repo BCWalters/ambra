@@ -7,6 +7,19 @@ and can't observe real layout, paint, or interaction timing at all).
 
 ## Why this exists
 
+Reader polish regressions live in `tests/reader-error-recovery.spec.ts` (both
+blocking error surfaces, persistent navigation failures, usable Contents,
+previous-page dismissal, keyboard recovery, and same-tab Library navigation)
+and `tests/default-progression.spec.ts` (language-derived RTL, explicit
+overrides, physical page-number/scrubber direction, spread geometry, controls,
+reopening, and resize). The former has an opt-in original malformed-XML check:
+set `AMBRA_XML_NAMES_EPUB` to the pinned `pub-xml-names.epub`. The latter also
+has an opt-in source-bound check: set `AMBRA_DEFAULT_PROGRESSION_EPUB` to the
+original `pkg-spine-progression-default.epub` from the pinned assessment suite.
+Without that external publication, only that original-book check is skipped.
+These regressions do not rewrite historical assessment results or promote a
+new release score.
+
 Several real, user-reported bugs in this codebase's history were things no
 unit test could have caught, because they were about actual browser
 rendering/interaction behavior, not engine logic:

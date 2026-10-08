@@ -267,7 +267,7 @@ export class ReaderController {
   });
   private error: string | undefined;
   private errorNotificationId = 0;
-  private errorSeverity: "blocking" | "transient" | "actionFailed" | "info" | undefined;
+  private errorSeverity: ReaderSnapshot["errorSeverity"];
   /** A smaller, de-emphasized technical detail shown alongside `error`
    * for "actionFailed" errors — e.g. the raw underlying exception
    * message, for anyone who wants it, without it being the primary
@@ -329,7 +329,7 @@ export class ReaderController {
   private popupFocusRevision = 0;
   private readonly highlightInteraction: HighlightInteraction;
   private readonly pageTurnAnimator = new PageTurnAnimator({
-    rtl: () => this.pkg.pageProgressionDirection === "rtl",
+    rtl: () => this.pkg.effectivePageProgressionDirection === "rtl",
     containerEl: () => this.containerEl,
     height: () => this.height,
     pageTheme: () => this.pageTheme,
@@ -338,7 +338,7 @@ export class ReaderController {
   });
   private readonly pageTurnOrchestrator = new PageTurnOrchestrator(
     {
-      rtl: () => this.pkg.pageProgressionDirection === "rtl",
+      rtl: () => this.pkg.effectivePageProgressionDirection === "rtl",
       containerEl: () => this.containerEl,
       height: () => this.height,
       width: () => this.width,
@@ -790,7 +790,7 @@ export class ReaderController {
           this.host instanceof SpreadPaginatedHost ? this.host.secondPageIndex : undefined,
         isPrimaryPageMergedTail:
           this.host instanceof SpreadPaginatedHost ? this.host.isShowingMergedTail : false,
-        pageProgressionDirection: this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr",
+        pageProgressionDirection: this.pkg.effectivePageProgressionDirection,
         spreadPageNumbers:
           this.host instanceof SpreadPaginatedHost
             ? [this.host.positions.first, this.host.positions.second].map((position) =>
@@ -941,8 +941,8 @@ export class ReaderController {
         this.operations.finish(resumeOperation);
         this.isLoading = false;
         this.isLoadInFlight = false;
-        this.reportTransientError(new Error("The publication has no primary reading order."),
-          "open", "primary reading order");
+        this.setNotification("The publication has no primary reading order.", "blocking");
+        this.notify();
         return;
       }
       await this.openSpineItem(first);
@@ -950,7 +950,7 @@ export class ReaderController {
     const cfi = this.currentReadingCfi();
     if (cfi) this.readingHistory?.start(cfi);
 
-    if (this.pendingNavigationLoadError) {
+    if (this.pendingNavigationLoadError && !this.error) {
       const message = this.pendingNavigationLoadError;
       this.pendingNavigationLoadError = undefined;
       this.setNotification(
@@ -960,7 +960,7 @@ export class ReaderController {
       this.errorDetail = undefined;
       this.notify();
     }
-    if (this.pendingNavigationRecoveryNotice) {
+    if (this.pendingNavigationRecoveryNotice && !this.error) {
       this.pendingNavigationRecoveryNotice = false;
       this.setNotification(this.translate("reader.navigationRecovered"), "info");
       this.notify();
@@ -1681,7 +1681,7 @@ export class ReaderController {
         // Preserve Space's native viewport scroll in continuous-scroll mode.
         {
           interceptSpace: !(this.host instanceof ScrollContentHost),
-          pageProgressionDirection: this.pkg.pageProgressionDirection,
+          pageProgressionDirection: this.pkg.effectivePageProgressionDirection,
           keyboardHandler: (event, document) => this.handleShortcut(event, document, "content"),
         },
       );
@@ -1710,7 +1710,7 @@ export class ReaderController {
   private updateBoundaryShortcutHints(): void {
     const shortcut = this.shortcutPreferences.enabled
       ? getCommandBindings("nextSection", this.shortcutPlatform,
-        this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr")
+        this.pkg.effectivePageProgressionDirection)
         .map(binding => ariaShortcut(binding, this.shortcutPlatform)).join(" ")
       : undefined;
     for (const view of this.contentDocumentViews()) setContentBoundaryShortcut(view.document, shortcut);
@@ -1720,7 +1720,7 @@ export class ReaderController {
     const command = matchReaderCommand(event, document, {
       preferences: this.shortcutPreferences,
       platform: this.shortcutPlatform,
-      direction: this.pkg.pageProgressionDirection === "rtl" ? "rtl" : "ltr",
+      direction: this.pkg.effectivePageProgressionDirection,
       viewMode: this.host instanceof ScrollContentHost ? "scroll" : "paginated",
       scope,
       modalOpen: this.shortcutModalOpen || !!this.imageViewer || !!this.tableViewer,
@@ -1771,7 +1771,7 @@ export class ReaderController {
   }
 
   private physicalDirection(direction: 1 | -1): 1 | -1 {
-    return this.pkg.pageProgressionDirection === "rtl" ? (direction === 1 ? -1 : 1) : direction;
+    return this.pkg.effectivePageProgressionDirection === "rtl" ? (direction === 1 ? -1 : 1) : direction;
   }
 
   private globalArrowKeyCleanup: (() => void) | undefined;
@@ -1789,7 +1789,7 @@ export class ReaderController {
         get interceptSpace() {
           return interceptSpace();
         },
-        pageProgressionDirection: this.pkg.pageProgressionDirection,
+        pageProgressionDirection: this.pkg.effectivePageProgressionDirection,
         keyboardHandler: (event, document) => this.handleShortcut(event, document, "shell"),
       },
     );
@@ -2421,7 +2421,7 @@ export class ReaderController {
       const planned = FixedLayoutSpreadPlanner.spreadContaining(
         this.pkg.spine,
         this.pkg.metadata.renditionLayout,
-        this.pkg.pageProgressionDirection,
+        this.pkg.effectivePageProgressionDirection,
         this.fixedSpreadViewport(width),
         this.spineIndex,
       );
@@ -2487,7 +2487,7 @@ export class ReaderController {
       !this.host?.element.contains(activeElement),
     );
     await this.openSpineItem(spineIndex, {
-      bridgeCfi, preserveFocus,
+      bridgeCfi, preserveFocus, preserveReadingError: true,
       ...(preservePageBoundaries ? { preservePageBoundaries: true } : {}),
     });
     // A panel can close after the rebuild captured its shell focus. Its
@@ -2848,6 +2848,11 @@ export class ReaderController {
     severity: NonNullable<ReaderSnapshot["errorSeverity"]>,
     detail?: string,
   ): void {
+    if ((severity === "transient" || severity === "info") &&
+      (this.errorSeverity === "blocking" || this.errorSeverity === "navigationFailed")) {
+      this.diagnostics.record(`Nonblocking notification while reading error remains visible: ${message}`);
+      return;
+    }
     this.errorNotificationId++;
     this.error = message;
     this.errorSeverity = severity;
@@ -2862,6 +2867,15 @@ export class ReaderController {
   }
 
   public reportActionFailure(error: unknown): void {
+    if (!this.host && !this.operations.disposed) {
+      this.isLoading = false;
+      this.isLoadInFlight = false;
+      const message = error instanceof Error ? error.message : String(error);
+      this.diagnostics.record(`Reader opening failed: ${message}`);
+      this.setNotification(message, "blocking");
+      this.notify();
+      return;
+    }
     this.reportTransientError(error, "update", "the reader");
   }
 
@@ -3171,14 +3185,14 @@ export class ReaderController {
         ? FixedLayoutSpreadPlanner.nextSpread(
             this.pkg.spine,
             this.pkg.metadata.renditionLayout,
-            this.pkg.pageProgressionDirection,
+            this.pkg.effectivePageProgressionDirection,
             viewport,
             currentSpread,
           )
         : FixedLayoutSpreadPlanner.previousSpread(
             this.pkg.spine,
             this.pkg.metadata.renditionLayout,
-            this.pkg.pageProgressionDirection,
+            this.pkg.effectivePageProgressionDirection,
             viewport,
             currentSpread,
           );
@@ -3575,7 +3589,7 @@ export class ReaderController {
   ): Promise<SpreadPaginatedHost> {
     operation.check();
     const host = new SpreadPaginatedHost(this.width, this.height);
-    host.setProgressionDirection(this.pkg.pageProgressionDirection);
+    host.setProgressionDirection(this.pkg.effectivePageProgressionDirection);
     Object.assign(host.element.style, {
       position: "absolute",
       top: "0",
@@ -4881,6 +4895,8 @@ export class ReaderController {
       /** Narration follows without moving keyboard focus or announcing every chapter. */
       automatic?: boolean;
       preserveFocus?: boolean;
+      /** Layout rebuilds must not dismiss a reading error from failed navigation. */
+      preserveReadingError?: boolean;
       history?: "jump" | "restore";
     } = {},
   ): Promise<boolean> {
@@ -4899,9 +4915,12 @@ export class ReaderController {
     const operation = this.operations.begin();
     if (options.automatic) this.narrationOperation = operation;
     this.isTurningPage = false;
-    this.error = undefined;
-    this.errorSeverity = undefined;
-    this.errorDetail = undefined;
+    if (!options.preserveReadingError ||
+      (this.errorSeverity !== "blocking" && this.errorSeverity !== "navigationFailed")) {
+      this.error = undefined;
+      this.errorSeverity = undefined;
+      this.errorDetail = undefined;
+    }
     this.isLoadInFlight = true;
     const openingSize = { width: this.width, height: this.height };
     // Only show the loading spinner for slower loads. `finished`
@@ -4963,7 +4982,7 @@ export class ReaderController {
           const spread = FixedLayoutSpreadPlanner.spreadContaining(
             this.pkg.spine,
             this.pkg.metadata.renditionLayout,
-            this.pkg.pageProgressionDirection,
+            this.pkg.effectivePageProgressionDirection,
             this.fixedSpreadViewport(),
             spineIndex,
           );
@@ -5213,7 +5232,7 @@ export class ReaderController {
         this.queuedTurn = undefined;
         // A failed replacement leaves the previous host visible; only
         // the very first load can leave the reader with nothing shown.
-        this.setNotification(message, this.host ? "transient" : "blocking");
+        this.setNotification(message, this.host ? "navigationFailed" : "blocking");
         this.errorDetail = undefined;
         this.diagnostics.record(
           `openSpineItem ERROR spineIndex=${spineIndex} message=${message} severity=${this.errorSeverity}`,

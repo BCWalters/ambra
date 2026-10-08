@@ -5,7 +5,7 @@ import { useBrowserAppearance } from "@ambra/shell";
 import { FixedContentHost, ReadingTheme } from "@ambra/engine";
 import type { HighlightStyle } from "@ambra/engine";
 import { LibraryDatabase } from "../library/LibraryDatabase.js";
-import { readerTabUrl } from "../navigation.js";
+import { libraryFullTabUrl, readerTabUrl } from "../navigation.js";
 import { LiveRegion } from "./components/LiveRegion.js";
 import { Toolbar } from "./components/Toolbar.js";
 import type { ReaderToolbarMenu } from "./components/Toolbar.js";
@@ -350,8 +350,13 @@ const ReaderAppInner: FC = () => {
   // whenever any flyout panel (either side) is open — all are "pinned"
   // reasons to keep the chrome from auto-hiding out from under an open
   // panel.
+  const hasReadingError = snapshot?.errorSeverity === "blocking" || snapshot?.errorSeverity === "navigationFailed";
+  const activeSeekError = hasReadingError ? undefined : seekError;
+  useEffect(() => {
+    if (hasReadingError) setSeekError(undefined);
+  }, [hasReadingError, seekError]);
   const { visible: chromeVisible, handlers: chromeHandlers, dismissForContent, hide: hideChrome } = useAutoHideChrome(
-    hasReferencePanel || help.view !== undefined || bookmarkChooserOpen,
+    hasReferencePanel || help.view !== undefined || bookmarkChooserOpen || hasReadingError,
     snapshot?.contentPointerActivityId,
   );
 
@@ -603,6 +608,7 @@ const ReaderAppInner: FC = () => {
           message={openError.message}
           headline={openError.invalidEpub ? t("error.invalidEpubHeadline") : undefined}
           severity="blocking"
+          libraryHref={libraryFullTabUrl()}
           onDismiss={() => setOpenError(null)}
           getDiagnosticsText={getDiagnosticsText}
         />
@@ -968,13 +974,14 @@ const ReaderAppInner: FC = () => {
               onBookmarkChooserOpenChange={setBookmarkChooserOpen}
             />
 
-                {(seekError || (snapshot.error && snapshot.errorSeverity)) && (
+                {(activeSeekError || (snapshot.error && snapshot.errorSeverity)) && (
               <FriendlyError
-                message={seekError ?? snapshot.error!}
+                message={activeSeekError ?? snapshot.error!}
                 notificationId={snapshot.errorNotificationId}
-                detail={seekError ? undefined : snapshot.errorDetail}
-                severity={seekError ? "transient" : snapshot.errorSeverity!}
-                onDismiss={() => { setSeekError(undefined); dismissError(); }}
+                detail={activeSeekError ? undefined : snapshot.errorDetail}
+                severity={activeSeekError ? "transient" : snapshot.errorSeverity!}
+                libraryHref={hasReadingError ? libraryFullTabUrl() : undefined}
+                onDismiss={() => { setSeekError(undefined); dismissError(); restoreContentFocus(); }}
                 getDiagnosticsText={getDiagnosticsText}
               />
             )}

@@ -12,6 +12,13 @@ enter at least three characters.
 **Mod** means Command on Mac or Control elsewhere; **Alt** is Option on Mac.
 See all [keyboard shortcuts](README.md#keyboard-shortcuts).
 
+Page progression follows the book's declared direction. If it is unspecified,
+Ambra uses the publication language, so Arabic and Hebrew books progress
+right-to-left. This does not change the authored text direction or chapter order.
+In a right-to-left spread, the earlier page number is on the right and the
+next number is on the left. The progress bar follows the same direction:
+the start is on the right, and progress moves left.
+
 ## Go to a page or percentage
 
 - **Mod+G:** go to a page.
