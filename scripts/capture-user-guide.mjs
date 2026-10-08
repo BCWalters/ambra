@@ -195,7 +195,7 @@ async function main() {
     }
     await visibleControls([
       "Previous narrated passage", "Play narration", "Next narrated passage",
-      "Narration speed: 1×", "Listen from this page", "Collapse read-along controls",
+      "Narration speed: 1×", "Restart page audio", "Collapse read-along controls",
     ]);
     await mapped(narration);
     await screenshot(narration, "read-along.png", { paused: true, toolbarListenButton: false, expanded: true });

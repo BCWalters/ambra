@@ -414,8 +414,8 @@ settings/search utility:
   selection changes.
 - Collapse retains persistent compact Play/Pause and Expand, not dismissal.
 - Preserve speed, previous/next, Return to narration, and position selection.
-  Exact default label: **Listen from this page**; selected text changes it to
-  **Listen from selection**. Return appears only once narration has been requested
+  Exact default label: **Restart page audio**; selected text changes it to
+  **Jump to selection**. Return appears only once narration has been requested
   and browsing has moved away from its position.
 - Reuse real playback, media-overlay, highlight, fixed-layout, seek, failure, and
   lifecycle behavior. The study plays no audio and simulates control states only.

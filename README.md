@@ -21,11 +21,14 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [2.2.0 release checklist](store-assets/RELEASE-2.2.0.md).
-Version 2.0.0 was last confirmed live by the owner. The prepared 2.2.0 update
-adds an in-app full-screen control; verify the current dashboard version before
-uploading it. Preparing a package does not mean it has been uploaded, submitted
-or published.
+and the [3.0.0 release checklist](store-assets/RELEASE-3.0.0.md).
+Version 3.0.0 marks the start of Ambra's official EPUB conformance improvement
+effort, not a claim of full conformance. The
+[initial conformance report](docs/epub-conformance.md) publishes the measured
+baseline, manual self-assessment, known failures and unresolved cases.
+Version 2.0.0 was last confirmed live by the owner; verify the current dashboard
+version before uploading. Preparing a package does not mean it has been
+uploaded, submitted or published.
 
 ## Structure
 
@@ -52,6 +55,8 @@ This is a pnpm workspace monorepo:
   extension behavior.
 - [EPUB 3.4 conformance plan](docs/epub-3.4-conformance-plan.md) — the current
   specification audit, implementation phases, and release scorecard process.
+- [Initial EPUB conformance report](docs/epub-conformance.md) — the 3.0.0
+  milestone's transparently separated automated and manual assessment results.
 
 ## Getting started
 

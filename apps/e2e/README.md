@@ -534,7 +534,7 @@ appearing automatically, expanded and initially paused, for narrated books.
 There is no separate **Listen** toolbar entry or discovery notice. Collapse is
 ephemeral to that reader opening and retains playback, compact pause/resume, and
 focus; reopening starts expanded without autoplay. The suite also checks
-**Listen from this page** / **Listen from selection**, localized narrow controls,
+**Restart page audio** / **Jump to selection**, localized narrow controls,
 and absence of narration UI for plain books. `media-overlay-playback.spec.ts`
 retains real-audio, clip-boundary, speed, browsing/return, fixed-layout, loading,
 and explicit error coverage.

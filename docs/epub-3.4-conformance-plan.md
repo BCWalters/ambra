@@ -1,5 +1,10 @@
 # EPUB 3.4 conformance plan
 
+For the initial published findings and the owner-approved 3.0.0 milestone,
+see the [initial conformance report](epub-conformance.md). The milestone may
+ship with transparently accepted known limitations; it is not the full
+conformance claim assessed by this plan's completeness gate.
+
 This document records Ambra's plan for supporting the EPUB 3.4 Candidate
 Recommendation Snapshot dated July 21, 2026. It covers EPUB 3.4, EPUB Reading
 Systems 3.4, and EPUB Accessibility 1.2.

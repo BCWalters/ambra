@@ -109,7 +109,7 @@ test("listening action tracks reading selections and starts the selected authore
     await controls(page).getByRole("button", { name: "Play narration", exact: true }).click();
     await expect.poll(() => audio(page).evaluate(element => !(element as HTMLAudioElement).paused)).toBe(true);
     await controls(page).getByRole("button", { name: "Pause narration", exact: true }).click();
-    await expect(controls(page).getByRole("button", { name: "Listen from this page", exact: true })).toBeVisible();
+    await expect(controls(page).getByRole("button", { name: "Restart page audio", exact: true })).toBeVisible();
     const bounds = await controls(page).boundingBox();
     const selectPassage = () => page.evaluate(() => {
       const doc = document.querySelector("iframe")!.contentDocument!;
@@ -119,12 +119,12 @@ test("listening action tracks reading selections and starts the selected authore
       doc.getSelection()!.addRange(range);
     });
     await selectPassage();
-    await expect(controls(page).getByRole("button", { name: "Listen from selection", exact: true })).toBeVisible();
+    await expect(controls(page).getByRole("button", { name: "Jump to selection", exact: true })).toBeVisible();
     expect(await controls(page).boundingBox()).toEqual(bounds);
     await page.evaluate(() => document.querySelector("iframe")!.contentDocument!.getSelection()!.removeAllRanges());
-    await expect(controls(page).getByRole("button", { name: "Listen from this page", exact: true })).toBeVisible();
+    await expect(controls(page).getByRole("button", { name: "Restart page audio", exact: true })).toBeVisible();
     await selectPassage();
-    await controls(page).getByRole("button", { name: "Listen from selection", exact: true }).click();
+    await controls(page).getByRole("button", { name: "Jump to selection", exact: true }).click();
     await expect.poll(() => audio(page).evaluate(element => (element as HTMLAudioElement).currentTime)).toBeGreaterThanOrEqual(4);
     expect(await audio(page).evaluate(element => (element as HTMLAudioElement).currentTime)).toBeLessThan(8);
     await exposeReaderController(page);

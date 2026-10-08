@@ -208,7 +208,7 @@ test("Play starts at the displayed narrated passage, not the book beginning", as
 });
 
 for (const browsing of ["page", "contents", "scrubber"] as const) {
-  test(`${browsing} browsing keeps audio playing; Return follows audio, Listen from this page changes it`, async () => {
+  test(`${browsing} browsing keeps audio playing; Return follows audio, Restart page audio changes it`, async () => {
     const { readerPage: page, context } = await launchReader(narrated);
     try {
       await listen(page);
@@ -246,7 +246,7 @@ for (const browsing of ["page", "contents", "scrubber"] as const) {
 
       await toc(page, "Narrated chapter 2");
       await expect(button(page, "Return to narration")).toBeVisible();
-      await button(page, "Listen from this page").click();
+      await button(page, "Restart page audio").click();
       await expect.poll(() => highlighted(page)).toContain("c2-p1");
       await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
       expect((await audioState(page)).time).toBeLessThan(4);

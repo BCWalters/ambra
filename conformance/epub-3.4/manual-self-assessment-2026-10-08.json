@@ -1,0 +1,1484 @@
+{
+  "schemaVersion": 1,
+  "suite": {
+    "repository": "https://github.com/w3c/epub-tests.git",
+    "revision": "54092b4233253e9aac80e93ec4782b380b4b3403",
+    "expectedTests": 205,
+    "expectedPublications": 206,
+    "identifierOverrides": {
+      "lay-pp-svg-icb_multi": "lay-pp-svg-icb_multi"
+    },
+    "titleOverrides": {
+      "lay-pp-svg-icb_multi": "lay-pp-svg-icb_multi"
+    },
+    "combinedIdentifiers": {
+      "pkg-unique-id": [
+        "pkg-unique-id",
+        "pkg-unique-id_duplicate"
+      ]
+    }
+  },
+  "release": {
+    "archive": "ambra-2.2.0.zip",
+    "version": "2.2.0",
+    "commit": "46d28870b19bc96136cdc22aaf376cdb97f32b3f",
+    "sha256": "7d226c5d8b3cc1c1f86490b01a6c3ab596a5139ad87de3750e5716b0eb1da7c4"
+  },
+  "environment": {
+    "testedAt": "",
+    "tester": "User (self-reported)",
+    "browser": {
+      "name": "Google Chrome",
+      "version": ""
+    },
+    "os": {
+      "name": "macOS",
+      "version": ""
+    },
+    "runner": {
+      "mode": "manual",
+      "configuration": "Published results will be labeled as an Ambra self-assessment, not independent certification. User reported all 11 SVG/fixed-layout tests pass at 2026-10-08T08:46:22.892+02:00 and all 3 audio tests pass at 2026-10-08T08:50:00.267+02:00. Screenshots and recordings are not required or collected. Full Chrome/macOS versions, viewport/modes and actual assessment time have not been supplied; report time is not substituted for assessment time."
+    }
+  },
+  "optionalFeatures": {
+    "supported": [],
+    "intentionallyUnsupported": []
+  },
+  "tests": {
+    "cnt-css-fonts_ot": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-css-fonts_tt": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-css-fonts_woff": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-css-fonts_woff2": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-mathml-support": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-svg-css": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-svg-css-inclusion": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-svg-css-reference": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 04 passes at 2026-10-08T09:04:03.942+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-svg-embedded": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-svg-support": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "cnt-xhtml-support": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-hyphens": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-line-break": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-text-align-last": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-text-combine-horizontal": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-text-emphasis": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-text-orientation": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-text-transform": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-text-underline-position": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-word-break": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "css-epub-writing-mode": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "fxl-layout-duplication": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "fxl-page-spread-break": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "fxl-page-spread-center": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "fxl-spine-overrides_behave-as-global": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "fxl-spine-overrides_behave-as-global-bis": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "fxl-spine-overrides_duplicate": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-layout-default": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-layout-pre-paginated": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-layout-pre-paginated-spreads": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-orientation-default": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-orientation-landscape": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-page-spread-combined": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-page-spread-left": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-page-spread-right": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-spread-auto": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-spread-both": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-spread-default": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-spread-landscape": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-spread-none": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-svg-icb_multi": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb_device_sizes": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb_invalid_meta": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb_multi": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb_multi_declarations": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb_repeated-in-meta": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-fxl-xhtml-icb_units": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-page-layout-both": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-page-layout-both-spread": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure: user reported extra blank pages on 2026-10-08. The authored page 3 criterion explicitly requires it to follow the preceding reflowable page with no blank page between.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/381"
+    },
+    "lay-pkg-flow-paginated": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pkg-flow-scrolled-continuous": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pkg-flow-scrolled-doc": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-embedded-images": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-embedded-images-svg": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-images-in-spine": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the other folder 08 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-images-mixed": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-layout-default": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the other folder 08 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-layout-duplication": {
+      "status": "not-applicable",
+      "method": "manual",
+      "reason": "Out of scope for Ambra's reading-system assessment: this original tests whether EPUBCheck reports duplicated rendition:layout metadata, not reader behavior. User explicitly confirmed that distinction. No validator execution is needed for this assessment or the 3.0.0 milestone release; no EPUBCheck pass or reader-behavior pass is claimed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-layout-pre-paginated": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-layout-pre-paginated-spreads": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-page-spread-combined": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-page-spread-left": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-page-spread-right": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spine-overrides_behave-as-global": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 09 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spine-overrides_behave-as-global-bis": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 09 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spine-overrides_image-only-pp": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 09 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spine-overrides_image-only-reflow": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 09 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spine-overrides_image-spine-pp": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 09 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spine-overrides_image-spine-reflow": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 09 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-spread-none": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-svg-icb_multi": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-xhtml-icb": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 10 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-xhtml-icb_invalid_meta": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-xhtml-icb_multi": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-xhtml-icb_multi_declarations": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 10 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-xhtml-icb_repeated-in-meta": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 10 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-pp-xhtml-icb_units": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported all folder 10 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-reflow-align-x-center": {
+      "status": "not-applicable",
+      "method": "manual",
+      "reason": "The authored test explicitly says it is not applicable when rendition:align-x-center is unsupported. Ambra documents that legacy hint as intentionally unsupported in docs/epub-legacy-compatibility.md. The user observed sideways text; the original instructions use authored vertical-rl CSS. This is an applicability classification, not a pass or a waiver of an unconditional requirement.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-rendition-flow-pre-pag": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the other folder 08 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-roll-embedded-images": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-roll-embedded-images-svg": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-roll-images-in-spine": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the other folder 08 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-roll-images-mixed": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the other folder 08 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "lay-viewport-meta-prop": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure reported on 2026-10-08 at 10:10:32.977+02:00: the user could not find effective page zoom; Command-plus with iframe focus enlarges the toolbar while pages stay in position. The authored criterion requires all four pages to allow zoom in/out without interference. Actual magnification and alternative zoom gestures still need technical reproduction; this does not prove prohibited viewport directives are being honored.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/380"
+    },
+    "mol-audio": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 05 passes at 2026-10-08T09:07:26.769+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-audio-exceeding-clipend": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 05 passes at 2026-10-08T09:07:26.769+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-audio-no-clipbegin": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 05 passes at 2026-10-08T09:07:26.769+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-audio-no-clipend": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 05 passes at 2026-10-08T09:07:26.769+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-css": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-ignore": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 06 passes except mol-navigation at 2026-10-08T09:13:22.802+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-navigation": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure reported at 2026-10-08T09:13:22.802+02:00: navigating to the destination does not automatically move active narration there; the user must press Listen from this page. The authored test expects Chapter 2 to play when selected from the table of contents during Chapter 1 playback.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/337"
+    },
+    "mol-support_xhtml": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 06 passes except mol-navigation at 2026-10-08T09:13:22.802+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-support_xhtml-fxl": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 06 passes except mol-navigation at 2026-10-08T09:13:22.802+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-support_xhtml-load": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 06 passes except mol-navigation at 2026-10-08T09:13:22.802+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-support_xhtml-load-fxl": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 06 passes except mol-navigation at 2026-10-08T09:13:22.802+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-support_xhtml-load-next": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-support_xhtml-load-next-fxl": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-timing-synchronization": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user confirmed all folder 07 tests pass on 2026-10-08. Audio continues without turning from page 2 to the final paragraph on page 3; this is a separate UX issue (#377), not a failure of the authored criterion.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-timing-synchronization_fxl": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user confirmed all folder 07 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-timing-synchronization_multiple_audio": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user confirmed all folder 07 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-timing-synchronization_multiple_audio-fxl": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user confirmed all folder 07 tests pass on 2026-10-08. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-timing-synchronization_svg": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user confirmed all folder 07 tests pass on 2026-10-08. SVG highlighting (#378) and fit-to-page/readability (#379) are separate UX follow-ups, not authored-criterion failures; the observed SVG variant was not specified.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-timing-synchronization_svg-fxl": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user confirmed all folder 07 tests pass on 2026-10-08. SVG highlighting (#378) and fit-to-page/readability (#379) are separate UX follow-ups, not authored-criterion failures; the observed SVG variant was not specified.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-tts_multi": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "mol-tts_single": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-access": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-activation": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-non-text_img": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-non-text_img_title": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-spine_in-spine": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-spine_in-spine-hidden-toc-css": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-spine_in-spine-hidden-toc-html": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-spine_in-spine-no-list-style": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "nav-spine_not-in-spine": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-font_obfuscation": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-font_obfuscation-bis": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-metainf-inc": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-metainf-manifest": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-package_arbitrary": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-package_multiple": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_link-leaking-relative": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_link-path-absolute": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_link-relative": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_manifest": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_origin": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported on 2026-10-08 at 10:28:37.857+02:00 that the original probe says scripting is unsupported and necessary to run the test. Publication scripting remains disabled, so the expected origin output cannot be observed. No pass, failure, or blanket applicability waiver is inferred.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_parse-leaking-relative": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported on 2026-10-08 at 10:28:37.857+02:00 that the original probe says scripting is unsupported and necessary to run the test. Publication scripting remains disabled, so the expected URL-parsing output cannot be observed. No pass, failure, or blanket applicability waiver is inferred.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_parse-path-absolute": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported on 2026-10-08 at 10:28:37.857+02:00 that the original probe says scripting is unsupported and necessary to run the test. Publication scripting remains disabled, so the expected URL-parsing output cannot be observed. No pass, failure, or blanket applicability waiver is inferred.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-url_relative": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-zip-comp": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "ocf-zip-mult": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-collections-unknown": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-creator-order": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir_but_not_content": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir_creator-rtl": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir_rtl-root-ltr": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir_rtl-root-unset": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir_unset-root-rtl": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir_unset-root-unset": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir-auto_root-rtl": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-dir-auto_root-unset": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-lang_but_not_content": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-linked-records": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-manifest-unknown": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-manifest-unlisted-resource": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-meta-unknown": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-meta-whitespace": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-duplicate-item-hyperlink": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 11 passes except pkg-spine-progression-default at 2026-10-08T10:22:03.356+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-duplicate-item-rendering": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-duplicate-item-ui": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 11 passes except pkg-spine-progression-default at 2026-10-08T10:22:03.356+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-nonlinear-activation": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 11 passes except pkg-spine-progression-default at 2026-10-08T10:22:03.356+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-order": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-order-svg": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass, reported by the user at 2026-10-08T08:46:22.892+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-progression_ltr": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 11 passes except pkg-spine-progression-default at 2026-10-08T10:22:03.356+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-progression_rtl": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 11 passes except pkg-spine-progression-default at 2026-10-08T10:22:03.356+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-progression-default": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure reported at 2026-10-08T10:22:03.356+02:00. The original declares package language ar and omits spine progression, and requires physical pages to progress right-to-left. The specific observed wrong behavior was not supplied and still requires technical reproduction.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/382"
+    },
+    "pkg-spine-progression-pre-paginated": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 11 passes except pkg-spine-progression-default at 2026-10-08T10:22:03.356+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-spine-unknown": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-title-order": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-unique-id": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the other folder 11 tests pass at 2026-10-08T10:22:03.356+02:00. This is one joint criterion using pkg-unique-id and pkg-unique-id_duplicate, not two separately counted passes.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pkg-version-backward": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pss-support": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pss-support_ignore-title": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported folder 04 passes at 2026-10-08T09:04:03.942+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-avif": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-gif": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-jpeg": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-jxl": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-mp3": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the audio folder tests pass at 2026-10-08T08:50:00.267+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-mp4": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the audio folder tests pass at 2026-10-08T08:50:00.267+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-opus": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported the audio folder tests pass at 2026-10-08T08:50:00.267+02:00. No screenshots or recordings collected.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-png": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-svg": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-cmt-webp": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-data-urls_browsing-context": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure reported on 2026-10-08 at 10:28:37.857+02:00: content is not loaded and an error popup is shown. The authored criterion requires the original embedded base64 JPEG data image to appear inside the book.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/336"
+    },
+    "pub-data-urls_top-level-content": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure reported on 2026-10-08 at 10:28:37.857+02:00: content is not loaded and an error popup is shown. The authored criterion requires the percent-encoded SVG data image to appear in the fixed-layout page rather than opening separately.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/336"
+    },
+    "pub-external-links": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-external-links_consent": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-file-urls": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual verdict unresolved: user reported content not loaded with an error popup on 2026-10-08 at 10:28:37.857+02:00. The authored test expects local-file iframe resources to remain unloaded. The report does not establish whether only those child resources are blocked (intended) or the containing XHTML chapter also fails. Keep pending rather than treating intended file blocking as a failure or asserting a pass without confirming the host.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-foreign_bad-fallback": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported that the book fails to load with a full-page error. The original package description explicitly allows an ingestion error when both the DMG spine item and PSD fallback are unsupported. Error-screen recovery is a separate UX follow-up in https://github.com/BCWalters/ambra/issues/383, not a failure of this criterion. Actual execution timestamp and diagnostic root cause were not provided.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-foreign_image": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-foreign_json-spine": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-foreign_xml-spine": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-foreign_xml-suffix-spine": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-xml-external-id": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported that the other two books in folder 13 pass, including this external-identifier XML test. Actual execution timestamp was not provided.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-xml-names": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported a loading failure/error. The original invalid p::p element-name test explicitly passes if the reading system reports an error on this page. Error reporting is expected, not a conformance failure. Actual execution timestamp and diagnostic root cause were not provided.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-xml-non-validating_comment": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported that the other two books in folder 13 pass, including this XML-comment test. Actual execution timestamp was not provided.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "pub-xml-non-validating_unclosed": {
+      "status": "pass",
+      "method": "manual",
+      "reason": "Self-assessed manual pass: user reported a loading failure/error. The original test intentionally leaves a paragraph tag unclosed and explicitly passes if the reading system reports an error on this page. Error reporting is expected, not a conformance failure. Actual execution timestamp and diagnostic root cause were not provided.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-not-support_ccscript-modify-host": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure: user reported that the required iframe does not load. The original host explicitly says absent iframe content or an error in the box fails the test. The embedded document contains static text that should be renderable without enabling scripts. This is not evidence that a script modified the host DOM; the scripting-specific applicability remains separate. Actual execution timestamp was not provided.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/384"
+    },
+    "scr-not-support_ccscript-modify-size": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure: user reported that the required iframe does not load. The original host explicitly says absent iframe content or an error in the box fails the test. The embedded document contains static text that should be renderable without enabling scripts. This is not evidence that a script changed the iframe dimensions; the scripting-specific applicability remains separate. Actual execution timestamp was not provided.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/384"
+    },
+    "scr-readingsystem-features": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported folder 15 fails or is ignored with no scripting support. This probe needs publication JavaScript to call epubReadingSystem.hasFeature and display its results. Static default failure text does not establish the API result with scripts disabled. Per-requirement applicability review remains pending; no pass or blanket waiver is inferred.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-readingsystem-support": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported folder 15 fails or is ignored with no scripting support. This XHTML probe needs publication JavaScript to inspect navigator.epubReadingSystem. Static default failure text does not establish the API result with scripts disabled. Per-requirement applicability review remains pending; no pass or blanket waiver is inferred.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-readingsystem-support_iframe": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported folder 15 fails or is ignored with no scripting support. This probe needs JavaScript in a packaged XHTML iframe to inspect navigator.epubReadingSystem. The report does not separately describe whether static iframe content appears. Keep the API result unresolved and do not infer another missing-iframe failure from the folder-level report.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-readingsystem-support_iframe_svg": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported folder 15 fails or is ignored with no scripting support. This probe needs JavaScript in an embedded SVG iframe to inspect navigator.epubReadingSystem. The report does not separately describe whether static iframe content appears. Keep the API result unresolved and do not infer another missing-iframe failure from the folder-level report.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-readingsystem-support_svg": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported folder 15 fails or is ignored with no scripting support. This SVG probe needs publication JavaScript to inspect navigator.epubReadingSystem. Static default failure text does not establish the API result with scripts disabled. Per-requirement applicability review remains pending; no pass or blanket waiver is inferred.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-storage-delete": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support_iframe": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support_origin": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported that this folder 14 origin probe requires scripting. Publication scripting remains disabled, so its origin output cannot be observed. This does not establish either isolation success or an isolation failure; technical observations and per-requirement applicability review remain pending.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support_origin_unique": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Manual assessment blocked: user reported that this folder 14 unique-origin probe requires scripting. Publication scripting remains disabled, so the two-publication origin comparison cannot be observed. This does not establish either isolation success or an isolation failure; technical observations and per-requirement applicability review remain pending.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support_scrolled-continuous": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support_scrolled-doc": {
+      "status": "not-applicable",
+      "method": "manual",
+      "reason": "Not applicable to the assessed non-scripted reading system: the original content_001.xhtml explicitly says that when scripting is unsupported this test is not relevant and can be marked null. User reported folder 15 fails or is ignored with no scripting support. This specific authored exclusion does not waive unrelated scrolling or origin requirements.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support_svg": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "scr-support-fallback": {
+      "status": "fail",
+      "method": "manual",
+      "reason": "Self-assessed manual failure based on the user's folder 15 report that all tests fail or are ignored with no scripting support. Unlike the API probes, this original explicitly requires the non-scripted content_fallback.xhtml to display when scripting is unsupported; disabled scripting does not excuse failure to follow its declared fallback. Exact on-screen wording and diagnostic root cause were not provided; no automated reproduction is claimed.",
+      "evidence": null,
+      "trackingIssue": "https://github.com/BCWalters/ambra/issues/338"
+    },
+    "sec-untrusted-consent_network": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    },
+    "sec-untrusted-consent_scripting": {
+      "status": "not-run",
+      "method": "manual",
+      "reason": "Assessment not completed.",
+      "evidence": null,
+      "trackingIssue": null
+    }
+  }
+}
