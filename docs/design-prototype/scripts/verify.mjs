@@ -758,12 +758,12 @@ try {
     selection.removeAllRanges();
     selection.addRange(range);
   });
-  await page.locator("#narration-from-page").filter({ hasText: "Listen from selection" }).waitFor();
+  await page.locator("#narration-from-page").filter({ hasText: "Jump to selection" }).waitFor();
   await page.locator("#narration-from-page").click();
-  check(await page.evaluate(() => narrationTargets[narrationIndex] === "sample-gate"), "Listen from selection uses the selected sample passage");
+  check(await page.evaluate(() => narrationTargets[narrationIndex] === "sample-gate"), "Jump to selection uses the selected sample passage");
   await page.evaluate(() => getSelection().removeAllRanges());
-  await page.locator("#narration-from-page").filter({ hasText: "Listen from this page" }).waitFor();
-  check(await page.locator("#narration-from-page").textContent() === "Listen from this page", "Page playback action uses the approved explicit label");
+  await page.locator("#narration-from-page").filter({ hasText: "Restart page audio" }).waitFor();
+  check(await page.locator("#narration-from-page").textContent() === "Restart page audio", "Page playback action uses the approved explicit label");
   await page.locator("#narration-next").click();
   await page.locator("#narration-next").click();
   await page.locator("#narration-next").click();

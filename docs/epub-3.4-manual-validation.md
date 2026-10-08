@@ -1,5 +1,9 @@
 # Manual EPUB 3.4 validation plan
 
+The initial manual campaign is recorded in the
+[public conformance report](epub-conformance.md), separately from the hosted
+Linux campaign. This plan remains useful for later targeted reassessments.
+
 The latest [measured report](epub-3.4-progress-report.md) has 63 passes, one
 native JPEG XL failure and 75 pending required criteria. Those 75 are not all
 inherently manual. This plan prioritizes original-publication evidence without
@@ -76,8 +80,9 @@ Save evidence per identifier. If a procedure cannot be completed, keep
 - Remaining layout/resource cases: build deterministic native original geometry,
   clipping, override and containment assertions where practical. Do not assume
   every pending method requires a person.
-- `lay-pp-layout-duplication` explicitly targets EPUBCheck. Record validator
-  evidence, not an Ambra rendering pass.
+- `lay-pp-layout-duplication` explicitly targets EPUBCheck, not Ambra. Exclude
+  it from the reading-system assessment; it is not pending validator work
+  for us or a milestone release blocker.
 - Review scripting/origin applicability per normative requirement.
   Publication scripting stays disabled; this does not waive unconditional
   origin requirements. Network fonts/video still need the separate privacy
@@ -86,13 +91,15 @@ Save evidence per identifier. If a procedure cannot be completed, keep
 ## Record and publish honestly
 
 Each tested worksheet row needs `method: manual`, status, a justified reason,
-durable non-sensitive HTTPS evidence, and an Ambra issue URL for a failure.
+and an Ambra issue URL for a failure. Screenshots and recordings are optional
+for explicitly disclosed self-assessment; evidence may be null. Do not imply
+independent certification or fill unknown environment/execution fields.
 Expected failures remain `fail`, not `not-applicable`.
 
 The evidence should identify the original criterion/publication, exact package,
 environment, reviewer, time, actions, expected outcome and observed outcome.
-Use a recording or explicit observation log where a screenshot cannot prove
-audio, timing or reload behavior. Never upload private browser profiles,
+Use an explicit observation log, or an optional recording, where a screenshot
+cannot prove audio, timing or reload behavior. Never upload private browser profiles,
 credentials or user books.
 
 Generate the report against the pinned suite, exact release metadata and manual

@@ -171,7 +171,7 @@ export class MediaOverlayNarration {
       return;
     }
     if (!this.cursor) {
-      this.fail(new Error("Choose a narrated passage with Listen from here first."));
+      this.fail(new Error("Choose a narrated passage with Restart page audio or Jump to selection first."));
       return;
     }
     if (this.status === "playing") {

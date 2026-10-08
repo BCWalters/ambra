@@ -13,11 +13,11 @@ This is narration supplied with the EPUB, not automatic text-to-speech. The book
 Open a book with recorded narration. **Read along** controls appear
 automatically at the bottom of the reader. Choose **Play** to start listening.
 
-[![A synthetic narrated book with the expanded Read along controls: Speed, Listen from this page, Collapse, Previous, Play, and Next.](images/read-along.png)](images/read-along.png)
+[![A synthetic narrated book with the expanded Read along controls: Speed, audio position, Collapse, Previous, Play, and Next.](images/read-along.png)](images/read-along.png)
 
 - Use **Speed** to listen faster or slower.
-- Choose **Listen from this page** to start at your reading position, or
-  select text and choose **Listen from selection**.
+- Choose **Restart page audio** to restart the narrated passage at your
+  reading position, or select text and choose **Jump to selection**.
 - Browsed away while listening? **Return to narration** takes you back to
   the passage being read.
 

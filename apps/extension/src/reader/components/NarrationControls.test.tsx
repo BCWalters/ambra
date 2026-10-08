@@ -205,7 +205,7 @@ describe("NarrationControls", () => {
     expect(callbacks.onReturnToNarration).toHaveBeenCalledOnce();
     expect(callbacks.onListenFromHere).not.toHaveBeenCalled();
     expect(callbacks.onPlayPause).not.toHaveBeenCalled();
-    act(() => button("Listen from this page").click());
+    act(() => button("Restart page audio").click());
     expect(callbacks.onListenFromHere).toHaveBeenCalledOnce();
     expect(callbacks.onPlayPause).not.toHaveBeenCalled();
     render({ following: true });
@@ -222,15 +222,15 @@ describe("NarrationControls", () => {
 
   it("changes the listening target label without changing either reserved label or the button identity", () => {
     render();
-    const listen = button("Listen from this page");
+    const listen = button("Restart page audio");
     const labels = Array.from(listen.querySelectorAll<HTMLElement>('[aria-hidden]'))
       .filter(label => label.tagName === "SPAN");
-    expect(labels.map(label => label.textContent)).toEqual(["Listen from this page", "Listen from selection"]);
+    expect(labels.map(label => label.textContent)).toEqual(["Restart page audio", "Jump to selection"]);
     expect(labels.map(label => label.style.visibility)).toEqual(["visible", "hidden"]);
     expect(labels.every(label => label.style.gridArea === "1 / 1")).toBe(true);
     act(() => listen.focus());
     render({}, false, true);
-    expect(button("Listen from selection")).toBe(listen);
+    expect(button("Jump to selection")).toBe(listen);
     expect(document.activeElement).toBe(listen);
     expect(labels.map(label => label.style.visibility)).toEqual(["hidden", "visible"]);
     expect(labels.map(label => label.getAttribute("aria-hidden"))).toEqual(["true", "false"]);
@@ -238,7 +238,7 @@ describe("NarrationControls", () => {
     expect(callbacks.onListenFromHere).toHaveBeenCalledOnce();
     expect(callbacks.onPlayPause).not.toHaveBeenCalled();
     render();
-    expect(button("Listen from this page")).toBe(listen);
+    expect(button("Restart page audio")).toBe(listen);
     expect(labels.map(label => label.style.visibility)).toEqual(["visible", "hidden"]);
   });
 
@@ -290,7 +290,7 @@ describe("NarrationControls", () => {
     expect(primary.style.gridTemplateColumns).toBe("minmax(0, 1fr) auto minmax(0, 1fr)");
     expect(primary.querySelectorAll("button")).toHaveLength(3);
     expect(button("Play narration").style.minHeight).toBe("48px");
-    for (const name of ["Return to narration", "Listen from this page"]) {
+    for (const name of ["Return to narration", "Restart page audio"]) {
       const action = button(name);
       expect(commands.contains(action)).toBe(true);
       expect(primary.contains(action)).toBe(false);

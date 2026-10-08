@@ -1,5 +1,10 @@
 # Ambra EPUB 3.4 progress and conformance report
 
+This is the historical hosted-automation report. The
+[initial public conformance report](epub-conformance.md) adds the separately
+reported manual campaign and the owner-approved 3.0.0 milestone policy.
+Do not interpret this page's historical package results as a new 3.0.0 run.
+
 **Status: full required inventory and 64-method reassessment completed on merged main.**
 No store release has been created. The release-completeness gate remains red:
 native JPEG XL fails and 75 required criteria remain unassessed.
