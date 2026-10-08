@@ -10,6 +10,8 @@ function setup(styles: { activeClass?: string; playbackActiveClass?: string } = 
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
   const doc = iframe.contentDocument!;
+  // Happy DOM does not wire a child window's frameElement.
+  Object.defineProperty(doc.defaultView!, "frameElement", { configurable: true, value: iframe });
   doc.body.innerHTML = '<p id="one">First passage.</p><p id="two">Second passage.</p>';
   const state = {
     views: [{ document: doc, spineIndex: 0, physicalSide: "single" }] as ContentDocumentView[],
@@ -32,7 +34,13 @@ function setup(styles: { activeClass?: string; playbackActiveClass?: string } = 
     });
     return range;
   });
-  return { reader, doc, state, navigate, offscreen: () => { top = -100; } };
+  return {
+    reader, doc, state, navigate, offscreen: () => { top = -100; },
+    place: (y: number) => { top = y; },
+    clip: (start: number, end: number) => {
+      iframe.style.clipPath = `inset(${start}px 0 ${doc.defaultView!.innerHeight - end}px 0)`;
+    },
+  };
 }
 
 const first = { spineIndex: 0, path: "chapter.xhtml", fragment: "one" };
@@ -74,6 +82,33 @@ describe("NarrationReadingBridge", () => {
     expect(doc.getElementById("one")!.classList.contains("spoken")).toBe(true);
     expect(doc.getElementById("two")!.classList.contains("spoken")).toBe(false);
     expect(applyNarrationRange).not.toHaveBeenCalled();
+  });
+
+  it.each([100, 200])("follows a passage at %s below the current paint clip but inside the layout viewport", async top => {
+    const { reader, navigate, clip, place } = setup();
+    clip(10, 100);
+    place(top);
+    await reader.update(first, true);
+    expect(navigate).toHaveBeenCalledOnce();
+  });
+
+  it("does not snap independent browsing back to a clipped narrated passage", async () => {
+    const { reader, navigate, clip, place } = setup();
+    clip(10, 100);
+    place(200);
+    await reader.update(first, false);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a partially visible leading line in place but follows a line hidden in the top inset", async () => {
+    const { reader, navigate, clip, place } = setup();
+    clip(10, 100);
+    place(90);
+    await reader.update(first, true);
+    expect(navigate).not.toHaveBeenCalled();
+    place(5);
+    await reader.update(first, true);
+    expect(navigate).toHaveBeenCalledOnce();
   });
 
   it("cleans paint when browsing to another document", async () => {

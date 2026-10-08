@@ -20,6 +20,18 @@ Without that external publication, only that original-book check is skipped.
 These regressions do not rewrite historical assessment results or promote a
 new release score.
 
+`tests/media-overlay-playback.spec.ts` includes a page-following regression
+whose next narrated paragraph is inside the iframe layout viewport but hidden
+by the current page's paint clip. It checks actual browser hit-testing before
+and after a clip boundary, continuous native audio and preserved control focus,
+not only highlight classes or page numbers. Set
+`AMBRA_TIMING_SYNCHRONIZATION_EPUB` to the pinned original
+`mol-timing-synchronization.epub` to include its final-paragraph follow-along
+probe. This optional original-book regression does not change its already
+passing historical timing-conformance verdict. A passage spanning several
+pages is followed at the start of its authored SMIL target; without finer
+authored timing, this does not infer word-level page turns within one clip.
+
 Packaged-frame regressions in `tests/packaged-frames.spec.ts` cover static XHTML
 and SVG children, rewritten CSS/imports/images, opaque origins, disabled scripts,
 retained dimensions, recoverable child failures, cycles, and the eight-level

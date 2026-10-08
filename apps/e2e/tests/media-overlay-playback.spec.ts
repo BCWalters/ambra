@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import fs from "node:fs";
+import { strToU8, unzipSync, zipSync } from "fflate";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
@@ -14,6 +16,108 @@ const controls = (page: Page) => page.getByRole("region", { name: "Narration con
 const button = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
 const position = (page: Page) => page.getByRole("slider", { name: "Position in book" });
 const speedButton = (page: Page) => controls(page).getByRole("button", { name: /^Narration speed/ });
+
+function boundaryFixture(info: TestInfo): string {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  entries["EPUB/chapter-1.xhtml"] = strToU8(`<html xmlns="http://www.w3.org/1999/xhtml"><head><title>3.1.2 Narration boundary</title>
+    <style>p{margin:0!important;break-inside:avoid;height:400px}.synthetic-narration-active{background:#ffe082}</style></head><body>
+    <p id="c1-p1">First narrated passage.</p>
+    <p id="c1-p2">${"The second narrated passage spans several lines of the next rendered page. ".repeat(12)}</p>
+    <p id="c1-p3">Third narrated passage.</p></body></html>`);
+  entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"]!)
+    .replace("Synthetic narration narrated", "3.1.2 Narration clipped-page boundary"));
+  const file = info.outputPath("3.1.2-narration-page-boundary.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  return file;
+}
+
+async function passagePaint(page: Page, id: string) {
+  return page.evaluate(fragment => {
+    const views = Reflect.get(window, "__readerController").contentDocumentViews();
+    for (const view of views) {
+      const doc: Document = view.document;
+      const element = doc.getElementById(fragment);
+      const window = doc.defaultView;
+      if (!element || !window) continue;
+      const frame = window.frameElement;
+      if (!(frame instanceof HTMLIFrameElement)) throw new Error("Missing narrated frame.");
+      const range = doc.createRange();
+      range.selectNodeContents(element);
+      const rect = Array.from(range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0);
+      if (!rect) throw new Error("The narrated passage has no rendered text.");
+      const frameRect = frame.getBoundingClientRect();
+      const x = (rect.left + rect.right) / 2;
+      const y = (rect.top + rect.bottom) / 2;
+      const scaleX = frameRect.width / window.innerWidth;
+      const scaleY = frameRect.height / window.innerHeight;
+      return {
+        withinLayoutViewport: rect.top >= 0 && rect.top < window.innerHeight &&
+          rect.left >= 0 && rect.left < window.innerWidth,
+        painted: doc.elementFromPoint(x, y)?.closest(`#${fragment}`) === element &&
+          frame.ownerDocument.elementFromPoint(frameRect.left + x * scaleX, frameRect.top + y * scaleY) === frame,
+      };
+    }
+    return undefined;
+  }, id);
+}
+
+test("narration follows a passage hidden by the current page clip but inside the iframe viewport (#377)", async () => {
+  const { readerPage: page, context } = await launchReader(boundaryFixture(test.info()), {
+    viewport: { width: 900, height: 700 },
+  });
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await setSpeed(page, 0.75);
+    await expect.poll(() => passagePaint(page, "c1-p1")).toMatchObject({ painted: true });
+    expect(await passagePaint(page, "c1-p2")).toEqual({ withinLayoutViewport: true, painted: false });
+    const source = (await audioState(page)).source;
+    const speed = speedButton(page);
+    await speed.focus();
+    await seek(page, 4.05);
+    await expect.poll(() => passagePaint(page, "c1-p2")).toMatchObject({ painted: true });
+    expect((await audioState(page)).source).toBe(source);
+    expect((await audioState(page)).paused).toBe(false);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(4.2);
+    await expect(speed).toBeFocused();
+    await expect(button(page, "Return to narration")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("original W3C timing synchronization keeps the final narrated paragraph painted (#377)", async () => {
+  const book = process.env.AMBRA_TIMING_SYNCHRONIZATION_EPUB;
+  test.skip(!book, "Set AMBRA_TIMING_SYNCHRONIZATION_EPUB to the pinned original publication.");
+  const { readerPage: page, context } = await launchReader(book!, {
+    viewport: { width: 900, height: 500 },
+  });
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await expect.poll(() => passagePaint(page, "c01w00001")).toMatchObject({ painted: true });
+    await page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc: Document = controller.contentDocumentViews()[0].document;
+      const paragraph = doc.getElementById("c01p0002");
+      if (!paragraph) throw new Error("The original narrated paragraph was not found.");
+      const range = doc.createRange();
+      range.selectNodeContents(paragraph);
+      doc.getSelection()!.removeAllRanges();
+      doc.getSelection()!.addRange(range);
+    });
+    await button(page, "Jump to selection").click();
+    await expect.poll(() => passagePaint(page, "c01p0002")).toMatchObject({ painted: true });
+    const source = (await audioState(page)).source;
+    await seek(page, 134.2);
+    await expect.poll(() => passagePaint(page, "c01p0003")).toMatchObject({ painted: true });
+    expect((await audioState(page)).source).toBe(source);
+    expect((await audioState(page)).paused).toBe(false);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(134.3);
+  } finally {
+    await context.close();
+  }
+});
 
 async function setSpeed(page: Page, rate: number) {
   await speedButton(page).click();

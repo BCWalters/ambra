@@ -3,6 +3,7 @@ import type { ContentDocumentView, ContentLoader, DomBreakPoint, LocatorResolver
 import type { NarrationTarget } from "./MediaOverlayNarration.js";
 import { applyNarrationRange } from "./HighlightRenderer.js";
 import { selectedReadingPosition, visibleReadingPosition } from "./ReadingPosition.js";
+import { visiblePageBounds } from "./VisiblePageBounds.js";
 
 interface NarrationReadingContext {
   documents: () => readonly ContentDocumentView[];
@@ -120,7 +121,12 @@ export class NarrationReadingBridge {
       range.selectNodeContents(element);
       const rect = Array.from(range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0)
         ?? element.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top < window.innerHeight
+      const frame = window.frameElement;
+      const frameWindow = frame?.ownerDocument.defaultView;
+      const bounds = frame && frameWindow && frame instanceof frameWindow.HTMLIFrameElement
+        ? visiblePageBounds(frame, window.innerHeight)
+        : { top: 0, bottom: window.innerHeight };
+      return rect.width > 0 && rect.height > 0 && rect.top >= bounds.top && rect.top < bounds.bottom
         && rect.left >= 0 && rect.left < window.innerWidth;
     });
   }
