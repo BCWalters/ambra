@@ -66,7 +66,7 @@ function setUp(mode: Mode, commonFirst = true) {
     },
     notify: vi.fn(),
     turnPage: vi.fn(),
-    suspendNarrationFollowing: vi.fn(),
+    claimManualNarrationNavigation: vi.fn(),
     prepareIncomingPage: vi.fn(async () => undefined),
     settleDragPageTurn: vi.fn(async () => {}),
     finishTurn: vi.fn(),

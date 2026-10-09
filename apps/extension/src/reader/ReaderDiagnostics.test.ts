@@ -15,7 +15,7 @@ function setup() {
     refreshGlobalSettings: vi.fn(async () => {}),
     applyDisplaySettingsToHost: vi.fn(), notify: vi.fn(),
     library: { patchGlobalReadingSettings: vi.fn(async () => {}), patchBookReadingSettings: vi.fn(async () => {}) },
-    clearNavigationHighlights: vi.fn(), suspendNarrationFollowing: vi.fn(),
+    clearNavigationHighlights: vi.fn(), claimManualNarrationNavigation: vi.fn(),
     goToCfi: vi.fn(async () => {}), openSpineItem: vi.fn(async () => {}),
     searchCoordinator: { search: vi.fn(), goToResult: vi.fn(async () => {}) },
     narration: { snapshot: { rate: 1 }, setRate: vi.fn() },
