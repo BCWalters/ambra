@@ -7,6 +7,6 @@ function contentPolicy(source: "blob: data:" | "data:"): string {
 }
 
 // Opaque children inherit this policy and require generated data dependencies.
-// Author-supplied data references are still rejected during resource assembly.
+// Author images are separately decoded, bounded and probed during assembly.
 export const CONTENT_SECURITY_POLICY = contentPolicy("blob: data:");
 export const NESTED_CONTENT_SECURITY_POLICY = contentPolicy("data:");

@@ -261,10 +261,21 @@ network retry, or remote-data cache. Existing `remote-resources` declarations
 remain diagnostics, not permission grants. HTTPS support remains a recommended
 compatibility gap and would require separate consent/privacy/offline design.
 
-Data URLs remain blocked for automatic resources and book-initiated navigation:
-the permitted data-type allowlist is empty and the decoded-payload limit is zero
-(no payload decoding). Supporting selected embedded data types later must not
-enable top-level content-document/data navigation. File URLs are blocked for both
+The 3.1 resource increment permits bounded author-supplied data **images** in
+image consumers, CSS images, posters and image-backed object/embed alternatives.
+Non-package library covers use the same image policy and packaged fallbacks;
+an unavailable optional non-package cover does not prevent importing the book.
+The MIME allowlist is PNG, JPEG, GIF, WebP, AVIF, SVG, BMP, ICO
+(`image/x-icon` or `image/vnd.microsoft.icon`) and JPEG XL. Native decoder
+acceptance is still required; no custom JPEG XL decoder is added. Base64 and
+percent-encoded payloads are supported, with a 24 MiB encoded-payload cap,
+8 MiB decoded limit per image and 32 MiB shared decoded limit per reading
+session. Identical URLs share their decoded bytes and render URLs. Declared
+manifest MIME types must agree with the data header; invalid, unsupported or
+over-limit images can select a packaged fallback or produce the existing
+accessible unavailable-resource notice without aborting the host chapter.
+Data fonts, stylesheets, audio/video, iframe/content documents and book-initiated
+data navigation remain blocked. File URLs are blocked for both
 automatic resources and reader-controlled link actions. Only explicitly activated
 HTTP(S)/email hyperlinks can leave the publication; protocol-relative hyperlinks
 use HTTPS, and new windows retain `noopener,noreferrer`.
@@ -316,8 +327,9 @@ prepared dependencies use internally generated data URLs instead. The main
 required/meta CSP therefore permits blob and data resource sources, while the
 child policy permits only data sources; Chromium otherwise inherits the main
 policy and blocks those dependencies. Scripts, remote fetches, plugins, forms
-and base URLs remain denied. Author-supplied data/file/remote resource references
-are still rejected during assembly, not enabled by this internal representation.
+and base URLs remain denied. Internally generated dependencies are distinct from
+the separately bounded author-image policy; other author-supplied data resources,
+file URLs and remote references remain rejected.
 Native regressions cover both original static iframe messages and generated
 resource/isolation cases; they do not execute the unsupported scripting probes,
 prove unique publication origins, or rewrite the frozen assessment.

@@ -72,7 +72,8 @@ export class ResourceUrlResolver {
       };
     }
     return {
-      url: inlineResources ? await this.createResourceUrl(item.path, item.mediaType, new Set(), false, true, budget)
+      url: inlineResources || item.location?.kind === "data"
+        ? await this.createResourceUrl(item.path, item.mediaType, new Set(), false, inlineResources, budget)
         : await this.resolve(item.path),
       path: item.path, mediaType: item.mediaType,
     };
@@ -89,8 +90,9 @@ export class ResourceUrlResolver {
     const resolved = new Map<string, ResolvedResource | null>();
     await Promise.all([...requests].map(async ([key, ref]) => {
       try {
-        if (ref.location && !this.contentLoader.packageDocument.findManifestItemByPath(ref.path)) {
-          this.fallbackSelector.reportUnavailable(ref.location.kind === "data" ? "[data URL]" : ref.path, ref.consumer);
+        if (ref.location && ref.location.kind !== "data" &&
+          !this.contentLoader.packageDocument.findManifestItemByPath(ref.path)) {
+          this.fallbackSelector.reportUnavailable(ref.path, ref.consumer);
           resolved.set(key, null);
           return;
         }
@@ -100,15 +102,13 @@ export class ResourceUrlResolver {
           resolved.set(key, null);
           return;
         }
-        if (ref.consumer === "document" && (error instanceof ContentLoaderError || isResourceFailure(error))) {
-          console.warn(`Unable to resolve packaged iframe ${ref.path}.`, error);
+        if (isResourceFailure(error) || (ref.consumer === "document" && error instanceof ContentLoaderError)) {
+          console.warn(`Unable to resolve publication ${ref.consumer} resource ${ref.location?.kind === "data" ? "[data URL]" : ref.path}.`, error);
           this.fallbackSelector.reportUnavailable(ref.path, ref.consumer, "exhausted");
           resolved.set(key, null);
           return;
         }
-        if (ref.consumer !== "stylesheet" || !isResourceFailure(error)) throw error;
-        console.warn(`Unable to resolve packaged stylesheet ${ref.path}.`, error);
-        resolved.set(key, null);
+        throw error;
       }
     }));
     return resolved;
@@ -175,7 +175,7 @@ export class ResourceUrlResolver {
         document, this, { applyReadingTheme: false, nestedDocument: true }, ancestors, budget,
       ));
     } else {
-      bytes = await this.contentLoader.loadResourceBytes(path);
+      bytes = await this.fallbackSelector.readResourceBytes(path);
     }
     if (mediaType === "text/css") {
       bytes = new TextEncoder().encode(await this.rewriteCss(
@@ -223,8 +223,9 @@ export class ResourceUrlResolver {
         const reference = classifyEpubReference(documentPath, href);
         if (reference.kind === "fragment") return href;
         const path = reference.kind === "package" ? reference.path : reference.url.split("#")[0]!;
-        if (reference.kind !== "package" && !this.contentLoader.packageDocument.findManifestItemByPath(path)) {
-          this.fallbackSelector.reportUnavailable(reference.kind === "data" ? "[data URL]" : path, importing ? "stylesheet" : consumer);
+        if (reference.kind !== "package" && reference.kind !== "data" &&
+          !this.contentLoader.packageDocument.findManifestItemByPath(path)) {
+          this.fallbackSelector.reportUnavailable(path, importing ? "stylesheet" : consumer);
           return undefined;
         }
         const hash = href.indexOf("#");
@@ -239,12 +240,13 @@ export class ResourceUrlResolver {
           // concurrently requested roots may import each other.
           const url = item.mediaType === "text/css"
             ? await this.createResourceUrl(item.path, item.mediaType, ancestors, false, inlineResources, budget)
-            : inlineResources ? await this.createResourceUrl(item.path, item.mediaType, new Set(), false, true, budget)
+            : inlineResources || item.location?.kind === "data"
+              ? await this.createResourceUrl(item.path, item.mediaType, new Set(), false, inlineResources, budget)
               : await this.resolve(item.path);
           return url + fragment;
         } catch (error) {
           if (!isResourceFailure(error)) throw error;
-          console.warn(`Unable to resolve CSS resource ${href} from ${documentPath}.`, error);
+          console.warn(`Unable to resolve CSS resource ${reference.kind === "data" ? "[data URL]" : href} from ${documentPath}.`, error);
           return undefined;
         }
       }, declarations);

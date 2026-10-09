@@ -131,7 +131,7 @@ for (const deviceScaleFactor of [1, 2]) {
                     windows.push([page.topY, page.topY + Math.min(page.height, budget)]);
                   }
                   host.goToPageIndex(0);
-                  fullyVisible = Array.from(doc.images).filter(image => image.id !== "restricted").every(image => {
+                  fullyVisible = Array.from(doc.images).every(image => {
                     const rect = image.getBoundingClientRect();
                     const top = rect.top - paintTop, bottom = rect.bottom - paintTop;
                     const containing = windows.filter(([start, end]) => start <= top + 0.5 && end >= bottom - 0.5);
@@ -140,8 +140,9 @@ for (const deviceScaleFactor of [1, 2]) {
                 }
                 const restricted = doc.querySelector<HTMLImageElement>("#restricted")!;
                 rows.push({ width, mode, images, fullyVisible, pages,
-                  restrictedBlocked: restricted.complete && restricted.naturalWidth === 0,
-                  restrictedCandidates: restricted.getAttribute("srcset") });
+                  embeddedDecoded: restricted.complete && restricted.naturalWidth > 0 &&
+                    restricted.currentSrc.startsWith("blob:"),
+                  embeddedCandidates: restricted.getAttribute("srcset") });
               } finally {
                 host.dispose();
                 host.element.remove();
@@ -171,8 +172,8 @@ for (const deviceScaleFactor of [1, 2]) {
         expect(row.images.every(image => image.complete && image.decoded && image.selected), JSON.stringify(row)).toBe(true);
         expect(row.pages).toBeGreaterThan(0);
         expect(row.fullyVisible).toBe(true);
-        expect(row.restrictedBlocked).toBe(true);
-        expect(row.restrictedCandidates).toBeNull();
+        expect(row.embeddedDecoded).toBe(true);
+        expect(row.embeddedCandidates?.trim()).toMatch(/^blob:.* 2x$/);
       }
       expect(results.cached).toBe(true);
       expect(results.revoked).toBe(true);
@@ -184,32 +185,43 @@ for (const deviceScaleFactor of [1, 2]) {
   });
 }
 
-test("a missing packaged candidate fails explicitly instead of silently dropping srcset", async () => {
+test("a missing packaged candidate is reported while the host and other images remain readable", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
     await page.route("http://responsive.test/", route => route.fulfill({ contentType: "text/html", body: "<!doctype html>" }));
     await page.goto("http://responsive.test/");
     await page.addScriptTag({ content: code });
-    const failure = await page.evaluate(async bytes => {
+    const result = await page.evaluate(async bytes => {
       const E = window.responsiveEngine;
       const loader = await E.ContentLoader.create(await E.EpubContainer.open(
         Uint8Array.from(atob(bytes), c => c.charCodeAt(0)),
       ));
       const host = new E.PaginatedContentHost(680, 900);
       const resolver = new E.ResourceUrlResolver(loader);
+      const unavailable: Array<{ path: string; consumer: string; reason: string }> = [];
+      resolver.fallbackSelector.onUnsupported(error => unavailable.push({
+        path: error.path, consumer: error.consumer, reason: error.reason,
+      }));
       document.body.append(host.element);
       try {
         await host.open(loader, resolver, 0);
-        return null;
-      } catch (error) {
-        if (!(error instanceof Error)) throw error;
-        return { name: error.name, message: error.message };
+        const doc = host.element.contentDocument!;
+        const survivor = doc.querySelector<HTMLImageElement>("#survivor")!;
+        return {
+          unavailable, pages: host.pageCount, text: doc.getElementById("host")?.textContent,
+          missingSrcset: doc.getElementById("missing")?.getAttribute("srcset"),
+          survivorDecoded: survivor.complete && survivor.naturalWidth > 0,
+        };
       } finally {
         host.dispose(); resolver.dispose();
       }
-    }, fs.readFileSync(book('<img srcset="missing.svg 2x"/>')).toString("base64"));
-    expect(failure?.message).toContain("No manifest item found for resource path: missing.svg");
+    }, fs.readFileSync(book('<p id="host">Readable host</p><img id="missing" srcset="missing.svg 2x"/><img id="survivor" src="one.svg"/>')).toString("base64"));
+    expect(result.unavailable).toEqual([{ path: "missing.svg", consumer: "image", reason: "exhausted" }]);
+    expect(result.text).toBe("Readable host");
+    expect(result.missingSrcset).toBeNull();
+    expect(result.survivorDecoded).toBe(true);
+    expect(result.pages).toBeGreaterThan(0);
   } finally {
     await browser.close();
   }
