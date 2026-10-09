@@ -270,7 +270,17 @@ CDP loading failure explicitly blocked by CSP, with no network dispatch/response
 Playwright can report a logical request attempt even when CSP prevents dispatch;
 the safety-net route must never handle that attempt. This is not a sanitized
 attribute or simulated event. This covers the common rendering
-host; external SVG graph rewriting remains a separate compatibility gap.
+host; SVG graph rendering is measured separately.
+
+`svg-resource-graphs.spec.ts` measures actual decoded pixels for packaged SVG
+images and CSS backgrounds in reflowable, fixed and roll layouts. Nested SVG
+images, qualified same-document use/paint references and external gradients
+must paint green over a red backdrop. External `use` is tested independently:
+Chromium SVG-as-image rendering retains the red backdrop rather than rendering
+the referenced shape, despite the rewritten self-contained dependency. This
+browser limitation remains open under #336; URL rewriting alone is not a
+compatibility pass. These generated fixtures run in protected resources CI
+without changing the published assessment.
 
 The opt-in release profile in `assessment/core-media.spec.ts` uses
 `epub-conformance.config.ts`, not ordinary test discovery. The main-only release
@@ -457,7 +467,10 @@ at 1x/2x display density, density/width descriptors, narrow/wide viewports, and
 paginated/scrolling/fixed-layout hosts. It checks image selection and decoding
 before pagination, complete image coverage, resolver caching/revocation, explicit
 missing-resource errors, and the actual extension import path. CI runs the
-synthetic cases without downloading books. Set `AMBRA_RESPONSIVE_IMAGE_EPUB` to a
+synthetic cases without downloading books. Selection checks the resource identity
+in the actually selected SVG and its decoded teal pixels, not equality with a
+separately resolved blob URL: assembled SVG graphs have context-specific URLs.
+Set `AMBRA_RESPONSIVE_IMAGE_EPUB` to a
 local compatible Standard Ebooks EPUB to additionally verify its title artwork;
 that opt-in run disables traces and screenshots to keep publication content local.
 

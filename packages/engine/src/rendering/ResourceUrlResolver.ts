@@ -15,6 +15,7 @@ import {
   UnsupportedResourceError, resourceResolutionKey,
 } from "./ResourceFallbackSelector.js";
 import { classifyEpubReference } from "../container/EpubReference.js";
+import { sameDocumentSvgFragment } from "../content/SvgResources.js";
 export { ResourceResolutionError, ResourceResolutionCancelledError } from "./ResourceFallbackSelector.js";
 
 export interface ResolvedResource {
@@ -58,7 +59,8 @@ export class ResourceUrlResolver {
     budget: NestedResourceBudget = { remaining: MAX_NESTED_RESOURCE_BYTES },
   ): Promise<ResolvedResource> {
     const item = await this.fallbackSelector.select(path, consumer);
-    if (consumer === "document") {
+    const svgGraph = item.mediaType === "image/svg+xml" && item.location === undefined;
+    if (consumer === "document" || svgGraph) {
       const reason = documentAncestors.has(item.path) ? "cycle"
         : documentAncestors.size > MAX_NESTED_DOCUMENT_DEPTH ? "depth-limit" : undefined;
       if (reason) {
@@ -67,8 +69,8 @@ export class ResourceUrlResolver {
         throw new UnsupportedResourceError(path, consumer, reason, chain);
       }
       return {
-        url: await this.createResourceUrl(item.path, item.mediaType, documentAncestors, true, inlineResources, budget),
-        path: item.path, mediaType: item.mediaType, isolatedDocument: true,
+        url: await this.createResourceUrl(item.path, item.mediaType, documentAncestors, consumer === "document", inlineResources, budget),
+        path: item.path, mediaType: item.mediaType, isolatedDocument: consumer === "document" || undefined,
       };
     }
     return {
@@ -102,7 +104,7 @@ export class ResourceUrlResolver {
           resolved.set(key, null);
           return;
         }
-        if (isResourceFailure(error) || (ref.consumer === "document" && error instanceof ContentLoaderError)) {
+        if (isResourceFailure(error)) {
           console.warn(`Unable to resolve publication ${ref.consumer} resource ${ref.location?.kind === "data" ? "[data URL]" : ref.path}.`, error);
           this.fallbackSelector.reportUnavailable(ref.path, ref.consumer, "exhausted");
           resolved.set(key, null);
@@ -159,7 +161,9 @@ export class ResourceUrlResolver {
     inlineResources = false,
     budget: NestedResourceBudget = { remaining: MAX_NESTED_RESOURCE_BYTES },
   ): Promise<string> {
-    const contentDocument = mediaType === "application/xhtml+xml" || assembleDocument;
+    const manifestItem = this.contentLoader.packageDocument.findManifestItemByPath(path);
+    const svgGraph = mediaType === "image/svg+xml" && manifestItem !== undefined && manifestItem.location === undefined;
+    const contentDocument = mediaType === "application/xhtml+xml" || assembleDocument || svgGraph;
     const contextualDocument = assembleDocument || (contentDocument && ancestors.size > 0);
     const documentKey = JSON.stringify([path, [...ancestors], inlineResources]);
     const existingDocument = contextualDocument ? this.documentUrlsByContext.get(documentKey) : undefined;
@@ -168,9 +172,8 @@ export class ResourceUrlResolver {
     if (existingData) return existingData;
     let bytes: Uint8Array;
     if (contentDocument) {
-      const item = this.contentLoader.packageDocument.findManifestItemByPath(path);
-      if (!item) throw new ResourceResolutionError(`No manifest item found for resource path: ${path}`);
-      const document = await this.contentLoader.loadContentDocument(item);
+      if (!manifestItem) throw new ResourceResolutionError(`No manifest item found for resource path: ${path}`);
+      const document = await this.contentLoader.loadContentDocument(manifestItem);
       bytes = new TextEncoder().encode(await ContentDocumentAssembler.prepare(
         document, this, { applyReadingTheme: false, nestedDocument: true }, ancestors, budget,
       ));
@@ -212,7 +215,7 @@ export class ResourceUrlResolver {
   public async rewriteCss(
     source: string,
     documentPath: string,
-    declarations = false,
+    declarations: boolean | "value" = false,
     ancestors: ReadonlySet<string> = new Set(),
     inlineResources = false,
     budget: NestedResourceBudget = { remaining: MAX_NESTED_RESOURCE_BYTES },
@@ -224,6 +227,8 @@ export class ResourceUrlResolver {
         // CSS local fragment URLs keep their tree-local meaning, including
         // SVG paint servers; only other inline URLs use the HTML base.
         if (classifyEpubReference(documentPath, href).kind === "fragment") return href;
+        const localFragment = sameDocumentSvgFragment(documentPath, href, baseHref);
+        if (localFragment !== undefined) return localFragment;
         const reference = classifyEpubReference(documentPath, href, baseHref);
         if (reference.kind === "fragment") return href;
         const path = reference.kind === "package" ? reference.path : reference.url.split("#")[0]!;
@@ -244,6 +249,8 @@ export class ResourceUrlResolver {
           // concurrently requested roots may import each other.
           const url = item.mediaType === "text/css"
             ? await this.createResourceUrl(item.path, item.mediaType, ancestors, false, inlineResources, budget)
+            : item.mediaType === "image/svg+xml" && item.location === undefined
+              ? (await this.resolveForConsumer(item.path, consumer, ancestors, inlineResources, budget)).url
             : inlineResources || item.location?.kind === "data"
               ? await this.createResourceUrl(item.path, item.mediaType, new Set(), false, inlineResources, budget)
               : await this.resolve(item.path);
@@ -319,6 +326,7 @@ function dataResourceUrl(bytes: Uint8Array, mediaType: string): string {
 function isResourceFailure(error: unknown): boolean {
   if (error instanceof ResourceResolutionCancelledError) return false;
   return error instanceof ResourceResolutionError ||
+    error instanceof ContentLoaderError ||
     error instanceof EpubContainerError ||
     error instanceof ZipFormatError ||
     error instanceof ZipIntegrityError ||

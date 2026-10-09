@@ -34,7 +34,7 @@ function selected(mode) {
 
 test("full matrix preserves every legacy protected file invocation, including intentional duplicates", () => {
   assert.deepEqual(selected("full").flatMap(group => group.steps.flatMap(step => step.files)).sort(),
-    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors"].sort());
+    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors", "svg-resource-graphs"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
   assert.equal(core.length, 57);
@@ -55,6 +55,7 @@ test("packaged frame isolation and bounded recursion run in protected resource v
   assert.ok(browserArguments("resources")[0].args.includes("packaged-frames.spec.ts"));
   assert.ok(browserArguments("resources")[0].args.includes("embedded-data-images.spec.ts"));
   assert.ok(browserArguments("resources")[0].args.includes("html-base.spec.ts"));
+  assert.ok(browserArguments("resources")[0].args.includes("svg-resource-graphs.spec.ts"));
 });
 
 test("mixed-layout painted content and explicit single-side placement run without original-publication opt-ins", () => {

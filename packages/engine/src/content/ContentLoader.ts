@@ -2,15 +2,12 @@ import { EpubContainer } from "../container/EpubContainer.js";
 import type { ZipEntry } from "../container/ZipArchive.js";
 import { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
 import { splitHrefFragment } from "../container/EpubPath.js";
-import { getDescendantElementsByNS, getNamespacedAttributeName } from "../container/Xml.js";
 import type { EncryptionDocument } from "../encryption/EncryptionDocument.js";
 import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
 import { srcsetCandidateRanges, type SrcsetUrlRange } from "./Srcset.js";
 import type { ResourceConsumer } from "../rendering/ResourceCapabilities.js";
 import { classifyEpubReference, getDocumentBaseHref, type NonPackageEpubReference } from "../container/EpubReference.js";
-
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+import { getSvgHrefAttributes, sameDocumentSvgFragment } from "./SvgResources.js";
 
 /** Media types this engine can actually render a spine/content document
  * as — every other type only ever makes it here via a `fallback` chain
@@ -271,16 +268,10 @@ export function findResourceReferencesInDocument(
 
   // SVG <image> elements use either a bare `href` (SVG2) or the legacy
   // `xlink:href` (SVG1.1, still the common case in real-world EPUBs).
-  for (const imageEl of ["image", "use", "feImage"].flatMap(name => getDescendantElementsByNS(document, SVG_NAMESPACE, name))) {
-    const attribute =
-      (imageEl.hasAttribute("href") ? "href" : undefined) ??
-      getNamespacedAttributeName(imageEl, XLINK_NAMESPACE, "href");
-    if (attribute) {
-      const reference = resolveReference(imageEl, attribute, documentPath, options.includeUnavailable, baseHref);
-      if (reference) {
-        references.push(reference);
-      }
-    }
+  for (const { element, attributeName } of getSvgHrefAttributes(document)) {
+    if (sameDocumentSvgFragment(documentPath, element.getAttribute(attributeName)!, baseHref) !== undefined) continue;
+    const reference = resolveReference(element, attributeName, documentPath, options.includeUnavailable, baseHref);
+    if (reference) references.push(reference);
   }
 
   return references;
