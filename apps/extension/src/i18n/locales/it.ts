@@ -357,6 +357,7 @@ export const it: StringCatalog = {
   "annotations.cancelNote": "Annulla",
   "annotations.saveNote": "Salva",
   "annotations.publisherNoteTag": "Nota dell'editore",
+  "annotations.attachmentNotLoaded": "Allegato conservato; non caricato",
   "annotations.importNotAnAnnotationsFile":
     "Non siamo riusciti a caricare le annotazioni da quel file. Non sembra un'esportazione di annotazioni valida.",
   "annotations.importWrongBook":

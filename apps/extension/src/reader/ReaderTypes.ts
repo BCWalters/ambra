@@ -297,6 +297,7 @@ export interface ReadOnlyAnnotationView {
   readonly cfi: string;
   readonly label: string;
   readonly note: string | undefined;
+  readonly bodyUnavailable?: boolean;
   /** Which tab this shows up in — see `classifyReadOnlyAnnotationKind`. */
   readonly kind: "highlight" | "bookmark";
   readonly location?: BookmarkLocation;

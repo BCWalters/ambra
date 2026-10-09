@@ -236,7 +236,9 @@ test("publisher bookmarks keep measured page metadata and read-only navigation (
       .toBe(embedded.location.page.number);
     await page.evaluate(() => {
       const controller = Reflect.get(window, "__readerController");
-      controller.embeddedAnnotations[0].target.selector[0].value = "epubcfi(/6/9998!/4/2/1:0)";
+      controller.embeddedAnnotations[0].selection = {
+        spineIndex: 9998, startCfi: "epubcfi(/6/9998!/4/2/1:0)",
+      };
       controller.notify();
     });
     await openPanel(page);

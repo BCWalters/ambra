@@ -2,6 +2,10 @@ import {
   AccessibilityController,
   adjacentPrimarySpineIndex,
   AnnotationParseError,
+  AnnotationSelectorResolver,
+  isAnnotationSelectorFailure,
+  getAnnotationTextBody,
+  hasUnloadedAnnotationBody,
   BookPaginationEstimator,
   ContentLoader,
   DisclosureState,
@@ -35,8 +39,8 @@ import type {
   ContentDocumentView,
   DomBreakPoint,
   EpubAnnotation,
+  AnnotationSelection,
   FontFamilyChoice,
-  FragmentSelector,
   HighlightStyle,
   NavPoint,
   PackageDocument,
@@ -58,7 +62,6 @@ import {
   classifyImportOutcome,
   classifyReadOnlyAnnotationKind,
   importAnnotations,
-  parseSelectorCfi,
 } from "../library/AnnotationInterop.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { describeStorageError } from "../StorageErrors.js";
@@ -322,7 +325,7 @@ export class ReaderController {
    * #109), loaded best-effort in `open` — absent for the overwhelming
    * majority of books. Never mutated by this reader; only the user's
    * own highlights/bookmarks (above) are ever added to or removed. */
-  private embeddedAnnotations: EpubAnnotation[] = [];
+  private embeddedAnnotations: { annotation: EpubAnnotation; selection: AnnotationSelection }[] = [];
   private selectionToolbar: SelectionToolbarState | undefined;
   /** The live `Range` backing `selectionToolbar` — `addHighlight` uses
    * this directly rather than re-querying `getSelection()`, since focus
@@ -621,7 +624,21 @@ export class ReaderController {
       if (annotationsItem) {
         try {
           const jsonText = await contentLoader.readArchiveFileText(annotationsItem.path);
-          controller.embeddedAnnotations = parseAnnotationCollection(jsonText);
+          const selectors = new AnnotationSelectorResolver(pkg, locatorResolver, false);
+          for (const annotation of parseAnnotationCollection(jsonText)) {
+            if (!annotation.target.selector?.length)
+              controller.diagnostics.record(`Embedded annotation ${annotation.id} has no supported selector.`);
+            for (const selector of annotation.target.selector ?? []) {
+              try {
+                const selection = await selectors.resolve(annotation.target.source, selector);
+                controller.embeddedAnnotations.push({ annotation, selection });
+                break;
+              } catch (error) {
+                if (!isAnnotationSelectorFailure(error)) throw error;
+                controller.diagnostics.record(`Embedded annotation ${annotation.id}, selector ${selector.type} unavailable: ${String(error)}`);
+              }
+            }
+          }
         } catch (err) {
           controller.diagnostics.record(
             `Embedded annotations failed to load: ${err instanceof Error ? err.message : String(err)}`,
@@ -1242,48 +1259,23 @@ export class ReaderController {
 
   /** Every embedded, read-only annotation (issue #109), resolved to a
    * displayable label — the annotation's own note text if it has one,
-   * else the chapter it falls in. Only resolves annotations whose
-   * selector this reader understands (a `FragmentSelector` holding an
-   * EPUB CFI) and whose `target.source` matches a real spine item;
-   * anything else is silently omitted rather than shown broken. */
+   * else the chapter it falls in. Resolution uses the same authored selector
+   * order as imports, with diagnostics for unavailable alternatives. */
   public listEmbeddedAnnotations(): ReadOnlyAnnotationView[] {
     const views: ReadOnlyAnnotationView[] = [];
-    for (const annotation of this.embeddedAnnotations) {
-      const selector = annotation.target.selector?.find(
-        (candidate): candidate is FragmentSelector => candidate.type === "FragmentSelector",
-      );
-      if (!selector) {
-        continue;
-      }
-      const spineIndex = this.pkg.spine.findIndex(
-        (ref) => ref.manifestItem.path === annotation.target.source,
-      );
-      if (spineIndex === -1) {
-        continue;
-      }
-      let cfi: string;
-      let isRange: boolean;
-      let cfiSpineIndex: number | undefined;
-      try {
-        const selection = parseSelectorCfi(selector.value);
-        cfi = selection.start.toString();
-        isRange = selection.end !== undefined;
-        cfiSpineIndex = this.pkg.findSpineIndexByPackageCfiSteps(selection.start.packageSteps);
-      } catch {
-        continue;
-      }
-      const note = annotation.body?.type === "TextualBody" ? annotation.body.value : undefined;
+    for (const { annotation, selection } of this.embeddedAnnotations) {
+      const { spineIndex, startCfi: cfi } = selection;
+      const note = getAnnotationTextBody(annotation);
       views.push({
         id: annotation.id,
+        bodyUnavailable: hasUnloadedAnnotationBody(annotation),
         cfi,
         label: note && note.length > 0 ? note : this.chapterLabel(spineIndex) || this.pkg.metadata.title,
         note,
-        kind: classifyReadOnlyAnnotationKind(annotation.motivation, isRange),
-        location: cfiSpineIndex === undefined
-          ? { page: { status: "unavailable" } }
-          : this.bookmarks.locationAt(
-            cfiSpineIndex, cfi, this.host instanceof ScrollContentHost ? undefined : this.bookPagination,
-          ),
+        kind: classifyReadOnlyAnnotationKind(annotation.motivation, selection.endCfi !== undefined),
+        location: this.bookmarks.locationAt(
+          spineIndex, cfi, this.host instanceof ScrollContentHost ? undefined : this.bookPagination,
+        ),
       });
     }
     return views;

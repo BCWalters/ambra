@@ -12,7 +12,7 @@ import {
   PinOffRegular,
   PinRegular,
 } from "@fluentui/react-icons";
-import { HighlightTheme } from "@ambra/engine";
+import { HighlightTheme, hasUnloadedAnnotationBody } from "@ambra/engine";
 import { CHROME_BORDER, CHROME_HOVER_BACKGROUND, CHROME_SHADOW, SCRUBBER_HEIGHT } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useFocusOnOpen } from "../useFocusOnOpen.js";
@@ -45,6 +45,13 @@ const ANNOTATION_CARD_STYLE: CSSProperties = {
   borderRadius: 8,
   background: "rgba(255, 255, 255, 0.16)",
   overflowWrap: "anywhere",
+};
+
+const AttachmentStatus: FC<{ unavailable?: boolean }> = ({ unavailable }) => {
+  const t = useTranslation();
+  return unavailable ? <Caption1 block style={{ margin: "0 10px 8px" }}>
+    {t("annotations.attachmentNotLoaded")}
+  </Caption1> : null;
 };
 
 const useBookmarkStyles = makeStyles({
@@ -84,10 +91,11 @@ const useBookmarkStyles = makeStyles({
 
 const BookmarkCard: FC<{
   title: string;
+  bodyUnavailable?: boolean;
   location?: BookmarkLocation;
   onSelect: () => void;
   onRemove?: (event: MouseEvent<HTMLButtonElement>) => void;
-}> = ({ title, location, onSelect, onRemove }) => {
+}> = ({ title, location, bodyUnavailable, onSelect, onRemove }) => {
   const t = useTranslation();
   const { locale } = useLocale();
   const chromeTheme = useChromeTheme();
@@ -108,6 +116,7 @@ const BookmarkCard: FC<{
           <span className={styles.title} data-bookmark-title="">{title}</span>
         </button>
       </Tooltip>
+      <AttachmentStatus unavailable={bodyUnavailable} />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 8px 8px 10px" }}>
         <span id={pageId} data-bookmark-page="" style={{
           minWidth: 0,
@@ -162,6 +171,7 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, locations, embedded, o
     <ul ref={listRef} style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {bookmarks.map((bookmark, index) => (
         <BookmarkCard key={bookmark.id} title={locations?.[bookmark.id]?.chapterTitle ?? bookmark.label}
+          bodyUnavailable={bookmark.importedAnnotation && hasUnloadedAnnotationBody(bookmark.importedAnnotation)}
           location={locations?.[bookmark.id]} onSelect={() => onSelect(bookmark.cfi)}
           onRemove={event => {
             pendingFocus.current = {
@@ -173,6 +183,7 @@ const BookmarkList: FC<BookmarkListProps> = ({ bookmarks, locations, embedded, o
       ))}
       {embedded.map((annotation) => (
         <BookmarkCard key={annotation.id} title={annotation.label} location={annotation.location}
+          bodyUnavailable={annotation.bodyUnavailable}
           onSelect={() => onSelectEmbedded(annotation.cfi)} />
       ))}
     </ul>
@@ -355,6 +366,7 @@ const HighlightListItem: FC<HighlightListItemProps> = ({
           </Button>
         </Tooltip>
       </div>
+      <AttachmentStatus unavailable={highlight.importedAnnotation && hasUnloadedAnnotationBody(highlight.importedAnnotation)} />
       {highlight.note && !isEditingNote && (
         <Body1 as="p" block style={{ margin: "0 10px 12px", whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.6 }}>
           {highlight.note}
@@ -452,6 +464,7 @@ const ReadOnlyRow: FC<ReadOnlyRowProps> = ({ annotation, onSelect, clampLines })
           <Caption1 as="span" block style={{ opacity: 0.6 }}>
             {t("annotations.publisherNoteTag")}
           </Caption1>
+          <AttachmentStatus unavailable={annotation.bodyUnavailable} />
           <span
             style={
               clampLines === 1

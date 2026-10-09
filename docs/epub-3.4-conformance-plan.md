@@ -390,6 +390,36 @@ Focused engine/Inspector tests and `html-base.spec.ts` cover resource decoding,
 nested CSS/child documents, real link activation, all three layouts and blocked
 base policies. These are synthetic regressions, not newly scored official tests.
 
+The post-3.1.0 annotation increment resolves unique-element CSS selectors and
+body/scoped text-position selectors in both imported and publisher annotations.
+Text positions count Unicode code points over DOM `textContent`, including
+authored whitespace, decoded entities and tree-order cross-element text.
+CSS refinements can select a nested element or a scoped text position.
+Ambiguous/missing/invalid CSS, unsupported refinements, excessive refinement
+depth (16) and CSS length (16,384) fail explicitly; later authored selectors
+may recover. CFI and text-position refinements remain an unsupported subset,
+not silently broadened targets. A bookmarking range uses its start.
+OPF-relative sources resolve against the retained package-document path;
+external sources cannot alias package members. Imported CFIs retain the prior
+local-source/package-step fallback and exact-duplicate no-DOM-load fast path.
+Publisher CFI validation caches each source document rather than reparsing it
+for every annotation.
+
+Imported records retain original IDs, creators/timestamps, open string/list
+motivations, selectors/refinements, supported extension fields and body data
+through database reload and JSON export. Editing the primary textual note
+changes that body and marks the exported annotation modified, preserving other
+bodies and target data. Literal textual bodies are presented as plain text,
+never interpreted as HTML. External, image, audio, video and unknown bodies are
+retained but neither fetched, embedded nor played; cards explicitly show
+“Attachment retained; not loaded”. Whole-resource targets without a supported
+selector and non-unique CSS selections are not implemented.
+`annotation-selectors.spec.ts` covers live recovery/navigation in paginated,
+fixed and roll layouts, Unicode extraction, exclusive CSS range ends,
+mixed-body persistence/export/editing, duplicate imports and no body requests.
+It runs in protected reader-core CI. These synthetic cases do not change any
+published conformance verdict; the remaining official assessment is still #326.
+
 The next completeness target is 3.3.0 (#326 and its milestone). The shipped 3.0.0
 assessment remains frozen until the remaining EPUB work and full assessment are
 complete; 3.4.0 may follow with separately validated animation polish.
@@ -465,7 +495,7 @@ waiver.
 | C34-11 | Publication-origin isolation and scripting policy | Give each publication an isolated origin model and record whether scripting remains unsupported or is introduced under explicit capability and security boundaries.            | [#338](https://github.com/BCWalters/ambra/issues/338) |
 | C34-12 | Complete Media Overlay behavior                   | Add text-only TTS and embedded-media handling, skippability, escapability, timing clamping, and pagebreak/navigation synchronization.                                          | [#337](https://github.com/BCWalters/ambra/issues/337) |
 | C34-13 | Complete EPUB CFI processing                      | Add multiple indirections, temporal/spatial offsets, assertions, side bias, range resolution, and recovery behavior.                                                           | [#340](https://github.com/BCWalters/ambra/issues/340) |
-| C34-14 | Complete EPUB Annotation selectors and bodies     | Resolve CSS and text-position selectors and support interoperable selector recovery and richer bodies.                                                                         | [#341](https://github.com/BCWalters/ambra/issues/341) |
+| C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
 | C34-17 | Outdated and deprecated vocabulary policy         | Document and test intentional support or non-support for outdated rendition properties, prefixed CSS, `epub:switch`, `epub:trigger`, bindings, tours, and superseded metadata. | [#344](https://github.com/BCWalters/ambra/issues/344) |

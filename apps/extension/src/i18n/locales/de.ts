@@ -357,6 +357,7 @@ export const de: StringCatalog = {
   "annotations.cancelNote": "Abbrechen",
   "annotations.saveNote": "Speichern",
   "annotations.publisherNoteTag": "Verlagsnotiz",
+  "annotations.attachmentNotLoaded": "Anhang erhalten; nicht geladen",
   "annotations.importNotAnAnnotationsFile":
     "Die Anmerkungen aus dieser Datei konnten nicht geladen werden. Das sieht nicht nach einer gültigen Anmerkungsdatei aus.",
   "annotations.importWrongBook":

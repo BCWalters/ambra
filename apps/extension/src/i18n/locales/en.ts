@@ -419,6 +419,7 @@ export interface StringCatalog {
   /** The small read-only-row tag shown on a publisher-embedded
    * annotation merged into the Bookmarks/Highlights tabs (issue #116). */
   "annotations.publisherNoteTag": string;
+  "annotations.attachmentNotLoaded": string;
   /** Issue #114: a file that fails to even parse as an EPUB Annotations
    * 1.0 collection (garbage/unrelated JSON, not just "the wrong book"
    * — see `importWrongBook`). */
@@ -979,6 +980,7 @@ export const en: StringCatalog = {
   "annotations.cancelNote": "Cancel",
   "annotations.saveNote": "Save",
   "annotations.publisherNoteTag": "Publisher note",
+  "annotations.attachmentNotLoaded": "Attachment retained; not loaded",
   "annotations.importNotAnAnnotationsFile": "We couldn't load the annotations from that file. It doesn't look like a valid annotations export.",
   "annotations.importWrongBook": "We couldn't load the annotations from that file. It looks like they might be from a different book.",
   "annotations.importAllDuplicates": "Looks like you already have all of these annotations — nothing new to add.",

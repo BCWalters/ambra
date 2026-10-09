@@ -354,6 +354,7 @@ export const zh: StringCatalog = {
   "annotations.cancelNote": "取消",
   "annotations.saveNote": "保存",
   "annotations.publisherNoteTag": "出版商注释",
+  "annotations.attachmentNotLoaded": "附件已保留，未加载",
   "annotations.importNotAnAnnotationsFile": "无法从该文件加载注释。它似乎不是有效的注释导出文件。",
   "annotations.importWrongBook": "无法从该文件加载注释。它们可能来自另一本书。",
   "annotations.importAllDuplicates": "看起来您已经拥有所有这些注释了 — 没有新内容可添加。",
