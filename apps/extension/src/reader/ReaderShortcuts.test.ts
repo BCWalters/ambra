@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { AccessibilityController, FixedContentHost, PaginatedContentHost, ScrollContentHost } from "@ambra/engine";
+import { AccessibilityController, FixedContentHost, PaginatedContentHost, RollContentHost, ScrollContentHost } from "@ambra/engine";
 import { ReaderController } from "./ReaderController.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
 
@@ -44,7 +44,7 @@ function setup() {
   Object.assign(controller, {
     diagnostics: new DiagnosticsLog(),
     spineIndex: 1,
-    pkg: { spine: [{}, {}, {}], pageProgressionDirection: "ltr" },
+    pkg: { spine: Array.from({ length: 3 }, () => ({ manifestItem: { mediaType: "application/xhtml+xml" } })), pageProgressionDirection: "ltr" },
     operations: { disposed: false },
     contentDocumentViews: () => [
       { document: first, spineIndex: 0, page: { index: 0 } },
@@ -155,6 +155,26 @@ it("leaves fixed-layout and unavailable mode commands entirely unhandled", () =>
   controller.handleShortcut(event, document, "shell");
   expect(event.defaultPrevented).toBe(false);
   expect(controller.setViewMode).not.toHaveBeenCalled();
+});
+
+it.each([FixedContentHost, RollContentHost])("allows SVG canvas view-mode commands in %s", Host => {
+  const { controller } = setup();
+  Object.assign(controller, {
+    containerEl: document.createElement("main"),
+    host: Object.create(Host.prototype),
+    pkg: { spine: [{}, { manifestItem: { mediaType: "image/svg+xml" }, resolveRenditionLayout: () => "reflowable" }],
+      metadata: { renditionLayout: "reflowable" }, pageProgressionDirection: "ltr" },
+    shortcutPreferences: { enabled: true },
+    shortcutPlatform: "other",
+    setViewMode: vi.fn(async () => {}),
+  });
+  for (const [key, mode] of [["PageDown", "scroll"], ["PageUp", "paginated"]]) {
+    const event = new KeyboardEvent("keydown", { key, altKey: true, shiftKey: true, cancelable: true });
+    Object.defineProperty(event, "getModifierState", { value: () => false });
+    controller.handleShortcut(event, document, "content");
+    expect(event.defaultPrevented).toBe(true);
+    expect(controller.setViewMode).toHaveBeenLastCalledWith(mode);
+  }
 });
 
 it("preserves precise native companion position through mode changes and does not rebuild the same mode", async () => {

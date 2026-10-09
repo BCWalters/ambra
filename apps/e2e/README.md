@@ -43,6 +43,26 @@ do not paint SVG groups. Authored classes still apply; original shadows,
 priorities, fill and filters are preserved/restored. No overlay elements are
 inserted into publication DOMs, so source-node/CFI structure stays unchanged.
 
+`tests/svg-spine.spec.ts` measures standalone SVG canvas fitting, shared spread
+scale, enlargement/reduction, explicit pixel viewports without a viewBox,
+different viewport/viewBox aspects and clipping, docked Inspector resize,
+single-page preference, script denial and unchanged authored rendition metadata.
+Reflowable SVG-only primary spines reuse the gapless fit-width roll host in
+scroll mode. Mixed XHTML/SVG primary spines retain chapter-at-a-time scrolling;
+auxiliary navigation does not join non-primary documents into the main list.
+Authored fixed-layout/roll routing remains unchanged. Set
+`AMBRA_SVG_SPINE_ORDER_EPUB` to the pinned `pkg-spine-order-svg.epub` for its
+original four-page centered scrolling, wheel, resize, resume and mode-switch
+regression. Generated filenames/titles carry ID 3.1.5. Renderer-only spine
+projections preserve the original manifest, package CFI steps and OPF properties.
+SVG canvases retain authored graphics/fonts and use one outer iframe scale;
+their root fills the resolved intrinsic viewport without changing its attributes.
+SVG scrolling saves a supplemental per-canvas fraction alongside the authoritative
+CFI, since a large background/root node cannot encode its interior pixel position.
+It is validated against the CFI's spine item and retained across mode switches;
+older saved progress and authored roll behavior remain compatible.
+These regressions do not revise the frozen self-assessment.
+
 `tests/media-overlay-playback.spec.ts` includes a page-following regression
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before

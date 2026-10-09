@@ -43,8 +43,10 @@ import type {
   PageTheme,
   PaginatedOpenOptions,
   ReflowableSpread,
+  SpineItemRef,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import { canStackSvgSpine, isSvgSpineItem, svgCanvasSpine } from "./SvgPresentation.js";
 import { saveLibraryBookAs } from "../library/LibrarySaveAs.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import { ariaShortcut, DEFAULT_SHORTCUT_PREFERENCES, getCommandBindings, getShortcutPlatform, matchReaderCommand, parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
@@ -202,6 +204,16 @@ function applyEpubTypeAriaRoles(doc: Document): void {
  * methods here, then is notified (`subscribe`) to re-render.
  */
 export class ReaderController {
+  private readonly svgPages: readonly SpineItemRef[];
+  private readonly singleSvgPages: readonly SpineItemRef[];
+  private readonly stackSvgPages: boolean;
+  private svgScrollPosition: { spineIndex: number; fraction: number } | undefined;
+
+  private get presentationSpine(): readonly SpineItemRef[] {
+    return this.viewMode === "paginated"
+      ? (this.alwaysShowOnePage ? this.singleSvgPages : this.svgPages) : this.pkg.spine;
+  }
+
   private host:
     | PaginatedContentHost
     | ScrollContentHost
@@ -404,6 +416,9 @@ export class ReaderController {
     rootFilePath: string,
     private readonly fileSizeBytes: number,
   ) {
+    this.svgPages = svgCanvasSpine(pkg);
+    this.singleSvgPages = svgCanvasSpine(pkg, true);
+    this.stackSvgPages = canStackSvgSpine(pkg);
     resolver.fallbackSelector.onUnsupported(error => {
       if (this.operations.disposed) return;
       this.diagnostics.record(error.message);
@@ -779,6 +794,7 @@ export class ReaderController {
           : this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ? "paginated"
             : this.viewMode,
         isFixedLayout: this.isFixedLayoutHost(this.host),
+        svgCanvas: this.isSvgCanvasHost() || undefined,
         pageIndex,
         pageCount,
         bookPageIndex,
@@ -986,7 +1002,7 @@ export class ReaderController {
     this.bookPagination = new BookPaginationEstimator(
       this.contentLoader,
       this.resolver,
-      this.pkg.spine,
+      this.svgPages,
       this.pkg.metadata.renditionLayout,
       container,
       this.disclosures,
@@ -1044,17 +1060,28 @@ export class ReaderController {
   private async tryResume(operation: ReaderOperation): Promise<boolean> {
     try {
       const historyCfi = this.readingHistory?.resumeCfi;
-      const progress = historyCfi ? { cfi: historyCfi } : await this.library.getProgress(this.bookId);
+      const progress = !historyCfi || (this.stackSvgPages && this.viewMode === "scroll")
+        ? await this.library.getProgress(this.bookId) : undefined;
+      const resumeCfi = historyCfi ?? progress?.cfi;
       if (!this.operations.owns(operation)) return true;
-      if (!progress) {
+      if (!resumeCfi) {
         return false;
       }
-      const cfi = EpubCfi.parse(progress.cfi);
+      const cfi = EpubCfi.parse(resumeCfi);
       const spineIndex = this.pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps);
       if (spineIndex === undefined) {
         return false;
       }
-      await this.openSpineItem(spineIndex, { bridgeCfi: progress.cfi });
+      const svgPosition = !historyCfi || historyCfi === progress?.cfi ? progress?.svgScrollPosition : undefined;
+      const validSvgPosition = svgPosition?.spineIndex === spineIndex &&
+        Number.isFinite(svgPosition.fraction) && svgPosition.fraction >= 0 && svgPosition.fraction <= 1;
+      if (svgPosition && !validSvgPosition) {
+        this.diagnostics.record("Saved SVG scroll position is invalid or mismatches its CFI; restoring the CFI.");
+      }
+      if (validSvgPosition && svgPosition) this.svgScrollPosition = svgPosition;
+      await this.openSpineItem(spineIndex, { bridgeCfi: resumeCfi,
+        ...(validSvgPosition && svgPosition && this.stackSvgPages && this.viewMode === "scroll"
+          ? { landOnFractionInItem: svgPosition.fraction } : {}) });
       return true;
     } catch {
       return false;
@@ -1113,8 +1140,14 @@ export class ReaderController {
         position.offset,
       );
       if (!this.isApplyingLayout && !this.isLoadInFlight) this.readingHistory?.update(locator.cfi);
-      await this.library.saveProgress(this.bookId, locator.cfi,
-        native ? this.nativeBookFraction(native, locator.cfi) : this.currentBookFraction());
+      const fraction = native ? this.nativeBookFraction(native, locator.cfi) : this.currentBookFraction();
+      const svgPosition = this.host instanceof RollContentHost && this.isSvgCanvasHost()
+        ? this.host.scrollPosition() : undefined;
+      if (svgPosition) {
+        this.svgScrollPosition = svgPosition;
+        await this.library.saveProgress(this.bookId, locator.cfi, fraction, svgPosition);
+      }
+      else await this.library.saveProgress(this.bookId, locator.cfi, fraction);
     } catch (error) {
       if (throwOnError) throw error;
       // Best-effort: resume-reading is a convenience, not something
@@ -1616,6 +1649,12 @@ export class ReaderController {
     );
   }
 
+  private isSvgCanvasHost(): boolean {
+    const item = this.pkg.spine[this.spineIndex];
+    return this.isFixedLayoutHost(this.host) && isSvgSpineItem(item) &&
+      item?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) === "reflowable";
+  }
+
   /** Primary content document; spread hosts use their primary column only. */
   private primaryContentDocument(): Document | undefined {
     if (this.host instanceof SpreadPaginatedHost || this.host instanceof FixedSpreadHost) {
@@ -1721,12 +1760,12 @@ export class ReaderController {
       preferences: this.shortcutPreferences,
       platform: this.shortcutPlatform,
       direction: this.pkg.effectivePageProgressionDirection,
-      viewMode: this.host instanceof ScrollContentHost ? "scroll" : "paginated",
+      viewMode: this.host instanceof ScrollContentHost || this.host instanceof RollContentHost ? "scroll" : "paginated",
       scope,
       modalOpen: this.shortcutModalOpen || !!this.imageViewer || !!this.tableViewer,
       canSwitchViewMode: !!this.containerEl && !this.operations.disposed &&
         (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ||
-          this.host instanceof ScrollContentHost),
+          this.host instanceof ScrollContentHost || this.isSvgCanvasHost()),
     });
     if (!command) return;
     if (["searchBook", "showKeyboardShortcuts", "goToPage", "goToPercentage"].includes(command) && !this.shortcutActions) return;
@@ -2313,6 +2352,9 @@ export class ReaderController {
     if (!resized && !modeChanged && !typographyChanged && !onePageChanged && !needsReflow) return;
 
     const native = this.nativeReading.retainedForShell();
+    if (modeChanged && this.host instanceof RollContentHost && this.isSvgCanvasHost()) {
+      this.svgScrollPosition = this.host.scrollPosition();
+    }
     Object.assign(this, next);
     const switchingSpread = this.shouldSwitchSpreadMode(next.width);
     const resizedSpread = resized && !modeChanged && !typographyChanged && !onePageChanged && !needsReflow &&
@@ -2419,7 +2461,7 @@ export class ReaderController {
   private shouldSwitchSpreadMode(width: number): boolean {
     if (this.host instanceof FixedSpreadHost) {
       const planned = FixedLayoutSpreadPlanner.spreadContaining(
-        this.pkg.spine,
+        this.presentationSpine,
         this.pkg.metadata.renditionLayout,
         this.pkg.effectivePageProgressionDirection,
         this.fixedSpreadViewport(width),
@@ -2489,6 +2531,8 @@ export class ReaderController {
     await this.openSpineItem(spineIndex, {
       bridgeCfi, preserveFocus, preserveReadingError: true,
       ...(preservePageBoundaries ? { preservePageBoundaries: true } : {}),
+      ...(this.viewMode === "scroll" && this.svgScrollPosition?.spineIndex === spineIndex
+        ? { landOnFractionInItem: this.svgScrollPosition.fraction } : {}),
     });
     // A panel can close after the rebuild captured its shell focus. Its
     // immediate return then targets the old frame; recover only orphaned focus,
@@ -2500,7 +2544,8 @@ export class ReaderController {
   }
 
   public async setViewMode(mode: ViewMode): Promise<void> {
-    if (!this.containerEl || this.operations.disposed || this.isFixedLayoutHost(this.host)) return;
+    if (!this.containerEl || this.operations.disposed ||
+      (this.isFixedLayoutHost(this.host) && !this.isSvgCanvasHost())) return;
     this.recordDiagnosticEvent({ kind: "setting", name: "viewMode",
       before: this.pendingLayout?.configuration.viewMode ?? this.viewMode, after: mode, source: "reader-control" });
     await this.library.patchGlobalReadingSettings({ viewMode: mode });
@@ -2569,7 +2614,7 @@ export class ReaderController {
   }
 
   public async setAlwaysShowOnePage(alwaysShowOnePage: boolean): Promise<void> {
-    if (this.isFixedLayoutHost(this.host)) return;
+    if (this.isFixedLayoutHost(this.host) && !this.isSvgCanvasHost()) return;
     this.recordDiagnosticEvent({ kind: "setting", name: "alwaysShowOnePage",
       before: this.pendingLayout?.configuration.alwaysShowOnePage ?? this.alwaysShowOnePage,
       after: alwaysShowOnePage, source: "reader-control" });
@@ -3183,14 +3228,14 @@ export class ReaderController {
     const nextSpread =
       direction === 1
         ? FixedLayoutSpreadPlanner.nextSpread(
-            this.pkg.spine,
+            this.presentationSpine,
             this.pkg.metadata.renditionLayout,
             this.pkg.effectivePageProgressionDirection,
             viewport,
             currentSpread,
           )
         : FixedLayoutSpreadPlanner.previousSpread(
-            this.pkg.spine,
+            this.presentationSpine,
             this.pkg.metadata.renditionLayout,
             this.pkg.effectivePageProgressionDirection,
             viewport,
@@ -3204,7 +3249,7 @@ export class ReaderController {
           : Math.min(nextSpread.leftSpineIndex, nextSpread.rightSpineIndex);
     const stillPrePaginated =
       nextPrimaryIndex !== undefined &&
-      this.pkg.spine[nextPrimaryIndex]?.resolveRenditionLayout(
+      this.presentationSpine[nextPrimaryIndex]?.resolveRenditionLayout(
         this.pkg.metadata.renditionLayout,
       ) === "pre-paginated";
 
@@ -3470,7 +3515,7 @@ export class ReaderController {
     if (!this.containerEl) {
       return false;
     }
-    const nextSpineItem = this.pkg.spine[nextSpineIndex];
+    const nextSpineItem = this.presentationSpine[nextSpineIndex];
     if (!nextSpineItem || nextSpineItem.linear === false) {
       return false;
     }
@@ -4522,7 +4567,7 @@ export class ReaderController {
       const resolved = this.bookPagination?.resolveGlobalPage(targetGlobalPage);
       if (resolved) {
         if (this.viewMode === "scroll" &&
-          this.pkg.spine[resolved.spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) !== "pre-paginated") {
+          this.svgPages[resolved.spineIndex]?.resolveRenditionLayout(this.pkg.metadata.renditionLayout) !== "pre-paginated") {
           const bridgeCfi = this.bookPagination?.pageStartCfi(resolved.spineIndex, resolved.pageIndexInItem);
           if (!bridgeCfi) throw new Error("The requested page has no measured reading position.");
           await this.openSpineItem(resolved.spineIndex, { ...options, bridgeCfi, history: "jump" });
@@ -4943,7 +4988,7 @@ export class ReaderController {
       // replacement is ready to commit.
       const previousHost = this.host;
       const previousWrapperEl = this.hostWrapperEl;
-      const resolvedLayout = this.pkg.spine[spineIndex]?.resolveRenditionLayout(
+      const resolvedLayout = this.presentationSpine[spineIndex]?.resolveRenditionLayout(
         this.pkg.metadata.renditionLayout,
       );
       let stagingEl: HTMLDivElement | undefined;
@@ -4960,7 +5005,8 @@ export class ReaderController {
       let applyDisplaySettings = false;
       let readingPosition: DomBreakPoint | undefined;
       try {
-        if (resolvedLayout === "roll") {
+        if (resolvedLayout === "roll" ||
+          (this.stackSvgPages && this.viewMode === "scroll" && isSvgSpineItem(this.pkg.spine[spineIndex]))) {
           const rollHost = new RollContentHost(this.width, this.height);
           createdHost = rollHost;
           stagingEl = this.stageHiddenHostElement(rollHost.element);
@@ -4980,7 +5026,7 @@ export class ReaderController {
           // normalize `spineIndex` to the opened spread's first item
           // afterwards.
           const spread = FixedLayoutSpreadPlanner.spreadContaining(
-            this.pkg.spine,
+            this.presentationSpine,
             this.pkg.metadata.renditionLayout,
             this.pkg.effectivePageProgressionDirection,
             this.fixedSpreadViewport(),
@@ -5150,7 +5196,9 @@ export class ReaderController {
           this.nativeReading.retain({ ...readingPosition, spineIndex: requestedSpineIndex });
         }
       } else if (options.bridgeCfi) {
-        if (!(newHost instanceof PaginatedContentHost)) {
+        const retainedSvgFraction = newHost instanceof RollContentHost && this.isSvgCanvasHost() &&
+          options.landOnFractionInItem !== undefined;
+        if (!(newHost instanceof PaginatedContentHost) && !retainedSvgFraction) {
           this.restoreCfi(options.bridgeCfi, requestedSpineIndex, !options.preservePageBoundaries);
         }
         this.setUpAccessibility(undefined, !options.automatic && !options.preserveFocus, requestedSpineIndex);

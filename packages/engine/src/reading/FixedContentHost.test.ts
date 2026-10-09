@@ -25,6 +25,7 @@ describe("fixed SVG content", () => {
     ['viewBox="0 0 6e2 8e2"', 600, 800],
     ['width="600px" height="800"', 600, 800],
     ['width="600.5" height="800.25px"', 600.5, 800.25],
+    ['width="600" height="300" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice"', 600, 300],
   ])("uses SVG intrinsic dimensions: %s", async (attributes, width, height) => {
     const { host, doc } = await open(`<svg xmlns="http://www.w3.org/2000/svg" ${attributes}><title>Page</title></svg>`);
     expect(doc.body).toBeNull();
@@ -32,6 +33,8 @@ describe("fixed SVG content", () => {
     expect(host.currentPosition()).toEqual({ node: doc.documentElement, offset: 0 });
     expect(host.element.style.width).toBe(`${width}px`);
     expect(host.element.style.height).toBe(`${height}px`);
+    expect(doc.documentElement.style.width).toBe("100%");
+    expect(doc.documentElement.style.height).toBe("100%");
     expect(host.element.style.transform).toBe(`scale(${Math.min(1200 / width, 900 / height)})`);
     host.resize(600, 400);
     expect(host.element.style.transform).toBe(`scale(${Math.min(600 / width, 400 / height)})`);
@@ -52,6 +55,7 @@ describe("fixed SVG content", () => {
     const { host, doc } = await open('<html xmlns="http://www.w3.org/1999/xhtml"><head><meta name="viewport" content="width=700,height=900"/></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 60"/></body></html>');
     expect(host.naturalSize).toEqual({ width: 700, height: 900 });
     expect(host.currentPosition()?.node).toBe(doc.body);
+    expect(doc.querySelector("svg")?.getAttribute("style")).toBeNull();
     host.dispose();
   });
 });

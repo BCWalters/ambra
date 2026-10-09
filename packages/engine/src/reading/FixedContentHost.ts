@@ -103,6 +103,11 @@ export class FixedContentHost {
     element.style.width = `${this.pageWidth}px`;
     element.style.height = `${this.pageHeight}px`;
     element.style.transformOrigin = "top left";
+    const root = iframeDocument.documentElement;
+    if (root.namespaceURI === "http://www.w3.org/2000/svg" && root.localName === "svg") {
+      root.style.setProperty("width", "100%", "important");
+      root.style.setProperty("height", "100%", "important");
+    }
 
     this.applyScale();
   }
@@ -197,10 +202,6 @@ export class FixedContentHost {
   private static readContentViewport(document: Document): ViewportSize | undefined {
     const root = document.documentElement;
     if (root.namespaceURI === "http://www.w3.org/2000/svg" && root.localName === "svg") {
-      const viewBox = root.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number);
-      if (viewBox?.length === 4 && viewBox.every(Number.isFinite) && viewBox[2]! > 0 && viewBox[3]! > 0) {
-        return { width: viewBox[2]!, height: viewBox[3]! };
-      }
       // Percentage dimensions need a containing viewport; they are not
       // intrinsic pixel sizes (e.g. width="100%" must not become 100px).
       const length = (name: string): number => {
@@ -210,8 +211,10 @@ export class FixedContentHost {
       };
       const width = length("width");
       const height = length("height");
-      return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
-        ? { width, height } : undefined;
+      if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) return { width, height };
+      const viewBox = root.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number);
+      return viewBox?.length === 4 && viewBox.every(Number.isFinite) && viewBox[2]! > 0 && viewBox[3]! > 0
+        ? { width: viewBox[2]!, height: viewBox[3]! } : undefined;
     }
     const meta = document.querySelector('meta[name="viewport"]');
     return parseViewportDimensions(meta?.getAttribute("content"));

@@ -107,6 +107,8 @@ export interface ReadingProgress {
    * `bookPagination` hasn't finished measuring the book yet — callers
    * should just omit a percentage rather than show a stale/wrong one. */
   readonly fractionComplete: number | undefined;
+  /** SVG background/root CFIs cannot encode the vertical position inside a canvas. */
+  readonly svgScrollPosition?: { readonly spineIndex: number; readonly fraction: number };
 }
 
 /** A reader-created bookmark: a saved position (via CFI, same
@@ -549,8 +551,10 @@ export class LibraryDatabase {
    * any previous one. `fractionComplete` is opportunistic — pass
    * `undefined` when the caller doesn't have a reliable whole-book
    * fraction yet (see its doc comment on `ReadingProgress`). */
-  public async saveProgress(bookId: string, cfi: string, fractionComplete: number | undefined): Promise<void> {
-    const record: ReadingProgress = { bookId, cfi, updatedAt: Date.now(), fractionComplete };
+  public async saveProgress(bookId: string, cfi: string, fractionComplete: number | undefined,
+    svgScrollPosition?: ReadingProgress["svgScrollPosition"]): Promise<void> {
+    const record: ReadingProgress = { bookId, cfi, updatedAt: Date.now(), fractionComplete,
+      ...(svgScrollPosition ? { svgScrollPosition } : {}) };
     await this.transaction([PROGRESS_STORE, PREFERENCES_STORE], "readwrite", "Failed to save reading progress.", tx => {
       const progress = tx.objectStore(PROGRESS_STORE);
       const previous = progress.get(bookId);

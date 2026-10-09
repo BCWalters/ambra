@@ -18,6 +18,7 @@ interface RollItem {
  * to the reader width and stacked in one gapless vertical scroller.
  */
 export class RollContentHost {
+  private fullyVisibleSpineIndex: number | undefined;
   private readonly containerEl: HTMLDivElement;
   private readonly ownerDocument: Document;
   private items: RollItem[] = [];
@@ -48,7 +49,7 @@ export class RollContentHost {
   }
 
   public get currentSpineIndex(): number | undefined {
-    return this.itemAtOffset(this.containerEl.scrollTop)?.spineIndex;
+    return this.currentItem()?.spineIndex;
   }
 
   public documentViews(): ContentDocumentView[] {
@@ -66,6 +67,7 @@ export class RollContentHost {
     spineIndices: readonly number[],
     packageViewport: ViewportSize | undefined,
   ): Promise<void> {
+    this.fullyVisibleSpineIndex = undefined;
     this.disposeItems();
     this.containerEl.replaceChildren();
 
@@ -109,7 +111,7 @@ export class RollContentHost {
   }
 
   public currentPosition(): DomBreakPoint | undefined {
-    const item = this.itemAtOffset(this.containerEl.scrollTop);
+    const item = this.currentItem();
     const document = item?.host.element.contentDocument;
     if (!item || !document) return undefined;
     const itemOffset = this.containerEl.scrollTop - this.offsetFor(item.spineIndex);
@@ -133,9 +135,10 @@ export class RollContentHost {
     if (!item || !element) return;
     const scale = this.width / item.host.naturalSize.width;
     const maximum = Math.max(0, this.totalHeight() - this.height);
+    // A visible SVG node can have a negative box origin after viewBox clipping.
     this.containerEl.scrollTop = Math.min(
       maximum,
-      Math.ceil(this.offsetFor(item.spineIndex) + element.getBoundingClientRect().top * scale),
+      Math.ceil(this.offsetFor(item.spineIndex) + Math.max(0, element.getBoundingClientRect().top) * scale),
     );
   }
 
@@ -161,6 +164,15 @@ export class RollContentHost {
     this.containerEl.replaceChildren();
   }
 
+  private currentItem(): RollItem | undefined {
+    if (this.totalHeight() <= this.height) {
+      return this.items.find(item => item.spineIndex === this.fullyVisibleSpineIndex) ?? this.items[0];
+    }
+    // A short final canvas cannot place its top at the viewport's scroll origin.
+    return this.containerEl.scrollTop > 0 && this.isAtEnd()
+      ? this.items.at(-1) : this.itemAtOffset(this.containerEl.scrollTop);
+  }
+
   private layoutItem(item: RollItem): void {
     const natural = item.host.naturalSize;
     const scale = this.width / natural.width;
@@ -170,8 +182,8 @@ export class RollContentHost {
     item.host.applyExternalScale(scale, this.width, item.scaledHeight);
   }
 
-  private scrollPosition(): { spineIndex: number; fraction: number } | undefined {
-    const item = this.itemAtOffset(this.containerEl.scrollTop);
+  public scrollPosition(): { spineIndex: number; fraction: number } | undefined {
+    const item = this.currentItem();
     if (!item) return undefined;
     const start = this.offsetFor(item.spineIndex);
     return {
@@ -182,6 +194,7 @@ export class RollContentHost {
   }
 
   private restoreScrollPosition(spineIndex: number, fraction: number): void {
+    this.fullyVisibleSpineIndex = spineIndex;
     const item = this.items.find((candidate) => candidate.spineIndex === spineIndex);
     if (!item) return;
     const maximum = Math.max(0, this.totalHeight() - this.height);

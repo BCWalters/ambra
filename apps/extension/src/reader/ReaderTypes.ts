@@ -177,6 +177,8 @@ export interface ReaderSnapshot {
   viewMode: ViewMode;
   /** True when the current spine item is fixed-layout. */
   isFixedLayout: boolean;
+  /** Authored reflowable SVG rendered as a canvas still permits view-mode changes. */
+  svgCanvas?: boolean;
   pageIndex: number;
   pageCount: number;
   /** Page position across the whole book, not just the chapter.

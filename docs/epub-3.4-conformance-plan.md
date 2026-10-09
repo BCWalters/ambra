@@ -334,6 +334,19 @@ Native regressions cover both original static iframe messages and generated
 resource/isolation cases; they do not execute the unsupported scripting probes,
 prove unique publication origins, or rewrite the frozen assessment.
 
+The 3.1 SVG presentation increment fits declared standalone SVG spine documents
+as native canvases, preserving their authored viewport/aspect, graphics, fonts
+and clipping with a single outer iframe scale. Renderer-only spine references
+retain manifest identity and raw package CFI steps; the original OPF properties
+remain unchanged. Eligible reflowable SVG-only primary spines use the existing
+gapless, fit-width roll host when scrolling. Mixed XHTML/SVG spines retain
+chapter-at-a-time scrolling; authored fixed-layout and roll policies are retained.
+Native coverage includes both original SVG timing books and the four-document
+SVG order book, visible narration paint, pixel-coordinate artwork without a
+viewBox, unequal spreads, docked panels, resize, single-page preference, wheel
+scrolling and clipped-node resume. This is reader UX/regression evidence, not
+a revision of the frozen 3.0.0 assessment or external-SVG graph support.
+
 HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
 Legacy `xml:base` is a separate unsupported compatibility surface:
 [EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)
