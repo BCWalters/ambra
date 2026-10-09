@@ -230,10 +230,14 @@ for (const original of [false, true]) {
       const resumed = (await geometry(page)).frames.find(frame => frame.index === 2)!;
       expect(-resumed.y / resumed.height).toBeCloseTo(resumeFraction, 2);
       await page.evaluate(() => Reflect.get(window, "__readerController").setAlwaysShowOnePage(true));
-      await page.evaluate(() => Reflect.get(window, "__readerController").setViewMode("paginated"));
+      await page.evaluate(() => Reflect.get(window, "__readerController").restoreContentFocus());
+      await page.keyboard.press("Alt+Shift+PageUp");
+      await expect.poll(async () => (await geometry(page)).mode).toBe("paginated");
       expect((await assertCanvasFit(page)).frames.map(frame => frame.index)).toEqual([2]);
       expect((await geometry(page)).authorLayout).toBe("reflowable");
-      await page.evaluate(() => Reflect.get(window, "__readerController").setViewMode("scroll"));
+      await page.evaluate(() => Reflect.get(window, "__readerController").restoreContentFocus());
+      await page.keyboard.press("Alt+Shift+PageDown");
+      await expect.poll(async () => (await geometry(page)).mode).toBe("scroll");
       expect((await geometry(page)).index).toBe(2);
       expect((await geometry(page)).frames).toHaveLength(4);
       const returned = (await geometry(page)).frames.find(frame => frame.index === 2)!;

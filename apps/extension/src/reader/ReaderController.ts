@@ -1760,12 +1760,12 @@ export class ReaderController {
       preferences: this.shortcutPreferences,
       platform: this.shortcutPlatform,
       direction: this.pkg.effectivePageProgressionDirection,
-      viewMode: this.host instanceof ScrollContentHost ? "scroll" : "paginated",
+      viewMode: this.host instanceof ScrollContentHost || this.host instanceof RollContentHost ? "scroll" : "paginated",
       scope,
       modalOpen: this.shortcutModalOpen || !!this.imageViewer || !!this.tableViewer,
       canSwitchViewMode: !!this.containerEl && !this.operations.disposed &&
         (this.host instanceof PaginatedContentHost || this.host instanceof SpreadPaginatedHost ||
-          this.host instanceof ScrollContentHost),
+          this.host instanceof ScrollContentHost || this.isSvgCanvasHost()),
     });
     if (!command) return;
     if (["searchBook", "showKeyboardShortcuts", "goToPage", "goToPercentage"].includes(command) && !this.shortcutActions) return;
