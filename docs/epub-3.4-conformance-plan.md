@@ -431,6 +431,37 @@ bound still reports the existing truncated-audio error. This is a bounded
 timing increment, not complete TTS/embedded-media, skip/escape or navigation/
 pagebreak support under #337, and does not revise published assessment scores.
 
+The navigation-led narration increment follows
+[the resume-at-navigation-point requirement](https://www.w3.org/TR/epub-rs-34/#sec-rsconf-navigation):
+successful navigation cues the authored segment mapped to the visible reading
+location, preserving play/pause and speed. Navigation within the same segment
+keeps its audio time without a pause or seek. Automatic narration following
+does not retarget itself; layout changes and retained off-page selections do not
+override navigation. An unnarrated destination pauses with explicit feedback,
+without scanning into another chapter. Later narrated navigation recovers a
+paused cue. Cold navigation does not start a narration session.
+
+Restart page audio remains separate from conditional Jump to selection; the
+detached browsing/Return control is removed. Native cases cover TOC, scrubber,
+page movement, native scroll, fixed-layout and roll ownership, failed navigation
+and explicit Next, using real playback and painted destination text. Native
+loading cases exercise Play, Pause and a later navigation against gated real
+audio bytes; a retained-selection case separates page restart from selection.
+Unit cases cover
+same-segment continuity, metadata races, intended play/pause and unnarrated
+recovery. Mapping remains authored segment-level timing, not inferred word-level
+timing; this does not claim complete navigation-document/pagebreak narration or
+promote published scores.
+
+Explicit transports reconcile only pending successful reading navigation, so
+Next can recover from unsupported passages, including automatic progression
+that failed before painting its target. Failed destination overlay loads clear
+the preceding cursor without discarding a newly established failed passage.
+Browser Back/Forward retargets playing audio and ignores stale selections;
+localized controls retain geometry, focus and keyboard-speed coverage.
+Scroll-mode layout events reconcile narration without publishing user navigation
+or dismissing the page-turn guide.
+
 The post-3.1.0 SMIL resource-classification increment applies the shared EPUB
 reference classifier to audio `src`, text `src` and sequence `epub:textref`.
 External, file, data, protocol-relative and unsupported URLs cannot alias ZIP

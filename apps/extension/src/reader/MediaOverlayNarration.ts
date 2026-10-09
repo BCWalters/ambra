@@ -15,6 +15,7 @@ export interface NarrationState {
   hasPrevious: boolean;
   hasNext: boolean;
   hasTarget: boolean;
+  playbackRequested?: boolean;
   error?: string;
 }
 
@@ -51,13 +52,14 @@ export class MediaOverlayNarration {
   private readonly documents = new Map<string, Promise<readonly SmilPar[]>>();
   private cursor: Cursor | undefined;
   private status: NarrationState["status"] = "idle";
+  private playbackRequested = false;
   private following = true;
   private rate = 1;
   private error: string | undefined;
   private generation = 0;
   private playGeneration = -1;
   private needsSeek = false;
-  private requestedPassage: { spineIndex: number; element?: Element } | undefined;
+  private requestedPassage: { spineIndex: number; element?: Element; exact: boolean } | undefined;
   private disposed = false;
   private source: string | undefined;
   private sourceUrl: string | undefined;
@@ -112,6 +114,7 @@ export class MediaOverlayNarration {
       following: this.following,
       rate: this.rate,
       hasTarget: this.target !== undefined,
+      playbackRequested: this.playbackRequested,
       hasPrevious: !!this.cursor && (this.cursor.index > 0 ||
         this.adjacentAssociation(this.cursor.association, -1) !== undefined),
       hasNext: !!this.cursor && (
@@ -141,19 +144,21 @@ export class MediaOverlayNarration {
       ? MediaOverlayPlayer.boundedAudioClip(audio, this.audio.duration) : audio;
   }
 
-  public async playFrom(spineIndex: number, element?: Element): Promise<void> {
-    await this.seekPassage(spineIndex, element, true);
+  public async playFrom(spineIndex: number, element?: Element, options: { exact?: boolean } = {}): Promise<void> {
+    await this.seekPassage(spineIndex, element, true, options.exact ?? false);
   }
 
-  private async seekPassage(spineIndex: number, element: Element | undefined, following: boolean): Promise<void> {
+  private async seekPassage(spineIndex: number, element: Element | undefined, following: boolean, exact = false): Promise<void> {
     if (this.disposed) return;
-    this.requestedPassage = { spineIndex, element };
+    this.playbackRequested = true;
+    this.requestedPassage = { spineIndex, element, exact };
     const generation = this.begin();
     this.following = following;
     this.notify();
     try {
       if (!this.ctx.pkg.spine[spineIndex]) throw new Error("This reading position is outside the publication.");
       const exactAssociation = this.associations.indexOf(spineIndex);
+      if (exact && exactAssociation < 0) throw new Error("There is no recorded narration at this reading position.");
       const association = exactAssociation >= 0 ? exactAssociation : this.associations.findIndex(
         (index) => index > spineIndex && this.ctx.pkg.spine[index]!.linear,
       );
@@ -173,7 +178,7 @@ export class MediaOverlayNarration {
   public async resume(): Promise<void> {
     if (this.disposed) return;
     if (this.requestedPassage) {
-      await this.seekPassage(this.requestedPassage.spineIndex, this.requestedPassage.element, this.following);
+      await this.seekPassage(this.requestedPassage.spineIndex, this.requestedPassage.element, this.following, this.requestedPassage.exact);
       return;
     }
     if (!this.cursor) {
@@ -181,13 +186,13 @@ export class MediaOverlayNarration {
       return;
     }
     if (this.status === "playing") {
-      await this.publishTarget(this.generation);
+      await this.publishTarget(this.generation, false);
       return;
     }
     const restart = this.status === "ended" || this.needsSeek;
     const generation = this.begin();
     try {
-      await this.start(this.cursor, generation, restart);
+      await this.start(this.cursor, generation, restart, { follow: false });
     } catch (error) {
       if (this.current(generation)) this.fail(error);
     }
@@ -196,6 +201,7 @@ export class MediaOverlayNarration {
   public pause(): void {
     if (this.disposed) return;
     this.invalidate();
+    this.playbackRequested = false;
     this.audio.pause();
     this.status = "paused";
     this.notify();
@@ -207,6 +213,43 @@ export class MediaOverlayNarration {
 
   public async previous(): Promise<void> {
     await this.move(-1);
+  }
+
+  public async syncReadingPosition(spineIndex: number, element: Element): Promise<void> {
+    if (this.disposed || this.status === "idle") return;
+    const play = this.playbackRequested;
+    const association = this.associations.indexOf(spineIndex);
+    if (this.cursor && association === this.cursor.association && !this.needsSeek &&
+      (this.status === "playing" || this.status === "paused") &&
+      findPassage(this.cursor.clips, element) === this.cursor.index) {
+      this.following = true;
+      this.notify();
+      return;
+    }
+    const previousCursor = this.cursor;
+    this.requestedPassage = { spineIndex, element, exact: true };
+    const generation = this.begin();
+    this.following = true;
+    try {
+      if (association < 0) {
+        this.cursor = undefined;
+        throw new Error("There is no recorded narration at this reading position.");
+      }
+      const clips = await this.loadClips(association);
+      if (!this.current(generation)) return;
+      const index = findPassage(clips, element);
+      if (index < 0 || !clips[index]) {
+        this.cursor = undefined;
+        throw new Error("There is no recorded narration at this reading position.");
+      }
+      const same = this.cursor?.association === association && this.cursor.index === index && !this.needsSeek;
+      await this.start({ association, index, clips }, generation, !same, { play, follow: false });
+    } catch (error) {
+      if (this.current(generation)) {
+        if (this.cursor === previousCursor) this.cursor = undefined;
+        this.fail(error);
+      }
+    }
   }
 
   public setRate(rate: number): void {
@@ -308,7 +351,7 @@ export class MediaOverlayNarration {
     if (this.disposed || !this.cursor) return;
     if (direction === 1 ? !this.snapshot.hasNext : !this.snapshot.hasPrevious) return;
     const cursor = this.cursor;
-    const shouldPlay = this.status === "playing" || this.status === "loading";
+    const shouldPlay = this.playbackRequested;
     const generation = this.begin();
     try {
       const next = await this.neighbor(cursor, direction);
@@ -350,7 +393,12 @@ export class MediaOverlayNarration {
     return !this.disposed && generation === this.generation;
   }
 
-  private async start(cursor: Cursor, generation: number, forceSeek: boolean): Promise<void> {
+  private async start(
+    cursor: Cursor, generation: number, forceSeek: boolean,
+    options: { play?: boolean; follow?: boolean } = {},
+  ): Promise<void> {
+    const play = options.play ?? true;
+    this.playbackRequested = play;
     this.setCursor(cursor);
     this.needsSeek = forceSeek;
     const par = this.par!;
@@ -370,8 +418,13 @@ export class MediaOverlayNarration {
     }, par, forceSeek);
     this.needsSeek = false;
     this.audio.playbackRate = this.rate;
-    await this.publishTarget(generation);
+    await this.publishTarget(generation, options.follow ?? this.following);
     if (!this.current(generation)) return;
+    if (!play) {
+      this.status = "paused";
+      this.notify();
+      return;
+    }
     this.playGeneration = generation;
     await this.audio.play();
     if (!this.current(generation)) {
@@ -444,12 +497,12 @@ export class MediaOverlayNarration {
     });
   }
 
-  private async publishTarget(generation: number): Promise<void> {
+  private async publishTarget(generation: number, follow = this.following): Promise<void> {
     const target = this.target;
     const cursor = this.cursor;
     if (!target || !this.current(generation)) return;
     try {
-      await this.ctx.onTarget(target, this.following);
+      await this.ctx.onTarget(target, follow);
     } catch (error) {
       if (this.current(generation) && this.cursor === cursor) this.fail(error);
     }
@@ -510,6 +563,7 @@ export class MediaOverlayNarration {
         const next = ready ? this.nextCursor : await this.neighbor(cursor, 1);
         if (!this.current(generation)) return;
         if (!next) {
+          this.playbackRequested = false;
           this.status = "ended";
           this.notify();
           return;
@@ -530,6 +584,7 @@ export class MediaOverlayNarration {
     if (this.disposed) return;
     this.invalidate();
     this.audio.pause();
+    this.playbackRequested = false;
     this.status = "error";
     this.error = error instanceof Error ? error.message : String(error);
     this.notify();

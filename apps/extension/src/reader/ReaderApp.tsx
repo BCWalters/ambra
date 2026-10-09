@@ -998,8 +998,8 @@ const ReaderAppInner: FC = () => {
                 onPlayPause={() => narrationAction("toggle")}
                 onPrevious={() => narrationAction("previous")}
                 onNext={() => narrationAction("next")}
-                onReturnToNarration={() => narrationAction("return")}
                 onListenFromHere={() => narrationAction("here")}
+                onListenFromSelection={() => narrationAction("selection")}
                 onRateChange={setNarrationRate}
               />
                 </div>

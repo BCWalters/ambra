@@ -407,6 +407,9 @@ export class ReaderController {
   private readonly narrationReading: NarrationReadingBridge;
   private narrationOperation: ReaderOperation | undefined;
   private narrationCommand = 0;
+  private narrationTargetNavigation: { command: number } | undefined;
+  private narrationNavigationLocation: { key: string; command: number } | undefined;
+  private narrationNavigationPending = false;
   private narrationNoticeVisible = false;
 
   private constructor(
@@ -435,7 +438,9 @@ export class ReaderController {
       playbackActiveClass: pkg.metadata.metaEntries.find(entry => entry.key === "media:playback-active-class")?.value,
     }, {
       documents: () => this.contentDocumentViews(),
-      position: () => this.host?.currentPosition(),
+      position: () => this.isFixedLayoutHost(this.host)
+        ? (this.nativeReading.current() ?? this.host?.currentPosition())
+        : this.host?.currentPosition(),
       disposed: () => this.operations.disposed,
       navigate: target => this.navigateNarrationTarget(target),
     });
@@ -460,7 +465,7 @@ export class ReaderController {
         }
       },
       navigate: async (spineIndex, cfi) => {
-        this.suspendNarrationFollowing();
+        this.claimManualNarrationNavigation();
         await this.openSpineItem(spineIndex, { bridgeCfi: cfi, history: "jump" });
         if (this.error && this.errorSeverity !== "info") throw new Error(this.error);
         if (this.operations.disposed ||
@@ -1200,6 +1205,42 @@ export class ReaderController {
 
   private notifyNavigation(): void {
     this.navigationListeners?.forEach(listener => listener());
+    this.syncNarrationAfterNavigation();
+  }
+
+  private syncNarrationAfterNavigation(): void {
+    if (this.narrationTargetNavigation?.command !== this.narrationCommand && this.narration.snapshot.available &&
+      this.narration.snapshot.status !== "idle") {
+      this.narrationNavigationPending = true;
+      void this.syncNarrationNavigation();
+    }
+  }
+
+  private async syncNarrationNavigation(options: { allowErroredTarget?: boolean } = {}): Promise<boolean> {
+    const command = this.narrationCommand;
+    let marker: { key: string; command: number } | undefined;
+    try {
+      const location = this.narrationReading.currentReadingLocation();
+      const key = `${location.spineIndex}:${location.cfi ?? ""}`;
+      if (key === this.narrationNavigationLocation?.key && command === this.narrationNavigationLocation.command) return false;
+      marker = { key, command };
+      this.narrationNavigationLocation = marker;
+      const position = await this.narrationReading.readingPosition(false);
+      if (command !== this.narrationCommand || this.operations.disposed || this.narrationNavigationLocation !== marker) return false;
+      await this.narration.syncReadingPosition(position.spineIndex, position.element);
+      if (command !== this.narrationCommand || this.operations.disposed || this.narrationNavigationLocation !== marker) return false;
+      this.narrationNavigationPending = false;
+      return this.narration.target !== undefined &&
+        (options.allowErroredTarget === true || this.narration.snapshot.status !== "error");
+    } catch (error) {
+      if (command !== this.narrationCommand || this.operations.disposed ||
+        (marker && this.narrationNavigationLocation !== marker)) return false;
+      this.narration.pause();
+      this.reportTransientError(error, "navigate", "the narration reading position");
+      return false;
+    } finally {
+      if (marker && this.narrationNavigationLocation === marker) this.narrationNavigationLocation = undefined;
+    }
   }
 
   public pageTurnGuideGeometry() {
@@ -1378,19 +1419,25 @@ export class ReaderController {
     this.cancelNarrationNavigation();
     try {
       if (action === "close" || (action === "toggle" &&
-        (this.narration.snapshot.status === "playing" || this.narration.snapshot.status === "loading"))) {
+        (this.narration.snapshot.status === "playing" ||
+          (this.narration.snapshot.status === "loading" && this.narration.snapshot.playbackRequested !== false)))) {
         this.narration.pause();
         if (action === "close") this.narrationReading.clear();
-      } else if (action === "here" || ((action === "start" || action === "toggle") && !this.narration.target)) {
-        const position = await this.narrationReading.readingPosition();
+      } else if (action === "here" || action === "selection" || ((action === "start" || action === "toggle") && !this.narration.target)) {
+        const position = await this.narrationReading.readingPosition(action === "selection");
         if (command !== this.narrationCommand || this.operations.disposed) return;
-        await this.narration.playFrom(position.spineIndex, position.element);
+        await this.narration.playFrom(position.spineIndex, position.element, { exact: true });
+        if (command === this.narrationCommand && !this.operations.disposed) this.narrationNavigationPending = false;
       } else if (action === "start" || action === "toggle") {
-        await this.narration.resume();
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation()) await this.narration.resume();
       } else if (action === "next") {
-        await this.narration.next();
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation({ allowErroredTarget: true })) {
+          await this.narration.next();
+        }
       } else if (action === "previous") {
-        await this.narration.previous();
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation({ allowErroredTarget: true })) {
+          await this.narration.previous();
+        }
       } else if (action === "return") {
         await this.narration.returnToNarration();
       }
@@ -1435,13 +1482,22 @@ export class ReaderController {
     this.narrationOperation = undefined;
   }
 
-  private suspendNarrationFollowing(): void {
+  private claimManualNarrationNavigation(): void {
     this.narrationCommand++;
     this.cancelNarrationNavigation();
-    this.narration.suspendFollowing();
   }
 
   private async navigateNarrationTarget(target: NarrationTarget): Promise<void> {
+    const navigation = { command: this.narrationCommand };
+    this.narrationTargetNavigation = navigation;
+    try {
+      await this.navigateNarrationTargetDocument(target);
+    } finally {
+      if (this.narrationTargetNavigation === navigation) this.narrationTargetNavigation = undefined;
+    }
+  }
+
+  private async navigateNarrationTargetDocument(target: NarrationTarget): Promise<void> {
     const view = this.contentDocumentViews().find(view => view.spineIndex === target.spineIndex);
     if (
       view && (this.host instanceof PaginatedContentHost || this.host instanceof ScrollContentHost)
@@ -1469,7 +1525,7 @@ export class ReaderController {
   /** Navigates to a search result's position — see `SearchCoordinator.goToResult`. */
   public async goToSearchResult(cfi: string): Promise<void> {
     this.recordDiagnosticEvent({ kind: "navigation", source: "search" });
-    this.suspendNarrationFollowing();
+    this.claimManualNarrationNavigation();
     await this.searchCoordinator.goToResult(cfi);
   }
 
@@ -2082,7 +2138,7 @@ export class ReaderController {
         }
 
         this.recordDiagnosticEvent({ kind: "navigation", source: "content-link", targetSpine: targetSpineIndex });
-        this.suspendNarrationFollowing();
+        this.claimManualNarrationNavigation();
         void this.openSpineItem(targetSpineIndex, { fragment, history: "jump" });
       };
 
@@ -2157,7 +2213,7 @@ export class ReaderController {
       }
       const scrollIntent = (): void => {
         if (this.host instanceof ScrollContentHost || this.host instanceof RollContentHost) {
-          this.suspendNarrationFollowing();
+          this.claimManualNarrationNavigation();
         }
       };
       const scrollKeyIntent = (event: KeyboardEvent): void => {
@@ -2180,11 +2236,17 @@ export class ReaderController {
         clearTimeout(historyTimer);
         historyTimer = setTimeout(saveHistory, 150);
       };
-      iframeDocument.addEventListener("scrollend", saveHistory);
+      const syncScrolledNarration = (): void => {
+        saveHistory();
+        if (this.host instanceof ScrollContentHost && !this.isLoadInFlight && !this.isTurningPage && !this.isApplyingLayout) {
+          this.syncNarrationAfterNavigation();
+        }
+      };
+      iframeDocument.addEventListener("scrollend", syncScrolledNarration);
       iframeDocument.addEventListener("selectionchange", selectionHistory);
       cleanups.push(() => {
         clearTimeout(historyTimer);
-        iframeDocument.removeEventListener("scrollend", saveHistory);
+        iframeDocument.removeEventListener("scrollend", syncScrolledNarration);
         iframeDocument.removeEventListener("selectionchange", selectionHistory);
         iframeDocument.removeEventListener("wheel", scrollIntent);
         iframeDocument.removeEventListener("touchmove", scrollIntent);
@@ -2853,7 +2915,7 @@ export class ReaderController {
 
   /** Clears the search highlight on ordinary navigation unless it is pinned. */
   private clearNavigationHighlights(): void {
-    this.suspendNarrationFollowing();
+    this.claimManualNarrationNavigation();
     this.navigationSpotlight.clear();
     this.searchCoordinator.clearHighlightUnlessPinned();
   }
@@ -4077,7 +4139,7 @@ export class ReaderController {
         }
         const lockedDirection = this.physicalDirection(deltaX < 0 ? 1 : -1);
         direction = lockedDirection;
-        this.suspendNarrationFollowing();
+        this.claimManualNarrationNavigation();
         this.isTurningPage = true;
         const turn = this.operations.begin();
         operation = turn;

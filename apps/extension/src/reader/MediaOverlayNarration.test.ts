@@ -95,6 +95,132 @@ afterEach(() => {
 });
 
 describe("MediaOverlayNarration", () => {
+  it.each([false, true])("navigation cues the destination while preserving playing=%s", async playing => {
+    const { narration, audio, onTarget } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="c">Destination</p>';
+    await narration.playFrom(0);
+    if (!playing) narration.pause();
+    await narration.syncReadingPosition(2, doc.getElementById("c")!);
+    expect(narration.target).toMatchObject({ spineIndex: 2, fragment: "c" });
+    expect(audio.currentTime).toBe(2);
+    expect(audio.paused).toBe(!playing);
+    expect(narration.snapshot.status).toBe(playing ? "playing" : "paused");
+    expect(onTarget).toHaveBeenLastCalledWith(expect.objectContaining({ fragment: "c" }), false);
+  });
+
+  it("does not pause, replay or seek again when navigation remains within the active segment", async () => {
+    const { narration, audio } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="a">Current passage</p>';
+    await narration.playFrom(0);
+    audio.advance(0.4);
+    audio.pause.mockClear();
+    audio.play.mockClear();
+    const seeks = [...audio.seeks];
+    await narration.syncReadingPosition(0, doc.getElementById("a")!);
+    expect(audio.currentTime).toBe(0.4);
+    expect(audio.seeks).toEqual(seeks);
+    expect(audio.pause).not.toHaveBeenCalled();
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
+  it("does not invent playback when a narration session has not started", async () => {
+    const { narration, audio } = setup();
+    await narration.syncReadingPosition(2, document.createElement("p"));
+    expect(narration.snapshot.status).toBe("idle");
+    expect(audio.src).toBe("");
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
+  it("pauses explicitly on an unnarrated destination and recovers paused on a narrated one", async () => {
+    const { narration, audio } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="c">Destination</p>';
+    await narration.playFrom(0);
+    await narration.syncReadingPosition(1, doc.body);
+    expect(audio.paused).toBe(true);
+    expect(narration.target).toBeUndefined();
+    expect(narration.snapshot).toMatchObject({
+      status: "error", error: "There is no recorded narration at this reading position.",
+    });
+    await narration.resume();
+    expect(narration.snapshot.status).toBe("error");
+    expect(narration.target).toBeUndefined();
+    expect(audio.paused).toBe(true);
+    await narration.syncReadingPosition(2, doc.getElementById("c")!);
+    expect(narration.snapshot.status).toBe("paused");
+    expect(narration.target?.fragment).toBe("c");
+    expect(audio.currentTime).toBe(2);
+    expect(audio.paused).toBe(true);
+  });
+
+  it("does not skip an unnarrated chapter when explicitly restarting at the current position", async () => {
+    const { narration, audio } = setup();
+    await narration.playFrom(1, undefined, { exact: true });
+    expect(narration.snapshot.status).toBe("error");
+    expect(narration.target).toBeUndefined();
+    expect(audio.src).toBe("");
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
+  it("never retains the preceding chapter's cursor when the destination overlay fails to load", async () => {
+    const { narration, audio, loader } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="c">Destination</p>';
+    await narration.playFrom(0);
+    loader.readArchiveFileText.mockRejectedValueOnce(new Error("Destination overlay unavailable."));
+    await narration.syncReadingPosition(2, doc.getElementById("c")!);
+    expect(narration.target).toBeUndefined();
+    expect(narration.snapshot).toMatchObject({ status: "error", error: "Destination overlay unavailable." });
+    expect(audio.paused).toBe(true);
+    await narration.resume();
+    expect(narration.target?.spineIndex).toBe(2);
+    expect(audio.currentTime).toBe(2);
+    expect(audio.paused).toBe(false);
+  });
+
+  it("keeps rapid paused navigation paused while metadata is loading", async () => {
+    const { narration, audio } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="b">Latest</p><p id="c">Earlier</p>';
+    await narration.playFrom(0);
+    narration.pause();
+    audio.readyState = 0;
+    const earlier = narration.syncReadingPosition(2, doc.getElementById("c")!);
+    await flush();
+    expect(narration.snapshot).toMatchObject({ status: "loading", playbackRequested: false });
+    const latest = narration.syncReadingPosition(0, doc.getElementById("b")!);
+    await flush();
+    audio.readyState = 1;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    await Promise.all([earlier, latest]);
+    expect(narration.target?.fragment).toBe("b");
+    expect(narration.snapshot.status).toBe("paused");
+    expect(audio.currentTime).toBe(1);
+    expect(audio.paused).toBe(true);
+  });
+
+  it("honors Play while a paused navigation cue is still loading", async () => {
+    const { narration, audio } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="c">Destination</p>';
+    await narration.playFrom(0);
+    narration.pause();
+    audio.readyState = 0;
+    const navigation = narration.syncReadingPosition(2, doc.getElementById("c")!);
+    await flush();
+    const resume = narration.resume();
+    await flush();
+    audio.readyState = 1;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    await Promise.all([navigation, resume]);
+    expect(narration.target?.fragment).toBe("c");
+    expect(narration.snapshot.status).toBe("playing");
+    expect(audio.currentTime).toBe(2);
+    expect(audio.paused).toBe(false);
+  });
+
   it("selects supported fallback audio without changing the authored SMIL identity or clip timing", async () => {
     const { narration, loader, audio } = setup(undefined, { audioFallback: true });
     await narration.playFrom(0);
@@ -211,13 +337,13 @@ describe("MediaOverlayNarration", () => {
     expect(narration.snapshot.error).toContain("Narration speed");
   });
 
-  it("explicit resume republishes the current target even when audio is already playing", async () => {
+  it("explicit resume republishes the current target without moving the reader even while audio is already playing", async () => {
     const { narration, audio, onTarget } = setup();
     await narration.playFrom(0);
     audio.advance(0.4);
     onTarget.mockClear();
     await narration.resume();
-    expect(onTarget).toHaveBeenCalledExactlyOnceWith(narration.target, true);
+    expect(onTarget).toHaveBeenCalledExactlyOnceWith(narration.target, false);
     expect(audio.currentTime).toBe(0.4);
     expect(audio.play).toHaveBeenCalledTimes(1);
   });

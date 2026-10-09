@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ContentDocumentView, ContentLoader, LocatorResolver } from "@ambra/engine";
+import { Locator } from "@ambra/engine";
 import { NarrationReadingBridge } from "./NarrationReadingBridge.js";
 import { applyNarrationRange } from "./HighlightRenderer.js";
 
@@ -18,9 +19,13 @@ function setup(styles: { activeClass?: string; playbackActiveClass?: string } = 
     disposed: false,
   };
   const navigate = vi.fn<() => Promise<void>>().mockResolvedValue();
+  const resolver = {
+    generate: vi.fn<LocatorResolver["generate"]>(),
+    resolveInDocument: vi.fn<LocatorResolver["resolveInDocument"]>(),
+  };
   const reader = new NarrationReadingBridge(
     { loadSpineDocument: vi.fn<ContentLoader["loadSpineDocument"]>() },
-    { generate: vi.fn<LocatorResolver["generate"]>(), resolveInDocument: vi.fn<LocatorResolver["resolveInDocument"]>() },
+    resolver,
     styles,
     { documents: () => state.views, position: () => undefined, navigate, disposed: () => state.disposed },
   );
@@ -35,7 +40,7 @@ function setup(styles: { activeClass?: string; playbackActiveClass?: string } = 
     return range;
   });
   return {
-    reader, doc, state, navigate, offscreen: () => { top = -100; },
+    reader, doc, state, navigate, resolver, offscreen: () => { top = -100; },
     place: (y: number) => { top = y; },
     clip: (start: number, end: number) => {
       iframe.style.clipPath = `inset(${start}px 0 ${doc.defaultView!.innerHeight - end}px 0)`;
@@ -46,6 +51,31 @@ function setup(styles: { activeClass?: string; playbackActiveClass?: string } = 
 const first = { spineIndex: 0, path: "chapter.xhtml", fragment: "one" };
 
 describe("NarrationReadingBridge", () => {
+  it("captures the same canonical reading location used for passage playback", () => {
+    const { reader, doc, resolver } = setup();
+    resolver.generate.mockReturnValue(new Locator("epubcfi(/6/2!/4)"));
+    expect(reader.currentReadingLocation()).toEqual({ spineIndex: 0, cfi: "epubcfi(/6/2!/4)" });
+    expect(resolver.generate).toHaveBeenCalledWith(0, doc.body, undefined);
+  });
+
+  it("does not confuse a retained selection with the current visible reading location", () => {
+    const { reader, doc, resolver } = setup();
+    const text = doc.getElementById("two")!.firstChild!;
+    const range = doc.createRange();
+    range.setStart(text, 1);
+    range.setEnd(text, 3);
+    doc.getSelection()!.addRange(range);
+    resolver.generate.mockReturnValue(new Locator("epubcfi(/6/2!/4)"));
+    expect(reader.currentReadingLocation()).toEqual({ spineIndex: 0, cfi: "epubcfi(/6/2!/4)" });
+    expect(resolver.generate).toHaveBeenCalledWith(0, doc.body, undefined);
+  });
+
+  it("surfaces a missing reading document when capturing a paused location", () => {
+    const { reader, state } = setup();
+    state.views = [];
+    expect(() => reader.currentReadingLocation()).toThrow("There is no reading passage available for narration.");
+  });
+
   it("highlights visible narration without navigating or stealing focus", async () => {
     const { reader, navigate, doc } = setup();
     const button = document.createElement("button");
