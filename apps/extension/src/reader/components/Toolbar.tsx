@@ -495,7 +495,7 @@ export const Toolbar: FC<ToolbarProps> = ({
             onOpenMenuChange(open ? "settings" : undefined);
           }}
           readingFirst
-          isFixedLayout={snapshot.isFixedLayout}
+          isFixedLayout={snapshot.isFixedLayout && !snapshot.svgCanvas}
           settings={{
             viewMode: snapshot.viewMode, brightness: snapshot.brightness,
             pageTheme: snapshot.pageTheme, chromeTheme: snapshot.chromeTheme,

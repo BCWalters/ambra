@@ -104,10 +104,11 @@ describe("spread resize ownership", () => {
 
 it("one-page display gates every reflowable spread decision, not fixed-layout planning", () => {
   const controller = Object.create(ReaderController.prototype);
+  const spine = [{ resolveRenditionLayout: () => "reflowable" }];
   Object.assign(controller, {
     alwaysShowOnePage: true, viewMode: "paginated", host: Object.create(PaginatedContentHost.prototype),
     containerEl: document.createElement("div"), width: 2400,
-    pkg: { metadata: {}, spine: [{ resolveRenditionLayout: () => "reflowable" }] },
+    pkg: { metadata: {}, spine }, svgPages: spine, singleSvgPages: spine,
   });
   expect(controller.useReflowableSpread(2400)).toBe(false);
   expect(controller.shouldSwitchSpreadMode(2400)).toBe(false);
