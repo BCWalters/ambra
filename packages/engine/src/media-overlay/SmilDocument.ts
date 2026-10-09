@@ -1,4 +1,4 @@
-import { resolveEpubPath, splitHrefFragment } from "../container/EpubPath.js";
+import { classifyEpubReference } from "../container/EpubReference.js";
 import { getFirstChildElementByNS, getNamespacedAttribute } from "../container/Xml.js";
 import { parseSmilClockValue } from "./SmilClockValue.js";
 
@@ -128,7 +128,7 @@ function parseSeq(seqEl: Element, smilPath: string): SmilSeq {
   const textrefAttr = getNamespacedAttribute(seqEl, OPS_NAMESPACE, "textref");
   return new SmilSeq(
     seqEl.getAttribute("id") ?? undefined,
-    textrefAttr ? resolveTextRef(textrefAttr, smilPath) : undefined,
+    textrefAttr ? resolvePackageReference(textrefAttr, smilPath, "epub:textref") : undefined,
     epubType(seqEl),
     parseSeqChildren(seqEl, smilPath),
   );
@@ -158,7 +158,7 @@ function parsePar(parEl: Element, smilPath: string): SmilPar {
     const clipBeginAttr = audioEl.getAttribute("clipBegin");
     const clipEndAttr = audioEl.getAttribute("clipEnd");
     audio = {
-      path: resolveEpubPath(smilPath, audioSrc),
+      path: resolvePackageReference(audioSrc, smilPath, "audio src").path,
       clipBeginSeconds: clipBeginAttr ? parseSmilClockValue(clipBeginAttr) : 0,
       clipEndSeconds: clipEndAttr ? parseSmilClockValue(clipEndAttr) : undefined,
     };
@@ -167,14 +167,22 @@ function parsePar(parEl: Element, smilPath: string): SmilPar {
   return new SmilPar(
     parEl.getAttribute("id") ?? undefined,
     epubType(parEl),
-    resolveTextRef(textSrc, smilPath),
+    resolvePackageReference(textSrc, smilPath, "text src"),
     audio,
   );
 }
 
-function resolveTextRef(href: string, smilPath: string): SmilTextRef {
-  const { path, fragment } = splitHrefFragment(href);
-  return { path: resolveEpubPath(smilPath, path), fragment };
+function resolvePackageReference(href: string, smilPath: string, attribute: string): SmilTextRef {
+  const reference = classifyEpubReference(smilPath, href);
+  if (reference.kind === "package") {
+    return { path: reference.path, fragment: reference.fragment };
+  }
+  if (reference.kind === "fragment") {
+    return { path: smilPath, fragment: reference.fragment };
+  }
+  throw new SmilParseError(
+    `Media Overlay ${attribute} in "${smilPath}" requires a packaged resource (${reference.kind} reference).`,
+  );
 }
 
 function epubType(el: Element): string | undefined {

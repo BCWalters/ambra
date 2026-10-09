@@ -119,6 +119,14 @@ chapter must highlight and play its different audio source without a truncated
 audio error. The original source clip stays unchanged. This synthetic case runs
 in protected narration CI and does not promote an official conformance score.
 
+Three owned SMIL reference fixtures use external audio, text and `epub:textref`
+URLs whose paths match real packaged members. Each must fail explicitly before
+audio assignment, make no request to the external host, and retain readable
+chapter content without unhandled errors. Parser units also cover file, data,
+protocol-relative and unsupported schemes, URL whitespace normalization and
+valid package/query/encoded-fragment references. These offline-resource
+regressions do not add remote narration support or alter assessment scores.
+
 Packaged-frame regressions in `tests/packaged-frames.spec.ts` cover static XHTML
 and SVG children, rewritten CSS/imports/images, opaque origins, disabled scripts,
 retained dimensions, recoverable child failures, cycles, and the eight-level
