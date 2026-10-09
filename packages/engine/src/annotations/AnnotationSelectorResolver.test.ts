@@ -40,6 +40,30 @@ describe("AnnotationSelectorResolver", () => {
     expect(locators.resolveRangeInDocument(locator, 0, document).range.toString()).toBe(selection.text);
   });
 
+  it("validates image-alt point CFIs but explicitly rejects non-DOM range endpoints", async () => {
+    const { resolver, source, locators, document } = await setup('<img id="picture" alt="Alternative text"/>');
+    const point = locators.generate(0, document.getElementById("picture")!, 3).cfi;
+    await expect(resolver.resolve(source, { type: "FragmentSelector", value: point }))
+      .resolves.toMatchObject({ startCfi: point, endCfi: undefined });
+    const range = EpubCfi.joinRange(EpubCfi.parse(point), EpubCfi.parse(
+      locators.generate(0, document.getElementById("picture")!, 5).cfi,
+    ));
+    await expect(resolver.resolve(source, { type: "FragmentSelector", value: range }))
+      .rejects.toThrow(/alternative-text position/);
+  });
+
+  it("keeps a CSS selection ending before the following image exclusive", async () => {
+    const { resolver, source, locators, document } = await setup(
+      '<p id="scope">Selected text</p><img id="picture" alt="Not selected"/>',
+    );
+    const selection = await resolver.resolve(source, { type: "CssSelector", value: "#scope" });
+    expect(selection.text).toBe("Selected text");
+    const end = locators.resolveInDocument(new Locator(selection.endCfi!), 0, document);
+    expect(end.node).toBe(document.getElementById("picture"));
+    expect(end.characterOffset).toBe(0);
+    expect(end.alternativeTextOffset).toBe(0);
+  });
+
   it.each(["#missing", "p", "", "[", "p".repeat(16_385)])(
     "rejects missing, ambiguous, empty, invalid or excessive CSS: %s", async value => {
       const { resolver, source } = await setup();

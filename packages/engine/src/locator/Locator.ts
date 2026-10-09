@@ -42,6 +42,8 @@ export interface ResolvedLocator {
    * within `node` (a text-like node), or an element child offset for a
    * virtual CFI boundary; absent when it addresses an element as a whole. */
   readonly characterOffset: number | undefined;
+  /** UTF-16 position in an XHTML image's alt text, not a DOM child offset. */
+  readonly alternativeTextOffset?: number;
 }
 
 export interface ResolvedLocatorRange {
@@ -77,6 +79,41 @@ export class LocatorResolutionError extends Error {
   }
 }
 
+export function requireDomRangeBoundary(point: ResolvedLocator): void {
+  if (point.alternativeTextOffset !== undefined && point.alternativeTextOffset > 0) {
+    throw new LocatorResolutionError("An image alternative-text position cannot be represented as a DOM range boundary.");
+  }
+  if (point.node.nodeType === ELEMENT_NODE && point.characterOffset !== undefined &&
+    point.characterOffset > point.node.childNodes.length) {
+    throw new LocatorResolutionError("An element character offset cannot be represented as a DOM range boundary.");
+  }
+}
+
+function resolveTextAssertionOffset(
+  raw: string,
+  assertion: NonNullable<EpubCfi["textAssertion"]>,
+  originalOffset: number | undefined,
+): { offset: number; corrected: boolean } {
+  const preceding = normalizeAssertionText(assertion.preceding);
+  const following = normalizeAssertionText(assertion.following ?? "");
+  const normalized = normalizeAssertionText(raw);
+  if (originalOffset !== undefined) {
+    const boundary = normalizeAssertionText(raw.slice(0, originalOffset)).length;
+    if (normalized.slice(0, boundary).endsWith(preceding) &&
+      normalized.slice(boundary).startsWith(following)) {
+      return { offset: originalOffset, corrected: false };
+    }
+  }
+  const context = preceding + following;
+  const match = normalized.indexOf(context);
+  if (match === -1 || normalized.indexOf(context, match + 1) !== -1) {
+    throw new LocatorResolutionError("Cannot recover CFI text assertion: missing or ambiguous context.");
+  }
+  const offset = rawTextBoundary(raw, match + preceding.length);
+  if (offset === undefined) throw new LocatorResolutionError("Recovered CFI text offset is out of range.");
+  return { offset, corrected: true };
+}
+
 /**
  * Generates and resolves `Locator`s against a book's DOM. Deliberately
  * decoupled from pagination/scrolling concerns: this class only knows how
@@ -97,7 +134,8 @@ export class LocatorResolver {
    * document: either a specific character offset within a text node
    * (`node` is a `Text`/CDATA node, `characterOffset` is required and
    * local to that node), or an element position as a whole (`node` is an
-   * `Element`, `characterOffset` omitted).
+   * `Element`, `characterOffset` omitted). For an XHTML image, an authored
+   * character offset addresses its alternative text.
    */
   public generate(spineIndex: number, node: Node, characterOffset?: number): Locator {
     const spineRef = this.requireSpineItem(spineIndex);
@@ -224,10 +262,7 @@ export class LocatorResolver {
 
   private createResolvedRange(start: ResolvedLocator, end: ResolvedLocator, document: Document): Range {
     for (const point of [start, end]) {
-      if (point.node.nodeType === ELEMENT_NODE && point.characterOffset !== undefined &&
-        point.characterOffset > point.node.childNodes.length) {
-        throw new LocatorResolutionError("An element character offset cannot be represented as a DOM range boundary.");
-      }
+      requireDomRangeBoundary(point);
     }
     const first = document.createRange();
     const last = document.createRange();
@@ -290,6 +325,23 @@ export class LocatorResolver {
         return { spineIndex, node: virtual.node, characterOffset: virtual.localOffset };
       }
       const element = this.resolveElementStep(current, lastStep, document);
+      if (element.namespaceURI === "http://www.w3.org/1999/xhtml" &&
+        element.localName === "img" && cfi.characterOffset !== undefined) {
+        const alt = element.getAttribute("alt") ?? "";
+        let offset = cfi.characterOffset;
+        if (cfi.textAssertion && (cfi.textAssertion.preceding || cfi.textAssertion.following)) {
+          offset = resolveTextAssertionOffset(
+            alt, cfi.textAssertion, offset <= alt.length ? offset : undefined,
+          ).offset;
+        } else if (offset > alt.length) {
+          throw new LocatorResolutionError(`Image alternative-text offset ${offset} out of range.`);
+        }
+        return {
+          spineIndex, node: element, alternativeTextOffset: offset,
+          // Explicit zero remains the exclusive boundary used by CSS selectors.
+          characterOffset: offset === 0 ? 0 : undefined,
+        };
+      }
       if (cfi.textAssertion && (cfi.textAssertion.preceding || cfi.textAssertion.following)) {
         throw new LocatorResolutionError("Text assertions on element character offsets are not supported.");
       }
@@ -333,9 +385,6 @@ export class LocatorResolver {
     document: Document,
     run: readonly ChildNode[],
   ): ResolvedLocator {
-    const assertion = cfi.textAssertion!;
-    const preceding = normalizeAssertionText(assertion.preceding);
-    const following = normalizeAssertionText(assertion.following ?? "");
     const nodes: Text[] = [];
     const walker = document.createTreeWalker(document.documentElement, 12);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -344,7 +393,6 @@ export class LocatorResolver {
       }
     }
     const raw = nodes.map(node => node.data).join("");
-    const normalized = normalizeAssertionText(raw);
     let runStart: number | undefined;
     let offset = 0;
     for (const node of nodes) {
@@ -352,21 +400,14 @@ export class LocatorResolver {
       offset += node.data.length;
     }
     const original = resolveOffsetInRun(run, cfi.characterOffset!, cfi.sideBias);
-    if (original && runStart !== undefined) {
-      const boundary = normalizeAssertionText(raw.slice(0, runStart + cfi.characterOffset!)).length;
-      if (normalized.slice(0, boundary).endsWith(preceding) &&
-        normalized.slice(boundary).startsWith(following)) {
-        return { spineIndex, node: original.node, characterOffset: original.localOffset };
-      }
+    const resolved = resolveTextAssertionOffset(
+      raw, cfi.textAssertion!,
+      original && runStart !== undefined ? runStart + cfi.characterOffset! : undefined,
+    );
+    if (!resolved.corrected && original) {
+      return { spineIndex, node: original.node, characterOffset: original.localOffset };
     }
-    const context = preceding + following;
-    const match = normalized.indexOf(context);
-    if (match === -1 || normalized.indexOf(context, match + 1) !== -1) {
-      throw new LocatorResolutionError("Cannot recover CFI text assertion: missing or ambiguous context.");
-    }
-    const absolute = rawTextBoundary(raw, match + preceding.length);
-    if (absolute === undefined) throw new LocatorResolutionError("Recovered CFI text offset is out of range.");
-    const corrected = resolveOffsetInRun(nodes, absolute, cfi.sideBias);
+    const corrected = resolveOffsetInRun(nodes, resolved.offset, cfi.sideBias);
     if (!corrected) throw new LocatorResolutionError("Recovered CFI text offset is out of range.");
     return { spineIndex, node: corrected.node, characterOffset: corrected.localOffset };
   }

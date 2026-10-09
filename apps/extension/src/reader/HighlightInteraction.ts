@@ -1,4 +1,4 @@
-import { Locator } from "@ambra/engine";
+import { Locator, LocatorResolutionError, requireDomRangeBoundary } from "@ambra/engine";
 import type { ContentDocumentView, LocatorResolver } from "@ambra/engine";
 import type { Highlight } from "../library/LibraryDatabase.js";
 import { applyActiveHighlightRange, applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
@@ -215,11 +215,14 @@ export class HighlightInteraction {
     try {
       const start = this.locatorResolver.resolveInDocument(new Locator(highlight.startCfi), spineIndex, doc);
       const end = this.locatorResolver.resolveInDocument(new Locator(highlight.endCfi), spineIndex, doc);
+      requireDomRangeBoundary(start);
+      requireDomRangeBoundary(end);
       const range = doc.createRange();
       range.setStart(start.node, start.characterOffset ?? 0);
       range.setEnd(end.node, end.characterOffset ?? 0);
       return range;
-    } catch {
+    } catch (error) {
+      if (error instanceof LocatorResolutionError) console.warn("Could not resolve the highlight's DOM range.", error);
       return undefined;
     }
   }

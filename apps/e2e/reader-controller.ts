@@ -28,7 +28,7 @@ export async function isReaderElementPainted(page: Page, id: string): Promise<bo
       !frame.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
     const range = doc.createRange();
     range.selectNodeContents(element);
-    const rect = range.getBoundingClientRect();
+    const rect = element.localName === "img" ? element.getBoundingClientRect() : range.getBoundingClientRect();
     const box = frame.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     return rect.width > 0 && rect.height > 0 && [rect.top + 1, rect.bottom - 1].every(y =>
