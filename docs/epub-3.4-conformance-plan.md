@@ -431,6 +431,18 @@ bound still reports the existing truncated-audio error. This is a bounded
 timing increment, not complete TTS/embedded-media, skip/escape or navigation/
 pagebreak support under #337, and does not revise published assessment scores.
 
+The post-3.1.0 SMIL resource-classification increment applies the shared EPUB
+reference classifier to audio `src`, text `src` and sequence `epub:textref`.
+External, file, data, protocol-relative and unsupported URLs cannot alias ZIP
+members by their pathname. They raise a typed parse error through the existing
+narration error state before playback; the chapter remains readable. Package
+paths, queries, encoded filenames and once-decoded fragments retain existing
+resolution. Native fixtures separately reproduce all three external-reference
+aliases and require explicit feedback, no audio assignment, no external request
+and no unhandled error. This preserves the offline-only resource policy under
+#336/#337; it does not implement remote narration, XML base handling, segment
+skipping/recovery or promote official assessment results.
+
 The post-3.1.0 annotation increment resolves unique-element CSS selectors and
 body/scoped text-position selectors in both imported and publisher annotations.
 Text positions count Unicode code points over DOM `textContent`, including

@@ -43,6 +43,51 @@ const NESTED_SMIL = `<?xml version="1.0" encoding="UTF-8"?>
 </smil>`;
 
 describe("SmilDocument.parse", () => {
+  const nonPackageReferences = [
+    "https://example.invalid/OEBPS/chapter1.xhtml",
+    "http://example.invalid/OEBPS/chapter1.xhtml",
+    "file:///OEBPS/chapter1.xhtml",
+    "//example.invalid/OEBPS/chapter1.xhtml",
+    String.raw`\\example.invalid\OEBPS\chapter1.xhtml`,
+    "data:OEBPS/chapter1.xhtml",
+    "mailto:OEBPS/chapter1.xhtml",
+    "javascript:OEBPS/chapter1.xhtml",
+    "blob:https://example.invalid/OEBPS/chapter1.xhtml",
+    "epub-path:///OEBPS/chapter1.xhtml",
+    " HTTPS://example.invalid/OEBPS/chapter1.xhtml ",
+    "ht&#x9;tps://example.invalid/OEBPS/chapter1.xhtml",
+  ];
+  for (const attribute of ["audio", "text", "textref"] as const) {
+    it.each(nonPackageReferences)(`rejects a non-package ${attribute} reference: %s`, (reference) => {
+      const xml = `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
+        <body><seq epub:textref="${attribute === "textref" ? reference : "chapter1.xhtml#section"}">
+          <par><text src="${attribute === "text" ? reference : "chapter1.xhtml#passage"}"/>
+          <audio src="${attribute === "audio" ? reference : "audio/c01.mp4"}"/></par>
+        </seq></body></smil>`;
+      expect(() => SmilDocument.parse(xml, "OEBPS/overlay.smil")).toThrow(SmilParseError);
+      expect(() => SmilDocument.parse(xml, "OEBPS/overlay.smil")).toThrow(
+        /requires a packaged resource/,
+      );
+    });
+  }
+
+  it("preserves package queries, encoded filename punctuation and same-document fragments", () => {
+    const xml = `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
+      <body><seq epub:textref="#section%2520id">
+        <par><text src="../text/ch%23one.xhtml?edition=1#arriv%C3%A9e"/>
+        <audio src="/OEBPS/audio/https%3Atrack%25.wav?edition=1#track"/></par>
+      </seq></body></smil>`;
+    const doc = SmilDocument.parse(xml, "OEBPS/overlays/overlay.smil");
+    const seq = doc.body.children[0];
+    if (!(seq instanceof SmilSeq)) throw new Error("Expected the fixture's seq");
+    expect(seq.textref).toEqual({
+      path: "OEBPS/overlays/overlay.smil", fragment: "section%20id",
+    });
+    const par = doc.flattenPars()[0]!;
+    expect(par.text).toEqual({ path: "OEBPS/text/ch#one.xhtml", fragment: "arrivée" });
+    expect(par.audio?.path).toBe("OEBPS/audio/https:track%.wav");
+  });
+
   it("decodes seq and text fragments exactly once while resolving archive paths separately", () => {
     const xml = `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
       <body><seq epub:textref="ch%23one.xhtml#arriv%C3%A9e">

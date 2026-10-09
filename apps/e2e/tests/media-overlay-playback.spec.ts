@@ -64,6 +64,48 @@ async function passagePaint(page: Page, id: string, edge: "first" | "last" = "fi
   }, { fragment: id, edge });
 }
 
+for (const reference of ["audio", "text", "textref"] as const) {
+  test(`non-package SMIL ${reference} cannot alias packaged narration resources (#336, #337)`, async ({ browserName: _browserName }, info) => {
+    const entries = unzipSync(fs.readFileSync(narrated));
+    const audio = reference === "audio"
+      ? "https://example.invalid/EPUB/audio/chapter-1.wav" : "audio/chapter-1.wav";
+    const text = reference === "text"
+      ? "https://example.invalid/EPUB/chapter-1.xhtml#c1-p1" : "chapter-1.xhtml#c1-p1";
+    const textref = reference === "textref"
+      ? "https://example.invalid/EPUB/chapter-1.xhtml#c1-p1" : "chapter-1.xhtml#c1-p1";
+    entries["EPUB/overlay-1.smil"] = strToU8(`<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
+      <body><seq epub:textref="${textref}"><par><text src="${text}"/>
+      <audio src="${audio}" clipBegin="0s" clipEnd="4s"/></par></seq></body></smil>`);
+    const file = info.outputPath(`non-package-${reference}.epub`);
+    fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+    const requests: string[] = [];
+    const errors: string[] = [];
+    const { readerPage: page, context } = await launchReader(file, {
+      beforeBookImport: async library => {
+        library.context().on("request", request => {
+          if (new URL(request.url()).hostname === "example.invalid") requests.push(request.url());
+        });
+        library.context().on("page", opened => opened.on("pageerror", error => errors.push(error.message)));
+      },
+    });
+    try {
+      await exposeReaderController(page);
+      await page.mouse.move(350, 2);
+      await button(page, "Play narration").click();
+      await expect(controls(page).getByRole("status")).toHaveText("Narration could not be played.");
+      expect(await audioState(page)).toMatchObject({ source: "", error: null, paused: true });
+      expect(await page.evaluate(() =>
+        Reflect.get(window, "__readerController").narration.snapshot.error,
+      )).toContain("requires a packaged resource");
+      await expect(page.frameLocator("iframe").first().locator("h1")).toHaveText("Narrated chapter 1");
+      expect(requests).toEqual([]);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 test("narration clamps an authored end beyond real audio duration and advances at native media completion (#337)", async ({ browserName: _browserName }, info) => {
   const entries = unzipSync(fs.readFileSync(narrated));
   entries["EPUB/overlay-1.smil"] = strToU8('<smil xmlns="http://www.w3.org/ns/SMIL"><body><par><text src="chapter-1.xhtml#c1-p1"/><audio src="audio/chapter-1.wav" clipBegin="0s" clipEnd="99s"/></par></body></smil>');
