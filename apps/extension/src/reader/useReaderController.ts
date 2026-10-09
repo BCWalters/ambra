@@ -27,6 +27,7 @@ import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { ProgressMarkerStyle } from "./ProgressMarkerStyle.js";
 import type { Translate } from "../i18n/LocaleContext.js";
+import type { NarrationSkipping } from "./MediaOverlayNarration.js";
 
 export interface UseReaderControllerResult {
   pageTurnGuideController?: Pick<ReaderController, "subscribe" | "snapshot" | "subscribeNavigation" | "pageTurnGuideGeometry" | "restoreContentFocus">;
@@ -43,6 +44,7 @@ export interface UseReaderControllerResult {
   turnPage: (direction: 1 | -1) => void;
   narrationAction: (action: NarrationAction) => void;
   setNarrationRate: (rate: number) => void;
+  setNarrationSkipping: (skipping: NarrationSkipping) => void;
   dismissNarrationNotice: () => void;
   goToChapter: (direction: 1 | -1) => void;
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
@@ -264,6 +266,9 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     await controller?.flushProgress(true);
   }, [controller]);
   const setNarrationRate = useCallback((rate: number) => controller?.setNarrationRate(rate), [controller]);
+  const setNarrationSkipping = useCallback((skipping: NarrationSkipping) => {
+    void controller?.setNarrationSkipping(skipping);
+  }, [controller]);
   const dismissNarrationNotice = useCallback(() => controller?.dismissNarrationNotice(), [controller]);
 
   const turnPage = useCallback(
@@ -591,6 +596,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     setShortcutModalOpen,
     narrationAction,
     setNarrationRate,
+    setNarrationSkipping,
     dismissNarrationNotice,
     snapshot,
     contentHostRef,

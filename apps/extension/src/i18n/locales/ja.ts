@@ -107,6 +107,12 @@ export const ja: StringCatalog = {
   "narration.loading": "朗読を読み込み中…",
   "narration.browsing": "朗読とは別の箇所を読んでいます。",
   "narration.error": "朗読を再生できませんでした。",
+  "narration.options": "朗読のオプション",
+  "narration.skipNotes": "注をスキップ",
+  "narration.skipPageNumbers": "ページの読み上げをスキップ",
+  "narration.escape": "現在の構造から抜ける",
+  "narration.skippedToEnd": "再生できる朗読がもうありません。ページの音声を再開するか、別の箇所に移動してください。",
+  "narration.finished": "朗読の終わりです。ページの音声を再開するか、別の箇所に移動してください。",
   "reader.blockedLink": "安全のため、この本からファイル、データ、未対応のリンクは開けません。",
   "reader.navigationRecovered":
     "この本の新しい形式の目次を読み込めなかったため、互換形式の目次を使用しています。",

@@ -23,6 +23,9 @@ function setup() {
     resume: vi.fn(async () => {}),
     next: vi.fn(async () => {}),
     previous: vi.fn(async () => {}),
+    escape: vi.fn(async () => {}),
+    setSkipping: vi.fn(async () => {}),
+    isTargetSkippedBy: vi.fn(() => false),
     pause: vi.fn(() => { state.status = "paused"; state.playbackRequested = false; }),
   };
   const readingPosition = vi.fn(async () => position);
@@ -39,7 +42,7 @@ function setup() {
 }
 
 describe("navigation-led narration transports", () => {
-  it.each(["start", "next", "previous"] as const)(
+  it.each(["start", "next", "previous", "escape"] as const)(
     "%s uses an established errored cursor instead of re-cueing the visible page",
     async action => {
       const { controller, narration, readingPosition } = setup();
@@ -49,6 +52,40 @@ describe("navigation-led narration transports", () => {
       expect(action === "start" ? narration.resume : narration[action]).toHaveBeenCalledOnce();
     },
   );
+
+  it("applies preferences without re-cueing an established errored cursor", async () => {
+    const { controller, narration, readingPosition } = setup();
+    await controller.setNarrationSkipping({ notes: true, pageNumbers: false });
+    expect(narration.setSkipping).toHaveBeenCalledExactlyOnceWith(
+      { notes: true, pageNumbers: false }, { deferCurrent: false },
+    );
+    expect(readingPosition).not.toHaveBeenCalled();
+    expect(narration.syncReadingPosition).not.toHaveBeenCalled();
+    expect(Reflect.get(controller, "cancelNarrationNavigation")).not.toHaveBeenCalled();
+  });
+
+  it("claims replacement navigation only when the preference suppresses its current target", async () => {
+    const { controller, narration } = setup();
+    narration.isTargetSkippedBy.mockReturnValue(true);
+    await controller.setNarrationSkipping({ notes: true, pageNumbers: false });
+    expect(Reflect.get(controller, "cancelNarrationNavigation")).toHaveBeenCalledOnce();
+    expect(Reflect.get(controller, "narrationCommand")).toBe(1);
+  });
+
+  it("defers current-cursor skipping to the newer successful navigation destination", async () => {
+    const { controller, narration, position, readingPosition, navigate, pending } = setup();
+    const old = deferred<typeof position>();
+    readingPosition.mockReturnValueOnce(old.promise);
+    navigate();
+    await controller.setNarrationSkipping({ notes: true, pageNumbers: false });
+    old.resolve({ ...position, spineIndex: 0 });
+    await Promise.resolve();
+    expect(narration.setSkipping).toHaveBeenCalledExactlyOnceWith(
+      { notes: true, pageNumbers: false }, { deferCurrent: true },
+    );
+    expect(narration.syncReadingPosition).toHaveBeenCalledExactlyOnceWith(position.spineIndex, position.element);
+    expect(pending()).toBe(false);
+  });
 
   it("reconciles the successful destination on Play after Pause interrupts position capture", async () => {
     const { controller, narration, state, position, readingPosition, navigate, pending } = setup();

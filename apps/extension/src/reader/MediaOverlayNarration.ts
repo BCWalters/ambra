@@ -1,5 +1,13 @@
 import { adjacentPrimarySpineIndex, MediaOverlayError, MediaOverlayPlayer, ResourceFallbackSelector, SmilDocument, SmilPlaybackTimeline } from "@ambra/engine";
-import type { ContentLoader, PackageDocument, SmilAudioClip, SmilPar } from "@ambra/engine";
+import type { ContentLoader, PackageDocument, SmilAudioClip, SmilPar, SmilPlaybackEntry } from "@ambra/engine";
+
+export interface NarrationSkipping {
+  readonly notes: boolean;
+  readonly pageNumbers: boolean;
+}
+
+const NOTE_TYPES = new Set(["footnote", "endnote"]);
+const ESCAPABLE_TYPES = new Set(["table", "list", "figure", "aside"]);
 
 export interface NarrationTarget {
   spineIndex: number;
@@ -16,6 +24,12 @@ export interface NarrationState {
   hasNext: boolean;
   hasTarget: boolean;
   playbackRequested?: boolean;
+  skipping?: NarrationSkipping;
+  hasSkippableNotes?: boolean;
+  hasSkippablePageNumbers?: boolean;
+  canEscape?: boolean;
+  skippedToEnd?: boolean;
+  endedByPolicy?: boolean;
   error?: string;
 }
 
@@ -38,6 +52,7 @@ export interface MediaOverlayNarrationContext {
 interface SpineNarrationClips {
   timeline: SmilPlaybackTimeline;
   clips: readonly SmilPar[];
+  entries: readonly SmilPlaybackEntry[];
 }
 
 interface Cursor extends SpineNarrationClips {
@@ -54,6 +69,13 @@ export class MediaOverlayNarration {
   private readonly resourceSelector: Pick<ResourceFallbackSelector, "select">;
   private readonly associations: number[];
   private readonly documents = new Map<string, Promise<SmilPlaybackTimeline>>();
+  private skipping: NarrationSkipping = { notes: false, pageNumbers: false };
+  private skippedTypes = new Set<string>();
+  private readonly seenSemanticTypes = new Set<string>();
+  private skippedToEnd = false;
+  private endedByPolicy = false;
+  private prefetchRevision = 0;
+  private escapeBoundary: { timeline: SmilPlaybackTimeline; index: number } | undefined;
   private cursor: Cursor | undefined;
   private status: NarrationState["status"] = "idle";
   private playbackRequested = false;
@@ -119,9 +141,16 @@ export class MediaOverlayNarration {
       rate: this.rate,
       hasTarget: this.target !== undefined,
       playbackRequested: this.playbackRequested,
-      hasPrevious: !!this.cursor && (this.cursor.index > 0 ||
+      skipping: { ...this.skipping },
+      hasSkippableNotes: [...NOTE_TYPES].some(type => this.seenSemanticTypes.has(type)),
+      hasSkippablePageNumbers: this.seenSemanticTypes.has("pagebreak"),
+      canEscape: !this.endedByPolicy && this.escapeDestination !== undefined,
+      skippedToEnd: this.skippedToEnd,
+      endedByPolicy: this.endedByPolicy,
+      hasPrevious: !!this.cursor && ((this.endedByPolicy && !this.isSkipped(this.cursor)) || this.cursor.index > 0 ||
+        (this.escapeBoundary?.timeline === this.cursor.timeline && this.cursor.entries[this.cursor.index]!.index > 0) ||
         this.adjacentAssociation(this.cursor.association, -1) !== undefined),
-      hasNext: !!this.cursor && (
+      hasNext: !this.endedByPolicy && !!this.cursor && (
         this.cursor.index < this.cursor.clips.length - 1 ||
         this.adjacentAssociation(this.cursor.association, 1) !== undefined
       ),
@@ -154,6 +183,7 @@ export class MediaOverlayNarration {
 
   private async seekPassage(spineIndex: number, element: Element | undefined, following: boolean, exact = false): Promise<void> {
     if (this.disposed) return;
+    this.escapeBoundary = undefined;
     this.playbackRequested = true;
     this.requestedPassage = { spineIndex, element, exact };
     const generation = this.begin();
@@ -167,13 +197,14 @@ export class MediaOverlayNarration {
         (index) => index > spineIndex && this.ctx.pkg.spine[index]!.linear,
       );
       if (association < 0) throw new Error("There is no recorded narration at or after this passage.");
-      const { timeline, clips } = await this.loadClips(association);
+      const loaded = await this.loadClips(association);
+      const { clips } = loaded;
       if (!this.current(generation)) return;
       const index = element && exactAssociation >= 0 ? findPassage(clips, element) : 0;
       if (index < 0 || !clips[index]) {
         throw new Error("There is no recorded narration for this passage.");
       }
-      await this.start({ association, index, clips, timeline }, generation, true);
+      await this.start({ association, index, ...loaded }, generation, true);
     } catch (error) {
       if (this.current(generation)) this.fail(error);
     }
@@ -181,6 +212,10 @@ export class MediaOverlayNarration {
 
   public async resume(): Promise<void> {
     if (this.disposed) return;
+    if (this.endedByPolicy) {
+      this.notify();
+      return;
+    }
     if (this.requestedPassage) {
       await this.seekPassage(this.requestedPassage.spineIndex, this.requestedPassage.element, this.following, this.requestedPassage.exact);
       return;
@@ -219,17 +254,87 @@ export class MediaOverlayNarration {
     await this.move(-1);
   }
 
+  public isTargetSkippedBy(skipping: NarrationSkipping): boolean {
+    const semantics = this.cursor?.entries[this.cursor.index]?.semantics ?? [];
+    return semantics.some(type => (skipping.notes && NOTE_TYPES.has(type)) ||
+      (skipping.pageNumbers && type === "pagebreak"));
+  }
+
+  public async setSkipping(skipping: NarrationSkipping, options: { deferCurrent?: boolean } = {}): Promise<void> {
+    if (this.disposed) return;
+    if (typeof skipping.notes !== "boolean" || typeof skipping.pageNumbers !== "boolean") {
+      throw new TypeError("Narration skipping preferences must be booleans.");
+    }
+    if (skipping.notes === this.skipping.notes && skipping.pageNumbers === this.skipping.pageNumbers) return;
+    this.skipping = { ...skipping };
+    this.skippedTypes = new Set([
+      ...(skipping.notes ? NOTE_TYPES : []),
+      ...(skipping.pageNumbers ? ["pagebreak"] : []),
+    ]);
+    const cursor = this.cursor;
+    if (cursor) this.prefetchNeighbor(cursor);
+    this.notify();
+    if (this.endedByPolicy || !cursor || !this.isSkipped(cursor) || this.status === "idle" ||
+      (this.requestedPassage && this.status === "loading")) return;
+    const play = this.playbackRequested;
+    const generation = this.begin();
+    if (options.deferCurrent) return;
+    try {
+      const next = await this.neighbor(cursor, 1);
+      if (!this.current(generation)) return;
+      if (next) await this.start(next, generation, true, { play });
+      else this.finishSkipped(cursor);
+    } catch (error) {
+      if (this.current(generation)) this.fail(error);
+    }
+  }
+
+  public async escape(): Promise<void> {
+    if (this.disposed) return;
+    const cursor = this.cursor;
+    const destination = this.escapeDestination;
+    if (!cursor || !destination || this.endedByPolicy) {
+      this.fail(new Error("There is no escapable narration structure at this position."));
+      return;
+    }
+    const play = this.playbackRequested;
+    const generation = this.begin();
+    const previousBoundary = this.escapeBoundary;
+    this.escapeBoundary = { timeline: cursor.timeline, index: destination.nextIndex };
+    try {
+      const entry = cursor.timeline.entries[destination.nextIndex];
+      let next: Cursor | undefined;
+      let terminal = cursor;
+      if (entry) {
+        next = this.cursorForEntry(cursor, entry);
+      } else {
+        const last = cursor.timeline.entries[cursor.timeline.entries.length - 1]!;
+        terminal = this.cursorForEntry(cursor, last);
+        next = await this.neighbor(terminal, 1);
+      }
+      if (!this.current(generation)) return;
+      if (next) await this.start(next, generation, true, { play });
+      else this.finishSkipped(terminal, false);
+    } catch (error) {
+      if (this.current(generation)) {
+        if (this.cursor === cursor) this.escapeBoundary = previousBoundary;
+        this.fail(error);
+      }
+    }
+  }
+
   public async syncReadingPosition(spineIndex: number, element: Element): Promise<void> {
     if (this.disposed || this.status === "idle") return;
     const play = this.playbackRequested;
     const association = this.associations.indexOf(spineIndex);
-    if (this.cursor && association === this.cursor.association && !this.needsSeek &&
+    if (this.cursor && !this.isSkipped(this.cursor) && association === this.cursor.association && !this.needsSeek &&
       (this.status === "playing" || this.status === "paused") &&
       findPassage(this.cursor.clips, element) === this.cursor.index) {
       this.following = true;
       this.notify();
       return;
     }
+    this.escapeBoundary = undefined;
     const previousCursor = this.cursor;
     this.requestedPassage = { spineIndex, element, exact: true };
     const generation = this.begin();
@@ -239,7 +344,8 @@ export class MediaOverlayNarration {
         this.cursor = undefined;
         throw new Error("There is no recorded narration at this reading position.");
       }
-      const { timeline, clips } = await this.loadClips(association);
+      const loaded = await this.loadClips(association);
+      const { clips } = loaded;
       if (!this.current(generation)) return;
       const index = findPassage(clips, element);
       if (index < 0 || !clips[index]) {
@@ -247,7 +353,7 @@ export class MediaOverlayNarration {
         throw new Error("There is no recorded narration at this reading position.");
       }
       const same = this.cursor?.association === association && this.cursor.index === index && !this.needsSeek;
-      await this.start({ association, index, clips, timeline }, generation, !same, { play, follow: false });
+      await this.start({ association, index, ...loaded }, generation, !same, { play, follow: false });
     } catch (error) {
       if (this.current(generation)) {
         if (this.cursor === previousCursor) this.cursor = undefined;
@@ -325,7 +431,57 @@ export class MediaOverlayNarration {
       });
     }
     const timeline = await document;
-    return { timeline, clips: timeline.entries.filter(entry => entry.par.text.path === item.path).map(entry => entry.par) };
+    let changed = false;
+    for (const entry of timeline.entries) {
+      for (const type of entry.semantics) {
+        if (!this.seenSemanticTypes.has(type)) {
+          this.seenSemanticTypes.add(type);
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.notify();
+    return this.spineClips(timeline, item.path);
+  }
+
+  private spineClips(timeline: SmilPlaybackTimeline, path: string): SpineNarrationClips {
+    const entries = timeline.entries.filter(entry => entry.par.text.path === path);
+    return { timeline, entries, clips: entries.map(entry => entry.par) };
+  }
+
+  private cursorForEntry(cursor: Cursor, entry: SmilPlaybackEntry): Cursor {
+    const currentPath = this.ctx.pkg.spine[this.associations[cursor.association]!]!.manifestItem.path;
+    const association = currentPath === entry.par.text.path ? cursor.association : this.associations.findIndex(
+      index => this.ctx.pkg.spine[index]!.manifestItem.path === entry.par.text.path,
+    );
+    if (association < 0) throw new Error("The escaped narration target is not associated with a spine document.");
+    const sourceOverlay = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[cursor.association]!]!.manifestItem);
+    const targetOverlay = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[association]!]!.manifestItem);
+    if (sourceOverlay?.path !== targetOverlay?.path) {
+      throw new Error("The escaped narration target belongs to a different authored overlay.");
+    }
+    const loaded = this.spineClips(cursor.timeline, entry.par.text.path);
+    const index = loaded.entries.indexOf(entry);
+    if (index < 0) throw new Error("The escaped narration target is outside its authored timeline.");
+    return { association, index, ...loaded };
+  }
+
+  private get escapeDestination() {
+    const cursor = this.cursor;
+    return cursor ? cursor.timeline.escapeAfter(cursor.entries[cursor.index]!.index, ESCAPABLE_TYPES) : undefined;
+  }
+
+  private isSkipped(cursor: Cursor): boolean {
+    return cursor.timeline.isSkipped(cursor.entries[cursor.index]!.index, this.skippedTypes);
+  }
+
+  private isBeforeEscapeBoundary(cursor: Cursor): boolean {
+    return this.escapeBoundary?.timeline === cursor.timeline &&
+      cursor.entries[cursor.index]!.index < this.escapeBoundary.index;
+  }
+
+  private isExcluded(cursor: Cursor, direction: 1 | -1 = 1): boolean {
+    return this.isSkipped(cursor) || (direction === 1 && this.isBeforeEscapeBoundary(cursor));
   }
 
   private adjacentAssociation(association: number, direction: 1 | -1): number | undefined {
@@ -338,16 +494,26 @@ export class MediaOverlayNarration {
   }
 
   private async neighbor(cursor: Cursor, direction: 1 | -1): Promise<Cursor | undefined> {
-    const index = cursor.index + direction;
-    if (index >= 0 && index < cursor.clips.length) return { ...cursor, index };
+    if (direction === -1 && this.escapeBoundary?.timeline === cursor.timeline) {
+      const index = cursor.timeline.findPlayableIndex(cursor.entries[cursor.index]!.index - 1, this.skippedTypes, -1);
+      return index === undefined ? undefined : this.cursorForEntry(cursor, cursor.timeline.entries[index]!);
+    }
+    for (let index = cursor.index + direction; index >= 0 && index < cursor.clips.length; index += direction) {
+      const next = { ...cursor, index };
+      if (!this.isExcluded(next, direction)) return next;
+    }
     for (
       let association = this.adjacentAssociation(cursor.association, direction);
       association !== undefined;
       association = this.adjacentAssociation(association, direction)
     ) {
-      const { timeline, clips } = await this.loadClips(association);
+      const loaded = await this.loadClips(association);
       if (this.disposed) return undefined;
-      if (clips.length) return { association, clips, timeline, index: direction === 1 ? 0 : clips.length - 1 };
+      for (let index = direction === 1 ? 0 : loaded.clips.length - 1;
+        index >= 0 && index < loaded.clips.length; index += direction) {
+        const next = { association, index, ...loaded };
+        if (!this.isExcluded(next, direction)) return next;
+      }
     }
     return undefined;
   }
@@ -359,13 +525,17 @@ export class MediaOverlayNarration {
     const shouldPlay = this.playbackRequested;
     const generation = this.begin();
     try {
-      const next = await this.neighbor(cursor, direction);
+      let next = direction === -1 && this.endedByPolicy && !this.isSkipped(cursor)
+        ? cursor : await this.neighbor(cursor, direction);
+      while (next && this.isSkipped(next)) next = await this.neighbor(next, direction);
       if (!this.current(generation)) return;
       if (!next) {
-        if (shouldPlay) await this.start(cursor, generation, false);
+        if (this.isSkipped(cursor) || (direction === 1 && this.skippedTypes.size > 0)) this.finishSkipped(cursor);
+        else if (shouldPlay) await this.start(cursor, generation, false);
         else { this.status = "paused"; this.notify(); }
         return;
       }
+      if (direction === -1 && this.isBeforeEscapeBoundary(next)) this.escapeBoundary = undefined;
       if (shouldPlay) await this.start(next, generation, true);
       else {
         this.setCursor(next);
@@ -402,6 +572,17 @@ export class MediaOverlayNarration {
     cursor: Cursor, generation: number, forceSeek: boolean,
     options: { play?: boolean; follow?: boolean } = {},
   ): Promise<void> {
+    while (this.isExcluded(cursor)) {
+      const next = await this.neighbor(cursor, 1);
+      if (!this.current(generation)) return;
+      if (!next) {
+        this.finishSkipped(cursor);
+        return;
+      }
+      cursor = next;
+      forceSeek = true;
+      options = { ...options, follow: true };
+    }
     const play = options.play ?? true;
     this.playbackRequested = play;
     this.setCursor(cursor);
@@ -443,24 +624,44 @@ export class MediaOverlayNarration {
 
   private setCursor(cursor: Cursor): void {
     this.requestedPassage = undefined;
+    this.skippedToEnd = false;
+    this.endedByPolicy = false;
     this.cursor = cursor;
+    this.prefetchNeighbor(cursor);
+  }
+
+  private prefetchNeighbor(cursor: Cursor): void {
+    const revision = ++this.prefetchRevision;
     this.nextReady = false;
     this.nextFailure = undefined;
     this.nextCursor = undefined;
-    if (cursor.index < cursor.clips.length - 1) {
-      this.nextCursor = { ...cursor, index: cursor.index + 1 };
-      this.nextReady = true;
-      return;
+    for (let index = cursor.index + 1; index < cursor.clips.length; index++) {
+      const next = { ...cursor, index };
+      if (!this.isExcluded(next)) {
+        this.nextCursor = next;
+        this.nextReady = true;
+        return;
+      }
     }
     void this.neighbor(cursor, 1).then((next) => {
-      if (this.disposed || this.cursor !== cursor) return;
+      if (this.disposed || this.cursor !== cursor || this.prefetchRevision !== revision) return;
       this.nextCursor = next;
       this.nextReady = true;
     }, (error: unknown) => {
-      if (this.disposed || this.cursor !== cursor) return;
+      if (this.disposed || this.cursor !== cursor || this.prefetchRevision !== revision) return;
       this.nextFailure = error;
       this.nextReady = true;
     });
+  }
+
+  private finishSkipped(cursor: Cursor, skipping = true): void {
+    this.setCursor(cursor);
+    this.needsSeek = true;
+    this.playbackRequested = false;
+    this.skippedToEnd = skipping;
+    this.endedByPolicy = true;
+    this.status = "ended";
+    this.notify();
   }
 
   private async prepareSource(path: string, generation: number): Promise<void> {
@@ -538,7 +739,7 @@ export class MediaOverlayNarration {
     const next = this.nextCursor;
     const nextAudio = next?.clips[next.index]?.audio;
     if (
-      this.nextReady && !this.nextFailure && next && previous && nextAudio &&
+      this.nextReady && !this.nextFailure && next && !this.isExcluded(next) && previous && nextAudio &&
       !this.audio.paused && previous.path === nextAudio.path &&
       previous.clipEndSeconds === nextAudio.clipBeginSeconds
     ) {
@@ -568,6 +769,10 @@ export class MediaOverlayNarration {
         const next = ready ? this.nextCursor : await this.neighbor(cursor, 1);
         if (!this.current(generation)) return;
         if (!next) {
+          if (this.skippedTypes.size > 0 && this.snapshot.hasNext) {
+            this.finishSkipped(cursor);
+            return;
+          }
           this.playbackRequested = false;
           this.status = "ended";
           this.notify();

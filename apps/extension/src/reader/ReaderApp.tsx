@@ -78,6 +78,7 @@ const ReaderAppInner: FC = () => {
     flushProgress,
     narrationAction,
     setNarrationRate,
+    setNarrationSkipping,
     goToNavPoint,
     setViewMode,
     setFontScale,
@@ -1001,6 +1002,8 @@ const ReaderAppInner: FC = () => {
                 onListenFromHere={() => narrationAction("here")}
                 onListenFromSelection={() => narrationAction("selection")}
                 onRateChange={setNarrationRate}
+                onSkippingChange={setNarrationSkipping}
+                onEscape={() => narrationAction("escape")}
               />
                 </div>
               )}

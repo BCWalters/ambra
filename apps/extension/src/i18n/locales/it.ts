@@ -107,6 +107,12 @@ export const it: StringCatalog = {
   "narration.loading": "Caricamento della narrazione…",
   "narration.browsing": "Stai leggendo in un punto diverso dalla narrazione.",
   "narration.error": "Impossibile riprodurre la narrazione.",
+  "narration.options": "Opzioni di narrazione",
+  "narration.skipNotes": "Salta le note",
+  "narration.skipPageNumbers": "Salta gli annunci di pagina",
+  "narration.escape": "Esci dalla struttura attuale",
+  "narration.skippedToEnd": "Non resta altra narrazione selezionata. Riavvia l’audio della pagina o vai a un altro passaggio.",
+  "narration.finished": "Fine della narrazione. Riavvia l’audio della pagina o vai a un altro passaggio.",
   "reader.blockedLink": "Per la tua sicurezza, questo libro non può aprire collegamenti a file, dati o tipi non supportati.",
   "reader.navigationRecovered":
     "Non è stato possibile leggere il sommario moderno di questo libro. Viene usato il sommario compatibile.",

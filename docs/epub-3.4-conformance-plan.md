@@ -479,8 +479,32 @@ An owned native shared-overlay fixture verifies that full ancestry and boundarie
 survive real chapter navigation, while the new document's audio plays and its
 authored passage is painted.
 
-This is preparation for user-controlled skipping and contextual escape under
-#337, not enabled reader behavior or a published conformance-score change.
+Book-local narration options under #337 are default-off: **Skip notes** matches
+exact `footnote`/`endnote` tokens and **Skip page announcements** matches
+`pagebreak`. They apply to inherited sequence semantics as well as individual
+passages, before attempting unsupported text-only audio. Starts, selection,
+navigation, Resume, both transports and automatic progression share that policy.
+Options appear only after a loaded overlay contains applicable semantics.
+
+**Leave current structure** appears only within a `table`, `list`, `figure` or
+`aside`; it exits the innermost matching authored subtree, including shared-SMIL
+cross-document boundaries. It preserves playback intent and speed.
+Shared overlays with interleaved document references retain the global escape
+boundary during forward transport and automatic progression, so spine-local
+iteration cannot replay an exited subtree. Previous can deliberately re-enter
+it; explicit page/selection starts and reading navigation to another passage
+reset it. Same-passage scroll reconciliation preserves the escape boundary.
+Unassociated targets or targets owned by another overlay produce explicit narration errors,
+not silently substituted destinations. Reaching the end through skipping or
+escape stops audio with a visible recovery message; Play does not replay an
+excluded or escaped passage, while Previous and explicit page restart remain
+available where applicable.
+
+These preferences last only for the current book opening, like narration speed;
+they are not persisted. They live inside expanded narration controls, separate
+from the speed menu, with no main-toolbar command. This is a supported semantic
+subset, not a claim of full skipping/escaping vocabulary, navigation-document
+support, or a published conformance-score change.
 
 The post-3.1.0 SMIL resource-classification increment applies the shared EPUB
 reference classifier to audio `src`, text `src` and sequence `epub:textref`.

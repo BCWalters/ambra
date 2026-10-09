@@ -30,6 +30,7 @@ export type DiagnosticEvent = SettingEvent |
   { kind: "navigation"; source: DiagnosticNavigationSource; targetSpine?: number; fraction?: number } |
   { kind: "shortcut"; command: ReaderCommandId; scope: "shell" | "content" } |
   { kind: "narration"; action: NarrationAction } |
+  { kind: "narration-skipping"; notes: boolean; pageNumbers: boolean } |
   { kind: "search"; queryLength: number } |
   { kind: "ui-dismissal"; consumed: boolean };
 

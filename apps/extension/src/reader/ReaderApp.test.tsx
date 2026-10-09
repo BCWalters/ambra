@@ -155,6 +155,7 @@ beforeEach(async () => {
     seekToFraction: vi.fn(async () => {}),
     narrationAction: vi.fn(),
     setNarrationRate: vi.fn(),
+    setNarrationSkipping: vi.fn(),
     dismissFootnotePopup: vi.fn(),
     dismissActiveHighlight: vi.fn(),
   } as unknown as UseReaderControllerResult;
