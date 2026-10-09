@@ -119,6 +119,24 @@ describe("NarrationReadingBridge", () => {
     expect(doc.getElementById("one")!.classList.contains("spoken")).toBe(false);
   });
 
+  it.each([undefined, "spoken"])("paints SVG text with active class %s and cleans it on passage changes and closure", async activeClass => {
+    const { reader, doc } = setup({ activeClass, playbackActiveClass: "playing" });
+    doc.body.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg"><g id="one"><text>First</text></g><text id="two">Second</text></svg>';
+    const firstText = doc.querySelector<SVGElement>("text")!;
+    reader.setPlaying(true);
+    await reader.update(first, false);
+    expect(firstText.style.getPropertyValue("text-shadow")).toContain("#b9e5ff");
+    reader.setPlaying(false);
+    expect(firstText.style.getPropertyValue("text-shadow").match(/#b9e5ff/g)).toHaveLength(2);
+    await reader.update({ ...first, fragment: "two" }, false);
+    expect(firstText.hasAttribute("style")).toBe(false);
+    expect(doc.querySelector<SVGElement>("#two")!.style.getPropertyValue("text-shadow")).toContain("#b9e5ff");
+    reader.clear();
+    expect(doc.querySelector("#two")!.hasAttribute("style")).toBe(false);
+    expect(doc.querySelector(".spoken")).toBeNull();
+    expect(doc.documentElement.classList.contains("playing")).toBe(false);
+  });
+
   it("does not resurrect a target after a pending navigation is invalidated", async () => {
     const { reader, navigate, offscreen, doc } = setup({ activeClass: "spoken" });
     offscreen();

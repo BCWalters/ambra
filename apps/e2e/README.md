@@ -31,6 +31,18 @@ must keep its readable host while all three local-file frames remain blocked.
 The generated fixture filename/title carry ID 3.1.3. These regressions do not
 rewrite the frozen assessment or execute publication scripts.
 
+`tests/svg-narration.spec.ts` covers visible narration cues in native SVG.
+The SVG suite checks real audio progression and screenshot pixel thresholds,
+group/tspan targets, authored/default styling, restoration, resize, clipping,
+unchanged source and script denial. Set `AMBRA_SVG_NARRATION_EPUB_DIR` to
+the pinned media-overlay folder to run both original SVG timing books.
+Generated EPUB filenames/titles carry ID 3.1.4. SVG narration is a UX improvement,
+not a revised historical conformance verdict.
+SVG text uses a temporary narration-blue glyph halo because HTML backgrounds
+do not paint SVG groups. Authored classes still apply; original shadows,
+priorities, fill and filters are preserved/restored. No overlay elements are
+inserted into publication DOMs, so source-node/CFI structure stays unchanged.
+
 `tests/media-overlay-playback.spec.ts` includes a page-following regression
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before
