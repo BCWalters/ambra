@@ -7,7 +7,7 @@ import type { EncryptionDocument } from "../encryption/EncryptionDocument.js";
 import { FontDeobfuscator } from "../encryption/FontDeobfuscator.js";
 import { srcsetCandidateRanges, type SrcsetUrlRange } from "./Srcset.js";
 import type { ResourceConsumer } from "../rendering/ResourceCapabilities.js";
-import { classifyEpubReference, type NonPackageEpubReference } from "../container/EpubReference.js";
+import { classifyEpubReference, getDocumentBaseHref, type NonPackageEpubReference } from "../container/EpubReference.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
@@ -235,10 +235,11 @@ export function findResourceReferencesInDocument(
   options: { includeUnavailable?: boolean } = {},
 ): ResourceReference[] {
   const references: ResourceReference[] = [];
+  const baseHref = getDocumentBaseHref(document);
 
   for (const { selector, attribute } of RESOURCE_ATTRIBUTE_SELECTORS) {
     for (const element of Array.from(document.querySelectorAll(selector))) {
-      const reference = resolveReference(element, attribute, documentPath, options.includeUnavailable);
+      const reference = resolveReference(element, attribute, documentPath, options.includeUnavailable, baseHref);
       if (reference) {
         references.push(reference);
       }
@@ -251,7 +252,7 @@ export function findResourceReferencesInDocument(
       const url = srcset.slice(range.start, range.end);
       // Only packaged candidates use the archive resolver. Other schemes stay
       // subject to the existing CSP; they must not alias an archive filename.
-      const classified = classifyEpubReference(documentPath, url);
+      const classified = classifyEpubReference(documentPath, url, baseHref);
       if (classified.kind === "fragment") continue;
       if (classified.kind !== "package" && !options.includeUnavailable) continue;
       const { path: rawPath } = splitHrefFragment(url);
@@ -275,7 +276,7 @@ export function findResourceReferencesInDocument(
       (imageEl.hasAttribute("href") ? "href" : undefined) ??
       getNamespacedAttributeName(imageEl, XLINK_NAMESPACE, "href");
     if (attribute) {
-      const reference = resolveReference(imageEl, attribute, documentPath, options.includeUnavailable);
+      const reference = resolveReference(imageEl, attribute, documentPath, options.includeUnavailable, baseHref);
       if (reference) {
         references.push(reference);
       }
@@ -290,13 +291,14 @@ function resolveReference(
   attributeName: string,
   documentPath: string,
   includeUnavailable = false,
+  baseHref?: string,
 ): ResourceReference | undefined {
   const rawValue = element.getAttribute(attributeName);
   if (!rawValue) {
     return undefined;
   }
 
-  const reference = classifyEpubReference(documentPath, rawValue);
+  const reference = classifyEpubReference(documentPath, rawValue, baseHref);
   if (reference.kind === "fragment") {
     // Fragment-only value (e.g. an in-document href) — not an external
     // resource to load.

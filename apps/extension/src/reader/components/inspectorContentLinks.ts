@@ -1,4 +1,4 @@
-import { resolveEpubPath, splitHrefFragment } from "@ambra/engine";
+import { classifyEpubReference } from "@ambra/engine";
 
 /** Attribute names, inside an XHTML content document, whose value points
  * at another archive member — issue #95: a link/image reference to
@@ -15,27 +15,6 @@ export function isNavigableLinkAttribute(attributeName: string): boolean {
   return NAVIGABLE_LINK_ATTRIBUTES.has(attributeName.toLowerCase());
 }
 
-/** Whether `href` points outside the archive entirely (an absolute URL,
- * or a protocol-relative one) — the common, deliberately-external case
- * (a real reader's own web link, a CDN font, etc.) that `resolveEpubPath`
- * was never meant to handle and shouldn't be offered as "jump to this
- * file" at all. A bare fragment-only href (`"#section2"`, an in-page
- * anchor) is likewise not a *different* file to jump to. */
-function isExternalOrFragmentOnlyHref(href: string): boolean {
-  if (href.startsWith("#")) {
-    return true;
-  }
-  if (href.startsWith("//")) {
-    return true;
-  }
-  // A URI scheme is a leading run of letters/digits/`+`/`-`/`.` followed
-  // by `:` — matches `http:`, `https:`, `mailto:`, `data:`, `tel:`, etc.
-  // A Windows-style drive letter never appears in an EPUB href, and a
-  // relative path segment can't contain `:` at all per URL syntax, so
-  // this can't misfire on a genuine relative archive path.
-  return /^[a-z][a-z0-9+.-]*:/i.test(href);
-}
-
 /**
  * Resolves a raw `href`/`src` attribute value found in `referencingPath`'s
  * own markup to the archive-relative path it points at, but only if
@@ -50,22 +29,16 @@ export function resolveNavigableLinkTarget(
   referencingPath: string,
   rawHref: string,
   knownFilePaths: ReadonlySet<string>,
+  baseHref?: string,
 ): string | undefined {
   const trimmed = rawHref.trim();
-  if (!trimmed || isExternalOrFragmentOnlyHref(trimmed)) {
-    return undefined;
-  }
-  const { path } = splitHrefFragment(trimmed);
-  if (!path) {
-    return undefined;
-  }
-  let resolved: string;
+  if (!trimmed) return undefined;
   try {
-    resolved = resolveEpubPath(referencingPath, path);
-  } catch {
-    // Malformed enough that even `resolveEpubPath`'s own lenient
-    // decoding gave up — not a file this book actually has either way.
+    const reference = classifyEpubReference(referencingPath, trimmed, baseHref);
+    return reference.kind === "package" && knownFilePaths.has(reference.path) ? reference.path : undefined;
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    console.warn("Cannot resolve an Inspector source link.", error);
     return undefined;
   }
-  return knownFilePaths.has(resolved) ? resolved : undefined;
 }

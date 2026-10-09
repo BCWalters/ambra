@@ -1,7 +1,7 @@
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ZipFormatError, ZipIntegrityError } from "../container/ZipArchive.js";
 import type { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
-import { classifyEpubReference, type NonPackageEpubReference } from "../container/EpubReference.js";
+import { classifyEpubReference, getDocumentBaseHref, type NonPackageEpubReference } from "../container/EpubReference.js";
 import {
   getChildElementsByNS,
   getDescendantElementsByNS,
@@ -249,8 +249,8 @@ export class NavigationDocument {
     let fragment: string | undefined;
     let externalReference: NonPackageEpubReference | undefined;
     const href = anchor?.getAttribute("href");
-    if (href) {
-      const reference = classifyEpubReference(navDocPath, href);
+    if (href && anchor) {
+      const reference = classifyEpubReference(navDocPath, href, getDocumentBaseHref(anchor.ownerDocument));
       if (reference.kind === "package" || reference.kind === "fragment") {
         path = reference.kind === "package" ? reference.path : navDocPath;
         fragment = reference.fragment;

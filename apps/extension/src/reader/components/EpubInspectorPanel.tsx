@@ -61,7 +61,7 @@ import type { InspectorFileCategory, SpecialFileKind } from "./inspectorFileKind
 import { classifyInspectionFile, guessMediaType, identifySpecialFiles } from "./inspectorFileKind.js";
 import { isNavigableLinkAttribute, resolveNavigableLinkTarget } from "./inspectorContentLinks.js";
 import { EPUB_TOOLTIP_STYLE } from "../../components/EpubTextStyles.js";
-import { metadataTextContext } from "@ambra/engine";
+import { getDocumentBaseHref, metadataTextContext } from "@ambra/engine";
 import { metadataTextAttributes } from "../../MetadataText.js";
 
 
@@ -363,6 +363,9 @@ const FilePreview: FC<{
     if (!container || textHtml === undefined) {
       return;
     }
+    const baseHref = sourceText !== undefined && resolvedMediaType === "application/xhtml+xml"
+      ? getDocumentBaseHref(new DOMParser().parseFromString(sourceText, "application/xhtml+xml"))
+      : undefined;
     const stringSpans = container.querySelectorAll<HTMLElement>(".hljs-string");
     for (const stringSpan of stringSpans) {
       const attrSpan = stringSpan.previousElementSibling;
@@ -380,7 +383,8 @@ const FilePreview: FC<{
       const raw = stringSpan.textContent ?? "";
       const quote = raw.length >= 2 && (raw[0] === '"' || raw[0] === "'") && raw[0] === raw[raw.length - 1];
       const rawHref = quote ? raw.slice(1, -1) : raw;
-      const target = resolveNavigableLinkTarget(path, rawHref, knownFilePaths);
+      const tagName = stringSpan.closest(".hljs-tag")?.querySelector(".hljs-name")?.textContent?.split(":").at(-1);
+      const target = resolveNavigableLinkTarget(path, rawHref, knownFilePaths, tagName === "base" ? undefined : baseHref);
       if (!target) {
         continue;
       }
@@ -390,7 +394,7 @@ const FilePreview: FC<{
       stringSpan.setAttribute("tabindex", "0");
       stringSpan.title = t("inspector.openFile", { path: target });
     }
-  }, [textHtml, path, knownFilePaths, t, isLoading]);
+  }, [textHtml, sourceText, resolvedMediaType, path, knownFilePaths, t, isLoading]);
 
   const captureSourceSelection = useCallback(() => {
     const container = preRef.current;

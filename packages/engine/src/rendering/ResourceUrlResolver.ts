@@ -216,11 +216,15 @@ export class ResourceUrlResolver {
     ancestors: ReadonlySet<string> = new Set(),
     inlineResources = false,
     budget: NestedResourceBudget = { remaining: MAX_NESTED_RESOURCE_BYTES },
+    baseHref?: string,
   ): Promise<string> {
     if (this.disposed) throw new ResourceResolutionCancelledError();
     try {
       return await rewriteCssResources(source, async (href, importing, consumer = "image") => {
-        const reference = classifyEpubReference(documentPath, href);
+        // CSS local fragment URLs keep their tree-local meaning, including
+        // SVG paint servers; only other inline URLs use the HTML base.
+        if (classifyEpubReference(documentPath, href).kind === "fragment") return href;
+        const reference = classifyEpubReference(documentPath, href, baseHref);
         if (reference.kind === "fragment") return href;
         const path = reference.kind === "package" ? reference.path : reference.url.split("#")[0]!;
         if (reference.kind !== "package" && reference.kind !== "data" &&

@@ -288,7 +288,7 @@ original destination. The raw publication DOM/source and Inspector archive APIs
 remain independent. HTML posters, image-backed object/embed elements, unsupported
 iframe documents/srcdoc, and SVG image/use/feImage references are covered.
 
-This milestone does not implement nested document rendering, arbitrary external
+This initial milestone did not implement nested document rendering, arbitrary external
 SVG presentation-attribute graphs, HTML `<base href>` processing, legacy
 `xml:base` compatibility, or remote/data loading. Those surfaces remain explicit
 compatibility/policy gaps; C34-07 stays open rather than implying complete
@@ -374,7 +374,25 @@ paint only outer whitespace. Magnified fixed pages suppress turn hints.
 Native merged-tail coverage requires viewport clipping and no scrollbar
 allocation while permitting the body to paint translated later-page content.
 
-HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
+The post-3.1.0 HTML-base increment implements the first XHTML `<base href>` for
+resource attributes/candidates, inline CSS and EPUB Navigation Document targets.
+Linked CSS continues to resolve against each stylesheet's own archive path;
+CSS local fragment URLs retain their tree-local meaning. Assembled content uses
+canonical reader links and removes all base elements, including inherited
+publisher targets, without changing the original source/Inspector view.
+Packaged bases may point to directories or documents. HTTP(S), file,
+protocol-relative and opaque bases retain their non-package identity and cannot
+alias ZIP members; existing unavailable-resource diagnostics and offline/file
+policy remain authoritative. Forbidden data/javascript or malformed bases use
+the document fallback with an explicit diagnostic, not a later base element.
+Inspector source links and reference indexing use the same classification.
+Focused engine/Inspector tests and `html-base.spec.ts` cover resource decoding,
+nested CSS/child documents, real link activation, all three layouts and blocked
+base policies. These are synthetic regressions, not newly scored official tests.
+
+The next completeness target is 3.3.0 (#326 and its milestone). The shipped 3.0.0
+assessment remains frozen until the remaining EPUB work and full assessment are
+complete; 3.4.0 may follow with separately validated animation polish.
 Legacy `xml:base` is a separate unsupported compatibility surface:
 [EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)
 because HTML and SVG are removing support. Do not label it an additional

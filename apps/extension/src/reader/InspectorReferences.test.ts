@@ -20,6 +20,12 @@ function targets(source: string, kind: "markup" | "css" = "markup", path = "OEBP
 }
 
 describe("Inspector markup references", () => {
+  it("keeps inline CSS fragment references local even under an HTML base", () => {
+    const found = targets('<html xmlns="http://www.w3.org/1999/xhtml"><head><base href="../assets/"/>'
+      + '<style>p{filter:url(#paint);background:url(image.png)}</style></head><body/></html>');
+    expect(found.map(item => item.targetPath)).toEqual(["OEBPS/chapter.xhtml", "assets/image.png"]);
+  });
+
   it("finds actual usages, repeated occurrences and stylesheet links, not text/comments", () => {
     const source = '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="styles/main.css"/></head>\n'
       + '<body><!-- <img src="fake.png"/> --><p>src="fake.png"</p>\n'
