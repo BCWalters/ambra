@@ -113,6 +113,14 @@ test("reduced motion and RTL preserve physical arrows and invert next/previous",
     await expect(page.locator(".page-turn-guide-tip")).toHaveAttribute("data-tip-side", "left");
     await expect(guide(page)).toHaveCSS("transition-duration", "0s");
     expect(await guide(page).evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
+    const artwork = (await page.locator("iframe").boundingBox())!;
+    const edge = (await page.locator('.page-turn-guide-margin[data-side="left"]').boundingBox())!;
+    expect(edge.width).toBeCloseTo(Math.min(artwork.width * 0.08, 64));
+    await exposeReaderController(page);
+    await page.evaluate(() => Reflect.get(window, "__readerController").setFixedZoom(1.25));
+    await expect(guide(page)).toHaveCount(0);
+    await page.evaluate(() => Reflect.get(window, "__readerController").setFixedZoom(1));
+    await expect(guide(page)).toBeVisible();
     await page.keyboard.press("ArrowLeft");
     await expect(guide(page)).toHaveCount(0);
   } finally { await app.context.close(); }

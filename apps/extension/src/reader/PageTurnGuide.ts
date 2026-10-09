@@ -1,4 +1,4 @@
-import type { HorizontalBounds } from "./PageMargins.js";
+import { outerEdgeBounds, type HorizontalBounds } from "./PageMargins.js";
 
 export interface PageTurnGuideGeometry {
   left: number;
@@ -9,16 +9,22 @@ export interface PageTurnGuideGeometry {
   rightWidth: number;
 }
 
-/** Paint only true outer whitespace, not the larger whitespace-sensitive hit
- * region that overlaps publication text, nor the gutter between spread pages. */
+/** Prefer outer whitespace; fixed artwork can use its existing bounded edge
+ * turn band when flush with the viewport. Never paint the spread gutter. */
 export function pageTurnGuideGeometry(
   pane: Pick<DOMRect, "left" | "right" | "top" | "height">,
   pages: readonly HorizontalBounds[],
+  fixedArtworkEdges = false,
 ): PageTurnGuideGeometry | undefined {
   if (!pages.length || pane.height <= 0) return undefined;
   const width = pane.right - pane.left;
-  const leftWidth = Math.max(0, Math.min(width / 2, Math.min(...pages.map(p => p.left)) - pane.left));
-  const rightWidth = Math.max(0, Math.min(width / 2, pane.right - Math.max(...pages.map(p => p.right))));
+  let leftWidth = Math.max(0, Math.min(width / 2, Math.min(...pages.map(p => p.left)) - pane.left));
+  let rightWidth = Math.max(0, Math.min(width / 2, pane.right - Math.max(...pages.map(p => p.right))));
+  if (fixedArtworkEdges) {
+    const edges = outerEdgeBounds(pages);
+    if (!leftWidth) leftWidth = Math.max(0, Math.min(width / 2, Math.min(...edges.map(p => p.left)) - pane.left));
+    if (!rightWidth) rightWidth = Math.max(0, Math.min(width / 2, pane.right - Math.max(...edges.map(p => p.right))));
+  }
   return {
     left: pane.left, right: pane.right, top: pane.top, height: pane.height,
     leftWidth, rightWidth,

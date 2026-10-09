@@ -368,6 +368,12 @@ Spread-ineligible views (including narrow windows) center the same item, with
 resize replanning. This does not introduce a hybrid fixed/reflowable host or revise
 the frozen 3.0.0 assessment.
 
+Fixed-page turn hints share the existing bounded artwork-edge navigation band
+when physical placement leaves no outer whitespace; reflowable hints still
+paint only outer whitespace. Magnified fixed pages suppress turn hints.
+Native merged-tail coverage requires viewport clipping and no scrollbar
+allocation while permitting the body to paint translated later-page content.
+
 HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
 Legacy `xml:base` is a separate unsupported compatibility surface:
 [EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)

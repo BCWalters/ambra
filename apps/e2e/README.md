@@ -90,6 +90,13 @@ synthetic spreads are eligible, without adding a blank navigation item.
 Coverage includes TOC, saved-CFI reload, and side/center replanning on resize.
 This is regression evidence, not a revision of the frozen assessment.
 
+Fixed-page turn hints retain outer whitespace where available and use the
+existing bounded artwork-edge turn band when an explicit side meets the
+viewport edge. Reflowable hints do not expand into text. Hints are hidden
+while fixed content is magnified, when those edges pan rather than turn.
+Merged reflowable-tail coverage checks viewport clipping and zero native
+scrollbar allocation, not body clipping that would hide translated content.
+
 `tests/media-overlay-playback.spec.ts` includes a page-following regression
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before
