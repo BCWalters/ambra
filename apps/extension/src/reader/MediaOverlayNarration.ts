@@ -1,5 +1,5 @@
-import { adjacentPrimarySpineIndex, MediaOverlayPlayer, ResourceFallbackSelector, SmilDocument } from "@ambra/engine";
-import type { ContentLoader, PackageDocument, SmilPar } from "@ambra/engine";
+import { adjacentPrimarySpineIndex, MediaOverlayError, MediaOverlayPlayer, ResourceFallbackSelector, SmilDocument } from "@ambra/engine";
+import type { ContentLoader, PackageDocument, SmilAudioClip, SmilPar } from "@ambra/engine";
 
 export interface NarrationTarget {
   spineIndex: number;
@@ -71,7 +71,7 @@ export class MediaOverlayNarration {
   private readonly onWaiting = (): void => this.clearTimer();
   private readonly onEnded = (): void => {
     if (this.status !== "playing") return;
-    const end = this.par?.audio?.clipEndSeconds;
+    const end = this.audioClip?.clipEndSeconds;
     if (end !== undefined && this.audio.currentTime + 0.05 < end) {
       this.fail(new Error("The narration audio ended before its authored clip boundary."));
       return;
@@ -133,6 +133,12 @@ export class MediaOverlayNarration {
 
   private get par(): SmilPar | undefined {
     return this.cursor?.clips[this.cursor.index];
+  }
+
+  private get audioClip(): SmilAudioClip | undefined {
+    const audio = this.par?.audio;
+    return audio && this.source === audio.path
+      ? MediaOverlayPlayer.boundedAudioClip(audio, this.audio.duration) : audio;
   }
 
   public async playFrom(spineIndex: number, element?: Element): Promise<void> {
@@ -358,6 +364,7 @@ export class MediaOverlayNarration {
     MediaOverlayPlayer.cue({
       currentSource: this.source,
       currentTime: this.audio.currentTime,
+      duration: this.audio.duration,
       setSource: () => { throw new Error("The narration audio source was not loaded."); },
       seekTo: (seconds) => { this.audio.currentTime = seconds; },
     }, par, forceSeek);
@@ -450,7 +457,7 @@ export class MediaOverlayNarration {
 
   private checkBoundary(): void {
     if (this.disposed || this.status !== "playing") return;
-    const end = this.par?.audio?.clipEndSeconds;
+    const end = this.audioClip?.clipEndSeconds;
     if (end !== undefined && this.audio.currentTime >= end) {
       this.advanceAutomatically();
     } else {
@@ -461,7 +468,7 @@ export class MediaOverlayNarration {
   private scheduleBoundary(): void {
     this.clearTimer();
     if (this.disposed || this.status !== "playing" || this.audio.paused) return;
-    const end = this.par?.audio?.clipEndSeconds;
+    const end = this.audioClip?.clipEndSeconds;
     if (end === undefined) return;
     const milliseconds = (end - this.audio.currentTime) * 1000 / this.rate;
     this.timer = setTimeout(this.onTime, Math.max(4, Math.min(100, milliseconds)));
@@ -469,7 +476,7 @@ export class MediaOverlayNarration {
 
   private advanceAutomatically(): void {
     if (!this.cursor) return;
-    const previous = this.par?.audio;
+    const previous = this.audioClip;
     const next = this.nextCursor;
     const nextAudio = next?.clips[next.index]?.audio;
     if (
@@ -478,6 +485,16 @@ export class MediaOverlayNarration {
       previous.clipEndSeconds === nextAudio.clipBeginSeconds
     ) {
       this.setCursor(next);
+      try {
+        const bounded = MediaOverlayPlayer.boundedAudioClip(nextAudio, this.audio.duration);
+        if (bounded.clipEndSeconds !== undefined && bounded.clipEndSeconds <= bounded.clipBeginSeconds) {
+          throw new MediaOverlayError("The narration segment starts beyond the end of its audio resource.");
+        }
+      } catch (error) {
+        if (!(error instanceof MediaOverlayError)) throw error;
+        this.fail(error);
+        return;
+      }
       this.notify();
       void this.publishTarget(this.generation);
       this.checkBoundary();

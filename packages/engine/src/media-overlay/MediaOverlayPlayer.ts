@@ -19,6 +19,8 @@ export interface MediaOverlayAudioHost {
   seekTo(seconds: number): void;
   readonly currentSource: string | undefined;
   readonly currentTime: number;
+  /** Decoded duration of currentSource, if known. */
+  readonly duration?: number;
 }
 
 /** One playable unit in the flattened timeline: a `SmilPar` plus its
@@ -76,25 +78,40 @@ export class MediaOverlayPlayer {
     return this.playing;
   }
 
+  /** Open-ended clips still finish through the native ended event. */
+  public static boundedAudioClip(audio: SmilAudioClip, duration?: number): SmilAudioClip {
+    if (!Number.isFinite(audio.clipBeginSeconds) || audio.clipBeginSeconds < 0 ||
+      (audio.clipEndSeconds !== undefined &&
+        (!Number.isFinite(audio.clipEndSeconds) || audio.clipEndSeconds <= audio.clipBeginSeconds))) {
+      throw new MediaOverlayError("This narration segment has an invalid audio clip range.");
+    }
+    if (duration === undefined || !Number.isFinite(duration)) return audio;
+    if (duration < 0) throw new MediaOverlayError("The narration audio resource has an invalid duration.");
+    const end = audio.clipEndSeconds;
+    return end !== undefined && Number.isFinite(end) && end > duration
+      ? { ...audio, clipEndSeconds: duration } : audio;
+  }
+
   /** Shared cueing policy for asynchronous, publication-wide playback hosts.
    * Explicit passage/segment seeks restart the authored clip; ordinary resume
    * and contiguous transitions preserve an already in-range audio position. */
   public static cue(
-    host: Pick<MediaOverlayAudioHost, "currentSource" | "currentTime" | "setSource" | "seekTo">,
+    host: Pick<MediaOverlayAudioHost, "currentSource" | "currentTime" | "setSource" | "seekTo" | "duration">,
     par: SmilPar,
     forceSeek = false,
   ): void {
     if (!par.audio) {
       throw new MediaOverlayError("This narration segment has no recorded audio; embedded media and text-to-speech overlays are not supported.");
     }
-    const audio = par.audio;
-    if (
-      !Number.isFinite(audio.clipBeginSeconds) ||
-      audio.clipBeginSeconds < 0 ||
-      (audio.clipEndSeconds !== undefined &&
-        (!Number.isFinite(audio.clipEndSeconds) || audio.clipEndSeconds <= audio.clipBeginSeconds))
-    ) {
+    const audio = MediaOverlayPlayer.boundedAudioClip(par.audio,
+      host.currentSource === par.audio.path ? host.duration : undefined);
+    if (audio.clipEndSeconds !== undefined && audio.clipEndSeconds <= audio.clipBeginSeconds) {
       throw new MediaOverlayError("This narration segment has an invalid audio clip range.");
+    }
+    if (audio !== par.audio) {
+      console.warn("Narration clip end exceeds the decoded audio duration; clamping playback.", {
+        path: audio.path, authoredEnd: par.audio.clipEndSeconds, end: audio.clipEndSeconds,
+      });
     }
     if (!forceSeek && host.currentSource === audio.path && isWithinClip(audio, host.currentTime)) {
       return;
@@ -204,7 +221,9 @@ export class MediaOverlayPlayer {
       if (!par.audio || par.audio.path !== sourcePath) {
         continue;
       }
-      if (isWithinClip(par.audio, seconds)) {
+      const audio = this.host.currentSource === sourcePath
+        ? MediaOverlayPlayer.boundedAudioClip(par.audio, this.host.duration) : par.audio;
+      if (isWithinClip(audio, seconds)) {
         return { index: i, par };
       }
     }

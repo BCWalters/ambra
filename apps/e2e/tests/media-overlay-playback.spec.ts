@@ -64,6 +64,28 @@ async function passagePaint(page: Page, id: string, edge: "first" | "last" = "fi
   }, { fragment: id, edge });
 }
 
+test("narration clamps an authored end beyond real audio duration and advances at native media completion (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  entries["EPUB/overlay-1.smil"] = strToU8('<smil xmlns="http://www.w3.org/ns/SMIL"><body><par><text src="chapter-1.xhtml#c1-p1"/><audio src="audio/chapter-1.wav" clipBegin="0s" clipEnd="99s"/></par></body></smil>');
+  const file = info.outputPath("overlong-narration-end.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  const { readerPage: page, context } = await launchReader(file);
+  try {
+    await listen(page);
+    const source = (await audioState(page)).source;
+    await expect.poll(() => highlighted(page)).toContain("c1-p1");
+    await seek(page, 11.5);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(11.7);
+    await expect.poll(() => highlighted(page)).toContain("c2-p1");
+    expect((await audioState(page)).source).not.toBe(source);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(0.2);
+    expect((await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).error).toBeNull();
+  } finally {
+    await context.close();
+  }
+});
+
 test("narration follows a passage hidden by the current page clip but inside the iframe viewport (#377)", async () => {
   const { readerPage: page, context } = await launchReader(boundaryFixture(test.info()), {
     viewport: { width: 900, height: 700 },

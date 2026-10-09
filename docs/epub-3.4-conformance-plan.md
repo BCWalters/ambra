@@ -410,6 +410,27 @@ other external paint-server types and fonts are not inferred to work from the
 gradient result. These are implementation regressions, not official scores,
 and do not modify the frozen 3.1.0 store package or published assessment.
 
+The post-3.1.0 Media Overlay timing increment clamps a finite explicit
+`clipEnd` to the browser's decoded audio duration, as required by
+[the audio-end rule](https://www.w3.org/TR/2026/CR-epub-rs-34-20260721/#mol-audio-exceeding-clipend).
+Cueing, exclusive position lookup, boundary timers, native completion and
+contiguous transitions use the same bound, only for the currently loaded
+source. Authored SMIL clips are not mutated. Missing ends retain native-ended
+playback, and unknown/non-finite media duration does not invent a bound.
+Non-finite, negative, reversed or empty authored ranges and starts beyond
+available audio retain explicit errors. Invalid contiguous next clips fail
+through the existing narration error state instead of escaping an event handler.
+
+Generated native coverage plays through real PCM completion after a boundary
+seek and requires highlight/audio handoff to the next chapter. Existing
+pause/resume, uninterrupted contiguous playback, focus, page following and
+SVG narration regressions remain covered. Variable-bitrate endpoint accuracy
+and seek granularity remain browser-decoder dependent; no custom correction
+or fallback duration is assumed. Premature completion before a known valid
+bound still reports the existing truncated-audio error. This is a bounded
+timing increment, not complete TTS/embedded-media, skip/escape or navigation/
+pagebreak support under #337, and does not revise published assessment scores.
+
 The post-3.1.0 annotation increment resolves unique-element CSS selectors and
 body/scoped text-position selectors in both imported and publisher annotations.
 Text positions count Unicode code points over DOM `textContent`, including
@@ -513,7 +534,7 @@ waiver.
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | C34-11 | Publication-origin isolation and scripting policy | Give each publication an isolated origin model and record whether scripting remains unsupported or is introduced under explicit capability and security boundaries.            | [#338](https://github.com/BCWalters/ambra/issues/338) |
-| C34-12 | Complete Media Overlay behavior                   | Add text-only TTS and embedded-media handling, skippability, escapability, timing clamping, and pagebreak/navigation synchronization.                                          | [#337](https://github.com/BCWalters/ambra/issues/337) |
+| C34-12 | Complete Media Overlay behavior                   | Finite explicit clip-end duration clamping implemented; text-only TTS/embedded media, skip/escape semantics, remaining timing cases and pagebreak/navigation synchronization remain. | [#337](https://github.com/BCWalters/ambra/issues/337) |
 | C34-13 | Complete EPUB CFI processing                      | Add multiple indirections, temporal/spatial offsets, assertions, side bias, range resolution, and recovery behavior.                                                           | [#340](https://github.com/BCWalters/ambra/issues/340) |
 | C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |

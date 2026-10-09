@@ -112,6 +112,13 @@ passing historical timing-conformance verdict. A passage spanning several
 pages is followed at the start of its authored SMIL target; without finer
 authored timing, this does not infer word-level page turns within one clip.
 
+The same suite generates an owned overlong-end fixture under #337: a SMIL
+clip ends at 99 seconds while its real PCM audio ends at 12 seconds. A boundary
+seek is followed by genuine audio progression and native completion; the next
+chapter must highlight and play its different audio source without a truncated
+audio error. The original source clip stays unchanged. This synthetic case runs
+in protected narration CI and does not promote an official conformance score.
+
 Packaged-frame regressions in `tests/packaged-frames.spec.ts` cover static XHTML
 and SVG children, rewritten CSS/imports/images, opaque origins, disabled scripts,
 retained dimensions, recoverable child failures, cycles, and the eight-level
