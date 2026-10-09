@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
 import type { ResourceCapabilities, ResourceConsumer } from "./ResourceCapabilities.js";
+import { MAX_EMBEDDED_IMAGE_BYTES, MAX_EMBEDDED_IMAGE_TOTAL_BYTES } from "./EmbeddedDataImage.js";
 import {
   ResourceFallbackSelector,
   ResourceResolutionCancelledError,
@@ -36,6 +37,65 @@ const item = (id: string, type: string, fallback?: string) =>
 afterEach(() => vi.restoreAllMocks());
 
 describe("consumer-aware foreign-resource fallback selection", () => {
+  it("supports unmanifested data images without invoking the archive byte reader", async () => {
+    const { selector, read, capability } = setup([], async (type, consumer, bytes) => {
+      expect(type).toBe("image/png");
+      expect(consumer).toBe("image");
+      expect(await bytes()).toEqual(new Uint8Array([255, 0, 1]));
+      return true;
+    });
+    const url = "data:image/png;base64,/wAB";
+    const selected = await selector.select(url, "image");
+    expect(selected).toMatchObject({ path: url, mediaType: "image/png", location: { kind: "data" } });
+    expect(await selector.readResourceBytes(url)).toEqual(new Uint8Array([255, 0, 1]));
+    expect(read).not.toHaveBeenCalled();
+    expect(capability).toHaveBeenCalledOnce();
+    selector.dispose();
+    await expect(selector.readResourceBytes(url)).rejects.toBeInstanceOf(ResourceResolutionCancelledError);
+  });
+
+  it.each(["document", "font", "stylesheet", "audio", "video", "track"] satisfies ResourceConsumer[])(
+    "blocks a data image used as a %s without decoding or archive reads", async consumer => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { selector, read, capability, notify } = setup([]);
+      await expect(selector.select("data:image/png;base64,YQ==", consumer)).rejects.toMatchObject({ reason: "policy" });
+      expect(read).not.toHaveBeenCalled();
+      expect(capability).not.toHaveBeenCalled();
+      expect(notify).toHaveBeenCalledOnce();
+      selector.dispose();
+    },
+  );
+
+  it("uses a packaged fallback when a declared data image is malformed or has a conflicting type", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const invalid = new ManifestItem("invalid", "data:image/png;base64,!", "image/png", new Set(), "local",
+      undefined, { kind: "data", url: "data:image/png;base64,!" });
+    const mismatch = new ManifestItem("mismatch", "data:image/jpeg,YQ==", "image/png", new Set(), "local",
+      undefined, { kind: "data", url: "data:image/jpeg,YQ==" });
+    const local = item("local", "image/png");
+    const { selector, read, notify } = setup([invalid, mismatch, local]);
+    expect(await selector.select(invalid.path, "image")).toBe(local);
+    expect(await selector.select(mismatch.path, "image")).toBe(local);
+    expect(read).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    selector.dispose();
+  });
+
+  it("enforces the actual 32 MiB shared limit, deduplicates repeated images and keeps archive resources available", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const local = item("local", "image/png");
+    const { selector, read } = setup([local]);
+    const payload = "x".repeat(MAX_EMBEDDED_IMAGE_BYTES);
+    const types = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+    for (const type of types) await selector.readResourceBytes(`data:${type},${payload}`);
+    expect(types.length * MAX_EMBEDDED_IMAGE_BYTES).toBe(MAX_EMBEDDED_IMAGE_TOTAL_BYTES);
+    expect((await selector.readResourceBytes(`data:image/png,${payload}`)).byteLength).toBe(MAX_EMBEDDED_IMAGE_BYTES);
+    await expect(selector.select("data:image/png,YQ==", "image")).rejects.toBeInstanceOf(UnsupportedResourceError);
+    expect(await selector.select(local.path, "image")).toBe(local);
+    expect(read).not.toHaveBeenCalled();
+    selector.dispose();
+  }, 15_000);
+
   it("skips policy-blocked manifest locations before probing or reading and selects their packaged fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const original = new ManifestItem("remote", "https://example.test/image.png", "image/png", new Set(), "local",

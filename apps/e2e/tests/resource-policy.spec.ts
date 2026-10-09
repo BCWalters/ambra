@@ -21,7 +21,7 @@ function fixture(info: TestInfo, svg: boolean): string {
     .join("");
   const images = `<img id="local" src="image.svg" alt="Local"/><img id="remote-fallback" src="https://resource-policy.invalid/image.svg" alt="Local fallback"/>
     <img id="blocked-file" src="file:///tmp/ambra-policy-never-read" alt="Unavailable"/>
-    <img id="blocked-data" src="data:image/png;base64,AAAA" alt="Unavailable"/>
+    <img id="blocked-data" src="data:text/html,blocked" alt="Unavailable"/>
     <img id="blocked-protocol" src="//resource-policy.invalid/image.svg" alt="Unavailable"/>
     <iframe id="blocked-frame" src="document.xhtml" srcdoc="&lt;img src='https://resource-policy.invalid/nested'/&gt;"/>
     <embed id="embed" src="image.svg" type="image/svg+xml"/><object id="object" data="image.svg" width="32" height="24">Object alternative</object>`;

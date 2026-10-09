@@ -522,10 +522,49 @@ describe("ResourceUrlResolver", () => {
     const references = findResourceReferencesInDocument(document, "chapter.xhtml", { includeUnavailable: true });
     const results = await resolver.resolveReferences(references);
     expect(results.get(resourceResolutionKey("https://example.test/image.png", "image"))?.path).toBe("good.png");
-    expect([...results.values()].filter(result => result === null)).toHaveLength(3);
+    expect([...results.values()].filter(result => result === null)).toHaveLength(2);
+    expect(results.get(resourceResolutionKey("data:image/png;base64,SECRET", "image"))?.url).toMatch(/^blob:/);
     expect(load.mock.calls.map(call => call[0])).toEqual(["good.png"]);
     expect(warn.mock.calls.flat().join(" ")).not.toContain("SECRET");
     await expect(resolver.resolve("https://example.test/image.png")).rejects.toThrow("https URL policy");
+    resolver.dispose();
+  });
+
+  it("reports missing image subresources without dropping the host's other resources", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver } = cssGraph({
+      "good.svg": { type: "image/svg+xml", text: "<svg/>" },
+    });
+    const unavailable = vi.fn();
+    resolver.fallbackSelector.onUnsupported(unavailable);
+    const document = new DOMParser().parseFromString(
+      '<html xmlns="http://www.w3.org/1999/xhtml"><body>Readable host<img src="missing.png"/><img src="good.svg"/></body></html>',
+      "application/xhtml+xml",
+    );
+    const references = findResourceReferencesInDocument(document, "root.xhtml");
+    const results = await resolver.resolveReferences(references);
+    expect(results.get(resourceResolutionKey("missing.png", "image"))).toBeNull();
+    expect(results.get(resourceResolutionKey("good.svg", "image"))?.url).toMatch(/^blob:/);
+    expect(unavailable).toHaveBeenCalledWith(expect.objectContaining({ path: "missing.png", consumer: "image" }));
+    resolver.dispose();
+  });
+
+  it("rewrites embedded markup, CSS and srcset images through the same bounded byte reader", async () => {
+    const { resolver, load, blobs } = cssGraph({});
+    const url = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='20'%20height='20'/%3E";
+    const document = new DOMParser().parseFromString(
+      `<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="${url}"/><img srcset="${url} 1x, ${url} 2x"/></body></html>`,
+      "application/xhtml+xml",
+    );
+    const results = await resolver.resolveReferences(
+      findResourceReferencesInDocument(document, "root.xhtml", { includeUnavailable: true }),
+    );
+    expect(results.size).toBe(1);
+    expect(results.get(resourceResolutionKey(url, "image"))?.url).toMatch(/^blob:/);
+    expect(await resolver.rewriteCss(`p{background:url("${url}")}`, "root.xhtml")).toContain("blob:");
+    expect(blobs).toHaveLength(1);
+    expect(await blobs[0]!.text()).toContain('width=\'20\'');
+    expect(load).not.toHaveBeenCalled();
     resolver.dispose();
   });
 });

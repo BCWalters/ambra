@@ -1,4 +1,6 @@
-import { ContentLoader, EpubContainer } from "@ambra/engine";
+import {
+  ContentLoader, EpubContainer, ResourceFallbackSelector, ResourceResolutionError,
+} from "@ambra/engine";
 import type { BookImportResult, LibraryDatabase } from "./LibraryDatabase.js";
 
 export type BookImportPhase = "processing" | "saving";
@@ -41,8 +43,22 @@ export async function importBook(
   }
   if (coverItem) {
     const contentLoader = await ContentLoader.create(container);
-    const bytes = await contentLoader.loadResourceBytes(coverItem.path);
-    coverBlob = new Blob([new Uint8Array(bytes)], { type: coverItem.mediaType });
+    if (coverItem.location) {
+      const selector = new ResourceFallbackSelector(pkg, path => contentLoader.loadResourceBytes(path));
+      try {
+        const selected = await selector.select(coverItem.path, "image");
+        const bytes = await selector.readResourceBytes(selected.path);
+        coverBlob = new Blob([Uint8Array.from(bytes)], { type: selected.mediaType });
+      } catch (error) {
+        if (!(error instanceof ResourceResolutionError)) throw error;
+        console.warn("Ambra could not load the optional non-package cover image.", error);
+      } finally {
+        selector.dispose();
+      }
+    } else {
+      const bytes = await contentLoader.loadResourceBytes(coverItem.path);
+      coverBlob = new Blob([new Uint8Array(bytes)], { type: coverItem.mediaType });
+    }
   }
 
   onPhase?.("saving");

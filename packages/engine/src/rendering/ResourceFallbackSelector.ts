@@ -1,4 +1,9 @@
-import type { ManifestItem, PackageDocument } from "../container/PackageDocument.js";
+import { ManifestItem, type PackageDocument } from "../container/PackageDocument.js";
+import { classifyEpubReference } from "../container/EpubReference.js";
+import {
+  decodeEmbeddedDataImage, embeddedDataImageType, EmbeddedDataImageError,
+  MAX_EMBEDDED_IMAGE_TOTAL_BYTES,
+} from "./EmbeddedDataImage.js";
 import {
   BrowserResourceCapabilities,
   type ResourceCapabilities,
@@ -40,6 +45,8 @@ export class ResourceFallbackSelector {
   private readonly abort = new AbortController();
   private readonly notified = new Set<string>();
   private readonly listeners = new Set<(error: UnsupportedResourceError) => void>();
+  private readonly embeddedImages = new Map<string, Uint8Array>();
+  private embeddedBytes = 0;
 
   public constructor(
     private readonly pkg: PackageDocument,
@@ -50,6 +57,28 @@ export class ResourceFallbackSelector {
   public onUnsupported(listener: (error: UnsupportedResourceError) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  public async readResourceBytes(path: string): Promise<Uint8Array> {
+    this.abort.signal.throwIfAborted();
+    const item = this.pkg.findManifestItemByPath(path);
+    if (item && !item.location) return this.read(path);
+    const location = item?.location ?? classifyEpubReference("", path);
+    if (location.kind === "data") {
+      const cached = this.embeddedImages.get(path);
+      if (cached) return cached;
+      const { bytes } = decodeEmbeddedDataImage(path);
+      if (bytes.byteLength > MAX_EMBEDDED_IMAGE_TOTAL_BYTES - this.embeddedBytes) {
+        throw new EmbeddedDataImageError("Embedded images exceed the shared decoded payload limit.");
+      }
+      this.embeddedBytes += bytes.byteLength;
+      this.embeddedImages.set(path, bytes);
+      return bytes;
+    }
+    if (location.kind !== "package" && location.kind !== "fragment") {
+      throw new ResourceResolutionError(`Publication resource is blocked by the ${location.kind} URL policy.`);
+    }
+    return this.read(path);
   }
 
   public reportUnavailable(
@@ -111,6 +140,19 @@ export class ResourceFallbackSelector {
 
   private async walk(path: string, consumer: ResourceConsumer): Promise<ManifestItem> {
     let item = this.pkg.findManifestItemByPath(path);
+    const imageConsumer = consumer === "image" || consumer === "object" || consumer === "auto";
+    const reference = classifyEpubReference("", path);
+    if (!item && reference.kind === "data") {
+      if (!imageConsumer) throw new UnsupportedResourceError(path, consumer, "policy", []);
+      try {
+        item = new ManifestItem("[embedded image]", path, embeddedDataImageType(path), new Set(),
+          undefined, undefined, reference);
+      } catch (error) {
+        if (!(error instanceof EmbeddedDataImageError)) throw error;
+        console.warn(error.message);
+        throw new UnsupportedResourceError(path, consumer, "policy", []);
+      }
+    }
     if (!item)
       throw new ResourceResolutionError(`No manifest item found for resource path: ${path}`);
     const chain: string[] = [];
@@ -122,17 +164,22 @@ export class ResourceFallbackSelector {
       chain.push(item.id);
       seen.add(item.id);
       const candidate = item;
-      if (candidate.location) {
+      if (candidate.location && (candidate.location.kind !== "data" || !imageConsumer)) {
         console.warn(`Publication resource candidate "${candidate.id}" is blocked by the ${candidate.location.kind} URL policy.`);
-      } else if (
-        await this.capabilities.supports(
-          candidate.mediaType,
-          consumer,
-          () => this.read(candidate.path),
-          this.abort.signal,
-        )
-      ) {
-        return item;
+      } else {
+        try {
+          const dataType = candidate.location?.kind === "data" ? embeddedDataImageType(candidate.path) : undefined;
+          if (!dataType || dataType === candidate.mediaType.split(";")[0]!.trim().toLowerCase()) {
+            if (dataType) await this.readResourceBytes(candidate.path);
+            if (await this.capabilities.supports(candidate.mediaType, consumer,
+              () => this.readResourceBytes(candidate.path), this.abort.signal)) {
+              return item;
+            }
+          }
+        } catch (error) {
+          if (!(error instanceof EmbeddedDataImageError)) throw error;
+          console.warn(error.message);
+        }
       }
       if (item.fallback === undefined)
         throw new UnsupportedResourceError(path, consumer, "exhausted", chain);
@@ -151,6 +198,8 @@ export class ResourceFallbackSelector {
     this.pending.clear();
     this.listeners.clear();
     this.notified.clear();
+    this.embeddedImages.clear();
+    this.embeddedBytes = 0;
   }
 }
 

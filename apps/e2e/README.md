@@ -20,6 +20,17 @@ Without that external publication, only that original-book check is skipped.
 These regressions do not rewrite historical assessment results or promote a
 new release score.
 
+`tests/embedded-data-images.spec.ts` covers bounded data images in markup,
+srcset, CSS, SVG, posters, image-backed objects and opaque packaged children,
+plus malformed/missing resources, prohibited data documents/styles/navigation,
+script denial and no remote requests. Set `AMBRA_DATA_URL_EPUB_DIR` to the
+pinned URLs/origins folder to include `pub-data-urls_browsing-context.epub`,
+`pub-data-urls_top-level-content.epub` and `pub-file-urls.epub`. Only these
+three external-book probes are skipped without that directory. The file book
+must keep its readable host while all three local-file frames remain blocked.
+The generated fixture filename/title carry ID 3.1.3. These regressions do not
+rewrite the frozen assessment or execute publication scripts.
+
 `tests/media-overlay-playback.spec.ts` includes a page-following regression
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before
