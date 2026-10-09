@@ -26,6 +26,55 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     resolver = new LocatorResolver(pkg, contentLoader);
   });
 
+  it.each([
+    ["leading <p>middle</p> trailing", 4],
+    ["<p>middle</p>", 4],
+    ["Only text", 2],
+    ["", 2],
+  ])("resolves virtual before/after elements around %s", (markup, endIndex) => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = markup;
+    const result = resolver.resolveRangeInDocument(
+      new Locator(`epubcfi(/6/2!/4,/0,/${endIndex})`), 0, doc,
+    );
+    // Happy DOM incorrectly collapses these same-container ranges; native tests verify text/offsets.
+    expect(result.start.node).toBe(doc.body);
+    expect(result.start.characterOffset).toBe(0);
+    expect(result.end.node).toBe(doc.body);
+    expect(result.end.characterOffset).toBe(doc.body.childNodes.length);
+  });
+
+  it("virtual boundaries exclude reader-owned edges and ignore comments in publication indexing", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<aside>Reader before</aside><!--ignored-->leading <p>middle</p> trailing<!--ignored--><aside>Reader after</aside>';
+    for (const owned of doc.querySelectorAll("aside")) markReaderOwnedContent(owned);
+    const result = resolver.resolveRangeInDocument(new Locator("epubcfi(/6/2!/4,/0,/4)"), 0, doc);
+    expect(result.start.node).toBe(doc.body);
+    expect(result.end.node).toBe(doc.body);
+    expect(result.start.characterOffset).toBe(2);
+    expect(result.end.characterOffset).toBe(5);
+    expect(() => resolver.resolveInDocument(new Locator("epubcfi(/6/2!/4/6)"), 0, doc))
+      .toThrow(LocatorResolutionError);
+  });
+
+  it.each(["/0:1", "/4:1", "/0/2", "/6"])(
+    "rejects offsets, traversal or invalid indices on virtual elements: %s",
+    tail => {
+      const doc = document.implementation.createHTMLDocument();
+      doc.body.innerHTML = "<p>middle</p>";
+      expect(() => resolver.resolveInDocument(new Locator(`epubcfi(/6/2!/4${tail})`), 0, doc))
+        .toThrow(LocatorResolutionError);
+    },
+  );
+
+  it.each([0, 4])("retains ordinary ID correction on asserted index %s", index => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="target">middle</p>';
+    expect(resolver.resolveInDocument(
+      new Locator(`epubcfi(/6/2!/4/${index}[target])`), 0, doc,
+    ).node).toBe(doc.getElementById("target"));
+  });
+
   it.each(["", "<title>Accessible page</title><text x=\"10\" y=\"30\">Original text</text>"])(
     "round-trips an SVG root through a standard spine itemref CFI: %s",
     content => {

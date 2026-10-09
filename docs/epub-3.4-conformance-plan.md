@@ -610,6 +610,21 @@ locator/annotation units and native import/export/publisher regressions preserve
 existing ranges, assertions, UTF-16 offsets and annotation behavior. These
 implementation results do not promote the published assessment.
 
+The virtual-boundary increment consumes the CFI `/0` and `/n+2` elements
+defined by [child-step resolution](https://idpf.org/epub/linking/cfi/epub-cfi.html#sec-path-child-ref).
+Final unasserted virtual steps resolve to native element child offsets before
+or after the parent's publication content, including empty/text-only parents
+and empty edge text chunks. Reader-owned edges and comments do not change the
+publication element count. Character offsets on virtual elements and traversal
+through nonexistent elements fail explicitly; authored ID assertions retain
+their existing correction path. Native tests require exact range containers,
+offsets and text for mixed, element-only, text-only, empty and comment-containing
+content, plus painted first/last-page bookmark landings. Unit tests verify
+resolved endpoints: Happy DOM's independently reproduced same-container
+two-range collapse limitation is not used as a substitute for native Range behavior.
+This does not claim full page-break affinity, media/spatial offsets or a new
+official conformance score.
+
 ### Phase 3: measurable conformance process
 
 Complete the existing-suite timing, redundancy, parallelism, and change-selection

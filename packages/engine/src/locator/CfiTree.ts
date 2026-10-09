@@ -141,6 +141,27 @@ export function resolveAssertedElementStep(
   return candidates.length === 1 ? candidates[0] : undefined;
 }
 
+export function resolveVirtualElementBoundary(
+  parent: Element,
+  stepIndex: number,
+): { node: Element; localOffset: number } | undefined {
+  let elementCount = 0;
+  let first: number | undefined;
+  let end = 0;
+  for (let i = 0; i < parent.childNodes.length; i++) {
+    const child = parent.childNodes[i]!;
+    if (isReaderOwnedContent(child)) continue;
+    if (child.nodeType === ELEMENT_NODE) elementCount++;
+    if (child.nodeType === ELEMENT_NODE || isTextLike(child)) {
+      first ??= i;
+      end = i + 1;
+    }
+  }
+  if (stepIndex === 0) return { node: parent, localOffset: first ?? 0 };
+  if (stepIndex === elementCount * 2 + 2) return { node: parent, localOffset: end };
+  return undefined;
+}
+
 /** Resolves a CFI-level character offset (counted across a whole text
  * run's concatenated content) back to a specific node + node-local offset
  * within that run. */

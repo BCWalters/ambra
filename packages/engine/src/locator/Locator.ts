@@ -8,6 +8,7 @@ import {
   resolveAssertedElementStep,
   resolveOffsetInRun,
   resolveTextRun,
+  resolveVirtualElementBoundary,
   runCharacterOffset,
 } from "./CfiTree.js";
 
@@ -38,8 +39,8 @@ export interface ResolvedLocator {
   readonly spineIndex: number;
   readonly node: Node;
   /** Present when the locator addresses a specific character position
-   * within `node` (a text-like node); absent when it addresses `node` as
-   * a whole (an element with no character offset). */
+   * within `node` (a text-like node), or an element child offset for a
+   * virtual CFI boundary; absent when it addresses an element as a whole. */
   readonly characterOffset: number | undefined;
 }
 
@@ -280,6 +281,14 @@ export class LocatorResolver {
 
     const lastStep = cfi.contentSteps[cfi.contentSteps.length - 1]!;
     if (lastStep.index % 2 === 0) {
+      const virtual = lastStep.idAssertion === undefined
+        ? resolveVirtualElementBoundary(current, lastStep.index) : undefined;
+      if (virtual) {
+        if (cfi.characterOffset !== undefined) {
+          throw new LocatorResolutionError("A virtual CFI element cannot have a character offset.");
+        }
+        return { spineIndex, node: virtual.node, characterOffset: virtual.localOffset };
+      }
       const element = this.resolveElementStep(current, lastStep, document);
       if (cfi.textAssertion && (cfi.textAssertion.preceding || cfi.textAssertion.following)) {
         throw new LocatorResolutionError("Text assertions on element character offsets are not supported.");
