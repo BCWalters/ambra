@@ -631,7 +631,7 @@ waiver.
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | C34-11 | Publication-origin isolation and scripting policy | Give each publication an isolated origin model and record whether scripting remains unsupported or is introduced under explicit capability and security boundaries.            | [#338](https://github.com/BCWalters/ambra/issues/338) |
 | C34-12 | Complete Media Overlay behavior                   | Clip-end duration clamping, navigation-led recorded playback, globally ordered shared timelines and default-off note/page-announcement skipping with common-structure escape implemented. Text-only TTS/embedded media, broader semantic vocabulary, remaining timing cases and navigation-document narration remain. | [#337](https://github.com/BCWalters/ambra/issues/337) |
-| C34-13 | Complete EPUB CFI processing                      | Assertions, side bias, direct ranges and content/package ID recovery implemented; nested indirections, temporal/spatial offsets, image-alt addressing and full page-break affinity remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
+| C34-13 | Complete EPUB CFI processing                      | Assertions, direct ranges, content/package ID recovery, image-alt positions and reflowable page-break affinity implemented; nested indirections and temporal/spatial offsets remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
 | C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
@@ -677,9 +677,9 @@ text-node affinity. Generated locators retain their existing compact format and
 do not incur whole-document context indexing on ordinary pagination.
 
 This is a protected-CI validated #340 milestone, not complete CFI support or an official
-score improvement. Nested indirections, temporal/spatial/combined offsets,
-image-alt addressing and full page-break affinity still
-need implementation and protected evidence.
+score improvement. Nested indirections and temporal/spatial/combined offsets
+still need implementation and protected evidence. Later image-alt and
+reflowable page-affinity increments are described below.
 
 The post-3.1.0 package-tree increment verifies ID assertions against the original
 OPF, using the same element-step correction policy as content locators. A stale
@@ -722,6 +722,24 @@ and highlight rendering reject them rather than fabricating whole-image or
 collapsed selections. Native tests verify a decoded, painted image landing,
 exact semantic offsets and actual zero-range containers/offsets; these results
 do not claim alternative-text range highlighting or promote published scores.
+
+The page-affinity increment retains the resolved point's
+[side bias](https://idpf.org/epub/linking/cfi/epub-cfi.html#sec-path-side-bias)
+and uses a separate visual probe for reading navigation. Before affinity
+attaches to preceding content; after affinity attaches to following content,
+including a child at an element's start. Paginated, spread and scroll navigation
+share this policy; explicit affinity preserves natural pagination instead of
+creating a new anchored page. Accessibility focus and retained reading positions
+follow the visual destination. Reader-owned content and non-content metadata
+are ignored, and document edges remain within their own document. Text-edge
+probes inside atomic inline graphics remain on that graphic, not surrounding prose.
+
+Exact character positions, native range endpoints, assertion recovery,
+alternative-text offsets and annotation comparison are unchanged. Ordinary
+unbiased generated bookmarks keep their existing format and anchoring behavior.
+Original unit and native fixtures verify opposite page/line destinations and
+painted content; these are implementation gates, not promoted official results.
+Nested indirections and temporal/spatial/combined offsets remain open under #340.
 
 ### Phase 3: measurable conformance process
 

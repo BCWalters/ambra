@@ -78,6 +78,7 @@ export { ScrollViewEngine } from "./layout/ScrollViewEngine.js";
 export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } from "./layout/ScrollPositionTracker.js";
 export { Locator, LocatorResolver, LocatorResolutionError, requireDomRangeBoundary } from "./locator/Locator.js";
 export type { ResolvedLocator, ResolvedLocatorRange } from "./locator/Locator.js";
+export { readingPositionForLocator } from "./locator/CfiReadingPosition.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
 export type { CfiParameter, CfiTextAssertion } from "./locator/EpubCfi.js";
 export {

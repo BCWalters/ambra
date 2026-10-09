@@ -26,6 +26,7 @@ import {
   parseAnnotationCollection,
   primarySpineIndices,
   ReadingTheme,
+  readingPositionForLocator,
   ResourceUrlResolver,
   classifyEpubReference,
   externalNavigationUrl,
@@ -3810,7 +3811,8 @@ export class ReaderController {
             spineIndex,
             doc,
           );
-          probe.goToPageIndex(probe.pageIndexForPosition(resolved.node, resolved.characterOffset ?? 0) ?? 0);
+          const point = readingPositionForLocator(resolved);
+          probe.goToPageIndex(probe.pageIndexForPosition(point.node, point.offset ?? 0) ?? 0);
         } else {
           const target = doc.getElementById(options.fragment!);
           if (target) probe.goToPageIndex(probe.pageIndexForPosition(target, 0) ?? 0);
@@ -5237,11 +5239,12 @@ export class ReaderController {
             await host.open(this.contentLoader, this.resolver, spineIndex, this.disclosures,
               (doc) => this.configureSpreadDocument(doc), {
                 ...this.foregroundPagination(operation),
-                forceAnchor: !options.preservePageBoundaries,
+                forceAnchor: !options.preservePageBoundaries &&
+                  (!options.bridgeCfi || EpubCfi.parse(options.bridgeCfi).sideBias === undefined),
                 position: doc => {
                   if (options.bridgeCfi) {
                     const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), spineIndex, doc);
-                    return { node: resolved.node, offset: resolved.characterOffset ?? 0 };
+                    return readingPositionForLocator(resolved);
                   }
                   if (options.fragment) {
                     const target = doc.getElementById(options.fragment);
@@ -5420,7 +5423,7 @@ export class ReaderController {
           const resolved = this.locatorResolver.resolveInDocument(
             new Locator(options.bridgeCfi), requestedSpineIndex, view.document,
           );
-          const point = { spineIndex: requestedSpineIndex, node: resolved.node, offset: resolved.characterOffset ?? 0 };
+          const point = { spineIndex: requestedSpineIndex, ...readingPositionForLocator(resolved) };
           if (!options.automatic && !options.preserveFocus) {
             this.accessibility.focusReadingPosition(view.document, point);
           }
@@ -5499,15 +5502,16 @@ export class ReaderController {
       spineIndex,
       iframeDocument,
     );
-    const offset = resolved.characterOffset ?? 0;
+    const point = readingPositionForLocator(resolved);
+    const offset = point.offset ?? 0;
     if (this.host instanceof PaginatedContentHost) {
-      this.host.goToPosition(resolved.node, offset, forceAnchor);
+      this.host.goToPosition(point.node, offset, forceAnchor && resolved.sideBias === undefined);
     } else if (this.host instanceof SpreadPaginatedHost) {
-      this.host.goToPosition(resolved.node, offset);
+      this.host.goToPosition(point.node, offset);
     } else if (this.host instanceof ScrollContentHost) {
-      this.host.restorePosition(resolved.node, offset);
+      this.host.restorePosition(point.node, offset);
     } else if (this.host instanceof RollContentHost) {
-      this.host.restorePosition(resolved.node);
+      this.host.restorePosition(point.node);
     }
   }
 

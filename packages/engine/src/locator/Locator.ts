@@ -44,6 +44,8 @@ export interface ResolvedLocator {
   readonly characterOffset: number | undefined;
   /** UTF-16 position in an XHTML image's alt text, not a DOM child offset. */
   readonly alternativeTextOffset?: number;
+  /** Which side of a line/page break owns this exact boundary. */
+  readonly sideBias?: "a" | "b";
 }
 
 export interface ResolvedLocatorRange {
@@ -299,6 +301,15 @@ export class LocatorResolver {
   }
 
   private resolveContentSteps(
+    cfi: EpubCfi,
+    spineIndex: number,
+    document: Document,
+  ): ResolvedLocator {
+    const point = this.resolveContentPosition(cfi, spineIndex, document);
+    return cfi.sideBias ? { ...point, sideBias: cfi.sideBias } : point;
+  }
+
+  private resolveContentPosition(
     cfi: EpubCfi,
     spineIndex: number,
     document: Document,

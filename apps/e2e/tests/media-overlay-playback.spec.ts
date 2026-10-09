@@ -189,8 +189,13 @@ for (const playing of [false, true]) {
       await narrationOption(page, "Leave current structure", "menuitem");
       await expect.poll(() => narrationTarget(page)).toBe("c2-p3");
       await expect.poll(() => passagePaint(page, "c2-p3")).toMatchObject({ painted: true });
-      expect((await audioState(page)).paused).toBe(!playing);
-      expect((await audioState(page)).time).toBeGreaterThanOrEqual(8);
+      await expect.poll(async () => (await audioState(page)).paused).toBe(!playing);
+      const escaped = await audioState(page);
+      expect(escaped.time).toBeGreaterThanOrEqual(8);
+      expect(escaped.rate).toBe(1.5);
+      await page.waitForTimeout(250);
+      if (playing) expect((await audioState(page)).time).toBeGreaterThan(escaped.time + 0.15);
+      else expect((await audioState(page)).time).toBe(escaped.time);
       await expect(button(page, "Narration options")).toHaveCount(0);
     } finally {
       await context.close();
