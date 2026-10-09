@@ -547,7 +547,7 @@ waiver.
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | C34-11 | Publication-origin isolation and scripting policy | Give each publication an isolated origin model and record whether scripting remains unsupported or is introduced under explicit capability and security boundaries.            | [#338](https://github.com/BCWalters/ambra/issues/338) |
 | C34-12 | Complete Media Overlay behavior                   | Finite explicit clip-end duration clamping implemented; text-only TTS/embedded media, skip/escape semantics, remaining timing cases and pagebreak/navigation synchronization remain. | [#337](https://github.com/BCWalters/ambra/issues/337) |
-| C34-13 | Complete EPUB CFI processing                      | Add multiple indirections, temporal/spatial offsets, assertions, side bias, range resolution, and recovery behavior.                                                           | [#340](https://github.com/BCWalters/ambra/issues/340) |
+| C34-13 | Complete EPUB CFI processing                      | Assertions, side bias, direct ranges and content/package ID recovery implemented; nested indirections, temporal/spatial offsets, image-alt addressing and full page-break affinity remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
 | C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
@@ -594,8 +594,21 @@ do not incur whole-document context indexing on ordinary pagination.
 
 This is a protected-CI validated #340 milestone, not complete CFI support or an official
 score improvement. Nested indirections, temporal/spatial/combined offsets,
-image-alt addressing, package-tree recovery and full page-break affinity still
+image-alt addressing and full page-break affinity still
 need implementation and protected evidence.
+
+The post-3.1.0 package-tree increment verifies ID assertions against the original
+OPF, using the same element-step correction policy as content locators. A stale
+spine or itemref index can recover only through a unique asserted ID; missing,
+ambiguous, odd/text-step or non-spine targets fail explicitly through existing
+locator error handling. Verified positional matches retain their fast path,
+including unchanged unasserted numeric CFIs. Recovery does not mutate the OPF
+or generated paths. A native owned two-chapter fixture reproduces wrong-chapter
+resolution before the fix, then requires the intended chapter and an actually
+painted bookmark landing after both spine and itemref indices shift. Parser/
+locator/annotation units and native import/export/publisher regressions preserve
+existing ranges, assertions, UTF-16 offsets and annotation behavior. These
+implementation results do not promote the published assessment.
 
 ### Phase 3: measurable conformance process
 

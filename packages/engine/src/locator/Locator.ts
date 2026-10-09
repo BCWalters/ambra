@@ -5,7 +5,7 @@ import { CfiStep, EpubCfi, EpubCfiParseError } from "./EpubCfi.js";
 import {
   childStepIndex,
   elementCfiSteps,
-  resolveElementChild,
+  resolveAssertedElementStep,
   resolveOffsetInRun,
   resolveTextRun,
   runCharacterOffset,
@@ -310,20 +310,12 @@ export class LocatorResolver {
     if (step.index % 2 !== 0) {
       throw new LocatorResolutionError("A non-final CFI step must reference an element.");
     }
-    const positional = resolveElementChild(parent, step.index / 2);
+    const resolved = resolveAssertedElementStep(parent, step, document.documentElement);
+    if (resolved) return resolved;
     if (step.idAssertion === undefined) {
-      if (positional) return positional;
       throw new LocatorResolutionError(`No element found at CFI step ${step.index} under <${parent.tagName}>.`);
     }
-    if (positional?.getAttribute("id") === step.idAssertion) return positional;
-    const candidates = [document.documentElement, ...document.querySelectorAll("[id]")].filter(
-      element => element.getAttribute("id") === step.idAssertion && !isReaderOwnedContent(element),
-    );
-    const unique = [...new Set(candidates)];
-    if (unique.length !== 1) {
-      throw new LocatorResolutionError(`Cannot recover CFI ID assertion "${step.idAssertion}": missing or ambiguous target.`);
-    }
-    return unique[0]!;
+    throw new LocatorResolutionError(`Cannot recover CFI ID assertion "${step.idAssertion}": missing or ambiguous target.`);
   }
 
   private resolveAssertedText(
