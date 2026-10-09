@@ -91,7 +91,12 @@ test("CFI combined offsets seek a decoded video frame without autoplay (#340)", 
       const stopped = new Promise<Blob>(resolve => {
         recorder.addEventListener("stop", () => { resolve(new Blob(chunks, { type: "video/webm" })); }, { once: true });
       });
-      const draw = () => { drawing.fillStyle = "rgb(20,80,220)"; drawing.fillRect(0, 0, 160, 90); };
+      const started = performance.now();
+      const colors = ["rgb(20,80,220)", "rgb(20,200,80)", "rgb(220,80,20)"];
+      const draw = () => {
+        drawing.fillStyle = colors[Math.min(2, Math.floor((performance.now() - started) / 1000))]!;
+        drawing.fillRect(0, 0, 160, 90);
+      };
       draw();
       recorder.start();
       const animation = setInterval(draw, 100);
@@ -141,7 +146,7 @@ test("CFI combined offsets seek a decoded video frame without autoplay (#340)", 
     expect(audit.time).toBeCloseTo(1.25, 2);
     expect(audit.paused).toBe(true);
     expect([audit.width, audit.height]).toEqual([160, 90]);
-    for (const [index, value] of [20, 80, 220].entries()) expect(Math.abs(audit.pixel[index]! - value)).toBeLessThan(15);
+    for (const [index, value] of [20, 200, 80].entries()) expect(Math.abs(audit.pixel[index]! - value)).toBeLessThan(15);
     expect(audit.pixel[3]).toBe(255);
     expect(audit.bookmark).toBe(cfi);
     expect(audit.progress).toBe(cfi);

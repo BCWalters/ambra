@@ -763,7 +763,7 @@ Retained locators preserve offsets in bookmarks, history, progress and layout
 bridges; timed progress captures the media's live time. Actual caret/focus or
 viewport movement clears an old media override. Original browser fixtures
 measure image/SVG point placement within one pixel, require painted SVG content,
-decode a real generated video frame and inspect its pixel colour, verify paused
+decode a real generated video frame and inspect its time-specific pixel colour, verify paused
 audio/video seeking, persist offsets and traverse audio history. Native codec
 limitations, nested indirections and official assessment remain separate work.
 
