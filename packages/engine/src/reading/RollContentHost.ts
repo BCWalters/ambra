@@ -142,6 +142,17 @@ export class RollContentHost {
     );
   }
 
+  public restoreViewportPoint(document: Document, point: { x: number; y: number }): void {
+    const item = this.items.find(candidate => candidate.host.element.contentDocument === document);
+    if (!item || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw new Error("The spatial position does not belong to a rendered roll document.");
+    }
+    const scale = this.width / item.host.naturalSize.width;
+    const maximum = Math.max(0, this.totalHeight() - this.height);
+    this.containerEl.scrollTop = Math.max(0, Math.min(maximum,
+      this.offsetFor(item.spineIndex) + point.y * scale - this.height / 2));
+  }
+
   public onScroll(listener: () => void): () => void {
     this.containerEl.addEventListener("scroll", listener, { passive: true });
     return () => this.containerEl.removeEventListener("scroll", listener);

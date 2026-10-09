@@ -4,7 +4,7 @@ import { fileURLToPath, URL as NodeURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EpubContainer } from "../container/EpubContainer.js";
 import { ContentLoader } from "../content/ContentLoader.js";
-import { Locator, LocatorResolutionError, LocatorResolver } from "./Locator.js";
+import { Locator, LocatorResolutionError, LocatorResolver, requireDomRangeBoundary } from "./Locator.js";
 import { EpubCfi } from "./EpubCfi.js";
 import { markReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 
@@ -24,6 +24,56 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     const pkg = await container.getPackageDocument();
     contentLoader = await ContentLoader.create(container);
     resolver = new LocatorResolver(pkg, contentLoader);
+  });
+
+  it.each([
+    ["audio", "~4", { temporalOffsetSeconds: 4 }],
+    ["video", "~4@25:75", { temporalOffsetSeconds: 4, spatialOffset: { x: 25, y: 75 } }],
+    ["img", "@0:100", { spatialOffset: { x: 0, y: 100 } }],
+  ])("resolves applicable %s media metadata without fabricating DOM offsets", (tag, suffix, mediaOffsets) => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = `<${tag} id="target"></${tag}>`;
+    const result = resolver.resolveInDocument(new Locator(`epubcfi(/6/2!/4/2[target]${suffix})`), 0, doc);
+    expect(result.node).toBe(doc.getElementById("target"));
+    expect(result.mediaOffsets).toMatchObject(mediaOffsets);
+    expect(result.characterOffset).toBeUndefined();
+    expect(() => requireDomRangeBoundary(result)).toThrow(/media position/i);
+  });
+
+  it.each([
+    ["p", "~4"], ["img", "~4"], ["audio", "@25:75"], ["p", "@25:75"],
+    ["video", "/1~4"], ["audio", "/1~4"],
+  ])("rejects an inapplicable %s media position %s explicitly", (tag, suffix) => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = `<${tag} id="target">text</${tag}>`;
+    expect(() => resolver.resolveInDocument(
+      new Locator(`epubcfi(/6/2!/4/2[target]${suffix})`), 0, doc,
+    )).toThrow(LocatorResolutionError);
+  });
+
+  it("resolves a spatial SVG document-root position without inventing a body path", () => {
+    const doc = new DOMParser().parseFromString('<svg xmlns="http://www.w3.org/2000/svg"/>', "image/svg+xml");
+    const result = resolver.resolveInDocument(new Locator("epubcfi(/6/2!@25:75)"), 0, doc);
+    expect(result.node).toBe(doc.documentElement);
+    expect(result.mediaOffsets?.spatialOffset).toEqual({ x: 25, y: 75 });
+  });
+
+  it("retains temporal side bias but leaves spatial bias undefined", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<video id="target"></video>';
+    const temporal = resolver.resolveInDocument(new Locator("epubcfi(/6/2!/4/2~1[;s=b])"), 0, doc);
+    expect(temporal.sideBias).toBe("b");
+    expect(temporal.mediaOffsets?.assertion?.parameters).toEqual([{ name: "s", values: ["b"] }]);
+    const spatial = resolver.resolveInDocument(new Locator("epubcfi(/6/2!/4/2~1@25:75[;s=b])"), 0, doc);
+    expect(spatial.sideBias).toBeUndefined();
+  });
+
+  it("rejects timed ranges as DOM ranges instead of selecting the whole audio element", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<audio id="target"></audio>';
+    expect(() => resolver.resolveRangeInDocument(
+      new Locator("epubcfi(/6/2!/4/2[target],~1,~3)"), 0, doc,
+    )).toThrow(/media position/i);
   });
 
   it.each(["a", "b"])("preserves %s affinity without moving the resolved character boundary", bias => {

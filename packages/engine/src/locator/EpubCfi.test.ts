@@ -18,6 +18,85 @@ describe("CfiStep", () => {
 });
 
 describe("EpubCfi.parse / toString round-trip", () => {
+  it.each([
+    "epubcfi(/6/4!/4/2~23.5)",
+    "epubcfi(/6/4!/4/2@0.1:97.6)",
+    "epubcfi(/6/4!/4/2~23.5@0.1:97.6)",
+    "epubcfi(/6/4!@50:75)",
+    "epubcfi(/6/4!/4/2~0)",
+    "epubcfi(/6/4!/4/2@0:100)",
+    "epubcfi(/6/4!/4/2~0.0000001[;vendor=raw^,context])",
+  ])("round-trips canonical media offsets: %s", value => {
+    expect(EpubCfi.parse(value).toString()).toBe(value);
+  });
+
+  it("retains typed combined positions independently of character offsets", () => {
+    const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2~23.5@0.1:97.6)");
+    expect(cfi.characterOffset).toBeUndefined();
+    expect(cfi.mediaOffsets).toMatchObject({
+      temporalOffsetSeconds: 23.5, spatialOffset: { x: 0.1, y: 97.6 },
+    });
+  });
+
+  it.each([
+    ["", "~0"], ["", "@0:0"], ["@100:0", "@0:1"],
+    ["@100:100", "~0"], ["~1@100:100", "~2"], ["~1", "~1@0:0"],
+  ])("sorts omitted/time/spatial offsets by normative priority: %s before %s", (first, second) => {
+    expect(EpubCfi.compare(`epubcfi(/6/4!/4/2${first})`, `epubcfi(/6/4!/4/2${second})`))
+      .toBeLessThan(0);
+  });
+
+  it("sorts child steps before temporal-spatial steps at a common ancestor", () => {
+    expect(EpubCfi.compare("epubcfi(/6/4!/4/2/2)", "epubcfi(/6/4!/4/2~1)")).toBeLessThan(0);
+  });
+
+  it("round-trips timed range endpoints without turning them into character offsets", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!/4/2~1.5)");
+    const end = EpubCfi.parse("epubcfi(/6/4!/4/2~3@25:75)");
+    const range = EpubCfi.joinRange(start, end);
+    expect(range).toBe("epubcfi(/6/4!/4/2,~1.5,~3@25:75)");
+    const parsed = EpubCfi.parseRange(range);
+    expect(parsed.start.toString()).toBe(start.toString());
+    expect(parsed.end.toString()).toBe(end.toString());
+  });
+
+  it("round-trips spatial ranges on a standalone SVG's document root", () => {
+    const start = EpubCfi.parse("epubcfi(/6/4!@25:50)");
+    const end = EpubCfi.parse("epubcfi(/6/4!@75:100)");
+    const range = EpubCfi.joinRange(start, end);
+    expect(range).toBe("epubcfi(/6/4,!@25:50,!@75:100)");
+    const parsed = EpubCfi.parseRange(range);
+    expect(parsed.start.toString()).toBe(start.toString());
+    expect(parsed.end.toString()).toBe(end.toString());
+  });
+
+  it.each([
+    "~", "~01", "~1.0", "~.5", "~1.", "~-1", "~NaN", "~Infinity", "~1e2",
+    "~9007199254740993", "@25", "@25:", "@:75", "@-1:50", "@50:101",
+    "@101:50", "@NaN:50", "@50:Infinity", "@25:75~3", "~3~4", "@25:75@50:50",
+    ":0~3", ":0@25:75", "~3:0", "~3[;s=a]@25:75", "@25[;s=a]:75",
+  ])("rejects malformed, noncanonical or out-of-range media syntax %s", suffix => {
+    expect(() => EpubCfi.parse(`epubcfi(/6/4!/4/2${suffix})`)).toThrow(EpubCfiParseError);
+  });
+
+  it("validates programmatically constructed offsets and expands exponent notation", () => {
+    const packageSteps = [new CfiStep(6), new CfiStep(4)];
+    const contentSteps = [new CfiStep(4), new CfiStep(2)];
+    expect(new EpubCfi(packageSteps, contentSteps, undefined, undefined, {
+      temporalOffsetSeconds: 1e-7, spatialOffset: { x: 1e-7, y: 100 },
+    }).toString()).toBe("epubcfi(/6/4!/4/2~0.0000001@0.0000001:100)");
+    for (const offsets of [
+      {}, { temporalOffsetSeconds: -1 }, { temporalOffsetSeconds: Infinity },
+      { spatialOffset: { x: NaN, y: 25 } }, { spatialOffset: { x: 25, y: 101 } },
+    ]) {
+      expect(() => new EpubCfi(packageSteps, contentSteps, undefined, undefined, offsets).toString())
+        .toThrow(EpubCfiParseError);
+    }
+    expect(() => new EpubCfi(packageSteps, contentSteps, 0, undefined, {
+      temporalOffsetSeconds: 1,
+    }).toString()).toThrow(/cannot be combined/);
+  });
+
   it("parses a simple point CFI with package and content steps", () => {
     const cfi = EpubCfi.parse("epubcfi(/6/4!/4/2/2/1:3)");
 

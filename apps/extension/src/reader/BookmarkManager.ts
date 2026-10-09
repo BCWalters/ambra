@@ -6,6 +6,7 @@ import type { StringCatalog } from "../i18n/locales/en.js";
 
 /** What `BookmarkManager` needs from `ReaderController`. */
 export interface BookmarkManagerContext {
+  currentLocator?(): Locator | undefined;
   /** Current caret/scroll position, or `undefined` if nothing's
    * mounted or the content is fixed-layout. */
   currentPosition(): DomBreakPoint | undefined;
@@ -52,12 +53,13 @@ export class BookmarkManager {
   }
 
   public async add(): Promise<Bookmark | undefined> {
-    const position = this.ctx.currentPosition();
-    if (!position) {
-      return undefined;
-    }
     try {
-      const locator = this.locatorResolver.generate(this.ctx.spineIndex(), position.node, position.offset);
+      let locator = this.ctx.currentLocator?.();
+      if (!locator) {
+        const position = this.ctx.currentPosition();
+        if (!position) return undefined;
+        locator = this.locatorResolver.generate(this.ctx.spineIndex(), position.node, position.offset);
+      }
       const bookmark = await this.library.addBookmark(this.bookId, locator.cfi, this.label());
       this.cache.push(bookmark);
       this.ctx.announce("announcements.bookmarkAdded");

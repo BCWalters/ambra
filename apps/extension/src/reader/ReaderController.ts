@@ -87,6 +87,7 @@ import { MediaOverlayNarration, type NarrationTarget } from "./MediaOverlayNarra
 import { NarrationReadingBridge } from "./NarrationReadingBridge.js";
 import { selectedReadingRange } from "./ReadingPosition.js";
 import { NativeReadingPosition, type NativeReadingPoint } from "./NativeReadingPosition.js";
+import { currentMediaCfi, prepareMediaPosition, spatialMediaPoint } from "./MediaLocatorNavigation.js";
 import type { ContentUiDismissal, NarrationAction } from "./ReaderTypes.js";
 import { TransientReadingHighlight } from "./TransientReadingHighlight.js";
 import type { InspectorReference } from "./InspectorReferences.js";
@@ -301,6 +302,9 @@ export class ReaderController {
   private readonly nativeReading = new NativeReadingPosition(
     () => this.contentDocumentViews(),
     () => this.host?.currentPosition(),
+    () => this.host instanceof FixedSpreadHost || this.host instanceof RollContentHost
+      ? { top: this.host.element.scrollTop, left: this.host.element.scrollLeft }
+      : { top: 0, left: 0 },
   );
   private readonly diagnostics = new DiagnosticsLog();
   private announcement: string | undefined;
@@ -482,6 +486,10 @@ export class ReaderController {
       notify: () => this.notify(),
     });
     this.bookmarks = new BookmarkManager(library, bookId, locatorResolver, {
+      currentLocator: () => {
+        const point = this.nativeReading.retainedForShell();
+        return point?.mediaCfi ? new Locator(currentMediaCfi(point.mediaCfi, point.node)) : undefined;
+      },
       currentPosition: () => this.host?.currentPosition(),
       currentPagesAndDocuments: () => this.currentPagesAndDocuments(),
       currentPageIndex: () => {
@@ -1115,6 +1123,7 @@ export class ReaderController {
 
   private currentReadingCfi(): string | undefined {
     const native = this.nativeReading.retainedForShell();
+    if (native?.mediaCfi) return currentMediaCfi(native.mediaCfi, native.node);
     const position = native ?? this.host?.currentPosition();
     return position ? this.locatorResolver.generate(
       native?.spineIndex ?? this.spineIndex, position.node, position.offset,
@@ -1130,6 +1139,9 @@ export class ReaderController {
     if (!document) return false;
     const canonical = (cfi: string): string => {
       const resolved = this.locatorResolver.resolveInDocument(new Locator(cfi), leftSpine, document);
+      if (resolved.mediaOffsets) {
+        return this.locatorResolver.generate(leftSpine, resolved.node, undefined, resolved.mediaOffsets).cfi;
+      }
       let node = resolved.node;
       let offset = resolved.characterOffset ?? 0;
       // Legacy page CFIs address a parent's child offset; native caret CFIs can
@@ -1153,13 +1165,15 @@ export class ReaderController {
    * `flushProgress` for the reader page to call on visibility/unload. */
   private async saveProgress(throwOnError = false, navigation = false): Promise<void> {
     if (navigation && !this.isApplyingLayout) this.notifyNavigation();
-    const native = this.host instanceof RollContentHost ? undefined : this.nativeReading.current();
+    const retained = this.nativeReading.current();
+    const native = this.host instanceof RollContentHost && !retained?.mediaCfi ? undefined : retained;
     const position = native ?? this.host?.currentPosition();
     if (!position) {
       return;
     }
     try {
-      const locator = this.locatorResolver.generate(
+      const locator = native?.mediaCfi ? new Locator(currentMediaCfi(native.mediaCfi, native.node))
+        : this.locatorResolver.generate(
         native?.spineIndex ?? this.spineIndex,
         position.node,
         position.offset,
@@ -1175,6 +1189,7 @@ export class ReaderController {
       else await this.library.saveProgress(this.bookId, locator.cfi, fraction);
     } catch (error) {
       if (throwOnError) throw error;
+      if (native?.mediaCfi) this.reportTransientError(error, "save", "your reading position");
       // Best-effort: resume-reading is a convenience, not something
       // that should surface an error mid-navigation.
     }
@@ -2618,7 +2633,8 @@ export class ReaderController {
       }
     }
     const bridgeCfi = position
-      ? this.locatorResolver.generate(spineIndex, position.node, position.offset).cfi
+      ? native?.mediaCfi && position === native ? currentMediaCfi(native.mediaCfi, native.node)
+        : this.locatorResolver.generate(spineIndex, position.node, position.offset).cfi
       : undefined;
     const doc = this.containerEl?.ownerDocument;
     const activeElement = doc?.activeElement;
@@ -2657,7 +2673,9 @@ export class ReaderController {
 
   public setFixedZoom(zoom: number, point?: { x: number; y: number }): void {
     if (!(this.host instanceof FixedSpreadHost) || this.operations.disposed) return;
+    const retained = this.nativeReading.retainedForShell();
     this.host.setZoom(zoom, point);
+    if (retained) this.nativeReading.retain(retained);
     this.fixedZoom = this.host.zoom;
     this.notify();
   }
@@ -5240,7 +5258,8 @@ export class ReaderController {
               (doc) => this.configureSpreadDocument(doc), {
                 ...this.foregroundPagination(operation),
                 forceAnchor: !options.preservePageBoundaries &&
-                  (!options.bridgeCfi || EpubCfi.parse(options.bridgeCfi).sideBias === undefined),
+                  (!options.bridgeCfi || (EpubCfi.parse(options.bridgeCfi).sideBias === undefined &&
+                    EpubCfi.parse(options.bridgeCfi).mediaOffsets === undefined)),
                 position: doc => {
                   if (options.bridgeCfi) {
                     const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), spineIndex, doc);
@@ -5278,6 +5297,13 @@ export class ReaderController {
       if (options.bridgeCfi) {
         if (!destinationDocument) throw new Error("The saved position's reading document is unavailable.");
         const resolved = this.locatorResolver.resolveInDocument(new Locator(options.bridgeCfi), requestedSpineIndex, destinationDocument);
+        if (resolved.mediaOffsets) {
+          await prepareMediaPosition(resolved, operation.signal);
+          operation.check();
+          if (resolved.mediaOffsets.spatialOffset) {
+            spatialMediaPoint(resolved.node, resolved.mediaOffsets.spatialOffset);
+          }
+        }
         if (resolved.node.nodeType === 1 && resolved.characterOffset !== undefined &&
           resolved.characterOffset > resolved.node.childNodes.length) {
           throw new Error("The saved position's child offset is outside its reading element.");
@@ -5424,10 +5450,31 @@ export class ReaderController {
             new Locator(options.bridgeCfi), requestedSpineIndex, view.document,
           );
           const point = { spineIndex: requestedSpineIndex, ...readingPositionForLocator(resolved) };
+          if (resolved.mediaOffsets?.spatialOffset) {
+            const spatial = spatialMediaPoint(resolved.node, resolved.mediaOffsets.spatialOffset);
+            if (newHost instanceof RollContentHost) {
+              newHost.restoreViewportPoint(view.document, spatial);
+            } else if (newHost instanceof FixedSpreadHost) {
+              const frame = view.document.defaultView?.frameElement as HTMLIFrameElement | null;
+              if (!frame) throw new Error("The spatial position's fixed-layout frame is unavailable.");
+              const bounds = frame.getBoundingClientRect();
+              const viewport = newHost.element.getBoundingClientRect();
+              newHost.panBy(
+                bounds.left + spatial.x * bounds.width / frame.clientWidth -
+                  viewport.left - newHost.element.clientWidth / 2,
+                bounds.top + spatial.y * bounds.height / frame.clientHeight -
+                  viewport.top - newHost.element.clientHeight / 2,
+              );
+            } else if (newHost instanceof ScrollContentHost) {
+              const root = view.document.scrollingElement ?? view.document.documentElement;
+              root.scrollTop += spatial.y - view.document.documentElement.clientHeight / 2;
+              root.scrollLeft += spatial.x - view.document.documentElement.clientWidth / 2;
+            }
+          }
           if (!options.automatic && !options.preserveFocus) {
             this.accessibility.focusReadingPosition(view.document, point);
           }
-          this.nativeReading.retain(point);
+          this.nativeReading.retain(resolved.mediaOffsets ? { ...point, mediaCfi: options.bridgeCfi } : point);
         }
       }
       // Highlights and search ranges are page-independent, but note
@@ -5505,7 +5552,7 @@ export class ReaderController {
     const point = readingPositionForLocator(resolved);
     const offset = point.offset ?? 0;
     if (this.host instanceof PaginatedContentHost) {
-      this.host.goToPosition(point.node, offset, forceAnchor && resolved.sideBias === undefined);
+      this.host.goToPosition(point.node, offset, forceAnchor && resolved.sideBias === undefined && !resolved.mediaOffsets);
     } else if (this.host instanceof SpreadPaginatedHost) {
       this.host.goToPosition(point.node, offset);
     } else if (this.host instanceof ScrollContentHost) {

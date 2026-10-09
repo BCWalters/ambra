@@ -2,6 +2,7 @@ import type { ContentLoader } from "../content/ContentLoader.js";
 import type { PackageDocument } from "../container/PackageDocument.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 import { CfiStep, EpubCfi, EpubCfiParseError } from "./EpubCfi.js";
+import type { CfiMediaOffsets } from "./EpubCfi.js";
 import {
   childStepIndex,
   elementCfiSteps,
@@ -46,6 +47,7 @@ export interface ResolvedLocator {
   readonly alternativeTextOffset?: number;
   /** Which side of a line/page break owns this exact boundary. */
   readonly sideBias?: "a" | "b";
+  readonly mediaOffsets?: CfiMediaOffsets;
 }
 
 export interface ResolvedLocatorRange {
@@ -82,12 +84,28 @@ export class LocatorResolutionError extends Error {
 }
 
 export function requireDomRangeBoundary(point: ResolvedLocator): void {
+  if (point.mediaOffsets) {
+    throw new LocatorResolutionError("A media position cannot be represented as a DOM range boundary.");
+  }
   if (point.alternativeTextOffset !== undefined && point.alternativeTextOffset > 0) {
     throw new LocatorResolutionError("An image alternative-text position cannot be represented as a DOM range boundary.");
   }
   if (point.node.nodeType === ELEMENT_NODE && point.characterOffset !== undefined &&
     point.characterOffset > point.node.childNodes.length) {
     throw new LocatorResolutionError("An element character offset cannot be represented as a DOM range boundary.");
+  }
+}
+
+function requireApplicableMediaPosition(node: Node, characterOffset: number | undefined, offsets: CfiMediaOffsets): void {
+  const element = node.nodeType === ELEMENT_NODE ? node as Element : undefined;
+  const html = element?.namespaceURI === "http://www.w3.org/1999/xhtml";
+  const timed = html && (element.localName === "audio" || element.localName === "video");
+  const visual = (html && (element.localName === "img" || element.localName === "video")) ||
+    (element?.namespaceURI === "http://www.w3.org/2000/svg" && element.localName === "svg");
+  if (characterOffset !== undefined ||
+    (offsets.temporalOffsetSeconds !== undefined && !timed) ||
+    (offsets.spatialOffset !== undefined && !visual)) {
+    throw new LocatorResolutionError("The CFI media position does not address applicable audio, video or image content.");
   }
 }
 
@@ -139,13 +157,14 @@ export class LocatorResolver {
    * `Element`, `characterOffset` omitted). For an XHTML image, an authored
    * character offset addresses its alternative text.
    */
-  public generate(spineIndex: number, node: Node, characterOffset?: number): Locator {
+  public generate(spineIndex: number, node: Node, characterOffset?: number, mediaOffsets?: CfiMediaOffsets): Locator {
     const spineRef = this.requireSpineItem(spineIndex);
     const root = this.requireDocumentRoot(node);
+    if (mediaOffsets) requireApplicableMediaPosition(node, characterOffset, mediaOffsets);
     if (node === root) {
       // A bare spine itemref is a valid CFI for the whole page. An empty
       // path after "!" is not, nor is a character offset on an SVG root.
-      return new Locator(new EpubCfi(spineRef.packageCfiSteps, []).toString());
+      return new Locator(new EpubCfi(spineRef.packageCfiSteps, [], undefined, undefined, mediaOffsets).toString());
     }
 
     let contentSteps: CfiStep[];
@@ -165,7 +184,7 @@ export class LocatorResolver {
       finalOffset = runCharacterOffset(node, characterOffset ?? 0);
     }
 
-    const cfi = new EpubCfi(spineRef.packageCfiSteps, contentSteps, finalOffset);
+    const cfi = new EpubCfi(spineRef.packageCfiSteps, contentSteps, finalOffset, undefined, mediaOffsets);
     return new Locator(cfi.toString());
   }
 
@@ -306,6 +325,11 @@ export class LocatorResolver {
     document: Document,
   ): ResolvedLocator {
     const point = this.resolveContentPosition(cfi, spineIndex, document);
+    if (cfi.mediaOffsets) {
+      requireApplicableMediaPosition(point.node, point.characterOffset, cfi.mediaOffsets);
+      return cfi.sideBias ? { ...point, mediaOffsets: cfi.mediaOffsets, sideBias: cfi.sideBias }
+        : { ...point, mediaOffsets: cfi.mediaOffsets };
+    }
     return cfi.sideBias ? { ...point, sideBias: cfi.sideBias } : point;
   }
 

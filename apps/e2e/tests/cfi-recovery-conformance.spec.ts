@@ -1,6 +1,7 @@
 import { expect, test, type TestInfo } from "@playwright/test";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import fs from "node:fs";
+import path from "node:path";
 import { launchReader } from "../harness.js";
 import { exposeReaderController, isReaderElementPainted } from "../reader-controller.js";
 
@@ -42,6 +43,263 @@ function flowPublication(info: TestInfo): string {
   fs.writeFileSync(file, zipSync(entries, { level: 0 }));
   return file;
 }
+
+function mediaPublication(info: TestInfo): string {
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  const narrated = unzipSync(fs.readFileSync(path.resolve("fixtures/media-overlay/narrated.epub")));
+  entries["EPUB/audio.wav"] = narrated["EPUB/audio/chapter-1.wav"]!;
+  entries["EPUB/picture.svg"] = strToU8(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="1200" viewBox="0 0 240 1200"><rect width="240" height="1200" fill="#eee"/><circle cx="180" cy="900" r="20" fill="#c00"/></svg>',
+  );
+  entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"])
+    .replace("</manifest>", '<item id="audio" href="audio.wav" media-type="audio/wav"/><item id="picture" href="picture.svg" media-type="image/svg+xml"/></manifest>'));
+  entries["EPUB/one.xhtml"] = strToU8(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Media CFI</title></head><body><audio id="audio" controls="controls" preload="none" src="audio.wav"></audio><img id="picture" alt="Original image" src="picture.svg" style="width:240px;height:1200px;min-height:1200px;max-height:none"/><p style="height:1500px">After media</p></body></html>',
+  );
+  const file = info.outputPath("cfi-media-offsets.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  return file;
+}
+
+function svgSpatialPublication(info: TestInfo): string {
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"])
+    .replace('href="one.xhtml" media-type="application/xhtml+xml"', 'href="one.svg" media-type="image/svg+xml"'));
+  entries["EPUB/nav.xhtml"] = strToU8(new TextDecoder().decode(entries["EPUB/nav.xhtml"]).replace("one.xhtml", "one.svg"));
+  delete entries["EPUB/one.xhtml"];
+  entries["EPUB/one.svg"] = strToU8(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="1200" viewBox="10 20 240 1200"><rect x="10" y="20" width="240" height="1200" fill="#eee"/><circle id="spot" cx="190" cy="920" r="20" fill="#c00"/></svg>',
+  );
+  const file = info.outputPath("cfi-svg-spatial.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  return file;
+}
+
+test("CFI combined offsets seek a decoded video frame without autoplay (#340)", async ({ browserName: _browserName }, info) => {
+  const recording = await launchReader(mediaPublication(info), { viewport: { width: 600, height: 720 } });
+  let movie: Uint8Array<ArrayBuffer>;
+  try {
+    const bytes = await recording.readerPage.evaluate(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 160;
+      canvas.height = 90;
+      const drawing = canvas.getContext("2d")!;
+      const stream = canvas.captureStream(10);
+      const recorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp8" });
+      const chunks: Blob[] = [];
+      recorder.addEventListener("dataavailable", event => { chunks.push(event.data); });
+      const stopped = new Promise<Blob>(resolve => {
+        recorder.addEventListener("stop", () => { resolve(new Blob(chunks, { type: "video/webm" })); }, { once: true });
+      });
+      const started = performance.now();
+      const colors = ["rgb(20,80,220)", "rgb(20,200,80)", "rgb(220,80,20)"];
+      const draw = () => {
+        drawing.fillStyle = colors[Math.min(2, Math.floor((performance.now() - started) / 1000))]!;
+        drawing.fillRect(0, 0, 160, 90);
+      };
+      draw();
+      recorder.start();
+      const animation = setInterval(draw, 100);
+      await new Promise(resolve => setTimeout(resolve, 3300));
+      recorder.stop();
+      const blob = await stopped;
+      clearInterval(animation);
+      for (const track of stream.getTracks()) track.stop();
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+    fs.writeFileSync(info.outputPath("source-recording.webm"), Uint8Array.from(bytes));
+    movie = Uint8Array.from(bytes);
+  } finally { await recording.context.close(); }
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  entries["EPUB/movie.webm"] = movie;
+  entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"])
+    .replace("</manifest>", '<item id="movie" href="movie.webm" media-type="video/webm"/></manifest>'));
+  entries["EPUB/one.xhtml"] = strToU8(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Combined video CFI</title></head><body><video id="video" src="movie.webm" controls="controls" preload="none" width="160" height="90"></video></body></html>',
+  );
+  const file = info.outputPath("cfi-combined-video.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  const { context, readerPage: page } = await launchReader(file, { viewport: { width: 600, height: 720 } });
+  try {
+    await exposeReaderController(page);
+    const cfi = "epubcfi(/6/2!/4/2[video]~1.25@25:75)";
+    const audit = await page.evaluate(async cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark(cfi);
+      const video = controller.contentDocumentViews()[0].document.getElementById("video") as HTMLVideoElement;
+      const canvas = document.createElement("canvas");
+      canvas.width = 160;
+      canvas.height = 90;
+      const drawing = canvas.getContext("2d")!;
+      if (video.readyState >= 2) drawing.drawImage(video, 0, 0);
+      await controller.addBookmark();
+      await controller.flushProgress(true);
+      return {
+        error: controller.snapshot().error, time: video.currentTime, paused: video.paused,
+        width: video.videoWidth, height: video.videoHeight,
+        pixel: Array.from(drawing.getImageData(40, 67, 1, 1).data),
+        bookmark: controller.snapshot().bookmarks.at(-1)?.cfi,
+        progress: (await controller.library.getProgress(controller.bookId))?.cfi,
+      };
+    }, cfi);
+    expect(audit.error).toBeUndefined();
+    expect(audit.time).toBeCloseTo(1.25, 2);
+    expect(audit.paused).toBe(true);
+    expect([audit.width, audit.height]).toEqual([160, 90]);
+    for (const [index, value] of [20, 200, 80].entries()) expect(Math.abs(audit.pixel[index]! - value)).toBeLessThan(15);
+    expect(audit.pixel[3]).toBe(255);
+    expect(audit.bookmark).toBe(cfi);
+    expect(audit.progress).toBe(cfi);
+  } finally { await context.close(); }
+});
+
+for (const mode of ["roll", "zoomed"] as const) {
+test(`CFI spatial offsets reveal the painted SVG root point in ${mode} presentation (#340)`, async ({ browserName: _browserName }, info) => {
+  const { context, readerPage: page } = await launchReader(svgSpatialPublication(info), {
+    viewport: { width: 600, height: 720 },
+  });
+  try {
+    await exposeReaderController(page);
+    await page.evaluate(async mode => {
+      const controller = Reflect.get(window, "__readerController");
+      if (mode === "roll") await controller.setViewMode("scroll");
+      else controller.setFixedZoom(4);
+    }, mode);
+    const cfi = "epubcfi(/6/2!@75:75)";
+    const audit = await page.evaluate(async cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark(cfi);
+      const doc = controller.contentDocumentViews()[0].document as Document;
+      const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+      const spot = doc.getElementById("spot")!.getBoundingClientRect();
+      const bounds = frame.getBoundingClientRect();
+      const viewport = controller.host.element.getBoundingClientRect();
+      const y = bounds.top + (spot.top + spot.height / 2) * bounds.height / frame.clientHeight;
+      await controller.addBookmark();
+      await controller.flushProgress(true);
+      return {
+        error: controller.snapshot().error, centerError: Math.abs(y - viewport.top - viewport.height / 2),
+        bookmark: controller.snapshot().bookmarks.at(-1)?.cfi,
+        progress: (await controller.library.getProgress(controller.bookId))?.cfi,
+      };
+    }, cfi);
+    expect(audit.error).toBeUndefined();
+    expect(audit.centerError).toBeLessThanOrEqual(1);
+    expect(await isReaderElementPainted(page, "spot")).toBe(true);
+    expect(audit.bookmark).toBe(cfi);
+    expect(audit.progress).toBe(cfi);
+    if (mode === "zoomed") {
+      const afterZoom = await page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        controller.setFixedZoom(2);
+        return controller.currentReadingCfi();
+      });
+      expect(afterZoom).toBe(cfi);
+      expect(await isReaderElementPainted(page, "spot")).toBe(true);
+      const afterPan = await page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        const before = controller.host.element.scrollTop;
+        controller.host.panBy(0, -40);
+        return { cfi: controller.currentReadingCfi(), moved: controller.host.element.scrollTop !== before };
+      });
+      expect(afterPan.moved).toBe(true);
+      expect(afterPan.cfi).not.toContain("@");
+    }
+  } finally { await context.close(); }
+});
+}
+
+test("CFI temporal offsets seek real audio without autoplay and persist through bookmarks, progress and history (#340)", async ({ browserName: _browserName }, info) => {
+  const { context, readerPage: page } = await launchReader(mediaPublication(info), {
+    viewport: { width: 600, height: 720 },
+  });
+  try {
+    await exposeReaderController(page);
+    const first = "epubcfi(/6/2!/4/2[audio]~2.5)";
+    const audit = await page.evaluate(async cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark(cfi);
+      const audio = controller.contentDocumentViews()[0].document.getElementById("audio") as HTMLAudioElement;
+      await controller.addBookmark();
+      await controller.flushProgress(true);
+      return {
+        time: audio.currentTime, paused: audio.paused,
+        cfi: controller.currentReadingCfi(), bookmark: controller.snapshot().bookmarks.at(-1)?.cfi,
+        progress: (await controller.library.getProgress(controller.bookId))?.cfi,
+        error: controller.snapshot().error,
+      };
+    }, first);
+    expect(audit.error).toBeUndefined();
+    expect(audit.time).toBeCloseTo(2.5, 2);
+    expect(audit.paused).toBe(true);
+    expect(audit.cfi).toBe(first);
+    expect(audit.bookmark).toBe(first);
+    expect(audit.progress).toBe(first);
+    await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark("epubcfi(/6/2!/4/2[audio]~7)");
+    });
+    await page.goBack();
+    await expect.poll(() => page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      const audio = controller.contentDocumentViews()[0]?.document.getElementById("audio") as HTMLAudioElement | null;
+      return !controller.snapshot().isLoading && audio?.currentTime;
+    })).toBe(2.5);
+    const rejected = await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      const previous = controller.host;
+      await controller.goToBookmark("epubcfi(/6/2!/4/2[audio]~100)");
+      return { sameHost: previous === controller.host, error: controller.snapshot().error };
+    });
+    expect(rejected.sameHost).toBe(true);
+    expect(rejected.error).toMatch(/outside.*duration/);
+  } finally { await context.close(); }
+});
+
+test("CFI spatial offsets reveal the actual interior image point and clear on user scrolling (#340)", async ({ browserName: _browserName }, info) => {
+  const { context, readerPage: page } = await launchReader(mediaPublication(info), {
+    viewport: { width: 600, height: 720 },
+  });
+  try {
+    await exposeReaderController(page);
+    await page.evaluate(async () => { await Reflect.get(window, "__readerController").setViewMode("scroll"); });
+    await expect.poll(() => page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      return !controller.snapshot().isLoading && controller.viewMode === "scroll";
+    })).toBe(true);
+    const cfi = "epubcfi(/6/2!/4/4[picture]@75:75)";
+    const audit = await page.evaluate(async cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark(cfi);
+      const doc = controller.contentDocumentViews()[0].document as Document;
+      const image = doc.getElementById("picture") as HTMLImageElement;
+      const box = image.getBoundingClientRect();
+      await controller.addBookmark();
+      await controller.flushProgress(true);
+      return {
+        error: controller.snapshot().error,
+        pointY: box.top + box.height * 0.75, center: doc.documentElement.clientHeight / 2,
+        scrollTop: doc.scrollingElement?.scrollTop,
+        cfi: controller.currentReadingCfi(), bookmark: controller.snapshot().bookmarks.at(-1)?.cfi,
+        progress: (await controller.library.getProgress(controller.bookId))?.cfi,
+      };
+    }, cfi);
+    expect(audit.error).toBeUndefined();
+    expect(Math.abs(audit.pointY - audit.center)).toBeLessThanOrEqual(1);
+    expect(audit.scrollTop).toBeGreaterThan(0);
+    expect(audit.cfi).toBe(cfi);
+    expect(audit.bookmark).toBe(cfi);
+    expect(audit.progress).toBe(cfi);
+    const moved = await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc = controller.contentDocumentViews()[0].document as Document;
+      doc.scrollingElement!.scrollTop += 40;
+      await controller.flushProgress(true);
+      return (await controller.library.getProgress(controller.bookId))?.cfi;
+    });
+    expect(moved).not.toContain("@");
+  } finally { await context.close(); }
+});
 
 for (const spread of [false, true]) {
 test(`CFI side bias selects the preceding or following natural ${spread ? "spread" : "page"} at a text break (#340)`, async ({ browserName: _browserName }, info) => {
