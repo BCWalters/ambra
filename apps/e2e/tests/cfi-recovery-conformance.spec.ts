@@ -188,6 +188,23 @@ test(`CFI spatial offsets reveal the painted SVG root point in ${mode} presentat
     expect(await isReaderElementPainted(page, "spot")).toBe(true);
     expect(audit.bookmark).toBe(cfi);
     expect(audit.progress).toBe(cfi);
+    if (mode === "zoomed") {
+      const afterZoom = await page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        controller.setFixedZoom(2);
+        return controller.currentReadingCfi();
+      });
+      expect(afterZoom).toBe(cfi);
+      expect(await isReaderElementPainted(page, "spot")).toBe(true);
+      const afterPan = await page.evaluate(() => {
+        const controller = Reflect.get(window, "__readerController");
+        const before = controller.host.element.scrollTop;
+        controller.host.panBy(0, -40);
+        return { cfi: controller.currentReadingCfi(), moved: controller.host.element.scrollTop !== before };
+      });
+      expect(afterPan.moved).toBe(true);
+      expect(afterPan.cfi).not.toContain("@");
+    }
   } finally { await context.close(); }
 });
 }

@@ -302,7 +302,9 @@ export class ReaderController {
   private readonly nativeReading = new NativeReadingPosition(
     () => this.contentDocumentViews(),
     () => this.host?.currentPosition(),
-    () => ({ top: this.host?.element.scrollTop ?? 0, left: this.host?.element.scrollLeft ?? 0 }),
+    () => this.host instanceof FixedSpreadHost || this.host instanceof RollContentHost
+      ? { top: this.host.element.scrollTop, left: this.host.element.scrollLeft }
+      : { top: 0, left: 0 },
   );
   private readonly diagnostics = new DiagnosticsLog();
   private announcement: string | undefined;
@@ -2671,7 +2673,9 @@ export class ReaderController {
 
   public setFixedZoom(zoom: number, point?: { x: number; y: number }): void {
     if (!(this.host instanceof FixedSpreadHost) || this.operations.disposed) return;
+    const retained = this.nativeReading.retainedForShell();
     this.host.setZoom(zoom, point);
+    if (retained) this.nativeReading.retain(retained);
     this.fixedZoom = this.host.zoom;
     this.notify();
   }
