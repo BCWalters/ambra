@@ -126,6 +126,21 @@ export function resolveElementChild(parent: Node, elementIndex: number): Element
   return undefined;
 }
 
+export function resolveAssertedElementStep(
+  parent: Element,
+  step: CfiStep,
+  root: Element,
+): Element | undefined {
+  if (!Number.isSafeInteger(step.index) || step.index < 0 || step.index % 2 !== 0) return undefined;
+  const positional = resolveElementChild(parent, step.index / 2);
+  if (step.idAssertion === undefined) return positional;
+  if (positional?.getAttribute("id") === step.idAssertion) return positional;
+  const candidates = [root, ...root.querySelectorAll("[id]")].filter(
+    element => element.getAttribute("id") === step.idAssertion && !isReaderOwnedContent(element),
+  );
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
 /** Resolves a CFI-level character offset (counted across a whole text
  * run's concatenated content) back to a specific node + node-local offset
  * within that run. */

@@ -4,7 +4,7 @@ import {
   getDescendantElementsByNS,
   getFirstChildElementByNS, getFirstDescendantElementByNS, getNamespacedAttribute,
 } from "./Xml.js";
-import { elementCfiSteps } from "../locator/CfiTree.js";
+import { elementCfiSteps, resolveAssertedElementStep } from "../locator/CfiTree.js";
 import type { CfiStep } from "../locator/EpubCfi.js";
 import { parseSmilClockValue } from "../media-overlay/SmilClockValue.js";
 import type { LocalizedMetadataValue, MetadataLocalization, MetadataTextContext } from "./MetadataLocalization.js";
@@ -453,6 +453,7 @@ export class PackageDocument {
      * here rather than living on `PackageMetadata` alongside
      * `renditionSpread`/`renditionLayout`. */
     public readonly pageProgressionDirection: PageProgressionDirection,
+    private readonly packageElement: Element,
     public readonly guide: readonly GuideReference[] = [],
   ) {
     this.manifestById = new Map(manifestItems.map((item) => [item.id, item]));
@@ -551,19 +552,30 @@ export class PackageDocument {
     return item.mediaOverlayId ? this.manifestById.get(item.mediaOverlayId) : undefined;
   }
 
-  /** Finds the spine index whose `packageCfiSteps` numerically matches
-   * `steps` (as parsed from a CFI's package-steps segment) — the reverse
-   * of `SpineItemRef.packageCfiSteps`, used when resolving a CFI back to
-   * "which spine item does this point into." Compares step index numbers
-   * only, not id assertions (those are a supplementary robustness check,
-   * performed separately during content-step resolution). */
+  /** Resolves package steps to a spine itemref, verifying authored IDs and
+   * correcting shifted indices only through unique IDs in the original OPF. */
   public findSpineIndexByPackageCfiSteps(steps: readonly CfiStep[]): number | undefined {
     const index = this.spine.findIndex(
       (ref) =>
         ref.packageCfiSteps.length === steps.length &&
-        ref.packageCfiSteps.every((step, i) => step.index === steps[i]?.index),
+        ref.packageCfiSteps.every((step, i) =>
+          step.index === steps[i]?.index &&
+          (steps[i]?.idAssertion === undefined || step.idAssertion === steps[i]?.idAssertion)),
     );
-    return index === -1 ? undefined : index;
+    if (index !== -1) return index;
+    if (!steps.some(step => step.idAssertion !== undefined)) return undefined;
+    let current = this.packageElement;
+    for (const step of steps) {
+      const resolved = resolveAssertedElementStep(current, step, this.packageElement);
+      if (!resolved) return undefined;
+      current = resolved;
+    }
+    const corrected = elementCfiSteps(this.packageElement, current);
+    const recoveredIndex = this.spine.findIndex(ref =>
+      ref.packageCfiSteps.length === corrected.length &&
+      ref.packageCfiSteps.every((step, i) => step.index === corrected[i]?.index),
+    );
+    return recoveredIndex === -1 ? undefined : recoveredIndex;
   }
 
   /** Parses `xml` (the OPF package document's raw text) into a
@@ -611,6 +623,7 @@ export class PackageDocument {
       spine,
       tocManifestId,
       pageProgressionDirection,
+      packageEl,
       guide,
     );
   }

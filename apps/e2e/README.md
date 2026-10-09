@@ -268,6 +268,12 @@ CI; they are not substitutes for the pinned official release assessment.
 correction, direct native DOM ranges in both loaded and provided documents,
 cross-element/whitespace text assertion recovery, and exact adjacent-text
 before/after affinity. It uses original content and runs in the early CI gate.
+Its two-chapter package fixture also verifies that stale OPF spine/itemref
+indices recover by their asserted IDs to the intended chapter and a painted
+bookmark target, while missing package assertions fail explicitly. Package
+units separately cover document-wide ambiguous IDs, non-spine targets and
+unchanged numeric/verified positional paths. Import/export and publisher
+annotation regressions exercise the same package lookup.
 It does not claim support for nested documents or media/spatial CFI offsets.
 
 `html-base.spec.ts` checks the first XHTML base with href across paginated,

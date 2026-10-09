@@ -1,5 +1,5 @@
 import { expect, test, type TestInfo } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
+import { strToU8, unzipSync, zipSync } from "fflate";
 import fs from "node:fs";
 import { launchReader } from "../harness.js";
 import { exposeReaderController, isReaderElementPainted } from "../reader-controller.js";
@@ -30,6 +30,51 @@ function publication(info: TestInfo): string {
   fs.writeFileSync(file, zipSync(entries, { level: 0 }));
   return file;
 }
+
+test("package CFI assertions recover the intended chapter and reject missing OPF IDs (#340)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  const opf = new TextDecoder().decode(entries["EPUB/package.opf"]!);
+  expect(opf).toContain('<spine><itemref idref="one"/></spine>');
+  entries["EPUB/package.opf"] = strToU8(opf
+    .replace('<item id="one"', '<item id="two" href="two.xhtml" media-type="application/xhtml+xml"/><item id="one"')
+    .replace('<spine><itemref idref="one"/></spine>',
+      '<guide/><spine id="reading-order"><itemref id="earlier" idref="two"/><itemref id="later" idref="one"/></spine>'));
+  entries["EPUB/two.xhtml"] = strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Earlier chapter</title></head><body><h1>Earlier chapter</h1></body></html>');
+  const file = info.outputPath("package-cfi-recovery.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  const { context, readerPage: page } = await launchReader(file);
+  try {
+    await exposeReaderController(page);
+    const recovered = await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      const resolved = await controller.locatorResolver.resolve({
+        cfi: "epubcfi(/8[reading-order]/2[later])",
+      });
+      return { spineIndex: resolved.spineIndex, title: resolved.node.ownerDocument.title };
+    });
+    expect(recovered).toEqual({ spineIndex: 1, title: "Original chapter" });
+    await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark("epubcfi(/6[reading-order]/2[later]!/4/122[target]/1:0)");
+    });
+    await expect.poll(() => isReaderElementPainted(page, "target")).toBe(true);
+    const invalid = await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      try {
+        await controller.locatorResolver.resolve({
+          cfi: "epubcfi(/8[missing]/4[later])",
+        });
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "LocatorResolutionError") throw error;
+        return error.message;
+      }
+      throw new Error("The missing package assertion must fail explicitly.");
+    });
+    expect(invalid).toContain("CFI package steps do not match any spine item");
+  } finally {
+    await context.close();
+  }
+});
 
 test("CFI ID correction reaches the painted target; native ranges, text assertions and bias retain exact boundaries", async ({
   browserName: _browserName,

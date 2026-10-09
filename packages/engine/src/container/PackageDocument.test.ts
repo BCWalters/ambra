@@ -21,6 +21,59 @@ async function loadFixture(name: string): Promise<Uint8Array> {
   return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 }
 
+describe("Package CFI assertion recovery", () => {
+  function publication(duplicate = false): PackageDocument {
+    return PackageDocument.parse(`<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier>original</dc:identifier>
+        <dc:title>Package recovery</dc:title><dc:language>en</dc:language>
+        ${duplicate ? '<meta id="later" property="title-type">main</meta>' : ""}
+      </metadata><manifest>
+        <item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>
+        <item id="two" href="two.xhtml" media-type="application/xhtml+xml"/>
+      </manifest><guide/><spine id="reading-order">
+        <itemref id="earlier" idref="two"/><itemref id="later" idref="one"/>
+      </spine></package>`, "EPUB/package.opf");
+  }
+
+  it.each([
+    [6, 4],
+    [8, 2],
+    [6, 2],
+  ])("recovers shifted spine/itemref indices %s/%s using their actual OPF IDs", (spine, item) => {
+    const pkg = publication();
+    expect(pkg.spine[1]!.packageCfiSteps.map(step => step.index)).toEqual([8, 4]);
+    expect(pkg.findSpineIndexByPackageCfiSteps([
+      new CfiStep(spine, "reading-order"), new CfiStep(item, "later"),
+    ])).toBe(1);
+  });
+
+  it("preserves unasserted current numeric paths", () => {
+    expect(publication().findSpineIndexByPackageCfiSteps([
+      new CfiStep(8), new CfiStep(4),
+    ])).toBe(1);
+  });
+
+  it.each([
+    [new CfiStep(8, "missing"), new CfiStep(4, "later")],
+    [new CfiStep(8, "reading-order"), new CfiStep(4, "one")],
+    [new CfiStep(8, "reading-order"), new CfiStep(3, "later")],
+    [new CfiStep(100), new CfiStep(4, "later")],
+    [new CfiStep(8, "reading-order")],
+  ])("rejects missing assertions, non-spine targets and invalid package paths: %s", (...steps) => {
+    expect(publication().findSpineIndexByPackageCfiSteps(steps)).toBeUndefined();
+  });
+
+  it("rejects ambiguous correction across the whole OPF but retains a verified positional match", () => {
+    const pkg = publication(true);
+    expect(pkg.findSpineIndexByPackageCfiSteps([
+      new CfiStep(8, "reading-order"), new CfiStep(2, "later"),
+    ])).toBeUndefined();
+    expect(pkg.findSpineIndexByPackageCfiSteps([
+      new CfiStep(8, "reading-order"), new CfiStep(4, "later"),
+    ])).toBe(1);
+  });
+});
+
 describe("PackageMetadata named options", () => {
   function options(): PackageMetadataOptions {
     return {
@@ -346,16 +399,11 @@ describe("PackageDocument (fixed-layout fixture)", () => {
     expect(pkg.findSpineIndexByPackageCfiSteps(page2Steps)).toBe(1);
   });
 
-  it("matches package CFI steps by index only, ignoring a mismatched id assertion", () => {
-    // findSpineIndexByPackageCfiSteps deliberately compares step indices
-    // only, not id assertions — those are a supplementary check performed
-    // separately, only for *content* steps, during LocatorResolver's
-    // resolution (see Locator.ts's verifyIdAssertion). A wrong id
-    // assertion on a package step must not prevent finding the spine item.
+  it("rejects package steps whose ID assertions cannot be verified or recovered", () => {
     const realSteps = pkg.spine[1]!.packageCfiSteps;
     const tamperedSteps = realSteps.map((s) => new CfiStep(s.index, "not-the-real-id"));
 
-    expect(pkg.findSpineIndexByPackageCfiSteps(tamperedSteps)).toBe(1);
+    expect(pkg.findSpineIndexByPackageCfiSteps(tamperedSteps)).toBeUndefined();
   });
 
   it("defaults page-progression-direction to default when the spine doesn't declare one", () => {
