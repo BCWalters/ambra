@@ -19,6 +19,15 @@ function point(node: Node, offset?: number, sideBias?: "a" | "b"): ResolvedLocat
 }
 
 describe("CFI visual reading affinity", () => {
+  it("keeps temporal affinity on its media owner rather than adjacent prose", () => {
+    const doc = document;
+    doc.body.innerHTML = '<p>Before</p><audio id="target"></audio><p>After</p>';
+    const audio = doc.getElementById("target")!;
+    expect(readingPositionForLocator({
+      ...point(audio, undefined, "b"), mediaOffsets: { temporalOffsetSeconds: 1 },
+    })).toEqual({ node: audio, offset: 0 });
+  });
+
   it("selects opposite natural pages and scroll lines without changing the original boundary", () => {
     const { doc, text } = fixture();
     const start = { node: text, offset: 0 };

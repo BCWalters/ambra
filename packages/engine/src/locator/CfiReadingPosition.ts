@@ -31,7 +31,7 @@ function contentEdge(node: Node, direction: 1 | -1): DomBreakPoint | undefined {
 export function readingPositionForLocator(point: ResolvedLocator): DomBreakPoint {
   const { node, sideBias } = point;
   const offset = point.characterOffset ?? 0;
-  if (!sideBias || (point.alternativeTextOffset ?? 0) > 0) return { node, offset };
+  if (!sideBias || point.mediaOffsets || (point.alternativeTextOffset ?? 0) > 0) return { node, offset };
   if (!Number.isSafeInteger(offset)) throw new LocatorResolutionError("CFI reading offset is not a safe integer.");
   const direction = sideBias === "a" ? 1 : -1;
   if (node.nodeType === 3 || node.nodeType === 4) {

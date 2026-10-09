@@ -80,7 +80,7 @@ export { Locator, LocatorResolver, LocatorResolutionError, requireDomRangeBounda
 export type { ResolvedLocator, ResolvedLocatorRange } from "./locator/Locator.js";
 export { readingPositionForLocator } from "./locator/CfiReadingPosition.js";
 export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
-export type { CfiParameter, CfiTextAssertion } from "./locator/EpubCfi.js";
+export type { CfiParameter, CfiTextAssertion, CfiMediaOffsets, CfiSpatialOffset } from "./locator/EpubCfi.js";
 export {
   parseAnnotationCollection,
   getAnnotationTextBody,

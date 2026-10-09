@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Locator } from "@ambra/engine";
 import type { LocatorResolver, Page } from "@ambra/engine";
 import type { LibraryDatabase, Bookmark } from "../library/LibraryDatabase.js";
 import { BookmarkManager, type BookmarkManagerContext } from "./BookmarkManager.js";
@@ -67,6 +68,18 @@ function makeContext(overrides: Partial<BookmarkManagerContext> = {}): BookmarkM
 }
 
 describe("BookmarkManager", () => {
+  it("persists a media locator rather than regenerating its element boundary", async () => {
+    const cfi = "epubcfi(/6/4!/4/2~3@25:75)";
+    const resolver = makeLocatorResolver(true);
+    const library = makeLibrary();
+    const manager = new BookmarkManager(library, "book-1", resolver, makeContext({
+      currentLocator: () => new Locator(cfi), currentPosition: () => undefined,
+    }));
+    expect((await manager.add())?.cfi).toBe(cfi);
+    expect(resolver.generate).not.toHaveBeenCalled();
+    expect(library.addBookmark).toHaveBeenCalledWith("book-1", cfi, expect.any(String));
+  });
+
   it("projects chapter titles and current bookwide pages without parsing or rewriting legacy labels", async () => {
     const saved = makeBookmark({ label: "An imported title — Page 3" });
     const library = makeLibrary([saved]);

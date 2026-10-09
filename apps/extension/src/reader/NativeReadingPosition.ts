@@ -3,6 +3,7 @@ import type { ContentDocumentView, DomBreakPoint } from "@ambra/engine";
 
 export interface NativeReadingPoint extends DomBreakPoint {
   spineIndex: number;
+  readonly mediaCfi?: string;
 }
 
 interface Signals {
@@ -16,16 +17,19 @@ interface Signals {
 export class NativeReadingPosition {
   private point: NativeReadingPoint | undefined;
   private visual: DomBreakPoint | undefined;
+  private viewport: { top: number; left: number } | undefined;
   private readonly signals = new Map<Document, Signals>();
   private readonly scrollPositions = new Map<Document, { top: number; left: number }>();
 
   public constructor(
     private readonly views: () => readonly ContentDocumentView[],
     private readonly visualPosition: () => DomBreakPoint | undefined,
+    private readonly viewportPosition?: () => { top: number; left: number },
   ) {}
 
   public attach(document: Document): () => void {
     this.visual = this.visualPosition();
+    this.viewport = this.viewportPosition?.();
     this.signals.set(document, this.snapshot(document));
     this.scrollPositions.set(document, this.scrollPosition(document));
     const update = () => { this.current(); };
@@ -50,6 +54,7 @@ export class NativeReadingPosition {
   public reset(): void {
     this.point = undefined;
     this.visual = this.visualPosition();
+    this.viewport = this.viewportPosition?.();
     for (const view of this.views()) {
       this.signals.set(view.document, this.snapshot(view.document));
       // Restore/reflow may have queued a scroll event; consume its final baseline
@@ -66,7 +71,9 @@ export class NativeReadingPosition {
 
   public current(): NativeReadingPoint | undefined {
     const visual = this.visualPosition();
+    const viewport = this.viewportPosition?.();
     if (visual?.node !== this.visual?.node || visual?.offset !== this.visual?.offset ||
+      viewport?.top !== this.viewport?.top || viewport?.left !== this.viewport?.left ||
       this.views().some(view => this.available(view.document) && this.hasScrolled(view.document))) {
       this.reset();
       return undefined;
@@ -88,7 +95,10 @@ export class NativeReadingPosition {
         next.collapsed) {
         candidate = { spineIndex: view.spineIndex, node: next.focus, offset: 0 };
       }
-      if (candidate && this.validPoint(candidate)) this.point = candidate;
+      if (candidate && this.validPoint(candidate)) {
+        this.point = candidate.node === this.point?.node && candidate.spineIndex === this.point.spineIndex &&
+          this.point.mediaCfi ? { ...candidate, mediaCfi: this.point.mediaCfi } : candidate;
+      }
     }
     if (this.point && !this.validPoint(this.point)) {
       // Modal accessibility scopes temporarily exclude the shell, not the book.
@@ -153,7 +163,7 @@ export class NativeReadingPosition {
         style?.display === "none" || style?.visibility === "hidden") return false;
     }
     const offset = point.offset ?? 0;
-    const child = point.node.nodeType === 1
+    const child = point.mediaCfi === undefined && point.node.nodeType === 1
       ? point.node.childNodes[offset] ?? point.node.childNodes[offset - 1] : undefined;
     if (child && isReaderOwnedContent(child)) return false;
     return offset >= 0 && offset <= (point.node.nodeType === 3

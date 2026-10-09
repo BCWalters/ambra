@@ -37,6 +37,24 @@ function setup(parent: HTMLElement = document.body) {
 }
 
 describe("native reading resume", () => {
+  it("clears media metadata when the shell viewport actually moves, not on a queued scroll event", () => {
+    const { views } = setup();
+    let top = 0;
+    const visual = { node: views[0]!.document.body, offset: 0 };
+    const tracker = new NativeReadingPosition(() => views, () => visual, () => ({ top, left: 0 }));
+    views.forEach(view => tracker.attach(view.document));
+    const point = { ...visual, spineIndex: views[0]!.spineIndex, mediaCfi: "epubcfi(/6/2!@25:75)" };
+    top = 100;
+    tracker.retain(point);
+    expect(tracker.current()).toEqual(point);
+    views[0]!.document.dispatchEvent(new Event("scroll"));
+    expect(tracker.current()).toEqual(point);
+    top = 101;
+    expect(tracker.current()).toBeUndefined();
+    top = 100;
+    expect(tracker.current()).toBeUndefined();
+  });
+
   it.each(["root", "text"] as const)("retains the companion SVG %s position without an HTML body", kind => {
     const { tracker, views, frames } = setup();
     const doc = views[1]!.document;

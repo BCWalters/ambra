@@ -9,6 +9,17 @@ export interface CfiTextAssertion {
   readonly parameters: readonly CfiParameter[];
 }
 
+export interface CfiSpatialOffset {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface CfiMediaOffsets {
+  readonly temporalOffsetSeconds?: number;
+  readonly spatialOffset?: CfiSpatialOffset;
+  readonly assertion?: CfiTextAssertion;
+}
+
 function escapeAssertion(value: string): string {
   return value.replace(/[\^[\](),;=]/g, "^$&");
 }
@@ -44,6 +55,54 @@ export class EpubCfiParseError extends Error {
 
 const ESCAPABLE_CHARACTERS = new Set("^[](),;=");
 const INTEGER_WITH_ASSERTION = /^(\d+)(?:\[((?:\^[\s\S]|[^[\]])*)\])?$/;
+const NUMBER_WITH_ASSERTION = /^((?:0|[1-9]\d*)(?:\.\d*[1-9])?)(?:\[((?:\^[\s\S]|[^[\]])*)\])?$/;
+
+function serializeNumber(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new EpubCfiParseError("A CFI media offset must be a finite nonnegative number.");
+  }
+  const valueString = value.toString();
+  if (!valueString.includes("e")) return valueString;
+  const [mantissa = "", exponent = "0"] = valueString.split("e");
+  const [whole = "", fraction = ""] = mantissa.split(".");
+  const digits = whole + fraction;
+  const point = whole.length + Number(exponent);
+  if (point <= 0) return `0.${"0".repeat(-point)}${digits}`;
+  if (point >= digits.length) return digits + "0".repeat(point - digits.length);
+  return `${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
+function parseNumberWithAssertion(value: string, cfiString: string): {
+  number: number; assertion?: CfiTextAssertion;
+} {
+  const match = NUMBER_WITH_ASSERTION.exec(value);
+  const number = match ? Number(match[1]) : NaN;
+  if (!match || !Number.isFinite(number) || serializeNumber(number) !== match[1]) {
+    throw new EpubCfiParseError(`Invalid or unrepresentable CFI media offset in "${cfiString}".`);
+  }
+  return { number, assertion: match[2] === undefined ? undefined : parseOffsetAssertion(match[2], cfiString) };
+}
+
+function parseOffsetAssertion(value: string, cfiString: string): CfiTextAssertion {
+  const assertion = parseAssertion(value, cfiString);
+  const text = splitAssertion(assertion.value, ",");
+  if (text.length > 2) {
+    throw new EpubCfiParseError(`Malformed CFI offset assertion in "${cfiString}".`);
+  }
+  return {
+    preceding: unescapeAssertion(text[0]!),
+    following: text[1] === undefined ? undefined : unescapeAssertion(text[1]),
+    parameters: assertion.parameters,
+  };
+}
+
+function serializeOffsetAssertion(assertion: CfiTextAssertion | undefined): string {
+  return assertion
+    ? `[${escapeAssertion(assertion.preceding)}${
+        assertion.following === undefined ? "" : `,${escapeAssertion(assertion.following)}`
+      }${serializeParameters(assertion.parameters)}]`
+    : "";
+}
 
 /** Structural delimiters only count outside assertions; an escaped bracket
  * is assertion data, not a change in nesting. Shared by point and range CFIs. */
@@ -158,8 +217,8 @@ function parseSteps(segment: string, cfiString: string): CfiStep[] {
  * a path through the OPF package document's `<spine>` to a specific
  * `itemref` (`packageSteps`), an indirection into that spine item's content
  * document, a path within it (`contentSteps`), and an optional trailing
- * character offset with optional text assertions and parameters. Multiple
- * indirections and temporal/spatial offsets remain outside this profile.
+ * character or temporal/spatial offset with assertions and parameters.
+ * Multiple indirections remain outside this profile.
  * Range CFIs (`,` start/end forms) use `joinRange`/`parseRange`, with direct
  * DOM resolution provided by `LocatorResolver`.
  * A package-only path addresses the spine itemref itself, representing
@@ -171,31 +230,44 @@ export class EpubCfi {
     public readonly contentSteps: readonly CfiStep[],
     public readonly characterOffset?: number,
     public readonly textAssertion?: CfiTextAssertion,
+    public readonly mediaOffsets?: CfiMediaOffsets,
   ) {}
 
   public get sideBias(): "a" | "b" | undefined {
-    const parameters = this.textAssertion?.parameters ?? this.contentSteps.at(-1)?.parameters;
+    if (this.mediaOffsets?.spatialOffset) return undefined;
+    const parameters = this.textAssertion?.parameters ?? this.mediaOffsets?.assertion?.parameters ??
+      this.contentSteps.at(-1)?.parameters;
     const value = parameters?.find(parameter => parameter.name === "s")?.values[0];
     return value === "a" || value === "b" ? value : undefined;
   }
 
   private offsetSuffix(): string {
+    if (this.mediaOffsets) {
+      if (this.characterOffset !== undefined || this.textAssertion !== undefined) {
+        throw new EpubCfiParseError("Character and media offsets cannot be combined.");
+      }
+      const { temporalOffsetSeconds, spatialOffset, assertion } = this.mediaOffsets;
+      if (temporalOffsetSeconds === undefined && spatialOffset === undefined) {
+        throw new EpubCfiParseError("A media offset requires a temporal or spatial position.");
+      }
+      if (spatialOffset && (spatialOffset.x > 100 || spatialOffset.y > 100)) {
+        throw new EpubCfiParseError("CFI spatial coordinates must be between 0 and 100.");
+      }
+      const temporal = temporalOffsetSeconds === undefined ? "" : `~${serializeNumber(temporalOffsetSeconds)}`;
+      const spatial = spatialOffset
+        ? `@${serializeNumber(spatialOffset.x)}:${serializeNumber(spatialOffset.y)}` : "";
+      return temporal + spatial + serializeOffsetAssertion(assertion);
+    }
     if (this.textAssertion && this.characterOffset === undefined) {
       throw new EpubCfiParseError("A text assertion requires a character offset.");
     }
     if (this.characterOffset === undefined) return "";
-    const assertion = this.textAssertion;
-    const text = assertion
-      ? `[${escapeAssertion(assertion.preceding)}${
-          assertion.following === undefined ? "" : `,${escapeAssertion(assertion.following)}`
-        }${serializeParameters(assertion.parameters)}]`
-      : "";
-    return `:${this.characterOffset}${text}`;
+    return `:${this.characterOffset}${serializeOffsetAssertion(this.textAssertion)}`;
   }
 
   public toString(): string {
     const packagePart = this.packageSteps.map((step) => step.toString()).join("");
-    if (this.contentSteps.length === 0) {
+    if (this.contentSteps.length === 0 && this.mediaOffsets === undefined) {
       if (this.characterOffset !== undefined || this.textAssertion !== undefined) {
         throw new EpubCfiParseError("A spine itemref location cannot have a character offset.");
       }
@@ -231,6 +303,39 @@ export class EpubCfi {
     }
 
     const [packagePart, contentWithOffset] = indirectParts as [string, string];
+    const temporalParts = splitOutsideAssertions(contentWithOffset, "~", cfiString);
+    const spatialParts = splitOutsideAssertions(temporalParts[1] ?? contentWithOffset, "@", cfiString);
+    if (temporalParts.length > 2 || spatialParts.length > 2) {
+      throw new EpubCfiParseError(`Malformed CFI media offset in "${cfiString}".`);
+    }
+    if (temporalParts.length === 2 || spatialParts.length === 2) {
+      const contentPart = temporalParts.length === 2 ? temporalParts[0]! : spatialParts[0]!;
+      const temporal = temporalParts.length === 2
+        ? parseNumberWithAssertion(spatialParts[0]!, cfiString) : undefined;
+      let spatialOffset: CfiSpatialOffset | undefined;
+      let assertion = temporal?.assertion;
+      if (spatialParts.length === 2) {
+        if (assertion) {
+          throw new EpubCfiParseError(`An assertion must follow the complete media offset in "${cfiString}".`);
+        }
+        const coordinates = splitOutsideAssertions(spatialParts[1]!, ":", cfiString);
+        if (coordinates.length !== 2) {
+          throw new EpubCfiParseError(`Malformed CFI spatial offset in "${cfiString}".`);
+        }
+        const x = parseNumberWithAssertion(coordinates[0]!, cfiString);
+        const y = parseNumberWithAssertion(coordinates[1]!, cfiString);
+        if (x.assertion || x.number > 100 || y.number > 100) {
+          throw new EpubCfiParseError(`Invalid CFI spatial coordinates in "${cfiString}".`);
+        }
+        spatialOffset = { x: x.number, y: y.number };
+        assertion = y.assertion;
+      }
+      const packageSteps = parseSteps(packagePart, cfiString);
+      if (!packageSteps.length) throw new EpubCfiParseError(`CFI is missing package steps: "${cfiString}".`);
+      return new EpubCfi(packageSteps, parseSteps(contentPart, cfiString), undefined, undefined, {
+        temporalOffsetSeconds: temporal?.number, spatialOffset, assertion,
+      });
+    }
     const offsetParts = splitOutsideAssertions(contentWithOffset, ":", cfiString);
     if (offsetParts.length > 2) {
       throw new EpubCfiParseError(`Malformed CFI character offset in "${cfiString}".`);
@@ -243,16 +348,7 @@ export class EpubCfi {
       if (!match) throw new EpubCfiParseError(`Malformed CFI character offset in "${cfiString}".`);
       characterOffset = parseInteger(match[1]!, cfiString);
       if (match[2] !== undefined) {
-        const assertion = parseAssertion(match[2], cfiString);
-        const text = splitAssertion(assertion.value, ",");
-        if (text.length > 2) {
-          throw new EpubCfiParseError(`Malformed CFI text assertion in "${cfiString}".`);
-        }
-        textAssertion = {
-          preceding: unescapeAssertion(text[0]!),
-          following: text[1] === undefined ? undefined : unescapeAssertion(text[1]),
-          parameters: assertion.parameters,
-        };
+        textAssertion = parseOffsetAssertion(match[2], cfiString);
       }
     }
 
@@ -288,7 +384,24 @@ export class EpubCfi {
     }
     const contentComparison = EpubCfi.compareSteps(cfiA.contentSteps, cfiB.contentSteps);
     if (contentComparison !== 0) {
+      if (cfiA.contentSteps.length !== cfiB.contentSteps.length) {
+        const shorter = cfiA.contentSteps.length < cfiB.contentSteps.length ? cfiA : cfiB;
+        const longer = shorter === cfiA ? cfiB : cfiA;
+        if (EpubCfi.compareSteps(shorter.contentSteps, longer.contentSteps.slice(0, shorter.contentSteps.length)) === 0 &&
+          shorter.mediaOffsets) {
+          // A temporal-spatial step sorts after a child step, even on its ancestor.
+          return shorter === cfiA ? 1 : -1;
+        }
+      }
       return contentComparison;
+    }
+    if (cfiA.mediaOffsets || cfiB.mediaOffsets) {
+      const first = cfiA.mediaOffsets;
+      const second = cfiB.mediaOffsets;
+      if (!first || !second) return first ? 1 : -1;
+      return (first.temporalOffsetSeconds ?? -1) - (second.temporalOffsetSeconds ?? -1) ||
+        (first.spatialOffset?.y ?? -1) - (second.spatialOffset?.y ?? -1) ||
+        (first.spatialOffset?.x ?? -1) - (second.spatialOffset?.x ?? -1);
     }
     return (cfiA.characterOffset ?? 0) - (cfiB.characterOffset ?? 0);
   }
@@ -320,7 +433,8 @@ export class EpubCfi {
    * point's own remaining steps (plus its own character offset) forming
    * its comma-separated tail. */
   public static joinRange(start: EpubCfi, end: EpubCfi): string {
-    if (start.contentSteps.length === 0 || end.contentSteps.length === 0) {
+    if ((start.contentSteps.length === 0 && !start.mediaOffsets) ||
+      (end.contentSteps.length === 0 && !end.mediaOffsets)) {
       throw new EpubCfiParseError("Range endpoints must address positions within content documents.");
     }
     if (
@@ -350,6 +464,9 @@ export class EpubCfi {
         .join("") + point.offsetSuffix();
     const startTail = tailPart(start);
     const endTail = tailPart(end);
+    if (commonLength === 0) {
+      return `epubcfi(${packagePart},!${startTail},!${endTail})`;
+    }
     return `epubcfi(${packagePart}!${commonPart},${startTail},${endTail})`;
   }
 
@@ -373,6 +490,12 @@ export class EpubCfi {
     }
     const [common, startTail, endTail] = parts as [string, string, string];
     const commonParts = splitOutsideAssertions(common, "!", cfiString);
+    if (commonParts.length === 1 && startTail.startsWith("!") && endTail.startsWith("!")) {
+      return {
+        start: EpubCfi.parse(`epubcfi(${common}${startTail})`),
+        end: EpubCfi.parse(`epubcfi(${common}${endTail})`),
+      };
+    }
     if (commonParts.length !== 2) {
       throw new EpubCfiParseError(
         `Range CFI requires a single "!" indirection: "${cfiString}"`,

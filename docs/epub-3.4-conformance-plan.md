@@ -631,7 +631,7 @@ waiver.
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | C34-11 | Publication-origin isolation and scripting policy | Give each publication an isolated origin model and record whether scripting remains unsupported or is introduced under explicit capability and security boundaries.            | [#338](https://github.com/BCWalters/ambra/issues/338) |
 | C34-12 | Complete Media Overlay behavior                   | Clip-end duration clamping, navigation-led recorded playback, globally ordered shared timelines and default-off note/page-announcement skipping with common-structure escape implemented. Text-only TTS/embedded media, broader semantic vocabulary, remaining timing cases and navigation-document narration remain. | [#337](https://github.com/BCWalters/ambra/issues/337) |
-| C34-13 | Complete EPUB CFI processing                      | Assertions, direct ranges, content/package ID recovery, image-alt positions and reflowable page-break affinity implemented; nested indirections and temporal/spatial offsets remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
+| C34-13 | Complete EPUB CFI processing                      | Assertions, direct ranges, content/package ID recovery, image-alt positions, reflowable page-break affinity and single-indirection media offsets implemented; nested indirections, broader visual-transform handling and official assessment remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
 | C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
@@ -677,9 +677,8 @@ text-node affinity. Generated locators retain their existing compact format and
 do not incur whole-document context indexing on ordinary pagination.
 
 This is a protected-CI validated #340 milestone, not complete CFI support or an official
-score improvement. Nested indirections and temporal/spatial/combined offsets
-still need implementation and protected evidence. Later image-alt and
-reflowable page-affinity increments are described below.
+score improvement. Later image-alt, reflowable page-affinity and media-offset
+increments are described below; nested indirections remain outside this profile.
 
 The post-3.1.0 package-tree increment verifies ID assertions against the original
 OPF, using the same element-step correction policy as content locators. A stale
@@ -739,7 +738,34 @@ alternative-text offsets and annotation comparison are unchanged. Ordinary
 unbiased generated bookmarks keep their existing format and anchoring behavior.
 Original unit and native fixtures verify opposite page/line destinations and
 painted content; these are implementation gates, not promoted official results.
-Nested indirections and temporal/spatial/combined offsets remain open under #340.
+Nested indirections remain open under #340; the following media-offset milestone
+does not promote published assessment results.
+
+The media-offset increment implements typed temporal, spatial and combined
+positions in the single-indirection profile, including standalone SVG document
+roots. Numeric syntax follows the [CFI grammar](https://idpf.org/epub/linking/cfi/epub-cfi.html#sec-epubcfi-syntax);
+coordinates are 0–100 percentages, time is seconds, and comparison ignores
+assertions while ordering temporal position before spatial Y and then X.
+Point/range round trips retain offset assertions and annotation re-anchoring
+preserves them. Timed/spatial ranges are explicitly not DOM text ranges.
+
+Live resolution requires applicable audio/video or visual media, rather than
+accepting an offset and quietly landing on its element. Metadata loading and
+seeking are bounded and cancellable; decode failures, unaccepted seeks and
+out-of-duration targets use existing navigation-error recovery before replacing
+readable content. Applying an offset does not issue a play/pause command.
+Spatial navigation uses decoded image/video dimensions, object fit/position and
+SVG viewport transforms; scroll, roll and zoomed fixed-layout views reveal the
+requested point. Cropped-out points, rotated/perspective-transformed XHTML media
+and complex object-position expressions fail explicitly and remain follow-ups.
+
+Retained locators preserve offsets in bookmarks, history, progress and layout
+bridges; timed progress captures the media's live time. Actual caret/focus or
+viewport movement clears an old media override. Original browser fixtures
+measure image/SVG point placement within one pixel, require painted SVG content,
+decode a real generated video frame and inspect its pixel colour, verify paused
+audio/video seeking, persist offsets and traverse audio history. Native codec
+limitations, nested indirections and official assessment remain separate work.
 
 ### Phase 3: measurable conformance process
 

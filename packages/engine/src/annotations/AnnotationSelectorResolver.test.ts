@@ -52,6 +52,16 @@ describe("AnnotationSelectorResolver", () => {
       .rejects.toThrow(/alternative-text position/);
   });
 
+  it("re-anchors media selectors without discarding their offsets or opaque parameters", async () => {
+    const { resolver, source } = await setup('<video id="target"></video>');
+    const point = "epubcfi(/6/2!/4/2[target]~1@25:75[;vendor=context])";
+    await expect(resolver.resolve(source, { type: "FragmentSelector", value: point }))
+      .resolves.toMatchObject({ startCfi: point, endCfi: undefined });
+    await expect(resolver.resolve(source, {
+      type: "FragmentSelector", value: "epubcfi(/6/2!/4/2[target],~1,~3)",
+    })).rejects.toThrow(/media position/);
+  });
+
   it("keeps a CSS selection ending before the following image exclusive", async () => {
     const { resolver, source, locators, document } = await setup(
       '<p id="scope">Selected text</p><img id="picture" alt="Not selected"/>',

@@ -50,7 +50,7 @@ export class AnnotationSelectorResolver {
       throw new AnnotationSelectorResolutionError("The annotation source does not identify a spine document.");
     const steps = this.pkg.spine[spineIndex]!.packageCfiSteps;
     const reanchor = (cfi: EpubCfi) => new EpubCfi(
-      steps, cfi.contentSteps, cfi.characterOffset, cfi.textAssertion,
+      steps, cfi.contentSteps, cfi.characterOffset, cfi.textAssertion, cfi.mediaOffsets,
     ).toString();
     return { spineIndex, startCfi: reanchor(start), endCfi: end ? reanchor(end) : undefined };
   }
