@@ -390,6 +390,56 @@ test("an unnarrated destination pauses explicitly, retry stays there and narrate
   }
 });
 
+test("Next can recover from an unsupported text-only narration passage after navigation (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  entries["EPUB/overlay-2.smil"] = strToU8(new TextDecoder().decode(entries["EPUB/overlay-2.smil"]!)
+    .replace('<audio src="audio/chapter-2.wav" clipBegin="0s" clipEnd="4s"/>', ""));
+  const fixture = info.outputPath("narrated-with-text-only-passage.epub");
+  fs.writeFileSync(fixture, zipSync(entries, { level: 0 }));
+  const { readerPage: page, context } = await launchReader(fixture);
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await toc(page, "Narrated chapter 2");
+    await expect(controls(page)).toContainText("This narration segment has no recorded audio.");
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Next narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p2");
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(4);
+    await expect.poll(() => passagePaint(page, "c2-p2")).toMatchObject({ painted: true });
+  } finally {
+    await context.close();
+  }
+});
+
+test("Next recovers from automatic progression failure without resetting to the preceding visible passage (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  entries["EPUB/overlay-1.smil"] = strToU8(new TextDecoder().decode(entries["EPUB/overlay-1.smil"]!)
+    .replace('<audio src="audio/chapter-1.wav" clipBegin="4s" clipEnd="8s"/>', ""));
+  const fixture = info.outputPath("narrated-with-automatic-text-only-passage.epub");
+  fs.writeFileSync(fixture, zipSync(entries, { level: 0 }));
+  const { readerPage: page, context } = await launchReader(fixture);
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await expect(controls(page)).toContainText("This narration segment has no recorded audio.");
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Next narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p3");
+    await expect.poll(() => passagePaint(page, "c1-p3")).toMatchObject({ painted: true });
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(8);
+  } finally {
+    await context.close();
+  }
+});
+
 test("real audio advances, pause/resume preserves its point, and collapse keeps playback and speed", async () => {
   const { readerPage: page, context } = await launchReader(narrated);
   try {

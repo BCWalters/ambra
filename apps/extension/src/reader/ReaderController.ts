@@ -409,6 +409,7 @@ export class ReaderController {
   private narrationCommand = 0;
   private narrationTargetNavigation: { command: number } | undefined;
   private narrationNavigationLocation: { key: string; command: number } | undefined;
+  private narrationNavigationPending = false;
   private narrationNoticeVisible = false;
 
   private constructor(
@@ -1204,13 +1205,18 @@ export class ReaderController {
 
   private notifyNavigation(): void {
     this.navigationListeners?.forEach(listener => listener());
+    this.syncNarrationAfterNavigation();
+  }
+
+  private syncNarrationAfterNavigation(): void {
     if (this.narrationTargetNavigation?.command !== this.narrationCommand && this.narration.snapshot.available &&
       this.narration.snapshot.status !== "idle") {
+      this.narrationNavigationPending = true;
       void this.syncNarrationNavigation();
     }
   }
 
-  private async syncNarrationNavigation(): Promise<boolean> {
+  private async syncNarrationNavigation(options: { allowErroredTarget?: boolean } = {}): Promise<boolean> {
     const command = this.narrationCommand;
     let marker: { key: string; command: number } | undefined;
     try {
@@ -1220,12 +1226,15 @@ export class ReaderController {
       marker = { key, command };
       this.narrationNavigationLocation = marker;
       const position = await this.narrationReading.readingPosition(false);
-      if (command !== this.narrationCommand || this.operations.disposed) return false;
+      if (command !== this.narrationCommand || this.operations.disposed || this.narrationNavigationLocation !== marker) return false;
       await this.narration.syncReadingPosition(position.spineIndex, position.element);
-      return command === this.narrationCommand && !this.operations.disposed &&
-        this.narration.target !== undefined && this.narration.snapshot.status !== "error";
+      if (command !== this.narrationCommand || this.operations.disposed || this.narrationNavigationLocation !== marker) return false;
+      this.narrationNavigationPending = false;
+      return this.narration.target !== undefined &&
+        (options.allowErroredTarget === true || this.narration.snapshot.status !== "error");
     } catch (error) {
-      if (command !== this.narrationCommand || this.operations.disposed) return false;
+      if (command !== this.narrationCommand || this.operations.disposed ||
+        (marker && this.narrationNavigationLocation !== marker)) return false;
       this.narration.pause();
       this.reportTransientError(error, "navigate", "the narration reading position");
       return false;
@@ -1418,12 +1427,17 @@ export class ReaderController {
         const position = await this.narrationReading.readingPosition(action === "selection");
         if (command !== this.narrationCommand || this.operations.disposed) return;
         await this.narration.playFrom(position.spineIndex, position.element, { exact: true });
+        if (command === this.narrationCommand && !this.operations.disposed) this.narrationNavigationPending = false;
       } else if (action === "start" || action === "toggle") {
-        if (await this.syncNarrationNavigation()) await this.narration.resume();
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation()) await this.narration.resume();
       } else if (action === "next") {
-        if (await this.syncNarrationNavigation()) await this.narration.next();
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation({ allowErroredTarget: true })) {
+          await this.narration.next();
+        }
       } else if (action === "previous") {
-        if (await this.syncNarrationNavigation()) await this.narration.previous();
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation({ allowErroredTarget: true })) {
+          await this.narration.previous();
+        }
       } else if (action === "return") {
         await this.narration.returnToNarration();
       }
@@ -2224,8 +2238,8 @@ export class ReaderController {
       };
       const syncScrolledNarration = (): void => {
         saveHistory();
-        if (this.host instanceof ScrollContentHost && this.narrationTargetNavigation?.command !== this.narrationCommand) {
-          this.notifyNavigation();
+        if (this.host instanceof ScrollContentHost && !this.isLoadInFlight && !this.isTurningPage && !this.isApplyingLayout) {
+          this.syncNarrationAfterNavigation();
         }
       };
       iframeDocument.addEventListener("scrollend", syncScrolledNarration);

@@ -181,10 +181,11 @@ for (const { width, locale } of [
       await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
       await expect.poll(() => page.evaluate(() =>
         Reflect.get(window, "__readerController").snapshot().narration.following,
-      )).toBe(false);
+      )).toBe(true);
+      expect(await audio(page).evaluate(element => (element as HTMLAudioElement).paused)).toBe(true);
       expect(await strip.boundingBox()).toEqual(before);
-      await expect(strip.getByRole("button", { name: t("narration.return"), exact: true })
-        .getByText(t("narration.return"), { exact: true })).toBeVisible();
+      await expect(strip.getByRole("button", { name: t("narration.return"), exact: true })).toHaveCount(0);
+      await expect(strip.getByRole("button", { name: t("narration.listenFromPage"), exact: true })).toBeVisible();
       expect(await page.locator("iframe").first().boundingBox()).toEqual(frameBefore);
       expect(await strip.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
       const closeBounds = (await strip.getByRole("button", { name: t("narration.collapse"), exact: true }).boundingBox())!;

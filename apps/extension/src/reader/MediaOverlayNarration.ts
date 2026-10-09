@@ -226,6 +226,7 @@ export class MediaOverlayNarration {
       this.notify();
       return;
     }
+    const previousCursor = this.cursor;
     this.requestedPassage = { spineIndex, element, exact: true };
     const generation = this.begin();
     this.following = true;
@@ -244,7 +245,10 @@ export class MediaOverlayNarration {
       const same = this.cursor?.association === association && this.cursor.index === index && !this.needsSeek;
       await this.start({ association, index, clips }, generation, !same, { play, follow: false });
     } catch (error) {
-      if (this.current(generation)) this.fail(error);
+      if (this.current(generation)) {
+        if (this.cursor === previousCursor) this.cursor = undefined;
+        this.fail(error);
+      }
     }
   }
 

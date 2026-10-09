@@ -164,6 +164,22 @@ describe("MediaOverlayNarration", () => {
     expect(audio.play).not.toHaveBeenCalled();
   });
 
+  it("never retains the preceding chapter's cursor when the destination overlay fails to load", async () => {
+    const { narration, audio, loader } = setup();
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="c">Destination</p>';
+    await narration.playFrom(0);
+    loader.readArchiveFileText.mockRejectedValueOnce(new Error("Destination overlay unavailable."));
+    await narration.syncReadingPosition(2, doc.getElementById("c")!);
+    expect(narration.target).toBeUndefined();
+    expect(narration.snapshot).toMatchObject({ status: "error", error: "Destination overlay unavailable." });
+    expect(audio.paused).toBe(true);
+    await narration.resume();
+    expect(narration.target?.spineIndex).toBe(2);
+    expect(audio.currentTime).toBe(2);
+    expect(audio.paused).toBe(false);
+  });
+
   it("keeps rapid paused navigation paused while metadata is loading", async () => {
     const { narration, audio } = setup();
     const doc = document.implementation.createHTMLDocument();

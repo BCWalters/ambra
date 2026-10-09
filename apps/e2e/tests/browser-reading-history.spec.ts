@@ -591,7 +591,7 @@ test("RTL mixed-layout navigation preserves reflowable anchors between fixed-lay
   }
 });
 
-test("browser traversal keeps narration playing without resuming follow or stale selection", async () => {
+test("browser traversal retargets playing narration without restoring stale selection (#337)", async () => {
   const book = fileURLToPath(new URL("../fixtures/media-overlay/narrated.epub", import.meta.url));
   const { context, readerPage: page } = await launchReader(book);
   try {
@@ -600,11 +600,15 @@ test("browser traversal keeps narration playing without resuming follow or stale
     await page.getByRole("button", { name: "Play narration", exact: true }).click();
     const audio = page.locator("audio[data-ambra-narration-audio]");
     await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
+    const firstSource = await audio.evaluate(element => (element as HTMLAudioElement).currentSrc);
     await ready(page);
     const a = await location(page);
     await toc(page, "Narrated chapter 2");
     const b = await location(page);
-    await expect(page.getByRole("button", { name: "Return to narration", exact: true })).toBeVisible();
+    await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).currentSrc)).not.toBe(firstSource);
+    await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
+    const secondSource = await audio.evaluate(element => (element as HTMLAudioElement).currentSrc);
+    await expect(page.getByRole("button", { name: "Return to narration", exact: true })).toHaveCount(0);
     await page.evaluate(() => {
       const c = Reflect.get(window, "__readerController");
       const doc = c.contentDocumentViews()[0].document as Document;
@@ -618,11 +622,19 @@ test("browser traversal keeps narration playing without resuming follow or stale
     await page.goBack();
     await at(page, a.cfi);
     expect((await location(page)).collapsed).toBe(true);
-    expect(await audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
-    expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().narration.following)).toBe(false);
+    await expect.poll(() => page.evaluate(() =>
+      Reflect.get(window, "__readerController").narration.target?.spineIndex,
+    )).toBe(0);
+    await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).currentSrc)).not.toBe(secondSource);
+    await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
+    expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().narration.following)).toBe(true);
     await page.goForward();
     await at(page, b.cfi);
-    expect(await audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
+    await expect.poll(() => page.evaluate(() =>
+      Reflect.get(window, "__readerController").narration.target?.spineIndex,
+    )).toBe(1);
+    await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).currentSrc)).not.toBe(secondSource);
+    await expect.poll(() => audio.evaluate(element => (element as HTMLAudioElement).paused)).toBe(false);
   } finally {
     await context.close();
   }

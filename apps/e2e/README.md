@@ -130,6 +130,13 @@ Unnarrated destinations pause explicitly and never silently scan into a later
 chapter. Unit cases cover metadata races, intended playback and paused recovery.
 Native loading cases gate real audio bytes during Play, Pause and rapid
 navigation; retained selections do not replace page restart's visible position.
+Explicit transports retain the current cursor unless successful reading navigation
+still needs reconciliation. Native cases recover with Next after unsupported
+passages reached by navigation or automatic progression; failed overlay loads
+cannot leave the preceding chapter's cursor active. Browser-history cases verify
+playing retargets without stale selections, and localized transport cases retain
+their layout, focus and keyboard-speed checks. Scroll-mode layout changes do not
+publish user navigation or dismiss an armed page-turn guide.
 These cases use authored segment-level timing, not synthesized timing for
 individual words or unoverlaid text.
 
@@ -731,7 +738,7 @@ ephemeral to that reader opening and retains playback, compact pause/resume, and
 focus; reopening starts expanded without autoplay. The suite also checks
 **Restart page audio** / **Jump to selection**, localized narrow controls,
 and absence of narration UI for plain books. `media-overlay-playback.spec.ts`
-retains real-audio, clip-boundary, speed, browsing/return, fixed-layout, loading,
+retains real-audio, clip-boundary, speed, navigation-led following, fixed-layout, loading,
 and explicit error coverage.
 
 ```sh
