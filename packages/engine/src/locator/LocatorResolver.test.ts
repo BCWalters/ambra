@@ -26,6 +26,40 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     resolver = new LocatorResolver(pkg, contentLoader);
   });
 
+  it.each(["a", "b"])("preserves %s affinity without moving the resolved character boundary", bias => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="target">Before after</p>';
+    const result = resolver.resolveInDocument(
+      new Locator(`epubcfi(/6/2!/4/2[target]/1:7[;s=${bias}])`), 0, doc,
+    );
+    expect(result.node).toBe(doc.getElementById("target")!.firstChild);
+    expect(result.characterOffset).toBe(7);
+    expect(result).toHaveProperty("sideBias", bias);
+  });
+
+  it.each(["a", "b"])("preserves %s affinity on an element-start boundary", bias => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p>Before</p><p id="target">After</p>';
+    const result = resolver.resolveInDocument(
+      new Locator(`epubcfi(/6/2!/4/4[target;s=${bias}])`), 0, doc,
+    );
+    expect(result.node).toBe(doc.getElementById("target"));
+    expect(result.characterOffset).toBeUndefined();
+    expect(result).toHaveProperty("sideBias", bias);
+  });
+
+  it("retains biased range endpoints without shifting their character positions", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="target">Before after</p>';
+    const result = resolver.resolveRangeInDocument(
+      new Locator("epubcfi(/6/2!/4/2[target]/1,:7[;s=b],:12[;s=a])"), 0, doc,
+    );
+    expect(result.start).toMatchObject({ characterOffset: 7, sideBias: "b" });
+    expect(result.end).toMatchObject({ characterOffset: 12, sideBias: "a" });
+    expect(result.start.node).toBe(doc.getElementById("target")!.firstChild);
+    expect(result.end.node).toBe(result.start.node);
+  });
+
   it.each([0, 1, 2, 3, 4])("resolves image alternative-text UTF-16 offset %s without inventing child offsets", offset => {
     const doc = document.implementation.createHTMLDocument();
     doc.body.innerHTML = '<img id="picture" alt="A&#x1f600;Z"/>';

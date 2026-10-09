@@ -31,6 +31,143 @@ function publication(info: TestInfo): string {
   return file;
 }
 
+function flowPublication(info: TestInfo): string {
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  entries["EPUB/one.xhtml"] = strToU8(
+    `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Page affinity</title></head><body><p id="flow">${
+      "Original readable words for checking exact line and page affinity. ".repeat(180)
+    }</p></body></html>`,
+  );
+  const file = info.outputPath("cfi-page-affinity.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  return file;
+}
+
+for (const spread of [false, true]) {
+test(`CFI side bias selects the preceding or following natural ${spread ? "spread" : "page"} at a text break (#340)`, async ({ browserName: _browserName }, info) => {
+  const { context, readerPage: page } = await launchReader(flowPublication(info), {
+    viewport: { width: spread ? 1280 : 600, height: 720 },
+  });
+  try {
+    await exposeReaderController(page);
+    await expect.poll(() => page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      const primary = controller.host?.primary ?? controller.host;
+      return !controller.snapshot().isLoading && primary?.pages?.length > 2;
+    })).toBe(true);
+    const target = await page.evaluate(spread => {
+      const controller = Reflect.get(window, "__readerController");
+      const primary = controller.host.primary ?? controller.host;
+      const natural = primary.pages.find((candidate: { index: number; startBreak: { node: Node; offset: number } }) =>
+        candidate.index > 0 && (!spread || candidate.index % 2 === 0) &&
+          candidate.startBreak.node.nodeType === 3 && candidate.startBreak.offset > 0,
+      );
+      if (!natural) throw new Error("Expected a natural page break within the fixture's single text node.");
+      const cfi = controller.locatorResolver.generate(0, natural.startBreak.node, natural.startBreak.offset).cfi as string;
+      return { cfi, after: natural.index, before: natural.index - (spread ? 2 : 1) };
+    }, spread);
+    for (const bias of ["b", "a"] as const) {
+      await page.evaluate(async ({ cfi, bias }) => {
+        await Reflect.get(window, "__readerController").goToBookmark(cfi.replace(/\)$/, `[;s=${bias}])`));
+      }, { cfi: target.cfi, bias });
+      const result = await page.evaluate(({ cfi, bias }) => {
+        const controller = Reflect.get(window, "__readerController");
+        const primary = controller.host.primary ?? controller.host;
+        const painted = controller.contentDocumentViews().some((view: { spineIndex: number; document: Document }) => {
+          if (view.spineIndex !== 0) return false;
+          const doc = view.document;
+          const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+          const point = controller.locatorResolver.resolveInDocument({ cfi }, 0, doc);
+          const offset = point.characterOffset as number;
+          const glyph = doc.createRange();
+          glyph.setStart(point.node, bias === "b" ? offset - 1 : offset);
+          glyph.setEnd(point.node, bias === "b" ? offset : offset + 1);
+          const rect = glyph.getBoundingClientRect();
+          const clip = frame.style.clipPath.match(/^inset\(([\d.]+)(?:px)? (?:0|0px) ([\d.]+)(?:px)?(?: (?:0|0px))?\)$/);
+          if (!clip) throw new Error(`Expected the native page's explicit paint clip: ${frame.style.clipPath}`);
+          return rect.height > 0 && rect.top >= Number(clip[1]) - 1 &&
+            rect.bottom <= frame.clientHeight - Number(clip[2]) + 1;
+        });
+        return {
+          index: primary.currentPageIndex, painted,
+        };
+      }, { cfi: target.cfi, bias });
+      expect(result).toEqual({ index: bias === "b" ? target.before : target.after, painted: true });
+    }
+    const range = await page.evaluate(cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc = controller.contentDocumentViews()[0].document as Document;
+      const point = controller.locatorResolver.resolveInDocument({ cfi }, 0, doc);
+      const offset = point.characterOffset as number;
+      const rangeCfi = cfi.replace(/:\d+\)$/, `,:${offset}[;s=b],:${offset + 8}[;s=a])`);
+      if (rangeCfi === cfi) throw new Error("Expected a generated text offset.");
+      const resolved = controller.locatorResolver.resolveRangeInDocument({ cfi: rangeCfi }, 0, doc);
+      return {
+        start: resolved.range.startOffset, end: resolved.range.endOffset,
+        text: resolved.range.toString(), expected: point.node.textContent!.slice(offset, offset + 8),
+        offset, sameNode: resolved.range.startContainer === point.node && resolved.range.endContainer === point.node,
+      };
+    }, target.cfi);
+    expect(range).toEqual({
+      start: range.offset, end: range.offset + 8, text: range.expected,
+      expected: range.expected, offset: range.offset, sameNode: true,
+    });
+  } finally {
+    await context.close();
+  }
+});
+}
+
+test("CFI side bias restores the preceding or following native scroll line (#340)", async ({ browserName: _browserName }, info) => {
+  const { context, readerPage: page } = await launchReader(flowPublication(info));
+  try {
+    await exposeReaderController(page);
+    await page.evaluate(async () => {
+      await Reflect.get(window, "__readerController").setViewMode("scroll");
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      return !controller.snapshot().isLoading && controller.host?.engine?.measuredChunks.length > 20;
+    })).toBe(true);
+    const target = await page.evaluate(() => {
+      const controller = Reflect.get(window, "__readerController");
+      const chunks = controller.host.engine.measuredChunks;
+      const index = chunks.findIndex((chunk: { breakBefore: { node: Node; offset: number } }, index: number) =>
+        index >= 20 && chunk.breakBefore.node.nodeType === 3 && chunk.breakBefore.offset > 0,
+      );
+      if (index === -1) throw new Error("Expected a measured text-line boundary.");
+      const boundary = chunks[index].breakBefore;
+      return {
+        cfi: controller.locatorResolver.generate(0, boundary.node, boundary.offset).cfi as string,
+        before: chunks[index - 1].top as number, after: chunks[index].top as number,
+      };
+    });
+    for (const bias of ["b", "a"] as const) {
+      await page.evaluate(async ({ cfi, bias }) => {
+        await Reflect.get(window, "__readerController").goToBookmark(cfi.replace(/\)$/, `[;s=${bias}])`));
+      }, { cfi: target.cfi, bias });
+      const result = await page.evaluate(({ cfi, bias }) => {
+        const controller = Reflect.get(window, "__readerController");
+        const doc = controller.host.element.contentDocument as Document;
+        const point = controller.locatorResolver.resolveInDocument({ cfi }, 0, doc);
+        const offset = point.characterOffset as number;
+        const glyph = doc.createRange();
+        glyph.setStart(point.node, bias === "b" ? offset - 1 : offset);
+        glyph.setEnd(point.node, bias === "b" ? offset : offset + 1);
+        const rect = glyph.getBoundingClientRect();
+        return {
+          top: doc.scrollingElement!.scrollTop,
+          painted: rect.height > 0 && rect.top >= -1 && rect.bottom <= doc.documentElement.clientHeight + 1,
+        };
+      }, { cfi: target.cfi, bias });
+      expect(Math.abs(result.top - (bias === "b" ? target.before : target.after))).toBeLessThanOrEqual(1);
+      expect(result.painted).toBe(true);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("image-alt CFI offsets navigate to a painted image and retain exact semantic offsets (#340)", async ({ browserName: _browserName }, info) => {
   const entries = unzipSync(fs.readFileSync(publication(info)));
   const chapter = new TextDecoder().decode(entries["EPUB/one.xhtml"]!);
