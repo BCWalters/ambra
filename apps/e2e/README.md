@@ -191,6 +191,12 @@ Every production group verifies the archive's commit, producer SHA-256 and
 release checksums before extraction; only the explicit local-feature group
 builds its separate development package.
 
+The short compact Library check re-enters the book button with native
+Shift+Tab/Tab before asserting complete viewport visibility. Calling focus
+on an already-focused import button does not scroll it after a card resize;
+the native focus entry exercises the keyboard contract without reducing the
+100% visibility requirement.
+
 Pagination measurement's input/long-task probes run in the one-worker
 contention-sensitive group. Their foreground responsiveness thresholds remain
 strict; the thousand-page cancellation probe gives the independent background
