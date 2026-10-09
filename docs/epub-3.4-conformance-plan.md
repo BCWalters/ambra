@@ -356,6 +356,18 @@ Only authored containing-block dimensions determine the initial fit; author
 zoom restrictions remain ignored. User zoom lasts for the open book, not as a
 persisted typography setting. This evidence does not revise frozen scores.
 
+The 3.1 mixed-layout repair (#381) removes body-level fixed-height/hidden-overflow
+clipping only in reflowable content, so paginator pages beyond the authored
+600-pixel body remain painted. Native source-bound coverage collects every
+paragraph word across forward/backward reading stops (all 595 words in the
+original `lay-page-layout-both-spread` page 2), with no blank navigable state.
+Fixed geometry and descendant clipping remain authored. An eligible unpaired
+explicit fixed left/right page uses its physical half of a synthetic spread;
+the unused half is not a spine item, CFI destination, or navigation stop.
+Spread-ineligible views (including narrow windows) center the same item, with
+resize replanning. This does not introduce a hybrid fixed/reflowable host or revise
+the frozen 3.0.0 assessment.
+
 HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
 Legacy `xml:base` is a separate unsupported compatibility surface:
 [EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)

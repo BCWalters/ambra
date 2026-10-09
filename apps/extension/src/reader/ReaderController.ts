@@ -2489,7 +2489,11 @@ export class ReaderController {
       );
       const current = this.host.spread;
       if (planned.kind === "single") {
-        return current?.kind !== "single" || current.spineIndex !== planned.spineIndex;
+        return (
+          current?.kind !== "single" ||
+          current.spineIndex !== planned.spineIndex ||
+          current.side !== planned.side
+        );
       }
       return (
         current?.kind !== "pair" ||

@@ -77,6 +77,19 @@ starts fitted. Unequal XHTML/SVG LTR/RTL spreads retain one shared scale and
 their loaded document identity. Publisher typography and viewport attributes
 remain unchanged; roll/reflowable hosts retain their existing controls.
 
+`tests/mixed-layout-placement.spec.ts` checks the five-item fixed/reflowable
+sequence behind #381 using native word-range hit-testing, not DOM presence.
+Generated filenames/titles carry ID 3.1.7. Set `AMBRA_MIXED_LAYOUT_EPUB` to
+the pinned `lay-page-layout-both-spread.epub` to include the untouched original.
+Forward and backward navigation must paint content at every reading stop and
+collect every authored paragraph word, including all 595 original page-2 words.
+Only reflowable body-level height/overflow restrictions are normalized;
+descendant clipping and fixed-layout viewport geometry remain authored.
+Unpaired explicit fixed left/right pages retain their physical slot when
+synthetic spreads are eligible, without adding a blank navigation item.
+Coverage includes TOC, saved-CFI reload, and side/center replanning on resize.
+This is regression evidence, not a revision of the frozen assessment.
+
 `tests/media-overlay-playback.spec.ts` includes a page-following regression
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before

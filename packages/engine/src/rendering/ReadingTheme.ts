@@ -493,6 +493,10 @@ html[${ReadingTheme.PAGE_THEME_ATTRIBUTE}] body a:any-link:not(svg *) {
 
 body {
   box-sizing: border-box;
+  /* Reflowable hosts own clipping; an authored body viewport must not hide later pages. */
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
   max-width: calc(var(${ReadingTheme.CONTENT_WIDTH_PROPERTY}, 34) * 1em) !important;
   margin: 0 auto !important;
   padding: 0 1.5em !important;
