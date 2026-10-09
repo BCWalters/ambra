@@ -731,7 +731,8 @@ including a child at an element's start. Paginated, spread and scroll navigation
 share this policy; explicit affinity preserves natural pagination instead of
 creating a new anchored page. Accessibility focus and retained reading positions
 follow the visual destination. Reader-owned content and non-content metadata
-are ignored, and document edges remain within their own document.
+are ignored, and document edges remain within their own document. Text-edge
+probes inside atomic inline graphics remain on that graphic, not surrounding prose.
 
 Exact character positions, native range endpoints, assertion recovery,
 alternative-text offsets and annotation comparison are unchanged. Ordinary

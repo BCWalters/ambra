@@ -61,6 +61,14 @@ describe("CFI visual reading affinity", () => {
       .toEqual({ node: image, offset: 0 });
   });
 
+  it.each(["a", "b"] as const)("keeps %s affinity inside an atomic inline SVG", bias => {
+    document.body.innerHTML = '<p>Before</p><svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/><text>Words</text></svg><p>After</p>';
+    const graphic = document.querySelector("svg")!;
+    const text = graphic.querySelector("text")!.firstChild!;
+    expect(readingPositionForLocator(point(text, bias === "b" ? 0 : 5, bias)))
+      .toEqual({ node: graphic, offset: 0 });
+  });
+
   it("skips reader-owned content, comments, empty text and non-rendered document metadata", () => {
     const { doc, text, second, next } = fixture();
     const owned = doc.createElement("span");

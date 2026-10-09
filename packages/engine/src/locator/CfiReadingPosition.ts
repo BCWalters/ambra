@@ -53,6 +53,9 @@ export function readingPositionForLocator(point: ResolvedLocator): DomBreakPoint
   }
   let current: Node | null = node;
   while (current) {
+    if (current !== node && current.nodeType === 1 && REPLACED_ELEMENTS.has((current as Element).localName)) {
+      return { node: current, offset: 0 };
+    }
     for (let sibling = direction === 1 ? current.nextSibling : current.previousSibling; sibling;
       sibling = direction === 1 ? sibling.nextSibling : sibling.previousSibling) {
       const edge = contentEdge(sibling, direction);

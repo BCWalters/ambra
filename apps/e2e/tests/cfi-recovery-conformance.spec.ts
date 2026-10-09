@@ -168,6 +168,38 @@ test("CFI side bias restores the preceding or following native scroll line (#340
   }
 });
 
+test("CFI affinity at inline SVG text edges remains on the painted graphic (#340)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  const chapter = new TextDecoder().decode(entries["EPUB/one.xhtml"]!);
+  entries["EPUB/one.xhtml"] = strToU8(chapter.replace('<p id="target">',
+    '<svg id="inline" xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="green"/><text x="20" y="80">Words</text></svg><p id="target">'));
+  const file = info.outputPath("inline-svg-cfi-affinity.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  const { context, readerPage: page } = await launchReader(file, { viewport: { width: 600, height: 720 } });
+  try {
+    await exposeReaderController(page);
+    const cfis = await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc = (await controller.contentLoader.loadSpineDocument(0)).document as Document;
+      const text = doc.querySelector("#inline text")!.firstChild!;
+      return [0, 5].map(offset => controller.locatorResolver.generate(0, text, offset).cfi as string);
+    });
+    for (const [index, bias] of ["b", "a"].entries()) {
+      await page.evaluate(async ({ cfi, bias }) => {
+        await Reflect.get(window, "__readerController").goToBookmark(cfi.replace(/\)$/, `[;s=${bias}])`));
+      }, { cfi: cfis[index]!, bias });
+      await expect.poll(() => isReaderElementPainted(page, "inline")).toBe(true);
+      const retained = await page.evaluate(() => {
+        const point = Reflect.get(window, "__readerController").nativeReading.retainedForShell();
+        return { id: point?.node.id, offset: point?.offset };
+      });
+      expect(retained).toEqual({ id: "inline", offset: 0 });
+    }
+  } finally {
+    await context.close();
+  }
+});
+
 test("image-alt CFI offsets navigate to a painted image and retain exact semantic offsets (#340)", async ({ browserName: _browserName }, info) => {
   const entries = unzipSync(fs.readFileSync(publication(info)));
   const chapter = new TextDecoder().decode(entries["EPUB/one.xhtml"]!);
