@@ -38,12 +38,16 @@ export function outerMarginSide(x: number, pages: readonly HorizontalBounds[]): 
 
 /** Extend only the two physical outer edges into 8% of the rendered page,
  * capped at 64 CSS pixels. Callers retain ownership of content interactions. */
-export function outerEdgeSide(x: number, pages: readonly HorizontalBounds[], minimum = 0): -1 | 1 | undefined {
-  return outerMarginSide(x, pages.map(page => {
+export function outerEdgeBounds(pages: readonly HorizontalBounds[], minimum = 0): HorizontalBounds[] {
+  return pages.map(page => {
     const width = page.right - page.left;
     const inset = Math.min(width / 2, Math.max(minimum, Math.min(width * 0.08, 64)));
     return { left: page.left + inset, right: page.right - inset };
-  }));
+  });
+}
+
+export function outerEdgeSide(x: number, pages: readonly HorizontalBounds[], minimum = 0): -1 | 1 | undefined {
+  return outerMarginSide(x, outerEdgeBounds(pages, minimum));
 }
 
 /** Reflowable whitespace uses wider, full-height bands; publication content

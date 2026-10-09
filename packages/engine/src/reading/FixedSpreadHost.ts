@@ -169,7 +169,7 @@ export class FixedSpreadHost {
     if (!spread) return [];
     const entries: ReadonlyArray<readonly [FixedContentHost | undefined, number, ContentDocumentView["physicalSide"]]> =
       spread.kind === "single"
-        ? [[this.singleHost, spread.spineIndex, "single"]]
+        ? [[this.singleHost, spread.spineIndex, spread.side ?? "single"]]
         : [[this.leftHost, spread.leftSpineIndex, "left"], [this.rightHost, spread.rightSpineIndex, "right"]];
     return entries.flatMap(([host, spineIndex, physicalSide]) => {
       const document = host?.element.contentDocument;
@@ -319,12 +319,17 @@ export class FixedSpreadHost {
   private layoutPair(): void {
     if (this.singleHost) {
       const natural = this.singleHost.naturalSize;
-      const scale = Math.min(this.width / natural.width, this.height / natural.height) * this.userZoom;
-      const canvasWidth = Math.max(this.width, natural.width * scale);
+      const side = this.currentSpread?.kind === "single" ? this.currentSpread.side : undefined;
+      const naturalWidth = natural.width * (side ? 2 : 1);
+      const scale =
+        Math.min(this.width / naturalWidth, this.height / natural.height) * this.userZoom;
+      const canvasWidth = Math.max(this.width, naturalWidth * scale);
       const canvasHeight = Math.max(this.height, natural.height * scale);
       this.canvasEl.style.width = `${canvasWidth}px`;
       this.canvasEl.style.height = `${canvasHeight}px`;
       this.singleHost.applyExternalScale(scale, canvasWidth, canvasHeight);
+      if (side)
+        this.singleHost.element.style.left = `${(canvasWidth - naturalWidth * scale) / 2 + (side === "right" ? natural.width * scale : 0)}px`;
       return;
     }
     if (

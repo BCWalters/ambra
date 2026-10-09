@@ -25,6 +25,21 @@ describe("defaultFontFamilyForPlatform", () => {
 });
 
 describe("ReadingTheme", () => {
+  it("normalizes only the reflowable body viewport, retaining descendant clipping", () => {
+    const doc = new DOMParser().parseFromString(
+      `<html><head><style>${ReadingTheme.CSS}</style><style>body, .clipped {height:600px;max-height:600px;overflow:hidden}</style></head><body><div class="clipped">Authored crop</div></body></html>`,
+      "text/html",
+    );
+    const body = window.getComputedStyle(doc.body);
+    expect(body.height).toBe("auto");
+    expect(body.maxHeight).toBe("none");
+    expect(body.overflow).toBe("visible");
+    const child = window.getComputedStyle(doc.querySelector(".clipped")!);
+    expect(child.height).toBe("600px");
+    expect(child.maxHeight).toBe("600px");
+    expect(child.overflow).toBe("hidden");
+  });
+
   it("defaults to a font scale of 1 when never set", () => {
     const doc = new DOMParser().parseFromString("<html><body></body></html>", "text/html");
     expect(ReadingTheme.currentFontScale(doc)).toBe(1);

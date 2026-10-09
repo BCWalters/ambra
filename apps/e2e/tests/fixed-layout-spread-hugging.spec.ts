@@ -93,7 +93,8 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
     });
     try {
       await readerPage.waitForTimeout(500);
-      await clickReadingPage(readerPage, "right");
+      // The explicit right cover fills its half-spread up to the viewport edge.
+      await readerPage.frameLocator("iframe").locator("body").press("ArrowRight");
       await readerPage.waitForTimeout(700);
 
       await readerPage.setViewportSize({ width: 2200, height: 900 });

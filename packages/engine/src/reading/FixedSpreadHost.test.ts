@@ -14,6 +14,32 @@ describe("FixedSpreadHost child ownership", () => {
   const loader = {} as ContentLoader;
   const resolver = {} as ResourceUrlResolver;
 
+  it.each(["left", "right"] as const)("reserves an unpaired %s slot without another frame or navigation item", async side => {
+    vi.spyOn(FixedContentHost.prototype, "open").mockImplementation(async function (this: FixedContentHost) {
+      Object.defineProperty(this.element, "contentDocument", {
+        configurable: true, value: document.implementation.createHTMLDocument(side),
+      });
+    });
+    vi.spyOn(FixedContentHost.prototype, "naturalSize", "get").mockReturnValue({ width: 900, height: 600 });
+    const scale = vi.spyOn(FixedContentHost.prototype, "applyExternalScale").mockImplementation(() => {});
+    const host = new FixedSpreadHost(1800, 900);
+    await host.open(loader, resolver, { kind: "single", spineIndex: 4, side }, undefined);
+    expect(scale).toHaveBeenLastCalledWith(1, 1800, 900);
+    const frame = host.element.querySelector("iframe")!;
+    expect(frame.style.left).toBe(side === "left" ? "0px" : "900px");
+    expect(host.spineIndices).toEqual([4]);
+    expect(host.documentViews().map(view => [view.spineIndex, view.physicalSide])).toEqual([[4, side]]);
+    expect(host.element.querySelectorAll("iframe")).toHaveLength(1);
+    host.setZoom(2);
+    expect(scale).toHaveBeenLastCalledWith(2, 3600, 1200);
+    expect(frame.style.left).toBe(side === "left" ? "0px" : "1800px");
+    host.resize(900, 900);
+    expect(host.zoom).toBe(2);
+    expect(scale).toHaveBeenLastCalledWith(1, 1800, 900);
+    expect(frame.style.left).toBe(side === "left" ? "0px" : "900px");
+    host.dispose();
+  });
+
   it.each([
     { width: 900, height: 900, rtl: false },
     { width: 2200, height: 900, rtl: false },

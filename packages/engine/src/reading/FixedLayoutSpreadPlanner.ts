@@ -12,7 +12,7 @@ const MIN_SPREAD_TOTAL_WIDTH = 700;
 
 /** Publication pairing and physical placement, independent of rendering geometry. */
 export type FixedSpread =
-  | { readonly kind: "single"; readonly spineIndex: number }
+  | { readonly kind: "single"; readonly spineIndex: number; readonly side?: "left" | "right" }
   | { readonly kind: "pair"; readonly leftSpineIndex: number; readonly rightSpineIndex: number };
 
 export interface FixedSpreadViewport {
@@ -22,8 +22,8 @@ export interface FixedSpreadViewport {
 }
 
 /** Pairs consecutive eligible primary FXL items, respecting direction and explicit sides.
- * Ineligible items break runs. Mismatched sides render singly rather than adding
- * blank filler pages, following Readium's convention where EPUB leaves discretion. */
+ * Ineligible items break runs. Unpaired explicit sides retain an empty companion
+ * slot, never a filler item in reading/navigation order. */
 export class FixedLayoutSpreadPlanner {
   /** Resolves the author's spread hint against the available viewport. */
   public static isSpreadModeEligible(renditionSpread: RenditionSpread, width: number, height: number): boolean {
@@ -51,6 +51,11 @@ export class FixedLayoutSpreadPlanner {
     if (!FixedLayoutSpreadPlanner.isSpreadCandidate(spine, packageRenditionLayout, viewport, spineIndex)) {
       return { kind: "single", spineIndex };
     }
+    const side = spine[spineIndex]!.pageSpread;
+    const single: FixedSpread =
+      side === "left" || side === "right"
+        ? { kind: "single", spineIndex, side }
+        : { kind: "single", spineIndex };
 
     let runStart = spineIndex;
     for (let previous = adjacentPrimarySpineIndex(spine, runStart, -1);
@@ -82,7 +87,7 @@ export class FixedLayoutSpreadPlanner {
           : { kind: "pair", leftSpineIndex: i, rightSpineIndex: next };
       }
       if (!canPairWithNext && i === spineIndex) {
-        return { kind: "single", spineIndex };
+        return single;
       }
 
       const following = canPairWithNext && next !== undefined
@@ -94,7 +99,7 @@ export class FixedLayoutSpreadPlanner {
     // Fell through without ever covering spineIndex (only reachable if
     // spineIndex isn't actually a spread candidate, already handled
     // above) — a single page is always a safe, correct fallback.
-    return { kind: "single", spineIndex };
+    return single;
   }
 
   /** The next `FixedSpread` after `current`, or `undefined` at the end

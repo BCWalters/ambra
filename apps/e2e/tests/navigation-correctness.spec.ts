@@ -545,6 +545,8 @@ test.describe("paginated reflowable navigation correctness", () => {
               text: doc?.body?.innerText ?? "",
               htmlOverflow: doc ? getComputedStyle(doc.documentElement).overflow : undefined,
               bodyOverflow: doc?.body ? getComputedStyle(doc.body).overflow : undefined,
+              scrollbarWidth: doc ? el.clientWidth - doc.documentElement.clientWidth : undefined,
+              scrollbarHeight: doc ? el.clientHeight - doc.documentElement.clientHeight : undefined,
             };
           });
       });
@@ -553,25 +555,18 @@ test.describe("paginated reflowable navigation correctness", () => {
           column.opacity,
           `a visible column had opacity "${column.opacity}" instead of fully opaque — content present in the DOM but invisible on screen is exactly this bug (label was "${label}")`,
         ).toBe("1");
-        // A second, related bug found right after fixing the first: the
-        // borrowed tail's own document has its native scrollbar-
-        // suppressing `overflow: hidden` (set once by `PaginatedContentHost
-        // .open()`) silently lost — the same cross-origin-iframe-move
-        // reload `openMergedWithPreviousTail`'s own defensive
-        // `goToPageIndex` reapplication already exists for (see
-        // `PaginatedContentHost.reapplyOverflowHidden`'s doc comment) —
-        // masked until the tail became visible at all, then showing up
-        // as a real native scrollbar on the tail page. Content taller
-        // than one page must always be clipped by the pagination
-        // engine's own transform/height, never left to native scrolling.
+        // The viewport owns page clipping. Body clipping would hide later
+        // translated content; still require no native scrollbar allocation.
         expect(
           column.htmlOverflow,
           `a visible column's own document had "overflow: ${column.htmlOverflow}" on <html> instead of "hidden" — its native scrollbar-suppression was lost (label was "${label}")`,
         ).toBe("hidden");
         expect(
           column.bodyOverflow,
-          `a visible column's own document had "overflow: ${column.bodyOverflow}" on <body> instead of "hidden" — its native scrollbar-suppression was lost (label was "${label}")`,
-        ).toBe("hidden");
+          `a visible reflowable body must not crop translated pages (label was "${label}")`,
+        ).toBe("visible");
+        expect(column.scrollbarWidth).toBe(0);
+        expect(column.scrollbarHeight).toBe(0);
       }
       // The left column specifically must show `index.xhtml`'s own last
       // real paragraph (its borrowed tail), not just chapter two's —

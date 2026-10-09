@@ -1187,12 +1187,13 @@ export class ReaderController {
 
   public pageTurnGuideGeometry() {
     if (!this.containerEl || !this.host || this.host instanceof ScrollContentHost ||
-      this.isLoadInFlight) return undefined;
+      this.isLoadInFlight || (this.host instanceof FixedSpreadHost && this.host.zoom > 1)) return undefined;
     const bounds =
       this.host instanceof FixedContentHost
         ? [frameContentBounds(this.host.element)]
         : ((this.turnMargins ?? this.pageMargins())?.bounds ?? []);
-    return pageTurnGuideGeometry(this.containerEl.getBoundingClientRect(), bounds);
+    return pageTurnGuideGeometry(this.containerEl.getBoundingClientRect(), bounds,
+      this.host instanceof FixedSpreadHost || this.host instanceof FixedContentHost);
   }
 
   public async addBookmark(): Promise<Bookmark | undefined> {
@@ -2489,7 +2490,11 @@ export class ReaderController {
       );
       const current = this.host.spread;
       if (planned.kind === "single") {
-        return current?.kind !== "single" || current.spineIndex !== planned.spineIndex;
+        return (
+          current?.kind !== "single" ||
+          current.spineIndex !== planned.spineIndex ||
+          current.side !== planned.side
+        );
       }
       return (
         current?.kind !== "pair" ||

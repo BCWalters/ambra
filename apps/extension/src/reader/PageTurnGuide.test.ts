@@ -18,6 +18,16 @@ describe("page-turn guide geometry", () => {
       .toMatchObject({ top: 20, height: 100 });
     expect(pageTurnGuideGeometry({ ...pane, height: 0 }, [{ left: 140, right: 1060 }])).toBeUndefined();
   });
+  it("shows only existing bounded fixed-artwork edges when no outer whitespace remains", () => {
+    expect(pageTurnGuideGeometry(pane, [{ left: 100, right: 600 }], true))
+      .toMatchObject({ leftWidth: 40, rightWidth: 500 });
+    expect(pageTurnGuideGeometry(pane, [{ left: 100, right: 1100 }], true))
+      .toMatchObject({ leftWidth: 64, rightWidth: 64 });
+    expect(pageTurnGuideGeometry(pane, [{ left: 140, right: 1060 }], true))
+      .toMatchObject({ leftWidth: 40, rightWidth: 40 });
+    expect(pageTurnGuideGeometry(pane, [{ left: 100, right: 1100 }]))
+      .toMatchObject({ leftWidth: 0, rightWidth: 0 });
+  });
 });
 
 it("publishes committed navigation, never layout or a progress flush, and unsubscribes", async () => {

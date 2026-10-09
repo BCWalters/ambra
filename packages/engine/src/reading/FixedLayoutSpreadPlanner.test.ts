@@ -97,6 +97,7 @@ describe("FixedLayoutSpreadPlanner.spreadContaining — explicit page-spread-lef
     expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, 0)).toEqual<FixedSpread>({
       kind: "single",
       spineIndex: 0,
+      side: "right",
     });
   });
 
@@ -121,6 +122,7 @@ describe("FixedLayoutSpreadPlanner.spreadContaining — explicit page-spread-lef
     expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, 5)).toEqual<FixedSpread>({
       kind: "single",
       spineIndex: 5,
+      side: "left",
     });
   });
 
@@ -169,6 +171,7 @@ describe("FixedLayoutSpreadPlanner.spreadContaining — page-spread-center and m
     expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, 0)).toEqual<FixedSpread>({
       kind: "single",
       spineIndex: 0,
+      side: "left",
     });
   });
 
@@ -177,6 +180,7 @@ describe("FixedLayoutSpreadPlanner.spreadContaining — page-spread-center and m
     expect(FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, 0)).toEqual<FixedSpread>({
       kind: "single",
       spineIndex: 0,
+      side: "left",
     });
     // "b" doesn't pair with "a" before it (left+left isn't a valid
     // pairing), but greedily still pairs with "c" right after it
@@ -238,7 +242,7 @@ describe("FixedLayoutSpreadPlanner.nextSpread / previousSpread", () => {
 
   it("steps from the lone leading single into the first proper pair", () => {
     const first = FixedLayoutSpreadPlanner.spreadContaining(spine, PRE_PAGINATED, LTR, WIDE, 0);
-    expect(first).toEqual<FixedSpread>({ kind: "single", spineIndex: 0 });
+    expect(first).toEqual<FixedSpread>({ kind: "single", spineIndex: 0, side: "right" });
     const second = FixedLayoutSpreadPlanner.nextSpread(spine, PRE_PAGINATED, LTR, WIDE, first);
     expect(second).toEqual<FixedSpread>({ kind: "pair", leftSpineIndex: 1, rightSpineIndex: 2 });
   });
