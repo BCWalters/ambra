@@ -390,6 +390,61 @@ test("an unnarrated destination pauses explicitly, retry stays there and narrate
   }
 });
 
+test("native playback retains shared semantic ancestry across narrated documents (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const bodies = [1, 2].map(chapter => {
+    const overlay = new TextDecoder().decode(entries[`EPUB/overlay-${chapter}.smil`]!);
+    const body = overlay.match(/<body>([\s\S]*)<\/body>/)?.[1];
+    if (!body) throw new Error(`The owned chapter ${chapter} overlay has no body.`);
+    return body.replace("<seq id=", '<seq epub:type="chapter" id=');
+  });
+  entries["EPUB/overlay-1.smil"] = strToU8(
+    `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
+      <body epub:type="bodymatter"><seq epub:type="table">${bodies.join("\n")}</seq></body></smil>`,
+  );
+  entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"]!)
+    .replace('media-overlay="mo2"', 'media-overlay="mo1"')
+    .replace('refines="#mo1">00:00:12', 'refines="#mo1">00:00:24'));
+  const fixture = info.outputPath("narrated-shared-semantic-timeline.epub");
+  fs.writeFileSync(fixture, zipSync(entries, { level: 0 }));
+  const { readerPage: page, context } = await launchReader(fixture);
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    const firstTimeline = await page.evaluateHandle(() => {
+      const timeline = Reflect.get(window, "__readerController").narration.cursor.timeline;
+      if (!timeline) throw new Error("Narration discarded the authored semantic timeline.");
+      return timeline;
+    });
+    expect(await page.evaluate(timeline => ({
+      fragments: timeline.entries.map((entry: { par: { text: { fragment: string } } }) => entry.par.text.fragment),
+      semantics: timeline.entries[0].semantics,
+      ranges: timeline.entries[0].ancestors.map((range: { firstIndex: number; afterIndex: number }) =>
+        [range.firstIndex, range.afterIndex],
+      ),
+      nextChapter: timeline.escapeAfter(0, new Set(["chapter"])).nextIndex,
+      afterTable: timeline.escapeAfter(0, new Set(["table"])).nextIndex,
+      allSkipped: timeline.findPlayableIndex(0, new Set(["table"])) === undefined,
+    }), firstTimeline)).toEqual({
+      fragments: ["c1-p1", "c1-p2", "c1-p3", "c2-p1", "c2-p2", "c2-p3"],
+      semantics: ["bodymatter", "table", "chapter"],
+      ranges: [[0, 6], [0, 6], [0, 3]],
+      nextChapter: 3, afterTable: 6, allSkipped: true,
+    });
+    await toc(page, "Narrated chapter 2");
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p1");
+    expect(await page.evaluate(timeline => {
+      const cursor = Reflect.get(window, "__readerController").narration.cursor;
+      return cursor.timeline === timeline && cursor.clips.length === 3 && cursor.clips[0] === timeline.entries[3].par;
+    }, firstTimeline)).toBe(true);
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    await expect.poll(() => passagePaint(page, "c2-p1")).toMatchObject({ painted: true });
+    await firstTimeline.dispose();
+  } finally {
+    await context.close();
+  }
+});
+
 test("Next can recover from an unsupported text-only narration passage after navigation (#337)", async ({ browserName: _browserName }, info) => {
   const entries = unzipSync(fs.readFileSync(narrated));
   entries["EPUB/overlay-2.smil"] = strToU8(new TextDecoder().decode(entries["EPUB/overlay-2.smil"]!)

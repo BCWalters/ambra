@@ -475,6 +475,9 @@ Recorded narration caches that full timeline by SMIL path while preserving its
 existing per-spine flat clip lists and indices. Separately cued documents that
 share an overlay retain the same semantic tree, rather than reparsing unrelated
 copies or losing structure at a content-document boundary.
+An owned native shared-overlay fixture verifies that full ancestry and boundaries
+survive real chapter navigation, while the new document's audio plays and its
+authored passage is painted.
 
 This is preparation for user-controlled skipping and contextual escape under
 #337, not enabled reader behavior or a published conformance-score change.
