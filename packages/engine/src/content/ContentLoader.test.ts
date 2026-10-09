@@ -14,6 +14,40 @@ async function loadFixture(name: string): Promise<Uint8Array> {
 }
 
 describe("ContentLoader", () => {
+  it("uses the first HTML base with href for all resource candidates, without applying SVG xml:base", () => {
+    const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><base target="_blank"/>
+      <base href="../assets/"/><base href="https://ignored.invalid/"/></head><body>
+      <img src="a.png" srcset="a.png 1x, b.png 2x"/><video poster="poster.png" src="video.mp4"/>
+      <iframe src="child.xhtml"/><object data="object.svg"/>
+      <svg xmlns="http://www.w3.org/2000/svg"><image href="image.svg"/></svg></body></html>`;
+    const doc = new DOMParser().parseFromString(raw, "application/xhtml+xml");
+    expect(findResourceReferencesInDocument(doc, "EPUB/text/chapter.xhtml").map(ref => ref.path)).toEqual([
+      "EPUB/assets/a.png", "EPUB/assets/video.mp4", "EPUB/assets/poster.png",
+      "EPUB/assets/object.svg", "EPUB/assets/child.xhtml", "EPUB/assets/a.png",
+      "EPUB/assets/b.png", "EPUB/assets/image.svg",
+    ]);
+    const svg = new DOMParser().parseFromString(
+      '<svg xmlns="http://www.w3.org/2000/svg" xml:base="../assets/"><image href="image.svg"/></svg>',
+      "application/xml",
+    );
+    expect(findResourceReferencesInDocument(svg, "EPUB/text/chapter.svg")[0]?.path).toBe("EPUB/text/image.svg");
+  });
+
+  it.each(["https://base.invalid/assets/", "file:///private/assets/"])(
+    "classifies relative resources against %s without archive lookup",
+    base => {
+      const doc = new DOMParser().parseFromString(
+        `<html xmlns="http://www.w3.org/1999/xhtml"><head><base href="${base}"/></head><body>
+        <img src="a.png" srcset="b.png 2x"/><iframe src="child.xhtml"/></body></html>`,
+        "application/xhtml+xml",
+      );
+      const refs = findResourceReferencesInDocument(doc, "EPUB/chapter.xhtml", { includeUnavailable: true });
+      expect(refs.map(ref => ref.path)).toEqual([`${base}a.png`, `${base}child.xhtml`, `${base}b.png`]);
+      expect(refs.every(ref => ref.location !== undefined)).toBe(true);
+      expect(findResourceReferencesInDocument(doc, "EPUB/chapter.xhtml")).toEqual([]);
+    },
+  );
+
   let loader: ContentLoader;
 
   beforeAll(async () => {

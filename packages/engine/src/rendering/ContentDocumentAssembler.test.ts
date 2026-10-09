@@ -39,6 +39,40 @@ describe("ContentDocumentAssembler", () => {
     expect(assembled).toContain('xlink:href="blob:mock-diagram-url"');
   });
 
+  it("consumes HTML bases while preserving canonical reader links, resource fragments and original source", async () => {
+    const fixture = await loader.loadSpineDocument(0);
+    const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Base</title>
+      <base href="images/" target="_blank"/><base href="https://ignored.invalid/"/></head><body>
+      <img src="photo.png#view"/><a id="chapter" href="../next%23one.xhtml#one%20two">Next</a>
+      <a id="fragment" href="#target">Base fragment</a><a id="file" href="file:///private/book">File</a></body></html>`;
+    const source = new DOMParser().parseFromString(raw, "application/xhtml+xml");
+    const output = new DOMParser().parseFromString(ContentDocumentAssembler.assemble(
+      new ContentDocument(fixture.manifestItem, source, raw),
+      new Map([["OEBPS/images/photo.png", "blob:photo"]]),
+    ), "text/html");
+    expect(output.querySelector("base")).toBeNull();
+    expect(output.querySelector("img")?.getAttribute("src")).toBe("blob:photo#view");
+    expect(output.getElementById("chapter")?.getAttribute("href")).toBe("/OEBPS/next%23one.xhtml#one%20two");
+    expect(output.getElementById("fragment")?.getAttribute("href")).toBe("/OEBPS/images/#target");
+    expect(output.getElementById("file")?.getAttribute("data-ambra-blocked-link")).toBe("file");
+    expect(source.querySelector("base")?.getAttribute("href")).toBe("images/");
+    expect(source.getElementById("chapter")?.getAttribute("href")).toBe("../next%23one.xhtml#one%20two");
+  });
+
+  it("canonicalizes external-base anchors without enabling automatic remote resources", async () => {
+    const fixture = await loader.loadSpineDocument(0);
+    const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><base href="https://base.invalid/book/"/></head>
+      <body><a href="next#one">Next</a><img src="image.png"/></body></html>`;
+    const source = new DOMParser().parseFromString(raw, "application/xhtml+xml");
+    const output = ContentDocumentAssembler.assemble(new ContentDocument(fixture.manifestItem, source, raw), new Map(), {
+      resourceResolutions: new Map([[resourceResolutionKey("https://base.invalid/book/image.png", "image"), null]]),
+    });
+    expect(output).toContain('href="https://base.invalid/book/next#one"');
+    expect(output).not.toContain('src="image.png"');
+    expect(output).not.toContain("<base");
+    expect(output).toContain(CONTENT_SECURITY_POLICY);
+  });
+
   it("rewrites every srcset URL without changing candidate descriptors, sizes, media or the source DOM", async () => {
     const fixture = await loader.loadSpineDocument(0);
     const raw = `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Responsive</title></head><body>

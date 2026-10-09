@@ -1,7 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { classifyEpubReference, externalNavigationUrl } from "./EpubReference.js";
 
 describe("shared EPUB URL classification", () => {
+  it.each(["data:text/html,ignored", "java\nscript:void(0)", "https://"])(
+    "ignores forbidden/invalid HTML base %s with a diagnostic rather than adopting a later base",
+    base => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        expect(classifyEpubReference("EPUB/chapter.xhtml", "image.png", base)).toEqual({
+          kind: "package", path: "EPUB/image.png", fragment: undefined,
+        });
+        expect(warn).toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    ["../assets/", "image%23one.png", { kind: "package", path: "OEBPS/assets/image#one.png", fragment: undefined }],
+    ["../assets/", "#target", { kind: "package", path: "OEBPS/assets/", fragment: "target" }],
+    ["../next.xhtml", "#one%20two", { kind: "package", path: "OEBPS/next.xhtml", fragment: "one two" }],
+    ["chapter.xhtml", "#local", { kind: "fragment", fragment: "local" }],
+    ["https://base.invalid/assets/", "../image.png", { kind: "https", url: "https://base.invalid/image.png" }],
+    ["https://base.invalid/assets/", "#target", { kind: "https", url: "https://base.invalid/assets/#target" }],
+    ["file:///private/assets/", "image.png", { kind: "file", url: "file:///private/assets/image.png" }],
+    ["//base.invalid/assets/", "image.png", { kind: "https", url: "https://base.invalid/assets/image.png" }],
+    ["mailto:reader@example.test", "image.png", { kind: "unsupported", url: "mailto:reader@example.test" }],
+    ["../assets/", "data:image/png;base64,AAAA", { kind: "data", url: "data:image/png;base64,AAAA" }],
+  ])("resolves %s as the document base for %s without scheme aliasing", (base, href, expected) => {
+    expect(classifyEpubReference("OEBPS/text/chapter.xhtml", href, base)).toEqual(expected);
+  });
+
   it.each([
     ["../images/a%20b%23c%3Fd%25.png?version=1#view", "OEBPS/images/a b#c?d%.png", "view"],
     ["/images/root.png", "images/root.png", undefined],

@@ -5,7 +5,7 @@ import { ReadingTheme } from "./ReadingTheme.js";
 import { HighlightTheme } from "./HighlightTheme.js";
 import { resourceResolutionKey } from "./ResourceFallbackSelector.js";
 import type { ResolvedResource, ResourceUrlResolver } from "./ResourceUrlResolver.js";
-import { classifyEpubReference, externalNavigationUrl } from "../container/EpubReference.js";
+import { classifyEpubReference, externalNavigationUrl, getDocumentBaseHref } from "../container/EpubReference.js";
 import { getNamespacedAttributeName } from "../container/Xml.js";
 import { CONTENT_SECURITY_POLICY, NESTED_CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
 
@@ -34,6 +34,7 @@ export class ContentDocumentAssembler {
     budget: NestedResourceBudget = { remaining: MAX_NESTED_RESOURCE_BYTES },
   ): Promise<string> {
     const path = contentDocument.manifestItem.path;
+    const baseHref = getDocumentBaseHref(contentDocument.document);
     const ancestors = new Set([...documentAncestors, path]);
     const references = findResourceReferencesInDocument(
       contentDocument.document, path, { includeUnavailable: true },
@@ -46,12 +47,12 @@ export class ContentDocumentAssembler {
     const publisherCss = new Map<string, string>();
     for (const style of Array.from(contentDocument.document.querySelectorAll("style"))) {
       const source = style.textContent ?? "";
-      publisherCss.set(source, await resolver.rewriteCss(source, path, false, new Set(), nested, budget));
+      publisherCss.set(source, await resolver.rewriteCss(source, path, false, new Set(), nested, budget, baseHref));
     }
     const publisherStyleAttributes = new Map<string, string>();
     for (const element of Array.from(contentDocument.document.querySelectorAll("[style]"))) {
       const source = element.getAttribute("style")!;
-      publisherStyleAttributes.set(source, await resolver.rewriteCss(source, path, true, new Set(), nested, budget));
+      publisherStyleAttributes.set(source, await resolver.rewriteCss(source, path, true, new Set(), nested, budget, baseHref));
     }
     if (nested) {
       let expandedBytes = new TextEncoder().encode(contentDocument.rawText).byteLength + 16_384;
@@ -97,6 +98,7 @@ export class ContentDocumentAssembler {
     // to mutate — the original parsed document is left untouched for other
     // consumers (e.g. future CFI resolution) that need pristine hrefs.
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
+    const baseHref = getDocumentBaseHref(doc);
     for (const frame of Array.from(doc.querySelectorAll("iframe"))) {
       frame.removeAttribute("srcdoc");
       frame.setAttribute("sandbox", "");
@@ -107,10 +109,17 @@ export class ContentDocumentAssembler {
       const attribute = anchor.hasAttribute("href") ? "href"
         : getNamespacedAttributeName(anchor, "http://www.w3.org/1999/xlink", "href");
       if (!attribute) continue;
-      const reference = classifyEpubReference(contentDocument.manifestItem.path, anchor.getAttribute(attribute)!);
+      const reference = classifyEpubReference(contentDocument.manifestItem.path, anchor.getAttribute(attribute)!, baseHref);
       if (reference.kind !== "package" && reference.kind !== "fragment" && !externalNavigationUrl(reference)) {
         anchor.setAttribute(attribute, "#");
         anchor.setAttribute("data-ambra-blocked-link", reference.kind);
+      } else if (baseHref !== undefined) {
+        const fragment = reference.kind === "package" || reference.kind === "fragment"
+          ? reference.fragment === undefined ? "" : `#${encodeURIComponent(reference.fragment)}`
+          : "";
+        anchor.setAttribute(attribute, reference.kind === "package"
+          ? `/${reference.path.split("/").map(encodeURIComponent).join("/")}${fragment}`
+          : reference.kind === "fragment" ? fragment : externalNavigationUrl(reference)!);
       }
     }
 
@@ -178,6 +187,9 @@ export class ContentDocumentAssembler {
       const rewritten = options.publisherStyleAttributes?.get(element.getAttribute("style")!);
       if (rewritten !== undefined) element.setAttribute("style", rewritten);
     }
+    // The reader consumes canonical links and resolved resources. Never let
+    // the original base affect blob-frame navigation or publisher targets.
+    for (const base of Array.from(doc.querySelectorAll("base"))) base.remove();
 
     injectContentSecurityPolicy(doc, options.nestedDocument ? NESTED_CONTENT_SECURITY_POLICY : CONTENT_SECURITY_POLICY);
     injectCssReset(doc);

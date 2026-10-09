@@ -339,7 +339,10 @@ export function collectInspectorReferences(
   const documentBase = elements.find(element => element.localName === "base" && element.hasAttribute("href")
     && (element.namespaceURI === "http://www.w3.org/1999/xhtml"
       || (element.namespaceURI === null && document.documentElement.localName === "html")));
-  const base = documentBase ? resolveBase(sourcePath, documentBase.getAttribute("href")!) : sourcePath;
+  const classifiedBase = documentBase
+    ? classifyEpubReference(sourcePath, "", documentBase.getAttribute("href")!) : undefined;
+  const base = !classifiedBase || classifiedBase.kind === "fragment" ? sourcePath
+    : classifiedBase.kind === "package" ? classifiedBase.path : undefined;
   const presentation = new Set(["fill", "stroke", "filter", "clip-path", "mask", "marker", "marker-start", "marker-mid", "marker-end", "cursor"]);
   for (let index = 0; index < elements.length; index += 1) {
     const element = elements[index]!;
@@ -362,7 +365,9 @@ export function collectInspectorReferences(
       } else if (attribute.name === "srcset") {
         for (const url of srcsetUrls(attribute.value)) add(url.value, elementBase, sourceOffset(url.start), elementPath);
       } else if (attribute.name === "style" || (element.namespaceURI === "http://www.w3.org/2000/svg" && presentation.has(attribute.name))) {
-        for (const url of cssUrls(attribute.value)) add(url.value, elementBase, sourceOffset(url.start), elementPath);
+        for (const url of cssUrls(attribute.value)) add(
+          url.value, url.value.startsWith("#") ? sourcePath : elementBase, sourceOffset(url.start), elementPath,
+        );
       }
     }
     if (element.localName === "style" && (!element.getAttribute("type") || element.getAttribute("type") === "text/css")) {
@@ -371,7 +376,7 @@ export function collectInspectorReferences(
       const decoded = decodedXml(text.slice(token.openingEnd, contentEnd), token.openingEnd);
       for (const url of cssUrls(css)) {
         const offset = decoded?.value === css ? decoded.offsets[url.start] ?? token.start : token.start;
-        add(url.value, elementBase, offset, elementPath);
+        add(url.value, url.value.startsWith("#") ? sourcePath : elementBase, offset, elementPath);
       }
     }
   }

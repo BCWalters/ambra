@@ -45,6 +45,45 @@ describe("ResourceUrlResolver", () => {
     resolver.dispose();
   });
 
+  it("uses the HTML base for inline CSS, but keeps local paint-server fragments and linked CSS bases independent", async () => {
+    const resolver = new ResourceUrlResolver(loader, { supports: async () => true });
+    const loadSpy = vi.spyOn(loader, "loadResourceBytes");
+    try {
+      const css = await resolver.rewriteCss(
+        'p{background:url(photo.png#view);filter:url(#paint)}',
+        "OEBPS/chapter.xhtml", false, new Set(), false, undefined, "images/",
+      );
+      expect(css).toMatch(/background:url\("blob:.*#view"\)/);
+      expect(css).toContain('filter:url("#paint")');
+      expect(loadSpy.mock.calls.map(([path]) => path)).toEqual(["OEBPS/images/photo.png"]);
+      await resolver.resolve("OEBPS/styles/main.css");
+      expect(loadSpy.mock.calls.some(([path]) => path === "OEBPS/styles/main.css")).toBe(true);
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it.each(["https://base.invalid/", "file:///private/"])(
+    "reports %s inline CSS resources without ZIP reads and preserves unrelated declarations",
+    async base => {
+      const resolver = new ResourceUrlResolver(loader);
+      const loadSpy = vi.spyOn(loader, "loadResourceBytes");
+      const unavailable = vi.fn();
+      resolver.fallbackSelector.onUnsupported(unavailable);
+      try {
+        const css = await resolver.rewriteCss(
+          "p{background:url(photo.png);color:green}", "OEBPS/chapter.xhtml",
+          false, new Set(), false, undefined, base,
+        );
+        expect(css).toBe("p{color:green}");
+        expect(loadSpy).not.toHaveBeenCalled();
+        expect(unavailable).toHaveBeenCalledWith(expect.objectContaining({ path: `${base}photo.png`, consumer: "image" }));
+      } finally {
+        resolver.dispose();
+      }
+    },
+  );
+
   it("caches resolution: the same path returns the same URL and is only loaded once", async () => {
     const resolver = new ResourceUrlResolver(loader);
     const loadSpy = vi.spyOn(loader, "loadResourceBytes");

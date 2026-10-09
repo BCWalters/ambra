@@ -144,6 +144,20 @@ describe("Inspector reader linking", () => {
     ["dock-right", "Dock right"],
   ] as const;
 
+  it("offers base-aware source file links without rewriting authored URLs", async () => {
+    const source = '<html xmlns="http://www.w3.org/1999/xhtml"><head><base href="two.xhtml"/></head>'
+      + '<body><a href="#target">Next chapter</a></body></html>';
+    onReadFile.mockResolvedValue(source);
+    await render();
+    const link = Array.from(container.querySelectorAll<HTMLElement>('[data-nav-path="two.xhtml"]'))
+      .find(element => element.textContent === '"#target"');
+    expect(link?.getAttribute("role")).toBe("link");
+    expect(container.querySelector("pre")?.textContent).toContain('<base href="two.xhtml"/>');
+    expect(container.querySelector("pre")?.textContent).toContain('<a href="#target">');
+    await act(async () => link!.click());
+    expect(onReadFile).toHaveBeenLastCalledWith("two.xhtml");
+  });
+
   it("automatically marks original source with compact labels without changing copied source", async () => {
     reader = { ...reader, getVisiblePages: vi.fn().mockResolvedValue([{
       path: "one.xhtml", spineIndex: 0, pageIndex: 33, pageNumber: 35, physicalSide: "single",

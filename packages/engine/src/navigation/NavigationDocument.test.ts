@@ -48,6 +48,22 @@ async function recoveryFixture(
 }
 
 describe("NavigationDocument.load (EPUB3 Nav Document, nested TOC fixture)", () => {
+  it.each([
+    ["../text/", "chapter.xhtml#one%20two", "EPUB/text/chapter.xhtml", "one two", undefined],
+    ["../chapter.xhtml", "#target", "EPUB/chapter.xhtml", "target", undefined],
+    ["https://base.invalid/book/", "chapter.xhtml", "https://base.invalid/book/chapter.xhtml", undefined, "https"],
+    ["file:///private/", "chapter.xhtml", "file:///private/chapter.xhtml", undefined, "file"],
+  ])("honors navigation-document base %s without overriding target policy", (base, href, path, fragment, kind) => {
+    const nav = NavigationDocument.parseNavDocument(
+      `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+      <head><base href="${base}"/><base href="https://ignored.invalid/"/></head><body>
+      <nav epub:type="toc"><ol><li><a href="${href}">Chapter</a></li></ol></nav></body></html>`,
+      "EPUB/nav/nav.xhtml",
+    );
+    expect(nav.toc.items[0]).toMatchObject({ path, fragment });
+    expect(nav.toc.items[0]?.externalReference?.kind).toBe(kind);
+  });
+
   it("parses a nested table of contents, including a headless structural heading", async () => {
     const container = await EpubContainer.open(await loadFixture("nested-toc.epub"));
     const nav = await NavigationDocument.load(container);

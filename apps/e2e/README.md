@@ -255,6 +255,13 @@ cross-element/whitespace text assertion recovery, and exact adjacent-text
 before/after affinity. It uses original content and runs in the early CI gate.
 It does not claim support for nested documents or media/spatial CFI offsets.
 
+`html-base.spec.ts` checks the first XHTML base with href across paginated,
+fixed-layout and roll readers. It requires actual image/CSS decoding, independent
+linked-CSS bases, assembled child resources, base-aware TOC targets and real
+reader link activation. Remote/file bases must not alias packaged resources,
+dispatch automatic remote requests or abort readable chapter text. These
+synthetic fixtures run in the protected resources group, not the official score.
+
 `resource-policy.spec.ts` additionally exercises Chromium's frame-level required
 CSP on XHTML and headless SVG roots. After verifying a packaged image actually
 decodes, it introduces an unrewritten remote image URL through the trusted test

@@ -21,7 +21,7 @@ export type {
   PageSpreadSide,
 } from "./container/PackageDocument.js";
 export { resolveEpubPath, directoryOf, splitHrefFragment } from "./container/EpubPath.js";
-export { classifyEpubReference, externalNavigationUrl } from "./container/EpubReference.js";
+export { classifyEpubReference, externalNavigationUrl, getDocumentBaseHref } from "./container/EpubReference.js";
 export type { EpubReference, NonPackageEpubReference } from "./container/EpubReference.js";
 export {
   NavigationDocument,
