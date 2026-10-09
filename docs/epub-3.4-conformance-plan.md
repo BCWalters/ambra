@@ -756,8 +756,14 @@ out-of-duration targets use existing navigation-error recovery before replacing
 readable content. Applying an offset does not issue a play/pause command.
 Spatial navigation uses decoded image/video dimensions, object fit/position and
 SVG viewport transforms; scroll, roll and zoomed fixed-layout views reveal the
-requested point. Cropped-out points, rotated/perspective-transformed XHTML media
-and complex object-position expressions fail explicitly and remain follow-ups.
+requested point. Browser-computed edge-relative positions and linear
+`calc(percentage +/- pixels)` positions are resolved against the remaining
+object-fit space, including negative space for cover crops. Original native
+fixtures require the authored red target pixel at the centered CFI point for
+edge-relative/calculated letterboxing and edge-relative cover placement.
+Cropped-out points, rotated/perspective-transformed XHTML media and nonlinear
+object-position functions such as `min()`/`max()` fail explicitly and remain
+follow-ups.
 
 Retained locators preserve offsets in bookmarks, history, progress and layout
 bridges; timed progress captures the media's live time. Actual caret/focus or

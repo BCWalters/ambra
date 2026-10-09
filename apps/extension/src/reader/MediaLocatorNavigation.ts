@@ -105,9 +105,29 @@ export function currentMediaCfi(cfi: string, node: Node): string {
 }
 
 function positionedOffset(value: string, available: number): number {
-  if (/^-?(?:\d+(?:\.\d+)?|\.\d+)%$/.test(value)) return parseFloat(value) * available / 100;
-  if (/^-?(?:\d+(?:\.\d+)?|\.\d+)px$/.test(value)) return parseFloat(value);
+  const number = "[+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)(?:e[+-]?\\d+)?";
+  const term = `(${number})(%|px)`;
+  const plain = new RegExp(`^${term}$`, "i").exec(value);
+  const calculated = new RegExp(`^calc\\(\\s*${term}(?:\\s+([+-])\\s+${term})?\\s*\\)$`, "i").exec(value);
+  const match = plain ?? calculated;
+  if (match) {
+    const resolve = (amount: string, unit: string): number =>
+      Number(amount) * (unit === "%" ? available / 100 : 1);
+    const first = resolve(match[1]!, match[2]!);
+    const result = calculated?.[4] === undefined ? first
+      : first + (calculated[3] === "-" ? -1 : 1) * resolve(calculated[4], calculated[5]!);
+    if (Number.isFinite(result)) return result;
+  }
   throw new LocatorResolutionError(`Unsupported spatial media object-position "${value}".`);
+}
+
+function objectPositionOffsets(value: string, width: number, height: number): { x: number; y: number } {
+  // Computed edge positions are serialized as calc(percentage +/- pixels).
+  const components = /^(calc\([^()]*\)|\S+)\s+(calc\([^()]*\)|\S+)$/.exec(value.trim());
+  if (!components) {
+    throw new LocatorResolutionError(`Unsupported spatial media object-position "${value}".`);
+  }
+  return { x: positionedOffset(components[1]!, width), y: positionedOffset(components[2]!, height) };
 }
 
 /** Coordinates are in the target iframe, before any shell-level canvas scaling. */
@@ -167,9 +187,9 @@ export function spatialMediaPoint(node: Node, position: CfiSpatialOffset): { x: 
       width = intrinsic.width * scale;
       height = intrinsic.height * scale;
     }
-    const [objectX = "50%", objectY = "50%"] = style.objectPosition.split(" ");
-    const x = positionedOffset(objectX, contentWidth - width) + width * position.x / 100;
-    const y = positionedOffset(objectY, contentHeight - height) + height * position.y / 100;
+    const placement = objectPositionOffsets(style.objectPosition, contentWidth - width, contentHeight - height);
+    const x = placement.x + width * position.x / 100;
+    const y = placement.y + height * position.y / 100;
     if (x < -0.01 || y < -0.01 || x > contentWidth + 0.01 || y > contentHeight + 0.01) {
       throw new LocatorResolutionError("The requested spatial point is outside the media's visible crop.");
     }

@@ -119,6 +119,41 @@ describe("spatial media geometry", () => {
     expect(spatialMediaPoint(image(), { x: 25, y: 50 })).toEqual({ x: 70, y: 75 });
   });
 
+  it.each([
+    ["calc(100% - 10px)", 70],
+    ["calc(25% + 10px)", 75],
+    ["calc(75% - 5px)", 70],
+    ["calc(100% + -10px)", 70],
+    ["calc(-25% + 10px)", 65],
+    ["calc(50% + 0px)", 70],
+  ])("resolves computed vertical position %s against the letterbox space", (value, y) => {
+    const element = image();
+    const computed = getComputedStyle(element);
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      ...computed,
+      borderLeftWidth: "10px", borderRightWidth: "10px",
+      borderTopWidth: "10px", borderBottomWidth: "10px",
+      paddingLeft: "10px", paddingRight: "10px", paddingTop: "10px", paddingBottom: "10px",
+      width: "200px", height: "100px", boxSizing: "border-box",
+      objectFit: "contain", objectPosition: `0% ${value}`, transform: "none",
+    });
+    expect(spatialMediaPoint(element, { x: 25, y: 50 })).toEqual({ x: 70, y });
+  });
+
+  it("resolves edge-relative calc against negative cover space before testing the crop", () => {
+    const element = image();
+    element.style.objectFit = "cover";
+    element.style.objectPosition = "calc(100% - 10px) 50%";
+    expect(spatialMediaPoint(element, { x: 50, y: 50 })).toEqual({ x: 60, y: 70 });
+    expect(() => spatialMediaPoint(element, { x: 0, y: 50 })).toThrow(/visible crop/);
+  });
+
+  it("reports unsupported computed position functions instead of treating them as percentages", () => {
+    const element = image();
+    element.style.objectPosition = "min(10px, 25%) 50%";
+    expect(() => spatialMediaPoint(element, { x: 25, y: 50 })).toThrow(/Unsupported.*object-position/);
+  });
+
   it("rejects points hidden by an authored cover crop", () => {
     const element = image();
     element.style.objectFit = "cover";

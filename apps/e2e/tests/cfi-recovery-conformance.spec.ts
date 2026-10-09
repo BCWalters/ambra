@@ -301,6 +301,70 @@ test("CFI spatial offsets reveal the actual interior image point and clear on us
   } finally { await context.close(); }
 });
 
+for (const geometry of [
+  { name: "edge-relative letterbox", fit: "none", position: "right 20px bottom 100px", width: 320, height: 1600, x: 240, y: 1200 },
+  { name: "calculated letterbox", fit: "none", position: "calc(25% + 10px) calc(75% - 50px)", width: 320, height: 1600, x: 210, y: 1150 },
+  { name: "edge-relative cover", fit: "cover", position: "right 0px bottom 100px", width: 240, height: 800, x: 180, y: 400 },
+]) {
+  test(`CFI spatial point lands on painted image pixels with ${geometry.name} (#340)`, async ({ browserName: _browserName }, info) => {
+    const entries = unzipSync(fs.readFileSync(mediaPublication(info)));
+    entries["EPUB/one.xhtml"] = strToU8(new TextDecoder().decode(entries["EPUB/one.xhtml"])
+      .replace("width:240px;height:1200px;min-height:1200px;max-height:none",
+        `width:${geometry.width}px;height:${geometry.height}px;min-height:${geometry.height}px;max-height:none;object-fit:${geometry.fit};object-position:${geometry.position}`));
+    const file = info.outputPath("cfi-object-position.epub");
+    fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+    const { context, readerPage: page } = await launchReader(file, { viewport: { width: 600, height: 720 } });
+    try {
+      await exposeReaderController(page);
+      await page.evaluate(async () => { await Reflect.get(window, "__readerController").setViewMode("scroll"); });
+      const cfi = "epubcfi(/6/2!/4/4[picture]@75:75)";
+      const audit = await page.evaluate(async ({ cfi, geometry }) => {
+        const controller = Reflect.get(window, "__readerController");
+        await controller.goToBookmark(cfi);
+        const doc = controller.contentDocumentViews()[0].document as Document;
+        const image = doc.getElementById("picture") as HTMLImageElement;
+        const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+        await controller.addBookmark();
+        await controller.flushProgress(true);
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        await Promise.all(document.getAnimations()
+          .filter(animation => animation instanceof CSSTransition)
+          .map(animation => animation.finished));
+        const box = image.getBoundingClientRect();
+        const outer = frame.getBoundingClientRect();
+        return {
+          error: controller.snapshot().error,
+          pointY: box.top + geometry.y, center: doc.documentElement.clientHeight / 2,
+          pixelX: outer.left + box.left + geometry.x,
+          pixelY: outer.top + box.top + geometry.y,
+          frame: outer.toJSON(), image: box.toJSON(), shellScroll: window.scrollY,
+          cfi: controller.currentReadingCfi(),
+          bookmark: controller.snapshot().bookmarks.at(-1)?.cfi,
+          progress: (await controller.library.getProgress(controller.bookId))?.cfi,
+        };
+      }, { cfi, geometry });
+      await info.attach("object-position-landing", { body: JSON.stringify(audit), contentType: "application/json" });
+      expect(audit.error).toBeUndefined();
+      expect(Math.abs(audit.pointY - audit.center)).toBeLessThanOrEqual(1);
+      expect(audit.cfi).toBe(cfi);
+      expect(audit.bookmark).toBe(cfi);
+      expect(audit.progress).toBe(cfi);
+      const screenshot = await page.screenshot();
+      const pixel = await page.evaluate(async ({ bytes, x, y }) => {
+        const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return [...context.getImageData(Math.round(x), Math.round(y), 1, 1).data];
+      }, { bytes: [...screenshot], x: audit.pixelX, y: audit.pixelY });
+      expect(pixel).toEqual([204, 0, 0, 255]);
+    } finally { await context.close(); }
+  });
+}
+
 for (const spread of [false, true]) {
 test(`CFI side bias selects the preceding or following natural ${spread ? "spread" : "page"} at a text break (#340)`, async ({ browserName: _browserName }, info) => {
   const { context, readerPage: page } = await launchReader(flowPublication(info), {
