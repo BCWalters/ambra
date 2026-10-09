@@ -13,7 +13,6 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import {
-  ArrowUndoRegular,
   ChevronDownRegular,
   ChevronUpRegular,
   HeadphonesRegular,
@@ -30,8 +29,8 @@ export interface NarrationControlsProps {
   onPlayPause: () => void;
   onPrevious: () => void;
   onNext: () => void;
-  onReturnToNarration: () => void;
   onListenFromHere: () => void;
+  onListenFromSelection: () => void;
   onRateChange: (rate: number) => void;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
@@ -84,8 +83,8 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
   onPlayPause,
   onPrevious,
   onNext,
-  onReturnToNarration,
   onListenFromHere,
+  onListenFromSelection,
   onRateChange,
   collapsed,
   onCollapsedChange,
@@ -103,17 +102,13 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
       focusOnMount.current = false;
     }
   }, []);
-  const playing = state.status === "playing" || state.status === "loading";
-  const canReturn = state.hasTarget && !state.following && state.status !== "idle" && state.status !== "error";
+  const playing = state.status === "playing" || (state.status === "loading" && state.playbackRequested !== false);
   const playLabel = t(playing ? "narration.pause" : "narration.play");
-  const listenLabel = t(hasSelection ? "narration.listenFromSelection" : "narration.listenFromPage");
   const status = state.status === "error"
     ? t("narration.error")
     : state.status === "loading"
       ? t("narration.loading")
-      : canReturn
-        ? t("narration.browsing")
-        : "";
+      : "";
   const collapseLabel = t(collapsed ? "narration.expand" : "narration.collapse");
   const playback = (
     <Tooltip content={playLabel} relationship="label">
@@ -197,41 +192,33 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
             </MenuPopover>
           </Menu>
           </div>
-          <Tooltip content={t("narration.return")} relationship="label">
+          <Tooltip content={t("narration.listenFromPage")} relationship="label">
             <Button
               appearance="secondary"
               size="small"
-              icon={<ArrowUndoRegular />}
+              icon={<HeadphonesRegular />}
               className={styles.auxiliary}
-              onClick={onReturnToNarration}
-              aria-label={t("narration.return")}
-              aria-hidden={!canReturn}
-              tabIndex={canReturn ? undefined : -1}
-              disabled={!canReturn}
-              style={{ visibility: canReturn ? "visible" : "hidden", marginInlineStart: "auto" }}
+              onClick={onListenFromHere}
+              aria-label={t("narration.listenFromPage")}
+              style={{ marginInlineStart: "auto" }}
             >
-              <span className={styles.auxiliaryLabel}>{t("narration.return")}</span>
+              <span className={styles.auxiliaryLabel}>{t("narration.listenFromPage")}</span>
             </Button>
           </Tooltip>
-          <Tooltip content={listenLabel} relationship="label">
+          {hasSelection && <Tooltip content={t("narration.listenFromSelection")} relationship="label">
             <Button
               appearance="subtle"
               size="small"
               icon={<HeadphonesRegular />}
               className={styles.auxiliary}
-              aria-label={listenLabel}
-              onClick={onListenFromHere}
+              aria-label={t("narration.listenFromSelection")}
+              onClick={onListenFromSelection}
             >
               <span className={styles.auxiliaryLabel}>
-                <span aria-hidden={hasSelection} style={{ gridArea: "1 / 1", visibility: hasSelection ? "hidden" : "visible" }}>
-                  {t("narration.listenFromPage")}
-                </span>
-                <span aria-hidden={!hasSelection} style={{ gridArea: "1 / 1", visibility: hasSelection ? "visible" : "hidden" }}>
-                  {t("narration.listenFromSelection")}
-                </span>
+                {t("narration.listenFromSelection")}
               </span>
             </Button>
-          </Tooltip>
+          </Tooltip>}
           </>}
         </div>
         <Tooltip content={collapseLabel} relationship="label">

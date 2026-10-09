@@ -119,6 +119,20 @@ chapter must highlight and play its different audio source without a truncated
 audio error. The original source clip stays unchanged. This synthetic case runs
 in protected narration CI and does not promote an official conformance score.
 
+Navigation-led narration cases cue the new visible reading position after TOC,
+end-of-book scrubber, page movement or native scroll, preserving play/pause and
+speed. Same-segment navigation and failed navigation preserve audio time.
+Automatic following remains active without recursively retargeting playback.
+Paused cases also cover fixed-layout, scroll and roll document ownership;
+explicit Next uses the newly cued chapter. Restart page audio is independent
+from conditional Jump to selection, with no detached browsing/Return control.
+Unnarrated destinations pause explicitly and never silently scan into a later
+chapter. Unit cases cover metadata races, intended playback and paused recovery.
+Native loading cases gate real audio bytes during Play, Pause and rapid
+navigation; retained selections do not replace page restart's visible position.
+These cases use authored segment-level timing, not synthesized timing for
+individual words or unoverlaid text.
+
 Three owned SMIL reference fixtures use external audio, text and `epub:textref`
 URLs whose paths match real packaged members. Each must fail explicitly before
 audio assignment, make no request to the external host, and retain readable

@@ -3,6 +3,7 @@ import type { ContentDocumentView, ContentLoader, DomBreakPoint, LocatorResolver
 import type { NarrationTarget } from "./MediaOverlayNarration.js";
 import { applyNarrationRange } from "./HighlightRenderer.js";
 import { selectedReadingPosition, visibleReadingPosition } from "./ReadingPosition.js";
+import type { ReadingPosition } from "./ReadingPosition.js";
 import { visiblePageBounds } from "./VisiblePageBounds.js";
 import { applySvgNarrationPaint } from "./SvgNarrationPaint.js";
 
@@ -26,11 +27,16 @@ export class NarrationReadingBridge {
     private readonly context: NarrationReadingContext,
   ) {}
 
-  public async readingPosition(): Promise<{ spineIndex: number; element: Element }> {
+  public currentReadingLocation(): ReadingPosition {
     const views = this.context.documents();
-    const position = selectedReadingPosition(views, this.resolver)
-      ?? visibleReadingPosition(views, this.context.position(), this.resolver);
+    const position = visibleReadingPosition(views, this.context.position(), this.resolver);
     if (!position) throw new Error("There is no reading passage available for narration.");
+    return position;
+  }
+
+  public async readingPosition(preferSelection = true): Promise<{ spineIndex: number; element: Element }> {
+    const position = (preferSelection ? selectedReadingPosition(this.context.documents(), this.resolver) : undefined)
+      ?? this.currentReadingLocation();
     const content = await this.loader.loadSpineDocument(position.spineIndex);
     if (this.context.disposed()) throw new Error("The reading session has closed.");
     const node = position.cfi

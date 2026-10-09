@@ -31,19 +31,43 @@ function boundaryFixture(info: TestInfo): string {
   return file;
 }
 
-async function passagePaint(page: Page, id: string, edge: "first" | "last" = "first") {
+async function passagePaint(page: Page, id?: string, edge: "first" | "last" = "first") {
   return page.evaluate(({ fragment, edge }) => {
-    const views = Reflect.get(window, "__readerController").contentDocumentViews();
+    const controller = Reflect.get(window, "__readerController");
+    const views = controller.contentDocumentViews();
+    const position = fragment ? undefined : controller.host.currentPosition();
     const results = [];
     for (const view of views) {
       const doc: Document = view.document;
-      const element = doc.getElementById(fragment);
+      const node: Node | undefined = position?.node;
+      if (!fragment && node?.ownerDocument !== doc) continue;
+      const element = fragment ? doc.getElementById(fragment) : node?.parentElement;
       const window = doc.defaultView;
       if (!element || !window) continue;
       const frame = window.frameElement;
       if (!(frame instanceof HTMLIFrameElement)) throw new Error("Missing narrated frame.");
       const range = doc.createRange();
-      range.selectNodeContents(element);
+      if (!fragment) {
+        const frameRect = frame.getBoundingClientRect();
+        const walker = doc.createTreeWalker(doc.body ?? doc.documentElement, NodeFilter.SHOW_TEXT);
+        for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+          if (!text.textContent?.trim() || !text.parentElement) continue;
+          range.selectNodeContents(text);
+          for (const rect of range.getClientRects()) {
+            if (rect.width <= 0 || rect.height <= 0 || rect.top < 0 || rect.bottom > window.innerHeight) continue;
+            const x = (rect.left + rect.right) / 2;
+            const y = (rect.top + rect.bottom) / 2;
+            if (text.parentElement.contains(doc.elementFromPoint(x, y)) &&
+              frame.ownerDocument.elementFromPoint(frameRect.left + x * frameRect.width / window.innerWidth,
+                frameRect.top + y * frameRect.height / window.innerHeight) === frame) {
+              return { withinLayoutViewport: true, painted: true };
+            }
+          }
+        }
+        return { withinLayoutViewport: false, painted: false };
+      } else {
+        range.selectNodeContents(element);
+      }
       const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
       const rect = edge === "first" ? rects[0] : rects.at(-1);
       if (!rect) throw new Error("The narrated passage has no rendered text.");
@@ -56,7 +80,8 @@ async function passagePaint(page: Page, id: string, edge: "first" | "last" = "fi
         withinLayoutViewport: rect.top >= 0 && rect.top < window.innerHeight &&
           rect.left >= 0 && rect.left < window.innerWidth,
         painted: probeYs.every(y =>
-          doc.elementFromPoint(x, y)?.closest(`#${fragment}`) === element &&
+          (fragment ? doc.elementFromPoint(x, y)?.closest(`#${fragment}`) === element
+            : element.contains(doc.elementFromPoint(x, y))) &&
           frame.ownerDocument.elementFromPoint(frameRect.left + x * scaleX, frameRect.top + y * scaleY) === frame),
       });
     }
@@ -273,6 +298,32 @@ async function visibleFrames(page: Page) {
   );
 }
 
+async function narrationTarget(page: Page): Promise<string | undefined> {
+  return page.evaluate(() => {
+    const target = Reflect.get(window, "__readerController").narration.target;
+    return typeof target?.fragment === "string" ? target.fragment : undefined;
+  });
+}
+
+async function gateNarrationResource(page: Page, suffix = ".wav"): Promise<void> {
+  await page.evaluate(suffix => {
+    const loader = Reflect.get(window, "__readerController").contentLoader;
+    const original = loader.loadResourceBytes.bind(loader);
+    const gate = { entered: false, released: false, release: () => {} };
+    const blocked = new Promise<void>(resolve => { gate.release = resolve; });
+    Reflect.set(window, "__narrationLoadGate", gate);
+    loader.loadResourceBytes = async (resource: string) => {
+      const bytes = await original(resource);
+      if (resource.endsWith(suffix)) {
+        gate.entered = true;
+        await blocked;
+        gate.released = true;
+      }
+      return bytes;
+    };
+  }, suffix);
+}
+
 async function listen(page: Page) {
   await page.mouse.move(350, 2);
   await button(page, "Play narration").click();
@@ -300,6 +351,40 @@ test("plain books do not offer recorded narration", async () => {
     await expect(button(page, "Listen")).toHaveCount(0);
     await expect(controls(page)).toHaveCount(0);
     await expect(button(page, "Play narration")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("an unnarrated destination pauses explicitly, retry stays there and narrated navigation recovers paused (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  entries["EPUB/plain.xhtml"] = strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Unnarrated chapter</title></head><body><h1>Unnarrated chapter</h1><p>This chapter has no recorded narration.</p></body></html>');
+  entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"]!)
+    .replace("</manifest>", '<item id="plain" href="plain.xhtml" media-type="application/xhtml+xml"/></manifest>')
+    .replace("</spine>", '<itemref idref="plain"/></spine>'));
+  entries["EPUB/nav.xhtml"] = strToU8(new TextDecoder().decode(entries["EPUB/nav.xhtml"]!)
+    .replace("</ol></nav>", '<li><a href="plain.xhtml">Unnarrated chapter</a></li></ol></nav>'));
+  const fixture = info.outputPath("narrated-with-unnarrated-chapter.epub");
+  fs.writeFileSync(fixture, zipSync(entries, { level: 0 }));
+  const { readerPage: page, context } = await launchReader(fixture);
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    const source = (await audioState(page)).source;
+    await toc(page, "Unnarrated chapter");
+    await expect.poll(async () => (await audioState(page)).paused).toBe(true);
+    await expect(controls(page)).toContainText("There is no recorded narration at this reading position.");
+    await button(page, "Play narration").click();
+    await expect(controls(page)).toContainText("There is no recorded narration at this reading position.");
+    expect((await audioState(page)).paused).toBe(true);
+    await expect(page.frameLocator("iframe").first().locator("h1")).toHaveText("Unnarrated chapter");
+    await toc(page, "Narrated chapter 2");
+    await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p1");
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(0.1);
+    expect((await audioState(page)).paused).toBe(false);
   } finally {
     await context.close();
   }
@@ -396,10 +481,156 @@ test("Play starts at the displayed narrated passage, not the book beginning", as
   }
 });
 
-for (const browsing of ["page", "contents", "scrubber"] as const) {
-  test(`${browsing} browsing keeps audio playing; Return follows audio, Restart page audio changes it`, async () => {
+for (const browsing of ["contents", "scrubber"] as const) {
+  test(`paused ${browsing} navigation resumes narration at the new reading position (#337)`, async () => {
     const { readerPage: page, context } = await launchReader(narrated);
     try {
+      await exposeReaderController(page);
+      await listen(page);
+      await setSpeed(page, 0.75);
+      await button(page, "Pause narration").click();
+      const source = (await audioState(page)).source;
+      if (browsing === "contents") {
+        await toc(page, "Narrated chapter 2");
+      } else {
+        await position(page).focus();
+        await position(page).press("End");
+        await expect(position(page)).toHaveAttribute("aria-valuenow", "100");
+      }
+      expect((await audioState(page)).paused).toBe(true);
+      await button(page, "Play narration").click();
+      await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
+      const fragment = browsing === "contents" ? "c2-p1" : "c2-p3";
+      const begin = browsing === "contents" ? 0 : 8;
+      await expect.poll(() => narrationTarget(page)).toBe(fragment);
+      await expect.poll(() => passagePaint(page, browsing === "scrubber" ? undefined : fragment)).toMatchObject({ painted: true });
+      await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(begin + 0.1);
+      expect(await audioState(page)).toMatchObject({ paused: false, rate: 0.75, error: null });
+      await expect(button(page, "Return to narration")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const mode of ["fixed-layout", "scroll", "roll"] as const) {
+  test(`${mode}: paused chapter navigation resumes the requested document's audio (#337)`, async ({ browserName: _browserName }, info) => {
+    let fixture = narrated;
+    if (mode === "roll") {
+      const entries = unzipSync(fs.readFileSync(path.join(fixtures, "media-overlay/fixed-layout.epub")));
+      entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"]!)
+        .replace('property="rendition:layout">pre-paginated', 'property="rendition:layout">roll'));
+      fixture = info.outputPath("narrated-roll.epub");
+      fs.writeFileSync(fixture, zipSync(entries, { level: 0 }));
+    }
+    const { readerPage: page, context } = await launchReader(
+      mode === "fixed-layout" ? path.join(fixtures, "media-overlay/fixed-layout.epub") : fixture,
+    );
+    try {
+      if (mode === "scroll") {
+        await page.mouse.move(350, 2);
+        await button(page, "Ambra settings").click();
+        await page.getByRole("combobox", { name: "Reading mode", exact: true }).selectOption(mode);
+        await page.keyboard.press("Escape");
+      }
+      await exposeReaderController(page);
+      await listen(page);
+      await button(page, "Pause narration").click();
+      const source = (await audioState(page)).source;
+      await toc(page, "Narrated chapter 2");
+      expect((await audioState(page)).paused).toBe(true);
+      await page.evaluate(async () => {
+        await Reflect.get(window, "__readerController").performNarrationAction("start");
+      });
+      expect((await audioState(page)).source).not.toBe(source);
+      expect((await audioState(page)).paused).toBe(false);
+      await expect.poll(() => highlighted(page)).toContain("c2-p1");
+      await expect.poll(() => passagePaint(page, "c2-p1")).toMatchObject({ painted: true });
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("paused page navigation resumes the newly painted segment in the same chapter (#337)", async ({ browserName: _browserName }, info) => {
+  const { readerPage: page, context } = await launchReader(boundaryFixture(info));
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await setSpeed(page, 0.75);
+    await button(page, "Pause narration").click();
+    const source = (await audioState(page)).source;
+    const before = await position(page).getAttribute("aria-valuetext");
+    await button(page, "Play narration").blur();
+    await page.keyboard.press("ArrowRight");
+    await expect(position(page)).not.toHaveAttribute("aria-valuetext", before!);
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(4);
+    expect((await audioState(page)).time).toBeLessThan(8);
+    expect((await audioState(page)).source).toBe(source);
+    await expect.poll(() => highlighted(page)).toContain("c1-p2");
+    await expect.poll(() => passagePaint(page, "c1-p2")).toMatchObject({ painted: true });
+  } finally {
+    await context.close();
+  }
+});
+
+test("failed paused navigation preserves the paused audio point (#337)", async () => {
+  const { readerPage: page, context } = await launchReader(narrated);
+  try {
+    await listen(page);
+    await setSpeed(page, 0.75);
+    await seek(page, 5);
+    await expect.poll(() => highlighted(page)).toContain("c1-p2");
+    await button(page, "Pause narration").click();
+    const paused = await audioState(page);
+    await exposeReaderController(page);
+    await page.evaluate(async () => {
+      await Reflect.get(window, "__readerController").goToBookmark("epubcfi(/6/2!/4/9998[missing])");
+    });
+    await page.mouse.move(350, 2);
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).source).toBe(paused.source);
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(paused.time - 0.05);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(paused.time + 0.1);
+  } finally {
+    await context.close();
+  }
+});
+
+  test("Next after paused navigation chooses the new chapter's next passage (#337)", async () => {
+    const { readerPage: page, context } = await launchReader(narrated);
+    try {
+      await listen(page);
+      await setSpeed(page, 0.75);
+      await seek(page, 5);
+      await expect.poll(() => highlighted(page)).toContain("c1-p2");
+      await button(page, "Pause narration").click();
+      const paused = await audioState(page);
+      await toc(page, "Narrated chapter 2");
+      await expect.poll(async () => (await audioState(page)).source).not.toBe(paused.source);
+      expect((await audioState(page)).paused).toBe(true);
+      await button(page, "Next narrated passage").click();
+      await button(page, "Play narration").click();
+      await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+      expect((await audioState(page)).source).not.toBe(paused.source);
+        expect((await audioState(page)).time).toBeGreaterThanOrEqual(4);
+        await expect.poll(() => highlighted(page)).toContain("c2-p2");
+        await expect(button(page, "Return to narration")).toHaveCount(0);
+        await expect(page.frameLocator("iframe").first().locator("h1")).toHaveText("Narrated chapter 2");
+    } finally {
+      await context.close();
+    }
+  });
+
+for (const browsing of ["page", "contents", "scrubber"] as const) {
+  test(`${browsing} navigation retargets playing narration and preserves speed (#337)`, async ({ browserName: _browserName }, info) => {
+    const { readerPage: page, context } = await launchReader(browsing === "page" ? boundaryFixture(info) : narrated);
+    try {
+      await exposeReaderController(page);
       await listen(page);
       await setSpeed(page, 0.75);
       await seek(page, 0.2);
@@ -416,33 +647,20 @@ for (const browsing of ["page", "contents", "scrubber"] as const) {
         await position(page).press("End");
         await expect(position(page)).toHaveAttribute("aria-valuenow", "100");
       }
-      await expect(button(page, "Return to narration")).toBeVisible();
-      expect((await audioState(page)).paused).toBe(false);
-      expect((await audioState(page)).source).toBe(source);
-      const browsedPosition = await position(page).getAttribute("aria-valuetext");
-      const timeBefore = (await audioState(page)).time;
-      await expect
-        .poll(async () => (await audioState(page)).time)
-        .toBeGreaterThan(timeBefore + 0.1);
-      // Cross a clip boundary while detached: it must not pull the reader back.
-      await seek(page, 4.05);
-      await expect(position(page)).toHaveAttribute("aria-valuetext", browsedPosition!);
-      await button(page, "Return to narration").click();
-      await expect.poll(() => highlighted(page)).toContain("c1-p2");
+      const fragment = browsing === "page" ? "c1-p2" : browsing === "contents" ? "c2-p1" : "c2-p3";
+      const begin = browsing === "page" ? 4 : browsing === "contents" ? 0 : 8;
+      await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+      await expect.poll(() => narrationTarget(page)).toBe(fragment);
+      expect((await audioState(page)).time).toBeGreaterThanOrEqual(begin);
+      expect((await audioState(page)).rate).toBe(0.75);
+      if (browsing === "page") expect((await audioState(page)).source).toBe(source);
+      else expect((await audioState(page)).source).not.toBe(source);
+      await expect.poll(() => passagePaint(page, browsing === "scrubber" ? undefined : fragment)).toMatchObject({ painted: true });
       await expect(button(page, "Return to narration")).toHaveCount(0);
-      expect((await audioState(page)).source).toBe(source);
-      expect((await audioState(page)).time).toBeGreaterThanOrEqual(4);
-
-      await toc(page, "Narrated chapter 2");
-      await expect(button(page, "Return to narration")).toBeVisible();
+      await seek(page, begin + 1);
       await button(page, "Restart page audio").click();
-      await expect.poll(() => highlighted(page)).toContain("c2-p1");
-      await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
-      expect((await audioState(page)).time).toBeLessThan(4);
-      await expect(button(page, "Return to narration")).toHaveCount(0);
-      await expect(page.frameLocator("iframe").first().locator("h1")).toHaveText(
-        "Narrated chapter 2",
-      );
+      await expect.poll(() => highlighted(page)).toContain(fragment);
+      await expect.poll(async () => (await audioState(page)).time).toBeLessThan(begin + 0.5);
     } finally {
       await context.close();
     }
@@ -504,30 +722,79 @@ test("a post-probe native audio failure stays explicit in compact controls witho
   }
 });
 
+for (const action of ["play", "pause", "navigate"] as const) {
+  test(`${action} during navigation audio loading preserves the latest location and playback intent (#337)`, async () => {
+    const { readerPage: page, context } = await launchReader(narrated);
+    try {
+      await exposeReaderController(page);
+      await listen(page);
+      if (action !== "pause") await button(page, "Pause narration").click();
+      const source = (await audioState(page)).source;
+      await gateNarrationResource(page, "chapter-2.wav");
+      await toc(page, "Narrated chapter 2");
+      await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").entered);
+      if (action === "play") await button(page, "Play narration").click();
+      else if (action === "pause") await button(page, "Pause narration").click();
+      else await toc(page, "Narrated chapter 1");
+      await page.evaluate(() => Reflect.get(window, "__narrationLoadGate").release());
+      await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").released);
+      if (action === "play") {
+        await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
+        await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+        await expect.poll(() => narrationTarget(page)).toBe("c2-p1");
+      } else {
+        await expect(button(page, "Play narration")).toBeVisible();
+        expect((await audioState(page)).paused).toBe(true);
+        const fragment = action === "navigate" ? "c1-p1" : "c2-p1";
+        await expect.poll(() => narrationTarget(page)).toBe(fragment);
+        await button(page, "Play narration").click();
+        await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+        if (action === "navigate") expect((await audioState(page)).source).toBe(source);
+        else expect((await audioState(page)).source).not.toBe(source);
+        await expect.poll(() => highlighted(page)).toContain(fragment);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("Restart page audio ignores a retained selection; Jump to selection remains independent (#337)", async ({ browserName: _browserName }, info) => {
+  const { readerPage: page, context } = await launchReader(boundaryFixture(info));
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await button(page, "Pause narration").click();
+    await page.locator("iframe").first().evaluate(frame => {
+      const doc = (frame as HTMLIFrameElement).contentDocument!;
+      const range = doc.createRange();
+      range.selectNodeContents(doc.getElementById("c1-p2")!);
+      doc.getSelection()!.removeAllRanges();
+      doc.getSelection()!.addRange(range);
+    });
+    await expect(button(page, "Jump to selection")).toBeVisible();
+    await expect(button(page, "Restart page audio")).toBeVisible();
+    await button(page, "Restart page audio").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p1");
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).time).toBeLessThan(4);
+    await expect.poll(() => passagePaint(page, "c1-p1")).toMatchObject({ painted: true });
+    await button(page, "Jump to selection").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(4);
+    await expect.poll(() => passagePaint(page, "c1-p2")).toMatchObject({ painted: true });
+    await expect(button(page, "Return to narration")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
 for (const action of ["expanded pause", "collapsed pause", "collapse without pausing"]) {
   test(`${action} preserves the intended in-flight audio loading behavior`, async () => {
     const { readerPage: page, context } = await launchReader(narrated);
     try {
       await exposeReaderController(page);
-      await page.evaluate(() => {
-        const controller = Reflect.get(window, "__readerController");
-        const loader = controller.contentLoader;
-        const original = loader.loadResourceBytes.bind(loader);
-        const gate = { entered: false, released: false, release: () => {} };
-        const blocked = new Promise<void>((resolve) => {
-          gate.release = resolve;
-        });
-        Reflect.set(window, "__narrationLoadGate", gate);
-        loader.loadResourceBytes = async (resource: string) => {
-          const bytes = await original(resource);
-          if (resource.endsWith(".wav")) {
-            gate.entered = true;
-            await blocked;
-            gate.released = true;
-          }
-          return bytes;
-        };
-      });
+      await gateNarrationResource(page);
       await page.mouse.move(350, 2);
       await button(page, "Play narration").click();
       await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").entered);
@@ -590,9 +857,10 @@ test("1400px reflowable spreads follow narration into another chapter and retain
   }
 });
 
-test("scroll mode native wheel browsing keeps audio playing and Return restores following", async () => {
+test("scroll mode wheel navigation retargets audio without jumping back; later clips still follow (#337)", async () => {
   const { readerPage: page, context } = await launchReader(narrated);
   try {
+    await exposeReaderController(page);
     await page.mouse.move(350, 2);
     await button(page, "Ambra settings").click();
     await page.getByRole("combobox", { name: "Reading mode", exact: true }).selectOption("scroll");
@@ -607,24 +875,18 @@ test("scroll mode native wheel browsing keeps audio playing and Return restores 
     await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
     await page.mouse.wheel(0, 1400);
     await expect.poll(async () => (await visibleFrames(page))[0]!.scrollTop).toBeGreaterThan(1000);
-    await expect(button(page, "Return to narration")).toBeVisible();
-    expect((await audioState(page)).paused).toBe(false);
-    const timeBefore = (await audioState(page)).time;
-    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(timeBefore + 0.15);
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(4);
     const browsedTop = (await visibleFrames(page))[0]!.scrollTop;
-    await seek(page, 4.05);
     await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(4.15);
     expect((await visibleFrames(page))[0]!.scrollTop).toBeCloseTo(browsedTop, 0);
-    expect(await highlighted(page)).not.toContain("c1-p2");
-
-    await button(page, "Return to narration").click();
-    await expect.poll(() => highlighted(page)).toEqual(["c1-p2"]);
     await expect(button(page, "Return to narration")).toHaveCount(0);
-    expect((await visibleFrames(page))[0]!.scrollTop).toBeLessThan(browsedTop);
     expect((await audioState(page)).source).toBe(source);
     expect((await audioState(page)).paused).toBe(false);
     await seek(page, 8.05);
     await expect.poll(() => highlighted(page)).toEqual(["c1-p3"]);
+    expect((await audioState(page)).time).toBeGreaterThanOrEqual(8.05);
     await expect(button(page, "Return to narration")).toHaveCount(0);
   } finally {
     await context.close();

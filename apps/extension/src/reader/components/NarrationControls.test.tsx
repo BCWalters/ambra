@@ -43,8 +43,8 @@ describe("NarrationControls", () => {
       onPlayPause: vi.fn(),
       onPrevious: vi.fn(),
       onNext: vi.fn(),
-      onReturnToNarration: vi.fn(),
       onListenFromHere: vi.fn(),
+      onListenFromSelection: vi.fn(),
       onRateChange: vi.fn(),
       collapsed: false,
       onCollapsedChange: vi.fn(),
@@ -189,63 +189,39 @@ describe("NarrationControls", () => {
     expect(callbacks.onNext).not.toHaveBeenCalled();
   });
 
-  it.each(["loading", "paused"] as const)("does not offer Return without a target while %s", status => {
-    render({ status, following: false, hasTarget: false });
-    expect(button("Return to narration").style.visibility).toBe("hidden");
-    expect(button("Return to narration").disabled).toBe(true);
-  });
-
-  it("keeps returning to narration distinct from listening at the browsed location or resuming", () => {
+  it("keeps page restart distinct from playback and removes detached browsing controls", () => {
     render({ following: false });
-    const returnButton = button("Return to narration");
-    expect(returnButton.style.visibility).toBe("visible");
-    expect(returnButton.getAttribute("aria-hidden")).toBe("false");
-    expect(container.querySelector('[role="status"]')!.textContent).toBe("Browsing away from narration.");
-    act(() => button("Return to narration").click());
-    expect(callbacks.onReturnToNarration).toHaveBeenCalledOnce();
-    expect(callbacks.onListenFromHere).not.toHaveBeenCalled();
-    expect(callbacks.onPlayPause).not.toHaveBeenCalled();
+    expect(container.querySelector('[aria-label="Return to narration"]')).toBeNull();
     act(() => button("Restart page audio").click());
     expect(callbacks.onListenFromHere).toHaveBeenCalledOnce();
     expect(callbacks.onPlayPause).not.toHaveBeenCalled();
-    render({ following: true });
-    expect(button("Return to narration")).toBe(returnButton);
-    expect(returnButton.style.visibility).toBe("hidden");
-    expect(returnButton.getAttribute("aria-hidden")).toBe("true");
-    expect(returnButton.tabIndex).toBe(-1);
-    expect(returnButton.disabled).toBe(true);
-    act(() => returnButton.click());
-    expect(callbacks.onReturnToNarration).toHaveBeenCalledOnce();
     expect(container.querySelector('[role="status"]')!.textContent).toBe("");
-    expect(getComputedStyle(container.querySelector<HTMLElement>('[role="status"]')!).position).toBe("absolute");
   });
 
-  it("changes the listening target label without changing either reserved label or the button identity", () => {
+  it("keeps Play available while loading a paused navigation cue", () => {
+    render({ status: "loading", playbackRequested: false });
+    expect(button("Play narration")).toBeDefined();
+    expect(container.querySelector('[aria-label="Pause narration"]')).toBeNull();
+    expect(container.querySelector('[role="status"]')!.textContent).toBe("Loading narration…");
+  });
+
+  it("keeps page restart available independently of Jump to selection", () => {
     render();
     const listen = button("Restart page audio");
-    const labels = Array.from(listen.querySelectorAll<HTMLElement>('[aria-hidden]'))
-      .filter(label => label.tagName === "SPAN");
-    expect(labels.map(label => label.textContent)).toEqual(["Restart page audio", "Jump to selection"]);
-    expect(labels.map(label => label.style.visibility)).toEqual(["visible", "hidden"]);
-    expect(labels.every(label => label.style.gridArea === "1 / 1")).toBe(true);
+    expect(container.querySelector('[aria-label="Jump to selection"]')).toBeNull();
     act(() => listen.focus());
     render({}, false, true);
-    expect(button("Jump to selection")).toBe(listen);
+    expect(button("Restart page audio")).toBe(listen);
     expect(document.activeElement).toBe(listen);
-    expect(labels.map(label => label.style.visibility)).toEqual(["hidden", "visible"]);
-    expect(labels.map(label => label.getAttribute("aria-hidden"))).toEqual(["true", "false"]);
+    act(() => button("Jump to selection").click());
+    expect(callbacks.onListenFromSelection).toHaveBeenCalledOnce();
+    expect(callbacks.onListenFromHere).not.toHaveBeenCalled();
     act(() => listen.click());
     expect(callbacks.onListenFromHere).toHaveBeenCalledOnce();
     expect(callbacks.onPlayPause).not.toHaveBeenCalled();
     render();
     expect(button("Restart page audio")).toBe(listen);
-    expect(labels.map(label => label.style.visibility)).toEqual(["visible", "hidden"]);
-  });
-
-  it.each(["idle", "error"] as const)("does not offer return without a known active target in %s", (status) => {
-    render({ following: false, status });
-    expect(button("Return to narration").style.visibility).toBe("hidden");
-    expect(button("Return to narration").disabled).toBe(true);
+    expect(container.querySelector('[aria-label="Jump to selection"]')).toBeNull();
   });
 
   it("announces only loading and the translated error heading, not raw diagnostics or playback updates", () => {
@@ -283,14 +259,14 @@ describe("NarrationControls", () => {
     const commands = container.querySelector<HTMLElement>("[data-narration-commands]")!;
     expect(commands.style.flexWrap).toBe("wrap");
     expect(commands.style.minHeight).toBe("28px");
-    expect(commands.querySelectorAll("button")).toHaveLength(4);
+    expect(commands.querySelectorAll("button")).toHaveLength(3);
     expect(commands.lastElementChild).toBe(button("Collapse read-along controls"));
     expect(commands.textContent).toContain("Read along");
     const primary = container.querySelector<HTMLElement>("[data-narration-primary-commands]")!;
     expect(primary.style.gridTemplateColumns).toBe("minmax(0, 1fr) auto minmax(0, 1fr)");
     expect(primary.querySelectorAll("button")).toHaveLength(3);
     expect(button("Play narration").style.minHeight).toBe("48px");
-    for (const name of ["Return to narration", "Restart page audio"]) {
+    for (const name of ["Restart page audio"]) {
       const action = button(name);
       expect(commands.contains(action)).toBe(true);
       expect(primary.contains(action)).toBe(false);
@@ -357,13 +333,13 @@ describe("NarrationControls", () => {
       expect(button(t("narration.previous")).textContent).toBe(t("narration.previousLabel"));
       expect(button(t("narration.next")).textContent).toBe(t("narration.nextLabel"));
       expect(button(t("narration.play")).querySelector('[aria-hidden="false"]')?.textContent).toBe(t("narration.playLabel"));
-      expect(button(t("narration.return"))).toBeDefined();
+      expect(container.querySelector(`[aria-label="${t("narration.return")}"]`)).toBeNull();
       expect(button(t("narration.listenFromPage"))).toBeDefined();
       expect(button(t("narration.collapse"))).toBeDefined();
       expect(button(t("narration.collapse")).textContent).toBe(t("narration.collapseLabel"));
       expect(container.textContent).toContain(t("narration.speedLabel"));
       expect(button(`${t("narration.speed")}: 1×`)).toBeDefined();
-      expect(container.querySelector('[role="status"]')!.textContent).toBe(t("narration.browsing"));
+      expect(container.querySelector('[role="status"]')!.textContent).toBe("");
       render({ following: false }, false, true);
       expect(button(t("narration.listenFromSelection"))).toBeDefined();
       if (locale !== "en") {

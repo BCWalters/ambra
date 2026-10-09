@@ -27,7 +27,7 @@ export type PreviewPosition =
   | { readonly kind: "page"; readonly current: number; readonly total: number }
   | { readonly kind: "chapter"; readonly current: number; readonly total: number };
 
-export type NarrationAction = "start" | "toggle" | "previous" | "next" | "return" | "here" | "close";
+export type NarrationAction = "start" | "toggle" | "previous" | "next" | "return" | "here" | "selection" | "close";
 
 export type ContentUiDismissal = (point?: Pick<PointerEvent, "clientX" | "clientY">) => boolean;
 
