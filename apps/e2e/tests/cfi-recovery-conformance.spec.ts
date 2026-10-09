@@ -8,7 +8,7 @@ function publication(info: TestInfo): string {
   const paragraphs = Array.from(
     { length: 60 },
     (_, index) =>
-      `<p>Original paragraph ${index + 1}. This original locator fixture supplies enough
+      `<p${index === 0 ? ' id="first"' : ""}>Original paragraph ${index + 1}. This original locator fixture supplies enough
     text to verify a real paginated landing rather than only a successful parse.</p>`,
   ).join("");
   const entries: Record<string, Uint8Array> = {
@@ -56,6 +56,16 @@ test("package CFI assertions recover the intended chapter and reject missing OPF
     await page.evaluate(async () => {
       const controller = Reflect.get(window, "__readerController");
       await controller.goToBookmark("epubcfi(/6[reading-order]/2[later]!/4/122[target]/1:0)");
+    });
+    await expect.poll(() => isReaderElementPainted(page, "target")).toBe(true);
+    await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark("epubcfi(/8[reading-order]/4[later]!/4/0)");
+    });
+    await expect.poll(() => isReaderElementPainted(page, "first")).toBe(true);
+    await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      await controller.goToBookmark("epubcfi(/8[reading-order]/4[later]!/4/124)");
     });
     await expect.poll(() => isReaderElementPainted(page, "target")).toBe(true);
     const invalid = await page.evaluate(async () => {
@@ -106,6 +116,29 @@ test("CFI ID correction reaches the painted target; native ranges, text assertio
       const packagePart = start.slice(8, start.indexOf("!"));
       const rangeCfi = `epubcfi(${packagePart}!/4/2[stable],/1:2,/3:4)`;
       const range = resolver.resolveRangeInDocument({ cfi: rangeCfi }, 0, doc);
+      const virtual = resolver.resolveRangeInDocument({
+        cfi: `epubcfi(${packagePart}!/4,/0,/4)`,
+      }, 0, doc);
+      const virtualCases = [
+        { markup: "leading <p>middle</p> trailing", index: 4 },
+        { markup: "<p>middle</p>", index: 4 },
+        { markup: "Only text", index: 2 },
+        { markup: "", index: 2 },
+        { markup: "<!--ignored-->leading <p>middle</p> trailing<!--ignored-->", index: 4 },
+      ].map(({ markup, index }) => {
+        const provided = document.implementation.createHTMLDocument();
+        provided.body.innerHTML = markup;
+        const range = resolver.resolveRangeInDocument({
+          cfi: `epubcfi(${packagePart}!/4,/0,/${index})`,
+        }, 0, provided).range;
+        return {
+          text: range.toString(),
+          startBody: range.startContainer === provided.body,
+          endBody: range.endContainer === provided.body,
+          start: range.startOffset,
+          end: range.endOffset,
+        };
+      });
       const shifted = document.implementation.createHTMLDocument();
       shifted.body.innerHTML =
         '<p id="stable">Inserted Unique <em>original</em>\n \t target string.</p>';
@@ -135,6 +168,14 @@ test("CFI ID correction reaches the painted target; native ranges, text assertio
         end,
         rangeCfi,
         rangeText: range.range.toString(),
+        virtualText: virtual.range.toString(),
+        virtualCases,
+        virtualStart: {
+          body: virtual.range.startContainer === doc.body, offset: virtual.range.startOffset,
+        },
+        virtualEnd: {
+          body: virtual.range.endContainer === doc.body, offset: virtual.range.endOffset,
+        },
         startOffset: range.range.startOffset,
         endOffset: range.range.endOffset,
         sameDocument: range.start.node.ownerDocument === range.end.node.ownerDocument,
@@ -148,6 +189,16 @@ test("CFI ID correction reaches the painted target; native ranges, text assertio
       };
     });
     expect(evidence.rangeText).toBe("pha beta gam");
+    expect(evidence.virtualText).toBe("alpha beta gamma");
+    expect(evidence.virtualStart).toEqual({ body: true, offset: 0 });
+    expect(evidence.virtualEnd).toEqual({ body: true, offset: 1 });
+    expect(evidence.virtualCases).toEqual([
+      { text: "leading middle trailing", startBody: true, endBody: true, start: 0, end: 3 },
+      { text: "middle", startBody: true, endBody: true, start: 0, end: 1 },
+      { text: "Only text", startBody: true, endBody: true, start: 0, end: 1 },
+      { text: "", startBody: true, endBody: true, start: 0, end: 0 },
+      { text: "leading middle trailing", startBody: true, endBody: true, start: 1, end: 4 },
+    ]);
     expect(evidence.startOffset).toBe(2);
     expect(evidence.endOffset).toBe(4);
     expect(evidence.sameDocument).toBe(true);

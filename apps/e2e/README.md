@@ -274,6 +274,11 @@ bookmark target, while missing package assertions fail explicitly. Package
 units separately cover document-wide ambiguous IDs, non-spine targets and
 unchanged numeric/verified positional paths. Import/export and publisher
 annotation regressions exercise the same package lookup.
+Virtual `/0` and `/n+2` boundaries require exact native Range containers, child
+offsets and text across mixed, element-only, text-only, empty and commented
+parents, and actual painted first/last-page bookmark landings. Engine units
+check resolved endpoints and ignored reader-owned edges; actual Range assertions
+stay native because Happy DOM incorrectly collapses some same-container ranges.
 It does not claim support for nested documents or media/spatial CFI offsets.
 
 `html-base.spec.ts` checks the first XHTML base with href across paginated,
