@@ -44,7 +44,7 @@ const instances: MediaOverlayNarration[] = [];
 
 function setup(
   overlays: Record<string, string> = { "EPUB/m0.smil": first, "EPUB/m2.smil": second },
-  options: { frontmatter?: boolean; nonlinearLast?: boolean; audioFallback?: boolean } = {},
+  options: { frontmatter?: boolean; nonlinearLast?: boolean; audioFallback?: boolean; sharedOverlay?: boolean } = {},
 ) {
   const pkg = PackageDocument.parse(`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">book</dc:identifier>
@@ -52,7 +52,7 @@ function setup(
     <manifest>
       <item id="c0" href="c0.xhtml" media-type="application/xhtml+xml"${options.frontmatter ? "" : ' media-overlay="m0"'}/>
       <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
-      <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml" media-overlay="m2"/>
+      <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml" media-overlay="${options.sharedOverlay ? "m0" : "m2"}"/>
       <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"/>
       <item id="m0" href="m0.smil" media-type="application/smil+xml"/>
       <item id="m2" href="m2.smil" media-type="application/smil+xml"/>
@@ -95,6 +95,25 @@ afterEach(() => {
 });
 
 describe("MediaOverlayNarration", () => {
+  it("retains one authored semantic timeline across separately cued spine documents", async () => {
+    const { narration, loader } = setup({
+      "EPUB/m0.smil": `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">
+        <body><seq epub:type="table">${clip(0, "a", 0, 1)}${clip(2, "c", 2, 3)}</seq></body></smil>`,
+    }, { sharedOverlay: true });
+    await narration.playFrom(0);
+    const first = Reflect.get(narration, "cursor");
+    expect(first.clips).toHaveLength(1);
+    expect(first.timeline.entries.map((entry: { semantics: readonly string[] }) => entry.semantics))
+      .toEqual([["table"], ["table"]]);
+    await narration.playFrom(2);
+    const second = Reflect.get(narration, "cursor");
+    expect(second.timeline).toBe(first.timeline);
+    expect(second.clips).toHaveLength(1);
+    expect(second.clips[0]).toBe(first.timeline.entries[1].par);
+    expect(narration.target).toMatchObject({ spineIndex: 2, fragment: "c" });
+    expect(loader.readArchiveFileText).toHaveBeenCalledExactlyOnceWith("EPUB/m0.smil");
+  });
+
   it.each([false, true])("navigation cues the destination while preserving playing=%s", async playing => {
     const { narration, audio, onTarget } = setup();
     const doc = document.implementation.createHTMLDocument();

@@ -61,7 +61,7 @@ export type SmilNode = SmilSeq | SmilPar;
 /**
  * A parsed EPUB3 Media Overlay Document (a constrained subset of SMIL
  * 3.0 — see the spec's own "Creating Media Overlays" section). `body`
- * is modeled as a `SmilSeq` with no `id`/`textref`/`epubType` of its own,
+ * is modeled as a `SmilSeq` retaining authored `epub:type`, without `id`/`textref`,
  * so callers always work with one uniform tree shape regardless of
  * whether the document's real `<body>` has one child or many.
  */

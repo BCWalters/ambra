@@ -112,6 +112,8 @@ export { isInteractiveContentTarget, isKeyboardNavigationScope } from "./accessi
 export { parseSmilClockValue, SmilClockValueError } from "./media-overlay/SmilClockValue.js";
 export { SmilDocument, SmilPar, SmilSeq, SmilParseError } from "./media-overlay/SmilDocument.js";
 export type { SmilNode, SmilTextRef, SmilAudioClip } from "./media-overlay/SmilDocument.js";
+export { SmilPlaybackTimeline } from "./media-overlay/SmilPlaybackTimeline.js";
+export type { SmilPlaybackEntry, SmilSequenceRange, SmilEscapeDestination } from "./media-overlay/SmilPlaybackTimeline.js";
 export { MediaOverlayPlayer, MediaOverlayError } from "./media-overlay/MediaOverlayPlayer.js";
 export type { MediaOverlayAudioHost, MediaOverlayClip } from "./media-overlay/MediaOverlayPlayer.js";
 export { PaginatedContentHost } from "./reading/PaginatedContentHost.js";

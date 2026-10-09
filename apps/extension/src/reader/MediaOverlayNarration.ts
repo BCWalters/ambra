@@ -1,4 +1,4 @@
-import { adjacentPrimarySpineIndex, MediaOverlayError, MediaOverlayPlayer, ResourceFallbackSelector, SmilDocument } from "@ambra/engine";
+import { adjacentPrimarySpineIndex, MediaOverlayError, MediaOverlayPlayer, ResourceFallbackSelector, SmilDocument, SmilPlaybackTimeline } from "@ambra/engine";
 import type { ContentLoader, PackageDocument, SmilAudioClip, SmilPar } from "@ambra/engine";
 
 export interface NarrationTarget {
@@ -35,10 +35,14 @@ export interface MediaOverlayNarrationContext {
   resourceSelector?: Pick<ResourceFallbackSelector, "select">;
 }
 
-interface Cursor {
+interface SpineNarrationClips {
+  timeline: SmilPlaybackTimeline;
+  clips: readonly SmilPar[];
+}
+
+interface Cursor extends SpineNarrationClips {
   association: number;
   index: number;
-  clips: readonly SmilPar[];
 }
 
 /** Owns recorded narration only. Rendering, active-class styling and navigation
@@ -49,7 +53,7 @@ export class MediaOverlayNarration {
   private readonly ownedResourceSelector: ResourceFallbackSelector | undefined;
   private readonly resourceSelector: Pick<ResourceFallbackSelector, "select">;
   private readonly associations: number[];
-  private readonly documents = new Map<string, Promise<readonly SmilPar[]>>();
+  private readonly documents = new Map<string, Promise<SmilPlaybackTimeline>>();
   private cursor: Cursor | undefined;
   private status: NarrationState["status"] = "idle";
   private playbackRequested = false;
@@ -163,13 +167,13 @@ export class MediaOverlayNarration {
         (index) => index > spineIndex && this.ctx.pkg.spine[index]!.linear,
       );
       if (association < 0) throw new Error("There is no recorded narration at or after this passage.");
-      const clips = await this.loadClips(association);
+      const { timeline, clips } = await this.loadClips(association);
       if (!this.current(generation)) return;
       const index = element && exactAssociation >= 0 ? findPassage(clips, element) : 0;
       if (index < 0 || !clips[index]) {
         throw new Error("There is no recorded narration for this passage.");
       }
-      await this.start({ association, index, clips }, generation, true);
+      await this.start({ association, index, clips, timeline }, generation, true);
     } catch (error) {
       if (this.current(generation)) this.fail(error);
     }
@@ -235,7 +239,7 @@ export class MediaOverlayNarration {
         this.cursor = undefined;
         throw new Error("There is no recorded narration at this reading position.");
       }
-      const clips = await this.loadClips(association);
+      const { timeline, clips } = await this.loadClips(association);
       if (!this.current(generation)) return;
       const index = findPassage(clips, element);
       if (index < 0 || !clips[index]) {
@@ -243,7 +247,7 @@ export class MediaOverlayNarration {
         throw new Error("There is no recorded narration at this reading position.");
       }
       const same = this.cursor?.association === association && this.cursor.index === index && !this.needsSeek;
-      await this.start({ association, index, clips }, generation, !same, { play, follow: false });
+      await this.start({ association, index, clips, timeline }, generation, !same, { play, follow: false });
     } catch (error) {
       if (this.current(generation)) {
         if (this.cursor === previousCursor) this.cursor = undefined;
@@ -305,7 +309,7 @@ export class MediaOverlayNarration {
     this.documents.clear();
   }
 
-  private async loadClips(association: number): Promise<readonly SmilPar[]> {
+  private async loadClips(association: number): Promise<SpineNarrationClips> {
     const item = this.ctx.pkg.spine[this.associations[association]!]!.manifestItem;
     const overlay = this.ctx.pkg.findMediaOverlay(item);
     if (!overlay || overlay.mediaType !== "application/smil+xml") {
@@ -314,13 +318,14 @@ export class MediaOverlayNarration {
     let document = this.documents.get(overlay.path);
     if (!document) {
       document = this.ctx.loader.readArchiveFileText(overlay.path)
-        .then((xml) => SmilDocument.parse(xml, overlay.path).flattenPars());
+        .then((xml) => new SmilPlaybackTimeline(SmilDocument.parse(xml, overlay.path)));
       this.documents.set(overlay.path, document);
       void document.catch(() => {
         if (this.documents.get(overlay.path) === document) this.documents.delete(overlay.path);
       });
     }
-    return (await document).filter((par) => par.text.path === item.path);
+    const timeline = await document;
+    return { timeline, clips: timeline.entries.filter(entry => entry.par.text.path === item.path).map(entry => entry.par) };
   }
 
   private adjacentAssociation(association: number, direction: 1 | -1): number | undefined {
@@ -340,9 +345,9 @@ export class MediaOverlayNarration {
       association !== undefined;
       association = this.adjacentAssociation(association, direction)
     ) {
-      const clips = await this.loadClips(association);
+      const { timeline, clips } = await this.loadClips(association);
       if (this.disposed) return undefined;
-      if (clips.length) return { association, clips, index: direction === 1 ? 0 : clips.length - 1 };
+      if (clips.length) return { association, clips, timeline, index: direction === 1 ? 0 : clips.length - 1 };
     }
     return undefined;
   }
