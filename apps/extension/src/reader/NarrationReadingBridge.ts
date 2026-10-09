@@ -4,6 +4,7 @@ import type { NarrationTarget } from "./MediaOverlayNarration.js";
 import { applyNarrationRange } from "./HighlightRenderer.js";
 import { selectedReadingPosition, visibleReadingPosition } from "./ReadingPosition.js";
 import { visiblePageBounds } from "./VisiblePageBounds.js";
+import { applySvgNarrationPaint } from "./SvgNarrationPaint.js";
 
 interface NarrationReadingContext {
   documents: () => readonly ContentDocumentView[];
@@ -88,6 +89,9 @@ export class NarrationReadingBridge {
         removals.push(() => applyNarrationRange(view.document));
       }
       if (this.playing) addClasses(view.document.documentElement, playbackClass);
+      if (element.namespaceURI === "http://www.w3.org/2000/svg") {
+        removals.push(applySvgNarrationPaint(element));
+      }
       this.painted.set(view.document, {
         element, playing: this.playing,
         clean: () => { for (const remove of removals) remove(); },

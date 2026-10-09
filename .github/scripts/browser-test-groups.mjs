@@ -94,7 +94,7 @@ export const browserGroups = [
   {
     id: "narration",
     modes: ["full"],
-    steps: [step("recorded-narration", ["media-overlay-playback"], 1,
+    steps: [step("recorded-narration", ["media-overlay-playback", "svg-narration"], 1,
       ["--grep-invert", "@audio-resource-conformance"])],
   },
   {

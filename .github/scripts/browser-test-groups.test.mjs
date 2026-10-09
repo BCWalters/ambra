@@ -34,7 +34,7 @@ function selected(mode) {
 
 test("full matrix preserves every legacy protected file invocation, including intentional duplicates", () => {
   assert.deepEqual(selected("full").flatMap(group => group.steps.flatMap(step => step.files)).sort(),
-    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images"].sort());
+    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
   assert.equal(core.length, 54);
@@ -88,6 +88,7 @@ test("isolated timing, locale and narration probes retain one worker and origina
   assert.ok(browserArguments("library").find(step => step.name === "library-localization").args.includes("--workers=1"));
   assert.ok(browserArguments("audio-resource-errors")[0].args.includes("--grep"));
   assert.ok(browserArguments("narration")[0].args.includes("--grep-invert"));
+  assert.ok(browserArguments("narration")[0].args.includes("svg-narration.spec.ts"));
   assert.ok(browserArguments("narration")[0].args.includes("@audio-resource-conformance"));
   for (const [id, marker] of [["image-transparency", "#226"], ["encoded-fragments", "#228"], ["inspector", "#181"]]) {
     assert.ok(browserArguments("reader-tools").find(step => step.name === id).args.includes(marker));
