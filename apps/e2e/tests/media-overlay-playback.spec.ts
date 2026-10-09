@@ -20,7 +20,7 @@ const speedButton = (page: Page) => controls(page).getByRole("button", { name: /
 function boundaryFixture(info: TestInfo): string {
   const entries = unzipSync(fs.readFileSync(narrated));
   entries["EPUB/chapter-1.xhtml"] = strToU8(`<html xmlns="http://www.w3.org/1999/xhtml"><head><title>3.1.2 Narration boundary</title>
-    <style>p{margin:0!important;break-inside:avoid;height:400px}.synthetic-narration-active{background:#ffe082}</style></head><body>
+    <style>p{margin:0!important;break-inside:avoid;min-height:400px}.synthetic-narration-active{background:#ffe082}</style></head><body>
     <p id="c1-p1">First narrated passage.</p>
     <p id="c1-p2">${"The second narrated passage spans several lines of the next rendered page. ".repeat(12)}</p>
     <p id="c1-p3">Third narrated passage.</p></body></html>`);
@@ -31,9 +31,10 @@ function boundaryFixture(info: TestInfo): string {
   return file;
 }
 
-async function passagePaint(page: Page, id: string) {
-  return page.evaluate(fragment => {
+async function passagePaint(page: Page, id: string, edge: "first" | "last" = "first") {
+  return page.evaluate(({ fragment, edge }) => {
     const views = Reflect.get(window, "__readerController").contentDocumentViews();
+    const results = [];
     for (const view of views) {
       const doc: Document = view.document;
       const element = doc.getElementById(fragment);
@@ -43,22 +44,24 @@ async function passagePaint(page: Page, id: string) {
       if (!(frame instanceof HTMLIFrameElement)) throw new Error("Missing narrated frame.");
       const range = doc.createRange();
       range.selectNodeContents(element);
-      const rect = Array.from(range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0);
+      const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+      const rect = edge === "first" ? rects[0] : rects.at(-1);
       if (!rect) throw new Error("The narrated passage has no rendered text.");
       const frameRect = frame.getBoundingClientRect();
       const x = (rect.left + rect.right) / 2;
-      const y = (rect.top + rect.bottom) / 2;
       const scaleX = frameRect.width / window.innerWidth;
       const scaleY = frameRect.height / window.innerHeight;
-      return {
+      const probeYs = edge === "first" ? [(rect.top + rect.bottom) / 2] : [rect.top + 1, rect.bottom - 1];
+      results.push({
         withinLayoutViewport: rect.top >= 0 && rect.top < window.innerHeight &&
           rect.left >= 0 && rect.left < window.innerWidth,
-        painted: doc.elementFromPoint(x, y)?.closest(`#${fragment}`) === element &&
-          frame.ownerDocument.elementFromPoint(frameRect.left + x * scaleX, frameRect.top + y * scaleY) === frame,
-      };
+        painted: probeYs.every(y =>
+          doc.elementFromPoint(x, y)?.closest(`#${fragment}`) === element &&
+          frame.ownerDocument.elementFromPoint(frameRect.left + x * scaleX, frameRect.top + y * scaleY) === frame),
+      });
     }
-    return undefined;
-  }, id);
+    return results.find(result => result.painted) ?? results[0];
+  }, { fragment: id, edge });
 }
 
 test("narration follows a passage hidden by the current page clip but inside the iframe viewport (#377)", async () => {
@@ -85,6 +88,24 @@ test("narration follows a passage hidden by the current page clip but inside the
     await context.close();
   }
 });
+
+for (const width of [900, 1105, 1326]) {
+  test(`3.1.2 narration boundary has no overlapping or clipped final line at ${width}px (#377)`, async () => {
+    const { readerPage: page, context } = await launchReader(boundaryFixture(test.info()), {
+      viewport: { width, height: 840 },
+    });
+    try {
+      await exposeReaderController(page);
+      await listen(page);
+      await seek(page, 4.05);
+      await expect.poll(() => passagePaint(page, "c1-p2")).toMatchObject({ painted: true });
+      expect(await passagePaint(page, "c1-p2", "last")).toMatchObject({ painted: true });
+      expect(await passagePaint(page, "c1-p3")).toMatchObject({ painted: false });
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test("original W3C timing synchronization keeps the final narrated paragraph painted (#377)", async () => {
   const book = process.env.AMBRA_TIMING_SYNCHRONIZATION_EPUB;

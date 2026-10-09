@@ -101,7 +101,10 @@ scrollbar allocation, not body clipping that would hide translated content.
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before
 and after a clip boundary, continuous native audio and preserved control focus,
-not only highlight classes or page numbers. Set
+not only highlight classes or page numbers. The 3.1.2 fixture uses minimum
+paragraph heights so text can grow without overlapping the following passage.
+Single-page and spread checks hit-test the final text line and exclude the
+following passage from the current page's paint clip. Set
 `AMBRA_TIMING_SYNCHRONIZATION_EPUB` to the pinned original
 `mol-timing-synchronization.epub` to include its final-paragraph follow-along
 probe. This optional original-book regression does not change its already
