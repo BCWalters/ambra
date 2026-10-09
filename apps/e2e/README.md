@@ -270,7 +270,17 @@ CDP loading failure explicitly blocked by CSP, with no network dispatch/response
 Playwright can report a logical request attempt even when CSP prevents dispatch;
 the safety-net route must never handle that attempt. This is not a sanitized
 attribute or simulated event. This covers the common rendering
-host; external SVG graph rewriting remains a separate compatibility gap.
+host; SVG graph rendering is measured separately.
+
+`svg-resource-graphs.spec.ts` measures actual decoded pixels for packaged SVG
+images and CSS backgrounds in reflowable, fixed and roll layouts. Nested SVG
+images, qualified same-document use/paint references and external gradients
+must paint green over a red backdrop. External `use` is tested independently:
+Chromium SVG-as-image rendering retains the red backdrop rather than rendering
+the referenced shape, despite the rewritten self-contained dependency. This
+browser limitation remains open under #336; URL rewriting alone is not a
+compatibility pass. These generated fixtures run in protected resources CI
+without changing the published assessment.
 
 The opt-in release profile in `assessment/core-media.spec.ts` uses
 `epub-conformance.config.ts`, not ordinary test discovery. The main-only release

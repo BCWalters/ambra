@@ -390,6 +390,26 @@ Focused engine/Inspector tests and `html-base.spec.ts` cover resource decoding,
 nested CSS/child documents, real link activation, all three layouts and blocked
 base policies. These are synthetic regressions, not newly scored official tests.
 
+The post-3.1.0 SVG resource-graph increment assembles packaged SVG images before
+exposing them as blobs, inlining their dependencies as data URLs through the
+bounded nested-document pipeline. Image/xlink references, inline/linked CSS and
+URL-valued SVG presentation attributes share the resource classifier and CSS
+parser. Qualified same-document fragments become tree-local references rather
+than recursive resource cycles, including prefixed SVG/xlink namespaces.
+Source DOMs remain unchanged. SVG/CSS cycles bypass public pending promises;
+depth, document/expansion budgets, disposal and optional-resource diagnostics
+remain enforced. Safe authored data SVGs retain their separate sanitization
+policy; no remote/file loading or scripting is enabled.
+
+Native generated fixtures measure decoded pixels in reflowable, fixed and roll
+layouts for nested SVG images, local use/paint references and external gradients.
+External `use` is measured separately and does not render in Chromium's SVG
+image context, even with a self-contained rewritten dependency. #336 remains
+open for that browser limitation and remaining compatibility/assessment work;
+other external paint-server types and fonts are not inferred to work from the
+gradient result. These are implementation regressions, not official scores,
+and do not modify the frozen 3.1.0 store package or published assessment.
+
 The post-3.1.0 annotation increment resolves unique-element CSS selectors and
 body/scoped text-position selectors in both imported and publisher annotations.
 Text positions count Unicode code points over DOM `textContent`, including

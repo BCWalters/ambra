@@ -237,8 +237,179 @@ describe("ResourceUrlResolver", () => {
     return { blobs, load, documents, resolver: new ResourceUrlResolver(loader, capabilities) };
   }
 
-  it("assembles packaged child CSS, images and nested frames relative to their selected document", async () => {
+  it("makes packaged SVG image graphs self-contained instead of leaving relative nested image URLs", async () => {
+    const { resolver, blobs } = cssGraph({
+      "art/main.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><image href="parts/child.svg" width="80" height="40"/></svg>' },
+      "art/parts/child.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><image href="../leaf.svg" width="80" height="40"/></svg>' },
+      "art/leaf.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="green"/></svg>' },
+    });
+    try {
+      await resolver.resolve("art/main.svg");
+      const main = new DOMParser().parseFromString(await blobs.at(-1)!.text(), "image/svg+xml");
+      const child = main.querySelector("image")!.getAttribute("href")!;
+      expect(child).toMatch(/^data:image\/svg\+xml;base64,/);
+      const childDocument = new DOMParser().parseFromString(atob(child.split(",")[1]!), "image/svg+xml");
+      expect(childDocument.querySelector("image")!.getAttribute("href")).toMatch(/^data:image\/svg\+xml;base64,/);
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("cuts SVG image cycles without discarding unrelated artwork or waiting on public pending roots", async () => {
+    const { resolver, blobs } = cssGraph({
+      "a.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><rect id="a" width="20" height="20"/><image href="b.svg"/></svg>' },
+      "b.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><rect id="b" width="20" height="20"/><image href="a.svg"/></svg>' },
+    });
+    const unavailable = vi.fn();
+    resolver.fallbackSelector.onUnsupported(unavailable);
+    try {
+      await Promise.all([resolver.resolve("a.svg"), resolver.resolve("b.svg")]);
+      expect(unavailable).toHaveBeenCalledWith(expect.objectContaining({ reason: "cycle" }));
+      expect(blobs.some(blob => blob.type === "image/svg+xml")).toBe(true);
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("omits blocked or broken SVG dependencies while retaining a usable SVG image", async () => {
     const { resolver, blobs, load } = cssGraph({
+      "main.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><rect id="kept" width="20" height="20"/><image href="missing.svg"/><image href="https://remote.invalid/image.svg"/><image href="file:///private/image.svg"/></svg>' },
+    });
+    try {
+      await resolver.resolve("main.svg");
+      const document = new DOMParser().parseFromString(await blobs.at(-1)!.text(), "image/svg+xml");
+      expect(document.getElementById("kept")).not.toBeNull();
+      expect([...document.querySelectorAll("image")].every(image => !image.hasAttribute("href"))).toBe(true);
+      expect(load.mock.calls.map(([path]) => path)).not.toContain("https://remote.invalid/image.svg");
+      expect(load.mock.calls.map(([path]) => path)).not.toContain("file:///private/image.svg");
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("localizes qualified SVG fragments in hrefs, presentation attributes and CSS without mutating source", async () => {
+    const source = '<s:svg xmlns:s="http://www.w3.org/2000/svg" xmlns:xl="http://www.w3.org/1999/xlink"><s:defs><s:linearGradient id="paint"/><s:rect id="shape" fill="url(main.svg#paint)"/></s:defs><s:use xl:href="./main.svg#shape" style="stroke:url(./main.svg#paint)"/><s:style>rect{filter:url(main.svg#filter)}</s:style></s:svg>';
+    const { resolver, blobs, documents } = cssGraph({
+      "art/main.svg": { type: "image/svg+xml", text: source },
+    });
+    const unavailable = vi.fn();
+    resolver.fallbackSelector.onUnsupported(unavailable);
+    try {
+      await resolver.resolve("art/main.svg");
+      const markup = await blobs.at(-1)!.text();
+      expect(markup).toContain('xl:href="#shape"');
+      expect(markup).not.toContain("main.svg#");
+      expect(markup).toContain("#paint");
+      expect(documents).toHaveBeenCalledTimes(1);
+      expect(unavailable).not.toHaveBeenCalled();
+      const original: ContentDocument = await documents.mock.results[0]!.value;
+      expect(Array.from(original.document.querySelectorAll("*"))
+        .find(element => element.localName === "use")?.getAttribute("xl:href")).toBe("./main.svg#shape");
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("rewrites SVG presentation values using CSS escaping and keeps plain values and local paint servers", async () => {
+    const { resolver, blobs } = cssGraph({
+      "main.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><rect id="kept" fill="green" stroke="url(#paint)" filter="url(https://blocked.invalid/filter.svg#filter)" cursor="url(cursor.svg), auto" marker-end="u\\72l(cursor.svg#marker)" mask="url(missing.svg#mask)"/></svg>' },
+      "cursor.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><path id="marker" d="M0 0L5 5"/></svg>' },
+    });
+    try {
+      await resolver.resolve("main.svg");
+      const document = new DOMParser().parseFromString(await blobs.at(-1)!.text(), "image/svg+xml");
+      const rect = document.getElementById("kept")!;
+      expect(rect.getAttribute("fill")).toBe("green");
+      expect(rect.getAttribute("stroke")).toBe('url("#paint")');
+      expect(rect.hasAttribute("filter")).toBe(false);
+      expect(rect.hasAttribute("mask")).toBe(false);
+      expect(rect.getAttribute("cursor")).toMatch(/^url\("data:image\/svg\+xml;base64,.*"\), auto$/);
+      expect(rect.getAttribute("marker-end")).toMatch(/^url\("data:image\/svg\+xml;base64,.*#marker"\)$/);
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("cuts concurrent SVG and CSS cycles without awaiting public roots", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver, blobs } = cssGraph({
+      "main.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><style>@import "main.css";</style><rect id="kept" fill="green"/></svg>' },
+      "main.css": { type: "text/css", text: 'rect{background:url(main.svg)}' },
+    });
+    try {
+      await Promise.all([resolver.resolve("main.svg"), resolver.resolve("main.css")]);
+      expect(blobs.some(blob => blob.type === "image/svg+xml")).toBe(true);
+      expect(blobs.some(blob => blob.type === "text/css")).toBe(true);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Cyclic CSS import omitted"));
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("bounds SVG depth without dropping remaining artwork", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const files: Record<string, { type: string; text: string }> = {};
+    for (let index = 0; index < 12; index++) {
+      files[`${index}.svg`] = { type: "image/svg+xml", text: `<svg xmlns="http://www.w3.org/2000/svg"><rect id="kept" fill="green"/><image href="${index + 1}.svg"/></svg>` };
+    }
+    const { resolver, blobs, documents } = cssGraph(files);
+    const unavailable = vi.fn();
+    resolver.fallbackSelector.onUnsupported(unavailable);
+    try {
+      await resolver.resolve("0.svg");
+      expect(unavailable).toHaveBeenCalledWith(expect.objectContaining({ reason: "depth-limit" }));
+      expect(documents.mock.calls.length).toBeLessThan(12);
+      expect(await blobs.at(-1)!.text()).toContain('id="kept"');
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("reports oversized or malformed optional SVGs while preserving chapter text", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver, documents } = cssGraph({
+      "big.svg": { type: "image/svg+xml", text: `<svg xmlns="http://www.w3.org/2000/svg"><!--${"x".repeat(MAX_NESTED_DOCUMENT_BYTES)}--></svg>` },
+      "broken.svg": { type: "image/svg+xml", text: "<svg/>" },
+    });
+    documents.mockImplementationOnce(async () => { throw new ContentLoaderError("Malformed SVG."); });
+    const host = new DOMParser().parseFromString('<html><body><p>Kept chapter</p><img src="broken.svg"/><img src="big.svg"/></body></html>', "text/html");
+    const unavailable = vi.fn();
+    resolver.fallbackSelector.onUnsupported(unavailable);
+    try {
+      const results = await resolver.resolveReferences(findResourceReferencesInDocument(host, "chapter.xhtml"));
+      expect([...results.values()]).toEqual([null, null]);
+      expect(host.querySelector("p")?.textContent).toBe("Kept chapter");
+      expect(unavailable).toHaveBeenCalledTimes(2);
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Unable to resolve publication image resource broken.svg."), expect.any(ContentLoaderError));
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Unable to resolve publication image resource big.svg."), expect.any(ContentLoaderError));
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("shares one bounded expansion budget across SVG image siblings", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { resolver, blobs } = cssGraph({
+      "a.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="green"/></svg>' },
+      "b.svg": { type: "image/svg+xml", text: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="blue"/></svg>' },
+    });
+    const host = new DOMParser().parseFromString('<html><body><img src="a.svg"/><img src="b.svg"/></body></html>', "text/html");
+    const budget = { remaining: 24 * 1024 };
+    try {
+      const results = await resolver.resolveReferences(
+        findResourceReferencesInDocument(host, "root.xhtml"), new Set(["root.xhtml"]), false, budget,
+      );
+      expect([...results.values()].filter(result => result === null)).toHaveLength(1);
+      expect([...results.values()].filter(result => result?.mediaType === "image/svg+xml")).toHaveLength(1);
+      expect(blobs).toHaveLength(1);
+      expect(budget.remaining).toBeGreaterThanOrEqual(0);
+    } finally {
+      resolver.dispose();
+    }
+  });
+
+  it("assembles packaged child CSS, images and nested frames relative to their selected document", async () => {
+    const { resolver, blobs, documents } = cssGraph({
       "foreign.bin": { type: "application/foreign", text: "", fallback: "nested/child.xhtml" },
       "nested/child.xhtml": { type: "application/xhtml+xml", text: '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../styles.css"/><style>p{background:url(pic.svg)}</style></head><body><p id="text">Static child</p><img src="pic.svg"/><iframe src="grandchild.xhtml" sandbox="allow-scripts"/></body></html>' },
       "nested/grandchild.xhtml": { type: "application/xhtml+xml", text: '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Grandchild</title></head><body>Static grandchild</body></html>' },
@@ -255,7 +426,7 @@ describe("ResourceUrlResolver", () => {
     expect(child.querySelector("link")?.getAttribute("href")).toMatch(/^data:text\/css;base64,/);
     expect(child.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("script-src 'none'");
     expect(markup).not.toContain("var(--ambra-font");
-    expect(load).toHaveBeenCalledWith("nested/pic.svg");
+    expect(documents).toHaveBeenCalledWith(expect.objectContaining({ path: "nested/pic.svg" }));
     const revoke = vi.spyOn(URL, "revokeObjectURL");
     resolver.dispose();
     expect(revoke).toHaveBeenCalledTimes(blobs.length);
@@ -379,17 +550,19 @@ describe("ResourceUrlResolver", () => {
     resolver.dispose();
   });
 
-  it("cancels nested assembly without creating a URL after disposal", async () => {
+  it.each(["application/xhtml+xml", "image/svg+xml"])("cancels %s assembly without creating a URL after disposal", async type => {
+    const raw = type === "image/svg+xml"
+      ? '<svg xmlns="http://www.w3.org/2000/svg"><rect width="20" height="20"/></svg>'
+      : '<html xmlns="http://www.w3.org/1999/xhtml"><head/><body>Child</body></html>';
     const { resolver, blobs, documents } = cssGraph({
-      "child.xhtml": { type: "application/xhtml+xml", text: '<html xmlns="http://www.w3.org/1999/xhtml"><head/><body>Child</body></html>' },
+      "child.xhtml": { type, text: raw },
     });
     let complete!: (document: ContentDocument) => void;
     documents.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
-    const pending = resolver.resolveForConsumer("child.xhtml", "document", new Set(["root.xhtml"]));
+    const pending = resolver.resolveForConsumer("child.xhtml", type === "image/svg+xml" ? "image" : "document", new Set(["root.xhtml"]));
     const rejected = expect(pending).rejects.toBeInstanceOf(ResourceResolutionCancelledError);
     await vi.waitFor(() => expect(documents).toHaveBeenCalledTimes(1));
     resolver.dispose();
-    const raw = '<html xmlns="http://www.w3.org/1999/xhtml"><head/><body>Child</body></html>';
     complete(new ContentDocument(
       loader.packageDocument.findManifestItemByPath("child.xhtml")!,
       new DOMParser().parseFromString(raw, "application/xhtml+xml"), raw,
@@ -510,7 +683,7 @@ describe("ResourceUrlResolver", () => {
 
   it("resolves fallback stylesheet dependencies relative to the selected sheet and detects alias cycles", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { blobs, load, resolver } = cssGraph({
+    const { blobs, load, documents, resolver } = cssGraph({
       "foreign.bin": { type: "application/foreign", text: "", fallback: "styles/main.css" },
       "styles/main.css": { type: "text/css", text: '@import "../foreign.bin";p{background:url(image.bin)}@font-face{src:url(font.bin) format("foreign")}' },
       "styles/image.bin": { type: "application/foreign", text: "", fallback: "image.svg" },
@@ -520,7 +693,8 @@ describe("ResourceUrlResolver", () => {
     }, { supports: async type => type !== "application/foreign" });
     const result = await resolver.resolveForConsumer("foreign.bin", "stylesheet");
     expect(result).toMatchObject({ path: "styles/main.css", mediaType: "text/css" });
-    expect(load.mock.calls.map(call => call[0])).toEqual(["styles/main.css", "image.svg", "font.woff2"]);
+    expect(load.mock.calls.map(call => call[0])).toEqual(["styles/main.css", "font.woff2"]);
+    expect(documents).toHaveBeenCalledWith(expect.objectContaining({ path: "image.svg" }));
     expect(await blobs.at(-1)!.text()).toContain('background:url("blob:resource-1")');
     expect(await blobs.at(-1)!.text()).not.toContain("@import");
     expect(await blobs.at(-1)!.text()).not.toContain("format");

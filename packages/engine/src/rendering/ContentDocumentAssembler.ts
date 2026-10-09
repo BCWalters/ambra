@@ -8,6 +8,7 @@ import type { ResolvedResource, ResourceUrlResolver } from "./ResourceUrlResolve
 import { classifyEpubReference, externalNavigationUrl, getDocumentBaseHref } from "../container/EpubReference.js";
 import { getNamespacedAttributeName } from "../container/Xml.js";
 import { CONTENT_SECURITY_POLICY, NESTED_CONTENT_SECURITY_POLICY } from "./ContentSecurityPolicy.js";
+import { getSvgHrefAttributes, getSvgPresentationAttributes, sameDocumentSvgFragment } from "../content/SvgResources.js";
 
 export const MAX_NESTED_DOCUMENT_BYTES = 8 * 1024 * 1024;
 export const MAX_NESTED_RESOURCE_BYTES = 32 * 1024 * 1024;
@@ -45,25 +46,37 @@ export class ContentDocumentAssembler {
     }
     const resourceResolutions = await resolver.resolveReferences(references, ancestors, nested, budget);
     const publisherCss = new Map<string, string>();
-    for (const style of Array.from(contentDocument.document.querySelectorAll("style"))) {
+    for (const style of publisherStyles(contentDocument.document)) {
       const source = style.textContent ?? "";
-      publisherCss.set(source, await resolver.rewriteCss(source, path, false, new Set(), nested, budget, baseHref));
+      publisherCss.set(source, await resolver.rewriteCss(source, path, false, ancestors, nested, budget, baseHref));
     }
     const publisherStyleAttributes = new Map<string, string>();
     for (const element of Array.from(contentDocument.document.querySelectorAll("[style]"))) {
       const source = element.getAttribute("style")!;
-      publisherStyleAttributes.set(source, await resolver.rewriteCss(source, path, true, new Set(), nested, budget, baseHref));
+      publisherStyleAttributes.set(source, await resolver.rewriteCss(source, path, true, ancestors, nested, budget, baseHref));
+    }
+    const publisherPresentationAttributes = new Map<string, string>();
+    const presentationAttributes = getSvgPresentationAttributes(contentDocument.document);
+    for (const { element, attributeName } of presentationAttributes) {
+      const source = element.getAttribute(attributeName)!;
+      if (!publisherPresentationAttributes.has(source)) {
+        publisherPresentationAttributes.set(source,
+          await resolver.rewriteCss(source, path, "value", ancestors, nested, budget, baseHref));
+      }
     }
     if (nested) {
       let expandedBytes = new TextEncoder().encode(contentDocument.rawText).byteLength + 16_384;
       for (const reference of references) {
         expandedBytes += resourceResolutions.get(resourceResolutionKey(reference.path, reference.consumer))?.url.length ?? 0;
       }
-      for (const style of Array.from(contentDocument.document.querySelectorAll("style"))) {
+      for (const style of publisherStyles(contentDocument.document)) {
         expandedBytes += publisherCss.get(style.textContent ?? "")?.length ?? 0;
       }
       for (const element of Array.from(contentDocument.document.querySelectorAll("[style]"))) {
         expandedBytes += publisherStyleAttributes.get(element.getAttribute("style")!)?.length ?? 0;
+      }
+      for (const { element, attributeName } of presentationAttributes) {
+        expandedBytes += publisherPresentationAttributes.get(element.getAttribute(attributeName)!)?.length ?? 0;
       }
       if (expandedBytes > MAX_NESTED_DOCUMENT_BYTES || expandedBytes > budget.remaining) {
         throw new ContentLoaderError(`Packaged child resources exceed the bounded assembly budget: ${path}`);
@@ -71,7 +84,7 @@ export class ContentDocumentAssembler {
       budget.remaining -= expandedBytes;
     }
     return this.assemble(contentDocument, new Map(), {
-      ...options, publisherCss, publisherStyleAttributes, resourceResolutions,
+      ...options, publisherCss, publisherStyleAttributes, publisherPresentationAttributes, resourceResolutions,
     });
   }
 
@@ -89,6 +102,7 @@ export class ContentDocumentAssembler {
       applyReadingTheme?: boolean;
       publisherCss?: ReadonlyMap<string, string>;
       publisherStyleAttributes?: ReadonlyMap<string, string>;
+      publisherPresentationAttributes?: ReadonlyMap<string, string>;
       resourceResolutions?: ReadonlyMap<string, ResolvedResource | null>;
       nestedDocument?: boolean;
     } = {},
@@ -99,6 +113,10 @@ export class ContentDocumentAssembler {
     // consumers (e.g. future CFI resolution) that need pristine hrefs.
     const doc = new DOMParser().parseFromString(contentDocument.rawText, "application/xhtml+xml");
     const baseHref = getDocumentBaseHref(doc);
+    for (const { element, attributeName } of getSvgHrefAttributes(doc)) {
+      const fragment = sameDocumentSvgFragment(contentDocument.manifestItem.path, element.getAttribute(attributeName)!, baseHref);
+      if (fragment !== undefined) element.setAttribute(attributeName, fragment);
+    }
     for (const frame of Array.from(doc.querySelectorAll("iframe"))) {
       frame.removeAttribute("srcdoc");
       frame.setAttribute("sandbox", "");
@@ -179,13 +197,19 @@ export class ContentDocumentAssembler {
       image.setAttribute("alt", object.getAttribute("aria-label") ?? object.textContent?.trim() ?? "");
       object.replaceWith(image);
     }
-    for (const style of Array.from(doc.querySelectorAll("style"))) {
+    for (const style of publisherStyles(doc)) {
       const rewritten = options.publisherCss?.get(style.textContent ?? "");
       if (rewritten !== undefined) style.textContent = rewritten;
     }
     for (const element of Array.from(doc.querySelectorAll("[style]"))) {
       const rewritten = options.publisherStyleAttributes?.get(element.getAttribute("style")!);
       if (rewritten !== undefined) element.setAttribute("style", rewritten);
+    }
+    for (const { element, attributeName } of getSvgPresentationAttributes(doc)) {
+      const rewritten = options.publisherPresentationAttributes?.get(element.getAttribute(attributeName)!);
+      if (rewritten === undefined) continue;
+      if (rewritten.trim()) element.setAttribute(attributeName, rewritten);
+      else element.removeAttribute(attributeName);
     }
     // The reader consumes canonical links and resolved resources. Never let
     // the original base affect blob-frame navigation or publisher targets.
@@ -204,6 +228,10 @@ export class ContentDocumentAssembler {
 
     return new XMLSerializer().serializeToString(doc);
   }
+}
+
+function publisherStyles(doc: Document): Element[] {
+  return Array.from(doc.querySelectorAll("*")).filter(element => element.localName === "style");
 }
 
 function injectContentSecurityPolicy(doc: Document, policy: string): void {

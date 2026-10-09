@@ -65,8 +65,9 @@ async function rewriteValue(value: string, resolve: CssUrlResolver, importing = 
 export async function rewriteCssResources(
   source: string,
   resolve: CssUrlResolver,
-  declarations = false,
+  declarations: boolean | "value" = false,
 ): Promise<string> {
+  if (declarations === "value") return rewriteValue(source, resolve, false, "image");
   const root = postcss.parse(declarations ? `ambra-inline{${source}}` : source);
   const imports: postcss.AtRule[] = [];
   const values: postcss.Declaration[] = [];
