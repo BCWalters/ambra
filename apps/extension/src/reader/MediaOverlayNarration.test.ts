@@ -417,6 +417,39 @@ describe("MediaOverlayNarration", () => {
     expect(narration.snapshot.status).toBe("playing");
   });
 
+  it.each([0.5, 1.5])("clamps an overlong authored end to the %s-second media duration and continues narration", async duration => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": smil(clip(0, "a", 0, 10), clip(0, "b", 0, 0.2, "two.mp3")),
+      "EPUB/m2.smil": second,
+    });
+    audio.duration = duration;
+    await narration.playFrom(0);
+    audio.advance(duration, "ended");
+    await flush();
+    expect(narration.target?.fragment).toBe("b");
+    expect(narration.snapshot.status).toBe("playing");
+    expect(narration.snapshot.error).toBeUndefined();
+    expect(audio.currentTime).toBe(0);
+  });
+
+  it.each([
+    { begin: 1, end: 0.8, duration: 10, message: "invalid audio clip range" },
+    { begin: 1, end: 2, duration: 1, message: "beyond the end" },
+  ])("reports invalid contiguous timing without an uncaught boundary error: %o", async ({ begin, end, duration, message }) => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": smil(clip(0, "a", 0, 1), clip(0, "b", begin, end)),
+      "EPUB/m2.smil": second,
+    });
+    audio.duration = duration;
+    await narration.playFrom(0);
+    audio.advance(1);
+    await flush();
+    expect(narration.target?.fragment).toBe("b");
+    expect(narration.snapshot.status).toBe("error");
+    expect(narration.snapshot.error).toContain(message);
+    expect(audio.paused).toBe(true);
+  });
+
   it("surfaces truncated audio and clip starts outside the audio duration", async () => {
     const { narration, audio } = setup();
     await narration.playFrom(0);

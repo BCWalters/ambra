@@ -70,6 +70,50 @@ function makePlayer(): { player: MediaOverlayPlayer; host: ReturnType<typeof mak
 }
 
 describe("MediaOverlayPlayer", () => {
+  it("bounds explicit ends without mutating authored clips or substituting unknown durations", () => {
+    const audio = Object.freeze({ path: "audio.mp3", clipBeginSeconds: 1, clipEndSeconds: 20 });
+    expect(MediaOverlayPlayer.boundedAudioClip(audio, 5)).toEqual({ ...audio, clipEndSeconds: 5 });
+    expect(audio.clipEndSeconds).toBe(20);
+    for (const duration of [undefined, Number.NaN, Number.POSITIVE_INFINITY, 30]) {
+      expect(MediaOverlayPlayer.boundedAudioClip(audio, duration)).toBe(audio);
+    }
+    const openEnded = { ...audio, clipEndSeconds: undefined };
+    expect(MediaOverlayPlayer.boundedAudioClip(openEnded, 5)).toBe(openEnded);
+    expect(() => MediaOverlayPlayer.boundedAudioClip(audio, -1)).toThrow("invalid duration");
+  });
+
+  it("uses the same decoded bound for cueing and exclusive clip-position lookup", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { player, host } = makePlayer();
+      const par = player.currentClip!.par;
+      Object.defineProperty(host, "duration", { value: 3 });
+      host.setSource(par.audio!.path);
+      host.advanceTo(4);
+      MediaOverlayPlayer.cue(host, par);
+      expect(host.seeks).toEqual([0]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("clamping playback"), expect.objectContaining({ authoredEnd: 5, end: 3 }));
+      expect(player.clipForHostPosition(par.audio!.path, 2.9)?.index).toBe(0);
+      expect(player.clipForHostPosition(par.audio!.path, 3)).toBeUndefined();
+      expect(par.audio!.clipEndSeconds).toBe(5);
+      host.setSource("unrelated.mp3");
+      expect(player.clipForHostPosition(par.audio!.path, 4)?.index).toBe(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it.each([
+    { clipBeginSeconds: Number.NaN, clipEndSeconds: 20 },
+    { clipBeginSeconds: -1, clipEndSeconds: 20 },
+    { clipBeginSeconds: 1, clipEndSeconds: Number.POSITIVE_INFINITY },
+    { clipBeginSeconds: 5, clipEndSeconds: 3 },
+    { clipBeginSeconds: 5, clipEndSeconds: 5 },
+  ])("does not turn malformed authored timing into a valid clamped clip: %o", range => {
+    expect(() => MediaOverlayPlayer.boundedAudioClip({ path: "audio.mp3", ...range }, 10))
+      .toThrow("invalid audio clip range");
+  });
+
   it("shares clip cueing without requiring synchronous audio playback", () => {
     const { player, host } = makePlayer();
     const par = player.currentClip!.par;
