@@ -29,7 +29,7 @@ import {
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
-import { TypographyMenu } from "./ReaderPreferencesMenus.js";
+import { FixedZoomMenu, TypographyMenu } from "./ReaderPreferencesMenus.js";
 import type { ReaderSettingsMenuActions, TypographyMenuActions } from "./ReaderPreferencesMenus.js";
 import { AmbraSettingsPopover } from "../../components/AmbraSettingsPopover.js";
 import { useChromeToolbarStyles } from "../../components/ChromeToolbarStyles.js";
@@ -70,6 +70,7 @@ const useReaderToolbarStyles = makeStyles({
 export type ReaderToolbarMenu = "typography" | "settings";
 
 export interface ToolbarProps extends TypographyMenuActions, ReaderSettingsMenuActions {
+  onSetFixedZoom?: (zoom: number) => void;
   onOpenHelp: (returnFocusTo: HTMLElement | null) => void;
   isHelpOpen: boolean;
   openMenu: ReaderToolbarMenu | undefined;
@@ -145,6 +146,7 @@ export const Toolbar: FC<ToolbarProps> = ({
   onToggleBookmark,
   onSetViewMode,
   onSetFontScale,
+  onSetFixedZoom,
   onSetLineSpacing,
   onSetLetterSpacing,
   onSetContentWidth,
@@ -439,7 +441,11 @@ export const Toolbar: FC<ToolbarProps> = ({
           />
         </Tooltip>
 
-        {!snapshot.isFixedLayout && (
+        {snapshot.fixedZoom !== undefined && onSetFixedZoom ? (
+          <FixedZoomMenu zoom={snapshot.fixedZoom} onSetZoom={onSetFixedZoom}
+            open={openMenu === "typography"}
+            onOpenChange={open => onOpenMenuChange(open ? "typography" : undefined)} />
+        ) : !snapshot.isFixedLayout && (
           <TypographyMenu
             open={openMenu === "typography"}
             onOpenChange={open => onOpenMenuChange(open ? "typography" : undefined)}

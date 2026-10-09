@@ -34,9 +34,31 @@ describe("FixedSpreadHost child ownership", () => {
       [expectedScale, 400 * expectedScale, height],
       [expectedScale, 600 * expectedScale, height],
     ]);
-    expect(host.element.children).toHaveLength(2);
-    expect(host.element.style.flexDirection).toBe(rtl ? "row-reverse" : "row");
+    expect(host.element.firstElementChild?.children).toHaveLength(2);
+    expect((host.element.firstElementChild as HTMLElement).style.flexDirection).toBe(rtl ? "row-reverse" : "row");
     expect(FixedSpreadHost.GUTTER_WIDTH).toBe(0);
+    host.dispose();
+  });
+
+  it("magnifies both unequal pages with one scale, keeps iframe identity, and refits independently of user zoom", async () => {
+    vi.spyOn(FixedContentHost.prototype, "open").mockResolvedValue();
+    vi.spyOn(FixedContentHost.prototype, "naturalSize", "get")
+      .mockReturnValueOnce({ width: 400, height: 800 }).mockReturnValueOnce({ width: 600, height: 600 });
+    const scale = vi.spyOn(FixedContentHost.prototype, "applyExternalScale").mockImplementation(() => {});
+    const host = new FixedSpreadHost(1000, 800);
+    await host.open(loader, resolver, { kind: "pair", leftSpineIndex: 0, rightSpineIndex: 1 }, undefined);
+    const frames = [...host.element.querySelectorAll("iframe")];
+    host.setZoom(2);
+    expect(scale.mock.calls.slice(-2)).toEqual([[2, 800, 1600], [2, 1200, 1600]]);
+    host.resize(500, 400);
+    expect(host.zoom).toBe(2);
+    expect(scale.mock.calls.slice(-2)).toEqual([[1, 400, 800], [1, 600, 800]]);
+    expect([...host.element.querySelectorAll("iframe")]).toEqual(frames);
+    host.setZoom(1);
+    expect(scale.mock.calls.slice(-2)).toEqual([[0.5, 200, 400], [0.5, 300, 400]]);
+    for (const invalid of [0, -1, NaN, Infinity]) expect(() => host.setZoom(invalid)).toThrow(RangeError);
+    host.setZoom(100);
+    expect(host.zoom).toBe(FixedSpreadHost.MAX_ZOOM);
     host.dispose();
   });
 

@@ -11,6 +11,7 @@ import {
   FixedLayoutSpreadPlanner,
   FixedSpreadHost,
   isInteractiveContentTarget,
+  isKeyboardNavigationScope,
   isReaderOwnedContent,
   Locator,
   LocatorResolver,
@@ -795,6 +796,7 @@ export class ReaderController {
             : this.viewMode,
         isFixedLayout: this.isFixedLayoutHost(this.host),
         svgCanvas: this.isSvgCanvasHost() || undefined,
+        fixedZoom: this.host instanceof FixedSpreadHost ? this.host.zoom : undefined,
         pageIndex,
         pageCount,
         bookPageIndex,
@@ -1756,6 +1758,24 @@ export class ReaderController {
   }
 
   private handleShortcut(event: KeyboardEvent, document: Document, scope: "shell" | "content"): void {
+    if (this.host instanceof FixedSpreadHost && this.shortcutPreferences.enabled &&
+      !this.shortcutModalOpen && !this.imageViewer && !this.tableViewer &&
+      isKeyboardNavigationScope(event, document, { scope })) {
+      const modified = (event.ctrlKey || event.metaKey) && !event.altKey;
+      if (modified && ["+", "=", "-", "0"].includes(event.key)) {
+        event.preventDefault();
+        this.setFixedZoom(event.key === "0" ? 1 : this.host.zoom *
+          (event.key === "-" ? 1 / FixedSpreadHost.ZOOM_STEP : FixedSpreadHost.ZOOM_STEP));
+        return;
+      }
+      if (this.host.zoom > 1 && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        this.host.panBy(event.key === "ArrowLeft" ? -40 : event.key === "ArrowRight" ? 40 : 0,
+          event.key === "ArrowUp" ? -40 : event.key === "ArrowDown" ? 40 : 0);
+        return;
+      }
+    }
     const command = matchReaderCommand(event, document, {
       preferences: this.shortcutPreferences,
       platform: this.shortcutPlatform,
@@ -2552,6 +2572,15 @@ export class ReaderController {
     await Promise.all([this.requestLayout({ viewMode: mode }), this.refreshGlobalSettings()]);
   }
 
+  private fixedZoom = 1;
+
+  public setFixedZoom(zoom: number, point?: { x: number; y: number }): void {
+    if (!(this.host instanceof FixedSpreadHost) || this.operations.disposed) return;
+    this.host.setZoom(zoom, point);
+    this.fixedZoom = this.host.zoom;
+    this.notify();
+  }
+
   /** Sets and persists font scale, then reapplies display settings and
    * pagination. No-op for fixed-layout content. */
   public async setFontScale(scale: number): Promise<void> {
@@ -3266,6 +3295,7 @@ export class ReaderController {
           nextSpread,
           this.pkg.metadata.renditionViewport,
         );
+        newHost.setZoom(this.fixedZoom);
       } catch (err) {
         newHost.dispose();
         newStagingEl.remove();
@@ -3814,6 +3844,68 @@ export class ReaderController {
     const cleanups = this.contentDocumentViews(host).map(({ document: doc }) =>
       this.setUpMarginClicks(doc, doc));
     cleanups.push(this.setUpMarginClicks(host.element, host.element.ownerDocument));
+    cleanups.push(this.setUpFixedZoomInteractions(host));
+    return () => cleanups.forEach(cleanup => cleanup());
+  }
+
+  private setUpFixedZoomInteractions(host: FixedSpreadHost): () => void {
+    const cleanups: Array<() => void> = [];
+    for (const target of [...host.contentDocuments(), host.element]) {
+      const doc = target.nodeType === 9 ? target as Document : target.ownerDocument!;
+      const root = target.nodeType === 9 ? doc.documentElement : host.element;
+      const wheel = (event: Event): void => {
+        const e = event as WheelEvent;
+        const pinch = e.ctrlKey || e.metaKey;
+        if (!pinch && !(host.zoom > 1)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.height : 1;
+        if (pinch) {
+          const frame = doc.defaultView?.frameElement as HTMLIFrameElement | null;
+          const bounds = frame?.getBoundingClientRect();
+          const point = frame && bounds
+            ? { x: bounds.left + e.clientX * bounds.width / frame.clientWidth,
+              y: bounds.top + e.clientY * bounds.height / frame.clientHeight }
+            : { x: e.clientX, y: e.clientY };
+          this.setFixedZoom(host.zoom * Math.exp(-Math.max(-200, Math.min(200, e.deltaY * unit)) * 0.005), point);
+        } else host.panBy(e.deltaX * unit, e.deltaY * unit);
+      };
+      let drag: { id: number; x: number; y: number } | undefined;
+      const move = (event: Event): void => {
+        const e = event as PointerEvent;
+        if (!drag || e.pointerId !== drag.id) return;
+        e.preventDefault();
+        host.panBy(drag.x - e.screenX, drag.y - e.screenY);
+        drag = { id: e.pointerId, x: e.screenX, y: e.screenY };
+      };
+      const end = (): void => {
+        if (drag && root.hasPointerCapture(drag.id)) root.releasePointerCapture(drag.id);
+        drag = undefined;
+      };
+      const down = (event: Event): void => {
+        const e = event as PointerEvent;
+        if (!(host.zoom > 1) || (e.pointerType === "mouse" && e.button !== 0) ||
+          !this.isPageTurnTarget(e.target)) return;
+        this.dismissUiForPointer(e);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        drag = { id: e.pointerId, x: e.screenX, y: e.screenY };
+        if (e.isTrusted) root.setPointerCapture(e.pointerId);
+      };
+      target.addEventListener("wheel", wheel, { passive: false });
+      target.addEventListener("pointerdown", down, true);
+      target.addEventListener("pointermove", move, { passive: false });
+      target.addEventListener("pointerup", end);
+      target.addEventListener("pointercancel", end);
+      cleanups.push(() => {
+        end();
+        target.removeEventListener("wheel", wheel);
+        target.removeEventListener("pointerdown", down, true);
+        target.removeEventListener("pointermove", move);
+        target.removeEventListener("pointerup", end);
+        target.removeEventListener("pointercancel", end);
+      });
+    }
     return () => cleanups.forEach(cleanup => cleanup());
   }
 
@@ -3824,6 +3916,7 @@ export class ReaderController {
     acceptsPointer?: (start: PointerEvent) => boolean,
   ): () => void {
     const down = (event: Event): void => {
+      if (this.host instanceof FixedSpreadHost && this.host.zoom > 1) return;
       const start = event as PointerEvent;
       if (start.pointerType === "mouse" && start.button !== 0) return;
       if (acceptsPointer && !acceptsPointer(start)) return;
@@ -5042,6 +5135,7 @@ export class ReaderController {
             spread,
             this.pkg.metadata.renditionViewport,
           );
+          fixedHost.setZoom(this.fixedZoom);
           spineIndex = Math.min(...fixedHost.spineIndices);
         } else if (this.viewMode === "paginated" && this.useReflowableSpread(this.width)) {
           const prepared = await this.prepareSpreadForOpen(spineIndex, options, operation);

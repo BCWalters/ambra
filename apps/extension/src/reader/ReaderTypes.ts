@@ -179,6 +179,7 @@ export interface ReaderSnapshot {
   isFixedLayout: boolean;
   /** Authored reflowable SVG rendered as a canvas still permits view-mode changes. */
   svgCanvas?: boolean;
+  fixedZoom?: number;
   pageIndex: number;
   pageCount: number;
   /** Page position across the whole book, not just the chapter.

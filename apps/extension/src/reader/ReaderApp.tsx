@@ -81,6 +81,7 @@ const ReaderAppInner: FC = () => {
     goToNavPoint,
     setViewMode,
     setFontScale,
+    setFixedZoom,
     setLineSpacing,
     setLetterSpacing,
     setContentWidth,
@@ -814,6 +815,7 @@ const ReaderAppInner: FC = () => {
               onToggleBookmark={handleToggleBookmark}
               onSetViewMode={setViewMode}
               onSetFontScale={setFontScale}
+              onSetFixedZoom={setFixedZoom}
               onSetLineSpacing={setLineSpacing}
               onSetLetterSpacing={setLetterSpacing}
               onSetContentWidth={setContentWidth}

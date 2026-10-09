@@ -347,6 +347,15 @@ viewBox, unequal spreads, docked panels, resize, single-page preference, wheel
 scrolling and clipped-node resume. This is reader UX/regression evidence, not
 a revision of the frozen 3.0.0 assessment or external-SVG graph support.
 
+The 3.1 fixed-layout zoom increment (#380) separates automatic fit from
+explicit user magnification. Native coverage measures painted glyph dimensions
+for the original four `lay-viewport-meta-prop` declarations, book-options
+controls, iframe/shell Cmd/Ctrl zoom, anchored trackpad pinch, non-navigating
+pan, resize, and unequal XHTML/SVG spreads in both reading directions.
+Only authored containing-block dimensions determine the initial fit; author
+zoom restrictions remain ignored. User zoom lasts for the open book, not as a
+persisted typography setting. This evidence does not revise frozen scores.
+
 HTML `<base href>` processing is a genuine URL-resolution compatibility gap.
 Legacy `xml:base` is a separate unsupported compatibility surface:
 [EPUB 3.4 discourages its use](https://www.w3.org/TR/2026/CR-epub-34-20260721/#sec-xml-constraints)

@@ -42,8 +42,12 @@ import type { ContentDocumentView } from "./ContentDocumentView.js";
  */
 export class FixedSpreadHost {
   public static readonly GUTTER_WIDTH = 0;
+  public static readonly MAX_ZOOM = 8;
+  public static readonly ZOOM_STEP = 1.25;
 
   private readonly containerEl: HTMLDivElement;
+  private readonly canvasEl: HTMLDivElement;
+  private userZoom = 1;
   private readonly ownerDocument: Document;
   private width: number;
   private height: number;
@@ -67,15 +71,70 @@ export class FixedSpreadHost {
     this.height = height;
     this.ownerDocument = ownerDocument ?? document;
     this.containerEl = this.ownerDocument.createElement("div");
-    this.containerEl.style.display = "flex";
-    this.containerEl.style.alignItems = "center";
-    this.containerEl.style.justifyContent = "center";
     this.containerEl.style.width = "100%";
     this.containerEl.style.height = "100%";
+    this.containerEl.style.overflow = "auto";
+    this.canvasEl = this.ownerDocument.createElement("div");
+    this.canvasEl.style.position = "relative";
+    this.canvasEl.style.display = "flex";
+    this.canvasEl.style.alignItems = "center";
+    this.canvasEl.style.justifyContent = "center";
+    // Clip the unscaled iframe layout boxes, not the magnified page artwork.
+    this.canvasEl.style.overflow = "hidden";
+    this.containerEl.appendChild(this.canvasEl);
   }
 
   public get element(): HTMLDivElement {
     return this.containerEl;
+  }
+
+  public get zoom(): number {
+    return this.userZoom;
+  }
+
+  public setZoom(zoom: number, point?: { x: number; y: number }): void {
+    if (!Number.isFinite(zoom) || zoom <= 0) throw new RangeError("Fixed-layout zoom must be finite and positive.");
+    const anchor = this.zoomAnchor(point);
+    this.userZoom = Math.max(1, Math.min(FixedSpreadHost.MAX_ZOOM, zoom));
+    this.layoutPair();
+    this.restoreAnchor(anchor);
+  }
+
+  public panBy(x: number, y: number): void {
+    this.containerEl.scrollLeft += x;
+    this.containerEl.scrollTop += y;
+  }
+
+  private zoomAnchor(point?: { x: number; y: number }) {
+    const bounds = this.contentBounds();
+    if (!bounds) return undefined;
+    const viewport = this.containerEl.getBoundingClientRect();
+    const x = point?.x ?? viewport.left + this.containerEl.clientWidth / 2;
+    const y = point?.y ?? viewport.top + this.containerEl.clientHeight / 2;
+    return bounds.width && bounds.height
+      ? { x, y, fractionX: (x - bounds.left) / bounds.width, fractionY: (y - bounds.top) / bounds.height }
+      : undefined;
+  }
+
+  private contentBounds() {
+    const rectangles = [this.singleHost, this.leftHost, this.rightHost]
+      .flatMap(host => host ? [host.element.getBoundingClientRect()] : []);
+    if (!rectangles.length) return undefined;
+    const left = Math.min(...rectangles.map(rect => rect.left));
+    const top = Math.min(...rectangles.map(rect => rect.top));
+    return { left, top, width: Math.max(...rectangles.map(rect => rect.right)) - left,
+      height: Math.max(...rectangles.map(rect => rect.bottom)) - top };
+  }
+
+  private restoreAnchor(anchor: ReturnType<FixedSpreadHost["zoomAnchor"]>): void {
+    if (this.userZoom === 1) {
+      this.containerEl.scrollLeft = 0;
+      this.containerEl.scrollTop = 0;
+    } else if (anchor) {
+      const bounds = this.contentBounds();
+      if (bounds) this.panBy(bounds.left + anchor.fractionX * bounds.width - anchor.x,
+        bounds.top + anchor.fractionY * bounds.height - anchor.y);
+    }
   }
 
   /** The spine item(s) currently loaded, in reading order (not
@@ -167,14 +226,15 @@ export class FixedSpreadHost {
   ): Promise<void> {
     this.disposeChildren();
     this.currentSpread = spread;
-    this.containerEl.replaceChildren();
-    this.containerEl.style.flexDirection = "row";
+    this.canvasEl.replaceChildren();
+    this.canvasEl.style.flexDirection = "row";
 
     if (spread.kind === "single") {
       const host = new FixedContentHost(this.width, this.height, this.ownerDocument);
       this.singleHost = host;
-      this.containerEl.appendChild(host.element);
+      this.canvasEl.appendChild(host.element);
       await host.open(contentLoader, resolver, spread.spineIndex, packageViewport);
+      this.layoutPair();
       return;
     }
 
@@ -209,10 +269,10 @@ export class FixedSpreadHost {
 
     // Keep native reading and tab order in spine order, independently of screen order.
     if (spread.rightSpineIndex < spread.leftSpineIndex) {
-      this.containerEl.style.flexDirection = "row-reverse";
-      this.containerEl.append(rightWrapperEl, leftWrapperEl);
+      this.canvasEl.style.flexDirection = "row-reverse";
+      this.canvasEl.append(rightWrapperEl, leftWrapperEl);
     } else {
-      this.containerEl.append(leftWrapperEl, rightWrapperEl);
+      this.canvasEl.append(leftWrapperEl, rightWrapperEl);
     }
 
     // Concurrent, not sequential — see this method's own doc comment.
@@ -230,13 +290,11 @@ export class FixedSpreadHost {
    * content is never reflowed, so this is purely a scale-factor
    * recomputation, never a re-measure/re-paginate). */
   public resize(width: number, height: number): void {
+    const anchor = this.zoomAnchor();
     this.width = width;
     this.height = height;
-    if (this.singleHost) {
-      this.singleHost.resize(width, height);
-      return;
-    }
     this.layoutPair();
+    this.restoreAnchor(anchor);
   }
 
   /** Computes and applies the one shared scale a `"pair"` spread's two
@@ -259,6 +317,16 @@ export class FixedSpreadHost {
    * before this is ever reached the first time; a later `resize` before
    * the *next* `open` reuses these same already-known sizes). */
   private layoutPair(): void {
+    if (this.singleHost) {
+      const natural = this.singleHost.naturalSize;
+      const scale = Math.min(this.width / natural.width, this.height / natural.height) * this.userZoom;
+      const canvasWidth = Math.max(this.width, natural.width * scale);
+      const canvasHeight = Math.max(this.height, natural.height * scale);
+      this.canvasEl.style.width = `${canvasWidth}px`;
+      this.canvasEl.style.height = `${canvasHeight}px`;
+      this.singleHost.applyExternalScale(scale, canvasWidth, canvasHeight);
+      return;
+    }
     if (
       !this.leftHost ||
       !this.rightHost ||
@@ -274,14 +342,18 @@ export class FixedSpreadHost {
     const scale = Math.min(
       Math.max(1, this.width) / combinedNaturalWidth,
       this.height / tallestNaturalHeight,
-    );
+    ) * this.userZoom;
+    const canvasWidth = Math.max(this.width, combinedNaturalWidth * scale);
+    const canvasHeight = Math.max(this.height, tallestNaturalHeight * scale);
+    this.canvasEl.style.width = `${canvasWidth}px`;
+    this.canvasEl.style.height = `${canvasHeight}px`;
 
     const leftScaledWidth = this.leftNaturalSize.width * scale;
     const rightScaledWidth = this.rightNaturalSize.width * scale;
     this.leftWrapperEl.style.width = `${leftScaledWidth}px`;
     this.rightWrapperEl.style.width = `${rightScaledWidth}px`;
-    this.leftHost.applyExternalScale(scale, leftScaledWidth, this.height);
-    this.rightHost.applyExternalScale(scale, rightScaledWidth, this.height);
+    this.leftHost.applyExternalScale(scale, leftScaledWidth, canvasHeight);
+    this.rightHost.applyExternalScale(scale, rightScaledWidth, canvasHeight);
   }
 
   public dispose(): void {

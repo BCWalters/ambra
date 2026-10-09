@@ -23,7 +23,7 @@ import {
   TextColumnOneRegular,
   TextFontRegular,
 } from "@fluentui/react-icons";
-import { ReadingTheme } from "@ambra/engine";
+import { FixedSpreadHost, ReadingTheme } from "@ambra/engine";
 import type { FontFamilyChoice, PageTheme } from "@ambra/engine";
 import { useLocale, useTranslation } from "../../i18n/LocaleContext.js";
 import { LOCALE_NATIVE_NAMES, SUPPORTED_LOCALES } from "../../i18n/Locale.js";
@@ -191,6 +191,34 @@ const ThemeSwatch: FC<{ background: string; accent: string }> = ({ background, a
     />
   </span>
 );
+
+export const FixedZoomMenu: FC<ReaderMenuState & {
+  zoom: number;
+  onSetZoom: (zoom: number) => void;
+}> = ({ open, onOpenChange, zoom, onSetZoom }) => {
+  const t = useTranslation();
+  return (
+    <Menu open={open} onOpenChange={(_event, data) => onOpenChange?.(data.open)}
+      positioning={TOP_LEVEL_MENU_POSITIONING} persistOnItemClick>
+      <MenuTrigger disableButtonEnhancement>
+        <Tooltip content={t("toolbar.textOptions")} relationship="label">
+          <Button appearance="subtle" size="small" icon={<DocumentOnePageColumnsRegular />}
+            style={{ marginLeft: "var(--ambra-toolbar-cluster-gap, 8px)" }} />
+        </Tooltip>
+      </MenuTrigger>
+      <MenuPopover onFocusCapture={revealMenuFocus}>
+        <MenuList>
+          <MenuGroupHeader>{t("text.pageMenuLabel")} - {Math.round(zoom * 100)}%</MenuGroupHeader>
+          <MenuItem disabled={zoom >= FixedSpreadHost.MAX_ZOOM}
+            onClick={() => onSetZoom(zoom * FixedSpreadHost.ZOOM_STEP)}>{t("imageViewer.zoomIn")}</MenuItem>
+          <MenuItem disabled={zoom <= 1}
+            onClick={() => onSetZoom(zoom / FixedSpreadHost.ZOOM_STEP)}>{t("imageViewer.zoomOut")}</MenuItem>
+          <MenuItem onClick={() => onSetZoom(1)}>{t("imageViewer.fit")}</MenuItem>
+        </MenuList>
+      </MenuPopover>
+    </Menu>
+  );
+};
 
 /** Each submenu owns its Fluent radio state; the caller owns persistence. */
 export const TypographyMenu: FC<TypographyMenuProps> = ({

@@ -22,7 +22,7 @@ library-scrubber-progress bookmark-panel annotation-mutation-lifecycle annotatio
 embedded-annotations page-theme spread-gutter-navigation outer-margin-navigation spread-resize-stability
 reflowable-animation-handoff toolbar-startup inspector-reading-links inspector-page-boundaries
 reader-go-to-shortcuts keyboard-ownership fixed-layout-scrubber fixed-layout-spread-hugging
-fixed-layout-edge-navigation svg-spine mixed-rendition-spreads roll-layout pagination-measurement responsive-images
+fixed-layout-edge-navigation svg-spine fixed-layout-zoom mixed-rendition-spreads roll-layout pagination-measurement responsive-images
 reader-diagnostics reader-scale-navigation scrubber-seek media-overlay-playback image-viewer content-stress
 table-viewer epub-inspector epub-direct-import library-save-as reader-save-as review-invitation library-review-keyboard
 `.trim().split(/\s+/);
@@ -37,7 +37,7 @@ test("full matrix preserves every legacy protected file invocation, including in
     [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
-  assert.equal(core.length, 54);
+  assert.equal(core.length, 55);
   assert.equal(new Set(core).size, core.length);
   assert.ok(selected("full").find(group => group.id === "contention-sensitive")
     .steps.some(step => step.files.includes("pagination-measurement") && step.workers === 1));

@@ -171,14 +171,18 @@ test("global settings retain choices across modes, reload and library while disa
   }
 });
 
-test("fixed-layout books retain theme, animation and brightness but hide typography and reading modes", async () => {
+test("fixed-layout books offer zoom and retain theme, animation and brightness without typography or reading modes", async () => {
   const { context, readerPage: page } = await launchReader(
     path.join(fixtures, "fxl-spread-ltr.epub"),
   );
   try {
-    await expect(
-      page.getByRole("button", { name: "Text and page options", exact: true }),
-    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Text and page options", exact: true }).click();
+    const options = page.getByRole("menu");
+    await expect(options.getByRole("menuitem", { name: "Zoom in", exact: true })).toBeVisible();
+    await expect(options.getByRole("menuitem", { name: "Zoom out", exact: true })).toBeDisabled();
+    await expect(options.getByRole("slider")).toHaveCount(0);
+    await expect(options.getByRole("menuitemcheckbox")).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Ambra settings", exact: true });
     await expect(settings.getByRole("combobox", { name: "Reading mode", exact: true })).toHaveCount(0);
