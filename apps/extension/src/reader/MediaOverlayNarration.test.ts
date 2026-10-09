@@ -47,7 +47,7 @@ const instances: MediaOverlayNarration[] = [];
 
 function setup(
   overlays: Record<string, string> = { "EPUB/m0.smil": first, "EPUB/m2.smil": second },
-  options: { frontmatter?: boolean; nonlinearLast?: boolean; audioFallback?: boolean; sharedOverlay?: boolean } = {},
+  options: { frontmatter?: boolean; nonlinearLast?: boolean; audioFallback?: boolean; sharedOverlay?: boolean; lastOverlay?: boolean } = {},
 ) {
   const pkg = PackageDocument.parse(`<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">book</dc:identifier>
@@ -56,9 +56,10 @@ function setup(
       <item id="c0" href="c0.xhtml" media-type="application/xhtml+xml"${options.frontmatter ? "" : ' media-overlay="m0"'}/>
       <item id="c1" href="c1.xhtml" media-type="application/xhtml+xml"/>
       <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml" media-overlay="${options.sharedOverlay ? "m0" : "m2"}"/>
-      <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"/>
+      <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"${options.lastOverlay ? ' media-overlay="m3"' : ""}/>
       <item id="m0" href="m0.smil" media-type="application/smil+xml"/>
       <item id="m2" href="m2.smil" media-type="application/smil+xml"/>
+      ${options.lastOverlay ? '<item id="m3" href="m3.smil" media-type="application/smil+xml"/>' : ""}
       <item id="a1" href="one.mp3" media-type="${options.audioFallback ? "application/foreign" : "audio/mpeg"}"${options.audioFallback ? ' fallback="a2"' : ""}/>
       <item id="a2" href="two.mp3" media-type="audio/mpeg"/>
     </manifest><spine><itemref idref="c0"/><itemref idref="c1"/><itemref idref="c2"${options.nonlinearLast ? ' linear="no"' : ""}/><itemref idref="c3"/></spine></package>`, "EPUB/package.opf");
@@ -98,6 +99,70 @@ afterEach(() => {
 });
 
 describe("MediaOverlayNarration", () => {
+  it("advances automatically in global authored order across alternating shared-overlay document references", async () => {
+    const { narration, audio, onTarget } = setup({
+      "EPUB/m0.smil": smil(clip(0, "a", 0, 1), clip(2, "c", 1, 2),
+        clip(0, "b", 2, 3), clip(2, "d", 3, 4)),
+    }, { sharedOverlay: true });
+    await narration.playFrom(0);
+    narration.setRate(1.5);
+    audio.pause.mockClear();
+    audio.play.mockClear();
+    for (const [time, fragment, spineIndex] of [[1, "c", 2], [2, "b", 0], [3, "d", 2]] as const) {
+      audio.advance(time);
+      await flush();
+      expect(narration.target).toMatchObject({ fragment, spineIndex });
+      expect(onTarget).toHaveBeenLastCalledWith(expect.objectContaining({ fragment, spineIndex }), true);
+      expect(narration.snapshot.status).toBe("playing");
+    }
+    expect(audio.playbackRate).toBe(1.5);
+    expect(audio.pause).not.toHaveBeenCalled();
+    expect(audio.play).not.toHaveBeenCalled();
+    audio.advance(4);
+    await flush();
+    expect(narration.snapshot.status).toBe("ended");
+  });
+
+  it("uses authored shared-overlay bounds and order for paused Next and Previous", async () => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": smil(clip(2, "c", 1, 2), clip(0, "a", 0, 1)),
+    }, { sharedOverlay: true });
+    await narration.playFrom(2);
+    narration.pause();
+    expect(narration.snapshot).toMatchObject({ hasPrevious: false, hasNext: true });
+    await narration.next();
+    expect(narration.target).toMatchObject({ spineIndex: 0, fragment: "a" });
+    expect(narration.snapshot).toMatchObject({ hasPrevious: true, hasNext: false, status: "paused" });
+    await narration.previous();
+    expect(narration.target).toMatchObject({ spineIndex: 2, fragment: "c" });
+    expect(audio.paused).toBe(true);
+  });
+
+  it("starts in the middle of shared SMIL at the desired document and follows its remaining authored sequence", async () => {
+    const { narration } = setup({
+      "EPUB/m0.smil": smil(clip(0, "a", 0, 1), clip(2, "c", 1, 2), clip(0, "b", 2, 3)),
+    }, { sharedOverlay: true });
+    await narration.playFrom(2);
+    expect(narration.target?.fragment).toBe("c");
+    await narration.next();
+    expect(narration.target).toMatchObject({ spineIndex: 0, fragment: "b" });
+  });
+
+  it("finishes a shared body before moving to another overlay and does not replay the earlier shared association", async () => {
+    const { narration } = setup({
+      "EPUB/m0.smil": smil(clip(0, "a", 0, 1), clip(2, "c", 1, 2), clip(0, "b", 2, 3)),
+      "EPUB/m3.smil": smil(clip(3, "end", 3, 4)),
+    }, { sharedOverlay: true, lastOverlay: true });
+    await narration.playFrom(0);
+    narration.pause();
+    for (const fragment of ["c", "b", "end"]) {
+      await narration.next();
+      expect(narration.target?.fragment).toBe(fragment);
+    }
+    await narration.previous();
+    expect(narration.target).toMatchObject({ spineIndex: 0, fragment: "b" });
+  });
+
   it("keeps semantic skipping default-off and does not alias literal prefixed terms", async () => {
     const { narration } = setup({
       "EPUB/m0.smil": semanticSmil(sequence("vendor:footnote", clip(0, "a", 0, 1)), clip(0, "b", 1, 2)),

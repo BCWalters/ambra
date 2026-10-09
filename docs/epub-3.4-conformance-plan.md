@@ -475,6 +475,15 @@ Recorded narration caches that full timeline by SMIL path while preserving its
 existing per-spine flat clip lists and indices. Separately cued documents that
 share an overlay retain the same semantic tree, rather than reparsing unrelated
 copies or losing structure at a content-document boundary.
+Playback, prefetch and both transports now use global authored entry order,
+as required by [Media Overlay timing and synchronization](https://www.w3.org/TR/2026/CR-epub-rs-34-20260721/#sec-media-overlays).
+They do not regroup alternating document references by spine item. Explicit
+starts still enter at the desired document's corresponding passage, including
+the middle of a shared overlay. Finishing the authored body advances to a
+different overlay instead of replaying another association of the same SMIL.
+Transport availability reflects the whole authored timeline. Single-document
+ordering, paused intent, playback speed, contiguous clip continuity and owned
+loading/navigation behavior are unchanged.
 An owned native shared-overlay fixture verifies that full ancestry and boundaries
 survive real chapter navigation, while the new document's audio plays and its
 authored passage is painted.
@@ -621,7 +630,7 @@ waiver.
 | ID     | Work item                                         | Acceptance summary                                                                                                                                                             | Tracking                                              |
 | ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | C34-11 | Publication-origin isolation and scripting policy | Give each publication an isolated origin model and record whether scripting remains unsupported or is introduced under explicit capability and security boundaries.            | [#338](https://github.com/BCWalters/ambra/issues/338) |
-| C34-12 | Complete Media Overlay behavior                   | Finite explicit clip-end duration clamping implemented; text-only TTS/embedded media, skip/escape semantics, remaining timing cases and pagebreak/navigation synchronization remain. | [#337](https://github.com/BCWalters/ambra/issues/337) |
+| C34-12 | Complete Media Overlay behavior                   | Clip-end duration clamping, navigation-led recorded playback, globally ordered shared timelines and default-off note/page-announcement skipping with common-structure escape implemented. Text-only TTS/embedded media, broader semantic vocabulary, remaining timing cases and navigation-document narration remain. | [#337](https://github.com/BCWalters/ambra/issues/337) |
 | C34-13 | Complete EPUB CFI processing                      | Assertions, side bias, direct ranges and content/package ID recovery implemented; nested indirections, temporal/spatial offsets, image-alt addressing and full page-break affinity remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
 | C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
