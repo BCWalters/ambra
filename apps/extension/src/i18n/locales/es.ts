@@ -107,6 +107,12 @@ export const es: StringCatalog = {
   "narration.loading": "Cargando narración…",
   "narration.browsing": "Estás leyendo en un lugar distinto al de la narración.",
   "narration.error": "No se pudo reproducir la narración.",
+  "narration.options": "Opciones de narración",
+  "narration.skipNotes": "Omitir notas",
+  "narration.skipPageNumbers": "Omitir anuncios de página",
+  "narration.escape": "Salir de la estructura actual",
+  "narration.skippedToEnd": "No queda narración seleccionada. Reinicia el audio de la página o ve a otro pasaje.",
+  "narration.finished": "Fin de la narración. Reinicia el audio de la página o ve a otro pasaje.",
   "reader.blockedLink": "Por tu seguridad, este libro no puede abrir enlaces de archivos, datos o tipos no compatibles.",
   "reader.navigationRecovered":
     "No se pudo leer el índice moderno de este libro. Se está usando su índice compatible.",

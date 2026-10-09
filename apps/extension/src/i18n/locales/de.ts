@@ -107,6 +107,12 @@ export const de: StringCatalog = {
   "narration.loading": "Audio wird geladen…",
   "narration.browsing": "Du liest an einer anderen Stelle als die Vorlesestimme.",
   "narration.error": "Das Audio konnte nicht abgespielt werden.",
+  "narration.options": "Optionen für die Vorlesefunktion",
+  "narration.skipNotes": "Anmerkungen überspringen",
+  "narration.skipPageNumbers": "Seitenansagen überspringen",
+  "narration.escape": "Aktuelle Struktur verlassen",
+  "narration.skippedToEnd": "Keine weitere passende Aufnahme. Seitenaudio neu starten oder eine andere Passage aufrufen.",
+  "narration.finished": "Ende der Aufnahme. Seitenaudio neu starten oder eine andere Passage aufrufen.",
   "reader.blockedLink": "Zu Ihrer Sicherheit kann dieses Buch keine Datei-, Daten- oder nicht unterstützten Links öffnen.",
   "reader.navigationRecovered":
     "Das moderne Inhaltsverzeichnis dieses Buchs konnte nicht gelesen werden. Stattdessen wird das kompatible Inhaltsverzeichnis verwendet.",

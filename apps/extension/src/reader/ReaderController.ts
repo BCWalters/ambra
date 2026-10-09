@@ -1438,6 +1438,10 @@ export class ReaderController {
         if (!this.narrationNavigationPending || await this.syncNarrationNavigation({ allowErroredTarget: true })) {
           await this.narration.previous();
         }
+      } else if (action === "escape") {
+        if (!this.narrationNavigationPending || await this.syncNarrationNavigation({ allowErroredTarget: true })) {
+          await this.narration.escape();
+        }
       } else if (action === "return") {
         await this.narration.returnToNarration();
       }
@@ -1458,6 +1462,23 @@ export class ReaderController {
     this.narration.setRate(rate);
     this.recordDiagnosticEvent({ kind: "setting", name: "narrationRate",
       before, after: this.narration.snapshot.rate, source: "reader-control" });
+  }
+
+  public async setNarrationSkipping(skipping: { readonly notes: boolean; readonly pageNumbers: boolean }): Promise<void> {
+    this.recordDiagnosticEvent({ kind: "narration-skipping", ...skipping });
+    if (this.narrationNavigationPending || this.narration.isTargetSkippedBy(skipping)) {
+      this.narrationCommand++;
+      this.cancelNarrationNavigation();
+    }
+    const command = this.narrationCommand;
+    try {
+      await this.narration.setSkipping(skipping, { deferCurrent: this.narrationNavigationPending });
+      if (command !== this.narrationCommand || this.operations.disposed) return;
+      if (this.narrationNavigationPending) await this.syncNarrationNavigation({ allowErroredTarget: true });
+    } catch (error) {
+      if (command !== this.narrationCommand || this.operations.disposed) return;
+      this.reportTransientError(error, "navigate", "the narration skipping preferences");
+    }
   }
 
   public dismissNarrationNotice(): void {

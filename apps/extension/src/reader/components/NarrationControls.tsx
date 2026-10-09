@@ -4,6 +4,8 @@ import {
   Button,
   Caption1,
   Menu,
+  MenuItem,
+  MenuItemCheckbox,
   MenuItemRadio,
   MenuList,
   MenuPopover,
@@ -22,7 +24,7 @@ import {
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { CHROME_BORDER } from "../chromeTheme.js";
-import type { NarrationState } from "../MediaOverlayNarration.js";
+import type { NarrationSkipping, NarrationState } from "../MediaOverlayNarration.js";
 
 export interface NarrationControlsProps {
   state: NarrationState;
@@ -32,6 +34,8 @@ export interface NarrationControlsProps {
   onListenFromHere: () => void;
   onListenFromSelection: () => void;
   onRateChange: (rate: number) => void;
+  onSkippingChange: (skipping: NarrationSkipping) => void;
+  onEscape: () => void;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
   focusOnOpen?: boolean;
@@ -86,6 +90,8 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
   onListenFromHere,
   onListenFromSelection,
   onRateChange,
+  onSkippingChange,
+  onEscape,
   collapsed,
   onCollapsedChange,
   focusOnOpen = false,
@@ -108,13 +114,16 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
     ? t("narration.error")
     : state.status === "loading"
       ? t("narration.loading")
-      : "";
+      : state.endedByPolicy
+        ? t(state.skippedToEnd ? "narration.skippedToEnd" : "narration.finished")
+        : "";
+  const hasOptions = state.hasSkippableNotes || state.hasSkippablePageNumbers || state.canEscape;
   const collapseLabel = t(collapsed ? "narration.expand" : "narration.collapse");
   const playback = (
     <Tooltip content={playLabel} relationship="label">
       <Button ref={playButton} appearance="primary" size={collapsed ? "small" : "large"}
         icon={playing ? <PauseRegular /> : <PlayRegular />}
-        aria-label={playLabel} onClick={onPlayPause}
+        aria-label={playLabel} onClick={onPlayPause} disabled={state.endedByPolicy === true}
         style={{ minWidth: collapsed ? 92 : 120, minHeight: collapsed ? 36 : 48, fontSize: collapsed ? 13 : 15 }}>
         <span className={styles.auxiliaryLabel}>
           <span aria-hidden={playing} style={{ gridArea: "1 / 1", visibility: playing ? "hidden" : "visible" }}>{t("narration.playLabel")}</span>
@@ -192,6 +201,36 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
             </MenuPopover>
           </Menu>
           </div>
+          {hasOptions && <Menu
+            checkedValues={{ skipping: [
+              ...(state.skipping?.notes ? ["notes"] : []),
+              ...(state.skipping?.pageNumbers ? ["pageNumbers"] : []),
+            ] }}
+            onCheckedValueChange={(_, data) => {
+              if (data.name === "skipping") onSkippingChange({
+                notes: data.checkedItems.includes("notes"),
+                pageNumbers: data.checkedItems.includes("pageNumbers"),
+              });
+            }}
+          >
+            <MenuTrigger disableButtonEnhancement>
+              <Button appearance="subtle" size="small" icon={<ChevronDownRegular />} iconPosition="after"
+                className={styles.auxiliary} aria-label={t("narration.options")}>
+                {t("narration.options")}
+              </Button>
+            </MenuTrigger>
+            <MenuPopover style={{ background: palette.backgroundSolid }}>
+              <MenuList aria-label={t("narration.options")}>
+                {state.hasSkippableNotes && <MenuItemCheckbox name="skipping" value="notes">
+                  {t("narration.skipNotes")}
+                </MenuItemCheckbox>}
+                {state.hasSkippablePageNumbers && <MenuItemCheckbox name="skipping" value="pageNumbers">
+                  {t("narration.skipPageNumbers")}
+                </MenuItemCheckbox>}
+                {state.canEscape && <MenuItem onClick={onEscape}>{t("narration.escape")}</MenuItem>}
+              </MenuList>
+            </MenuPopover>
+          </Menu>}
           <Tooltip content={t("narration.listenFromPage")} relationship="label">
             <Button
               appearance="secondary"
@@ -257,8 +296,8 @@ export const NarrationControls: FC<NarrationControlsProps> = ({
         role="status"
         aria-live="polite"
         aria-atomic="true"
-        className={state.status === "error" ? undefined : styles.hiddenStatus}
-        style={state.status === "error" ? { textAlign: "center", overflowWrap: "anywhere", marginTop: 4 } : undefined}
+        className={state.status === "error" || state.endedByPolicy ? undefined : styles.hiddenStatus}
+        style={state.status === "error" || state.endedByPolicy ? { textAlign: "center", overflowWrap: "anywhere", marginTop: 4 } : undefined}
       >
         {status && <Caption1 block>{status}</Caption1>}
       </div>

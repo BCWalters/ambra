@@ -38,6 +38,9 @@ const clip = (chapter: number, id: string, begin: number, end?: number, audio = 
     ? `<audio src="${audio}" clipBegin="${begin}s"${end === undefined ? "" : ` clipEnd="${end}s"`}/>`
     : ""}</par>`;
 const smil = (...clips: string[]) => `<smil xmlns="http://www.w3.org/ns/SMIL"><body>${clips.join("")}</body></smil>`;
+const semanticSmil = (...clips: string[]) => smil(...clips)
+  .replace("<smil ", '<smil xmlns:epub="http://www.idpf.org/2007/ops" ');
+const sequence = (type: string, ...clips: string[]) => `<seq epub:type="${type}">${clips.join("")}</seq>`;
 const first = smil(clip(0, "a", 0, 1), clip(0, "b", 1, 2));
 const second = smil(clip(2, "c", 2, 3), clip(2, "d", 0, 1, "two.mp3"));
 const instances: MediaOverlayNarration[] = [];
@@ -95,6 +98,283 @@ afterEach(() => {
 });
 
 describe("MediaOverlayNarration", () => {
+  it("keeps semantic skipping default-off and does not alias literal prefixed terms", async () => {
+    const { narration } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("vendor:footnote", clip(0, "a", 0, 1)), clip(0, "b", 1, 2)),
+      "EPUB/m2.smil": second,
+    });
+    expect(narration.snapshot.skipping).toEqual({ notes: false, pageNumbers: false });
+    await narration.setSkipping({ notes: true, pageNumbers: true });
+    await narration.playFrom(0);
+    expect(narration.target?.fragment).toBe("a");
+    expect(narration.snapshot.hasSkippableNotes).toBe(false);
+    const { narration: other } = setup();
+    expect(other.snapshot.skipping).toEqual({ notes: false, pageNumbers: false });
+  });
+
+  it.each(["footnote", "endnote", "pagebreak"])("skips inherited %s before attempting unsupported audio", async type => {
+    const { narration, audio, onTarget } = setup({
+      "EPUB/m0.smil": semanticSmil(
+        sequence(type, clip(0, "a", 0, 1, "")),
+        clip(0, "b", 1, 2),
+      ), "EPUB/m2.smil": second,
+    });
+    await narration.setSkipping({ notes: type !== "pagebreak", pageNumbers: type === "pagebreak" });
+    await narration.playFrom(0);
+    expect(narration.snapshot.status).toBe("playing");
+    expect(narration.target?.fragment).toBe("b");
+    expect(audio.currentTime).toBe(1);
+    expect(onTarget).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ fragment: "b" }), true);
+  });
+
+  it.each([false, true])("suppresses a currently playing=%s note without changing speed or intent", async playing => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("footnote", clip(0, "a", 0, 1)), clip(0, "b", 1, 2)),
+      "EPUB/m2.smil": second,
+    });
+    narration.setRate(1.5);
+    await narration.playFrom(0);
+    if (!playing) narration.pause();
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    expect(narration.target?.fragment).toBe("b");
+    expect(narration.snapshot.status).toBe(playing ? "playing" : "paused");
+    expect(audio.paused).toBe(!playing);
+    expect(audio.playbackRate).toBe(1.5);
+  });
+
+  it("applies the same policy to automatic advancement, both transports, selection and navigation", async () => {
+    const { narration, audio, onTarget } = setup({
+      "EPUB/m0.smil": semanticSmil(
+        clip(0, "a", 0, 1),
+        sequence("footnote", clip(0, "note", 1, 2, "")),
+        clip(0, "b", 2, 3),
+      ), "EPUB/m2.smil": second,
+    });
+    await narration.playFrom(0);
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    audio.advance(1);
+    await flush();
+    expect(narration.target?.fragment).toBe("b");
+    expect(audio.currentTime).toBe(2);
+    narration.pause();
+    await narration.previous();
+    expect(narration.target?.fragment).toBe("a");
+    await narration.next();
+    expect(narration.target?.fragment).toBe("b");
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="note">Note</p>';
+    await narration.playFrom(0, doc.getElementById("note")!, { exact: true });
+    expect(narration.target?.fragment).toBe("b");
+    narration.pause();
+    await narration.syncReadingPosition(0, doc.getElementById("note")!);
+    expect(narration.snapshot.status).toBe("paused");
+    expect(narration.target?.fragment).toBe("b");
+    expect(onTarget).toHaveBeenLastCalledWith(expect.objectContaining({ fragment: "b" }), true);
+  });
+
+  it("skips all descendants of a sequence shared across spine documents", async () => {
+    const { narration } = setup({
+      "EPUB/m0.smil": semanticSmil(
+        sequence("endnote", clip(0, "a", 0, 1, ""), clip(2, "c", 2, 3, "")),
+        clip(2, "d", 0, 1, "two.mp3"),
+      ),
+    }, { sharedOverlay: true });
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    await narration.playFrom(0);
+    expect(narration.target).toMatchObject({ spineIndex: 2, fragment: "d" });
+    expect(narration.snapshot.status).toBe("playing");
+  });
+
+  it("invalidates suppressed loading audio before its bytes resolve", async () => {
+    const { narration, loader, audio, onTarget } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("footnote", clip(0, "a", 0, 1)), clip(0, "b", 0, 1, "two.mp3")),
+      "EPUB/m2.smil": second,
+    });
+    const bytes = deferred<Uint8Array>();
+    loader.loadResourceBytes.mockReturnValueOnce(bytes.promise);
+    const starting = narration.playFrom(0);
+    await flush();
+    expect(narration.snapshot.status).toBe("loading");
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    expect(narration.target?.fragment).toBe("b");
+    const plays = audio.play.mock.calls.length;
+    bytes.resolve(new Uint8Array([1, 2]));
+    await starting;
+    expect(audio.play).toHaveBeenCalledTimes(plays);
+    expect(onTarget).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ fragment: "b" }), true);
+  });
+
+  it("filters a pending initial document load with the latest preferences", async () => {
+    const { narration, loader } = setup();
+    const xml = deferred<string>();
+    loader.readArchiveFileText.mockReturnValueOnce(xml.promise);
+    const starting = narration.playFrom(0);
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    xml.resolve(semanticSmil(sequence("footnote", clip(0, "a", 0, 1, "")), clip(0, "b", 1, 2)));
+    await starting;
+    expect(narration.target?.fragment).toBe("b");
+    expect(narration.snapshot.status).toBe("playing");
+  });
+
+  it("refreshes prefetched cross-document neighbors when preferences change", async () => {
+    const { narration, loader, audio } = setup({
+      "EPUB/m0.smil": smil(clip(0, "a", 0, 1)),
+      "EPUB/m2.smil": second,
+    });
+    const xml = deferred<string>();
+    const read = loader.readArchiveFileText.getMockImplementation()!;
+    loader.readArchiveFileText.mockImplementation(path => path === "EPUB/m2.smil" ? xml.promise : read(path));
+    await narration.playFrom(0);
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    xml.resolve(semanticSmil(sequence("footnote", clip(2, "c", 1, 2, "")), clip(2, "d", 2, 3)));
+    await flush();
+    audio.advance(1);
+    await flush();
+    expect(narration.target).toMatchObject({ spineIndex: 2, fragment: "d" });
+    expect(narration.snapshot.status).toBe("playing");
+  });
+
+  it.each([false, true])("escapes the innermost shared structure while preserving playing=%s", async playing => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(
+        sequence("table", sequence("list", clip(0, "a", 0, 1), clip(2, "c", 2, 3)),
+          clip(2, "d", 0, 1, "two.mp3")),
+      ),
+    }, { sharedOverlay: true });
+    await narration.playFrom(0);
+    narration.setRate(1.5);
+    if (!playing) narration.pause();
+    expect(narration.snapshot.canEscape).toBe(true);
+    await narration.escape();
+    expect(narration.target).toMatchObject({ spineIndex: 2, fragment: "d" });
+    expect(narration.snapshot.status).toBe(playing ? "playing" : "paused");
+    expect(audio.playbackRate).toBe(1.5);
+    expect(narration.snapshot.canEscape).toBe(true);
+    await narration.escape();
+    expect(narration.snapshot).toMatchObject({ status: "ended", endedByPolicy: true, canEscape: false, hasPrevious: true });
+    expect(audio.paused).toBe(true);
+    audio.play.mockClear();
+    await narration.resume();
+    expect(audio.play).not.toHaveBeenCalled();
+    await narration.previous();
+    expect(narration.target?.fragment).toBe("d");
+    expect(narration.snapshot.status).toBe("paused");
+  });
+
+  it("escapes an established unsupported cursor without requiring its passage to be painted", async () => {
+    const { narration } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("aside", clip(0, "a", 0, 1, "")), clip(0, "b", 1, 2)),
+      "EPUB/m2.smil": second,
+    });
+    await narration.playFrom(0);
+    expect(narration.snapshot.status).toBe("error");
+    await narration.escape();
+    expect(narration.snapshot.status).toBe("paused");
+    expect(narration.target?.fragment).toBe("b");
+  });
+
+  it("reports an escaped cross-document target owned by another overlay instead of substituting it", async () => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("figure", clip(0, "a", 0, 1)), clip(2, "c", 2, 3)),
+      "EPUB/m2.smil": second,
+    });
+    await narration.playFrom(0);
+    await narration.escape();
+    expect(narration.snapshot.status).toBe("error");
+    expect(narration.snapshot.error).toContain("different authored overlay");
+    expect(audio.paused).toBe(true);
+    expect(narration.target?.fragment).toBe("a");
+  });
+
+  it("does not re-enter an escaped shared subtree when authored references return to the first document", async () => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(
+        sequence("table", clip(0, "a", 0, 1), clip(2, "c", 2, 3, "")),
+        clip(0, "b", 1, 2), clip(2, "d", 0, 1, "two.mp3"),
+      ),
+    }, { sharedOverlay: true });
+    await narration.playFrom(0);
+    await narration.escape();
+    expect(narration.target?.fragment).toBe("b");
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<p id="b">Current escaped destination</p>';
+    await narration.syncReadingPosition(0, doc.getElementById("b")!);
+    audio.advance(2);
+    await flush();
+    expect(narration.target?.fragment).toBe("d");
+    expect(narration.snapshot.status).toBe("playing");
+    narration.pause();
+    await narration.previous();
+    expect(narration.target?.fragment).toBe("b");
+    await narration.previous();
+    expect(narration.target?.fragment).toBe("c");
+    expect(narration.snapshot.canEscape).toBe(true);
+  });
+
+  it("ends a terminal interleaved shared subtree without revisiting its earlier document references", async () => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("table",
+        clip(0, "a", 0, 1), clip(2, "c", 2, 3), clip(0, "b", 1, 2))),
+    }, { sharedOverlay: true });
+    await narration.playFrom(0);
+    audio.play.mockClear();
+    await narration.escape();
+    expect(narration.snapshot).toMatchObject({ status: "ended", endedByPolicy: true });
+    expect(audio.play).not.toHaveBeenCalled();
+    await narration.previous();
+    expect(narration.target?.fragment).toBe("b");
+  });
+
+  it("ends an all-skipped destination without playing bytes and allows explicit restart after disabling skipping", async () => {
+    const { narration, audio, loader } = setup({
+      "EPUB/m0.smil": semanticSmil(sequence("footnote", clip(0, "a", 0, 1))),
+      "EPUB/m2.smil": semanticSmil(sequence("footnote", clip(2, "c", 2, 3))),
+    });
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    await narration.playFrom(0);
+    expect(narration.snapshot).toMatchObject({ status: "ended", skippedToEnd: true, endedByPolicy: true, hasNext: false });
+    expect(loader.loadResourceBytes).not.toHaveBeenCalled();
+    await narration.resume();
+    expect(audio.play).not.toHaveBeenCalled();
+    await narration.setSkipping({ notes: false, pageNumbers: false });
+    await narration.playFrom(0);
+    expect(narration.snapshot.status).toBe("playing");
+    expect(narration.target?.fragment).toBe("a");
+  });
+
+  it("does not replay a preceding eligible clip when its entire remaining tail is skipped", async () => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(clip(0, "a", 0, 1), sequence("footnote", clip(0, "b", 1, 2))),
+      "EPUB/m2.smil": semanticSmil(sequence("footnote", clip(2, "c", 2, 3))),
+    });
+    await narration.playFrom(0);
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    await narration.next();
+    expect(narration.snapshot).toMatchObject({ status: "ended", endedByPolicy: true, hasPrevious: true });
+    audio.play.mockClear();
+    await narration.resume();
+    expect(audio.play).not.toHaveBeenCalled();
+    await narration.previous();
+    expect(narration.target?.fragment).toBe("a");
+    expect(narration.snapshot.status).toBe("paused");
+  });
+
+  it("stops automatic progression at an excluded tail without allowing Resume to repeat preceding audio", async () => {
+    const { narration, audio } = setup({
+      "EPUB/m0.smil": semanticSmil(clip(0, "a", 0, 1), sequence("footnote", clip(0, "b", 1, 2))),
+      "EPUB/m2.smil": semanticSmil(sequence("footnote", clip(2, "c", 2, 3))),
+    });
+    await narration.playFrom(0);
+    await narration.setSkipping({ notes: true, pageNumbers: false });
+    await flush();
+    audio.advance(1);
+    await flush();
+    expect(narration.snapshot).toMatchObject({ status: "ended", endedByPolicy: true, skippedToEnd: true });
+    audio.play.mockClear();
+    await narration.resume();
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+
   it("retains one authored semantic timeline across separately cued spine documents", async () => {
     const { narration, loader } = setup({
       "EPUB/m0.smil": `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops">

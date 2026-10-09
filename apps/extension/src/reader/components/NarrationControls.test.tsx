@@ -46,6 +46,8 @@ describe("NarrationControls", () => {
       onListenFromHere: vi.fn(),
       onListenFromSelection: vi.fn(),
       onRateChange: vi.fn(),
+      onSkippingChange: vi.fn(),
+      onEscape: vi.fn(),
       collapsed: false,
       onCollapsedChange: vi.fn(),
     };
@@ -125,6 +127,40 @@ describe("NarrationControls", () => {
     expect(button("Narration speed: 1.5×").textContent).toBe("1.5×");
     await act(async () => button("Narration speed: 1.5×").click());
     expect(document.querySelector('[role="menuitemradio"][aria-checked="true"]')!.textContent).toBe("1.5×");
+  });
+
+  it("offers only applicable semantics in a separate options menu and wires checked preferences", async () => {
+    render({ hasSkippableNotes: true, hasSkippablePageNumbers: true, canEscape: true,
+      skipping: { notes: true, pageNumbers: false } });
+    await act(async () => button("Narration options").click());
+    const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]'));
+    expect(items.map(item => item.textContent)).toEqual(["Skip notes", "Skip page announcements"]);
+    expect(items.map(item => item.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    expect(document.querySelector('[role="menuitemradio"]')).toBeNull();
+    await act(async () => items[1]!.click());
+    expect(callbacks.onSkippingChange).toHaveBeenCalledExactlyOnceWith({ notes: true, pageNumbers: true });
+    expect(callbacks.onRateChange).not.toHaveBeenCalled();
+  });
+
+  it("hides options for plain overlays and offers only contextual escape when applicable", async () => {
+    render();
+    expect(container.textContent).not.toContain("Narration options");
+    render({ canEscape: true });
+    await act(async () => button("Narration options").click());
+    expect(document.querySelector('[role="menuitemcheckbox"]')).toBeNull();
+    const escape = document.querySelector<HTMLElement>('[role="menuitem"]')!;
+    expect(escape.textContent).toBe("Leave current structure");
+    await act(async () => escape.click());
+    expect(callbacks.onEscape).toHaveBeenCalledOnce();
+  });
+
+  it("shows a terminal policy message without allowing Play to repeat escaped audio", () => {
+    render({ status: "ended", endedByPolicy: true, skippedToEnd: true });
+    expect(button("Play narration").disabled).toBe(true);
+    expect(container.querySelector('[role="status"]')?.textContent)
+      .toBe("No more eligible narration. Restart page audio or go to another passage.");
+    expect(button("Restart page audio").disabled).toBe(false);
+    expect(button("Previous narrated passage").disabled).toBe(false);
   });
 
   it("opens the speed menu with the keyboard and returns focus on Escape without closing narration", async () => {

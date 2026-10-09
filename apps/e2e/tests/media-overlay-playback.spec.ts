@@ -17,6 +17,231 @@ const button = (page: Page, name: string) => page.getByRole("button", { name, ex
 const position = (page: Page) => page.getByRole("slider", { name: "Position in book" });
 const speedButton = (page: Page) => controls(page).getByRole("button", { name: /^Narration speed/ });
 
+function authoredPars(entries: Record<string, Uint8Array>, chapter: number): string[] {
+  const pars = new TextDecoder().decode(entries[`EPUB/overlay-${chapter}.smil`]!).match(/<par\b[\s\S]*?<\/par>/g);
+  if (pars?.length !== 3) throw new Error(`The owned chapter ${chapter} overlay must contain three passages.`);
+  return pars;
+}
+
+function semanticFixture(info: TestInfo, name: string, overlays: readonly string[], shared = false): string {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  for (const [index, body] of overlays.entries()) {
+    entries[`EPUB/overlay-${index + 1}.smil`] = strToU8(
+      `<smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops"><body>${body}</body></smil>`,
+    );
+  }
+  if (shared) {
+    entries["EPUB/package.opf"] = strToU8(new TextDecoder().decode(entries["EPUB/package.opf"]!)
+      .replace('media-overlay="mo2"', 'media-overlay="mo1"')
+      .replace('refines="#mo1">00:00:12', 'refines="#mo1">00:00:24'));
+  }
+  const file = info.outputPath(`${name}.epub`);
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  return file;
+}
+
+async function narrationOption(page: Page, name: string, role: "menuitemcheckbox" | "menuitem" = "menuitemcheckbox") {
+  await expect(button(page, "Narration options")).toBeVisible();
+  await button(page, "Narration options").click();
+  const item = page.getByRole(role, { name, exact: true });
+  await expect(item).toBeVisible();
+  await item.click();
+}
+
+test("semantic skipping suppresses unsupported note sequences and page announcements through real controls (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const bodies = [1, 2].map(chapter => {
+    const pars = authoredPars(entries, chapter);
+    const excluded = pars.slice(0, 2).map(par => par.replace(/<audio\b[^>]*\/>/g, "")).join("");
+    return `<seq epub:type="${chapter === 1 ? "footnote" : "pagebreak"}">${excluded}</seq>${pars[2]}`;
+  });
+  const { readerPage: page, context } = await launchReader(semanticFixture(info, "semantic-skipping", bodies));
+  try {
+    await exposeReaderController(page);
+    await page.mouse.move(350, 2);
+    await button(page, "Play narration").click();
+    await expect(controls(page)).toContainText("This narration segment has no recorded audio.");
+    expect((await audioState(page)).source).toBe("");
+    await narrationOption(page, "Skip notes");
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p3");
+    expect((await audioState(page)).paused).toBe(true);
+    await speedButton(page).click();
+    await page.getByRole("menuitemradio", { name: "1.5×", exact: true }).click();
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(8.15);
+    expect((await audioState(page)).rate).toBe(1.5);
+    await button(page, "Pause narration").click();
+    await toc(page, "Narrated chapter 2");
+    await expect(controls(page)).toContainText("This narration segment has no recorded audio.");
+    await narrationOption(page, "Skip page announcements");
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p3");
+    expect((await audioState(page)).paused).toBe(true);
+    await expect.poll(() => passagePaint(page, "c2-p3")).toMatchObject({ painted: true });
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(8.15);
+    expect((await audioState(page)).rate).toBe(1.5);
+    await button(page, "Pause narration").click();
+    await toc(page, "Narrated chapter 1");
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p3");
+    expect((await audioState(page)).paused).toBe(true);
+    await expect(controls(page)).not.toContainText("Narration could not be played.");
+  } finally {
+    await context.close();
+  }
+});
+
+for (const playing of [false, true]) {
+  test(`contextual escape exits the innermost shared subtree with playing=${playing} and real audio (#337)`, async ({ browserName: _browserName }, info) => {
+    const entries = unzipSync(fs.readFileSync(narrated));
+    const pars = [...authoredPars(entries, 1), ...authoredPars(entries, 2)];
+    const body = `<seq epub:type="table"><seq epub:type="list">${pars.slice(0, 4).join("")}</seq>${pars[4]}</seq>${pars[5]}`;
+    const { readerPage: page, context } = await launchReader(semanticFixture(info, "shared-nested-escape", [body], true));
+    try {
+      await exposeReaderController(page);
+      await listen(page);
+      await speedButton(page).click();
+      await page.getByRole("menuitemradio", { name: "1.5×", exact: true }).click();
+      if (!playing) await button(page, "Pause narration").click();
+      await narrationOption(page, "Leave current structure", "menuitem");
+      await expect.poll(() => narrationTarget(page)).toBe("c2-p2");
+      await expect.poll(() => passagePaint(page, "c2-p2")).toMatchObject({ painted: true });
+      await expect.poll(async () => (await audioState(page)).paused).toBe(!playing);
+      expect((await audioState(page)).rate).toBe(1.5);
+      const time = (await audioState(page)).time;
+      expect(time).toBeGreaterThanOrEqual(4);
+      expect(time).toBeLessThan(8);
+      await page.waitForTimeout(250);
+      if (playing) expect((await audioState(page)).time).toBeGreaterThan(time + 0.15);
+      else expect((await audioState(page)).time).toBe(time);
+      await narrationOption(page, "Leave current structure", "menuitem");
+      await expect.poll(() => narrationTarget(page)).toBe("c2-p3");
+      await expect.poll(() => passagePaint(page, "c2-p3")).toMatchObject({ painted: true });
+      expect((await audioState(page)).paused).toBe(!playing);
+      expect((await audioState(page)).time).toBeGreaterThanOrEqual(8);
+      await expect(button(page, "Narration options")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+test("terminal escape stops real audio without replay and Previous recovers the final authored passage (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const pars = [...authoredPars(entries, 1), ...authoredPars(entries, 2)];
+  const body = `<seq epub:type="table">${pars.join("")}</seq>`;
+  const { readerPage: page, context } = await launchReader(semanticFixture(info, "terminal-escape", [body], true));
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await narrationOption(page, "Leave current structure", "menuitem");
+    await expect(controls(page).getByRole("status")).toHaveText("End of narration. Restart page audio or go to another passage.");
+    await expect(button(page, "Play narration")).toBeDisabled();
+    await expect(button(page, "Next narrated passage")).toBeDisabled();
+    expect((await audioState(page)).paused).toBe(true);
+    const time = (await audioState(page)).time;
+    await page.waitForTimeout(200);
+    expect((await audioState(page)).time).toBe(time);
+    await button(page, "Previous narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p3");
+    expect((await audioState(page)).paused).toBe(true);
+    await expect.poll(() => passagePaint(page, "c2-p3")).toMatchObject({ painted: true });
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(8.15);
+    expect((await audioState(page)).paused).toBe(false);
+  } finally {
+    await context.close();
+  }
+});
+
+test("interleaved shared escape cannot replay an exited subtree through transport or terminal continuation (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const first = authoredPars(entries, 1);
+  const second = authoredPars(entries, 2);
+  const unsupported = second[0]!.replace(/<audio\b[^>]*\/>/g, "");
+  const body = `<seq epub:type="table"><seq epub:type="list">${first[0]}${unsupported}</seq>${first[1]}${second[1]}${second[2]}${first[2]}</seq>`;
+  const { readerPage: page, context } = await launchReader(semanticFixture(info, "interleaved-shared-escape", [body], true));
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await narrationOption(page, "Leave current structure", "menuitem");
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
+    await button(page, "Pause narration").click();
+    await button(page, "Next narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p3");
+    await button(page, "Next narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p2");
+    await expect.poll(() => passagePaint(page, "c2-p2")).toMatchObject({ painted: true });
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(4.15);
+    await narrationOption(page, "Leave current structure", "menuitem");
+    await expect(controls(page).getByRole("status")).toHaveText("End of narration. Restart page audio or go to another passage.");
+    expect((await audioState(page)).paused).toBe(true);
+    await expect(button(page, "Play narration")).toBeDisabled();
+    await button(page, "Previous narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p3");
+    await expect.poll(() => passagePaint(page, "c1-p3")).toMatchObject({ painted: true });
+    await button(page, "Play narration").click();
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(8.15);
+    await expect(controls(page)).not.toContainText("Narration could not be played.");
+  } finally {
+    await context.close();
+  }
+});
+
+test("changing skipping during gated real audio loading cannot start the suppressed passage afterward (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const pars = authoredPars(entries, 1);
+  const body = `<seq epub:type="footnote">${pars[0]}</seq>${pars.slice(1).join("").replaceAll("audio/chapter-1.wav", "audio/chapter-2.wav")}`;
+  const { readerPage: page, context } = await launchReader(semanticFixture(info, "loading-skipping", [body]));
+  try {
+    await exposeReaderController(page);
+    await gateNarrationResource(page, "chapter-1.wav");
+    await page.mouse.move(350, 2);
+    await button(page, "Play narration").click();
+    await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").entered);
+    await narrationOption(page, "Skip notes");
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(4.15);
+    const source = (await audioState(page)).source;
+    expect((await audioState(page)).paused).toBe(false);
+    await page.evaluate(() => Reflect.get(window, "__narrationLoadGate").release());
+    await page.waitForFunction(() => Reflect.get(window, "__narrationLoadGate").released);
+    await page.waitForTimeout(200);
+    expect((await audioState(page)).source).toBe(source);
+    expect(await narrationTarget(page)).toBe("c1-p2");
+    await expect.poll(() => passagePaint(page, "c1-p2")).toMatchObject({ painted: true });
+    await expect(controls(page)).not.toContainText("Narration could not be played.");
+  } finally {
+    await context.close();
+  }
+});
+
+test("all-skipped narration stops with explicit recovery controls instead of looping audio (#337)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const bodies = [1, 2].map(chapter => `<seq epub:type="endnote">${authoredPars(entries, chapter).join("")}</seq>`);
+  const { readerPage: page, context } = await launchReader(semanticFixture(info, "all-skipped", bodies));
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await narrationOption(page, "Skip notes");
+    await expect(controls(page).getByRole("status")).toHaveText("No more eligible narration. Restart page audio or go to another passage.");
+    await expect(button(page, "Play narration")).toBeDisabled();
+    await expect(button(page, "Next narrated passage")).toBeDisabled();
+    expect((await audioState(page)).paused).toBe(true);
+    const time = (await audioState(page)).time;
+    await button(page, "Restart page audio").click();
+    await expect(button(page, "Play narration")).toBeDisabled();
+    await page.waitForTimeout(200);
+    expect((await audioState(page)).time).toBe(time);
+    await narrationOption(page, "Skip notes");
+    await button(page, "Restart page audio").click();
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p1");
+  } finally {
+    await context.close();
+  }
+});
+
 function boundaryFixture(info: TestInfo): string {
   const entries = unzipSync(fs.readFileSync(narrated));
   entries["EPUB/chapter-1.xhtml"] = strToU8(`<html xmlns="http://www.w3.org/1999/xhtml"><head><title>3.1.2 Narration boundary</title>

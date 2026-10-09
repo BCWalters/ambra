@@ -107,6 +107,12 @@ export const fr: StringCatalog = {
   "narration.loading": "Chargement de la narration…",
   "narration.browsing": "Vous lisez à un autre endroit que la narration.",
   "narration.error": "La narration n’a pas pu être lue.",
+  "narration.options": "Options de narration",
+  "narration.skipNotes": "Ignorer les notes",
+  "narration.skipPageNumbers": "Ignorer les annonces de page",
+  "narration.escape": "Quitter la structure actuelle",
+  "narration.skippedToEnd": "Il ne reste aucune narration sélectionnée. Relancez l’audio de la page ou allez à un autre passage.",
+  "narration.finished": "Fin de la narration. Relancez l’audio de la page ou allez à un autre passage.",
   "reader.blockedLink": "Pour votre sécurité, ce livre ne peut pas ouvrir les liens vers des fichiers, des données ou des types non pris en charge.",
   "reader.navigationRecovered":
     "La table des matières moderne de ce livre n'a pas pu être lue. Sa table des matières compatible est utilisée à la place.",
