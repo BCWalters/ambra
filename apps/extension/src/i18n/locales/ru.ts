@@ -357,6 +357,7 @@ export const ru: StringCatalog = {
   "annotations.cancelNote": "Отмена",
   "annotations.saveNote": "Сохранить",
   "annotations.publisherNoteTag": "Заметка издателя",
+  "annotations.attachmentNotLoaded": "Вложение сохранено; не загружено",
   "annotations.importNotAnAnnotationsFile":
     "Не удалось загрузить аннотации из этого файла. Похоже, это не файл экспорта аннотаций.",
   "annotations.importWrongBook":

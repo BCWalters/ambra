@@ -1,5 +1,5 @@
 import { EpubCfi, EpubContainer } from "@ambra/engine";
-import type { HighlightStyle, BookIdentifier, AccessibilityMetadata, MetadataLocalization } from "@ambra/engine";
+import type { HighlightStyle, BookIdentifier, AccessibilityMetadata, MetadataLocalization, EpubAnnotation } from "@ambra/engine";
 import type { LocalePreference } from "../i18n/Locale.js";
 import type { LibrarySortOption } from "./LibrarySortOption.js";
 import { DEFAULT_BOOK_READING_SETTINGS, DEFAULT_GLOBAL_READING_SETTINGS } from "./ReadingSettings.js";
@@ -126,6 +126,7 @@ export interface Bookmark {
   readonly cfi: string;
   readonly label: string;
   readonly createdAt: number;
+  readonly importedAnnotation?: EpubAnnotation;
 }
 
 /** A reader-created highlight: a saved text range (via two point CFIs
@@ -145,25 +146,16 @@ export interface Highlight {
    * (applying them to a freshly-opened content document) doesn't need
    * to parse every stored CFI first. */
   readonly spineIndex: number;
-  /**
-   * A true EPUB CFI range is a single string with a shared prefix and
-   * two comma-separated divergent suffixes (spec §3.4) — a real,
-   * non-trivial grammar in its own right. Since nothing outside this
-   * app ever needs to read one of these CFIs back (no interop/export
-   * requirement), storing two independent, ordinary *point* CFIs here
-   * is functionally equivalent for every actual use (generate both via
-   * the exact same `LocatorResolver.generate` used everywhere else,
-   * resolve both via `resolveInDocument`) while reusing the entire
-   * existing, tested point-CFI engine as-is — not worth building and
-   * maintaining a second parser/resolver for the canonical range-CFI
-   * string format when nothing needs it.
-   */
+  /** Local rendering stores two point CFIs. AnnotationInterop joins them into
+   * a standard range CFI when exporting locally authored annotations; imported
+   * records retain their original selectors separately. */
   readonly startCfi: string;
   readonly endCfi: string;
   readonly style: HighlightStyle;
   readonly text: string;
   readonly note: string | undefined;
   readonly createdAt: number;
+  readonly importedAnnotation?: EpubAnnotation;
 }
 
 interface BlobRecord {
@@ -704,8 +696,11 @@ export class LibraryDatabase {
    * comment on why this always creates a fresh entry rather than
    * toggling one at the "same" position) and returns the full record,
    * including its generated `id`/`createdAt`. */
-  public async addBookmark(bookId: string, cfi: string, label: string): Promise<Bookmark> {
-    const bookmark: Bookmark = { id: crypto.randomUUID(), bookId, cfi, label, createdAt: Date.now() };
+  public async addBookmark(bookId: string, cfi: string, label: string, importedAnnotation?: EpubAnnotation): Promise<Bookmark> {
+    const bookmark: Bookmark = {
+      id: crypto.randomUUID(), bookId, cfi, label, createdAt: Date.now(),
+      ...(importedAnnotation ? { importedAnnotation } : {}),
+    };
     await this.put(BOOKMARKS_STORE, bookmark);
     return bookmark;
   }

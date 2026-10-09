@@ -5,6 +5,8 @@ import {
   LocatorResolutionError,
   LocatorResolver,
   parseAnnotationCollection,
+  getAnnotationTextBody,
+  type EpubAnnotation,
   type ContentLoader,
   type ResolvedLocator,
 } from "@ambra/engine";
@@ -112,7 +114,7 @@ describe("buildAnnotationCollection", () => {
     expect(annotations).toHaveLength(1);
     expect(annotations[0]?.motivation).toBe("bookmarking");
     expect(annotations[0]?.target.source).toBe("OEBPS/chapter2.xhtml");
-    expect(annotations[0]?.body?.value).toBe("Chapter 1, Page 3");
+    expect(annotations[0] && getAnnotationTextBody(annotations[0])).toBe("Chapter 1, Page 3");
   });
 
   it("skips a highlight whose CFI fails to parse rather than throwing", () => {
@@ -179,9 +181,9 @@ describe("importAnnotations", () => {
       }),
       addBookmark: vi
         .fn()
-        .mockImplementation(async (bookId: string, cfi: string, label: string) => {
+        .mockImplementation(async (bookId: string, cfi: string, label: string, importedAnnotation?: EpubAnnotation) => {
           addedBookmarks.push({ bookId, cfi, label });
-          return { id: "new-bm", bookId, cfi, label, createdAt: 0 };
+          return { id: "new-bm", bookId, cfi, label, createdAt: 0, importedAnnotation };
         }),
     } as unknown as LibraryDatabase;
     return { library, addedHighlights, addedBookmarks };
@@ -227,7 +229,7 @@ describe("importAnnotations", () => {
       duplicateBookmarks: 0,
       skipped: 0,
     });
-    expect(addedHighlights).toEqual([
+    expect(addedHighlights).toMatchObject([
       {
         bookId: "book-1",
         spineIndex: 0,
@@ -313,7 +315,7 @@ describe("importAnnotations", () => {
       [
         [{ type: "FragmentSelector", value: 42 }],
         [{ type: "UnknownSelector", value: "elsewhere" }],
-        { type: "FragmentSelector", value: "epubcfi(/6/2!/4/2)" },
+        { type: "FragmentSelector", value: 42 },
         [{ type: "CssSelector", value: "#p" }],
       ].map((selector, index) => ({
         id: `unsupported-${index}`, type: "Annotation", created: "2024-01-01T00:00:00.000Z",
@@ -325,7 +327,65 @@ describe("importAnnotations", () => {
     expect(result.importedHighlights).toBe(0);
     expect(addedBookmarks).toEqual([]);
     expect(addedHighlights).toEqual([]);
-    expect(resolver.resolve).not.toHaveBeenCalled();
+    expect(resolver.resolve).toHaveBeenCalledOnce();
+  });
+
+  it("recovers in authored order and preserves imported data on the saved highlight", async () => {
+    const { library, addedHighlights } = makeLibrary();
+    const resolver = makeResolver("Recovered selection");
+    const annotation: EpubAnnotation = {
+      id: "retained", type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+      motivation: "https://example.invalid/custom", custom: { retained: true },
+      target: { source: "OEBPS/chapter1.xhtml", selector: [
+        { type: "UnknownSelector", value: { custom: true } },
+        { type: "FragmentSelector", value: "not-a-cfi" },
+        { type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" },
+      ] },
+      body: [{ type: "TextualBody", value: "Original note" }, { type: "Image", id: "https://example.invalid/image" }],
+    };
+    expect(await importAnnotations(makePackage(), resolver, library, "book-1", [annotation]))
+      .toEqual({ importedHighlights: 1, importedBookmarks: 0, duplicateHighlights: 0, duplicateBookmarks: 0, skipped: 0 });
+    expect(addedHighlights[0]).toMatchObject({ note: "Original note", text: "Recovered selection", importedAnnotation: annotation });
+    expect(resolver.resolvePair).toHaveBeenCalledOnce();
+    expect(buildAnnotationCollection(makePackage(), {
+      highlights: [makeHighlight({ importedAnnotation: annotation, note: "Original note" })], bookmarks: [],
+    })).toEqual([annotation]);
+    const edited = buildAnnotationCollection(makePackage(), {
+      highlights: [makeHighlight({ importedAnnotation: annotation, note: "Edited note" })], bookmarks: [],
+    })[0]!;
+    expect(edited).toMatchObject({ id: annotation.id, custom: annotation.custom, target: annotation.target,
+      body: [{ type: "TextualBody", value: "Edited note" }, { type: "Image", id: "https://example.invalid/image" }] });
+  });
+
+  it("uses a bookmarking range's start and retains open motivation lists", async () => {
+    const { library } = makeLibrary();
+    const annotation: EpubAnnotation = {
+      id: "bookmark-range", type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+      motivation: ["bookmarking", "https://example.invalid/custom"],
+      target: { source: "OEBPS/chapter1.xhtml", selector: [
+        { type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1,:0,:10)" },
+      ] },
+    };
+    const result = await importAnnotations(makePackage(), makeResolver(), library, "book-1", [annotation]);
+    expect(result.importedBookmarks).toBe(1);
+    expect(result.importedHighlights).toBe(0);
+    expect(library.addBookmark).toHaveBeenCalledWith("book-1", "epubcfi(/6/2!/4/2/1:0)", "", annotation);
+  });
+
+  it("counts an exhausted selector list once and lets unexpected resolver errors propagate", async () => {
+    const annotation: EpubAnnotation = {
+      id: "failed", type: "Annotation", created: "2024-01-01T00:00:00.000Z",
+      target: { source: "OEBPS/chapter1.xhtml", selector: [
+        { type: "UnknownSelector" }, { type: "FragmentSelector", value: "not-a-cfi" },
+      ] },
+    };
+    const { library } = makeLibrary();
+    const resolver = makeResolver();
+    expect((await importAnnotations(makePackage(), resolver, library, "book-1", [annotation])).skipped).toBe(1);
+    vi.mocked(resolver.resolve).mockRejectedValueOnce(new Error("Unexpected implementation failure"));
+    annotation.target.selector = [{ type: "FragmentSelector", value: "epubcfi(/6/2!/4/2/1:0)" }];
+    await expect(importAnnotations(makePackage(), resolver, library, "book-1", [annotation]))
+      .rejects.toThrow("Unexpected implementation failure");
   });
 
   it("skips an annotation with no FragmentSelector (only a CssSelector) rather than importing it", async () => {

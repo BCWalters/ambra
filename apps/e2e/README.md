@@ -1147,8 +1147,17 @@ and assert its value (`all`, `highlights`, `notes`, or `bookmarks`), not retired
 filter tabs or chips. The panel shares single-reference-panel ownership with
 Contents, Search, and Library.
 
-The CI reader matrix includes this spec plus annotation mutation, import/export
-and embedded-annotation regression suites. Its
+`annotation-selectors.spec.ts` adds owned mixed-selector/body publications:
+CSS/text recovery and publisher navigation in paginated, fixed and roll layouts,
+Unicode code-point extraction, exact exclusive CSS range ends, mixed-body
+database reload/export/edit/clear, repeat-import deduplication and no attachment
+requests. The request observer is installed before the first book import.
+Unsupported refinements must not broaden the target; external/media/unknown
+bodies remain intact with an explicit non-loaded status rather than automatic
+fetching, playback or HTML interpretation.
+
+The CI reader matrix includes this spec plus annotation mutation, import/export,
+selector and embedded-annotation regression suites. Its
 `browser-evidence-<run>-<attempt>-reader-core-4` artifact retains the six review
 screenshots. For a targeted run, point
 `AMBRA_E2E_EXTENSION_PATH` at an isolated packaged build and run:
@@ -1156,7 +1165,8 @@ screenshots. For a targeted run, point
 ```sh
 AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
   bookmark-panel.spec.ts annotation-mutation-lifecycle.spec.ts \
-  annotation-export-import.spec.ts embedded-annotations.spec.ts --workers=1
+  annotation-export-import.spec.ts annotation-selectors.spec.ts \
+  embedded-annotations.spec.ts --workers=1
 ```
 
 ## Pagination measurement regressions (#197 / #198)

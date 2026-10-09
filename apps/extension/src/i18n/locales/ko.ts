@@ -354,6 +354,7 @@ export const ko: StringCatalog = {
   "annotations.cancelNote": "취소",
   "annotations.saveNote": "저장",
   "annotations.publisherNoteTag": "출판사 메모",
+  "annotations.attachmentNotLoaded": "첨부 파일 보존됨; 로드되지 않음",
   "annotations.importNotAnAnnotationsFile": "해당 파일에서 주석을 불러올 수 없습니다. 올바른 주석 내보내기 파일이 아닌 것 같습니다.",
   "annotations.importWrongBook": "해당 파일에서 주석을 불러올 수 없습니다. 다른 책의 주석일 수도 있습니다.",
   "annotations.importAllDuplicates": "이 주석들은 이미 모두 가지고 계신 것 같아요 — 새로 추가할 내용이 없습니다.",

@@ -82,6 +82,9 @@ export { EpubCfi, CfiStep, EpubCfiParseError } from "./locator/EpubCfi.js";
 export type { CfiParameter, CfiTextAssertion } from "./locator/EpubCfi.js";
 export {
   parseAnnotationCollection,
+  getAnnotationTextBody,
+  hasUnloadedAnnotationBody,
+  hasAnnotationMotivation,
   serializeAnnotationCollection,
   AnnotationParseError,
   EPUB_CFI_CONFORMS_TO,
@@ -96,7 +99,13 @@ export type {
   FragmentSelector,
   CssSelector,
   TextPositionSelector,
+  UnsupportedAnnotationSelector,
 } from "./annotations/EpubAnnotation.js";
+export {
+  AnnotationSelectorResolver, AnnotationSelectorResolutionError,
+  parseAnnotationCfi, isAnnotationSelectorFailure,
+} from "./annotations/AnnotationSelectorResolver.js";
+export type { AnnotationSelection } from "./annotations/AnnotationSelectorResolver.js";
 export { AccessibilityController } from "./accessibility/AccessibilityController.js";
 export { makeOverflowingPreElementsFocusable } from "./rendering/PreOverflowFocusability.js";
 export { isInteractiveContentTarget, isKeyboardNavigationScope } from "./accessibility/NavigationKeyboard.js";

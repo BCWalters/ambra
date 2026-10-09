@@ -355,6 +355,7 @@ export const ja: StringCatalog = {
   "annotations.cancelNote": "キャンセル",
   "annotations.saveNote": "保存",
   "annotations.publisherNoteTag": "出版社のメモ",
+  "annotations.attachmentNotLoaded": "添付データを保持しています（未読み込み）",
   "annotations.importNotAnAnnotationsFile":
     "そのファイルから注釈を読み込めませんでした。有効な注釈のエクスポートファイルではないようです。",
   "annotations.importWrongBook": "そのファイルから注釈を読み込めませんでした。別の本のものかもしれません。",

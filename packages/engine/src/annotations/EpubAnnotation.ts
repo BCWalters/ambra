@@ -5,61 +5,73 @@
  * `PackageDocument.findAnnotationsDocument`) and this reader's own
  * export/import of the user's highlights and bookmarks (issues #107/
  * #108). A restricted profile of the W3C Web Annotation Data Model —
- * only the sub-properties/selector types this specification actually
- * defines are modeled here, not the full open-ended upstream vocabulary.
+ * Known selector/body data has typed helpers. Unknown extensions and
+ * unsupported selectors/bodies are retained without executing or retrieving them.
  */
 
 /** "highlighting"/"bookmarking" cover this app's own two annotation
  * kinds; "commenting" is a highlight that also carries a note (a
  * `body`), per the spec's own guidance on choosing a motivation. */
-export type AnnotationMotivation = "bookmarking" | "commenting" | "highlighting";
+export type AnnotationMotivation = string | readonly string[];
+
+export function hasAnnotationMotivation(motivation: AnnotationMotivation | undefined, value: string): boolean {
+  return typeof motivation === "string" ? motivation === value : motivation?.includes(value) === true;
+}
 
 export interface AnnotationCreator {
+  [extension: string]: unknown;
   id: string;
   type: "Person" | "Organization" | "Software";
   name?: string;
 }
 
-/** The only selector type this reader writes (an EPUB CFI in `value`,
- * either a point or — for a highlight's start/end — a joined range, see
- * `EpubCfi.joinRange`) and the only one it resolves back on import.
- * `CssSelector`/`TextPositionSelector` (also legal per spec) are parsed
- * structurally but never resolved — an annotation using one of those
- * instead is reported as unsupported rather than silently dropped, see
- * `parseAnnotationCollection`'s caller in `AnnotationImport.ts`. */
-export interface FragmentSelector {
+export interface SelectorExtensions {
+  [extension: string]: unknown;
+  /** Retained verbatim; target resolution must validate each refinement. */
+  refinedBy?: unknown;
+}
+
+/** The CFI selector this reader writes for its own positions and ranges. */
+export interface FragmentSelector extends SelectorExtensions {
   type: "FragmentSelector";
   value: string;
   conformsTo?: string;
 }
 
-export interface CssSelector {
+export interface CssSelector extends SelectorExtensions {
   type: "CssSelector";
   value: string;
 }
 
-export interface TextPositionSelector {
+export interface TextPositionSelector extends SelectorExtensions {
   type: "TextPositionSelector";
   start: number;
   end: number;
 }
 
-export type AnnotationSelector = FragmentSelector | CssSelector | TextPositionSelector;
+export interface UnsupportedAnnotationSelector extends SelectorExtensions {
+  type: string;
+}
+
+export type AnnotationSelector = FragmentSelector | CssSelector | TextPositionSelector | UnsupportedAnnotationSelector;
 
 export interface AnnotationTarget {
-  /** The href (relative to the OPF, matching `ManifestItem.path`/
-   * `SpineItemRef`) of the target content document. */
+  [extension: string]: unknown;
+  /** An OPF-relative href or the archive-relative path used by older Ambra
+   * exports, identifying the target content document. */
   source: string;
   selector?: AnnotationSelector[];
 }
 
 export interface AnnotationBody {
-  type: "TextualBody" | "Image" | "Audio" | "Video";
+  [extension: string]: unknown;
+  type?: string;
   format?: string;
-  value?: string;
+  value?: unknown;
 }
 
 export interface EpubAnnotation {
+  [extension: string]: unknown;
   id: string;
   type: "Annotation";
   motivation?: AnnotationMotivation;
@@ -67,7 +79,23 @@ export interface EpubAnnotation {
   modified?: string;
   creator?: AnnotationCreator;
   target: AnnotationTarget;
-  body?: AnnotationBody;
+  body?: AnnotationBody | string | readonly unknown[];
+}
+
+export function getAnnotationTextBody(annotation: EpubAnnotation): string | undefined {
+  const bodies: readonly unknown[] = Array.isArray(annotation.body) ? annotation.body : [annotation.body];
+  for (const body of bodies) {
+    if (body && typeof body === "object" && !Array.isArray(body) &&
+      "type" in body && body.type === "TextualBody" && "value" in body && typeof body.value === "string") return body.value;
+  }
+  return undefined;
+}
+
+export function hasUnloadedAnnotationBody(annotation: EpubAnnotation): boolean {
+  const bodies: readonly unknown[] = Array.isArray(annotation.body) ? annotation.body : [annotation.body];
+  return bodies.some(body => body !== undefined && !(body && typeof body === "object" &&
+    !Array.isArray(body) && "type" in body && body.type === "TextualBody" &&
+    "value" in body && typeof body.value === "string"));
 }
 
 export class AnnotationParseError extends Error {
@@ -144,16 +172,13 @@ function toEpubAnnotation(raw: unknown): EpubAnnotation | undefined {
   if (!target) {
     return undefined;
   }
-  const motivation =
-    obj.motivation === "bookmarking" ||
-    obj.motivation === "commenting" ||
-    obj.motivation === "highlighting"
-      ? obj.motivation
-      : undefined;
   return {
+    ...obj,
     id: obj.id,
     type: "Annotation",
-    motivation,
+    motivation: typeof obj.motivation === "string" ? obj.motivation
+      : Array.isArray(obj.motivation) && obj.motivation.every(value => typeof value === "string")
+        ? obj.motivation : undefined,
     created: obj.created,
     modified: typeof obj.modified === "string" ? obj.modified : undefined,
     creator: toAnnotationCreator(obj.creator),
@@ -173,7 +198,7 @@ function toAnnotationCreator(raw: unknown): AnnotationCreator | undefined {
   ) {
     return undefined;
   }
-  return { id: obj.id, type: obj.type, name: typeof obj.name === "string" ? obj.name : undefined };
+  return { ...obj, id: obj.id, type: obj.type, name: typeof obj.name === "string" ? obj.name : undefined };
 }
 
 function toAnnotationTarget(raw: unknown): AnnotationTarget | undefined {
@@ -184,11 +209,12 @@ function toAnnotationTarget(raw: unknown): AnnotationTarget | undefined {
   if (typeof obj.source !== "string") {
     return undefined;
   }
-  const selectorList = Array.isArray(obj.selector) ? obj.selector : undefined;
+  const selectorList = obj.selector === undefined ? undefined
+    : Array.isArray(obj.selector) ? obj.selector : [obj.selector];
   const selector = selectorList
     ?.map((entry) => toAnnotationSelector(entry))
     .filter((entry): entry is AnnotationSelector => entry !== undefined);
-  return { source: obj.source, selector: selector && selector.length > 0 ? selector : undefined };
+  return { ...obj, source: obj.source, selector: selector && selector.length > 0 ? selector : undefined };
 }
 
 function toAnnotationSelector(raw: unknown): AnnotationSelector | undefined {
@@ -198,41 +224,35 @@ function toAnnotationSelector(raw: unknown): AnnotationSelector | undefined {
   const obj = raw as Record<string, unknown>;
   if (obj.type === "FragmentSelector" && typeof obj.value === "string") {
     return {
+      ...obj,
       type: "FragmentSelector",
       value: obj.value,
       conformsTo: typeof obj.conformsTo === "string" ? obj.conformsTo : undefined,
     };
   }
   if (obj.type === "CssSelector" && typeof obj.value === "string") {
-    return { type: "CssSelector", value: obj.value };
+    return { ...obj, type: "CssSelector", value: obj.value };
   }
   if (
     obj.type === "TextPositionSelector" &&
     typeof obj.start === "number" &&
     typeof obj.end === "number"
   ) {
-    return { type: "TextPositionSelector", start: obj.start, end: obj.end };
+    return { ...obj, type: "TextPositionSelector", start: obj.start, end: obj.end };
   }
-  return undefined;
+  return typeof obj.type === "string" ? { ...obj, type: obj.type } : undefined;
 }
 
-function toAnnotationBody(raw: unknown): AnnotationBody | undefined {
+function toAnnotationBody(raw: unknown): EpubAnnotation["body"] {
+  if (typeof raw === "string" || Array.isArray(raw)) return raw;
   if (!raw || typeof raw !== "object") {
     return undefined;
   }
   const obj = raw as Record<string, unknown>;
-  if (
-    obj.type !== "TextualBody" &&
-    obj.type !== "Image" &&
-    obj.type !== "Audio" &&
-    obj.type !== "Video"
-  ) {
-    return undefined;
-  }
   return {
-    type: obj.type,
+    ...obj,
+    type: typeof obj.type === "string" ? obj.type : undefined,
     format: typeof obj.format === "string" ? obj.format : undefined,
-    value: typeof obj.value === "string" ? obj.value : undefined,
   };
 }
 

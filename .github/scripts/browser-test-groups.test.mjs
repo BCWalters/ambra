@@ -34,10 +34,10 @@ function selected(mode) {
 
 test("full matrix preserves every legacy protected file invocation, including intentional duplicates", () => {
   assert.deepEqual(selected("full").flatMap(group => group.steps.flatMap(step => step.files)).sort(),
-    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base"].sort());
+    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
-  assert.equal(core.length, 56);
+  assert.equal(core.length, 57);
   assert.equal(new Set(core).size, core.length);
   assert.ok(selected("full").find(group => group.id === "contention-sensitive")
     .steps.some(step => step.files.includes("pagination-measurement") && step.workers === 1));

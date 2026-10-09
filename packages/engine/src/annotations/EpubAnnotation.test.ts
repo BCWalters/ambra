@@ -3,6 +3,9 @@ import {
   AnnotationParseError,
   parseAnnotationCollection,
   serializeAnnotationCollection,
+  getAnnotationTextBody,
+  hasUnloadedAnnotationBody,
+  hasAnnotationMotivation,
 } from "./EpubAnnotation.js";
 import type { EpubAnnotation } from "./EpubAnnotation.js";
 
@@ -22,6 +25,56 @@ const validAnnotation: EpubAnnotation = {
     ],
   },
 };
+
+describe("annotation extension and body retention", () => {
+  it("retains unknown motivations, extension fields, selectors and refinements through JSON round trips", () => {
+    const raw = {
+      ...validAnnotation,
+      motivation: ["bookmarking", "https://example.invalid/custom-motivation"],
+      custom: { revision: 2 },
+      creator: { id: "person", type: "Person", name: "Author", custom: ["retained"] },
+      target: {
+        source: "chapter1.xhtml", custom: true,
+        selector: [
+          { type: "UnknownSelector", value: { custom: true } },
+          { type: "CssSelector", value: "#scope", custom: "retained",
+            refinedBy: { type: "TextPositionSelector", start: 1, end: 2, custom: ["retained"] } },
+        ],
+      },
+      body: [
+        { type: "TextualBody", value: "<img src='https://example.invalid/no-fetch'>", custom: true },
+        { type: "Image", id: "https://example.invalid/image.svg", custom: { retained: true } },
+        { type: "UnknownBody", value: { retained: true } },
+        "https://example.invalid/external-body",
+      ],
+    };
+    const annotations = parseAnnotationCollection(JSON.stringify(raw));
+    expect(JSON.parse(serializeAnnotationCollection(annotations))).toEqual([raw]);
+    expect(getAnnotationTextBody(annotations[0]!)).toBe("<img src='https://example.invalid/no-fetch'>");
+    expect(hasUnloadedAnnotationBody(annotations[0]!)).toBe(true);
+    expect(hasAnnotationMotivation(annotations[0]!.motivation, "bookmarking")).toBe(true);
+  });
+
+  it("accepts a singleton selector object without broadening malformed selectors", () => {
+    const [annotation] = parseAnnotationCollection(JSON.stringify({
+      ...validAnnotation, target: { source: "chapter1.xhtml", selector: { type: "CssSelector", value: "#scope" } },
+    }));
+    expect(annotation?.target.selector).toEqual([{ type: "CssSelector", value: "#scope" }]);
+  });
+
+  it.each([
+    "https://example.invalid/body",
+    { id: "https://example.invalid/body" },
+    { type: "Audio", id: "https://example.invalid/audio" },
+    { type: "Video", value: "https://example.invalid/video" },
+    { type: "UnknownBody", custom: true },
+  ])("retains external/media/unknown bodies without treating their URLs as text: %j", body => {
+    const [annotation] = parseAnnotationCollection(JSON.stringify({ ...validAnnotation, body }));
+    expect(JSON.parse(serializeAnnotationCollection([annotation!]))[0].body).toEqual(body);
+    expect(getAnnotationTextBody(annotation!)).toBeUndefined();
+    expect(hasUnloadedAnnotationBody(annotation!)).toBe(true);
+  });
+});
 
 describe("parseAnnotationCollection", () => {
   it("parses a bare array of annotations (this reader's own export shape)", () => {

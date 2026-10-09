@@ -436,6 +436,7 @@ export class PackageDocument {
   public readonly effectivePageProgressionDirection: "ltr" | "rtl";
 
   private constructor(
+    public readonly path: string,
     public readonly metadata: PackageMetadata,
     manifestItems: readonly ManifestItem[],
     public readonly spine: readonly SpineItemRef[],
@@ -604,6 +605,7 @@ export class PackageDocument {
         })
       : [];
     return new PackageDocument(
+      opfPath,
       metadata,
       manifestItems,
       spine,

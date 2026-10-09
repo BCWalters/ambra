@@ -1,11 +1,15 @@
 import {
   EpubCfi,
   EpubCfiParseError,
-  Locator,
-  LocatorResolutionError,
   LocatorResolver,
   PackageDocument,
   EPUB_CFI_CONFORMS_TO,
+  AnnotationSelectorResolver,
+  AnnotationSelectorResolutionError,
+  isAnnotationSelectorFailure,
+  parseAnnotationCfi,
+  getAnnotationTextBody,
+  hasAnnotationMotivation,
 } from "@ambra/engine";
 import type { EpubAnnotation, FragmentSelector, AnnotationMotivation } from "@ambra/engine";
 import type { LibraryDatabase, Bookmark, Highlight } from "./LibraryDatabase.js";
@@ -32,10 +36,10 @@ export function classifyReadOnlyAnnotationKind(
   motivation: AnnotationMotivation | undefined,
   isRange: boolean,
 ): "highlight" | "bookmark" {
-  if (motivation === "bookmarking") {
+  if (hasAnnotationMotivation(motivation, "bookmarking")) {
     return "bookmark";
   }
-  if (motivation === "highlighting" || motivation === "commenting") {
+  if (hasAnnotationMotivation(motivation, "highlighting") || hasAnnotationMotivation(motivation, "commenting")) {
     return "highlight";
   }
   return isRange ? "highlight" : "bookmark";
@@ -56,8 +60,32 @@ function sourceForSpineIndex(pkg: PackageDocument, spineIndex: number): string |
   return pkg.spine[spineIndex]?.manifestItem.path;
 }
 
+function retainedAnnotation(annotation: EpubAnnotation, note: string | undefined): EpubAnnotation {
+  const originalNote = getAnnotationTextBody(annotation);
+  if ((note ?? "") === (originalNote ?? "")) return annotation;
+  const bodies: unknown[] = Array.isArray(annotation.body) ? [...annotation.body]
+    : annotation.body === undefined ? [] : [annotation.body];
+  const index = bodies.findIndex(body => body && typeof body === "object" &&
+    "type" in body && body.type === "TextualBody" && "value" in body && typeof body.value === "string");
+  if (note) {
+    const original = bodies[index];
+    const body = {
+      ...(original && typeof original === "object" ? original : {}),
+      type: "TextualBody", format: "text/plain", value: note,
+    };
+    if (index === -1) bodies.push(body);
+    else bodies[index] = body;
+  } else if (index !== -1) bodies.splice(index, 1);
+  return {
+    ...annotation,
+    modified: new Date().toISOString(),
+    body: bodies.length ? bodies : undefined,
+  };
+}
+
 /** Builds an EPUB Annotations 1.0 collection (issue #107) from this
- * book's current highlights and bookmarks — the reader's own export
+ * book's current highlights and bookmarks. Imported records retain authored
+ * metadata and targets; locally created records use the reader's own export
  * format, always written as a plain array (see
  * `serializeAnnotationCollection`). A highlight's two point CFIs are
  * joined into one canonical range CFI (`EpubCfi.joinRange`) since that's
@@ -74,6 +102,10 @@ export function buildAnnotationCollection(
   const annotations: EpubAnnotation[] = [];
 
   for (const highlight of highlights) {
+    if (highlight.importedAnnotation) {
+      annotations.push(retainedAnnotation(highlight.importedAnnotation, highlight.note));
+      continue;
+    }
     const source = sourceForSpineIndex(pkg, highlight.spineIndex);
     if (!source) {
       continue;
@@ -109,6 +141,10 @@ export function buildAnnotationCollection(
   }
 
   for (const bookmark of bookmarks) {
+    if (bookmark.importedAnnotation) {
+      annotations.push(retainedAnnotation(bookmark.importedAnnotation, bookmark.label));
+      continue;
+    }
     let cfi: EpubCfi;
     try {
       cfi = EpubCfi.parse(bookmark.cfi);
@@ -231,78 +267,12 @@ function isDuplicateBookmark(
   return known.some((existing) => existing.cfi === candidateCfi);
 }
 
-/** Finds which spine index `target.source` refers to — first by an
- * exact manifest-path match (works whenever the annotation came from
- * this exact book, regardless of which reading system produced it),
- * falling back to the selector's own CFI package-steps (works when the
- * href doesn't match but the CFI still numerically resolves — e.g. a
- * slightly different but spine-compatible copy of the same book). */
-function resolveSpineIndex(pkg: PackageDocument, source: string, cfi: EpubCfi): number | undefined {
-  const byPath = pkg.spine.findIndex((ref) => ref.manifestItem.path === source);
-  if (byPath !== -1) {
-    return byPath;
-  }
-  return pkg.findSpineIndexByPackageCfiSteps(cfi.packageSteps);
-}
-
-/** Re-anchors a parsed CFI's package-steps to `spineIndex` — needed
- * when `resolveSpineIndex` had to fall back past a mismatched `source`,
- * since the CFI's own package-steps might otherwise point at the wrong
- * spine item once re-serialized. */
-function withSpineIndex(pkg: PackageDocument, cfi: EpubCfi, spineIndex: number): EpubCfi {
-  const packageCfiSteps = pkg.spine[spineIndex]?.packageCfiSteps ?? cfi.packageSteps;
-  return new EpubCfi(packageCfiSteps, cfi.contentSteps, cfi.characterOffset, cfi.textAssertion);
-}
-
-/** Commas inside ID assertions do not make a point CFI a range. */
-export function parseSelectorCfi(value: string): { start: EpubCfi; end?: EpubCfi } {
-  try {
-    return { start: EpubCfi.parse(value) };
-  } catch (error) {
-    if (!(error instanceof EpubCfiParseError)) throw error;
-    return EpubCfi.parseRange(value);
-  }
-}
-
-/** Extracts the live text a resolved CFI range currently selects — the
- * same `range.toString()` a fresh in-app selection already captures in
- * `HighlightManager.add`, just built from two independently-resolved
- * locators instead of a live user `Range`. Resolves both ends via
- * `resolvePair` (one document load, not two) — a `Range`'s start/end
- * must share a document, and resolving them separately would silently
- * collapse the range instead of throwing (see `resolvePair`'s doc
- * comment). */
-async function extractRangeText(
-  resolver: LocatorResolver,
-  startCfi: string,
-  endCfi: string,
-): Promise<string> {
-  const { start, end, document } = await resolver.resolvePair(
-    new Locator(startCfi),
-    new Locator(endCfi),
-  );
-  const range = document.createRange();
-  if (start.characterOffset !== undefined) {
-    range.setStart(start.node, start.characterOffset);
-  } else {
-    range.setStartBefore(start.node);
-  }
-  if (end.characterOffset !== undefined) {
-    range.setEnd(end.node, end.characterOffset);
-  } else {
-    range.setEndAfter(end.node);
-  }
-  return range.toString();
-}
+export const parseSelectorCfi = parseAnnotationCfi;
 
 /** Imports an externally-produced EPUB Annotations 1.0 collection
- * (issue #108) into this book's own highlights/bookmarks. Only
- * annotations whose selector is a `FragmentSelector` (an EPUB CFI) are
- * resolvable here — anything else is counted in `skipped` rather than
- * silently dropped without a trace. Loads whichever spine items'
- * content documents it actually needs (to recover a highlight's
- * selected text, since the imported file doesn't carry the original
- * app's own text snapshot), same as reading normally would. */
+ * into this book's own highlights/bookmarks. Selectors are tried in authored
+ * order; known resolution failures may recover through a later selector.
+ * One exhausted annotation counts as one skip, not one per failed selector. */
 export async function importAnnotations(
   pkg: PackageDocument,
   locatorResolver: LocatorResolver,
@@ -324,85 +294,54 @@ export async function importAnnotations(
   const knownHighlights: Pick<Highlight, "spineIndex" | "startCfi" | "endCfi" | "text" | "note">[] =
     [...(await library.listHighlightsForBook(bookId))];
   const knownBookmarks: Pick<Bookmark, "cfi">[] = [...(await library.listBookmarksForBook(bookId))];
+  const selectors = new AnnotationSelectorResolver(pkg, locatorResolver);
 
-  for (const annotation of annotations) {
-    const selector = annotation.target.selector?.find(
-      (candidate): candidate is FragmentSelector => candidate.type === "FragmentSelector",
-    );
-    if (!selector) {
-      result.skipped++;
-      continue;
-    }
-
-    try {
-      const { start, end } = parseSelectorCfi(selector.value);
-      if (end) {
-        const spineIndex = resolveSpineIndex(pkg, annotation.target.source, start);
-        if (spineIndex === undefined) {
-          result.skipped++;
-          continue;
+  annotationLoop: for (const annotation of annotations) {
+    if (!annotation.target.selector?.length)
+      console.warn(`Imported annotation ${annotation.id} has no supported selector.`);
+    for (const selector of annotation.target.selector ?? []) {
+      try {
+        const note = getAnnotationTextBody(annotation);
+        if (selector.type === "FragmentSelector" && selector.refinedBy === undefined &&
+          !hasAnnotationMotivation(annotation.motivation, "bookmarking")) {
+          const candidate = selectors.fragmentSelection(annotation.target.source, selector);
+          if (candidate.endCfi && isDuplicateHighlight(knownHighlights, {
+            spineIndex: candidate.spineIndex, startCfi: candidate.startCfi, endCfi: candidate.endCfi, note,
+          })) {
+            result.duplicateHighlights++;
+            continue annotationLoop;
+          }
         }
-        const startCfi = withSpineIndex(pkg, start, spineIndex).toString();
-        const endCfi = withSpineIndex(pkg, end, spineIndex).toString();
-        const note = annotation.body?.type === "TextualBody" ? annotation.body.value : undefined;
-
-        // The exact-CFI half of duplicate detection doesn't need the
-        // (re-extracted, so comparatively expensive) text yet — check it
-        // first and skip the extraction entirely for the common re-
-        // import-the-same-file case.
-        if (isDuplicateHighlight(knownHighlights, { spineIndex, startCfi, endCfi, note })) {
-          result.duplicateHighlights++;
-          continue;
+        const selection = await selectors.resolve(annotation.target.source, selector);
+        const { spineIndex, startCfi, endCfi } = selection;
+        if (endCfi && !hasAnnotationMotivation(annotation.motivation, "bookmarking")) {
+          const text = selection.text;
+          if (text === undefined) throw new AnnotationSelectorResolutionError("The annotation range has no text representation.");
+          if (isDuplicateHighlight(knownHighlights, { spineIndex, startCfi, endCfi, text, note })) {
+            result.duplicateHighlights++;
+            continue annotationLoop;
+          }
+          const highlight = await library.addHighlight({
+            bookId, spineIndex, startCfi, endCfi, style: "yellow", text, note, importedAnnotation: annotation,
+          });
+          knownHighlights.push(highlight);
+          result.importedHighlights++;
+        } else {
+          if (isDuplicateBookmark(knownBookmarks, startCfi)) {
+            result.duplicateBookmarks++;
+            continue annotationLoop;
+          }
+          const bookmark = await library.addBookmark(bookId, startCfi, note ?? "", annotation);
+          knownBookmarks.push(bookmark);
+          result.importedBookmarks++;
         }
-        const text = await extractRangeText(locatorResolver, startCfi, endCfi);
-        if (isDuplicateHighlight(knownHighlights, { spineIndex, startCfi, endCfi, text, note })) {
-          result.duplicateHighlights++;
-          continue;
-        }
-        const highlight = await library.addHighlight({
-          bookId,
-          spineIndex,
-          startCfi,
-          endCfi,
-          style: "yellow",
-          text,
-          note,
-        });
-        knownHighlights.push(highlight);
-        result.importedHighlights++;
-      } else {
-        const point = start;
-        const spineIndex = resolveSpineIndex(pkg, annotation.target.source, point);
-        if (spineIndex === undefined) {
-          result.skipped++;
-          continue;
-        }
-        const cfi = withSpineIndex(pkg, point, spineIndex).toString();
-        await locatorResolver.resolve(new Locator(cfi));
-        if (isDuplicateBookmark(knownBookmarks, cfi)) {
-          result.duplicateBookmarks++;
-          continue;
-        }
-        const label =
-          annotation.body?.type === "TextualBody" && annotation.body.value
-            ? annotation.body.value
-            : "";
-        const bookmark = await library.addBookmark(bookId, cfi, label);
-        knownBookmarks.push(bookmark);
-        result.importedBookmarks++;
+        continue annotationLoop;
+      } catch (error) {
+        if (!isAnnotationSelectorFailure(error)) throw error;
+        console.warn(`Unable to resolve selector ${selector.type} for imported annotation ${annotation.id}; trying its next alternative.`, error);
       }
-    } catch (err) {
-      // A well-formed CFI that simply doesn't resolve against this
-      // book's actual content (issue #119 — most likely the annotation
-      // is from a different book, or a different edition of this one)
-      // is treated the same as an unparseable one: skip just this one
-      // annotation rather than aborting the entire import.
-      if (err instanceof EpubCfiParseError || err instanceof LocatorResolutionError) {
-        result.skipped++;
-        continue;
-      }
-      throw err;
     }
+    result.skipped++;
   }
 
   return result;
