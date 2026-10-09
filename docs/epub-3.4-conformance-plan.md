@@ -462,6 +462,23 @@ localized controls retain geometry, focus and keyboard-speed coverage.
 Scroll-mode layout events reconcile narration without publishing user navigation
 or dismissing the page-turn guide.
 
+The authored-semantics foundation exposes a typed SMIL playback timeline alongside
+the unchanged flat `flattenPars()` API. Each entry preserves its original `par`,
+body/sequence ancestry, exact semantic tokens and exclusive subtree boundaries.
+Matching sequence semantics suppress all descendants; escape selects the nearest
+matching structure and continues after its whole subtree, including references
+to another content document. A terminal escape is distinct from no escapable
+structure. IDs are not used as structural identity, and prefixed tokens are not
+silently reinterpreted as unprefixed vocabulary terms.
+
+Recorded narration caches that full timeline by SMIL path while preserving its
+existing per-spine flat clip lists and indices. Separately cued documents that
+share an overlay retain the same semantic tree, rather than reparsing unrelated
+copies or losing structure at a content-document boundary.
+
+This is preparation for user-controlled skipping and contextual escape under
+#337, not enabled reader behavior or a published conformance-score change.
+
 The post-3.1.0 SMIL resource-classification increment applies the shared EPUB
 reference classifier to audio `src`, text `src` and sequence `epub:textref`.
 External, file, data, protocol-relative and unsupported URLs cannot alias ZIP
