@@ -101,7 +101,10 @@ scrollbar allocation, not body clipping that would hide translated content.
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before
 and after a clip boundary, continuous native audio and preserved control focus,
-not only highlight classes or page numbers. Set
+not only highlight classes or page numbers. The 3.1.2 fixture uses minimum
+paragraph heights so text can grow without overlapping the following passage.
+Single-page and spread checks hit-test the final text line and exclude the
+following passage from the current page's paint clip. Set
 `AMBRA_TIMING_SYNCHRONIZATION_EPUB` to the pinned original
 `mol-timing-synchronization.epub` to include its final-paragraph follow-along
 probe. This optional original-book regression does not change its already
@@ -187,6 +190,12 @@ limits within each runner. A failure does not cancel the other selected groups.
 Every production group verifies the archive's commit, producer SHA-256 and
 release checksums before extraction; only the explicit local-feature group
 builds its separate development package.
+
+The short compact Library check re-enters the book button with native
+Shift+Tab/Tab before asserting complete viewport visibility. Calling focus
+on an already-focused import button does not scroll it after a card resize;
+the native focus entry exercises the keyboard contract without reducing the
+100% visibility requirement.
 
 Pagination measurement's input/long-task probes run in the one-worker
 contention-sensitive group. Their foreground responsiveness thresholds remain

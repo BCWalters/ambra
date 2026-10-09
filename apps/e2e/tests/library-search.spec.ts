@@ -16,6 +16,9 @@ test("short compact Library keeps books and fixed navigation reachable with coll
     await page.bringToFront();
     const open = page.getByRole("main").getByRole("button", { name: /^Open / }).first();
     await open.focus();
+    await open.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(open).toBeFocused();
     await expect(open).toBeInViewport({ ratio: 1 });
     const cover = (await open.boundingBox())!;
     await expect(page.getByRole("button", { name: "Find & sort", exact: true })).toHaveAttribute("aria-expanded", "false");
