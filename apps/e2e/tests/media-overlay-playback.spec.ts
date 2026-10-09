@@ -48,6 +48,79 @@ async function narrationOption(page: Page, name: string, role: "menuitemcheckbox
   await item.click();
 }
 
+function interleavedFixture(info: TestInfo): string {
+  const entries = unzipSync(fs.readFileSync(narrated));
+  const first = authoredPars(entries, 1);
+  const second = authoredPars(entries, 2);
+  const body = first.map((par, index) => `${par}${second[index]}`).join("");
+  return semanticFixture(info, "authored-interleaved-order", [body], true);
+}
+
+test("shared narration follows the first authored cross-document successor, then both transport directions (#337)", async ({ browserName: _browserName }, info) => {
+  const { readerPage: page, context } = await launchReader(interleavedFixture(info));
+  try {
+    await exposeReaderController(page);
+    await listen(page);
+    await speedButton(page).click();
+    await page.getByRole("menuitemradio", { name: "1.5×", exact: true }).click();
+    const source = (await audioState(page)).source;
+    await page.locator(audioSelector).evaluate(element => {
+      const audio = element as HTMLAudioElement;
+      audio.currentTime = 4;
+      audio.dispatchEvent(new Event("timeupdate"));
+    });
+    const successor = await page.waitForFunction(() => {
+      const fragment = Reflect.get(window, "__readerController").narration.target?.fragment;
+      return fragment && fragment !== "c1-p1" ? fragment : false;
+    });
+    expect(await successor.jsonValue()).toBe("c2-p1");
+    await successor.dispose();
+    await expect.poll(async () => (await audioState(page)).paused).toBe(false);
+    await expect.poll(async () => (await audioState(page)).source).not.toBe(source);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(0.15);
+    expect((await audioState(page)).rate).toBe(1.5);
+    await expect.poll(() => passagePaint(page, "c2-p1")).toMatchObject({ painted: true });
+    await button(page, "Pause narration").click();
+    for (const fragment of ["c1-p2", "c2-p2", "c1-p3", "c2-p3"]) {
+      await button(page, "Next narrated passage").click();
+      await expect.poll(() => narrationTarget(page)).toBe(fragment);
+      await expect.poll(() => passagePaint(page, fragment)).toMatchObject({ painted: true });
+      expect((await audioState(page)).paused).toBe(true);
+    }
+    await expect(button(page, "Next narrated passage")).toBeDisabled();
+    for (const fragment of ["c1-p3", "c2-p2", "c1-p2", "c2-p1", "c1-p1"]) {
+      await button(page, "Previous narrated passage").click();
+      await expect.poll(() => narrationTarget(page)).toBe(fragment);
+      expect((await audioState(page)).paused).toBe(true);
+    }
+    await expect(button(page, "Previous narrated passage")).toBeDisabled();
+  } finally {
+    await context.close();
+  }
+});
+
+test("starting at a later document enters shared narration at its authored midpoint without regrouping remaining passages (#337)", async ({ browserName: _browserName }, info) => {
+  const { readerPage: page, context } = await launchReader(interleavedFixture(info));
+  try {
+    await exposeReaderController(page);
+    await toc(page, "Narrated chapter 2");
+    await listen(page);
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p1");
+    await button(page, "Pause narration").click();
+    await button(page, "Next narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
+    await expect.poll(() => passagePaint(page, "c1-p2")).toMatchObject({ painted: true });
+    await button(page, "Previous narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p1");
+    expect((await audioState(page)).paused).toBe(true);
+    await button(page, "Previous narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c1-p1");
+    await expect(button(page, "Previous narrated passage")).toBeDisabled();
+  } finally {
+    await context.close();
+  }
+});
+
 test("semantic skipping suppresses unsupported note sequences and page announcements through real controls (#337)", async ({ browserName: _browserName }, info) => {
   const entries = unzipSync(fs.readFileSync(narrated));
   const bodies = [1, 2].map(chapter => {
@@ -167,12 +240,12 @@ test("interleaved shared escape cannot replay an exited subtree through transpor
     await expect.poll(() => narrationTarget(page)).toBe("c1-p2");
     await button(page, "Pause narration").click();
     await button(page, "Next narrated passage").click();
-    await expect.poll(() => narrationTarget(page)).toBe("c1-p3");
-    await button(page, "Next narrated passage").click();
     await expect.poll(() => narrationTarget(page)).toBe("c2-p2");
-    await expect.poll(() => passagePaint(page, "c2-p2")).toMatchObject({ painted: true });
+    await button(page, "Next narrated passage").click();
+    await expect.poll(() => narrationTarget(page)).toBe("c2-p3");
+    await expect.poll(() => passagePaint(page, "c2-p3")).toMatchObject({ painted: true });
     await button(page, "Play narration").click();
-    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(4.15);
+    await expect.poll(async () => (await audioState(page)).time).toBeGreaterThan(8.15);
     await narrationOption(page, "Leave current structure", "menuitem");
     await expect(controls(page).getByRole("status")).toHaveText("End of narration. Restart page audio or go to another passage.");
     expect((await audioState(page)).paused).toBe(true);

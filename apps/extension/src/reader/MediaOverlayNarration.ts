@@ -147,12 +147,12 @@ export class MediaOverlayNarration {
       canEscape: !this.endedByPolicy && this.escapeDestination !== undefined,
       skippedToEnd: this.skippedToEnd,
       endedByPolicy: this.endedByPolicy,
-      hasPrevious: !!this.cursor && ((this.endedByPolicy && !this.isSkipped(this.cursor)) || this.cursor.index > 0 ||
-        (this.escapeBoundary?.timeline === this.cursor.timeline && this.cursor.entries[this.cursor.index]!.index > 0) ||
-        this.adjacentAssociation(this.cursor.association, -1) !== undefined),
+      hasPrevious: !!this.cursor && ((this.endedByPolicy && !this.isSkipped(this.cursor)) ||
+        this.cursor.entries[this.cursor.index]!.index > 0 ||
+        this.adjacentOverlayAssociation(this.cursor.association, -1) !== undefined),
       hasNext: !this.endedByPolicy && !!this.cursor && (
-        this.cursor.index < this.cursor.clips.length - 1 ||
-        this.adjacentAssociation(this.cursor.association, 1) !== undefined
+        this.cursor.entries[this.cursor.index]!.index < this.cursor.timeline.entries.length - 1 ||
+        this.adjacentOverlayAssociation(this.cursor.association, 1) !== undefined
       ),
       ...(this.error ? { error: this.error } : {}),
     };
@@ -449,21 +449,21 @@ export class MediaOverlayNarration {
     return { timeline, entries, clips: entries.map(entry => entry.par) };
   }
 
-  private cursorForEntry(cursor: Cursor, entry: SmilPlaybackEntry): Cursor {
-    const currentPath = this.ctx.pkg.spine[this.associations[cursor.association]!]!.manifestItem.path;
-    const association = currentPath === entry.par.text.path ? cursor.association : this.associations.findIndex(
+  private cursorForEntry(owner: SpineNarrationClips & { association: number }, entry: SmilPlaybackEntry): Cursor {
+    const currentPath = this.ctx.pkg.spine[this.associations[owner.association]!]!.manifestItem.path;
+    const association = currentPath === entry.par.text.path ? owner.association : this.associations.findIndex(
       index => this.ctx.pkg.spine[index]!.manifestItem.path === entry.par.text.path,
     );
-    if (association < 0) throw new Error("The escaped narration target is not associated with a spine document.");
-    const sourceOverlay = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[cursor.association]!]!.manifestItem);
+    if (association < 0) throw new Error("The narration target is not associated with a spine document.");
+    const sourceOverlay = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[owner.association]!]!.manifestItem);
     const targetOverlay = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[association]!]!.manifestItem);
     if (sourceOverlay?.path !== targetOverlay?.path) {
-      throw new Error("The escaped narration target belongs to a different authored overlay.");
+      throw new Error("The narration target belongs to a different authored overlay.");
     }
-    const loaded = this.spineClips(cursor.timeline, entry.par.text.path);
+    const loaded = association === owner.association ? owner : this.spineClips(owner.timeline, entry.par.text.path);
     const index = loaded.entries.indexOf(entry);
-    if (index < 0) throw new Error("The escaped narration target is outside its authored timeline.");
-    return { association, index, ...loaded };
+    if (index < 0) throw new Error("The narration target is outside its authored timeline.");
+    return { ...loaded, association, index };
   }
 
   private get escapeDestination() {
@@ -493,27 +493,37 @@ export class MediaOverlayNarration {
     return undefined;
   }
 
+  private adjacentOverlayAssociation(association: number, direction: 1 | -1): number | undefined {
+    const overlay = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[association]!]!.manifestItem);
+    for (let next = this.adjacentAssociation(association, direction);
+      next !== undefined; next = this.adjacentAssociation(next, direction)) {
+      const candidate = this.ctx.pkg.findMediaOverlay(this.ctx.pkg.spine[this.associations[next]!]!.manifestItem);
+      if (candidate?.path !== overlay?.path) return next;
+    }
+    return undefined;
+  }
+
+  private playableCursor(owner: SpineNarrationClips & { association: number }, start: number, direction: 1 | -1): Cursor | undefined {
+    if (direction === 1 && this.escapeBoundary?.timeline === owner.timeline) {
+      start = Math.max(start, this.escapeBoundary.index);
+    }
+    const index = owner.timeline.findPlayableIndex(start, this.skippedTypes, direction);
+    return index === undefined ? undefined : this.cursorForEntry(owner, owner.timeline.entries[index]!);
+  }
+
   private async neighbor(cursor: Cursor, direction: 1 | -1): Promise<Cursor | undefined> {
-    if (direction === -1 && this.escapeBoundary?.timeline === cursor.timeline) {
-      const index = cursor.timeline.findPlayableIndex(cursor.entries[cursor.index]!.index - 1, this.skippedTypes, -1);
-      return index === undefined ? undefined : this.cursorForEntry(cursor, cursor.timeline.entries[index]!);
-    }
-    for (let index = cursor.index + direction; index >= 0 && index < cursor.clips.length; index += direction) {
-      const next = { ...cursor, index };
-      if (!this.isExcluded(next, direction)) return next;
-    }
+    const within = this.playableCursor(cursor, cursor.entries[cursor.index]!.index + direction, direction);
+    if (within) return within;
     for (
-      let association = this.adjacentAssociation(cursor.association, direction);
+      let association = this.adjacentOverlayAssociation(cursor.association, direction);
       association !== undefined;
-      association = this.adjacentAssociation(association, direction)
+      association = this.adjacentOverlayAssociation(association, direction)
     ) {
       const loaded = await this.loadClips(association);
       if (this.disposed) return undefined;
-      for (let index = direction === 1 ? 0 : loaded.clips.length - 1;
-        index >= 0 && index < loaded.clips.length; index += direction) {
-        const next = { association, index, ...loaded };
-        if (!this.isExcluded(next, direction)) return next;
-      }
+      const start = direction === 1 ? loaded.entries[0]?.index ?? 0 : loaded.timeline.entries.length - 1;
+      const next = this.playableCursor({ association, ...loaded }, start, direction);
+      if (next) return next;
     }
     return undefined;
   }
@@ -635,14 +645,6 @@ export class MediaOverlayNarration {
     this.nextReady = false;
     this.nextFailure = undefined;
     this.nextCursor = undefined;
-    for (let index = cursor.index + 1; index < cursor.clips.length; index++) {
-      const next = { ...cursor, index };
-      if (!this.isExcluded(next)) {
-        this.nextCursor = next;
-        this.nextReady = true;
-        return;
-      }
-    }
     void this.neighbor(cursor, 1).then((next) => {
       if (this.disposed || this.cursor !== cursor || this.prefetchRevision !== revision) return;
       this.nextCursor = next;
