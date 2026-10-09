@@ -95,7 +95,12 @@ for (const [direction, packageSpread] of [["ltr", "both"], ["rtl", "none"]] as c
       expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().isSpread)).toBe(false);
       await page.evaluate(() => Reflect.get(window, "__readerController").openSpineItem(0));
       expect(await visible(page, direction)).toEqual(originalFixed);
-      await expect(page.getByRole("button", { name: "Text and page options", exact: true })).toHaveCount(0);
+      await page.mouse.move(350, 2);
+      await page.getByRole("button", { name: "Text and page options", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "Zoom in", exact: true })).toHaveCount(1);
+      await expect(page.getByRole("menu").getByRole("slider")).toHaveCount(0);
+      await expect(page.getByRole("menu").getByRole("switch")).toHaveCount(0);
+      await page.keyboard.press("Escape");
       await page.evaluate(() => Reflect.get(window, "__readerController").openSpineItem(3));
       expect((await visible(page, direction)).chapters).toEqual(["R"]);
       await page.evaluate(() => Reflect.get(window, "__readerController").setAlwaysShowOnePage(false));

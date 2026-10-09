@@ -48,6 +48,7 @@ export interface UseReaderControllerResult {
   goToNavPoint: (navPoint: Parameters<ReaderController["goToNavPoint"]>[0]) => void;
   setViewMode: (mode: ViewMode) => void;
   setFontScale: (scale: number) => void;
+  setFixedZoom: (zoom: number) => void;
   setLineSpacing: (spacing: number) => void;
   setLetterSpacing: (spacing: number) => void;
   setContentWidth: (widthEm: number) => void;
@@ -299,6 +300,14 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     },
     [controller],
   );
+
+  const setFixedZoom = useCallback((zoom: number) => {
+    try {
+      controller?.setFixedZoom(zoom);
+    } catch (error) {
+      controller?.reportActionFailure(error);
+    }
+  }, [controller]);
 
   const setLineSpacing = useCallback(
     (spacing: number) => {
@@ -592,6 +601,7 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     goToNavPoint,
     setViewMode,
     setFontScale,
+    setFixedZoom,
     setLineSpacing,
     setLetterSpacing,
     setContentWidth,

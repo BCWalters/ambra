@@ -63,6 +63,20 @@ It is validated against the CFI's spine item and retained across mode switches;
 older saved progress and authored roll behavior remain compatible.
 These regressions do not revise the frozen self-assessment.
 
+`tests/fixed-layout-zoom.spec.ts` covers actual native glyph magnification,
+not just page movement, for all four 900-by-600 viewport declarations
+(`initial-scale`, `user-scalable`, and `maximum-scale` cannot restrict reader
+zoom). Set `AMBRA_VIEWPORT_META_EPUB` to the pinned `lay-viewport-meta-prop.epub`
+for untouched original coverage. Generated filenames/titles carry ID 3.1.6.
+Fixed pages expose Zoom in/out and Fit to window in the existing Text and page
+options slot. Cmd/Ctrl-plus/minus/zero work from content and shell; trackpad
+pinch zooms around the pointer. Wheel, pointer drag and plain arrow keys pan
+magnified content instead of turning pages. User zoom is 1-8 times the default
+fit, retained through resize and navigation within the open book; reopening
+starts fitted. Unequal XHTML/SVG LTR/RTL spreads retain one shared scale and
+their loaded document identity. Publisher typography and viewport attributes
+remain unchanged; roll/reflowable hosts retain their existing controls.
+
 `tests/media-overlay-playback.spec.ts` includes a page-following regression
 whose next narrated paragraph is inside the iframe layout viewport but hidden
 by the current page's paint clip. It checks actual browser hit-testing before
