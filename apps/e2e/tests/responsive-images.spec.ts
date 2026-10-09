@@ -44,7 +44,7 @@ function book(extra = ""): string {
     ["wide", 320, 80], ["wider", 640, 160], ["comma,name", 120, 60]] as const;
   for (const [name, width, height] of images) {
     fs.writeFileSync(path.join(directory, `${name}.svg`),
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="teal"/></svg>`);
+      `<svg xmlns="http://www.w3.org/2000/svg" data-fixture-resource="${name}" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="teal"/></svg>`);
   }
   fs.writeFileSync(path.join(directory, "package.opf"),
     `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
@@ -113,8 +113,17 @@ for (const deviceScaleFactor of [1, 2]) {
                     ? (deviceScaleFactor === 2 ? "wider" : "wide")
                     : image.id === "comma" && deviceScaleFactor === 1 ? "comma,name"
                     : deviceScaleFactor === 2 ? "two" : "one";
+                  const selected = new DOMParser().parseFromString(
+                    await (await fetch(image.currentSrc)).text(), "image/svg+xml",
+                  ).documentElement.getAttribute("data-fixture-resource") === expected;
+                  const canvas = doc.createElement("canvas");
+                  canvas.width = 1;
+                  canvas.height = 1;
+                  const drawing = canvas.getContext("2d")!;
+                  drawing.drawImage(image, 0, 0, 1, 1);
+                  const pixel = [...drawing.getImageData(0, 0, 1, 1).data];
                   images.push({ id: image.id, complete: image.complete, decoded: image.naturalWidth > 0,
-                    selected: image.currentSrc === await resolver.resolve(`${expected}.svg`) });
+                    selected, painted: pixel.every((component, index) => component === [0, 128, 128, 255][index]) });
                 }
                 let fullyVisible = true;
                 let pages = 1;
@@ -169,7 +178,7 @@ for (const deviceScaleFactor of [1, 2]) {
       expect(results.rows).toHaveLength(6);
       for (const row of results.rows) {
         expect(row.images).toHaveLength(5);
-        expect(row.images.every(image => image.complete && image.decoded && image.selected), JSON.stringify(row)).toBe(true);
+        expect(row.images.every(image => image.complete && image.decoded && image.selected && image.painted), JSON.stringify(row)).toBe(true);
         expect(row.pages).toBeGreaterThan(0);
         expect(row.fullyVisible).toBe(true);
         expect(row.embeddedDecoded).toBe(true);

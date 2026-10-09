@@ -467,7 +467,10 @@ at 1x/2x display density, density/width descriptors, narrow/wide viewports, and
 paginated/scrolling/fixed-layout hosts. It checks image selection and decoding
 before pagination, complete image coverage, resolver caching/revocation, explicit
 missing-resource errors, and the actual extension import path. CI runs the
-synthetic cases without downloading books. Set `AMBRA_RESPONSIVE_IMAGE_EPUB` to a
+synthetic cases without downloading books. Selection checks the resource identity
+in the actually selected SVG and its decoded teal pixels, not equality with a
+separately resolved blob URL: assembled SVG graphs have context-specific URLs.
+Set `AMBRA_RESPONSIVE_IMAGE_EPUB` to a
 local compatible Standard Ebooks EPUB to additionally verify its title artwork;
 that opt-in run disables traces and screenshots to keep publication content local.
 
