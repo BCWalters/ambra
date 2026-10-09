@@ -2,7 +2,7 @@ import { classifyEpubReference } from "../container/EpubReference.js";
 import type { PackageDocument } from "../container/PackageDocument.js";
 import { getFirstDescendantElementByNS } from "../container/Xml.js";
 import { EpubCfi, EpubCfiParseError } from "../locator/EpubCfi.js";
-import { Locator, LocatorResolver, LocatorResolutionError } from "../locator/Locator.js";
+import { Locator, LocatorResolver, LocatorResolutionError, requireDomRangeBoundary } from "../locator/Locator.js";
 import type { AnnotationSelector } from "./EpubAnnotation.js";
 
 export interface AnnotationSelection {
@@ -71,6 +71,8 @@ export class AnnotationSelectorResolver {
         start: this.locators.resolveInDocument(new Locator(selection.startCfi), selection.spineIndex, document),
         end: this.locators.resolveInDocument(new Locator(selection.endCfi), selection.spineIndex, document),
       } : await this.locators.resolvePair(new Locator(selection.startCfi), new Locator(selection.endCfi));
+      requireDomRangeBoundary(pair.start);
+      requireDomRangeBoundary(pair.end);
       const range = pair.document.createRange();
       if (pair.start.characterOffset === undefined) range.setStartBefore(pair.start.node);
       else range.setStart(pair.start.node, pair.start.characterOffset);

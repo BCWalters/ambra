@@ -279,6 +279,12 @@ offsets and text across mixed, element-only, text-only, empty and commented
 parents, and actual painted first/last-page bookmark landings. Engine units
 check resolved endpoints and ignored reader-owned edges; actual Range assertions
 stay native because Happy DOM incorrectly collapses some same-container ranges.
+The image-alt fixture requires a decoded, actually painted image after navigation
+to a UTF-16 alternative-text offset, preserving the authored text and separate
+semantic offset. Native DOM Range assertions verify explicit zero's compatibility
+boundary and explicit rejection of nonzero alternative-text range endpoints.
+Engine and annotation/highlight units cover decoded entities, surrogate pairs,
+whitespace, correction ambiguity, bounds and exclusive CSS endings before images.
 It does not claim support for nested documents or media/spatial CFI offsets.
 
 `html-base.spec.ts` checks the first XHTML base with href across paginated,

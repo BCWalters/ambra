@@ -167,6 +167,29 @@ describe("HighlightInteraction", () => {
   });
 
   describe("applyHighlightsToCurrentHost()", () => {
+    it("does not manufacture a DOM highlight for a nonzero image-alt boundary", () => {
+      const { doc } = makeFakeDoc();
+      const resolver = makeLocatorResolver();
+      vi.mocked(resolver.resolveInDocument).mockReturnValue({
+        spineIndex: 3, node: document.createElement("img"),
+        characterOffset: undefined, alternativeTextOffset: 3,
+      });
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const interaction = new HighlightInteraction(resolver, makeContext({
+          contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()],
+        }));
+        interaction.applyHighlightsToCurrentHost();
+        expect(vi.mocked(applyHighlightRanges).mock.calls[0]![1]).toEqual([]);
+        expect(warning).toHaveBeenCalledWith(
+          "Could not resolve the highlight's DOM range.",
+          expect.objectContaining({ name: "LocatorResolutionError", message: expect.stringContaining("alternative-text") }),
+        );
+      } finally {
+        warning.mockRestore();
+      }
+    });
+
     it("is a no-op for fixed-layout content", () => {
       const ctx = makeContext({ isFixedLayoutHost: () => true, contentDocuments: vi.fn() });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);

@@ -31,6 +31,72 @@ function publication(info: TestInfo): string {
   return file;
 }
 
+test("image-alt CFI offsets navigate to a painted image and retain exact semantic offsets (#340)", async ({ browserName: _browserName }, info) => {
+  const entries = unzipSync(fs.readFileSync(publication(info)));
+  const chapter = new TextDecoder().decode(entries["EPUB/one.xhtml"]!);
+  expect(chapter).toContain('<p id="target">');
+  const src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="green"/></svg>')}`;
+  entries["EPUB/one.xhtml"] = strToU8(chapter.replace('<p id="target">',
+    `<img id="illustration" width="200" height="200" alt="A&#x1f600;Z alternative illustration" src="${src}"/><p id="target">`));
+  const file = info.outputPath("image-alt-cfi.epub");
+  fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+  const { context, readerPage: page } = await launchReader(file);
+  try {
+    await exposeReaderController(page);
+    const cfi = await page.evaluate(async () => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc = (await controller.contentLoader.loadSpineDocument(0)).document as Document;
+      return controller.locatorResolver.generate(0, doc.getElementById("illustration"), 3).cfi as string;
+    });
+    await page.evaluate(async cfi => {
+      await Reflect.get(window, "__readerController").goToBookmark(cfi);
+    }, cfi);
+    await expect.poll(() => isReaderElementPainted(page, "illustration")).toBe(true);
+    const result = await page.evaluate(cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc = controller.contentDocumentViews()[0].document as Document;
+      const resolved = controller.locatorResolver.resolveInDocument({ cfi }, 0, doc);
+      const image = resolved.node as HTMLImageElement;
+      return {
+        id: image.id, alternativeTextOffset: resolved.alternativeTextOffset,
+        childOffset: resolved.characterOffset, alt: image.alt,
+        decoded: image.complete && image.naturalWidth === 200,
+      };
+    }, cfi);
+    expect(result).toEqual({
+      id: "illustration", alternativeTextOffset: 3, childOffset: undefined,
+      alt: "A\u{1f600}Z alternative illustration", decoded: true,
+    });
+    const rangeBoundaries = await page.evaluate(cfi => {
+      const controller = Reflect.get(window, "__readerController");
+      const doc = controller.contentDocumentViews()[0].document as Document;
+      const rangeCfi = cfi.replace(/:3\)$/, ",:1,:4)");
+      if (rangeCfi === cfi) throw new Error("Expected the generated image-alt offset.");
+      let failure: string;
+      try {
+        controller.locatorResolver.resolveRangeInDocument({ cfi: rangeCfi }, 0, doc);
+        throw new Error("Nonzero alternative text must not become a DOM range.");
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "LocatorResolutionError") throw error;
+        failure = error.message;
+      }
+      const zero = controller.locatorResolver.resolveRangeInDocument({
+        cfi: cfi.replace(/:3\)$/, ",:0,:0)"),
+      }, 0, doc).range as Range;
+      return {
+        failure, start: (zero.startContainer as Element).id, end: (zero.endContainer as Element).id,
+        startOffset: zero.startOffset, endOffset: zero.endOffset, collapsed: zero.collapsed,
+      };
+    }, cfi);
+    expect(rangeBoundaries).toEqual({
+      failure: expect.stringContaining("alternative-text position"),
+      start: "illustration", end: "illustration", startOffset: 0, endOffset: 0, collapsed: true,
+    });
+  } finally {
+    await context.close();
+  }
+});
+
 test("package CFI assertions recover the intended chapter and reject missing OPF IDs (#340)", async ({ browserName: _browserName }, info) => {
   const entries = unzipSync(fs.readFileSync(publication(info)));
   const opf = new TextDecoder().decode(entries["EPUB/package.opf"]!);

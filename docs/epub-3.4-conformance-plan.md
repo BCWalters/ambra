@@ -625,6 +625,20 @@ two-range collapse limitation is not used as a substitute for native Range behav
 This does not claim full page-break affinity, media/spatial offsets or a new
 official conformance score.
 
+The image-alt increment implements XHTML image
+[character offsets](https://idpf.org/epub/linking/cfi/epub-cfi.html#sec-path-terminating-char)
+as separate UTF-16 alternative-text positions, rather than invalid DOM child
+offsets. Point navigation lands on the rendered image; decoded entities,
+surrogate pairs, normalized assertion whitespace and unique assertion recovery
+retain the authored alternative text. Missing/ambiguous correction and offsets
+beyond the alternative text fail explicitly. Explicit zero preserves existing
+exclusive CSS annotation boundaries. Nonzero alternative-text positions cannot
+be represented accurately by a DOM Range: locator ranges, annotation selectors
+and highlight rendering reject them rather than fabricating whole-image or
+collapsed selections. Native tests verify a decoded, painted image landing,
+exact semantic offsets and actual zero-range containers/offsets; these results
+do not claim alternative-text range highlighting or promote published scores.
+
 ### Phase 3: measurable conformance process
 
 Complete the existing-suite timing, redundancy, parallelism, and change-selection

@@ -26,6 +26,96 @@ describe("LocatorResolver (minimal.epub, single spine item)", () => {
     resolver = new LocatorResolver(pkg, contentLoader);
   });
 
+  it.each([0, 1, 2, 3, 4])("resolves image alternative-text UTF-16 offset %s without inventing child offsets", offset => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="picture" alt="A&#x1f600;Z"/>';
+    const image = doc.getElementById("picture")!;
+    const locator = resolver.generate(0, image, offset);
+    const result = resolver.resolveInDocument(locator, 0, doc);
+    expect(result.node).toBe(image);
+    expect(result.alternativeTextOffset).toBe(offset);
+    expect(result.characterOffset).toBe(offset === 0 ? 0 : undefined);
+    expect(image.getAttribute("alt")).toBe("A\u{1f600}Z");
+  });
+
+  it("rejects alternative-text offsets beyond the authored text and empty alternatives", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="picture" alt="A&#x1f600;Z"/><img id="empty" alt=""/>';
+    for (const [id, offset] of [["picture", 5], ["empty", 1]] as const) {
+      expect(() => resolver.resolveInDocument(
+        resolver.generate(0, doc.getElementById(id)!, offset), 0, doc,
+      )).toThrow(LocatorResolutionError);
+    }
+  });
+
+  it("corrects unique image text assertions without changing the alt attribute", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="picture" alt="Inserted Before target ending"/>';
+    const result = resolver.resolveInDocument(
+      new Locator("epubcfi(/6/2!/4/2[picture]:2[Before ,target])"), 0, doc,
+    );
+    expect(result.alternativeTextOffset).toBe(16);
+    expect(result.characterOffset).toBeUndefined();
+    expect((result.node as Element).getAttribute("alt")).toBe("Inserted Before target ending");
+  });
+
+  it.each([1, 7])("normalizes alt assertion whitespace while preserving the raw UTF-16 boundary: %s", offset => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="picture" alt="  A\t&amp; \nB "/>';
+    const result = resolver.resolveInDocument(
+      new Locator(`epubcfi(/6/2!/4/2[picture]:${offset}[A & ,B])`), 0, doc,
+    );
+    expect(result.alternativeTextOffset).toBe(7);
+    expect((result.node as Element).getAttribute("alt")).toBe("  A\t& \nB ");
+  });
+
+  it("retains a valid asserted image offset even when its context is repeated", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="picture" alt="Before target Before target"/>';
+    const result = resolver.resolveInDocument(
+      new Locator("epubcfi(/6/2!/4/2[picture]:7[Before ,target])"), 0, doc,
+    );
+    expect(result.alternativeTextOffset).toBe(7);
+  });
+
+  it("keeps explicit zero boundaries on images with missing or empty alt text", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="missing"/><img id="empty" alt=""/>';
+    for (const id of ["missing", "empty"]) {
+      const image = doc.getElementById(id)!;
+      expect(resolver.resolveInDocument(resolver.generate(0, image, 0), 0, doc))
+        .toMatchObject({ node: image, characterOffset: 0, alternativeTextOffset: 0 });
+      expect(() => resolver.resolveInDocument(resolver.generate(0, image, 1), 0, doc))
+        .toThrow(LocatorResolutionError);
+    }
+  });
+
+  it.each(["Before target Before target", "Unrelated text"])(
+    "rejects ambiguous or missing alternative-text correction: %s", alt => {
+      const doc = document.implementation.createHTMLDocument();
+      const image = doc.createElement("img");
+      image.id = "picture";
+      image.alt = alt;
+      doc.body.append(image);
+      expect(() => resolver.resolveInDocument(
+        new Locator("epubcfi(/6/2!/4/2[picture]:2[Before ,target])"), 0, doc,
+      )).toThrow(LocatorResolutionError);
+    },
+  );
+
+  it("does not pretend nonzero alternative-text positions are DOM range boundaries", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = '<img id="picture" alt="Alternative text"/>';
+    expect(() => resolver.resolveRangeInDocument(
+      new Locator("epubcfi(/6/2!/4/2[picture],:1,:4)"), 0, doc,
+    )).toThrow(/alternative-text position/);
+    const zero = resolver.resolveRangeInDocument(
+      new Locator("epubcfi(/6/2!/4/2[picture],:0,:0)"), 0, doc,
+    );
+    expect(zero.start.characterOffset).toBe(0);
+    expect(zero.end.characterOffset).toBe(0);
+  });
+
   it.each([
     ["leading <p>middle</p> trailing", 4],
     ["<p>middle</p>", 4],
