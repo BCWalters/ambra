@@ -100,6 +100,7 @@ export interface StringCatalog {
   "shortcuts.switchToPaginated": string;
   "readingBoundary.navigation": string;
   "readingBoundary.nextChapter": string;
+  "readingBoundary.previousChapter": string;
   "readingBoundary.nextSection": string;
   "readingBoundary.nextPage": string;
   "readingBoundary.endOfBook": string;
@@ -658,6 +659,7 @@ export const en: StringCatalog = {
   "shortcuts.switchToPaginated": "Switch to paginated",
   "readingBoundary.navigation": "Continue reading",
   "readingBoundary.nextChapter": "Next chapter: {title}",
+  "readingBoundary.previousChapter": "Previous chapter: {title}",
   "readingBoundary.nextSection": "Next section",
   "readingBoundary.nextPage": "Next page",
   "readingBoundary.endOfBook": "End of book",

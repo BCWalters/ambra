@@ -355,6 +355,12 @@ CSS. Generic fallback-font coverage and metrics remain browser/platform limitati
 Plain reader arrows retain existing section navigation in scroll mode; native
 horizontal wheel/trackpad scrolling moves within the chapter. Fixed page turns
 retain package `page-progression-direction`, not an inferred writing direction.
+Visible reader-owned controls at the logical start/end of native scroll content
+offer previous/next primary sections without opening the TOC. Controls name the
+destination chapter when an unfragmented TOC title exists, skip non-linear
+supplements, and never advance automatically on overscroll. Unavailable actions
+are omitted; the final section retains an end-of-book message. Shadow-isolated
+native-flow controls do not cover authored text or enter locator measurement.
 
 Merged #412 passed all protected jobs in
 [run 38038398897](https://github.com/BCWalters/ambra/actions/runs/38038398897),
