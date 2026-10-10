@@ -220,6 +220,39 @@ Three newly measured standalone-SVG opening failures are tracked in #367.
 Future release scoring must verify the pinned official foreign-resource and core
 media criteria against the actual packaged build. C34-04 remains open until the
 remaining native-decoder/object-policy gaps and official evidence are resolved.
+The closure disposition below supersedes this historical open-issue condition;
+it does not supersede the recorded measurements.
+
+#### Resource and annotation issue closure dispositions
+
+Closing an implementation issue means its acceptance criteria have an explicit
+implementation or limitation disposition, not that every associated EPUB
+criterion passes. Final package-bound assessment remains under #326. This
+internal reconciliation does not change the published scorecard, release
+version, prepared store archive or live extension.
+
+| Issue | Completed implementation and evidence | Remaining disposition |
+| --- | --- | --- |
+| #328 / C34-04 | Consumer-aware image/font/media capabilities, ordered fallbacks, missing/cyclic/exhausted-chain diagnostics, CSS and narration integration are implemented in #356/#357. Generated `resource-fallbacks.spec.ts` and `css-resources.spec.ts` cover the consumer surfaces. | Direct JPEG XL remains a required failure on browsers without a native decoder. Owner policy is to await browser support, not bundle a decoder. Document/plugin objects retain fallback children; nested XHTML/SVG object documents, bindings and plugin execution are outside the implemented profile. This is documented non-support, not a passing object-document criterion. |
+| #336 / C34-07 | Shared scheme classification, no non-package ZIP lookup, explicit file blocking, bounded data-image policy, accessible unavailable-resource handling and HTML/SVG consumer coverage are implemented in #356/#357. HTML bases/nested static frames and packaged SVG dependency graphs were extended in #395/#397; SMIL reference classification in #399. `resource-policy.spec.ts`, `html-base.spec.ts` and `svg-resource-graphs.spec.ts` cover the respective native surfaces. | Automatic remote fetching remains intentionally disabled under the offline/privacy policy. Data resources other than the documented image subset remain blocked. Legacy `xml:base` is unsupported compatibility work, not implicit base support. External SVG `use` in image context is a measured Chromium limitation; external filters/markers/fonts are not established by the gradient tests and carry no support claim. |
+| #341 / C34-14 | #396 implements unique CSS and Unicode text-position selectors, authored-order recovery, retained refinements/extensions/open motivations and safe localized attachment cards. `annotation-selectors.spec.ts`, import/export tests and publisher-note tests cover mixed selector/body handling. Its exact clean PUBLIC archive passed all 15 targeted native cases (SHA-256 `8c79e069632c06d91e8cb68b5b824eddc6ac1b847d5f278dc063cd2cfd9cd7da`), with matching feature/protected/merged trees. | Non-unique CSS, selector-free targets and live CFI/text-position refinements remain unsupported and fail explicitly; retained refinements do not imply execution. Rich/external image/audio/video bodies are retained and described but never fetched, embedded or played automatically. Legacy positional duplicate merging is retained and is not claimed to be a fully lossless collection merge. |
+
+The resource milestones retain their original protected-package provenance:
+#397's exact PUBLIC archive SHA-256 is
+`9b4d4182830c5530382499011a7331052057df423c3db8a8eee726230a061aa7`
+(42 selected native cases, including matching-source engine cases), and #399's
+is `8f8397c4b32f7863aa569ca51e503c9b335b3a293d8c76a7586a7fa6d1d23753`
+(25 exact-package native narration/SVG cases). These are regression evidence,
+not a fresh official assessment. The historical direct-JXL measurement on
+Chrome 153.0.8010.12 remains a failure; capability/fallback success cannot
+substitute for a decoder.
+
+Under the owner's implementation-or-documentation closure policy, #328, #336
+and #341 can close with these limitations recorded. #344 owns consolidated
+deprecated/legacy vocabulary policy, #338 owns isolation and any later scripting
+architecture, and #326 owns final assessment reconciliation. Future support
+expansion requires a focused implementation request and new measured evidence;
+unmeasured subsets must not become success-shaped defaults in the scorecard.
 
 #### C34-05 implementation and assessment expectations
 
