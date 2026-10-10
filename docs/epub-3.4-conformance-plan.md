@@ -295,6 +295,12 @@ resize, image visibility and reopen restoration. Separate bounded fixed-layout
 fixtures validate text/image paint before and after scaling; their authored
 600-by-600 canvas includes a top inset to keep glyph overhang inside the page.
 These are presentation-specific checks, not proof of every writing-mode profile.
+The protected Ubuntu vertical-writing group installs native Noto CJK fonts;
+its minimal default-font environment otherwise produced approximately 0.05-pixel
+vertical glyph advances and stacked unreadable characters. Installing real CJK
+fonts is a browser-test prerequisite, not a bundled reader decoder or an
+assertion that every platform has suitable fonts. Native font coverage and
+metrics remain browser/platform prerequisites.
 Plain reader arrows retain existing section navigation in scroll mode; native
 horizontal wheel/trackpad scrolling moves within the chapter. Fixed page turns
 retain package `page-progression-direction`, not an inferred writing direction.

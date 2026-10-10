@@ -139,6 +139,11 @@ test("browser execution matches the package's local-feature mode", () => {
   assert.match(workflow, /name: Run selected browser group without retries\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
 });
 
+test("vertical-writing validation installs real CJK fonts within the bounded Ubuntu package policy", () => {
+  const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(workflow, /name: Install native CJK fonts for vertical-writing fixtures\s+if: matrix\.id == 'reader-core-3'\s+timeout-minutes: 5\s+run: \|\s+sudo apt-get update\s+sudo apt-get install -y fonts-noto-cjk/);
+});
+
 test("Ubuntu package setup fails closed within bounded network and step deadlines", () => {
   const config = readFileSync(new URL("../apt-network.conf", import.meta.url), "utf8");
   assert.match(config, /Acquire::http::Timeout "30";/);
