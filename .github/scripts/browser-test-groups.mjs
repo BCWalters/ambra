@@ -21,7 +21,7 @@ const core = [
   [
     "reflowable-animation-handoff", "spread-resize-stability",
     "fixed-layout-scrubber", "fixed-layout-spread-hugging", "fixed-layout-edge-navigation",
-    "mixed-rendition-spreads", "mixed-layout-placement", "roll-layout", "svg-spine", "fixed-layout-zoom", "responsive-images",
+    "mixed-rendition-spreads", "mixed-layout-placement", "roll-layout", "svg-spine", "fixed-layout-zoom", "responsive-images", "vertical-writing",
     "inspector-reading-links", "inspector-page-boundaries",
   ],
   [

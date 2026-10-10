@@ -277,6 +277,45 @@ browser-window orientation lock. Regression coverage exercises ordered pairs,
 aliases, unknown tokens, parsed XML order, and diagnostics. Official criteria
 still need release assessment; these synthetic checks do not alter the score.
 
+#### C34-10 implementation and assessment expectations
+
+Native continuous-scroll tracking measures vertical columns along the horizontal
+block axis, preserving authored `vertical-rl`/`vertical-lr` layout rather than
+forcing horizontal text. Reading offsets are negative `scrollLeft` for
+`vertical-rl` and positive for `vertical-lr`; restoration, start/end detection
+and resize use that same axis. Existing horizontal tracking is unchanged.
+Reflow restores the saved character's column, so the new column's first-character
+CFI can precede the original CFI, as with horizontal line-based restoration.
+
+Original Japanese/Chinese browser fixtures include ruby, emphasis, inline
+horizontal text, links and a packaged original SVG image. Native assertions
+require a painted leading glyph, actual horizontal wheel movement, changed and
+persisted reading positions, preservation of the previously read character after
+resize, image visibility and reopen restoration. Separate bounded fixed-layout
+fixtures validate text/image paint before and after scaling; their authored
+600-by-600 canvas includes a top inset to keep glyph overhang inside the page.
+These are presentation-specific checks, not proof of every writing-mode profile.
+Plain reader arrows retain existing section navigation in scroll mode; native
+horizontal wheel/trackpad scrolling moves within the chapter. Fixed page turns
+retain package `page-progression-direction`, not an inferred writing direction.
+
+**Reflowable vertical pagination remains unsupported.** A separate native audit
+on Chromium 153.0.0.0 tried to restore paragraph 30 in both writing directions:
+the engine reported 22 Y-axis pages, landed on paragraph 1, and left the target
+glyph outside the 600-pixel-wide viewport (approximately -7,577 pixels for
+`vertical-rl`, +8,153 for `vertical-lr`). Those are failures, not expected passes
+or N/A results. The page model, clips, spreads, snapshots and book-wide page
+counts still require a coordinated horizontal-block-axis design. No automatic
+view-mode switch, authored-writing-mode override or sandbox relaxation is added.
+Arbitrary mixed block writing modes, transformed/nonmonotonic text flows and
+sideways writing modes are not established by the native-scroll subset.
+
+Required official vertical-pagination criteria must remain failures until
+implemented and measured against a clean release package. Fixed-layout/native
+scroll fixture success cannot substitute for those criteria. Final pinned
+official measurement and score reconciliation remain under #326; this internal
+implementation profile does not change the published assessment.
+
 #### C34-07 implementation and assessment expectations
 
 A shared URL classifier and conservative resource-policy milestone are implemented

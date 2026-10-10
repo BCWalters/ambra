@@ -34,10 +34,10 @@ function selected(mode) {
 
 test("full matrix preserves every legacy protected file invocation, including intentional duplicates", () => {
   assert.deepEqual(selected("full").flatMap(group => group.steps.flatMap(step => step.files)).sort(),
-    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors", "svg-resource-graphs"].sort());
+    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors", "svg-resource-graphs", "vertical-writing"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
-  assert.equal(core.length, 57);
+  assert.equal(core.length, 58);
   assert.equal(new Set(core).size, core.length);
   assert.ok(selected("full").find(group => group.id === "contention-sensitive")
     .steps.some(step => step.files.includes("pagination-measurement") && step.workers === 1));
@@ -60,6 +60,7 @@ test("packaged frame isolation and bounded recursion run in protected resource v
 
 test("mixed-layout painted content and explicit single-side placement run without original-publication opt-ins", () => {
   assert.ok(browserArguments("reader-core-3")[0].args.includes("mixed-layout-placement.spec.ts"));
+  assert.ok(browserArguments("reader-core-3")[0].args.includes("vertical-writing.spec.ts"));
 });
 
 test("selection preserves focused modes and rejects unknown modes and groups", () => {
