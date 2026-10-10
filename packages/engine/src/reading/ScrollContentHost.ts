@@ -88,30 +88,25 @@ export class ScrollContentHost {
 
     const scrollingElement = iframeDocument.scrollingElement ?? iframeDocument.documentElement;
     scrollingElement.scrollTop = 0;
+    const root = contentDocumentRoot(iframeDocument);
+    const writingMode = iframeDocument.defaultView!.getComputedStyle(root).writingMode;
+    if (writingMode === "vertical-rl" || writingMode === "vertical-lr") scrollingElement.scrollLeft = 0;
 
-    this.engine = ScrollViewEngine.prepare(contentDocumentRoot(iframeDocument));
+    this.engine = ScrollViewEngine.prepare(root);
     if (preserve) {
       this.engine.restorePosition(preserve.node, preserve.offset ?? 0);
     }
   }
 
-  /** True if scrolled all the way to the top of this spine item. */
+  /** True if scrolled to the start of this spine item's block axis. */
   public isAtStart(): boolean {
-    const scrollingElement = this.sandboxedHost.element.contentDocument?.scrollingElement;
-    return !scrollingElement || scrollingElement.scrollTop <= 0;
+    return this.engine?.isAtStart ?? true;
   }
 
-  /** True if scrolled all the way to the bottom of this spine item
+  /** True if scrolled to the end of this spine item's block axis
    * (within a small tolerance for sub-pixel layout rounding). */
   public isAtEnd(): boolean {
-    const scrollingElement = this.sandboxedHost.element.contentDocument?.scrollingElement;
-    if (!scrollingElement) {
-      return true;
-    }
-    return (
-      scrollingElement.scrollTop + scrollingElement.clientHeight >=
-      scrollingElement.scrollHeight - 1
-    );
+    return this.engine?.isAtEnd ?? true;
   }
 
   public dispose(): void {
