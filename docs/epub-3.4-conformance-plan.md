@@ -715,8 +715,8 @@ waiver.
 | C34-13 | Complete EPUB CFI processing                      | Assertions, direct ranges, content/package ID recovery, image-alt positions, reflowable page-break affinity and single-indirection media offsets implemented; nested indirections, broader visual-transform handling and official assessment remain. | [#340](https://github.com/BCWalters/ambra/issues/340) |
 | C34-14 | Complete EPUB Annotation selectors and bodies     | CSS/text-position resolution, ordered recovery, retained extensions and safe non-fetching body presentation implemented; declared selector subsets and official assessment still require review. | [#341](https://github.com/BCWalters/ambra/issues/341) |
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
-| C34-16 | Navigation and legacy EPUB compatibility          | Add malformed-Nav fallback, NCX `navList`, OPF2 guide landmarks, and prioritized older-book compatibility backed by fixtures.                                                  | [#343](https://github.com/BCWalters/ambra/issues/343) |
-| C34-17 | Outdated and deprecated vocabulary policy         | Document and test intentional support or non-support for outdated rendition properties, prefixed CSS, `epub:switch`, `epub:trigger`, bindings, tours, and superseded metadata. | [#344](https://github.com/BCWalters/ambra/issues/344) |
+| C34-16 | Navigation and legacy EPUB compatibility          | Nav-to-NCX recovery, NCX auxiliary lists and guide landmarks are implemented with versioned native fixtures. Tours and broader real-corpus compatibility remain explicitly unsupported/unestablished; release assessment stays under #326. | [#343](https://github.com/BCWalters/ambra/issues/343) |
+| C34-17 | Outdated and deprecated vocabulary policy         | Maintained subset inventory links supported regression evidence and explicit partial/non-support. Legacy prefix execution is unestablished; all 27 pinned deprecated criteria still need separate assessment under #326. | [#344](https://github.com/BCWalters/ambra/issues/344) |
 
 #### C34-15/C34-16 implementation
 
@@ -741,6 +741,15 @@ These additions passed protected remote validation in #357 under #339/#343.
 They do not change the official score. The maintained
 [legacy compatibility inventory](epub-legacy-compatibility.md) records tours and
 other intentional omissions separately from current-spec requirements.
+
+The owner-approved final closure sweep dispositions #343 and #344 through that
+implemented subset and maintained inventory. It does not assert a lawful
+real-corpus tour assessment or support for arbitrary legacy prefixes, removed
+constructs or historical native spine formats. No new runtime behavior or
+official pass is introduced by the reconciliation. A new focused compatibility
+implementation requires actual lawful affected-book evidence or a clear
+interoperability requirement; release-level modern and deprecated worksheet
+measurement remains under #326 after the child implementation/policy issues close.
 
 #### C34-13 implemented recovery milestone
 
