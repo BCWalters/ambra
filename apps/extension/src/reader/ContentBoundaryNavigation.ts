@@ -1,4 +1,4 @@
-import { adjacentPrimarySpineIndex, markReaderOwnedContent } from "@ambra/engine";
+import { adjacentPrimarySpineIndex, markReaderOwnedContent, ReadingTheme } from "@ambra/engine";
 import type { ContentDocumentView, NavPoint, PackageDocument } from "@ambra/engine";
 import type { Translate } from "../i18n/LocaleContext.js";
 
@@ -14,8 +14,9 @@ export function contentBoundary(
   pkg: Pick<PackageDocument, "spine">,
   toc: readonly NavPoint[],
   translate: Translate,
+  direction: 1 | -1 = 1,
 ): ContentBoundary {
-  const nextSpineIndex = adjacentPrimarySpineIndex(pkg.spine, spineIndex, 1);
+  const nextSpineIndex = adjacentPrimarySpineIndex(pkg.spine, spineIndex, direction);
   if (nextSpineIndex === undefined) return { label: translate("readingBoundary.endOfBook") };
   const next = pkg.spine[nextSpineIndex];
   if (!next) return { label: translate("readingBoundary.endOfBook") };
@@ -33,8 +34,8 @@ export function contentBoundary(
   const title = titleFor(toc);
   return {
     label: title
-      ? translate("readingBoundary.nextChapter", { title })
-      : translate("readingBoundary.nextSection"),
+      ? translate(direction === 1 ? "readingBoundary.nextChapter" : "readingBoundary.previousChapter", { title })
+      : translate(direction === 1 ? "readingBoundary.nextSection" : "shortcuts.previousSection"),
     nextSpineIndex,
   };
 }
@@ -93,6 +94,8 @@ export function setContentBoundaryShortcut(document: Document, shortcut: string 
  * Shadow DOM isolates reader strings/styles from publication text and selectors.
  * A manual, nonmodal popover escapes the paginated body's transform/overflow;
  * it stays open without autofocus or light-dismiss, clipped until keyboard focus.
+ * Scroll placements instead use visible native flow, leaving publication text
+ * unobscured and keeping reader controls outside text measurement and CFIs.
  */
 export function attachContentBoundary(
   view: ContentDocumentView,
@@ -100,6 +103,7 @@ export function attachContentBoundary(
   navigationLabel: string,
   activate: (nextSpineIndex: number) => Promise<void>,
   language: string,
+  placement?: "start" | "end",
 ): () => void {
   const doc = view.document;
   if (!doc.body || doc.defaultView?.frameElement?.getAttribute("aria-hidden") === "true") return () => {};
@@ -109,24 +113,60 @@ export function attachContentBoundary(
   root.style.setProperty("position", "fixed", "important");
   root.style.setProperty("width", "0", "important");
   root.style.setProperty("height", "0", "important");
+  if (placement) {
+    root.dataset.ambraScrollBoundary = placement;
+    const mode = doc.defaultView!.getComputedStyle(doc.body).writingMode;
+    const vertical = mode === "vertical-rl" || mode === "vertical-lr";
+    root.style.setProperty("position", "static", "important");
+    root.style.setProperty("display", "block", "important");
+    root.style.setProperty("width", vertical ? "180px" : "auto", "important");
+    root.style.setProperty("height", "auto", "important");
+  }
   markReaderOwnedContent(root);
   const shadow = root.attachShadow({ mode: "open" });
   const style = doc.createElement("style");
   style.textContent = CSS;
+  if (placement) {
+    const mode = doc.defaultView!.getComputedStyle(doc.body).writingMode;
+    // The parent translates scroll content down while chrome is visible.
+    const bottomSpace = placement === "end" && mode !== "vertical-rl" && mode !== "vertical-lr"
+      ? ReadingTheme.PAGE_INSET_TOP + ReadingTheme.PAGE_INSET_BOTTOM + 12 : 12;
+    style.textContent += `
+nav {
+  display: block;
+  position: static;
+  transform: none;
+  writing-mode: horizontal-tb;
+  width: auto;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  text-align: center;
+}
+nav:not(:focus-within) {
+  width: auto;
+  height: auto;
+  padding: 12px;
+  overflow: visible;
+  clip-path: none;
+}
+nav, nav:not(:focus-within) { padding-bottom: ${bottomSpace}px; }`;
+  }
   const nav = doc.createElement("nav");
   nav.lang = language;
   nav.dir = "auto";
   nav.setAttribute("aria-label", navigationLabel);
-  nav.setAttribute("popover", "manual");
+  if (!placement) nav.setAttribute("popover", "manual");
   const control = doc.createElement(boundary.nextSpineIndex === undefined ? "p" : "button");
   control.textContent = boundary.label;
   if (control.localName === "button") (control as HTMLButtonElement).type = "button";
   else control.tabIndex = 0;
-  if (control.localName === "button") boundaryControls.set(doc, control);
+  if (control.localName === "button" && placement !== "start") boundaryControls.set(doc, control);
   nav.append(control);
   shadow.append(style, nav);
-  doc.body.append(root);
-  nav.showPopover();
+  if (placement === "start") doc.body.prepend(root);
+  else doc.body.append(root);
+  if (!placement) nav.showPopover();
 
   let disposed = false;
   let pending = false;

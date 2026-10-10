@@ -40,6 +40,14 @@ describe("contentBoundary", () => {
     expect(contentBoundary(2, true, pkg, toc, translate)).toEqual({ label: "End of book" });
     expect(contentBoundary(3, false, pkg, toc, translate)).toEqual({ label: "End of book" });
   });
+
+  it("names the previous primary destination without inventing a first-book action", () => {
+    expect(contentBoundary(2, false, pkg, [new NavPoint("First", "one.xhtml", undefined, [])], translate, -1))
+      .toEqual({ label: "Previous chapter: First", nextSpineIndex: 0 });
+    expect(contentBoundary(2, false, pkg, [], translate, -1))
+      .toEqual({ label: "Previous section", nextSpineIndex: 0 });
+    expect(contentBoundary(0, false, pkg, [], translate, -1).nextSpineIndex).toBeUndefined();
+  });
 });
 
 describe("attachContentBoundary", () => {
@@ -168,5 +176,30 @@ describe("attachContentBoundary", () => {
     expect(reveal).toHaveBeenCalledTimes(2);
     dispose();
     expect(restore).toHaveBeenCalledTimes(2);
+  });
+
+  it("places scroll controls in native flow at both ends without a focus-only popover", async () => {
+    document.body.innerHTML = "<p>Publication text.</p>";
+    const activate = vi.fn(async () => {});
+    const view = { document, spineIndex: 2, physicalSide: "single" as const };
+    const start = attachContentBoundary(view, { label: "Previous section", nextSpineIndex: 0 },
+      "Continue reading", activate, "en", "start");
+    const end = attachContentBoundary(view, { label: "Next section", nextSpineIndex: 3 },
+      "Continue reading", activate, "en", "end");
+    const first = document.body.firstElementChild!;
+    const last = document.body.lastElementChild!;
+    expect(isReaderOwnedContent(first)).toBe(true);
+    expect(isReaderOwnedContent(last)).toBe(true);
+    expect(first.getAttribute("data-ambra-scroll-boundary")).toBe("start");
+    expect(last.getAttribute("data-ambra-scroll-boundary")).toBe("end");
+    expect(first.shadowRoot!.querySelector("nav")!.hasAttribute("popover")).toBe(false);
+    expect(document.body.textContent).toBe("Publication text.");
+    first.shadowRoot!.querySelector("button")!.click();
+    await Promise.resolve();
+    last.shadowRoot!.querySelector("button")!.click();
+    expect(activate.mock.calls).toEqual([[0], [3]]);
+    start();
+    end();
+    expect(document.body.children).toHaveLength(1);
   });
 });
