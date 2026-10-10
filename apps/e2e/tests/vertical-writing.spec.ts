@@ -103,7 +103,8 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
       await page.setViewportSize({ width: 700, height: 800 });
       await expect.poll(() => page.evaluate(() => {
         const controller = Reflect.get(window, "__readerController");
-        return !controller.isApplyingLayout && !controller.pendingLayout && !controller.isLoadInFlight;
+        return controller.appliedWidth === 700 && controller.appliedHeight === 800 &&
+          !controller.isApplyingLayout && !controller.pendingLayout && !controller.isLoadInFlight;
       })).toBe(true);
       const resized = await page.evaluate(async () => {
         const controller = Reflect.get(window, "__readerController");
