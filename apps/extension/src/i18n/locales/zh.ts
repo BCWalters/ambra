@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated (Simplified Chinese)
  * as a starting point, not yet reviewed by a native speaker. */
 export const zh: StringCatalog = {
+  "error.inspectEpub": "EPUB 检查器（高级）",
+  "inspector.warningsTab": "警告",
+  "inspector.navigationWarnings": "导航诊断",
+  "inspector.noNavigationWarnings": "未发现导航恢复警告。这不是完整的 EPUB 验证。",
+  "inspector.navigationUnavailable": "Ambra 无法加载可用的目录。以下诊断面向 EPUB 作者和高级用户。",
+  "inspector.navigationFiles": "检查导航源文件：",
   "inspector.pageBoundariesError": "无法将当前可见页面的边界映射到源代码。",
   "inspector.pageStart": "[{page} 起点]",
   "inspector.pageEnd": "[{page} 终点]",
@@ -114,7 +120,7 @@ export const zh: StringCatalog = {
   "narration.skippedToEnd": "没有更多可播放的朗读。请重新播放本页音频或前往其他段落。",
   "narration.finished": "朗读已结束。请重新播放本页音频或前往其他段落。",
   "reader.blockedLink": "为保障安全，本书无法打开文件、数据或不受支持的链接。",
-  "reader.navigationRecovered": "无法读取本书的新格式目录，现使用兼容格式目录。",
+  "reader.navigationRecovered": "此 EPUB 的新格式目录缺失或无效。现使用兼容格式目录，以便您继续阅读。",
   "toc.otherNavigation": "其他导航列表",
   "bookDetails.a11yClaims": "出版方声明的无障碍信息",
   "bookDetails.a11yDisclaimer": "这些声明由出版物提供，Ambra 未独立验证或认证。",

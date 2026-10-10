@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentLoader, EpubContainer, type PackageDocument } from "@ambra/engine";
 import type { Window } from "happy-dom";
+import { strToU8, zipSync } from "fflate";
 import { EpubInspectionSession } from "./EpubInspectionSession.js";
 
 function deferred<T>() {
@@ -16,6 +17,24 @@ function makeSession(readArchiveFileBytes: ContentLoader["readArchiveFileBytes"]
 }
 
 describe("EpubInspectionSession", () => {
+  it.each([true, false])("keeps standalone malformed navigation inspectable (fallback: %s)", async fallback => {
+    const bytes = zipSync({
+      mimetype: strToU8("application/epub+zip"),
+      "META-INF/container.xml": strToU8('<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'),
+      "package.opf": strToU8(`<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">original</dc:identifier><dc:title>Original diagnostics</dc:title><dc:language>en</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>${fallback ? '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>' : ""}</manifest><spine${fallback ? ' toc="ncx"' : ""}><itemref idref="one"/></spine></package>`),
+      "nav.xhtml": strToU8("<html"),
+      "one.xhtml": strToU8('<html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title></head><body><p>Original.</p></body></html>'),
+      "toc.ncx": strToU8('<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap><navPoint id="one"><navLabel><text>One</text></navLabel><content src="one.xhtml"/></navPoint></navMap></ncx>'),
+    }, { level: 0 });
+    const session = await EpubInspectionSession.openStandalone(Uint8Array.from(bytes).buffer);
+    const data = session.getEpubInspectionData();
+    expect(data.navigationDiagnostics).toHaveLength(1);
+    expect(data.navigationRecovered).toBe(fallback);
+    expect(data.navigationPaths).toEqual(fallback ? ["nav.xhtml", "toc.ncx"] : ["nav.xhtml"]);
+    expect(await session.readInspectionFileText("nav.xhtml")).toBe("<html");
+    session.dispose();
+  });
+
   beforeEach(() => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});

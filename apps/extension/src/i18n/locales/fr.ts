@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native French speaker. */
 export const fr: StringCatalog = {
+  "error.inspectEpub": "Inspecteur EPUB (avancé)",
+  "inspector.warningsTab": "Avertissements",
+  "inspector.navigationWarnings": "Diagnostics de navigation",
+  "inspector.noNavigationWarnings": "Aucun avertissement de récupération de navigation. Ceci ne constitue pas une validation complète de l’EPUB.",
+  "inspector.navigationUnavailable": "Ambra n’a pas pu charger de table des matières utilisable. Les diagnostics ci-dessous sont destinés aux auteurs EPUB et aux utilisateurs avancés.",
+  "inspector.navigationFiles": "Inspecter les fichiers de navigation :",
   "inspector.pageBoundariesError": "Impossible de localiser les limites des pages visibles dans la source.",
   "inspector.pageStart": "[{page} début]",
   "inspector.pageEnd": "[{page} fin]",
@@ -115,7 +121,7 @@ export const fr: StringCatalog = {
   "narration.finished": "Fin de la narration. Relancez l’audio de la page ou allez à un autre passage.",
   "reader.blockedLink": "Pour votre sécurité, ce livre ne peut pas ouvrir les liens vers des fichiers, des données ou des types non pris en charge.",
   "reader.navigationRecovered":
-    "La table des matières moderne de ce livre n'a pas pu être lue. Sa table des matières compatible est utilisée à la place.",
+    "La table des matières moderne de cet EPUB est absente ou invalide. Sa table des matières compatible est utilisée à la place, pour vous permettre de continuer à lire.",
   "toc.otherNavigation": "Autres listes de navigation",
   "bookDetails.a11yClaims": "Accessibilité déclarée par l'éditeur",
   "bookDetails.a11yDisclaimer": "Ces déclarations proviennent de la publication. Ambra ne les a pas vérifiées ni certifiées de manière indépendante.",

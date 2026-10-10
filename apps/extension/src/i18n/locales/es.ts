@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Spanish speaker. */
 export const es: StringCatalog = {
+  "error.inspectEpub": "Inspector EPUB (avanzado)",
+  "inspector.warningsTab": "Advertencias",
+  "inspector.navigationWarnings": "Diagnósticos de navegación",
+  "inspector.noNavigationWarnings": "No se encontraron advertencias de recuperación de navegación. Esto no es una validación completa del EPUB.",
+  "inspector.navigationUnavailable": "Ambra no pudo cargar un índice utilizable. Los diagnósticos siguientes están destinados a autores de EPUB y usuarios avanzados.",
+  "inspector.navigationFiles": "Inspeccionar archivos de navegación:",
   "inspector.pageBoundariesError": "No se pudieron localizar los límites de las páginas visibles en el código.",
   "inspector.pageStart": "[{page} inicio]",
   "inspector.pageEnd": "[{page} final]",
@@ -115,7 +121,7 @@ export const es: StringCatalog = {
   "narration.finished": "Fin de la narración. Reinicia el audio de la página o ve a otro pasaje.",
   "reader.blockedLink": "Por tu seguridad, este libro no puede abrir enlaces de archivos, datos o tipos no compatibles.",
   "reader.navigationRecovered":
-    "No se pudo leer el índice moderno de este libro. Se está usando su índice compatible.",
+    "El índice moderno de este EPUB falta o no es válido. Se está usando su índice compatible para que puedas seguir leyendo.",
   "toc.otherNavigation": "Otra navegación",
   "bookDetails.a11yClaims": "Accesibilidad declarada por el editor",
   "bookDetails.a11yDisclaimer": "Estas declaraciones proceden de la publicación. Ambra no las ha verificado ni certificado de forma independiente.",

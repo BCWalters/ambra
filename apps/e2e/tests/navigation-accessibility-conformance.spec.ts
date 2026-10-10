@@ -1,5 +1,5 @@
 import { expect, test, type TestInfo } from "@playwright/test";
-import { strToU8, zipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import fs from "node:fs";
 import { launchReader } from "../harness.js";
 import { exposeReaderController, isReaderElementPainted } from "../reader-controller.js";
@@ -129,6 +129,70 @@ for (const profile of ["epub2", "missing-nav", "malformed-nav", "modern-nav"] as
     }
   });
 }
+
+test("recovered navigation warns once per archive/reason and remains inspectable after reopening (#416)", async ({
+  browserName: _browserName,
+}, info) => {
+  const book = publication(info, "malformed-nav");
+  const { context, libraryPage, readerPage: page } = await launchReader(book);
+  try {
+    await exposeReaderController(page);
+    await expect(page.getByText(/Its compatible Table of Contents is being used instead/)).toBeVisible();
+    await page.getByRole("button", { name: "EPUB Inspector (advanced)", exact: true }).click();
+    const inspector = page.getByRole("dialog", { name: "EPUB Inspector", exact: true });
+    await expect(inspector.getByRole("tab", { name: /^Warnings/ })).toHaveAttribute("aria-selected", "true");
+    await expect(inspector.getByRole("tabpanel")).toContainText("Navigation diagnostics");
+    await expect(inspector.getByRole("tabpanel")).toContainText("so you can keep reading");
+    await expect(inspector.getByRole("button", { name: "EPUB/nav.xhtml", exact: true })).toBeVisible();
+    await inspector.getByRole("button", { name: "EPUB/toc.ncx", exact: true }).click();
+    await expect(inspector.locator("pre.ambra-hljs")).toContainText("navMap");
+    await inspector.getByRole("button", { name: "Close EPUB Inspector", exact: true }).click();
+    const claims = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const metadata = await c.library.getBookMetadata(c.bookId);
+      const key = metadata.navigationRecoveryNoticeKey;
+      const repeat = await c.library.claimNavigationRecoveryNotice(c.bookId, key);
+      const changedReason = key + ":changed-reason";
+      const concurrent = await Promise.all([
+        c.library.claimNavigationRecoveryNotice(c.bookId, changedReason),
+        c.library.claimNavigationRecoveryNotice(c.bookId, changedReason),
+      ]);
+      await c.library.claimNavigationRecoveryNotice(c.bookId, key);
+      return { key, repeat, concurrent };
+    });
+    expect(claims.key).toMatch(/^v1:[a-f0-9]{64}:/);
+    expect(claims.repeat).toBe(false);
+    expect(claims.concurrent.sort()).toEqual([false, true]);
+    await page.reload();
+    await page.waitForFunction(() => [...document.querySelectorAll("iframe")]
+      .some(frame => frame.contentDocument?.body?.querySelector("p")));
+    await exposeReaderController(page);
+    await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").isLoading)).toBe(false);
+    await expect(page.getByText(/Its compatible Table of Contents is being used instead/)).toHaveCount(0);
+    const details = page.getByRole("button", { name: "Book details", exact: true });
+    await details.focus();
+    await details.click();
+    await page.getByRole("button", { name: "EPUB Inspector", exact: true }).click();
+    await inspector.getByRole("tab", { name: /^Warnings/ }).click();
+    await expect(inspector.getByRole("tabpanel")).toContainText("Navigation diagnostics");
+    await expect(inspector.getByRole("button", { name: "EPUB/nav.xhtml", exact: true })).toBeVisible();
+    const retained = await page.evaluate(() => Reflect.get(window, "__readerController").getEpubInspectionData());
+    expect(retained.navigationRecovered).toBe(true);
+    expect(retained.navigationDiagnostics).toHaveLength(1);
+    const entries = unzipSync(fs.readFileSync(book));
+    entries["EPUB/package.opf"] = strToU8(strFromU8(entries["EPUB/package.opf"]!)
+      .replace("Original navigation and accessibility", "Changed original navigation"));
+    const changedBook = info.outputPath("changed-navigation.epub");
+    fs.writeFileSync(changedBook, zipSync(entries, { level: 0 }));
+    await libraryPage.locator('input[type="file"]').setInputFiles(changedBook);
+    const openChanged = libraryPage.getByRole("main").getByRole("button", { name: /^Open Changed original navigation/ });
+    await expect(openChanged).toBeVisible();
+    const [changedPage] = await Promise.all([context.waitForEvent("page"), openChanged.click()]);
+    await expect(changedPage.getByText(/Its compatible Table of Contents is being used instead/)).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
 
 test("Accessibility 1.2 declarations agree in Reader and Library, including old stored-copy refresh", async ({
   browserName: _browserName,

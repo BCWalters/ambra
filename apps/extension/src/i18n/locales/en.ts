@@ -32,6 +32,12 @@
  * a native-speaker review pass before treating any of it as final,
  * ship-quality copy. */
 export interface StringCatalog {
+  "error.inspectEpub": string;
+  "inspector.warningsTab": string;
+  "inspector.navigationWarnings": string;
+  "inspector.noNavigationWarnings": string;
+  "inspector.navigationUnavailable": string;
+  "inspector.navigationFiles": string;
   "library.dropFilesTitle": string;
   "library.dropFilesHint": string;
   "review.title": string;
@@ -590,6 +596,12 @@ export interface StringCatalog {
 }
 
 export const en: StringCatalog = {
+  "error.inspectEpub": "EPUB Inspector (advanced)",
+  "inspector.warningsTab": "Warnings",
+  "inspector.navigationWarnings": "Navigation diagnostics",
+  "inspector.noNavigationWarnings": "No navigation recovery warnings were found. This is not a full EPUB validation.",
+  "inspector.navigationUnavailable": "Ambra could not load a usable Table of Contents. The diagnostic details below are for EPUB authors and advanced users.",
+  "inspector.navigationFiles": "Inspect navigation source files:",
   "library.dropFilesTitle": "Drop EPUB files to import",
   "library.dropFilesHint": "Books are added to your library.",
   "review.title": "Are you loving Ambra?",
@@ -698,7 +710,7 @@ export const en: StringCatalog = {
   "reader.unsupportedResources": "Some images, fonts, or media in this book are unsupported and have no usable fallback. You can continue reading.",
   "reader.blockedLink": "For your safety, this book cannot open file, data, or unsupported links.",
   "reader.navigationRecovered":
-    "This book's modern Table of Contents could not be read. Its compatible Table of Contents is being used instead.",
+    "This EPUB's modern Table of Contents is missing or invalid. Its compatible Table of Contents is being used instead, so you can keep reading.",
   "toc.otherNavigation": "Other navigation",
   "bookDetails.a11yClaims": "Publisher-declared accessibility",
   "bookDetails.a11yDisclaimer": "These claims are supplied by the publication. Ambra has not independently verified or certified them.",

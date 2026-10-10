@@ -91,6 +91,7 @@ export interface BookMetadata {
    * declare none. */
   readonly accessibility: AccessibilityMetadata | undefined;
   readonly narrationNoticeDismissed?: boolean;
+  readonly navigationRecoveryNoticeKey?: string;
 }
 
 /** Where a reader last left off in a given book — a CFI, since it's the
@@ -240,7 +241,11 @@ function settingsFromPreferences<T extends object>(
 }
 
 async function hashBookFile(blob: Blob): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  return hashBookBuffer(await blob.arrayBuffer());
+}
+
+export async function hashBookBuffer(buffer: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -461,6 +466,20 @@ export class LibraryDatabase {
       ...record,
       narrationNoticeDismissed: true,
     }));
+  }
+
+  /** Atomically claim the first successful recovery notice for these bytes/reasons. */
+  public claimNavigationRecoveryNotice(bookId: string, key: string): Promise<boolean> {
+    return this.transaction<boolean>(BOOKS_STORE, "readwrite", "Failed to save navigation recovery notice.", (tx, setResult) => {
+      const books = tx.objectStore(BOOKS_STORE);
+      const request = books.get(bookId);
+      request.onsuccess = () => {
+        const current = request.result as BookMetadata | undefined;
+        const first = current !== undefined && current.navigationRecoveryNoticeKey !== key;
+        if (first) books.put({ ...current, navigationRecoveryNoticeKey: key } satisfies BookMetadata);
+        setResult(first);
+      };
+    });
   }
 
   /** Persists the outcome of one description-fetch attempt (see

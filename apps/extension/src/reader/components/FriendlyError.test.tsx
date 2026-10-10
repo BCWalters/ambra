@@ -76,6 +76,20 @@ describe("FriendlyError notification lifetime", () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it.each(["info", "transient", "actionFailed", "blocking", "navigationFailed"] as const)(
+    "offers optional advanced inspection without dismissing a %s notification itself", severity => {
+      const inspect = vi.fn();
+      render({ severity, onOpenInspector: inspect });
+      const button = [...container.querySelectorAll("button")].find(element => element.textContent === "EPUB Inspector (advanced)")!;
+      expect(button).toBeDefined();
+      act(() => button.click());
+      expect(inspect).toHaveBeenCalledOnce();
+      expect(onDismiss).not.toHaveBeenCalled();
+      render({ severity });
+      expect(container.textContent).not.toContain("EPUB Inspector (advanced)");
+    },
+  );
+
   it("keeps blocking technical details readable but smaller than the specific headline", () => {
     render({ severity: "blocking", headline: "Not a valid EPUB", message: "ZIP diagnostic" });
     const paragraphs = container.querySelectorAll("p");

@@ -37,6 +37,7 @@ export interface FriendlyErrorProps {
    * since nothing actually failed (see issue #115). */
   severity: "blocking" | "navigationFailed" | "transient" | "actionFailed" | "info";
   libraryHref?: string;
+  onOpenInspector?: () => void;
   onDismiss: () => void;
   /** Returns the current diagnostics trail (see `DiagnosticsLog`) plus
    * basic reader state, ready to copy to the clipboard — `undefined` if
@@ -61,6 +62,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   detail,
   severity,
   libraryHref,
+  onOpenInspector,
   onDismiss,
   getDiagnosticsText,
 }) => {
@@ -100,6 +102,11 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
       setTimeout(() => setCopied(false), 2000);
     });
   };
+  const inspectorAction = onOpenInspector ? (
+    <Button appearance="subtle" size="small" onClick={onOpenInspector}>
+      {t("error.inspectEpub")}
+    </Button>
+  ) : null;
 
   if (severity === "blocking" || severity === "navigationFailed") {
     return (
@@ -129,6 +136,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
           {message}
         </ErrorDetails>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
+          {inspectorAction}
           {libraryHref && (
             <Button as="a" href={libraryHref} appearance="primary" size="small">
               {t("library.openLibrary")}
@@ -183,6 +191,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
             )}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+            {inspectorAction}
             <Button appearance="outline" size="small" onClick={copyDiagnostics}>
               {copied ? "Copied!" : "Copy diagnostics"}
             </Button>
@@ -218,7 +227,8 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
         <Body1 as="p" block style={{ margin: 0 }}>
           {message}
         </Body1>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {inspectorAction}
           <Button appearance="subtle" size="small" onClick={onDismiss}>
             Dismiss
           </Button>
@@ -251,6 +261,7 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
       </Body1>
       <ErrorDetails>{message}</ErrorDetails>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+        {inspectorAction}
         <Button appearance="outline" size="small" onClick={copyDiagnostics}>
           {copied ? "Copied!" : "Copy diagnostics"}
         </Button>

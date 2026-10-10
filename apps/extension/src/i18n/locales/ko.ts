@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Korean speaker. */
 export const ko: StringCatalog = {
+  "error.inspectEpub": "EPUB 검사기 (고급)",
+  "inspector.warningsTab": "경고",
+  "inspector.navigationWarnings": "탐색 진단",
+  "inspector.noNavigationWarnings": "탐색 복구 경고가 없습니다. EPUB 전체 유효성 검사는 아닙니다.",
+  "inspector.navigationUnavailable": "Ambra가 사용 가능한 목차를 불러오지 못했습니다. 아래 진단은 EPUB 작성자와 고급 사용자를 위한 것입니다.",
+  "inspector.navigationFiles": "탐색 소스 파일 검사:",
   "inspector.pageBoundariesError": "표시 중인 페이지 경계를 소스에 연결할 수 없습니다.",
   "inspector.pageStart": "[{page} 시작]",
   "inspector.pageEnd": "[{page} 끝]",
@@ -114,7 +120,7 @@ export const ko: StringCatalog = {
   "narration.skippedToEnd": "재생할 낭독이 더 이상 없습니다. 페이지 오디오를 다시 시작하거나 다른 구절로 이동하세요.",
   "narration.finished": "낭독이 끝났습니다. 페이지 오디오를 다시 시작하거나 다른 구절로 이동하세요.",
   "reader.blockedLink": "안전을 위해 이 책에서는 파일, 데이터 또는 지원되지 않는 링크를 열 수 없습니다.",
-  "reader.navigationRecovered": "이 책의 최신 형식 목차를 읽을 수 없어 호환되는 목차를 사용합니다.",
+  "reader.navigationRecovered": "이 EPUB의 최신 형식 목차가 없거나 올바르지 않습니다. 계속 읽을 수 있도록 호환되는 목차를 사용합니다.",
   "toc.otherNavigation": "기타 탐색 목록",
   "bookDetails.a11yClaims": "출판사가 선언한 접근성",
   "bookDetails.a11yDisclaimer": "이 내용은 출판물이 제공한 선언입니다. Ambra가 독립적으로 검증하거나 인증하지 않았습니다.",

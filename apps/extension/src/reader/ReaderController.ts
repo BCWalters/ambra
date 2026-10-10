@@ -52,6 +52,7 @@ import type {
   SpineItemRef,
 } from "@ambra/engine";
 import type { LibraryDatabase } from "../library/LibraryDatabase.js";
+import { hashBookBuffer } from "../library/LibraryDatabase.js";
 import { canStackSvgSpine, isSvgSpineItem, svgCanvasSpine } from "./SvgPresentation.js";
 import { saveLibraryBookAs } from "../library/LibrarySaveAs.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
@@ -296,7 +297,7 @@ export class ReaderController {
    * actually finished loading, since `openSpineItem` itself
    * unconditionally clears `error`/`errorSeverity` at its start. */
   private pendingNavigationLoadError: string | undefined;
-  private pendingNavigationRecoveryNotice = false;
+  private pendingNavigationRecoveryNotice: string | undefined;
   private containerEl: HTMLDivElement | undefined;
   private readonly accessibility = new AccessibilityController();
   private readonly nativeReading = new NativeReadingPosition(
@@ -603,8 +604,12 @@ export class ReaderController {
       if (navigation.diagnostics.length) {
         for (const diagnostic of navigation.diagnostics)
           controller.diagnostics.record(`Navigation recovery: ${diagnostic}`);
-        controller.pendingNavigationRecoveryNotice = true;
+        controller.pendingNavigationRecoveryNotice =
+          `v1:${await hashBookBuffer(buffer)}:${JSON.stringify(navigation.diagnostics)}`;
       }
+      controller.inspectionSession.setNavigationDiagnostics(navigationLoadError
+        ? [...navigation.diagnostics, navigationLoadError] : navigation.diagnostics,
+        !navigationLoadError && navigation.diagnostics.length > 0);
       if (navigationLoadError) {
         controller.diagnostics.record(`NavigationDocument.load failed: ${navigationLoadError}`);
         // Not set directly on `error`/`errorSeverity` here: `mount` always
@@ -1010,9 +1015,17 @@ export class ReaderController {
       this.notify();
     }
     if (this.pendingNavigationRecoveryNotice && !this.error) {
-      this.pendingNavigationRecoveryNotice = false;
-      this.setNotification(this.translate("reader.navigationRecovered"), "info");
-      this.notify();
+      const key = this.pendingNavigationRecoveryNotice;
+      this.pendingNavigationRecoveryNotice = undefined;
+      try {
+        const first = await this.library.claimNavigationRecoveryNotice(this.bookId, key);
+        if (first && !this.operations.disposed && !this.error) {
+          this.setNotification(this.translate("reader.navigationRecovered"), "info");
+          this.notify();
+        }
+      } catch (error) {
+        if (!this.operations.disposed) this.reportTransientError(error, "save", "navigation recovery notice");
+      }
     }
   }
 

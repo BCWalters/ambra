@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Italian speaker. */
 export const it: StringCatalog = {
+  "error.inspectEpub": "Ispettore EPUB (avanzato)",
+  "inspector.warningsTab": "Avvisi",
+  "inspector.navigationWarnings": "Diagnostica di navigazione",
+  "inspector.noNavigationWarnings": "Nessun avviso di recupero della navigazione. Questa non è una convalida completa dell’EPUB.",
+  "inspector.navigationUnavailable": "Ambra non ha potuto caricare un indice utilizzabile. La diagnostica seguente è destinata agli autori EPUB e agli utenti avanzati.",
+  "inspector.navigationFiles": "Ispeziona i file di navigazione:",
   "inspector.pageBoundariesError": "Impossibile individuare i limiti delle pagine visibili nel codice.",
   "inspector.pageStart": "[{page} inizio]",
   "inspector.pageEnd": "[{page} fine]",
@@ -115,7 +121,7 @@ export const it: StringCatalog = {
   "narration.finished": "Fine della narrazione. Riavvia l’audio della pagina o vai a un altro passaggio.",
   "reader.blockedLink": "Per la tua sicurezza, questo libro non può aprire collegamenti a file, dati o tipi non supportati.",
   "reader.navigationRecovered":
-    "Non è stato possibile leggere il sommario moderno di questo libro. Viene usato il sommario compatibile.",
+    "Il sommario moderno di questo EPUB è mancante o non valido. Viene usato il sommario compatibile per consentirti di continuare a leggere.",
   "toc.otherNavigation": "Altre sezioni di navigazione",
   "bookDetails.a11yClaims": "Accessibilità dichiarata dall'editore",
   "bookDetails.a11yDisclaimer": "Queste dichiarazioni provengono dalla pubblicazione. Ambra non le ha verificate o certificate in modo indipendente.",
