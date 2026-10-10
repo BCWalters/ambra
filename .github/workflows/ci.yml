@@ -128,6 +128,12 @@ jobs:
       - name: Install Chromium
         timeout-minutes: 5
         run: pnpm --filter @ambra/e2e exec playwright install --with-deps chromium
+      - name: Install native CJK fonts for vertical-writing fixtures
+        if: matrix.id == 'reader-core-3'
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
       - name: Prepare synthetic EPUB codec fixtures
         if: matrix.codecs
         timeout-minutes: 5

@@ -2,11 +2,12 @@ import type { Chunk } from "./LineMeasurement.js";
 import { measureChunks } from "./LineMeasurement.js";
 import type { DomBreakPoint } from "./Page.js";
 import { findChunkAtScrollOffset, findChunkForPosition } from "./ScrollPositionTracker.js";
+import { measureVerticalScrollChunks } from "./VerticalScrollMeasurement.js";
 
 /**
  * Continuous-scroll presentation of reflowable content: shares the exact
- * same linear DOM and line/atomic-element measurement
- * (`LineMeasurement.measureChunks`) as `PaginationEngine`, but instead of
+ * same linear DOM with horizontal line or native vertical-column
+ * measurement, but instead of
  * clipping and transforming that measurement into discrete pages, it lets
  * the content document scroll natively and derives "current position"
  * from scroll offset (see `ScrollPositionTracker.ts` for the pure lookup
@@ -22,6 +23,7 @@ export class ScrollViewEngine {
   private constructor(
     private readonly chunks: readonly Chunk[],
     private readonly scrollingElement: Element,
+    private readonly writingMode: string,
   ) {}
 
   /**
@@ -38,8 +40,11 @@ export class ScrollViewEngine {
   public static prepare(bodyElement: Element): ScrollViewEngine {
     const ownerDocument = bodyElement.ownerDocument;
     const scrollingElement = ownerDocument.scrollingElement ?? ownerDocument.documentElement;
-    const chunks = measureChunks(bodyElement);
-    return new ScrollViewEngine(chunks, scrollingElement);
+    const writingMode = ownerDocument.defaultView!.getComputedStyle(bodyElement).writingMode;
+    const chunks = writingMode === "vertical-rl" || writingMode === "vertical-lr"
+      ? measureVerticalScrollChunks(bodyElement, writingMode === "vertical-rl")
+      : measureChunks(bodyElement);
+    return new ScrollViewEngine(chunks, scrollingElement, writingMode);
   }
 
   /** The measured chunks this instance was prepared with — exposed so a
@@ -49,12 +54,27 @@ export class ScrollViewEngine {
     return this.chunks;
   }
 
+  private get scrollOffset(): number {
+    return this.writingMode === "vertical-rl" ? -this.scrollingElement.scrollLeft
+      : this.writingMode === "vertical-lr" ? this.scrollingElement.scrollLeft : this.scrollingElement.scrollTop;
+  }
+
+  public get isAtStart(): boolean {
+    return this.scrollOffset <= (this.writingMode === "vertical-rl" || this.writingMode === "vertical-lr" ? 1 : 0);
+  }
+
+  public get isAtEnd(): boolean {
+    return this.writingMode === "vertical-rl" || this.writingMode === "vertical-lr"
+      ? this.scrollOffset + this.scrollingElement.clientWidth >= this.scrollingElement.scrollWidth - 1
+      : this.scrollOffset + this.scrollingElement.clientHeight >= this.scrollingElement.scrollHeight - 1;
+  }
+
   /** The DOM position currently at (or straddling) the top edge of the
-   * viewport — the position to resolve into a `Locator`/CFI and persist
+   * viewport (leading column in vertical writing) — the position to resolve into a `Locator`/CFI and persist
    * as this view's current reading position. `undefined` only if there's
    * no content to track a position within. */
   public currentPosition(): DomBreakPoint | undefined {
-    return findChunkAtScrollOffset(this.chunks, this.scrollingElement.scrollTop)?.breakBefore;
+    return findChunkAtScrollOffset(this.chunks, this.scrollOffset)?.breakBefore;
   }
 
   /** Scrolls so that `(node, offset)` — typically a DOM position resolved
@@ -63,7 +83,9 @@ export class ScrollViewEngine {
   public restorePosition(node: Node, offset: number): void {
     const chunk = findChunkForPosition(this.chunks, node, offset);
     if (chunk) {
-      this.scrollingElement.scrollTop = chunk.top;
+      if (this.writingMode === "vertical-rl") this.scrollingElement.scrollLeft = -chunk.top;
+      else if (this.writingMode === "vertical-lr") this.scrollingElement.scrollLeft = chunk.top;
+      else this.scrollingElement.scrollTop = chunk.top;
     }
   }
 }
