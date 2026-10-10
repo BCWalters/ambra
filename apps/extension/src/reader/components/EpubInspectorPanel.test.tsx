@@ -126,6 +126,8 @@ describe("Inspector reader linking", () => {
     expect(panel.textContent).toContain("so you can keep reading");
     expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Warnings");
     const source = [...panel.querySelectorAll("button")].find(button => button.textContent === "two.xhtml")!;
+    expect(source.style.overflowWrap).toBe("anywhere");
+    expect(source.style.maxWidth).toBe("100%");
     await act(async () => source.click());
     expect(onReadFile).toHaveBeenCalledWith("two.xhtml");
     expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Files");
