@@ -21,7 +21,11 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [3.1.0 release checklist](store-assets/RELEASE-3.1.0.md).
+and the [3.2.0 release checklist](store-assets/RELEASE-3.2.0.md).
+Version 3.2.0 improves packaged SVG resources, annotations, CFI restoration
+and narration. Native vertical scrolling tracks reading positions, scroll
+boundaries offer chapter navigation, and recovered navigation warnings remain
+inspectable without repeating on every reopen.
 Version 3.1.0 improves packaged resources, SVG narration and presentation,
 adds fixed-layout zoom and panning, and repairs mixed-layout clipping and
 physical page placement.
@@ -32,9 +36,10 @@ Version 3.0.0 marks the start of Ambra's official EPUB conformance improvement
 effort, not a claim of full conformance. The
 [initial conformance report](docs/epub-conformance.md) publishes the measured
 baseline, manual self-assessment, known failures and unresolved cases.
-The published assessment remains frozen; further conformance updates are deferred
-until the remaining EPUB issues are closed. Verify the current dashboard version and
-review state before uploading 3.1.0. Preparing a package does not mean it has been
+The published assessment remains frozen. Closing implementation/policy issues
+with documented limitations does not establish new conformance passes; this release
+does not publish a new assessment. Verify the current dashboard version and
+review state before uploading 3.2.0. Preparing a package does not mean it has been
 uploaded, submitted or published.
 
 ## Structure
