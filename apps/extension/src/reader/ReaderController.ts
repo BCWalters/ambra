@@ -2332,15 +2332,13 @@ export class ReaderController {
   }
 
   private setUpContentBoundaries(): void {
+    const atScrollStart = this.host instanceof ScrollContentHost && this.host.isAtStart();
     this.boundaryCleanup?.();
     this.boundaryCleanup = undefined;
     if (this.operations.disposed) return;
     const host = this.host;
-    const cleanups = this.contentDocumentViews().map(view => attachContentBoundary(
-      view,
-      contentBoundary(view.spineIndex, this.isFixedLayoutHost(host), this.pkg, this.navigation.toc.items, this.translate),
-      this.translate("readingBoundary.navigation"),
-      async nextSpineIndex => {
+    const cleanups = this.contentDocumentViews().flatMap(view => {
+      const activate = async (nextSpineIndex: number): Promise<void> => {
         if (this.readingHistory) await this.readingHistory.settled();
         if (this.operations.disposed || this.host !== host || this.isLoadInFlight ||
           this.isTurningPage || this.isApplyingLayout) return;
@@ -2364,9 +2362,37 @@ export class ReaderController {
         }
         // Uses the existing owned load/error path; never advances without activation.
         await this.openSpineItem(nextSpineIndex, { history: "jump" });
-      },
-      this.translate.locale ?? DEFAULT_LOCALE,
-    ));
+      };
+      if (host instanceof ScrollContentHost) {
+        const previous = contentBoundary(view.spineIndex, false, this.pkg, this.navigation.toc.items, this.translate, -1);
+        const next = contentBoundary(view.spineIndex, false, this.pkg, this.navigation.toc.items, this.translate);
+        return [
+          ...(previous.nextSpineIndex === undefined ? [] : [attachContentBoundary(
+            view, previous, this.translate("readingBoundary.navigation"), activate,
+            this.translate.locale ?? DEFAULT_LOCALE, "start",
+          )]),
+          attachContentBoundary(view, next, this.translate("readingBoundary.navigation"), activate,
+            this.translate.locale ?? DEFAULT_LOCALE, "end"),
+        ];
+      }
+      return [attachContentBoundary(
+        view,
+        contentBoundary(view.spineIndex, this.isFixedLayoutHost(host), this.pkg, this.navigation.toc.items, this.translate),
+        this.translate("readingBoundary.navigation"),
+        activate,
+        this.translate.locale ?? DEFAULT_LOCALE,
+      )];
+    });
+    if (host instanceof ScrollContentHost) {
+      host.resize(this.width, this.height);
+      if (atScrollStart) {
+        const doc = host.element.contentDocument!;
+        const scrolling = doc.scrollingElement!;
+        scrolling.scrollTop = 0;
+        const mode = doc.defaultView!.getComputedStyle(doc.body).writingMode;
+        if (mode === "vertical-rl" || mode === "vertical-lr") scrolling.scrollLeft = 0;
+      }
+    }
     this.boundaryCleanup = () => cleanups.forEach(cleanup => cleanup());
     this.updateBoundaryShortcutHints();
   }

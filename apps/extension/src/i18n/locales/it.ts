@@ -82,6 +82,7 @@ export const it: StringCatalog = {
   "shortcuts.switchToPaginated": "Passa alla modalità paginata",
   "readingBoundary.navigation": "Continua la lettura",
   "readingBoundary.nextChapter": "Capitolo successivo: {title}",
+  "readingBoundary.previousChapter": "Capitolo precedente: {title}",
   "readingBoundary.nextSection": "Sezione successiva",
   "readingBoundary.nextPage": "Pagina successiva",
   "readingBoundary.endOfBook": "Fine del libro",

@@ -82,6 +82,7 @@ export const ja: StringCatalog = {
   "shortcuts.switchToPaginated": "ページ表示モードに切り替え",
   "readingBoundary.navigation": "続きを読む",
   "readingBoundary.nextChapter": "次の章：{title}",
+  "readingBoundary.previousChapter": "前の章：{title}",
   "readingBoundary.nextSection": "次のセクション",
   "readingBoundary.nextPage": "次のページ",
   "readingBoundary.endOfBook": "本の終わり",

@@ -82,6 +82,7 @@ export const ru: StringCatalog = {
   "shortcuts.switchToPaginated": "Перейти к постраничному режиму",
   "readingBoundary.navigation": "Продолжить чтение",
   "readingBoundary.nextChapter": "Следующая глава: {title}",
+  "readingBoundary.previousChapter": "Предыдущая глава: {title}",
   "readingBoundary.nextSection": "Следующий раздел",
   "readingBoundary.nextPage": "Следующая страница",
   "readingBoundary.endOfBook": "Конец книги",

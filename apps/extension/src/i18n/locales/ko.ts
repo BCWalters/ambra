@@ -82,6 +82,7 @@ export const ko: StringCatalog = {
   "shortcuts.switchToPaginated": "페이지 모드로 전환",
   "readingBoundary.navigation": "계속 읽기",
   "readingBoundary.nextChapter": "다음 장: {title}",
+  "readingBoundary.previousChapter": "이전 장: {title}",
   "readingBoundary.nextSection": "다음 섹션",
   "readingBoundary.nextPage": "다음 페이지",
   "readingBoundary.endOfBook": "책의 끝",

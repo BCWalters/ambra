@@ -82,6 +82,7 @@ export const zh: StringCatalog = {
   "shortcuts.switchToPaginated": "切换到分页模式",
   "readingBoundary.navigation": "继续阅读",
   "readingBoundary.nextChapter": "下一章：{title}",
+  "readingBoundary.previousChapter": "上一章：{title}",
   "readingBoundary.nextSection": "下一节",
   "readingBoundary.nextPage": "下一页",
   "readingBoundary.endOfBook": "全书结束",

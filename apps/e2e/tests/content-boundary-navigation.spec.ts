@@ -1,10 +1,85 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
+
+for (const writingMode of ["horizontal-tb", "vertical-rl", "vertical-lr"] as const) {
+  test(`${writingMode}: visible scroll boundary buttons navigate both ways without overscroll or covering text (#415)`, async ({ browserName: _browserName }, info) => {
+    const entries = unzipSync(fs.readFileSync(path.join(fixtures, "two-chapter.epub")));
+    for (const [name, bytes] of Object.entries(entries)) {
+      if (name.endsWith(".xhtml") && !name.includes("nav")) {
+        entries[name] = strToU8(strFromU8(bytes).replace("</head>",
+          `<style>html,body{writing-mode:${writingMode}}body{${writingMode === "horizontal-tb" ? "" : "height:600px;"}}</style></head>`));
+      }
+    }
+    const book = info.outputPath(`scroll-boundaries-${writingMode}.epub`);
+    fs.writeFileSync(book, zipSync(entries, { level: 0 }));
+    const { context, readerPage: page } = await launchReader(book, { viewport: { width: 900, height: 900 } });
+    try {
+      await exposeReaderController(page);
+      await page.evaluate(() => Reflect.get(window, "__readerController").setViewMode("scroll"));
+      const first = await frameFor(page, 0);
+      await expect(first.getByRole("button", { name: /^Previous / })).toHaveCount(0);
+      const next = first.getByRole("button", { name: /^Next chapter:/ });
+      const end = first.locator('[data-ambra-scroll-boundary="end"]');
+      await end.scrollIntoViewIfNeeded();
+      await expect(next).toBeInViewport();
+      await expect(next).toBeVisible();
+      const geometry = await end.evaluate(element => {
+        const boundary = element.getBoundingClientRect();
+        const paragraph = element.previousElementSibling!.getBoundingClientRect();
+        return { boundary: boundary.toJSON(), paragraph: paragraph.toJSON(),
+          mode: getComputedStyle(document.body).writingMode };
+      });
+      expect(geometry.mode).toBe(writingMode);
+      if (writingMode === "horizontal-tb") expect(geometry.boundary.top).toBeGreaterThanOrEqual(geometry.paragraph.bottom - 1);
+      else if (writingMode === "vertical-rl") expect(geometry.boundary.right).toBeLessThanOrEqual(geometry.paragraph.left + 1);
+      else expect(geometry.boundary.left).toBeGreaterThanOrEqual(geometry.paragraph.right - 1);
+      await next.hover();
+      await page.mouse.wheel(writingMode === "vertical-rl" ? -1000 : writingMode === "vertical-lr" ? 1000 : 0,
+        writingMode === "horizontal-tb" ? 1000 : 0);
+      expect(await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().spineIndex)).toBe(0);
+      await next.click();
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").snapshot().spineIndex)).toBe(1);
+      const second = await frameFor(page, 1);
+      await expect(second.getByRole("button", { name: /^Next / })).toHaveCount(0);
+      const previous = second.getByRole("button", { name: /^Previous chapter:/ });
+      await expect(previous).toBeInViewport();
+      const saved = await page.evaluate(async () => {
+        const controller = Reflect.get(window, "__readerController");
+        const doc = controller.contentDocumentViews()[0].document as Document;
+        const paragraph = [...doc.querySelectorAll("p")][5];
+        const node = paragraph.firstChild!;
+        const cfi = controller.locatorResolver.generate(1, node, 3).cfi;
+        await controller.goToBookmark(cfi);
+        return cfi;
+      });
+      await page.setViewportSize({ width: 1000, height: 950 });
+      await page.reload();
+      await page.waitForFunction(() => [...document.querySelectorAll("iframe")]
+        .some(frame => frame.contentDocument?.body?.querySelector("p")));
+      await exposeReaderController(page);
+      await page.evaluate(cfi => Reflect.get(window, "__readerController").goToBookmark(cfi), saved);
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").snapshot().spineIndex)).toBe(1);
+      await previous.scrollIntoViewIfNeeded();
+      await expect(previous).toBeInViewport();
+      await previous.focus();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, "__readerController").snapshot().spineIndex)).toBe(0);
+      const restored = await frameFor(page, 0);
+      await expect(restored.getByRole("button", { name: /^Previous / })).toHaveCount(0);
+      await page.evaluate(() => Reflect.get(window, "__readerController").setFontScale(1.1));
+      await expect(restored.locator('[data-ambra-scroll-boundary="end"]')).toHaveCount(1);
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test("a fresh cross-chapter spread enters and saves its requested first chapter before and after reflow", async () => {
   const { context, readerPage: page } = await launchReader(path.join(fixtures, "reading-boundaries.epub"), {
@@ -76,7 +151,7 @@ for (const { mode, width } of [
       const nav = frame.getByRole("navigation", { name: "Continue reading" });
       const next = nav.getByRole("button", { name: /^Next chapter: / });
       await expect(next).toHaveCount(1);
-      await expect(nav).toHaveCSS("clip-path", "inset(50%)");
+      await expect(nav).toHaveCSS("clip-path", mode === "scroll" ? "none" : "inset(50%)");
 
       // Native AX order includes the actual end-of-document navigation, despite
       // visual clipping. This does not emulate VoiceOver's separate virtual cursor.
@@ -124,7 +199,7 @@ for (const { mode, width } of [
       })).toBe(true);
       await end.focus();
       await expect(end).toBeFocused();
-      await expect(destination.getByRole("navigation", { name: "Continue reading" })).toHaveCSS("clip-path", "none");
+      await expect(destination.locator('[data-ambra-boundary]').last().locator("nav")).toHaveCSS("clip-path", "none");
     } finally {
       await context.close();
     }
