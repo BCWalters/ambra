@@ -20,6 +20,52 @@ Primary specifications:
 - [EPUB Reading Systems 3.4](https://www.w3.org/TR/2026/CR-epub-rs-34-20260721/)
 - [EPUB Accessibility 1.2](https://www.w3.org/TR/2026/CR-epub-a11y-12-20260721/)
 
+## Working closure scorecard (post-3.1.0)
+
+The owner approved driving the remaining implementation/policy issues to zero
+through implementation **or explicit documented limitations**. Closing an issue
+means its acceptance surfaces have a disposition; it does not mean every EPUB
+criterion passes, every legacy feature works, or a new release assessment has
+been executed. Required failures and unassessed criteria remain visible.
+
+| Remaining issue at the start of the sweep | Persistent disposition |
+| --- | --- |
+| #328 fallbacks/core media | #411 records implemented media-type/subresource fallback capability and native evidence. Native JPEG XL remains browser-dependent; document/plugin objects and scripted bindings remain unsupported. Scripted-primary alternative selection is separately incomplete under C34-11. |
+| #336 resource policy | #411 records offline automatic subresources, bounded safe data images, HTML-base/static-frame and SVG graph subsets. Remote automatic fetching, non-image data, legacy XML bases and unestablished SVG subsets are not implied supported. |
+| #341 annotations | #411 records ordered selector recovery, extension/refinement preservation and safe non-fetching body cards. Nonunique/selector-free targets, live refinement subsets, rich-body execution and lossless collection merging remain limitations. |
+| #333 vertical writing | Merged #412 adds a native horizontal-block-axis scroll subset and separate bounded fixed-layout fixtures. Protected run 38038398897 and 43 exact-archive native cases passed. Reflowable vertical pagination and generic fallback-font metrics remain unsupported/unestablished as documented in C34-10. |
+| #343 modern/legacy navigation | #413 records existing #357 recovery, auxiliary lists, guide landmarks and native target activation. Tours and broader lawful real-corpus compatibility remain unsupported/unestablished. |
+| #344 deprecated policy | #413 maintains feature-by-feature supported/partial/unsupported policy and regression references. Prefix execution and obsolete semantics are not inferred from retained source; all 27 pinned deprecated criteria still need separate assessment. |
+| #338 origins/scripting | C34-11 retains the non-scripted/offline boundary and records original negative shared-origin/storage and scripted-fallback observations. Unique publication origins and complete non-scripted fallback/degradation behavior are not implemented. |
+| #326 plan/scorecard | This internal plan reconciles implementation evidence, documented failures and remaining release-assessment obligations. It does not publish a new conformance score or replace the frozen 3.1.0 kit. |
+
+### Verdict and release expectations
+
+- Unique publication origins, reflowable vertical pagination and non-scripted
+  fallback behavior must not become passes or N/A solely because their issues
+  have documented dispositions. Native JPEG XL remains a failure on a browser
+  without its decoder. Optional/recommended/legacy behavior retains its own
+  classification; each conditional criterion needs individual applicability.
+- Package-bound regression evidence establishes only its measured subset.
+  Import/open sweeps, parser retention, non-scripted publisher code that never
+  executed, and expected static failure text do not establish criterion passes.
+- The numerical assessments below remain historical and tied to their stated
+  archives. In particular, 56/60 and the 60/139 coverage figure must not be
+  silently promoted using later SVG, CFI, narration, annotation or resource
+  regressions. The 79 then-unassessed required criteria and 145 then-unassessed
+  total identifiers are not excused; all 27 deprecated criteria remain
+  separately unassessed in that profile.
+- A future release assessment must pin the official suite, exact clean archive,
+  commit/digest, browser/OS, method and per-criterion verdict. Keep failures,
+  not-run/manual blockers and unassessed coverage separate from passes, with
+  links to these dispositions even when the planning issues are closed.
+  The completeness gate remains red until the actual assessment justifies it;
+  ordinary protected CI success is not that gate.
+- This sweep does not bump a version, update the live extension, replace the
+  prepared store kit, or change the published progress/initial assessment.
+  The frozen 3.1.0 ZIP retains SHA-256
+  `62d5dbdf0316c21daa4dc60df409629aed48f5c7c1ee202381971eed5537fdaf`.
+
 ## Current assessment
 
 Ambra has strong practical EPUB 3 support, but it must not claim full EPUB
@@ -34,8 +80,10 @@ metadata whitespace, and metadata direction/language are implemented and
 protected-CI validated. Resource fallbacks/offline URL classification, navigation
 recovery, publisher accessibility claims, asserted CFI recovery/ranges and
 SVG-root resource policy are now protected-CI validated in #356/#357. Remaining
-work includes standalone SVG opening (#367), native JPEG XL/nested documents, HTML bases/SVG graphs,
-publication origins, vertical pagination and the advanced behaviors below.
+limitations include native JPEG XL, nested live document operations,
+publication origins, vertical pagination and the advanced subset restrictions
+documented below. Later standalone SVG, HTML-base/SVG graph, CFI and annotation
+increments do not retroactively rewrite the older official measurements.
 Regression validation is not a replacement for official criterion assessment.
 
 Standalone SVG in a reflowable spine uses its original namespaced SVG root,
@@ -307,6 +355,17 @@ CSS. Generic fallback-font coverage and metrics remain browser/platform limitati
 Plain reader arrows retain existing section navigation in scroll mode; native
 horizontal wheel/trackpad scrolling moves within the chapter. Fixed page turns
 retain package `page-progression-direction`, not an inferred writing direction.
+
+Merged #412 passed all protected jobs in
+[run 38038398897](https://github.com/BCWalters/ambra/actions/runs/38038398897),
+including these native glyph/paint assertions on Linux. The clean PUBLIC archive
+for protected source `794a2002cece4e57bec20db4df4ae8f8158eaa2f`, SHA-256
+`f1786230d3954384ed7a8419b0862777a6bfae326be7f31c43f9b5eac244ee71`,
+passed identity, CRC, archive-path and production-bundle validation, then all
+43 local native vertical/resume/RTL/fixed-layout/CFI/navigation cases without
+retries. Feature, protected and merged trees matched
+`006bc6f4663a7a25f5fa4972489d4a510fe53ab4`. This is regression acceptance
+for the bounded subset, not a new official criterion assessment.
 
 **Reflowable vertical pagination remains unsupported.** A separate native audit
 on Chromium 153.0.0.0 tried to restore paragraph 30 in both writing directions:
@@ -717,6 +776,66 @@ waiver.
 | C34-15 | Accessibility 1.2 metadata                        | Model and present `accessModeSufficient`, conformance, certification, evaluation, report, credential, and `a11y:contactEmail` metadata.                                        | [#339](https://github.com/BCWalters/ambra/issues/339) |
 | C34-16 | Navigation and legacy EPUB compatibility          | Nav-to-NCX recovery, NCX auxiliary lists and guide landmarks are implemented with versioned native fixtures. Tours and broader real-corpus compatibility remain explicitly unsupported/unestablished; release assessment stays under #326. | [#343](https://github.com/BCWalters/ambra/issues/343) |
 | C34-17 | Outdated and deprecated vocabulary policy         | Maintained subset inventory links supported regression evidence and explicit partial/non-support. Legacy prefix execution is unestablished; all 27 pinned deprecated criteria still need separate assessment under #326. | [#344](https://github.com/BCWalters/ambra/issues/344) |
+
+#### C34-11 non-scripted isolation disposition
+
+The owner's 2026-10-07 decision remains: publisher scripting is disabled, and a
+scripted mode requires a compelling use case and separate review. The outer
+reading iframe has only `sandbox="allow-same-origin"`; it does not grant scripts,
+forms, popups or top navigation. Shared frame-required/XHTML-meta CSP uses
+`script-src 'none'`, `default-src 'none'`, `base-uri 'none'` and
+`form-action 'none'`. Automatic subresources remain offline. Packaged nested
+iframes retain `sandbox=""`, restrictive CSP, no referrer and opaque origins;
+their static rendering does not establish unique top-level publication origins.
+
+**Required unique publication origins are not implemented.** Two original
+publications opened concurrently in one fresh profile reported the same
+extension origin, distinct extension-origin blob URLs, and the same
+`allow-same-origin` sandbox. Trusted reader-side instrumentation wrote a
+dedicated test-only localStorage key through the first content window; the
+second content window observed its value. This is a negative origin/storage
+observation, not a claim that a disabled publisher script exploited access:
+authored script markers remained absent in both publications.
+
+**Non-scripted fallback handling is incomplete.** A separate original fixture
+declared a scripted XHTML primary with a valid non-scripted XHTML fallback.
+The primary remained present, the fallback was absent, and the required
+fallback-paint assertion failed while the publisher script remained blocked.
+`ContentLoader` currently selects supported content media types without using
+the `scripted` property to choose that alternative. Static source may render,
+but interactive behavior and an accessible scripting-specific degradation
+notice are not established. General media fallbacks and unavailable-resource
+notices must not be presented as proof of scripted-content fallback support.
+
+Both original audits used Chromium 153.0.0.0/macOS and the independently verified
+clean PUBLIC archive from protected source
+`198e23974ecb463b7264be0b7d094c20c092574f`, SHA-256
+`c43d52ce2342f9391b8ae5382d144482d9b3b63fc1b8bb7ee11a66ff56f18c2a`.
+Logs, original fixture bytes, observations and traces are retained in session
+evidence; the factual receipt is recorded on
+[#338](https://github.com/BCWalters/ambra/issues/338#issuecomment-6095637308).
+These are measured subset failures, not official-suite scores or a blanket
+security certification. Existing protected
+[packaged-frame regressions](../apps/e2e/tests/packaged-frames.spec.ts) separately
+verify blocked publisher execution, opaque child-parent access, static resource
+rendering and bounded recursion; they do not prove cross-publication isolation.
+
+| #338 acceptance surface | Disposition |
+| --- | --- |
+| Unique per-publication origin/security model | Required unique-origin behavior is unsupported: the original origin assertion fails, and trusted storage observations show shared state. Non-scripted outer frames and opaque nested frames are distinct boundaries. |
+| No access to another publication's state/extension privileges | Authored scripting stays blocked; shared trusted origin/storage observations preclude a complete isolation claim. No broad privilege-access certification is made. |
+| Owner scripting policy | Non-scripted product policy is retained. No per-book script toggle, new capability or relaxed sandbox is introduced. |
+| Scripted identification, fallbacks and accessible degradation | Manifest tokens are retained, but non-scripted alternative selection and scripting-specific notices remain unsupported/unestablished; the original fallback-paint probe fails. |
+| Scripted-mode storage/network/navigation/forms/download/API review | No scripted mode is introduced. Conditional script/API probes that cannot execute remain not-run unless an individual criterion justifies N/A; required origins and fallback behavior are not waived. |
+| Multi-publication/native security evidence | Original trusted negative observations above plus existing positive nested-frame regressions; no full security-review or complete isolation verdict is claimed. |
+| Assessment expectations | Required origins and non-scripted fallback remain failures/implementation gaps. Final pinned official measurement remains under #326; no new pass or published score is inferred. |
+
+This is the owner-approved documented-limitation disposition for #338, not an
+implementation of unique origins or a waiver of their requirement. A future
+isolated-origin renderer needs a verified measurement/DOM-operation bridge or
+equivalent architecture; adding `allow-same-origin` to opaque children or
+`allow-scripts` to the outer frame is not an acceptable shortcut. The known
+fallback-selection gap can be repaired independently without enabling scripts.
 
 #### C34-15/C34-16 implementation
 

@@ -16,7 +16,7 @@ the regression links in this inventory.
 
 | Feature | Policy / status | Applicability and evidence |
 | --- | --- | --- |
-| Manifest content-document fallbacks | Supported for supported XHTML/SVG spine documents | Core behavior; [ContentLoader tests](../packages/engine/src/content/ContentLoader.test.ts). Subresource fallbacks are a separate milestone in #356; direct JPEG XL and nested-document limitations are retained in #411's disposition of #328. |
+| Manifest content-document fallbacks | Supported media-type fallback subset for XHTML/SVG spine documents | Core behavior; [ContentLoader tests](../packages/engine/src/content/ContentLoader.test.ts). This does not establish non-scripted alternative selection for a supported scripted XHTML primary; that gap is explicit under #338. Subresource fallbacks are a separate milestone in #356; direct JPEG XL and nested-document limitations are retained in #411's disposition of #328. |
 | IDPF font obfuscation | Supported | Retains identifier-based de-obfuscation before native font loading; [font tests](../packages/engine/src/encryption/FontDeobfuscator.test.ts). Not DRM support. |
 | Adobe font obfuscation | Supported compatibility subset | [Font tests](../packages/engine/src/encryption/FontDeobfuscator.test.ts); do not infer general Adobe DRM support. |
 | Legacy cover metadata | Supported | Legacy cover ID retained alongside current manifest cover-image handling; [package tests](../packages/engine/src/container/PackageDocument.test.ts). |
