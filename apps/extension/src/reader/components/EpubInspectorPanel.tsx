@@ -1612,9 +1612,11 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                             {data.navigationDiagnostics.map((diagnostic, index) => <li key={index}><ErrorDetails>{diagnostic}</ErrorDetails></li>)}
                           </ul>
                           <Body1 as="p" block>{t("inspector.navigationFiles")}</Body1>
-                          {data.navigationPaths?.map(path => (
-                            <Button key={path} appearance="subtle" onClick={() => navigateToFile(path)}>{path}</Button>
-                          ))}
+                          <ul>
+                            {data.navigationPaths?.map(path => (
+                              <li key={path}><FileLink path={path} onNavigateToFile={navigateToFile}>{path}</FileLink></li>
+                            ))}
+                          </ul>
                         </>
                       )}
                     </section>
