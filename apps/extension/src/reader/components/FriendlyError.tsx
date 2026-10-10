@@ -136,12 +136,12 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
           {message}
         </ErrorDetails>
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
-          {inspectorAction}
           {libraryHref && (
             <Button as="a" href={libraryHref} appearance="primary" size="small">
               {t("library.openLibrary")}
             </Button>
           )}
+          {inspectorAction}
           <Button appearance="outline" size="small" onClick={copyDiagnostics}>
             {copied ? "Copied!" : "Copy diagnostics"}
           </Button>

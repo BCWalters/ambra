@@ -110,6 +110,18 @@ describe("FriendlyError notification lifetime", () => {
     expect(container.querySelector('[tabindex="-1"]')).toBe(document.activeElement);
   });
 
+  it.each(["blocking", "navigationFailed"] as const)("keeps Library before advanced inspection for %s keyboard recovery", severity => {
+    render({
+      severity,
+      libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab",
+      onOpenInspector: vi.fn(),
+    });
+    const actions = [...container.querySelectorAll("a, button")];
+    expect(actions[0]?.textContent).toBe("Open library");
+    expect(actions[1]?.textContent).toBe("EPUB Inspector (advanced)");
+    expect(actions[2]?.textContent).toBe("Copy diagnostics");
+  });
+
   it("keeps navigation errors centered below reader chrome with library and dismissal recovery", () => {
     render({ severity: "navigationFailed", libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab" });
     const alert = container.querySelector<HTMLElement>('[role="alert"]')!;
