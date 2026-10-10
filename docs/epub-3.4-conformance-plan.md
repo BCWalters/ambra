@@ -33,7 +33,7 @@ been executed. Required failures and unassessed criteria remain visible.
 | #328 fallbacks/core media | #411 records implemented media-type/subresource fallback capability and native evidence. Native JPEG XL remains browser-dependent; document/plugin objects and scripted bindings remain unsupported. Scripted-primary alternative selection is separately incomplete under C34-11. |
 | #336 resource policy | #411 records offline automatic subresources, bounded safe data images, HTML-base/static-frame and SVG graph subsets. Remote automatic fetching, non-image data, legacy XML bases and unestablished SVG subsets are not implied supported. |
 | #341 annotations | #411 records ordered selector recovery, extension/refinement preservation and safe non-fetching body cards. Nonunique/selector-free targets, live refinement subsets, rich-body execution and lossless collection merging remain limitations. |
-| #333 vertical writing | #412 adds a native horizontal-block-axis scroll subset and separate bounded fixed-layout fixtures. Protected final-head acceptance is required before merging. Reflowable vertical pagination and generic fallback-font metrics remain unsupported/unestablished as documented in C34-10. |
+| #333 vertical writing | Merged #412 adds a native horizontal-block-axis scroll subset and separate bounded fixed-layout fixtures. Protected run 38038398897 and 43 exact-archive native cases passed. Reflowable vertical pagination and generic fallback-font metrics remain unsupported/unestablished as documented in C34-10. |
 | #343 modern/legacy navigation | #413 records existing #357 recovery, auxiliary lists, guide landmarks and native target activation. Tours and broader lawful real-corpus compatibility remain unsupported/unestablished. |
 | #344 deprecated policy | #413 maintains feature-by-feature supported/partial/unsupported policy and regression references. Prefix execution and obsolete semantics are not inferred from retained source; all 27 pinned deprecated criteria still need separate assessment. |
 | #338 origins/scripting | C34-11 retains the non-scripted/offline boundary and records original negative shared-origin/storage and scripted-fallback observations. Unique publication origins and complete non-scripted fallback/degradation behavior are not implemented. |
@@ -355,6 +355,17 @@ CSS. Generic fallback-font coverage and metrics remain browser/platform limitati
 Plain reader arrows retain existing section navigation in scroll mode; native
 horizontal wheel/trackpad scrolling moves within the chapter. Fixed page turns
 retain package `page-progression-direction`, not an inferred writing direction.
+
+Merged #412 passed all protected jobs in
+[run 38038398897](https://github.com/BCWalters/ambra/actions/runs/38038398897),
+including these native glyph/paint assertions on Linux. The clean PUBLIC archive
+for protected source `794a2002cece4e57bec20db4df4ae8f8158eaa2f`, SHA-256
+`f1786230d3954384ed7a8419b0862777a6bfae326be7f31c43f9b5eac244ee71`,
+passed identity, CRC, archive-path and production-bundle validation, then all
+43 local native vertical/resume/RTL/fixed-layout/CFI/navigation cases without
+retries. Feature, protected and merged trees matched
+`006bc6f4663a7a25f5fa4972489d4a510fe53ab4`. This is regression acceptance
+for the bounded subset, not a new official criterion assessment.
 
 **Reflowable vertical pagination remains unsupported.** A separate native audit
 on Chromium 153.0.0.0 tried to restore paragraph 30 in both writing directions:
