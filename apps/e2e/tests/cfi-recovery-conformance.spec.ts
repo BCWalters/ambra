@@ -1,9 +1,22 @@
-import { expect, test, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import fs from "node:fs";
 import path from "node:path";
 import { launchReader } from "../harness.js";
 import { exposeReaderController, isReaderElementPainted } from "../reader-controller.js";
+
+async function paintedPixel(page: Page, x: number, y: number): Promise<number[]> {
+  const screenshot = await page.screenshot();
+  return page.evaluate(async ({ bytes, x, y }) => {
+    const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return [...context.getImageData(Math.round(x), Math.round(y), 1, 1).data];
+  }, { bytes: [...screenshot], x, y });
+}
 
 function publication(info: TestInfo): string {
   const paragraphs = Array.from(
@@ -349,17 +362,73 @@ for (const geometry of [
       expect(audit.cfi).toBe(cfi);
       expect(audit.bookmark).toBe(cfi);
       expect(audit.progress).toBe(cfi);
-      const screenshot = await page.screenshot();
-      const pixel = await page.evaluate(async ({ bytes, x, y }) => {
-        const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
-        const canvas = document.createElement("canvas");
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const context = canvas.getContext("2d")!;
-        context.drawImage(bitmap, 0, 0);
-        bitmap.close();
-        return [...context.getImageData(Math.round(x), Math.round(y), 1, 1).data];
-      }, { bytes: [...screenshot], x: audit.pixelX, y: audit.pixelY });
+      const pixel = await paintedPixel(page, audit.pixelX, audit.pixelY);
+      expect(pixel).toEqual([204, 0, 0, 255]);
+    } finally { await context.close(); }
+  });
+}
+
+for (const geometry of [
+  { name: "rotated", style: "transform:rotate(6deg)" },
+  { name: "skewed", style: "transform:skewX(8deg)" },
+  { name: "individual rotated/scaled", style: "rotate:6deg;scale:0.8 1.1" },
+  { name: "nested noncommuting transforms", style: "transform:rotate(6deg) scale(0.9,1.1)", parentStyle: "transform:skewX(4deg)" },
+]) {
+  test(`CFI spatial point reaches the painted intrinsic target in ${geometry.name} media (#340)`, async ({ browserName: _browserName }, info) => {
+    const entries = unzipSync(fs.readFileSync(mediaPublication(info)));
+    entries["EPUB/one.xhtml"] = strToU8(new TextDecoder().decode(entries["EPUB/one.xhtml"])
+      .replace("<body>", '<body style="min-width:1800px">')
+      .replace('<img id="picture"', `<div style="position:relative;width:240px;margin-left:700px;transform-origin:0 0;${geometry.style}"><img id="picture"`)
+      .replace('/><p style="height:1500px">', '/><span id="probe" style="position:absolute;left:180px;top:900px;width:0;height:0"></span></div><p style="height:1500px">'));
+    const parentStyle = "parentStyle" in geometry ? geometry.parentStyle : undefined;
+    if (parentStyle) {
+      entries["EPUB/one.xhtml"] = strToU8(new TextDecoder().decode(entries["EPUB/one.xhtml"])
+        .replace('<div style="position:relative', `<div style="transform-origin:0 0;${parentStyle}"><div style="position:relative`)
+        .replace('</div><p style="height:1500px">', '</div></div><p style="height:1500px">'));
+    }
+    const file = info.outputPath("cfi-affine-media.epub");
+    fs.writeFileSync(file, zipSync(entries, { level: 0 }));
+    const { context, readerPage: page } = await launchReader(file, { viewport: { width: 600, height: 720 } });
+    try {
+      await exposeReaderController(page);
+      await page.evaluate(async () => { await Reflect.get(window, "__readerController").setViewMode("scroll"); });
+      const cfi = `epubcfi(/6/2!/4/4/${parentStyle ? "2/" : ""}2[picture]@75:75)`;
+      const audit = await page.evaluate(async cfi => {
+        const controller = Reflect.get(window, "__readerController");
+        await controller.goToBookmark(cfi);
+        const doc = controller.contentDocumentViews()[0].document as Document;
+        await controller.addBookmark();
+        await controller.flushProgress(true);
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        await Promise.all(document.getAnimations()
+          .filter(animation => animation instanceof CSSTransition)
+          .map(animation => animation.finished));
+        const probe = doc.getElementById("probe")!.getBoundingClientRect();
+        const frame = (doc.defaultView!.frameElement as HTMLIFrameElement).getBoundingClientRect();
+        const style = doc.defaultView!.getComputedStyle(doc.getElementById("picture")!.parentElement!);
+        return {
+          error: controller.snapshot().error,
+          pointY: probe.top, center: doc.documentElement.clientHeight / 2,
+          pointX: probe.left, centerX: doc.documentElement.clientWidth / 2,
+          pixelX: frame.left + probe.left, pixelY: frame.top + probe.top,
+          cfi: controller.currentReadingCfi(),
+          bookmark: controller.snapshot().bookmarks.at(-1)?.cfi,
+          progress: (await controller.library.getProgress(controller.bookId))?.cfi,
+          transform: style.transform, rotate: style.rotate, scale: style.scale,
+        };
+      }, cfi);
+      await info.attach("affine-landing", { body: JSON.stringify(audit), contentType: "application/json" });
+      if (geometry.name === "individual rotated/scaled") {
+        expect(audit.rotate).toBe("6deg");
+        expect(audit.scale).toBe("0.8 1.1");
+      } else expect(audit.transform).not.toBe("none");
+      expect(audit.error).toBeUndefined();
+      expect(Math.abs(audit.pointY - audit.center)).toBeLessThanOrEqual(1);
+      expect(Math.abs(audit.pointX - audit.centerX)).toBeLessThanOrEqual(1);
+      expect(audit.cfi).toBe(cfi);
+      expect(audit.bookmark).toBe(cfi);
+      expect(audit.progress).toBe(cfi);
+      const pixel = await paintedPixel(page, audit.pixelX, audit.pixelY);
       expect(pixel).toEqual([204, 0, 0, 255]);
     } finally { await context.close(); }
   });

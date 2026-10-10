@@ -130,6 +130,61 @@ function objectPositionOffsets(value: string, width: number, height: number): { 
   return { x: positionedOffset(components[1]!, width), y: positionedOffset(components[2]!, height) };
 }
 
+interface AffineTransform {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+}
+
+function multiplyAffine(left: AffineTransform, right: AffineTransform): AffineTransform {
+  return {
+    a: left.a * right.a + left.c * right.b, b: left.b * right.a + left.d * right.b,
+    c: left.a * right.c + left.c * right.d, d: left.b * right.c + left.d * right.d,
+  };
+}
+
+function mediaTransform(element: Element, view: Window & typeof globalThis): AffineTransform {
+  let result = { a: 1, b: 0, c: 0, d: 1 };
+  for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+    const style = view.getComputedStyle(ancestor);
+    if (style.perspective && style.perspective !== "none") {
+      throw new LocatorResolutionError("Spatial navigation into perspective-transformed media is not supported.");
+    }
+    let local = { a: 1, b: 0, c: 0, d: 1 };
+    if (style.transform && style.transform !== "none") {
+      const matrix = new view.DOMMatrix(style.transform);
+      if (!matrix.is2D) {
+        throw new LocatorResolutionError("Spatial navigation into three-dimensional media transforms is not supported.");
+      }
+      local = { a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d };
+    }
+    if (style.scale && style.scale !== "none") {
+      const components = style.scale.trim().split(/\s+/);
+      const scales = components.map(component =>
+        Number(component.endsWith("%") ? component.slice(0, -1) : component) *
+          (component.endsWith("%") ? 0.01 : 1));
+      if (scales.length > 2 || !scales.every(Number.isFinite)) {
+        throw new LocatorResolutionError("Spatial navigation requires a finite two-dimensional media scale.");
+      }
+      local = multiplyAffine({ a: scales[0]!, b: 0, c: 0, d: scales[1] ?? scales[0]! }, local);
+    }
+    if (style.rotate && style.rotate !== "none") {
+      const rotation = /^(?:z\s+)?([+-]?(?:\d+(?:\.\d+)?|\.\d+))(deg|rad|grad|turn)$/.exec(style.rotate);
+      if (!rotation) {
+        throw new LocatorResolutionError("Spatial navigation requires a two-dimensional media rotation.");
+      }
+      const radians = Number(rotation[1]) * (rotation[2] === "deg" ? Math.PI / 180
+        : rotation[2] === "grad" ? Math.PI / 200 : rotation[2] === "turn" ? 2 * Math.PI : 1);
+      const cosine = Math.cos(radians);
+      const sine = Math.sin(radians);
+      local = multiplyAffine({ a: cosine, b: sine, c: -sine, d: cosine }, local);
+    }
+    result = multiplyAffine(local, result);
+  }
+  return result;
+}
+
 /** Coordinates are in the target iframe, before any shell-level canvas scaling. */
 export function spatialMediaPoint(node: Node, position: CfiSpatialOffset): { x: number; y: number } {
   const element = node as Element;
@@ -150,18 +205,7 @@ export function spatialMediaPoint(node: Node, position: CfiSpatialOffset): { x: 
     const y = (bounds.height ? bounds.y : 0) + height * position.y / 100;
     result = { x: matrix.a * x + matrix.c * y + matrix.e, y: matrix.b * x + matrix.d * y + matrix.f };
   } else {
-    let flipX = false;
-    let flipY = false;
-    for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
-      const transform = view.getComputedStyle(ancestor).transform;
-      if (!transform || transform === "none") continue;
-      const matrix = new view.DOMMatrix(transform);
-      if (!matrix.is2D || matrix.b !== 0 || matrix.c !== 0) {
-        throw new LocatorResolutionError("Spatial navigation into rotated or perspective-transformed media is not supported.");
-      }
-      flipX = flipX !== (matrix.a < 0);
-      flipY = flipY !== (matrix.d < 0);
-    }
+    const transform = mediaTransform(element, view);
     const style = view.getComputedStyle(element);
     const horizontalInset = parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
     const verticalInset = parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop);
@@ -169,8 +213,8 @@ export function spatialMediaPoint(node: Node, position: CfiSpatialOffset): { x: 
       ? horizontalInset + parseFloat(style.borderRightWidth) + parseFloat(style.paddingRight) : 0);
     const contentHeight = parseFloat(style.height) - (style.boxSizing === "border-box"
       ? verticalInset + parseFloat(style.borderBottomWidth) + parseFloat(style.paddingBottom) : 0);
-    const scaleX = box.width / (contentWidth + horizontalInset + parseFloat(style.borderRightWidth) + parseFloat(style.paddingRight));
-    const scaleY = box.height / (contentHeight + verticalInset + parseFloat(style.borderBottomWidth) + parseFloat(style.paddingBottom));
+    const borderWidth = contentWidth + horizontalInset + parseFloat(style.borderRightWidth) + parseFloat(style.paddingRight);
+    const borderHeight = contentHeight + verticalInset + parseFloat(style.borderBottomWidth) + parseFloat(style.paddingBottom);
     const intrinsic = element.localName === "img"
       ? { width: (element as HTMLImageElement).naturalWidth, height: (element as HTMLImageElement).naturalHeight }
       : { width: (element as HTMLVideoElement).videoWidth, height: (element as HTMLVideoElement).videoHeight };
@@ -193,9 +237,21 @@ export function spatialMediaPoint(node: Node, position: CfiSpatialOffset): { x: 
     if (x < -0.01 || y < -0.01 || x > contentWidth + 0.01 || y > contentHeight + 0.01) {
       throw new LocatorResolutionError("The requested spatial point is outside the media's visible crop.");
     }
+    // The transformed border corners determine its bounding-box origin, including
+    // arbitrary transform origins/translations; no temporary style mutation is needed.
+    const minimumX = Math.min(0, transform.a * borderWidth) + Math.min(0, transform.c * borderHeight);
+    const minimumY = Math.min(0, transform.b * borderWidth) + Math.min(0, transform.d * borderHeight);
+    const transformedWidth = Math.abs(transform.a * borderWidth) + Math.abs(transform.c * borderHeight);
+    const transformedHeight = Math.abs(transform.b * borderWidth) + Math.abs(transform.d * borderHeight);
+    if (transformedWidth <= 0 || transformedHeight <= 0 ||
+      transform.a * transform.d - transform.b * transform.c === 0) {
+      throw new LocatorResolutionError("The visual media transform has no two-dimensional area.");
+    }
     result = {
-      x: box.left + (flipX ? box.width - (horizontalInset + x) * scaleX : (horizontalInset + x) * scaleX),
-      y: box.top + (flipY ? box.height - (verticalInset + y) * scaleY : (verticalInset + y) * scaleY),
+      x: box.left + (transform.a * (horizontalInset + x) + transform.c * (verticalInset + y) - minimumX) *
+        box.width / transformedWidth,
+      y: box.top + (transform.b * (horizontalInset + x) + transform.d * (verticalInset + y) - minimumY) *
+        box.height / transformedHeight,
     };
   }
   if (!Number.isFinite(result.x) || !Number.isFinite(result.y) ||
