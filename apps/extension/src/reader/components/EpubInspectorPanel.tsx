@@ -75,6 +75,7 @@ export type InspectorViewMode = "popover" | "fullscreen" | "dock-left" | "dock-r
 export const INSPECTOR_DOCK_WIDTH = "min(560px, 45vw)";
 
 export interface EpubInspectorPanelProps {
+  initialTab?: "files" | "warnings";
   open: boolean;
   onOpenChange: (open: boolean) => void;
   viewMode: InspectorViewMode;
@@ -1195,7 +1196,7 @@ const ManifestTab: FC<{ data: EpubInspectionData; onNavigateToFile: (path: strin
   );
 };
 
-type InspectorTab = "files" | "metadata" | "spine" | "manifest";
+type InspectorTab = "files" | "metadata" | "spine" | "manifest" | "warnings";
 
 /** One entry on the "Back" history stack (issue #95) — a full snapshot
  * of which tab was showing and which file was selected, not just the
@@ -1231,6 +1232,7 @@ interface InspectorHistoryEntry {
  * a reader who followed a chain of such links can retrace their steps.
  */
 export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
+  initialTab = "files",
   open,
   onOpenChange,
   viewMode,
@@ -1260,6 +1262,7 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   const requestId = useRef(0);
   const referenceRequestId = useRef(0);
   const wasOpen = useRef(false);
+  const previousInitialTab = useRef(initialTab);
   const isOpen = useRef(open);
   isOpen.current = open;
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -1291,9 +1294,9 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
   }, [open, activeTab, selectedFilePath, history, tabsId]);
 
   useEffect(() => {
-    if (open && !wasOpen.current && reader) {
-      setSelectedFilePath(reader.currentPath);
-      setActiveTab("files");
+    if (open && ((!wasOpen.current && (reader || initialTab === "warnings")) || previousInitialTab.current !== initialTab)) {
+      setSelectedFilePath(reader?.currentPath);
+      setActiveTab(initialTab);
       setSourceTarget(undefined);
       setLocatedFile(undefined);
       setHistory([]);
@@ -1307,7 +1310,8 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
       setReferenceSearch((previous) => previous?.status === "loading" ? undefined : previous);
     }
     wasOpen.current = open;
-  }, [open, reader]);
+    previousInitialTab.current = initialTab;
+  }, [open, reader, initialTab]);
 
   useEffect(() => () => { requestId.current += 1; referenceRequestId.current += 1; }, []);
 
@@ -1560,6 +1564,9 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                     {t("inspector.manifestTab")}
                     {` (${data.manifest.length})`}
                   </Tab>
+                  <Tab id={`${tabsId}-warnings`} aria-controls={`${tabsId}-panel`} value="warnings">
+                    {t("inspector.warningsTab")} {`(${data.navigationDiagnostics?.length ?? 0})`}
+                  </Tab>
                 </TabList>
                 <div role="tabpanel" id={`${tabsId}-panel`} aria-labelledby={`${tabsId}-${activeTab}`}
                   tabIndex={0} style={{ flex: 1, minHeight: 0, minWidth: 0, marginTop: 8 }}>
@@ -1593,6 +1600,27 @@ export const EpubInspectorPanel: FC<EpubInspectorPanelProps> = ({
                   {activeTab === "metadata" && <MetadataTab data={data} fileName={fileName} />}
                   {activeTab === "spine" && <SpineTab data={data} onNavigateToFile={navigateToFile} />}
                   {activeTab === "manifest" && <ManifestTab data={data} onNavigateToFile={navigateToFile} />}
+                  {activeTab === "warnings" && (
+                    <section>
+                      <Body1 as="h3" block>{t("inspector.navigationWarnings")}</Body1>
+                      {!data.navigationDiagnostics?.length ? (
+                        <Body1 as="p" block>{t("inspector.noNavigationWarnings")}</Body1>
+                      ) : (
+                        <>
+                          <Body1 as="p" block>{t(data.navigationRecovered ? "reader.navigationRecovered" : "inspector.navigationUnavailable")}</Body1>
+                          <ul>
+                            {data.navigationDiagnostics.map((diagnostic, index) => <li key={index}><ErrorDetails>{diagnostic}</ErrorDetails></li>)}
+                          </ul>
+                          <Body1 as="p" block>{t("inspector.navigationFiles")}</Body1>
+                          <ul>
+                            {data.navigationPaths?.map(path => (
+                              <li key={path}><FileLink path={path} onNavigateToFile={navigateToFile}>{path}</FileLink></li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </section>
+                  )}
                 </div>
               </>
             )}

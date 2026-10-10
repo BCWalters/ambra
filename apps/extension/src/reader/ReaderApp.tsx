@@ -257,6 +257,7 @@ const ReaderAppInner: FC = () => {
   };
   const [bookDetails, setBookDetails] = useState<BookDetails | undefined>(undefined);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectorInitialTab, setInspectorInitialTab] = useState<"files" | "warnings">("files");
   const [inspectorView, setInspectorView] = useState<InspectorViewMode>("popover");
   const [inspectorReader, setInspectorReader] = useState<InspectorReaderBridge>();
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
@@ -420,7 +421,7 @@ const ReaderAppInner: FC = () => {
   // to see it, and the controller itself caches the cover's object URL
   // so a second open doesn't re-fetch anything.
   useEffect(() => {
-    if (!isDetailsOpen || bookDetails !== undefined) {
+    if ((!isDetailsOpen && !isInspectorOpen) || bookDetails !== undefined) {
       return;
     }
     let cancelled = false;
@@ -428,11 +429,13 @@ const ReaderAppInner: FC = () => {
       if (!cancelled) {
         setBookDetails(details);
       }
+    }).catch((error: unknown) => {
+      if (!cancelled) setSeekError(error instanceof Error ? error.message : String(error));
     });
     return () => {
       cancelled = true;
     };
-  }, [isDetailsOpen, bookDetails, getBookDetails]);
+  }, [isDetailsOpen, isInspectorOpen, bookDetails, getBookDetails]);
 
   // Same "fetch once, cache for the controller's lifetime" pattern as
   // `bookDetails` above — the EPUB Inspector's data (issue #46) is
@@ -456,6 +459,7 @@ const ReaderAppInner: FC = () => {
   }, [isInspectorOpen]);
 
   const openInspector = (): void => {
+    setInspectorInitialTab("files");
     setInspectorReader(getInspectorReaderBridge());
     inspectionFocusReturn.current = restoreContentFocus;
     closePanel("details");
@@ -904,6 +908,7 @@ const ReaderAppInner: FC = () => {
             />
 
                 <EpubInspectorPanel
+              initialTab={inspectorInitialTab}
               onFindReferences={findInspectionReferences}
               reader={inspectorReader}
               open={isInspectorOpen}
@@ -986,6 +991,14 @@ const ReaderAppInner: FC = () => {
                 libraryHref={hasReadingError ? libraryFullTabUrl() : undefined}
                 onDismiss={() => { setSeekError(undefined); dismissError(); restoreContentFocus(); }}
                 getDiagnosticsText={getDiagnosticsText}
+                onOpenInspector={() => {
+                  const data = getEpubInspectionData();
+                  setInspectionData(data);
+                  openInspector();
+                  setInspectorInitialTab(data?.navigationDiagnostics?.length ? "warnings" : "files");
+                  setSeekError(undefined);
+                  if (snapshot.errorSeverity !== "blocking") dismissError();
+                }}
               />
             )}
               </div>

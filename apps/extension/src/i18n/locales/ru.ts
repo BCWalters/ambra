@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Russian speaker. */
 export const ru: StringCatalog = {
+  "error.inspectEpub": "Инспектор EPUB (расширенный)",
+  "inspector.warningsTab": "Предупреждения",
+  "inspector.navigationWarnings": "Диагностика навигации",
+  "inspector.noNavigationWarnings": "Предупреждений о восстановлении навигации нет. Это не полная проверка EPUB.",
+  "inspector.navigationUnavailable": "Ambra не удалось загрузить пригодное оглавление. Диагностика ниже предназначена для авторов EPUB и опытных пользователей.",
+  "inspector.navigationFiles": "Проверить исходные файлы навигации:",
   "inspector.pageBoundariesError": "Не удалось сопоставить границы видимых страниц с исходным кодом.",
   "inspector.pageStart": "[{page} начало]",
   "inspector.pageEnd": "[{page} конец]",
@@ -116,7 +122,7 @@ export const ru: StringCatalog = {
   "narration.finished": "Конец озвучки. Начните аудио страницы заново или перейдите к другому отрывку.",
   "reader.blockedLink": "Для вашей безопасности эта книга не может открывать файловые ссылки, ссылки на данные и неподдерживаемые ссылки.",
   "reader.navigationRecovered":
-    "Не удалось прочитать современное оглавление этой книги. Вместо него используется совместимое оглавление.",
+    "Современное оглавление этого EPUB отсутствует или недействительно. Используется совместимое оглавление, чтобы вы могли продолжить чтение.",
   "toc.otherNavigation": "Другие списки навигации",
   "bookDetails.a11yClaims": "Доступность, заявленная издателем",
   "bookDetails.a11yDisclaimer": "Эти сведения предоставлены публикацией. Ambra не проверяла и не сертифицировала их независимо.",

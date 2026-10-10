@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native Japanese speaker. */
 export const ja: StringCatalog = {
+  "error.inspectEpub": "EPUB インスペクター（詳細）",
+  "inspector.warningsTab": "警告",
+  "inspector.navigationWarnings": "ナビゲーションの診断",
+  "inspector.noNavigationWarnings": "ナビゲーション復旧の警告はありません。EPUB 全体の検証ではありません。",
+  "inspector.navigationUnavailable": "Ambra は使用できる目次を読み込めませんでした。以下の診断は EPUB の作者や上級ユーザー向けです。",
+  "inspector.navigationFiles": "ナビゲーションのソースファイルを確認：",
   "inspector.pageBoundariesError": "表示中のページ境界をソースに対応付けられませんでした。",
   "inspector.pageStart": "[{page} 開始]",
   "inspector.pageEnd": "[{page} 終端]",
@@ -116,7 +122,7 @@ export const ja: StringCatalog = {
   "narration.finished": "朗読の終わりです。ページの音声を再開するか、別の箇所に移動してください。",
   "reader.blockedLink": "安全のため、この本からファイル、データ、未対応のリンクは開けません。",
   "reader.navigationRecovered":
-    "この本の新しい形式の目次を読み込めなかったため、互換形式の目次を使用しています。",
+    "この EPUB の新しい形式の目次がないか、無効です。引き続き読めるよう、互換形式の目次を使用しています。",
   "toc.otherNavigation": "その他のナビゲーション",
   "bookDetails.a11yClaims": "出版社が申告したアクセシビリティ",
   "bookDetails.a11yDisclaimer": "これらは出版物による申告です。Ambraが独自に検証または認証したものではありません。",

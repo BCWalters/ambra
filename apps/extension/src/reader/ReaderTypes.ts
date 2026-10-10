@@ -84,6 +84,9 @@ export interface EpubInspectionSpineItem {
 /** Everything the EPUB inspection panel shows: the archive's file list
  * plus parsed metadata/manifest/spine. */
 export interface EpubInspectionData {
+  readonly navigationDiagnostics?: readonly string[];
+  readonly navigationRecovered?: boolean;
+  readonly navigationPaths?: readonly string[];
   readonly metadataLocalization?: MetadataLocalization | undefined;
   readonly files: readonly EpubInspectionFile[];
   readonly rootFilePath: string;

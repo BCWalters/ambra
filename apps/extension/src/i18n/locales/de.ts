@@ -3,6 +3,12 @@ import type { StringCatalog } from "./en.js";
 /** See `en.ts`'s doc comment — machine-translated as a starting point,
  * not yet reviewed by a native German speaker. */
 export const de: StringCatalog = {
+  "error.inspectEpub": "EPUB-Inspektor (erweitert)",
+  "inspector.warningsTab": "Warnungen",
+  "inspector.navigationWarnings": "Navigationsdiagnose",
+  "inspector.noNavigationWarnings": "Keine Warnungen zur Navigationswiederherstellung gefunden. Dies ist keine vollständige EPUB-Validierung.",
+  "inspector.navigationUnavailable": "Ambra konnte kein nutzbares Inhaltsverzeichnis laden. Die Diagnose unten richtet sich an EPUB-Autoren und fortgeschrittene Benutzer.",
+  "inspector.navigationFiles": "Navigationsdateien untersuchen:",
   "inspector.pageBoundariesError": "Die Grenzen der sichtbaren Seiten konnten nicht im Quelltext zugeordnet werden.",
   "inspector.pageStart": "[{page} Anfang]",
   "inspector.pageEnd": "[{page} Ende]",
@@ -116,7 +122,7 @@ export const de: StringCatalog = {
   "narration.finished": "Ende der Aufnahme. Seitenaudio neu starten oder eine andere Passage aufrufen.",
   "reader.blockedLink": "Zu Ihrer Sicherheit kann dieses Buch keine Datei-, Daten- oder nicht unterstützten Links öffnen.",
   "reader.navigationRecovered":
-    "Das moderne Inhaltsverzeichnis dieses Buchs konnte nicht gelesen werden. Stattdessen wird das kompatible Inhaltsverzeichnis verwendet.",
+    "Das moderne Inhaltsverzeichnis dieses EPUBs fehlt oder ist ungültig. Stattdessen wird das kompatible Inhaltsverzeichnis verwendet, damit Sie weiterlesen können.",
   "toc.otherNavigation": "Weitere Navigation",
   "bookDetails.a11yClaims": "Vom Verlag angegebene Barrierefreiheit",
   "bookDetails.a11yDisclaimer": "Diese Angaben stammen aus der Publikation. Ambra hat sie nicht unabhängig geprüft oder zertifiziert.",

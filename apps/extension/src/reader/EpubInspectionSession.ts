@@ -2,6 +2,10 @@ import {
   ContentLoader,
   EpubContainer,
   NCX_MEDIA_TYPE,
+  NavigationDocument,
+  NavigationDocumentError,
+  ZipFormatError,
+  ZipIntegrityError,
   type PackageDocument,
 } from "@ambra/engine";
 import type { EpubInspectionData, EpubInspectionFile } from "./ReaderTypes.js";
@@ -24,6 +28,8 @@ export class EpubInspectionSession {
   private referenceIndex: Promise<ReadonlyMap<string, readonly InspectorReference[]>> | undefined;
   private readonly referenceRequests = new Map<string, Promise<readonly InspectorReference[]>>();
   private disposed = false;
+  private navigationDiagnostics: readonly string[] = [];
+  private navigationRecovered = false;
 
   public constructor(
     private readonly contentLoader: ContentLoader,
@@ -37,13 +43,30 @@ export class EpubInspectionSession {
   public static async openStandalone(buffer: ArrayBuffer): Promise<EpubInspectionSession> {
     const container = await EpubContainer.open(buffer);
     const contentLoader = await ContentLoader.create(container);
-    return new EpubInspectionSession(contentLoader, contentLoader.packageDocument, container.rootFilePath);
+    const session = new EpubInspectionSession(contentLoader, contentLoader.packageDocument, container.rootFilePath);
+    try {
+      const navigation = await NavigationDocument.load(container);
+      session.setNavigationDiagnostics(navigation.diagnostics, navigation.diagnostics.length > 0);
+    } catch (error) {
+      if (!(error instanceof NavigationDocumentError || error instanceof ZipFormatError || error instanceof ZipIntegrityError)) throw error;
+      session.setNavigationDiagnostics([error.message]);
+    }
+    return session;
+  }
+
+  public setNavigationDiagnostics(diagnostics: readonly string[], recovered = false): void {
+    this.navigationDiagnostics = [...diagnostics];
+    this.navigationRecovered = recovered;
   }
 
   public getEpubInspectionData(): EpubInspectionData {
     const manifestMediaTypeByPath = new Map(this.pkg.manifest.map((item) => [item.path, item.mediaType]));
 
     return {
+      navigationDiagnostics: this.navigationDiagnostics,
+      navigationRecovered: this.navigationRecovered,
+      navigationPaths: [this.pkg.findNavDocument()?.path, this.pkg.findNcxDocument()?.path]
+        .filter((path): path is string => path !== undefined),
       files: this.orderInspectionFiles(
         this.contentLoader.archiveEntries
           .filter((entry) => !entry.isDirectory)

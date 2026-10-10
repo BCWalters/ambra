@@ -857,6 +857,15 @@ Report/contact values are inert text and never initiate network requests.
 
 Malformed, missing and empty modern Nav can recover to a valid packaged NCX
 with diagnostics and a localized notice. Unexpected errors still propagate.
+The recovery notice is shown once after a successful open for each exact archive
+SHA-256 and diagnostic signature, with an atomic library claim across concurrent
+readers. Reopening unchanged bytes does not repeat it; changed bytes/reasons or
+deletion and reimport receive a fresh notice. Existing library records need no
+migration. This deduplication does not suppress unrecoverable navigation errors.
+Reader and standalone EPUB Inspector retain navigation diagnostics and original
+Nav/NCX source links in a Warnings tab. Recovery/error notices offer an optional
+advanced Inspector action; blocking errors remain actionable behind the Inspector.
+The diagnostics surface is not a full EPUB validation or certification.
 NCX auxiliary lists appear in separate labeled disclosures; OPF2 guide becomes
 fallback landmarks without duplicating authored modern landmarks. Versioned
 EPUB2/hybrid/modern fixtures verify source priority, actual fragment activation,

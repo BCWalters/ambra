@@ -75,6 +75,12 @@ for (const scenario of ["missing-book", "invalid-content", "invalid-content-and-
       );
       await page.keyboard.press("Tab");
       await expect(recover).toBeFocused();
+      if (scenario !== "missing-book") {
+        await page.keyboard.press("Tab");
+        await expect(alert.getByRole("button", { name: "EPUB Inspector (advanced)", exact: true })).toBeFocused();
+        await page.keyboard.press("Shift+Tab");
+        await expect(recover).toBeFocused();
+      }
       const pages = context.pages().length;
       await page.keyboard.press("Enter");
       await page.waitForURL(`chrome-extension://${extensionId}/src/library/index.html?view=tab`);

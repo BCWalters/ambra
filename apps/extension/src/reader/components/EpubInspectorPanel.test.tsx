@@ -113,6 +113,35 @@ describe("Inspector reader linking", () => {
     ));
   }
 
+  it("opens persistent recovery warnings directly and follows their original source file", async () => {
+    await act(async () => root.render(
+      <ControlledInspector open onOpenChange={onOpenChange} initialTab="warnings"
+        data={{ ...data, navigationDiagnostics: ["Original malformed navigation."], navigationRecovered: true,
+          navigationPaths: ["two.xhtml"] }} fileName="book.epub" reader={reader}
+        onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} />,
+    ));
+    const panel = container.querySelector('[role="tabpanel"]')!;
+    expect(panel.textContent).toContain("Navigation diagnostics");
+    expect(panel.textContent).toContain("Original malformed navigation.");
+    expect(panel.textContent).toContain("so you can keep reading");
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Warnings");
+    const source = [...panel.querySelectorAll("button")].find(button => button.textContent === "two.xhtml")!;
+    expect(source.style.overflowWrap).toBe("anywhere");
+    expect(source.style.maxWidth).toBe("100%");
+    await act(async () => source.click());
+    expect(onReadFile).toHaveBeenCalledWith("two.xhtml");
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Files");
+  });
+
+  it("retains warnings in standalone Inspector and does not claim complete validation for healthy navigation", async () => {
+    await act(async () => root.render(
+      <ControlledInspector open onOpenChange={onOpenChange} initialTab="warnings"
+        data={data} fileName="book.epub" onReadFile={onReadFile} onGetPreviewUrl={onGetPreviewUrl} />,
+    ));
+    expect(container.querySelector('[role="tabpanel"]')?.textContent)
+      .toContain("This is not a full EPUB validation.");
+  });
+
   function button(label: string) {
     const result = Array.from(container.querySelectorAll("button")).find((entry) => entry.textContent === label
       || entry.getAttribute("aria-label") === label);

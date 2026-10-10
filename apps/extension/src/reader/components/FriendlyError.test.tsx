@@ -76,6 +76,20 @@ describe("FriendlyError notification lifetime", () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it.each(["info", "transient", "actionFailed", "blocking", "navigationFailed"] as const)(
+    "offers optional advanced inspection without dismissing a %s notification itself", severity => {
+      const inspect = vi.fn();
+      render({ severity, onOpenInspector: inspect });
+      const button = [...container.querySelectorAll("button")].find(element => element.textContent === "EPUB Inspector (advanced)")!;
+      expect(button).toBeDefined();
+      act(() => button.click());
+      expect(inspect).toHaveBeenCalledOnce();
+      expect(onDismiss).not.toHaveBeenCalled();
+      render({ severity });
+      expect(container.textContent).not.toContain("EPUB Inspector (advanced)");
+    },
+  );
+
   it("keeps blocking technical details readable but smaller than the specific headline", () => {
     render({ severity: "blocking", headline: "Not a valid EPUB", message: "ZIP diagnostic" });
     const paragraphs = container.querySelectorAll("p");
@@ -94,6 +108,18 @@ describe("FriendlyError notification lifetime", () => {
     expect(link?.getAttribute("target")).toBeNull();
     expect(container.querySelector("button")?.textContent).toBe("Copy diagnostics");
     expect(container.querySelector('[tabindex="-1"]')).toBe(document.activeElement);
+  });
+
+  it.each(["blocking", "navigationFailed"] as const)("keeps Library before advanced inspection for %s keyboard recovery", severity => {
+    render({
+      severity,
+      libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab",
+      onOpenInspector: vi.fn(),
+    });
+    const actions = [...container.querySelectorAll("a, button")];
+    expect(actions[0]?.textContent).toBe("Open library");
+    expect(actions[1]?.textContent).toBe("EPUB Inspector (advanced)");
+    expect(actions[2]?.textContent).toBe("Copy diagnostics");
   });
 
   it("keeps navigation errors centered below reader chrome with library and dismissal recovery", () => {
