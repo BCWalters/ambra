@@ -761,7 +761,13 @@ requested point. Browser-computed edge-relative positions and linear
 object-fit space, including negative space for cover crops. Original native
 fixtures require the authored red target pixel at the centered CFI point for
 edge-relative/calculated letterboxing and edge-relative cover placement.
-Cropped-out points, rotated/perspective-transformed XHTML media and nonlinear
+Two-dimensional CSS transforms compose through media ancestors, including
+rotation, skew, reflection and individual rotate/scale properties. Intrinsic
+points are mapped using transformed border corners and the actual rendered
+bounding box without mutating authored styles or forcing a temporary layout.
+Original browser fixtures center an independently positioned zero-size probe
+on both axes within one pixel and require the painted intrinsic target pixel.
+Cropped-out points, perspective/three-dimensional XHTML media transforms and nonlinear
 object-position functions such as `min()`/`max()` fail explicitly and remain
 follow-ups.
 

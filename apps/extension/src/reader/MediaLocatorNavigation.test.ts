@@ -161,6 +161,43 @@ describe("spatial media geometry", () => {
     expect(() => spatialMediaPoint(element, { x: 0, y: 50 })).toThrow(/visible crop/);
   });
 
+  it.each([
+    { rotate: "90deg", scale: "none", box: [10, 20, 100, 200], point: [55, 80] },
+    { rotate: "180deg", scale: "none", box: [10, 20, 200, 100], point: [150, 65] },
+    { rotate: "none", scale: "2 -1", box: [10, 20, 400, 100], point: [130, 65] },
+  ])("maps individual rotate=$rotate scale=$scale without mutating layout", ({ rotate, scale, box, point }) => {
+    const element = image();
+    const authored = element.style.cssText;
+    const getStyle = window.getComputedStyle.bind(window);
+    const computed = new Proxy(getStyle(element), {
+      get: (target, property) => property === "rotate" ? rotate
+        : property === "scale" ? scale : Reflect.get(target, property, target),
+    });
+    vi.spyOn(window, "getComputedStyle").mockImplementation(target =>
+      target === element ? computed : getStyle(target));
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(...box));
+    const actual = spatialMediaPoint(element, { x: 25, y: 50 });
+    expect(actual.x).toBeCloseTo(point[0]!, 10);
+    expect(actual.y).toBeCloseTo(point[1]!, 10);
+    expect(element.style.cssText).toBe(authored);
+  });
+
+  it.each([
+    { property: "perspective", value: "500px", error: /perspective/ },
+    { property: "rotate", value: "x 45deg", error: /two-dimensional.*rotation/ },
+    { property: "scale", value: "1 1 2", error: /two-dimensional.*scale/ },
+    { property: "scale", value: "0 1", error: /two-dimensional area/ },
+  ])("reports unsupported $property=$value explicitly", ({ property, value, error }) => {
+    const element = image();
+    const getStyle = window.getComputedStyle.bind(window);
+    const computed = new Proxy(getStyle(element), {
+      get: (target, key) => key === property ? value : Reflect.get(target, key, target),
+    });
+    vi.spyOn(window, "getComputedStyle").mockImplementation(target =>
+      target === element ? computed : getStyle(target));
+    expect(() => spatialMediaPoint(element, { x: 25, y: 50 })).toThrow(error);
+  });
+
   it("does not fabricate a percentage from an unrendered image", () => {
     const element = image();
     vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect());
