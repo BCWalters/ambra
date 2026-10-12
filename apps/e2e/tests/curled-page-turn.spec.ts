@@ -32,6 +32,15 @@ test("curled copies preserve explicit initial values below contrasting parents",
           const frame = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!;
           const copies = frame.contentDocument!.querySelectorAll("[data-face='front'] [id^='initial-ink-']");
           if (copies.length === 0) throw new Error("Contrasting paint fixture is missing.");
+          const frozen = frame.contentDocument!.querySelectorAll("[data-ambra-frozen-paint]");
+          const rules = new Set(Array.from(frozen, element => element.getAttribute("data-ambra-frozen-paint")));
+          Reflect.set(window, "__frozenPaintStats", {
+            nodes: frozen.length,
+            rules: rules.size,
+            inline: Array.from(frozen)
+              .filter(element => element.getAttribute("style")?.trim())
+              .map(element => `${element.localName}: ${element.getAttribute("style")}`),
+          });
           for (const copy of copies) {
             const original = source.getElementById(copy.id);
             if (!original) throw new Error("Original contrasting ink is missing.");
@@ -49,6 +58,9 @@ test("curled copies preserve explicit initial values below contrasting parents",
       await c.turnPage(1);
     });
     expect(await page.evaluate(() => Reflect.get(window, "__initialPaintVerified"))).toBe(true);
+    const stats = await page.evaluate(() => Reflect.get(window, "__frozenPaintStats"));
+    expect(stats.nodes).toBeGreaterThan(stats.rules * 10);
+    expect(stats.inline).toEqual([]);
     await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
   } finally {
     await context.close();
