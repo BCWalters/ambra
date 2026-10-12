@@ -97,6 +97,12 @@ replacement, and disposal still immediately release hidden hosts; normal backgro
 reprioritization resumes once foreground operations settle.
 Native margin-click probes hold toolbar focus until the physical dismissal tap,
 preventing idle-hide from expiring between the visible-chrome check and input.
+They then release that temporary focus so subsequent reading shortcuts remain
+owned by the reader. Native RTL coverage explicitly exercises focused chrome
+before margin clicks followed by swipes and keyboard navigation.
+Curled faces contain paint within their existing clipped strip bounds, retaining
+the same segment count, overlap, geometry, and opaque paper. Failure-only native
+profiling includes compositor/GPU events to identify remaining rendering stalls.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 

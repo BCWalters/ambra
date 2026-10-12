@@ -154,6 +154,7 @@ export class CurledPageTurn {
             position: "absolute",
             inset: "0",
             overflow: "hidden",
+            contain: "paint",
             backfaceVisibility: "hidden",
             background: this.background,
             transform: faceIndex === 1 ? "rotateY(180deg)" : "",

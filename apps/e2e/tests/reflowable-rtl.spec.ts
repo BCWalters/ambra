@@ -159,6 +159,9 @@ for (const width of [760, 1400]) {
         expect(await signature(page)).toEqual(next);
         await key("Shift+Space");
         expect(await signature(page)).toEqual(initial);
+        const bookmark = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ });
+        await bookmark.focus();
+        await expect(bookmark.locator("..")).toHaveCSS("pointer-events", "auto");
         await clickReadingPage(page, "left");
         await settled(page);
         expect(await signature(page)).toEqual(next);

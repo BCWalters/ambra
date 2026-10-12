@@ -273,7 +273,7 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
       tracingSession = await context.newCDPSession(page);
       tracingSession.on("Tracing.dataCollected", (event) => timeline.push(...event.value));
       await tracingSession.send("Tracing.start", {
-        categories: "devtools.timeline",
+        categories: "devtools.timeline,cc,gpu,viz",
         transferMode: "ReportEvents",
       });
       profiling = true;

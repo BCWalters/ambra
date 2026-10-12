@@ -228,6 +228,8 @@ export async function clickReadingPage(
       return !c.isTurningPage && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout;
     });
     expect(await position(), "dismissing chrome is not a page turn").toEqual(before);
+    await bookmark.evaluate(button => button.blur());
+    await expect(bookmark).not.toBeFocused();
   }
   await readerPage.mouse.click(point.x, point.y);
 }
