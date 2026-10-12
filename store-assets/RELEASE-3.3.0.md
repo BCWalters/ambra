@@ -51,6 +51,11 @@ and their shadows; furniture and chrome retain their separate native coverage.
 Curled-leaf tests retain action/screenshot traces but disable DOM snapshots,
 whose serialization of frozen strip styles interrupts native animation timing.
 Other native files retain their usual DOM snapshots.
+Frozen copies reset to CSS initial values before applying noninitial computed
+declarations, retaining explicit bidi/custom properties and Typed OM precision
+without repeating the complete default declaration set in every strip.
+The long-chapter benchmark attaches a native Chrome timeline for layout,
+paint and garbage-collection diagnosis.
 
 Physical touchscreen input, real OS app switching, complex EPUB paint fidelity
 and live assistive-technology behavior remain broader manual-validation limits.

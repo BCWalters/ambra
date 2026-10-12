@@ -20,6 +20,7 @@ export class CurledPageTurn {
   private readonly surface: SandboxedContentHost;
   private readonly segments: Segment[] = [];
   private readonly savedOpacity = new Map<HTMLElement, string>();
+  private readonly initialPaintStyles = new WeakMap<Document, ReadonlyMap<string, string>>();
   private readonly spacers = new WeakMap<
     Node,
     { top: number; bottom: number; marginBottom: string }
@@ -431,10 +432,17 @@ export class CurledPageTurn {
     }
     const copy = doc.importNode(element, false) as Element & { style?: CSSStyleDeclaration };
     if (copy.style) {
-      copy.style.cssText = Array.from(
-        computed,
-        property => `${property}:${computed.getPropertyValue(property)} !important;`,
-      ).join("");
+      const initial = this.getInitialPaintStyles(doc);
+      const declarations = ["all:initial !important;"];
+      for (const property of computed) {
+        const value = computed.getPropertyValue(property);
+        // `all` resets inherited values too, except direction, bidi and custom properties.
+        if (property === "direction" || property === "unicode-bidi" ||
+            value !== initial.get(property)) {
+          declarations.push(`${property}:${value} !important;`);
+        }
+      }
+      copy.style.cssText = declarations.join("");
       if (typeof element.computedStyleMap === "function") {
         // Typed values retain unitless leading, intrinsic sizing and exact translations.
         const values = element.computedStyleMap();
@@ -470,6 +478,25 @@ export class CurledPageTurn {
       if (painted !== copy.lastChild) copy.appendChild(painted);
     }
     return copy;
+  }
+
+  private getInitialPaintStyles(doc: Document): ReadonlyMap<string, string> {
+    const cached = this.initialPaintStyles.get(doc);
+    if (cached) return cached;
+    const probe = doc.createElement("span");
+    probe.style.setProperty("all", "initial", "important");
+    doc.body.append(probe);
+    try {
+      const computed = doc.defaultView!.getComputedStyle(probe);
+      const initial = new Map(Array.from(
+        computed,
+        property => [property, computed.getPropertyValue(property)] as const,
+      ));
+      this.initialPaintStyles.set(doc, initial);
+      return initial;
+    } finally {
+      probe.remove();
+    }
   }
 
   public hide(...elements: HTMLElement[]): void {

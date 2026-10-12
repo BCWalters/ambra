@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type CDPSession } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -8,6 +8,52 @@ import { navigationFixture } from "../navigation-fixture.js";
 
 // DOM snapshots serialize megabytes of frozen strip CSS and interrupt native curl timing.
 test.use({ trace: { mode: "retain-on-failure", snapshots: false } });
+
+test("curled copies preserve explicit initial values below contrasting parents", async () => {
+  const { context, readerPage: page } = await launchReader(
+    navigationFixture(test.info(), [4], (_chapter, index) =>
+      `<div style="height:600px;color:rgb(180,20,30);font-weight:700;font-style:italic;direction:rtl">
+        <p><span id="initial-ink-${index}" style="color:rgb(0,0,0);font-weight:400;font-style:normal;direction:ltr;unicode-bidi:normal">${"An original passage in plain ink. ".repeat(100)}</span></p>
+      </div>`),
+    { viewport: { width: 1547, height: 878 } },
+  );
+  try {
+    await exposeReaderController(page);
+    await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      await c.setPageTurnAnimationStyle("rotate");
+      const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
+      c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+        const leaf = create(...args);
+        const prepare = leaf.prepare.bind(leaf);
+        leaf.prepare = async (...pages: unknown[]) => {
+          await prepare(...pages);
+          const source = (pages[0] as { element: HTMLIFrameElement }).element.contentDocument!;
+          const frame = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!;
+          const copies = frame.contentDocument!.querySelectorAll("[data-face='front'] [id^='initial-ink-']");
+          if (copies.length === 0) throw new Error("Contrasting paint fixture is missing.");
+          for (const copy of copies) {
+            const original = source.getElementById(copy.id);
+            if (!original) throw new Error("Original contrasting ink is missing.");
+            const expected = source.defaultView!.getComputedStyle(original);
+            const actual = frame.contentDocument!.defaultView!.getComputedStyle(copy);
+            for (const property of ["color", "font-weight", "font-style", "direction", "unicode-bidi"]) {
+              if (actual.getPropertyValue(property) !== expected.getPropertyValue(property))
+                throw new Error(`Curled copy changed ${property} below a contrasting parent.`);
+            }
+          }
+          Reflect.set(window, "__initialPaintVerified", true);
+        };
+        return leaf;
+      };
+      await c.turnPage(1);
+    });
+    expect(await page.evaluate(() => Reflect.get(window, "__initialPaintVerified"))).toBe(true);
+    await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
 
 test("long chapter: curved turn preparation and handoff stay bounded", async () => {
   const epub = process.env.AMBRA_E2E_LONG_CHAPTER;
@@ -23,6 +69,9 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       viewport: { width: 1547, height: 878 },
     },
   );
+  const timeline: unknown[] = [];
+  let tracingSession: CDPSession | undefined;
+  let profiling = false;
   try {
     await exposeReaderController(page);
     await page.evaluate(async (realBook) => {
@@ -164,6 +213,13 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       () => Reflect.get(window, "__readerController").snapshot().bookPageIndex !== undefined,
       { timeout: 30000 },
     );
+    tracingSession = await context.newCDPSession(page);
+    tracingSession.on("Tracing.dataCollected", event => timeline.push(...event.value));
+    await tracingSession.send("Tracing.start", {
+      categories: "devtools.timeline",
+      transferMode: "ReportEvents",
+    });
+    profiling = true;
     for (const [i, direction] of [1, 1, -1, 1].entries()) {
       if (i === 0) {
         await clickReadingPage(page, "right");
@@ -252,7 +308,21 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       ),
     );
   } finally {
-    await context.close();
+    try {
+      const session = tracingSession;
+      if (session && profiling) {
+        const complete = new Promise<void>(resolve =>
+          session.once("Tracing.tracingComplete", () => resolve()));
+        await session.send("Tracing.end");
+        await complete;
+        await test.info().attach("native-curl-timeline", {
+          body: JSON.stringify(timeline),
+          contentType: "application/json",
+        });
+      }
+    } finally {
+      await context.close();
+    }
   }
 });
 
