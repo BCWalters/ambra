@@ -46,8 +46,9 @@ The mixed-document book-start previous margin must create no leaf or position
 change. The title spread must retain its canonical publication pixels throughout
 preparation, without incoming text leaking through the stationary blank area.
 Frame pacing samples use the nearest-rank p95 (`ceil(sampleCount * 0.95) - 1`).
-Geometry probes run after the actual animation, before leaf disposal, so their
-temporary ranges, forced layouts and garbage collection cannot alter its pacing.
+Geometry probes run after the actual animation, before leaf disposal, in a
+separate test/browser context. Their temporary ranges, forced layouts and
+garbage collection cannot alter pacing on the following measured turn.
 Navigation assertions wait for the actual turn/load/layout completion.
 Publication-only comparisons hide reactive toolbar/scrubber surfaces
 and their shadows; furniture and chrome retain their separate native coverage.

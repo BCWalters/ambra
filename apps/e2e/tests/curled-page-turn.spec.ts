@@ -83,7 +83,7 @@ test("curled copies preserve explicit initial values below contrasting parents",
   }
 });
 
-test("long chapter: curved turn preparation and handoff stay bounded", async () => {
+async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
   const epub = process.env.AMBRA_E2E_LONG_CHAPTER;
   const { context, readerPage: page } = await launchReader(
     epub ??
@@ -102,156 +102,166 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
   let profiling = false;
   try {
     await exposeReaderController(page);
-    await page.evaluate(async (realBook) => {
-      const c = Reflect.get(window, "__readerController");
-      const index = c.pkg.spine.findIndex((item: { manifestItem: { path: string } }) =>
-        item.manifestItem.path.includes("reflections-on-the-revolution-in-france.xhtml"),
-      );
-      if (realBook && index < 0) throw new Error("Long chapter not found.");
-      await c.setPageTurnAnimationStyle("none");
-      await c.openSpineItem(realBook ? index : 0, { landOnPageIndex: realBook ? 100 : 10 });
-      await c.setPageTurnAnimationStyle("rotate");
-      const turn = c.turnPage.bind(c);
-      c.turnPage = async (direction: 1 | -1) => {
-        const start = performance.now();
-        Reflect.set(window, "__turnStarted", start);
-        await turn(direction);
-        Reflect.set(window, "__lastTurnMs", performance.now() - start);
-      };
-      const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
-      Reflect.set(window, "__leafMetrics", []);
-      c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
-        const leaf = create(...args);
-        const prepare = leaf.prepare.bind(leaf);
-        const paint = leaf.paint.bind(leaf);
-        const settle = leaf.settle.bind(leaf);
-        const frames: number[] = [];
-        let last: number | undefined;
-        let measuring = false;
-        leaf.paint = (progress: number) => {
-          if (measuring) {
-            const now = performance.now();
-            if (last !== undefined) frames.push(now - last);
-            last = now;
-          }
-          paint(progress);
+    await page.evaluate(
+      async ({ realBook, verifyGeometry }) => {
+        const c = Reflect.get(window, "__readerController");
+        const index = c.pkg.spine.findIndex((item: { manifestItem: { path: string } }) =>
+          item.manifestItem.path.includes("reflections-on-the-revolution-in-france.xhtml"),
+        );
+        if (realBook && index < 0) throw new Error("Long chapter not found.");
+        await c.setPageTurnAnimationStyle("none");
+        await c.openSpineItem(realBook ? index : 0, { landOnPageIndex: realBook ? 100 : 10 });
+        await c.setPageTurnAnimationStyle("rotate");
+        const turn = c.turnPage.bind(c);
+        c.turnPage = async (direction: 1 | -1) => {
+          const start = performance.now();
+          Reflect.set(window, "__turnStarted", start);
+          await turn(direction);
+          Reflect.set(window, "__lastTurnMs", performance.now() - start);
         };
-        leaf.prepare = async (...prepareArgs: unknown[]) => {
-          await prepare(...prepareArgs);
-          const frame = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!;
-          Reflect.get(window, "__leafMetrics").push({
-            preparationMs: Number(frame.dataset.preparationMs),
-            nodes: frame.contentDocument!.querySelectorAll("*").length,
-            textLength: frame.contentDocument!.body.textContent!.length,
-            frames,
-            onsetMs: performance.now() - Reflect.get(window, "__turnStarted"),
-            foregroundPrioritized:
-              c.foregroundPaginationOperation !== undefined &&
-              c.foregroundPaginationOperation === c.operations.current,
-          });
-          last = undefined;
-          measuring = true;
-          leaf.settle = async (...settleArgs: unknown[]) => {
-            await settle(...settleArgs);
-            measuring = false;
-            const geometry = [];
-            for (const [index, face] of ["front", "back"].entries()) {
-              const front = prepareArgs[index] as {
-                element: HTMLIFrameElement;
-                capture?: () => () => void;
-              };
-              const restore = front.capture?.();
-              try {
-                leaf.paint(index);
-                const source = front.element.contentDocument!;
-                const copyViewport = frame.contentDocument!.querySelector<HTMLElement>(
-                  `[data-face='${face}'] [data-page-copy]`,
-                )!;
-                if (
-                  frame.contentDocument!.defaultView!.getComputedStyle(copyViewport).clipPath !==
-                  front.element.ownerDocument.defaultView!.getComputedStyle(front.element).clipPath
-                ) {
-                  throw new Error("Turning copy does not preserve the canonical page clip.");
-                }
-                for (const root of [
-                  frame.contentDocument!.documentElement,
-                  frame.contentDocument!.body,
-                ]) {
-                  if (
-                    frame.contentDocument!.defaultView!.getComputedStyle(root).overflow !== "hidden"
-                  )
-                    throw new Error("Turning surface permits scrollbars.");
-                }
-                const origin = copyViewport.getBoundingClientRect();
-                const samples = Array.from(source.querySelectorAll<HTMLElement>("p"))
-                  .filter((element) => {
-                    const rect = element.getBoundingClientRect();
-                    return rect.top < front.element.clientHeight && rect.bottom > 0;
-                  })
-                  .map((element) => {
-                    const copy = Array.from(copyViewport.querySelectorAll<HTMLElement>("p")).find(
-                      (candidate) => candidate.textContent === element.textContent,
-                    );
-                    if (!copy)
-                      throw new Error(`Visible paragraph missing from leaf: ${element.id}`);
-                    const a = element.getBoundingClientRect();
-                    const b = copy.getBoundingClientRect();
-                    const sourceWalker = source.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-                    const copyWalker = frame.contentDocument!.createTreeWalker(
-                      copy,
-                      NodeFilter.SHOW_TEXT,
-                    );
-                    const words = [];
-                    for (let node = sourceWalker.nextNode(); node; node = sourceWalker.nextNode()) {
-                      const copiedNode = copyWalker.nextNode();
-                      if (!copiedNode || copiedNode.textContent !== node.textContent)
-                        throw new Error("Leaf text differs from source.");
-                      for (const match of node.textContent!.matchAll(/\S+/g)) {
-                        const sourceRange = source.createRange();
-                        sourceRange.setStart(node, match.index);
-                        sourceRange.setEnd(node, match.index + match[0].length);
-                        const original = sourceRange.getBoundingClientRect();
-                        if (original.top < 0 || original.bottom > front.element.clientHeight)
-                          continue;
-                        const copiedRange = frame.contentDocument!.createRange();
-                        copiedRange.setStart(copiedNode, match.index);
-                        copiedRange.setEnd(copiedNode, match.index + match[0].length);
-                        const painted = copiedRange.getBoundingClientRect();
-                        words.push({
-                          word: match[0],
-                          dx: painted.left - origin.left - original.left,
-                          dy: painted.top - origin.top - original.top,
-                          dw: painted.width - original.width,
-                        });
-                      }
-                    }
-                    return {
-                      id: element.id,
-                      dy: b.top - origin.top - a.top,
-                      dw: b.width - a.width,
-                      words,
-                    };
-                  });
-                if (samples.length === 0) throw new Error("No visible paragraphs tested.");
-                geometry.push(...samples.map((sample) => ({ ...sample, face })));
-              } finally {
-                restore?.();
-              }
+        const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
+        Reflect.set(window, "__leafMetrics", []);
+        c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+          const leaf = create(...args);
+          const prepare = leaf.prepare.bind(leaf);
+          const paint = leaf.paint.bind(leaf);
+          const settle = leaf.settle.bind(leaf);
+          const frames: number[] = [];
+          let last: number | undefined;
+          let measuring = false;
+          leaf.paint = (progress: number) => {
+            if (measuring) {
+              const now = performance.now();
+              if (last !== undefined) frames.push(now - last);
+              last = now;
             }
-            leaf.paint(1);
-            Reflect.set(window, "__leafGeometry", geometry);
+            paint(progress);
           };
+          leaf.prepare = async (...prepareArgs: unknown[]) => {
+            await prepare(...prepareArgs);
+            const frame = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!;
+            Reflect.get(window, "__leafMetrics").push({
+              preparationMs: Number(frame.dataset.preparationMs),
+              nodes: frame.contentDocument!.querySelectorAll("*").length,
+              textLength: frame.contentDocument!.body.textContent!.length,
+              frames,
+              onsetMs: performance.now() - Reflect.get(window, "__turnStarted"),
+              foregroundPrioritized:
+                c.foregroundPaginationOperation !== undefined &&
+                c.foregroundPaginationOperation === c.operations.current,
+            });
+            last = undefined;
+            measuring = !verifyGeometry;
+            leaf.settle = async (...settleArgs: unknown[]) => {
+              await settle(...settleArgs);
+              measuring = false;
+              if (!verifyGeometry) return;
+              const geometry = [];
+              for (const [index, face] of ["front", "back"].entries()) {
+                const front = prepareArgs[index] as {
+                  element: HTMLIFrameElement;
+                  capture?: () => () => void;
+                };
+                const restore = front.capture?.();
+                try {
+                  leaf.paint(index);
+                  const source = front.element.contentDocument!;
+                  const copyViewport = frame.contentDocument!.querySelector<HTMLElement>(
+                    `[data-face='${face}'] [data-page-copy]`,
+                  )!;
+                  if (
+                    frame.contentDocument!.defaultView!.getComputedStyle(copyViewport).clipPath !==
+                    front.element.ownerDocument.defaultView!.getComputedStyle(front.element)
+                      .clipPath
+                  ) {
+                    throw new Error("Turning copy does not preserve the canonical page clip.");
+                  }
+                  for (const root of [
+                    frame.contentDocument!.documentElement,
+                    frame.contentDocument!.body,
+                  ]) {
+                    if (
+                      frame.contentDocument!.defaultView!.getComputedStyle(root).overflow !==
+                      "hidden"
+                    )
+                      throw new Error("Turning surface permits scrollbars.");
+                  }
+                  const origin = copyViewport.getBoundingClientRect();
+                  const samples = Array.from(source.querySelectorAll<HTMLElement>("p"))
+                    .filter((element) => {
+                      const rect = element.getBoundingClientRect();
+                      return rect.top < front.element.clientHeight && rect.bottom > 0;
+                    })
+                    .map((element) => {
+                      const copy = Array.from(copyViewport.querySelectorAll<HTMLElement>("p")).find(
+                        (candidate) => candidate.textContent === element.textContent,
+                      );
+                      if (!copy)
+                        throw new Error(`Visible paragraph missing from leaf: ${element.id}`);
+                      const a = element.getBoundingClientRect();
+                      const b = copy.getBoundingClientRect();
+                      const sourceWalker = source.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+                      const copyWalker = frame.contentDocument!.createTreeWalker(
+                        copy,
+                        NodeFilter.SHOW_TEXT,
+                      );
+                      const words = [];
+                      for (
+                        let node = sourceWalker.nextNode();
+                        node;
+                        node = sourceWalker.nextNode()
+                      ) {
+                        const copiedNode = copyWalker.nextNode();
+                        if (!copiedNode || copiedNode.textContent !== node.textContent)
+                          throw new Error("Leaf text differs from source.");
+                        for (const match of node.textContent!.matchAll(/\S+/g)) {
+                          const sourceRange = source.createRange();
+                          sourceRange.setStart(node, match.index);
+                          sourceRange.setEnd(node, match.index + match[0].length);
+                          const original = sourceRange.getBoundingClientRect();
+                          if (original.top < 0 || original.bottom > front.element.clientHeight)
+                            continue;
+                          const copiedRange = frame.contentDocument!.createRange();
+                          copiedRange.setStart(copiedNode, match.index);
+                          copiedRange.setEnd(copiedNode, match.index + match[0].length);
+                          const painted = copiedRange.getBoundingClientRect();
+                          words.push({
+                            word: match[0],
+                            dx: painted.left - origin.left - original.left,
+                            dy: painted.top - origin.top - original.top,
+                            dw: painted.width - original.width,
+                          });
+                        }
+                      }
+                      return {
+                        id: element.id,
+                        dy: b.top - origin.top - a.top,
+                        dw: b.width - a.width,
+                        words,
+                      };
+                    });
+                  if (samples.length === 0) throw new Error("No visible paragraphs tested.");
+                  geometry.push(...samples.map((sample) => ({ ...sample, face })));
+                } finally {
+                  restore?.();
+                }
+              }
+              leaf.paint(1);
+              Reflect.set(window, "__leafGeometry", geometry);
+            };
+          };
+          return leaf;
         };
-        return leaf;
-      };
-    }, !!epub);
+      },
+      { realBook: !!epub, verifyGeometry },
+    );
     await page.waitForFunction(
       () => Reflect.get(window, "__readerController").snapshot().bookPageIndex !== undefined,
       { timeout: 30000 },
     );
     if (process.env.AMBRA_E2E_PROFILE_CURL === "1") {
       tracingSession = await context.newCDPSession(page);
-      tracingSession.on("Tracing.dataCollected", event => timeline.push(...event.value));
+      tracingSession.on("Tracing.dataCollected", (event) => timeline.push(...event.value));
       await tracingSession.send("Tracing.start", {
         categories: "devtools.timeline",
         transferMode: "ReportEvents",
@@ -284,32 +294,43 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       expect(
         await page.evaluate(() => Reflect.get(window, "__readerController").snapshot().error),
       ).toBeUndefined();
-      const geometry = await page.evaluate(() => Reflect.get(window, "__leafGeometry"));
-      for (const sample of geometry) {
-        expect(
-          Math.abs(sample.dy),
-          `${sample.face} ${sample.id} vertical paint position`,
-        ).toBeLessThan(0.1);
-        expect(Math.abs(sample.dw), `${sample.id} paragraph measure`).toBeLessThan(1);
-        for (const word of sample.words) {
-          expect(Math.abs(word.dx), `${word.word} horizontal paint position`).toBeLessThan(1);
+      if (verifyGeometry) {
+        const geometry = await page.evaluate(() => Reflect.get(window, "__leafGeometry"));
+        await test.info().attach(`geometry-${i}`, {
+          body: JSON.stringify(geometry),
+          contentType: "application/json",
+        });
+        for (const sample of geometry) {
           expect(
-            Math.abs(word.dy),
-            `${sample.face} ${word.word} vertical paint position`,
+            Math.abs(sample.dy),
+            `${sample.face} ${sample.id} vertical paint position`,
           ).toBeLessThan(0.1);
-          expect(Math.abs(word.dw), `${word.word} painted width`).toBeLessThan(1);
+          expect(Math.abs(sample.dw), `${sample.id} paragraph measure`).toBeLessThan(1);
+          for (const word of sample.words) {
+            expect(Math.abs(word.dx), `${word.word} horizontal paint position`).toBeLessThan(1);
+            expect(
+              Math.abs(word.dy),
+              `${sample.face} ${word.word} vertical paint position`,
+            ).toBeLessThan(0.1);
+            expect(Math.abs(word.dw), `${word.word} painted width`).toBeLessThan(1);
+          }
         }
       }
       const metrics = await page.evaluate(() => Reflect.get(window, "__leafMetrics").at(-1));
-      expect(metrics.foregroundPrioritized, "background pagination must yield to the foreground curl").toBe(true);
+      expect(
+        metrics.foregroundPrioritized,
+        "background pagination must yield to the foreground curl",
+      ).toBe(true);
       expect(metrics.preparationMs).toBeLessThan(250);
       expect(metrics.textLength).toBeLessThan(500000);
       expect(metrics.onsetMs).toBeLessThan(750);
       expect(timing).toBeLessThan(1500);
-      const gaps = metrics.frames.slice().sort((a: number, b: number) => a - b);
-      expect(gaps.length).toBeGreaterThan(5);
-      expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(40);
-      expect(Math.max(...gaps)).toBeLessThan(100);
+      if (!verifyGeometry) {
+        const gaps = metrics.frames.slice().sort((a: number, b: number) => a - b);
+        expect(gaps.length).toBeGreaterThan(5);
+        expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(40);
+        expect(Math.max(...gaps)).toBeLessThan(100);
+      }
       const snapshot = await page.evaluate(() =>
         Reflect.get(window, "__readerController").snapshot(),
       );
@@ -321,36 +342,38 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
         await expect(page.getByText(`Page ${number}`, { exact: true })).toHaveCount(1);
       await page.screenshot({ path: test.info().outputPath(`long-chapter-${i}.png`) });
     }
-    console.log(
-      "LONG_CHAPTER_METRICS",
-      await page.evaluate(() =>
-        Reflect.get(window, "__leafMetrics").map(
-          (metric: {
-            preparationMs: number;
-            onsetMs: number;
-            textLength: number;
-            nodes: number;
-            frames: number[];
-          }) => {
-            const frames = metric.frames.slice().sort((a, b) => a - b);
-            return {
-              preparationMs: metric.preparationMs,
-              onsetMs: metric.onsetMs,
-              nodes: metric.nodes,
-              textLength: metric.textLength,
-              p95FrameMs: frames[Math.ceil(frames.length * 0.95) - 1],
-              worstFrameMs: Math.max(...frames),
-            };
-          },
+    if (!verifyGeometry)
+      console.log(
+        "LONG_CHAPTER_METRICS",
+        await page.evaluate(() =>
+          Reflect.get(window, "__leafMetrics").map(
+            (metric: {
+              preparationMs: number;
+              onsetMs: number;
+              textLength: number;
+              nodes: number;
+              frames: number[];
+            }) => {
+              const frames = metric.frames.slice().sort((a, b) => a - b);
+              return {
+                preparationMs: metric.preparationMs,
+                onsetMs: metric.onsetMs,
+                nodes: metric.nodes,
+                textLength: metric.textLength,
+                p95FrameMs: frames[Math.ceil(frames.length * 0.95) - 1],
+                worstFrameMs: Math.max(...frames),
+              };
+            },
+          ),
         ),
-      ),
-    );
+      );
   } finally {
     try {
       const session = tracingSession;
       if (session && profiling) {
-        const complete = new Promise<void>(resolve =>
-          session.once("Tracing.tracingComplete", () => resolve()));
+        const complete = new Promise<void>((resolve) =>
+          session.once("Tracing.tracingComplete", () => resolve()),
+        );
         await session.send("Tracing.end");
         await complete;
         await test.info().attach("native-curl-timeline", {
@@ -362,7 +385,15 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       await context.close();
     }
   }
-});
+}
+
+for (const verifyGeometry of [false, true])
+  test(
+    verifyGeometry
+      ? "long chapter: curved copies preserve paragraph and word geometry"
+      : "long chapter: curved turn preparation and handoff stay bounded",
+    () => runLongChapterTurn(verifyGeometry),
+  );
 
 for (const rtl of [false, true]) {
   for (const fixed of [false, true]) {
