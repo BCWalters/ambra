@@ -62,6 +62,10 @@ keeps its independent inline styles for paper shading and ink adjustments.
 Shared rules are serialized directly rather than parsed into temporary inline
 styles and immediately discarded. Chained-spread assertions inspect the active
 host's own columns, not background page-count measurement frames.
+Flat endpoint faces and curved strips switch with opacity rather than inherited
+visibility or layout-removing display changes, avoiding subtree restyles at onset.
+Held-handoff probes use native arrow keys so a chrome-dismissal helper cannot
+deadlock against their intentionally paused turn. Import probes await readiness.
 The long-chapter benchmark attaches a native Chrome timeline for layout,
 paint and garbage-collection diagnosis.
 

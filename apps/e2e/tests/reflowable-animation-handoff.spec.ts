@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { SpreadPaginatedHost } from "../../../packages/engine/src/index.js";
-import { clickReadingPage, launchReader } from "../harness.js";
+import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { navigationFixture } from "../navigation-fixture.js";
 
@@ -178,7 +178,7 @@ for (const direction of ["ltr", "rtl"] as const) {
           const initialPng = style === "none" ? await page.screenshot() : undefined;
           for (const forward of [true, false]) {
             const side = forward === (direction === "ltr") ? "right" : "left";
-            await clickReadingPage(page, side);
+            await page.keyboard.press(side === "right" ? "ArrowRight" : "ArrowLeft");
             if (style === "none") {
               await settled(page);
               const after = await measure(page);

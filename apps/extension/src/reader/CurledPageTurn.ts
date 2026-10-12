@@ -207,7 +207,8 @@ export class CurledPageTurn {
         copy.style.left = `${pageBounds.left - containerBounds.left - (layout === "single" && index === 1 ? side * bounds.width : 0)}px`;
         copy.style.top = `${pageBounds.top - containerBounds.top}px`;
         copy.style.zIndex = "2";
-        copy.style.display = "none";
+        copy.style.opacity = "0";
+        copy.style.willChange = "opacity";
         scene.append(copy);
       }
       const paintStyles = doc.createElement("style");
@@ -530,7 +531,7 @@ export class CurledPageTurn {
     if (this.disposed) return;
     const p = Math.max(0, Math.min(1, progress));
     this.flatFaces?.forEach((face, index) => {
-      face.style.display = p === index ? "" : "none";
+      face.style.opacity = p === index ? "1" : "0";
     });
     const length = this.width / SEGMENTS;
     const hinge = this.hinge + (this.destinationHinge - this.hinge) * p * p * (3 - 2 * p);
@@ -540,7 +541,7 @@ export class CurledPageTurn {
       const angle =
         -Math.PI * p + 0.65 * Math.sin(Math.PI * p) * ((2 * (index + 0.5)) / SEGMENTS - 1);
       const segment = this.segments[index]!;
-      segment.element.style.visibility = p === 0 || p === 1 ? "hidden" : "";
+      segment.element.style.opacity = p === 0 || p === 1 ? "0" : "1";
       const left = hinge + this.side * x - (this.side < 0 ? length : 0) - STRIP_OVERLAP;
       segment.element.style.transform = `translate3d(${left}px, 0, ${z}px) rotateY(${this.side * angle}rad)`;
       for (const shade of segment.shades)
