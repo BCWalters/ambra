@@ -775,6 +775,11 @@ test.describe("paginated reflowable navigation correctness", () => {
     const { context, readerPage } = await launchReader(CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, {
       viewport: { width: 1400, height: 900 },
     });
+    const waitForNavigation = () =>
+      readerPage.waitForFunction(() => {
+        const c = Reflect.get(window, "__readerController");
+        return !c.isTurningPage && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout;
+      });
     const rightSlotHiddenIframe = () =>
       readerPage.evaluate(selector => {
         const iframes = Array.from(document.querySelectorAll<HTMLIFrameElement>(selector));
@@ -799,7 +804,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       }, READER_FRAME_SELECTOR);
 
     try {
-      await readerPage.waitForTimeout(500);
+      await waitForNavigation();
 
       // The book's very first spread merges forward immediately (see
       // the `BOOK_START_MERGE_EPUB` test above) — cover and title page
@@ -821,7 +826,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       // Advance well into the real (27-page) first chapter.
       for (let press = 0; press < 8; press++) {
         await readerPage.keyboard.press("ArrowRight");
-        await readerPage.waitForTimeout(500);
+        await waitForNavigation();
       }
 
       // Now navigate all the way back past every chained single-page
@@ -838,7 +843,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       const MAX_BACK_PRESSES = 15;
       for (let press = 0; press < MAX_BACK_PRESSES && !reachedStart; press++) {
         await readerPage.keyboard.press("ArrowLeft");
-        await readerPage.waitForTimeout(700);
+        await waitForNavigation();
         expect(
           await rightSlotHiddenIframe(),
           `back-press ${press}: a facing column was hidden`,

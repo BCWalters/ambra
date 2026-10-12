@@ -282,7 +282,7 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       expect(timing).toBeLessThan(1500);
       const gaps = metrics.frames.slice().sort((a: number, b: number) => a - b);
       expect(gaps.length).toBeGreaterThan(5);
-      expect(gaps[Math.floor(gaps.length * 0.95)]).toBeLessThan(40);
+      expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(40);
       expect(Math.max(...gaps)).toBeLessThan(100);
       const snapshot = await page.evaluate(() =>
         Reflect.get(window, "__readerController").snapshot(),
@@ -312,7 +312,7 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
               onsetMs: metric.onsetMs,
               nodes: metric.nodes,
               textLength: metric.textLength,
-              p95FrameMs: frames[Math.floor(frames.length * 0.95)],
+              p95FrameMs: frames[Math.ceil(frames.length * 0.95) - 1],
               worstFrameMs: Math.max(...frames),
             };
           },

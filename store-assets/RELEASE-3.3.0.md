@@ -46,7 +46,9 @@ The mixed-document book-start previous margin must create no leaf or position
 change. The title spread must retain its canonical publication pixels throughout
 preparation, without incoming text leaking through the stationary blank area.
 Frame pacing samples must exclude the geometry probe's own paints and forced
-layouts. Publication-only comparisons hide reactive toolbar/scrubber surfaces
+layouts and use the nearest-rank p95 (`ceil(sampleCount * 0.95) - 1`).
+Navigation assertions wait for the actual turn/load/layout completion.
+Publication-only comparisons hide reactive toolbar/scrubber surfaces
 and their shadows; furniture and chrome retain their separate native coverage.
 Curled-leaf tests retain action/screenshot traces but disable DOM snapshots,
 whose serialization of frozen strip styles interrupts native animation timing.
