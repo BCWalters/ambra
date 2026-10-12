@@ -233,13 +233,15 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       () => Reflect.get(window, "__readerController").snapshot().bookPageIndex !== undefined,
       { timeout: 30000 },
     );
-    tracingSession = await context.newCDPSession(page);
-    tracingSession.on("Tracing.dataCollected", event => timeline.push(...event.value));
-    await tracingSession.send("Tracing.start", {
-      categories: "devtools.timeline",
-      transferMode: "ReportEvents",
-    });
-    profiling = true;
+    if (process.env.AMBRA_E2E_PROFILE_CURL === "1") {
+      tracingSession = await context.newCDPSession(page);
+      tracingSession.on("Tracing.dataCollected", event => timeline.push(...event.value));
+      await tracingSession.send("Tracing.start", {
+        categories: "devtools.timeline",
+        transferMode: "ReportEvents",
+      });
+      profiling = true;
+    }
     for (const [i, direction] of [1, 1, -1, 1].entries()) {
       if (i === 0) {
         await clickReadingPage(page, "right");

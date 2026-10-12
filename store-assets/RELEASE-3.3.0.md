@@ -67,8 +67,9 @@ Flat endpoint faces and curved strips switch with opacity rather than inherited
 visibility or layout-removing display changes, avoiding subtree restyles at onset.
 Held-handoff probes use native arrow keys so a chrome-dismissal helper cannot
 deadlock against their intentionally paused turn. Import probes await readiness.
-The long-chapter benchmark attaches a native Chrome timeline for layout,
-paint and garbage-collection diagnosis.
+Acceptance pacing runs without native profiling. Set `AMBRA_E2E_PROFILE_CURL=1`
+for a separate diagnostic run attaching Chrome layout, paint and garbage-collection
+events; profiled timings do not substitute for unprofiled acceptance evidence.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 
