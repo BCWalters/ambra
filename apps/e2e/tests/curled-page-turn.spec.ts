@@ -32,11 +32,20 @@ test("curled copies preserve explicit initial values below contrasting parents",
           const frame = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!;
           const copies = frame.contentDocument!.querySelectorAll("[data-face='front'] [id^='initial-ink-']");
           if (copies.length === 0) throw new Error("Contrasting paint fixture is missing.");
-          const frozen = frame.contentDocument!.querySelectorAll("[data-ambra-frozen-paint]");
+          const frozen = frame.contentDocument!.querySelectorAll(
+            "[data-ambra-frozen-paint]:not([data-ambra-frozen-furniture])",
+          );
           const rules = new Set(Array.from(frozen, element => element.getAttribute("data-ambra-frozen-paint")));
+          const furniture = Array.from(frame.contentDocument!.querySelectorAll<HTMLElement>(
+            "[data-ambra-turn-furniture], [data-ambra-turn-furniture] *",
+          ));
           Reflect.set(window, "__frozenPaintStats", {
             nodes: frozen.length,
             rules: rules.size,
+            furnitureNodes: furniture.length,
+            furnitureInlineBytes: furniture.reduce((sum, element) => sum + element.style.cssText.length, 0),
+            furnitureInlineVariables: furniture.reduce((sum, element) =>
+              sum + Array.from(element.style).filter(property => property.startsWith("--")).length, 0),
             inline: Array.from(frozen)
               .filter(element => element.getAttribute("style")?.trim())
               .map(element => `${element.localName}: ${element.getAttribute("style")}`),
@@ -59,8 +68,15 @@ test("curled copies preserve explicit initial values below contrasting parents",
     });
     expect(await page.evaluate(() => Reflect.get(window, "__initialPaintVerified"))).toBe(true);
     const stats = await page.evaluate(() => Reflect.get(window, "__frozenPaintStats"));
+    await test.info().attach("frozen-paint-allocation", {
+      body: JSON.stringify(stats),
+      contentType: "application/json",
+    });
     expect(stats.nodes).toBeGreaterThan(stats.rules * 10);
     expect(stats.inline).toEqual([]);
+    expect(stats.furnitureNodes).toBeGreaterThan(0);
+    expect(stats.furnitureInlineVariables).toBe(0);
+    expect(stats.furnitureInlineBytes).toBeLessThan(stats.furnitureNodes * 1000);
     await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
   } finally {
     await context.close();

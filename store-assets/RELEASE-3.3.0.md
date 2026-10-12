@@ -58,8 +58,11 @@ usual DOM snapshots and screencasts.
 Frozen copies reset to CSS initial values before applying noninitial computed
 declarations, retaining explicit bidi/custom properties and Typed OM precision
 without repeating the complete default declaration set in every strip.
-Publication copies share immutable frozen-style rules across strips; furniture
-keeps its independent inline styles for paper shading and ink adjustments.
+Publication copies and furniture share immutable frozen-style rules across
+strips. Furniture keeps only its mutable positioning, opacity and color inline
+for paper shading and ink adjustments, without duplicating inherited theme
+variables in every strip. Native allocation checks bound inline furniture size
+and reject inline theme-variable duplication.
 Shared rules are serialized directly rather than parsed into temporary inline
 styles and immediately discarded. Chained-spread assertions inspect the active
 host's own columns, not background page-count measurement frames.

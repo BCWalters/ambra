@@ -14,6 +14,15 @@ interface Segment {
 const SEGMENTS = 20;
 const STRIP_OVERLAP = 1.5;
 const XHTML = "http://www.w3.org/1999/xhtml";
+const MUTABLE_FURNITURE_PAINT = new Set([
+  "inset-inline-start", "inset-inline-end", "inset-block-start", "inset-block-end",
+  "left", "top", "right", "bottom", "z-index", "color", "opacity",
+]);
+
+function serializePaint(declarations: ReadonlyMap<string, string>): string {
+  return Array.from(declarations, ([property, value]) =>
+    `${property}:${value} !important;`).join("");
+}
 
 /** Display-only copies stay inside a script-disabled publication sandbox. */
 export class CurledPageTurn {
@@ -333,7 +342,7 @@ export class CurledPageTurn {
       wrapper.append(viewport);
     }
     if (page.furniture) {
-      const furniture = this.copyPaint(page.furniture, doc, undefined, undefined, false);
+      const furniture = this.copyPaint(page.furniture, doc, undefined, undefined, true);
       if (furniture instanceof doc.defaultView!.HTMLElement) {
         for (const property of [
           "inset-inline-start",
@@ -359,7 +368,7 @@ export class CurledPageTurn {
     doc: Document,
     viewport?: { top: number; bottom: number; left: number; right: number },
     previous?: Node | null,
-    shareStyles = true,
+    mutableFurniture = false,
   ): Node {
     if (source.nodeType !== 1) return doc.importNode(source, false);
     const element = source as Element;
@@ -463,18 +472,29 @@ export class CurledPageTurn {
       }
       declarations.set("animation", "none");
       declarations.set("transition", "none");
-      const paint = Array.from(declarations, ([property, value]) =>
-        `${property}:${value} !important;`).join("");
-      if (shareStyles) {
-        let paintClass = this.paintClasses.get(paint);
-        if (!paintClass) {
-          paintClass = String(this.paintClasses.size);
-          this.paintClasses.set(paint, paintClass);
-          this.paintRules.push(`[data-ambra-frozen-paint="${paintClass}"]{${paint}}`);
+      const inline = new Map<string, string>();
+      if (mutableFurniture) {
+        for (const property of MUTABLE_FURNITURE_PAINT) {
+          const value = declarations.get(property);
+          if (value !== undefined) {
+            inline.set(property, value);
+            declarations.delete(property);
+          }
         }
-        copy.removeAttribute("style");
-        copy.setAttribute("data-ambra-frozen-paint", paintClass);
-      } else copy.style.cssText = paint;
+      }
+      const sharedPaint = serializePaint(declarations);
+      let paintClass = this.paintClasses.get(sharedPaint);
+      if (!paintClass) {
+        paintClass = String(this.paintClasses.size);
+        this.paintClasses.set(sharedPaint, paintClass);
+        this.paintRules.push(`[data-ambra-frozen-paint="${paintClass}"]{${sharedPaint}}`);
+      }
+      copy.removeAttribute("style");
+      copy.setAttribute("data-ambra-frozen-paint", paintClass);
+      if (mutableFurniture) {
+        copy.setAttribute("data-ambra-frozen-furniture", "");
+        copy.style.cssText = serializePaint(inline);
+      }
     }
     for (const attribute of Array.from(copy.attributes)) {
       if (attribute.name.startsWith("on") || attribute.name === "autofocus")
@@ -493,7 +513,7 @@ export class CurledPageTurn {
       )
         continue;
       const painted = this.copyPaint(
-        child, doc, viewport, mergeSpacers ? copy.lastChild : undefined, shareStyles,
+        child, doc, viewport, mergeSpacers ? copy.lastChild : undefined, mutableFurniture,
       );
       if (painted !== copy.lastChild) copy.appendChild(painted);
     }
