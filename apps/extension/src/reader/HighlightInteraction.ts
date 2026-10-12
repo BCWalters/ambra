@@ -293,6 +293,7 @@ export class HighlightInteraction {
       };
 
       const onPointerUp = (event: PointerEvent): void => {
+        if (event.defaultPrevented) return;
         const hasSelection = updateFromSelection();
         if (!hasSelection) {
           // Only a caret click, not a hidden selection, can open an

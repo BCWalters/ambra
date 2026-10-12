@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader, clickReadingPage } from "../harness.js";
+import { launchReader, clickReadingPage, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -38,10 +38,11 @@ async function setPageTurnAnimationStyle(
  * helper for why this exactly reflects a `FixedSpreadHost` spread's
  * currently-loaded page(s). */
 async function visiblePageTexts(readerPage: Page): Promise<string[]> {
-  return readerPage.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+  return readerPage.evaluate((selector) =>
+    Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
       .filter((f) => getComputedStyle(f).visibility !== "hidden")
-      .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText.trim() ?? ""),
+      .map((f) => f.contentDocument?.body?.innerText.trim() ?? ""),
+    READER_FRAME_SELECTOR,
   );
 }
 

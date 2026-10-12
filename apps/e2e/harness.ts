@@ -197,6 +197,9 @@ export async function clickForwardAndWait(
 
 /** A page-turning click, including the separate UI-dismissal tap when needed.
  * Navigation tests use this only with unpinned chrome and no open panels. */
+export const READER_FRAME_SELECTOR =
+  "iframe:not([data-ambra-prefetched-turn]):not([data-ambra-prefetched-turn] iframe)";
+
 export async function clickReadingPage(
   readerPage: Page,
   side: "left" | "right",

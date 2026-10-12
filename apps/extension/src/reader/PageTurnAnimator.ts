@@ -4,6 +4,7 @@ import { metadataTextAttributes } from "../MetadataText.js";
 import { HEADER_TEXT_TOP_OFFSET, PAGE_FURNITURE_TEXT_OPACITY } from "./furnitureLayout.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import { runOwnedTransition } from "./OwnedTransition.js";
+import type { ControlledPageTurn } from "./ControlledPageTurn.js";
 
 /** What `PageTurnAnimator` needs from `ReaderController` — plain
  * getters only; this class owns no reader state of its own. */
@@ -14,6 +15,7 @@ export interface PageTurnAnimatorContext {
   pageTheme(): PageTheme;
   pageTurnAnimationStyle(): PageTurnAnimationStyle;
   operationSignal?(): AbortSignal | undefined;
+  controlledTurn?(): ControlledPageTurn | undefined;
 }
 
 /** The pure mechanics behind an animated page turn: building the
@@ -122,6 +124,7 @@ export class PageTurnAnimator {
     const background = ReadingTheme.PAGE_THEMES[this.ctx.pageTheme()].background;
 
     const overlay = document.createElement("div");
+    overlay.dataset.ambraTurnFurniture = "";
     overlay.setAttribute("aria-hidden", "true");
     overlay.style.position = "absolute";
     overlay.style.left = `${matchRect.left - containerRect.left}px`;
@@ -266,10 +269,25 @@ export class PageTurnAnimator {
   ): Promise<void> {
     const style = this.ctx.pageTurnAnimationStyle();
     const containerEl = this.ctx.containerEl();
+    const gesture = this.ctx.controlledTurn?.();
     if (this.shouldSkipPageTurnAnimation()) {
+      await gesture?.play(() => {}, this.ctx.operationSignal?.(), true);
       return;
     }
     this.stagePageTurn(hostEl, turnEl, direction, extraTurnEls, entering);
+    if (gesture) {
+      for (const element of [turnEl, ...extraTurnEls]) element.style.transition = "none";
+      try {
+        await gesture.play(progress => {
+          const fraction = entering ? 1 - progress : progress;
+          const amount = this.physicalDirection(direction) * (entering ? 100 : -100) * fraction;
+          this.setPageTurnTransform(turnEl, amount, Math.sin(Math.PI * progress), extraTurnEls, style);
+        }, this.ctx.operationSignal?.());
+      } finally {
+        if (containerEl) containerEl.style.perspective = "";
+      }
+      return;
+    }
 
     // Overshoots to 100 (not 90) so the page reads as continuing out of
     // view rather than freezing edge-on. `fullTurnDegrees` (issue #81)
@@ -309,11 +327,21 @@ export class PageTurnAnimator {
     newGroup: readonly HTMLElement[],
     direction: 1 | -1,
   ): Promise<void> {
+    const gesture = this.ctx.controlledTurn?.();
     if (this.shouldSkipPageTurnAnimation()) {
+      await gesture?.play(() => {}, this.ctx.operationSignal?.(), true);
       return;
     }
     const exitAmount = this.physicalDirection(direction) * -100;
     const enterStart = this.physicalDirection(direction) * 100;
+    if (gesture) {
+      for (const element of [...oldGroup, ...newGroup]) element.style.transition = "none";
+      await gesture.play(progress => {
+        for (const element of oldGroup) element.style.transform = `translateX(${exitAmount * progress}%)`;
+        for (const element of newGroup) element.style.transform = `translateX(${enterStart * (1 - progress)}%)`;
+      }, this.ctx.operationSignal?.());
+      return;
+    }
 
     for (const el of newGroup) {
       el.style.transform = `translateX(${enterStart}%)`;

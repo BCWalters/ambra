@@ -2,6 +2,7 @@ import type { BookReadingSettings, GlobalReadingSettings } from "../library/Read
 import type { LocalePreference } from "../i18n/Locale.js";
 import type { NarrationAction } from "./ReaderTypes.js";
 import type { ReaderCommandId } from "../shortcuts/ReaderCommands.js";
+import type { ControlledPageTurnDiagnostic } from "./ControlledPageTurn.js";
 
 export type DiagnosticSettings = BookReadingSettings & GlobalReadingSettings & {
   locale: LocalePreference;
@@ -32,7 +33,13 @@ export type DiagnosticEvent = SettingEvent |
   { kind: "narration"; action: NarrationAction } |
   { kind: "narration-skipping"; notes: boolean; pageNumbers: boolean } |
   { kind: "search"; queryLength: number } |
-  { kind: "ui-dismissal"; consumed: boolean };
+  { kind: "ui-dismissal"; consumed: boolean } |
+  (ControlledPageTurnDiagnostic & {
+    kind: "page-turn-mouse";
+    gestureId: number;
+    style: DiagnosticSettings["pageTurnAnimationStyle"];
+    layout: "single" | "spread";
+  });
 
 /**
  * A small in-memory ring buffer of recent reader actions/events —

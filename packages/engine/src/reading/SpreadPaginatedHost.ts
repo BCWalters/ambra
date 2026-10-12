@@ -19,6 +19,7 @@ export class SpreadPaginatedHost {
   private readonly first: PaginatedContentHost;
   private readonly second: PaginatedContentHost;
   private readonly containerEl: HTMLDivElement;
+  private readonly gutterEl: HTMLDivElement;
   private spread: ReflowableSpread = { first: { spineIndex: 0, pageIndex: 0 } };
   private rtl = false;
 
@@ -34,6 +35,7 @@ export class SpreadPaginatedHost {
     this.first.element.style.flexShrink = "0";
     this.second.element.style.flexShrink = "0";
     const divider = doc.createElement("div");
+    this.gutterEl = divider;
     Object.assign(divider.style, {
       width: `${SpreadPaginatedHost.GUTTER_WIDTH}px`,
       flexShrink: "0",
@@ -52,6 +54,9 @@ export class SpreadPaginatedHost {
 
   public get element(): HTMLDivElement {
     return this.containerEl;
+  }
+  public get gutterElement(): HTMLDivElement {
+    return this.gutterEl;
   }
   public get positions(): ReflowableSpread {
     return this.spread;

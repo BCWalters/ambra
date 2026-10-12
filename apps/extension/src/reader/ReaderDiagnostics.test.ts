@@ -24,6 +24,23 @@ function setup() {
 }
 
 describe("reader diagnostic intent", () => {
+  it("records why a mouse gesture was ignored before activation", () => {
+    const { controller, diagnostics } = setup();
+    Object.assign(controller, {
+      mouseGestureSequence: 0,
+      isPageTurnTarget: () => true,
+      highlightInteraction: { hasVisibleSelection: () => false },
+      marginSide: () => undefined,
+    });
+    const down = new PointerEvent("pointerdown", { pointerType: "mouse", pointerId: 1 });
+    expect(Reflect.get(controller, "beginControlledPageTurn").call(controller, down, document)).toBe(false);
+    expect(diagnostics.format({})).toContain('phase="ignored" reason="outside-edge"');
+    Object.assign(controller, { isTurningPage: true });
+    expect(Reflect.get(controller, "beginControlledPageTurn").call(controller, down, document)).toBe(false);
+    expect(diagnostics.format({})).toContain('gestureId=2');
+    expect(diagnostics.format({})).toContain('phase="ignored" reason="busy"');
+  });
+
   const settings: Array<[keyof DiagnosticSettings, (controller: ReaderController) => void | Promise<void>, string]> = [
     ["viewMode", c => c.setViewMode("scroll"), '"scroll"'],
     ["fontScale", c => c.setFontScale(1.5), "1.5"],

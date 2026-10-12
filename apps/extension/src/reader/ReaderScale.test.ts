@@ -11,6 +11,8 @@ function fixture() {
     isTurningPage: false, isLoadInFlight: false, isApplyingLayout: false,
     clearNavigationHighlights: vi.fn(), diagnostics: { record: vi.fn() },
     applyPendingLayout: vi.fn(), reportTransientError: vi.fn(),
+    nativeReading: { retainedForShell: () => undefined },
+    notify: vi.fn(),
   });
   return controller;
 }

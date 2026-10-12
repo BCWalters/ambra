@@ -61,6 +61,7 @@ describe("ReaderController margin taps", () => {
     const frames = [document.createElement("iframe"), document.createElement("iframe")];
     document.body.append(...frames);
     const host = Object.create(SpreadPaginatedHost.prototype);
+    host.currentPosition = vi.fn(() => undefined);
     host.columnElement = (side: string) => frames[side === "left" ? 0 : 1];
     let projected = false;
     frames.forEach((frame, index) => {
@@ -81,6 +82,8 @@ describe("ReaderController margin taps", () => {
       contentDocumentViews: () => frames.map(frame => ({ document: frame.contentDocument! })),
       operations: new ReaderOperations(),
       diagnostics: { record: vi.fn() },
+      nativeReading: { retainedForShell: () => undefined },
+      notify: vi.fn(),
       closeTableViewer: vi.fn(),
       clearNavigationHighlights: vi.fn(),
       applyPendingLayout: vi.fn(),

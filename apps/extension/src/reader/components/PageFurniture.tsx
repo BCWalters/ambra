@@ -166,6 +166,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
             columnBands.map((band, index) => (
               <div
                 key={index}
+                data-ambra-page-furniture="header"
                 aria-hidden="true"
                 style={{
                   position: "absolute",
@@ -191,6 +192,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
             ))
           ) : (
             <div
+              data-ambra-page-furniture="header"
               aria-hidden="true"
               style={{
                 position: "absolute",
@@ -225,6 +227,7 @@ export const PageFurniture: FC<PageFurnitureProps> = ({ snapshot, chromeVisible 
             return (
               <div
                 key={index}
+                data-ambra-page-furniture="footer"
                 aria-hidden="true"
                 style={{
                   position: "absolute",
