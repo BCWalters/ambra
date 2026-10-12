@@ -152,7 +152,20 @@ test("workflow preserves required-check name, non-cancelling shards and same-pac
 
 test("browser execution matches the package's local-feature mode", () => {
   const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
-  assert.match(workflow, /name: Run selected browser group without retries\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
+  assert.match(workflow, /name: Run selected browser group without retries\s+id: browser-regressions\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
+});
+
+test("native curl profiling is a separate failure-only diagnostic, never acceptance", () => {
+  const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
+  const diagnostic = workflow.split("- name: Diagnostic native curl profile after rendering failure")[1]
+    ?.split("- name: Keep browser timings")[0];
+  assert.ok(diagnostic);
+  assert.match(diagnostic, /if: failure\(\) && steps\.browser-regressions\.outcome == 'failure' && matrix\.id == 'page-turn-rendering'/);
+  assert.match(diagnostic, /AMBRA_E2E_PROFILE_CURL: "1"/);
+  assert.match(diagnostic, /PLAYWRIGHT_JSON_OUTPUT_NAME: test-results\/page-turn-rendering\/curl-native-profile\/report\.json/);
+  assert.match(diagnostic, /--workers=1 --reporter=list,json/);
+  assert.doesNotMatch(diagnostic, /continue-on-error|--retries|\|\|/);
+  assert.match(workflow, /name: Keep failed browser diagnostics\s+if: failure\(\)/);
 });
 
 test("vertical-writing validation installs real CJK fonts within the bounded Ubuntu package policy", () => {

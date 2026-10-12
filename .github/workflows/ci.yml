@@ -151,10 +151,21 @@ jobs:
           pnpm --filter @ambra/extension build --outDir "${{ runner.temp }}/ambra-local-features"
           echo "AMBRA_E2E_EXTENSION_PATH=${{ runner.temp }}/ambra-local-features" >> "$GITHUB_ENV"
       - name: Run selected browser group without retries
+        id: browser-regressions
         env:
           BROWSER_GROUP: ${{ matrix.id }}
           VITE_AMBRA_LOCAL_FEATURES: ${{ matrix.localFeatures && '1' || '0' }}
         run: node .github/scripts/browser-test-groups.mjs --run "$BROWSER_GROUP"
+      - name: Diagnostic native curl profile after rendering failure
+        if: failure() && steps.browser-regressions.outcome == 'failure' && matrix.id == 'page-turn-rendering'
+        env:
+          AMBRA_E2E_PROFILE_CURL: "1"
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/page-turn-rendering/curl-native-profile/report.json
+        run: |
+          pnpm --filter @ambra/e2e exec playwright test curled-page-turn.spec.ts \
+            --grep 'long chapter: curved turn preparation and handoff stay bounded' \
+            --workers=1 --reporter=list,json \
+            --output=test-results/page-turn-rendering/curl-native-profile
       - name: Keep browser timings and review evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

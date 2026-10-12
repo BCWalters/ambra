@@ -35,6 +35,29 @@ test("Contents and Library panel tooltips reflect open state in all nine locales
           await opened.focus();
           await expect(opened).toBeFocused();
           await opened.hover();
+          await test.info().attach(`tooltip-trigger-${locale}-${openLabel}`, {
+            body: JSON.stringify(await opened.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              return {
+                visibility: document.visibilityState,
+                focused: document.activeElement === element,
+                pointerEvents: getComputedStyle(element).pointerEvents,
+                bounds: bounds.toJSON(),
+                hit: document.elementFromPoint(
+                  bounds.left + bounds.width / 2, bounds.top + bounds.height / 2,
+                )?.outerHTML,
+                ancestors: Array.from((function* () {
+                  for (let parent = element.parentElement; parent; parent = parent.parentElement)
+                    yield parent;
+                })()).map((parent) => ({
+                  tag: parent.tagName,
+                  opacity: getComputedStyle(parent).opacity,
+                  pointerEvents: getComputedStyle(parent).pointerEvents,
+                })),
+              };
+            })),
+            contentType: "application/json",
+          });
           await expect(page.getByRole("tooltip", { name: openLabel, exact: true })).toBeVisible();
           await opened.click();
           await expect(closed).toHaveAttribute("aria-pressed", "false");
@@ -104,6 +127,7 @@ test("French Library localizes live, preserves toolbar order and persists across
     await expect(about.getByRole("link", { name: t("about.feedback") })).toHaveAttribute("href", "mailto:AmbraEPUB@outlook.com");
     await expect(about.getByRole("button", { name: t("about.copyDiagnostics") })).toBeVisible();
     await about.getByRole("button", { name: t("highlight.close"), exact: true }).click();
+    await expect(about).toBeHidden();
     const detailsButton = page.getByRole("button", { name: t("library.bookDetails", { title }), exact: true });
     await detailsButton.focus();
     await detailsButton.press("Enter");

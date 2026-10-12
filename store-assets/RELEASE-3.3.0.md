@@ -78,6 +78,9 @@ from mounted reading columns and still reject detached registrations.
 Acceptance pacing runs without native profiling. Set `AMBRA_E2E_PROFILE_CURL=1`
 for a separate diagnostic run attaching Chrome layout, paint and garbage-collection
 events; profiled timings do not substitute for unprofiled acceptance evidence.
+On a failed rendering group, CI collects a separate native curl profile and
+retains its report with failure diagnostics. The original acceptance failure
+remains required and cannot be replaced by the diagnostic result.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 
