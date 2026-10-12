@@ -3908,12 +3908,13 @@ export class ReaderController {
     };
     if (this.foregroundPaginationOperation !== operation) {
       this.foregroundPaginationOperation = operation;
-      this.bookPagination?.cancelPendingMeasurement();
+      const resumeMeasurement = this.bookPagination?.pausePendingMeasurement();
       void operation.settled.then(async () => {
         while (!this.operations.disposed && this.operations.current &&
           this.foregroundPaginationOperation === operation) {
           await this.operations.current.settled;
         }
+        resumeMeasurement?.();
         if (!this.operations.disposed && this.foregroundPaginationOperation === operation) {
           this.foregroundPaginationOperation = undefined;
           if (this.host) this.refreshBookPagination();

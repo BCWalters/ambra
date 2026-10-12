@@ -91,6 +91,12 @@ entire text strings on every bisection. UTF-16 offsets, current mutated lengths
 and endpoint clamping retain their original behavior.
 Bisection reuses one scratch text position per leaf instead of allocating an
 object at every candidate offset. Saved line/CFI anchors remain independent.
+Foreground pagination pauses background measurement at its cooperative checkpoints
+without tearing down the in-progress document during the animation. Cancellation,
+replacement, and disposal still immediately release hidden hosts; normal background
+reprioritization resumes once foreground operations settle.
+Native margin-click probes hold toolbar focus until the physical dismissal tap,
+preventing idle-hide from expiring between the visible-chrome check and input.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 

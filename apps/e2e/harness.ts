@@ -205,13 +205,14 @@ export async function clickReadingPage(
   side: "left" | "right",
 ): Promise<void> {
   const point = await outerMarginPoint(readerPage, side);
-  const toolbar = readerPage
-    .getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
-    .locator("..");
+  const bookmark = readerPage.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ });
+  const toolbar = bookmark.locator("..");
   if (await toolbar.evaluate((element) => getComputedStyle(element).pointerEvents !== "none")) {
     await exposeReaderController(readerPage);
     // Rearm the idle timer so chrome cannot auto-hide between the probe and tap.
     await readerPage.mouse.move(10, 10);
+    await bookmark.focus();
+    await expect(bookmark).toBeFocused();
     await expect(toolbar).toHaveCSS("pointer-events", "auto");
     await expect(toolbar).toHaveCSS("opacity", "1");
     const position = () =>

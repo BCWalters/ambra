@@ -73,6 +73,72 @@ describe("book-wide CFI page index", () => {
     return locators.generate(0, nodes.get(0)!, offset).cfi;
   }
 
+  it("waits for every foreground owner before loading, with idempotent releases", async () => {
+    const releaseFirst = estimator.pausePendingMeasurement();
+    const releaseSecond = estimator.pausePendingMeasurement();
+    const pending = run();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
+    releaseFirst();
+    releaseFirst();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
+    releaseSecond();
+    await pending;
+    expect(PaginatedContentHost.prototype.open).toHaveBeenCalled();
+    expect(container.children).toHaveLength(0);
+    expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
+  });
+
+  for (const cancel of [false, true]) {
+    it(`${cancel ? "cancels" : "resumes"} a paused pagination checkpoint without premature host teardown`, async () => {
+      const originalOpen = vi.mocked(PaginatedContentHost.prototype.open).getMockImplementation()!;
+      const dispose = vi.spyOn(PaginatedContentHost.prototype, "dispose");
+      let release: (() => void) | undefined;
+      let entered!: () => void;
+      const checkpoint = new Promise<void>(resolve => { entered = resolve; });
+      let held = false;
+      vi.mocked(PaginatedContentHost.prototype.open).mockImplementation(async function (
+        this: PaginatedContentHost, ...args
+      ) {
+        await originalOpen.apply(this, args);
+        if (held) return;
+        held = true;
+        release = estimator.pausePendingMeasurement();
+        entered();
+        await args[5]!.yieldControl!();
+      });
+      let settled = false;
+      const pending = run().then(() => { settled = true; });
+      await checkpoint;
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(settled).toBe(false);
+      expect(container.children).toHaveLength(1);
+      expect(dispose).not.toHaveBeenCalled();
+      if (cancel) estimator.cancelPendingMeasurement();
+      else release!();
+      await pending;
+      release!();
+      expect(container.children).toHaveLength(0);
+      expect(dispose).toHaveBeenCalled();
+      if (cancel) expect(estimator.positionFor(0, 0).totalPages).toBeUndefined();
+      else expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
+    });
+  }
+
+  it("settles superseded and disposed runs even while foreground work is paused", async () => {
+    const release = estimator.pausePendingMeasurement();
+    const first = run();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const replacement = run(900);
+    await first;
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
+    estimator.dispose();
+    await replacement;
+    release();
+    expect(container.children).toHaveLength(0);
+  });
+
   it("never measures supplements, including after layout and disclosure invalidation", async () => {
     const primary = loader.packageDocument.spine[0]!;
     const supplement = new SpineItemRef(primary.manifestItem, false, new Set(), []);
