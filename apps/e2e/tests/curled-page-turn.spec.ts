@@ -109,6 +109,7 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
   const timeline: unknown[] = [];
   let tracingSession: CDPSession | undefined;
   let profiling = false;
+  let sampling = false;
   try {
     await exposeReaderController(page);
     await page.evaluate(
@@ -276,6 +277,12 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
         transferMode: "ReportEvents",
       });
       profiling = true;
+      await tracingSession.send("HeapProfiler.startSampling", {
+        samplingInterval: 32768,
+        includeObjectsCollectedByMajorGC: true,
+        includeObjectsCollectedByMinorGC: true,
+      });
+      sampling = true;
     }
     for (const [i, direction] of [1, 1, -1, 1].entries()) {
       if (i === 0) {
@@ -389,6 +396,13 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
           body: JSON.stringify(timeline),
           contentType: "application/json",
         });
+        if (sampling) {
+          const { profile } = await session.send("HeapProfiler.stopSampling");
+          await test.info().attach("native-curl-allocations", {
+            body: JSON.stringify(profile),
+            contentType: "application/json",
+          });
+        }
       }
     } finally {
       await context.close();

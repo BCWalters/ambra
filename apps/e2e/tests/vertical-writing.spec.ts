@@ -129,9 +129,7 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
           scrollLeft: doc.scrollingElement!.scrollLeft, width: doc.documentElement.clientWidth };
       });
       await dismissChrome(page);
-      await expect.poll(async () => ({
-        painted: await isReaderElementPainted(page, "vertical-image"),
-        hitTests: await page.evaluate(() => {
+      const readImagePaint = () => page.evaluate(() => {
           const controller = Reflect.get(window, "__readerController");
           const doc = controller.contentDocumentViews()[0].document as Document;
           const frame = doc.defaultView!.frameElement;
@@ -141,7 +139,15 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
           const rect = image.getBoundingClientRect();
           const box = frame.getBoundingClientRect();
           const x = rect.left + rect.width / 2;
-          return [rect.top + 1, rect.bottom - 1].map(y => ({
+          return {
+            clip: {
+              x: box.left + (rect.left + 1) * box.width / frame.clientWidth,
+              y: box.top + (rect.top + 1) * box.height / frame.clientHeight,
+              width: (rect.width - 2) * box.width / frame.clientWidth,
+              height: (rect.height - 2) * box.height / frame.clientHeight,
+            },
+            hitTests: [rect.top + 1, rect.bottom - 1].map(y => ({
+            innerImage: image.contains(doc.elementFromPoint(x, y)),
             inner: doc.elementFromPoint(x, y)?.outerHTML.slice(0, 300),
             outer: document.elementFromPoint(
               box.left + x * box.width / frame.clientWidth,
@@ -149,9 +155,39 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
             )?.outerHTML.slice(0, 300),
             visible: frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
             frame: box.toJSON(),
-          }));
-        }),
-      }), { message: JSON.stringify(imageState) }).toMatchObject({ painted: true });
+          })),
+          };
+      });
+      const imagePaint = await readImagePaint();
+      await info.attach("vertical-image-hit-tests", {
+        body: JSON.stringify(imagePaint), contentType: "application/json",
+      });
+      expect(imagePaint.hitTests.every(hit => hit.visible && hit.innerImage)).toBe(true);
+      // The transparent top-edge toolbar hover strip owns hits, not image paint.
+      await expect.poll(async () => {
+        const screenshot = await page.screenshot({ clip: (await readImagePaint()).clip });
+        return page.evaluate(async encoded => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${encoded}`;
+          await image.decode();
+          const canvas = document.createElement("canvas");
+          canvas.width = image.width;
+          canvas.height = image.height;
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Native image paint canvas is unavailable.");
+          context.drawImage(image, 0, 0);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+          let red = 0;
+          for (let index = 0; index < pixels.length; index += 4) {
+            if (pixels[index] === 255 && pixels[index + 1] === 0 &&
+              pixels[index + 2] === 0 && pixels[index + 3] === 255) red++;
+          }
+          return red / (canvas.width * canvas.height);
+        }, screenshot.toString("base64"));
+      }, { message: JSON.stringify(imageState) }).toBe(1);
+      await info.attach("vertical-image-native-paint", {
+        body: await page.screenshot({ clip: (await readImagePaint()).clip }), contentType: "image/png",
+      });
       const saved = await page.evaluate(async () => {
         const controller = Reflect.get(window, "__readerController");
         await controller.flushProgress(true);

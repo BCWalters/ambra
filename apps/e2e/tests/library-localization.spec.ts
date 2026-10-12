@@ -19,9 +19,9 @@ test("Contents and Library panel tooltips reflect open state in all nine locales
         await expect(page.locator("html")).toHaveAttribute("lang", locale);
         t = getTranslate(locale);
         await page.keyboard.press("Escape");
-        for (const [closedLabel, openLabel] of [
-          [t("toolbar.showContents"), t("toolbar.hideContents")],
-          [t("toolbar.backToLibrary"), t("toolbar.hideLibrary")],
+        for (const [closedLabel, openLabel, panelLabel] of [
+          [t("toolbar.showContents"), t("toolbar.hideContents"), t("toc.tableOfContents")],
+          [t("toolbar.backToLibrary"), t("toolbar.hideLibrary"), t("toolbar.backToLibrary")],
         ]) {
           const closed = page.getByRole("button", { name: closedLabel, exact: true });
           await closed.focus();
@@ -31,6 +31,10 @@ test("Contents and Library panel tooltips reflect open state in all nine locales
           await closed.click();
           const opened = page.getByRole("button", { name: openLabel, exact: true });
           await expect(opened).toHaveAttribute("aria-pressed", "true");
+          const panel = page.getByRole("navigation", { name: panelLabel, exact: true });
+          await expect.poll(() => panel.evaluate(element =>
+            element.contains(document.activeElement),
+          )).toBe(true);
           await page.mouse.move(500, 500);
           await opened.focus();
           await expect(opened).toBeFocused();

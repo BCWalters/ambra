@@ -8,6 +8,11 @@ const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 const CDATA_SECTION_NODE = 4;
 
+export interface TextNodePosition {
+  node: Text;
+  offset: number;
+}
+
 function isTextLike(node: Node): node is Text {
   return node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE;
 }
@@ -70,28 +75,41 @@ export function collectTextNodesOf(root: Node): Text[] {
 /** Same lookup as `globalTextOffsetToPosition`, but against an
  * already-collected `textNodes` array (see `collectTextNodesOf`) rather
  * than re-walking `root` — the shared implementation both that function
- * and `LineMeasurement.ts`'s bisection loop use. */
+ * and `LineMeasurement.ts`'s bisection loop use. Probes may supply a mutable
+ * output to avoid transient positions; saved reading anchors omit it. */
 export function positionFromTextNodes(
   textNodes: readonly Text[],
   globalOffset: number,
-): { node: Text; offset: number } | undefined {
+  output?: TextNodePosition,
+): TextNodePosition | undefined {
   let remaining = globalOffset;
-  for (const node of textNodes) {
-    const length = node.data.length;
+  for (let index = 0; index < textNodes.length; index++) {
+    const node = textNodes[index]!;
+    const length = node.length;
     if (remaining <= length) {
+      if (output) {
+        output.node = node;
+        output.offset = remaining;
+        return output;
+      }
       return { node, offset: remaining };
     }
     remaining -= length;
   }
 
   const last = textNodes[textNodes.length - 1];
-  return last ? { node: last, offset: last.data.length } : undefined;
+  if (last && output) {
+    output.node = last;
+    output.offset = last.length;
+    return output;
+  }
+  return last ? { node: last, offset: last.length } : undefined;
 }
 
 /** Same sum as `totalTextLength`, but against an already-collected
  * `textNodes` array (see `collectTextNodesOf`). */
 export function sumTextLength(textNodes: readonly Text[]): number {
-  return textNodes.reduce((sum, node) => sum + node.data.length, 0);
+  return textNodes.reduce((sum, node) => sum + node.length, 0);
 }
 
 /**

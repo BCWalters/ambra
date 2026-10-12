@@ -81,6 +81,16 @@ events; profiled timings do not substitute for unprofiled acceptance evidence.
 On a failed rendering group, CI collects a separate native curl profile and
 retains its report with failure diagnostics. The original acceptance failure
 remains required and cannot be replaced by the diagnostic result.
+Diagnostic profiling also samples allocations, including collected objects, to
+identify sources of native GC pressure. Tooltip probes await the opened panel's
+focus handoff before returning to the trigger. Vertical-image evidence checks
+every interior screenshot pixel against the original red fixture; the intentional
+transparent top-edge hover strip owns pointer hits but does not cover image paint.
+Pagination offset probes use native character-data lengths instead of reading
+entire text strings on every bisection. UTF-16 offsets, current mutated lengths
+and endpoint clamping retain their original behavior.
+Bisection reuses one scratch text position per leaf instead of allocating an
+object at every candidate offset. Saved line/CFI anchors remain independent.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 

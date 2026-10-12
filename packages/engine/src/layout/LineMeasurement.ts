@@ -3,6 +3,7 @@ import {
   positionFromTextNodes,
   sumTextLength,
   totalTextLength,
+  type TextNodePosition,
 } from "./DomTextWalker.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 import { isSvgRoot } from "../content/ContentDocumentRoot.js";
@@ -442,6 +443,7 @@ function* measureTextLeafChunks(
   // walking the subtree, especially around large MathML expressions (#102).
   const totalLength = sumTextLength(textNodes);
   const probeRange = fullRange.cloneRange();
+  const probePosition = positionFromTextNodes(textNodes, 0);
   const lineOffsets = new Map<number, number>();
   // A lone text node has no intervening inline boxes or atomic content whose
   // rect could end a prefix. Probe its last character instead of remeasuring
@@ -463,7 +465,7 @@ function* measureTextLeafChunks(
     const targetTop = lineRects[lineIndex]!.top;
     let offset = lineOffsets.get(targetTop);
     if (offset === undefined) {
-      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth);
+      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth, probePosition);
       lineOffsets.set(targetTop, offset);
     }
     let position = positionFromTextNodes(textNodes, offset);
@@ -507,6 +509,7 @@ function* bisectLineStartOffset(
   targetTop: number,
   usePointProbe: boolean,
   viewportWidth: number,
+  probePosition: TextNodePosition | undefined,
 ): Generator<undefined, number> {
   let lo = 0;
   let hi = totalLength;
@@ -514,7 +517,7 @@ function* bisectLineStartOffset(
   while (lo < hi) {
     yield undefined;
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth)) {
+    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth, probePosition)) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -532,11 +535,12 @@ function hasReachedLine(
   targetTop: number,
   usePointProbe: boolean,
   viewportWidth: number,
+  probePosition: TextNodePosition | undefined,
 ): boolean {
   if (globalOffset === 0) {
     return false;
   }
-  const position = positionFromTextNodes(textNodes, globalOffset);
+  const position = positionFromTextNodes(textNodes, globalOffset, probePosition);
   if (!position) {
     return false;
   }
@@ -557,7 +561,7 @@ function hasReachedLine(
   // Collapsed whitespace can have a zero-width rect on the next line even
   // when its prefix still ends on the previous one. Keep exact old boundaries.
   return usePointProbe
-    ? hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth)
+    ? hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth, probePosition)
     : false;
 }
 
