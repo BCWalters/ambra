@@ -112,9 +112,6 @@ overlap strips disappear. Starting the turn no longer changes visibility for the
 whole mesh at once; endpoint paper and stationary-page clipping stay unchanged.
 Settings-recovery probes use the shared mounted-reading registration check,
 excluding connected measurement/prefetch documents while rejecting detached leaks.
-Opaque toolbar/scrubber surfaces no longer sample and blur publication pixels
-that their matte backgrounds cover. Their gradients, shadows, fades, focus and
-layout remain unchanged; an opaque color fallback also covers disabled gradients.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 
