@@ -21,7 +21,6 @@ import {
 } from "@fluentui/react-icons";
 import type { ReaderSnapshot } from "../ReaderTypes.js";
 import {
-  CHROME_BACKDROP_FILTER,
   CHROME_BORDER,
   CHROME_HOVER_BACKGROUND,
   CHROME_SHADOW,
@@ -239,8 +238,7 @@ export const Toolbar: FC<ToolbarProps> = ({
           gap: "var(--ambra-toolbar-gap)",
           padding: "4px 10px",
           background: chromePalette.background,
-          backdropFilter: CHROME_BACKDROP_FILTER,
-          WebkitBackdropFilter: CHROME_BACKDROP_FILTER,
+          backgroundColor: chromePalette.surface,
           borderBottom: `1px solid ${CHROME_BORDER}`,
           boxShadow: visible ? CHROME_SHADOW : "none",
           opacity: visible ? 1 : 0,
