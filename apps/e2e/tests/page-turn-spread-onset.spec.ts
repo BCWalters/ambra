@@ -69,7 +69,7 @@ for (const rtl of [false, true]) {
     );
     try {
       await exposeReaderController(page);
-      const { clip, stationaryClip } = await page.evaluate(async () => {
+      const { clip, stationaryClip, movingClip } = await page.evaluate(async () => {
         const c = Reflect.get(window, "__readerController");
         await c.setPageTurnAnimationStyle("rotate");
         const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
@@ -96,6 +96,9 @@ for (const rtl of [false, true]) {
         const stationary = c.host
           .columnElement(c.pkg.effectivePageProgressionDirection === "rtl" ? "right" : "left")
           .getBoundingClientRect();
+        const moving = c.host
+          .columnElement(c.pkg.effectivePageProgressionDirection === "rtl" ? "left" : "right")
+          .getBoundingClientRect();
         return {
           // Compare publication pixels, excluding reactive toolbar/scrubber chrome.
           clip: {
@@ -110,22 +113,31 @@ for (const rtl of [false, true]) {
             width: stationary.width - 4,
             height: bounds.height - 160,
           },
+          movingClip: {
+            x: moving.left + 2,
+            y: bounds.top + 80,
+            width: moving.width - 4,
+            height: bounds.height - 160,
+          },
         };
       });
       await page.waitForTimeout(1000);
-      const before = await page.screenshot({ clip, path: test.info().outputPath("before.png") });
+      await page.screenshot({ clip, path: test.info().outputPath("before.png") });
       const stationaryBefore = await page.screenshot({ clip: stationaryClip });
+      const movingBefore = await page.screenshot({ clip: movingClip });
       await page.evaluate(() => {
         Reflect.set(window, "__onsetTurn", Reflect.get(window, "__readerController").turnPage(1));
       });
       await page.waitForFunction(() => !!Reflect.get(window, "__releaseOnsetPreparation"));
-      const preparing = await page.screenshot({
+      await page.screenshot({
         clip,
         path: test.info().outputPath("preparing.png"),
       });
+      const stationaryPreparing = await page.screenshot({ clip: stationaryClip });
+      const movingPreparing = await page.screenshot({ clip: movingClip });
       expect(
-        preparing.equals(before),
-        "Canonical content raster changed before the curl was ready",
+        stationaryPreparing.equals(stationaryBefore) && movingPreparing.equals(movingBefore),
+        "Canonical publication columns changed before the curl was ready",
       ).toBe(true);
       await page.evaluate(() => Reflect.get(window, "__releaseOnsetPreparation")());
       await page.waitForFunction(() => !!Reflect.get(window, "__releaseOnsetCurl"));

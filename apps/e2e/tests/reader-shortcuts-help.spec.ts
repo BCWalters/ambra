@@ -543,6 +543,7 @@ test("editing, selection, widgets, menus and dialogs keep ownership; removed his
     expect(await position(page)).toEqual(initial);
     expect(await bookmarkCount(page)).toBe(0);
     await page.locator("#shortcut-test-slider").evaluate(node => node.remove());
+    await revealToolbar(page);
     await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
     await page.keyboard.press("Alt+PageDown");
     await page.keyboard.press(`${modifier}+b`);

@@ -104,6 +104,29 @@ describe("in-place spread resize", () => {
 });
 
 describe("reflowable document ownership", () => {
+  it.each([false, true])("restores a loaded companion after an unpaired snapshot across boundary=%s", async crossChapter => {
+    const { host } = await resizeFixture(crossChapter);
+    const before = host.positions;
+    const documents = host.contentDocuments();
+    expect(host.tryGoToSpread({ first: before.first })).toBe(true);
+    expect(host.positions.second).toBeUndefined();
+    expect(host.tryGoToSpread(before)).toBe(true);
+    expect(host.positions).toBe(before);
+    expect(host.contentDocuments()).toEqual(documents);
+    expect(host.columnElement("right").style.visibility).toBe("visible");
+    host.dispose();
+  });
+
+  it("does not reuse a companion that never loaded a publication document", async () => {
+    const { host } = await resizeFixture(false, false);
+    const before = host.positions;
+    expect(host.tryGoToSpread({
+      first: { spineIndex: 0, pageIndex: 2 }, second: { spineIndex: 0, pageIndex: 3 },
+    })).toBe(false);
+    expect(host.positions).toBe(before);
+    host.dispose();
+  });
+
   it("turns compatible spreads without loading, measuring, or replacing accessible documents", async () => {
     const { host, reflow } = await resizeFixture();
     const documents = host.contentDocuments();

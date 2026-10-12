@@ -74,6 +74,14 @@ Require the actual merged commit, `version: "3.3.0"`, `dirty: false`,
 `publication: "PUBLIC"` and an independently matching archive SHA-256.
 Run native release smoke checks against the exact extracted archive.
 
+Dispatch **Assess EPUB 3.4 release candidate** on this merged `main` commit with
+`release_run_id` set to the accepted CI run and both automated profiles enabled.
+Preserve its package-bound worksheet, observations and scored reports with the
+handoff. Verify its archive digest matches the selected store ZIP. Record native
+failures and unassessed/manual criteria separately; the known incomplete-release
+gate is not ordinary CI success or a full-conformance claim. Do not deploy these
+results to the frozen published assessment.
+
 Prepare a separate handoff with the ZIP, exact unpacked extension, receipt,
 checksums, update notes and actual acceptance evidence. Preserve all older
 handoffs. Do not substitute a different build after owner acceptance.

@@ -2,7 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { launchReader, outerMarginPoint } from "../harness.js";
+import { launchReader, outerMarginPoint, READER_FRAME_SELECTOR } from "../harness.js";
 import { navigationFixture } from "../navigation-fixture.js";
 import { exposeReaderController } from "../reader-controller.js";
 
@@ -97,15 +97,15 @@ test("native margin clicks during preparation retain only one extra turn", async
     const point = await outerMarginPoint(page, "right");
     await page.evaluate(() => {
       const controller = Reflect.get(window, "__readerController");
-      const loader = controller.contentLoader;
-      const load = loader.loadSpineDocument;
+      const prepare = controller.prepareIncomingSpread;
       const gate = { held: false, release: () => {} };
       Reflect.set(window, "__scaleTurnGate", gate);
-      loader.loadSpineDocument = async function (...args: unknown[]) {
-        loader.loadSpineDocument = load;
+      controller.prepareIncomingSpread = async function (...args: unknown[]) {
+        if (args[3]) return prepare.apply(this, args);
+        controller.prepareIncomingSpread = prepare;
         gate.held = true;
         await new Promise<void>(resolve => { gate.release = resolve; });
-        return load.apply(this, args);
+        return prepare.apply(this, args);
       };
       void controller.turnPage(1);
     });
@@ -120,7 +120,7 @@ test("native margin clicks during preparation retain only one extra turn", async
     await page.evaluate(() => Reflect.get(window, "__scaleTurnGate").release());
     await settled(page);
     expect(await page.evaluate(() => Reflect.get(window, "__readerController").host.positions.first.pageIndex)).toBe(4);
-    expect(await page.locator("iframe").count()).toBe(2);
+    expect(await page.locator(READER_FRAME_SELECTOR).count()).toBe(2);
   } finally { await context.close(); }
 });
 

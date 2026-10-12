@@ -42,6 +42,8 @@ async function position(page: Page) {
 }
 
 interface TurnGeometry {
+  reusable: boolean;
+  incomingBefore: number[];
   before: number[];
   during: number[][];
   after: (number | null)[];
@@ -49,69 +51,116 @@ interface TurnGeometry {
 }
 
 async function measureTurns(page: Page, spread: boolean) {
-  await page.evaluate(spread => {
+  await page.evaluate((spread) => {
     type Host = { element: HTMLElement; contentDocuments?: () => Document[] };
     const c = Reflect.get(window, "__readerController");
     const turns: TurnGeometry[] = [];
     Reflect.set(window, "__viewportTurns", turns);
-    const method = spread ? "animateSpreadTurn" : "animatePageTurn";
     const orchestrator = c.pageTurnOrchestrator;
-    const original = orchestrator[method];
-    orchestrator[method] = async function (oldHost: Host, newHost: Host, ...rest: unknown[]) {
-      const anchors = [oldHost, newHost].flatMap((host, side) => {
-        const docs = host.contentDocuments?.() ?? [(host.element as HTMLIFrameElement).contentDocument!];
-        return docs.map((doc, column) => {
-          const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
-          const insets = [...frame.style.clipPath.matchAll(/([\d.]+)px/g)].map(m => Number(m[1]));
-          const top = insets[0] ?? 0;
-          const bottomInset = insets.length >= 3 ? insets[2]! : top;
-          const bottom = doc.defaultView!.innerHeight - bottomInset;
-          const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-          while (walker.nextNode()) {
-            if (!walker.currentNode.textContent?.trim()) continue;
-            const range = doc.createRange();
-            range.selectNodeContents(walker.currentNode);
-            const line = [...range.getClientRects()].findIndex(r =>
-              r.width > 0 && r.height > 0 && r.top >= top && r.bottom <= bottom);
-            if (line >= 0) return { range, line, doc, frame, label: `${side ? "incoming" : "outgoing"}-${column}` };
-          }
-          throw new Error("No visible publication text to measure");
-        });
-      });
-      // Real glyph fragment coordinates in each iframe, not body transforms.
-      // Outer 3D projection intentionally changes screen Y during rotate.
-      const read = () => anchors.map(a => a.range.getClientRects()[a.line]!.top);
-      const layout = () => anchors.map(a => ({
-        viewport: [a.doc.defaultView!.innerWidth, a.doc.defaultView!.innerHeight],
-        scroll: [a.doc.defaultView!.scrollX, a.doc.defaultView!.scrollY],
-        bodyTop: a.doc.body.getBoundingClientRect().top,
-        bodyTransform: a.doc.body.style.transform,
-        frame: a.frame.getBoundingClientRect().toJSON(),
-      }));
-      const turn = { before: read(), during: [] as number[][], after: [] as (number | null)[],
-        labels: anchors.map(a => a.label), beforeLayout: layout(), duringLayout: [] as ReturnType<typeof layout>[], afterLayout: [] as ReturnType<typeof layout> };
-      turns.push(turn);
-      let request: number;
-      const sample = () => {
-        turn.during.push(read());
-        turn.duringLayout.push(layout());
+    for (const method of [
+      spread ? "animateSpreadTurn" : "animatePageTurn",
+      spread ? "animateReusableSpreadTurn" : "animateReusablePageTurn",
+    ]) {
+      const original = orchestrator[method];
+      orchestrator[method] = async function (
+        oldHost: Host,
+        next: Host | number,
+        ...rest: unknown[]
+      ) {
+        const reusable = typeof next === "number";
+        const anchorsFor = (host: Host, side: number) => {
+          const docs = host.contentDocuments?.() ?? [
+            (host.element as HTMLIFrameElement).contentDocument!,
+          ];
+          return docs.map((doc, column) => {
+            const frame = doc.defaultView!.frameElement as HTMLIFrameElement;
+            const insets = [...frame.style.clipPath.matchAll(/([\d.]+)px/g)].map((m) =>
+              Number(m[1]),
+            );
+            const top = insets[0] ?? 0;
+            const bottomInset = insets.length >= 3 ? insets[2]! : top;
+            const bottom = doc.defaultView!.innerHeight - bottomInset;
+            const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+            while (walker.nextNode()) {
+              if (!walker.currentNode.textContent?.trim()) continue;
+              const range = doc.createRange();
+              range.selectNodeContents(walker.currentNode);
+              const line = [...range.getClientRects()].findIndex(
+                (r) => r.width > 0 && r.height > 0 && r.top >= top && r.bottom <= bottom,
+              );
+              if (line >= 0)
+                return {
+                  range,
+                  line,
+                  doc,
+                  frame,
+                  label: `${side ? "incoming" : "outgoing"}-${column}`,
+                };
+            }
+            throw new Error("No visible publication text to measure");
+          });
+        };
+        const anchors = (typeof next === "number" ? [oldHost] : [oldHost, next]).flatMap(
+          anchorsFor,
+        );
+        // Real glyph fragment coordinates in each iframe, not body transforms.
+        // Outer 3D projection intentionally changes screen Y during rotate.
+        const read = (values = anchors) => values.map((a) => a.range.getClientRects()[a.line]!.top);
+        const layout = () =>
+          anchors.map((a) => ({
+            viewport: [a.doc.defaultView!.innerWidth, a.doc.defaultView!.innerHeight],
+            scroll: [a.doc.defaultView!.scrollX, a.doc.defaultView!.scrollY],
+            bodyTop: a.doc.body.getBoundingClientRect().top,
+            bodyTransform: a.doc.body.style.transform,
+            frame: a.frame.getBoundingClientRect().toJSON(),
+          }));
+        const turn = {
+          reusable,
+          incomingBefore: [] as number[],
+          before: read(),
+          during: [] as number[][],
+          after: [] as (number | null)[],
+          labels: anchors.map((a) => a.label),
+          beforeLayout: layout(),
+          duringLayout: [] as ReturnType<typeof layout>[],
+          afterLayout: [] as ReturnType<typeof layout>,
+        };
+        turns.push(turn);
+        let incoming = anchors;
+        if (reusable) {
+          const capture = rest[1];
+          if (typeof capture !== "function")
+            throw new Error("Reusable turn capture is unavailable.");
+          rest[1] = () => {
+            const restore = capture();
+            incoming = anchorsFor(oldHost, 1);
+            turn.incomingBefore = read(incoming);
+            return restore;
+          };
+        }
+        let request: number;
+        const sample = () => {
+          turn.during.push(read());
+          turn.duringLayout.push(layout());
+          request = requestAnimationFrame(sample);
+        };
         request = requestAnimationFrame(sample);
+        try {
+          await original.call(this, oldHost, next, ...rest);
+          // The caller adopts the incoming host and removes the outgoing host
+          // after this method returns. Measure the surviving painted frame, not
+          // their temporary shared flex layout inside synchronous cleanup.
+          requestAnimationFrame(() => {
+            turn.after = (reusable ? incoming : anchors).map((a) =>
+              a.frame.isConnected ? a.range.getClientRects()[a.line]!.top : null,
+            );
+            turn.afterLayout = layout();
+          });
+        } finally {
+          cancelAnimationFrame(request);
+        }
       };
-      request = requestAnimationFrame(sample);
-      try {
-        await original.call(this, oldHost, newHost, ...rest);
-        // The caller adopts the incoming host and removes the outgoing host
-        // after this method returns. Measure the surviving painted frame, not
-        // their temporary shared flex layout inside synchronous cleanup.
-        requestAnimationFrame(() => {
-          turn.after = anchors.map(a => a.frame.isConnected
-            ? a.range.getClientRects()[a.line]!.top : null);
-          turn.afterLayout = layout();
-        });
-      } finally {
-        cancelAnimationFrame(request);
-      }
-    };
+    }
   }, spread);
 }
 
@@ -228,15 +277,21 @@ for (const spread of [true, false]) {
         });
         expect(turns).toHaveLength(6);
         for (const [index, turn] of turns.entries()) {
-          expect(turn.before).toHaveLength(spread ? 4 : 2);
+          expect(turn.before).toHaveLength(turn.reusable ? (spread ? 2 : 1) : (spread ? 4 : 2));
           expect(turn.during.length, "must sample the real animation").toBeGreaterThan(2);
           expect(turn.after.filter(y => y !== null)).toHaveLength(spread ? 2 : 1);
-          for (const sample of [...turn.during, turn.after]) {
+          for (const sample of turn.during) {
             sample.forEach((y, anchor) => y !== null && expect(
               Math.abs(y - turn.before[anchor]!),
               `turn ${index}, ${turn.labels[anchor]} text Y ${turn.before[anchor]} → ${y}`,
             ).toBeLessThanOrEqual(1));
           }
+          const expectedAfter = turn.reusable ? turn.incomingBefore : turn.before;
+          if (turn.reusable) expect(expectedAfter).toHaveLength(spread ? 2 : 1);
+          turn.after.forEach((y, anchor) => y !== null && expect(
+            Math.abs(y - expectedAfter[anchor]!),
+            `turn ${index}, incoming text Y ${expectedAfter[anchor]} → ${y}`,
+          ).toBeLessThanOrEqual(1));
         }
       } finally {
         await context.close();

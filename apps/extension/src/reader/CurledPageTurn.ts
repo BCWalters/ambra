@@ -124,6 +124,7 @@ export class CurledPageTurn {
           top: `${bounds.top - containerBounds.top}px`,
           width: `${stripWidth}px`,
           height: `${bounds.height}px`,
+          background: this.background,
           transformStyle: "preserve-3d",
           transformOrigin: `${STRIP_OVERLAP + (side === 1 ? 0 : length)}px center`,
           willChange: "transform",
@@ -328,6 +329,7 @@ export class CurledPageTurn {
     source: Node,
     doc: Document,
     viewport?: { top: number; bottom: number; left: number; right: number },
+    previous?: Node | null,
   ): Node {
     if (source.nodeType !== 1) return doc.importNode(source, false);
     const element = source as Element;
@@ -335,7 +337,6 @@ export class CurledPageTurn {
       ["script", "style", "link", "meta", "iframe", "object", "embed"].includes(element.localName)
     )
       return doc.createTextNode("");
-    const copy = doc.importNode(element, false) as Element & { style?: CSSStyleDeclaration };
     const computed = element.ownerDocument.defaultView!.getComputedStyle(element);
     if (
       viewport &&
@@ -350,6 +351,21 @@ export class CurledPageTurn {
     ) {
       const bounds = element.getBoundingClientRect();
       if (bounds.height > 0 && (bounds.bottom <= viewport.top || bounds.top >= viewport.bottom)) {
+        const before = previous && this.spacers.get(previous);
+        if (computed.display === "block" && before && bounds.top >= before.bottom &&
+            previous instanceof doc.defaultView!.HTMLElement) {
+          Object.assign(previous.style, {
+            boxSizing: "border-box",
+            height: `${bounds.bottom - before.top}px`,
+            padding: "0",
+            border: "0",
+            marginBottom: computed.marginBottom,
+          });
+          this.spacers.set(previous, {
+            ...before, bottom: bounds.bottom, marginBottom: computed.marginBottom,
+          });
+          return previous;
+        }
         // Preserve flow and collapsed margins without duplicating off-page ink.
         const spacer = doc.createElement("div");
         for (const property of [
@@ -391,6 +407,7 @@ export class CurledPageTurn {
         return spacer;
       }
     }
+    const copy = doc.importNode(element, false) as Element & { style?: CSSStyleDeclaration };
     if (copy.style) {
       for (const property of computed)
         copy.style.setProperty(property, computed.getPropertyValue(property), "important");
@@ -418,30 +435,8 @@ export class CurledPageTurn {
         !child.textContent?.trim()
       )
         continue;
-      const painted = this.copyPaint(child, doc, viewport);
-      const previous = copy.lastChild;
-      const before = previous && this.spacers.get(previous);
-      const after = this.spacers.get(painted);
-      if (
-        mergeSpacers &&
-        before &&
-        after &&
-        after.top >= before.bottom &&
-        previous instanceof doc.defaultView!.HTMLElement
-      ) {
-        Object.assign(previous.style, {
-          boxSizing: "border-box",
-          height: `${after.bottom - before.top}px`,
-          padding: "0",
-          border: "0",
-          marginBottom: after.marginBottom,
-        });
-        this.spacers.set(previous, {
-          ...before,
-          bottom: after.bottom,
-          marginBottom: after.marginBottom,
-        });
-      } else copy.appendChild(painted);
+      const painted = this.copyPaint(child, doc, viewport, mergeSpacers ? copy.lastChild : undefined);
+      if (painted !== copy.lastChild) copy.appendChild(painted);
     }
     return copy;
   }

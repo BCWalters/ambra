@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader, clickReadingPage } from "../harness.js";
+import { launchReader, clickReadingPage, READER_FRAME_SELECTOR } from "../harness.js";
 
 const book = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures/two-chapter.epub");
 
@@ -36,7 +36,8 @@ async function holdSecondColumn(page: Page): Promise<void> {
       ...descriptor,
       set(this: HTMLIFrameElement, value: string) {
         const siblings = this.parentElement?.querySelectorAll("iframe");
-        if (!gate.held && siblings?.length === 2 && siblings[1] === this) {
+        if (!gate.held && !this.closest("[data-ambra-prefetched-turn]") &&
+            siblings?.length === 2 && siblings[1] === this) {
           gate.held = true;
           Object.defineProperty(prototype, "src", descriptor);
           const block = (event: Event) => event.stopImmediatePropagation();
@@ -64,8 +65,9 @@ async function waitForLayout(page: Page): Promise<void> {
 }
 
 async function readingFrameCount(page: Page): Promise<number> {
-  return page.evaluate(() =>
-    Reflect.get(window, "__settingsController").containerEl.querySelectorAll("iframe").length);
+  return page.evaluate(selector =>
+    Reflect.get(window, "__settingsController").containerEl.querySelectorAll(selector).length,
+  READER_FRAME_SELECTOR);
 }
 
 for (const onePage of [false, true]) {
@@ -128,11 +130,11 @@ for (const trigger of ["animated turn", "held load"] as const) {
           // Same-mode spread resizes reuse documents; cross the threshold to
           // exercise a real second-column load, as in resize-lifecycle.spec.ts.
           await page.setViewportSize({ width: 800, height: 900 });
-          await page.waitForFunction(() => {
+          await page.waitForFunction(selector => {
             const controller = Reflect.get(window, "__settingsController");
             return controller.appliedWidth === 800 && !controller.isApplyingLayout &&
-              !controller.isLoadInFlight && controller.containerEl.querySelectorAll("iframe").length === 1;
-          });
+              !controller.isLoadInFlight && controller.containerEl.querySelectorAll(selector).length === 1;
+          }, READER_FRAME_SELECTOR);
           await holdSecondColumn(page);
           await page.setViewportSize({ width: 1300, height: 900 });
           await page.waitForFunction(() => Reflect.get(window, "__settingsGate").held);
@@ -177,12 +179,12 @@ for (const trigger of ["animated turn", "held load"] as const) {
         await expect.poll(() => readingFrameCount(page)).toBe(expectedFrames);
         await expect.poll(() => page.evaluate(() =>
           Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(expectedFrames);
-        const actual = await page.evaluate(() => {
+        const actual = await page.evaluate(selector => {
           const controller = Reflect.get(window, "__settingsController");
           // Background pagination owns transient offscreen iframes outside this
           // container. Snapshot the mounted reading layout without yielding.
           const container: HTMLElement = controller.containerEl;
-          const frames = Array.from(container.querySelectorAll("iframe"));
+          const frames = Array.from(container.querySelectorAll<HTMLIFrameElement>(selector));
           return {
             mode: controller.snapshot().viewMode,
             width: controller.width,
@@ -202,7 +204,7 @@ for (const trigger of ["animated turn", "held load"] as const) {
               frame.contentDocument!.documentElement.style.getPropertyValue("--ambra-font-family")),
             focused: frames.includes(document.activeElement as HTMLIFrameElement),
           };
-        });
+        }, READER_FRAME_SELECTOR);
         expect(actual).toMatchObject({
           mode, width: 1100, appliedWidth: 1100, scale, family: "georgia", line: 1.15, letter: 0.02, content: 30,
           widths: mode === "paginated" ? [530, 530] : [1100], focused: true,

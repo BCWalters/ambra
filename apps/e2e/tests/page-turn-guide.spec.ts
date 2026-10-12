@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
-import { launchReader, clickReadingPage } from "../harness.js";
+import { launchReader, clickReadingPage, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import type { ReaderSnapshot } from "../../extension/src/reader/ReaderTypes.js";
 
@@ -113,7 +113,7 @@ test("reduced motion and RTL preserve physical arrows and invert next/previous",
     await expect(page.locator(".page-turn-guide-tip")).toHaveAttribute("data-tip-side", "left");
     await expect(guide(page)).toHaveCSS("transition-duration", "0s");
     expect(await guide(page).evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
-    const artwork = (await page.locator("iframe").boundingBox())!;
+    const artwork = (await page.locator(READER_FRAME_SELECTOR).boundingBox())!;
     const edge = (await page.locator('.page-turn-guide-margin[data-side="left"]').boundingBox())!;
     expect(edge.width).toBeCloseTo(Math.min(artwork.width * 0.08, 64));
     await exposeReaderController(page);

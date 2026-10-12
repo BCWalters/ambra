@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { clickReadingPage, launchReader } from "../harness.js";
+import { clickReadingPage, launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 import { navigationFixture } from "../navigation-fixture.js";
 import { exposeReaderController } from "../reader-controller.js";
 
@@ -39,7 +39,7 @@ for (const scenario of [
       const physicalOrder = () =>
         page
           .getByRole("main")
-          .locator("iframe")
+          .locator(READER_FRAME_SELECTOR)
           .evaluateAll((frames) =>
             frames
               .filter((frame) => frame.checkVisibility())
@@ -120,7 +120,7 @@ for (const scenario of [
       await expect.poll(physicalOrder).toEqual(next);
       await settled();
       await page.reload();
-      await expect(page.getByRole("main").locator("iframe").first()).toBeVisible();
+      await expect(page.getByRole("main").locator(READER_FRAME_SELECTOR).first()).toBeVisible();
       await expect(page.getByRole("progressbar")).toHaveCount(0);
       await exposeReaderController(page);
       await expect.poll(physicalOrder).toEqual(next);

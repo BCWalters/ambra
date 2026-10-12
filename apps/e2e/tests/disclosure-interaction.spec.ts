@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const book = path.resolve(
@@ -260,7 +260,8 @@ test("a disclosure toggle during a held spread load shares the latest queued res
         ...descriptor,
         set(this: HTMLIFrameElement, value: string) {
           const siblings = this.parentElement?.querySelectorAll("iframe");
-          if (!gate.held && siblings?.length === 2 && siblings[1] === this) {
+          if (!gate.held && !this.closest("[data-ambra-prefetched-turn]") &&
+              siblings?.length === 2 && siblings[1] === this) {
             gate.held = true;
             Object.defineProperty(prototype, "src", descriptor);
             const block = (event: Event) => event.stopImmediatePropagation();
@@ -278,7 +279,7 @@ test("a disclosure toggle during a held spread load shares the latest queued res
     await page.setViewportSize({ width: 1300, height: 900 });
     await page.waitForFunction(() => Reflect.get(window, "__disclosureLoadGate").held);
     await page
-      .frameLocator("iframe")
+      .frameLocator(READER_FRAME_SELECTOR)
       .first()
       .locator("summary")
       .evaluate((element) => {
@@ -298,9 +299,9 @@ test("a disclosure toggle during a held spread load shares the latest queued res
     await expect.poll(async () =>
       (await readerFrameSnapshot(page)).map((frame) => frame.width),
     ).toEqual([530, 530]);
-    await expect(page.frameLocator("iframe").first().locator("summary")).toBeFocused();
-    await page.frameLocator("iframe").first().locator("h1").click();
-    await expect(page.frameLocator("iframe").first().locator("summary")).not.toBeFocused();
+    await expect(page.frameLocator(READER_FRAME_SELECTOR).first().locator("summary")).toBeFocused();
+    await page.frameLocator(READER_FRAME_SELECTOR).first().locator("h1").click();
+    await expect(page.frameLocator(READER_FRAME_SELECTOR).first().locator("summary")).not.toBeFocused();
     const slider = page.getByRole("slider", { name: "Position in book" });
     await page.keyboard.press("ArrowRight");
     await expect(slider).toHaveAttribute("aria-valuetext", /^Page 3 of/);

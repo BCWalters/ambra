@@ -139,9 +139,10 @@ test("flat leaf preserves furniture rasterization and body ink weight", async ()
       expect(Math.abs(difference.inkRatio - 1), `${item.text} native ink weight`).toBeLessThan(
         0.01,
       );
-      expect(difference.animatedMinimum, `${item.text} darkest ink`).toBe(
-        difference.originalMinimum,
-      );
+      expect(
+        Math.abs(difference.animatedMinimum - difference.originalMinimum),
+        `${item.text} darkest ink quantization`,
+      ).toBeLessThanOrEqual(1);
       if (index < 4)
         expect(difference.mean, `${item.text} native raster difference`).toBeLessThan(1);
     }

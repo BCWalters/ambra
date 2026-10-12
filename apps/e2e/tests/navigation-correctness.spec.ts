@@ -10,6 +10,7 @@ import {
   currentPageText,
   clickForwardAndWait,
   clickReadingPage,
+  READER_FRAME_SELECTOR,
 } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -775,16 +776,16 @@ test.describe("paginated reflowable navigation correctness", () => {
       viewport: { width: 1400, height: 900 },
     });
     const rightSlotHiddenIframe = () =>
-      readerPage.evaluate(() => {
-        const iframes = Array.from(document.querySelectorAll("iframe"));
+      readerPage.evaluate(selector => {
+        const iframes = Array.from(document.querySelectorAll<HTMLIFrameElement>(selector));
         return iframes.some((f) => {
           const rect = f.getBoundingClientRect();
           return rect.x > 700 && getComputedStyle(f).visibility === "hidden";
         });
-      });
+      }, READER_FRAME_SELECTOR);
     const visibleMarkers = () =>
-      readerPage.evaluate(() => {
-        const texts = Array.from(document.querySelectorAll("iframe"))
+      readerPage.evaluate(selector => {
+        const texts = Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
           .filter((f) => getComputedStyle(f).visibility !== "hidden")
           .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
         return {
@@ -795,7 +796,7 @@ test.describe("paginated reflowable navigation correctness", () => {
           hasContents: texts.some((t) => t.includes("Contents Para 1")),
           hasChapter1: texts.some((t) => t.includes("Chapter One")),
         };
-      });
+      }, READER_FRAME_SELECTOR);
 
     try {
       await readerPage.waitForTimeout(500);

@@ -28,10 +28,23 @@ also records two upstream identifier details:
 ## Prepare the exact assessment kit
 
 For a final release candidate, merge all release changes to `main`, then run
-the **Assess EPUB 3.4 release candidate** workflow manually. It:
+the **Assess EPUB 3.4 release candidate** workflow manually. Set `release_run_id`
+to the successful merged-main **CI** run that produced the store archive. The
+workflow verifies the run's repository, workflow, successful completion, push to
+`main` and exact current commit, then restores and validates its immutable package.
+PR merge-ref packages, failed runs, another commit and missing artifacts are
+rejected without rebuilding or silently substituting a candidate.
+
+Leaving `release_run_id` blank retains independent candidate preparation: it
+builds a separate clean archive. Do not use that separate archive's observations
+as assessment of a different ZIP, even if both packages have the same version or
+source commit.
+
+The workflow:
 
 1. rejects non-`main` source refs;
-2. builds and validates the production extension package;
+2. restores and validates the selected merged-main CI production archive, or
+   builds a separate candidate when no run was selected;
 3. verifies the immutable W3C suite revision;
 4. creates a worksheet containing every pinned test;
 5. inventories all 139 required identifiers, attaches explicit procedures, and

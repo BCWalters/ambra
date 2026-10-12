@@ -54,7 +54,7 @@ for (const rtl of [false, true]) {
           }
         }, style);
         await page.waitForFunction(
-          () => Reflect.get(window, "__readerController").snapshot().bookPageIndex !== undefined,
+          () => Reflect.get(window, "__readerController").snapshot().bookPageCount !== undefined,
         );
         for (const direction of [1, -1] as const) {
           const before = await page.evaluate(
