@@ -40,6 +40,10 @@ function metadataFixture(info: TestInfo, ordinaryIdentity = false) {
 }
 
 async function noHorizontalOverflow(page: Page, container: Locator) {
+  await expect.poll(
+    () => container.evaluate(element => element.getBoundingClientRect().right),
+    { message: "Metadata surface must finish entering the viewport" },
+  ).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   const bounds = await container.evaluate(element => ({
     scroll: element.scrollWidth, width: element.clientWidth,
     left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right,

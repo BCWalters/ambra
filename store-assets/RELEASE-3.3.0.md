@@ -45,6 +45,9 @@ boundaries, interruption recovery, prefetch disposal and fixed-layout navigation
 The mixed-document book-start previous margin must create no leaf or position
 change. The title spread must retain its canonical publication pixels throughout
 preparation, without incoming text leaking through the stationary blank area.
+Frame pacing samples must exclude the geometry probe's own paints and forced
+layouts. Publication-only comparisons hide reactive toolbar/scrubber surfaces
+and their shadows; furniture and chrome retain their separate native coverage.
 
 Physical touchscreen input, real OS app switching, complex EPUB paint fidelity
 and live assistive-technology behavior remain broader manual-validation limits.

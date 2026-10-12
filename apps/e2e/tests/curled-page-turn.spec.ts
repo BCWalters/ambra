@@ -150,6 +150,9 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
           }
           leaf.paint(0);
           Reflect.set(window, "__leafGeometry", geometry);
+          // Geometry probes paint both faces and force layout; they are not animation frames.
+          frames.length = 0;
+          last = undefined;
         };
         return leaf;
       };
@@ -206,7 +209,8 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
       expect(metrics.textLength).toBeLessThan(500000);
       expect(metrics.onsetMs).toBeLessThan(750);
       expect(timing).toBeLessThan(1500);
-      const gaps = metrics.frames.slice(1).sort((a: number, b: number) => a - b);
+      const gaps = metrics.frames.slice().sort((a: number, b: number) => a - b);
+      expect(gaps.length).toBeGreaterThan(5);
       expect(gaps[Math.floor(gaps.length * 0.95)]).toBeLessThan(40);
       expect(Math.max(...gaps)).toBeLessThan(100);
       const snapshot = await page.evaluate(() =>

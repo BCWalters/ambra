@@ -122,22 +122,32 @@ for (const rtl of [false, true]) {
         };
       });
       await page.waitForTimeout(1000);
-      await page.screenshot({ clip, path: test.info().outputPath("before.png") });
+      // Toolbar/scrubber shadows extend beyond their boxes and react to the moving leaf.
+      const publicationScreenshot = {
+        style: "[data-ambra-page-band] { visibility: hidden !important; }",
+      };
+      await page.screenshot({
+        ...publicationScreenshot,
+        clip,
+        path: test.info().outputPath("before.png"),
+      });
       const stationaryBefore = await page.screenshot({
+        ...publicationScreenshot,
         clip: stationaryClip,
         path: test.info().outputPath("stationary-before.png"),
       });
-      const movingBefore = await page.screenshot({ clip: movingClip });
+      const movingBefore = await page.screenshot({ ...publicationScreenshot, clip: movingClip });
       await page.evaluate(() => {
         Reflect.set(window, "__onsetTurn", Reflect.get(window, "__readerController").turnPage(1));
       });
       await page.waitForFunction(() => !!Reflect.get(window, "__releaseOnsetPreparation"));
       await page.screenshot({
+        ...publicationScreenshot,
         clip,
         path: test.info().outputPath("preparing.png"),
       });
-      const stationaryPreparing = await page.screenshot({ clip: stationaryClip });
-      const movingPreparing = await page.screenshot({ clip: movingClip });
+      const stationaryPreparing = await page.screenshot({ ...publicationScreenshot, clip: stationaryClip });
+      const movingPreparing = await page.screenshot({ ...publicationScreenshot, clip: movingClip });
       expect(
         stationaryPreparing.equals(stationaryBefore) && movingPreparing.equals(movingBefore),
         "Canonical publication columns changed before the curl was ready",
@@ -145,6 +155,7 @@ for (const rtl of [false, true]) {
       await page.evaluate(() => Reflect.get(window, "__releaseOnsetPreparation")());
       await page.waitForFunction(() => !!Reflect.get(window, "__releaseOnsetCurl"));
       const stationaryDuring = await page.screenshot({
+        ...publicationScreenshot,
         clip: stationaryClip,
         path: test.info().outputPath("stationary-during.png"),
       });

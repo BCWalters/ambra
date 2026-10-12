@@ -122,6 +122,7 @@ export class CurledPageTurn {
         const strip = doc.createElement("div");
         Object.assign(strip.style, {
           position: "absolute",
+          left: "0",
           top: `${bounds.top - containerBounds.top}px`,
           width: `${stripWidth}px`,
           height: `${bounds.height}px`,
@@ -494,8 +495,8 @@ export class CurledPageTurn {
         -Math.PI * p + 0.65 * Math.sin(Math.PI * p) * ((2 * (index + 0.5)) / SEGMENTS - 1);
       const segment = this.segments[index]!;
       segment.element.style.visibility = p === 0 || p === 1 ? "hidden" : "";
-      segment.element.style.left = `${hinge + this.side * x - (this.side < 0 ? length : 0) - STRIP_OVERLAP}px`;
-      segment.element.style.transform = `translateZ(${z}px) rotateY(${this.side * angle}rad)`;
+      const left = hinge + this.side * x - (this.side < 0 ? length : 0) - STRIP_OVERLAP;
+      segment.element.style.transform = `translate3d(${left}px, 0, ${z}px) rotateY(${this.side * angle}rad)`;
       for (const shade of segment.shades)
         shade.style.opacity = String(Math.sin(Math.PI * p) * (0.04 + (0.1 * index) / SEGMENTS));
       x += length * Math.cos(angle);
