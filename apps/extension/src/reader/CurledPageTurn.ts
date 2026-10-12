@@ -564,7 +564,9 @@ export class CurledPageTurn {
       const angle =
         -Math.PI * p + 0.65 * Math.sin(Math.PI * p) * ((2 * (index + 0.5)) / SEGMENTS - 1);
       const segment = this.segments[index]!;
-      segment.element.style.opacity = p === 0 || p === 1 ? "0" : "1";
+      // Opaque endpoint snapshots cover interior strips; hide only outer overlaps.
+      const outerStrip = index === 0 || index === this.segments.length - 1;
+      segment.element.style.opacity = (p === 0 || p === 1) && outerStrip ? "0" : "1";
       const left = hinge + this.side * x - (this.side < 0 ? length : 0) - STRIP_OVERLAP;
       segment.element.style.transform = `translate3d(${left}px, 0, ${z}px) rotateY(${this.side * angle}rad)`;
       for (const shade of segment.shades)

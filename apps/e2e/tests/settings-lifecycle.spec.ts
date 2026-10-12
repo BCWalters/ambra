@@ -70,6 +70,19 @@ async function readingFrameCount(page: Page): Promise<number> {
   READER_FRAME_SELECTOR);
 }
 
+async function disclosureRegistrations(page: Page): Promise<{ reading: number; detached: number }> {
+  return page.evaluate(selector => {
+    const controller = Reflect.get(window, "__settingsController");
+    const bindings: Iterable<{ document: Document }> = controller.disclosures.documents;
+    const frames = Array.from(bindings, binding => binding.document.defaultView?.frameElement);
+    return {
+      reading: frames.filter(frame => frame && controller.containerEl.contains(frame) &&
+        frame.matches(selector)).length,
+      detached: frames.filter(frame => !frame?.isConnected).length,
+    };
+  }, READER_FRAME_SELECTOR);
+}
+
 for (const onePage of [false, true]) {
   test(`held spread load: global theme and one-page=${onePage} settle on the latest settings (#203)`, async () => {
     const { context, readerPage: page } = await launchReader(book, { viewport: { width: 800, height: 900 } });
@@ -177,16 +190,7 @@ for (const trigger of ["animated turn", "held load"] as const) {
 
         const expectedFrames = mode === "paginated" ? 2 : 1;
         await expect.poll(() => readingFrameCount(page)).toBe(expectedFrames);
-        await expect.poll(() => page.evaluate(selector => {
-          const controller = Reflect.get(window, "__settingsController");
-          const bindings: Iterable<{ document: Document }> = controller.disclosures.documents;
-          const frames = Array.from(bindings, binding => binding.document.defaultView?.frameElement);
-          return {
-            reading: frames.filter(frame => frame && controller.containerEl.contains(frame) &&
-              frame.matches(selector)).length,
-            detached: frames.filter(frame => !frame?.isConnected).length,
-          };
-        }, READER_FRAME_SELECTOR)).toEqual({ reading: expectedFrames, detached: 0 });
+        await expect.poll(() => disclosureRegistrations(page)).toEqual({ reading: expectedFrames, detached: 0 });
         const actual = await page.evaluate(selector => {
           const controller = Reflect.get(window, "__settingsController");
           // Background pagination owns transient offscreen iframes outside this
@@ -305,8 +309,7 @@ test("setters arriving during a settings reload settle only after the latest lay
       return (await controller.library.getBookReadingSettings(controller.bookId)).fontScale;
     })).toBe(1);
     await expect.poll(() => readingFrameCount(page)).toBe(2);
-    await expect.poll(() => page.evaluate(() =>
-      Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(2);
+    await expect.poll(() => disclosureRegistrations(page)).toEqual({ reading: 2, detached: 0 });
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await context.close();
@@ -340,8 +343,7 @@ test("a failed settings reload rejects its waiter and still applies the newer qu
     });
     expect(final).toEqual({ scale: 1.5, persisted: 1.5, busy: false });
     await expect.poll(() => readingFrameCount(page)).toBe(2);
-    await expect.poll(() => page.evaluate(() =>
-      Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(2);
+    await expect.poll(() => disclosureRegistrations(page)).toEqual({ reading: 2, detached: 0 });
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
     await context.close();

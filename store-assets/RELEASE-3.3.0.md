@@ -107,6 +107,11 @@ before margin clicks followed by swipes and keyboard navigation.
 Curled faces contain paint within their existing clipped strip bounds, retaining
 the same segment count, overlap, geometry, and opaque paper. Failure-only native
 profiling includes compositor/GPU events to identify remaining rendering stalls.
+At flat endpoints, opaque snapshots cover the interior mesh while only its outer
+overlap strips disappear. Starting the turn no longer changes visibility for the
+whole mesh at once; endpoint paper and stationary-page clipping stay unchanged.
+Settings-recovery probes use the shared mounted-reading registration check,
+excluding connected measurement/prefetch documents while rejecting detached leaks.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 
