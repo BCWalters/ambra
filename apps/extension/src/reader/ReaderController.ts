@@ -3331,6 +3331,7 @@ export class ReaderController {
         const outgoingFurniture = this.spreadTurnFurniture(oldHost, oldHost);
         if (spread && oldHost.tryGoToSpread(spread)) {
           if (!skipAnimation) {
+            this.foregroundPagination(operation);
             const incomingFurniture = this.spreadTurnFurniture(oldHost, oldHost);
             const restore = () => {
               if (!oldHost.tryGoToSpread(previous)) throw new Error("Cannot restore page-turn snapshot position.");
@@ -3686,6 +3687,7 @@ export class ReaderController {
     const previousIndex = host.currentPageIndex;
     const targetIndex = previousIndex + direction;
     if (targetIndex < 0 || targetIndex >= host.pageCount) return false;
+    this.foregroundPagination(operation);
     const retainedPosition = this.nativeReading.retainedForShell();
     const doc = host.element.contentDocument;
     if (!doc) throw new Error("Cannot capture unavailable page-turn content.");

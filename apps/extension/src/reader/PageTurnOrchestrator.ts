@@ -409,8 +409,7 @@ export class PageTurnOrchestrator {
     const gutterOpacity = incomingGutter?.style.opacity ?? "";
     const incomingElement = oldHost === newHost ? undefined : newHost.element;
     const incomingOpacity = incomingElement?.style.opacity ?? "";
-    const stationaryPaper = incomingElement
-      ? this.animator.buildTurnBackdrop(oldHost.columnElement(opposite)) : undefined;
+    const incomingClip = incomingElement?.style.clipPath ?? "";
     try {
       if (incomingElement) incomingElement.style.opacity = "0";
       if (incomingGutter) incomingGutter.style.opacity = "0";
@@ -425,13 +424,12 @@ export class PageTurnOrchestrator {
         { element: back, furniture: incoming, capture: captureDestination },
         physical === 1 ? 1 : -1, this.ctx.operationSignal?.(),
         captureDestination ? { element: front, furniture: destination, capture: captureDestination } : undefined);
-      oldHost.element.style.zIndex = "2";
-      if (stationaryPaper) {
-        stationaryPaper.dataset.ambraTurnStationaryPaper = "";
-        stationaryPaper.style.zIndex = "1";
-        this.ctx.containerEl()!.append(stationaryPaper);
+      if (incomingElement) {
+        const incomingBounds = incomingElement.getBoundingClientRect();
+        const movingBounds = front.getBoundingClientRect();
+        incomingElement.style.clipPath = `inset(0 ${Math.max(0, incomingBounds.right - movingBounds.right)}px 0 ${Math.max(0, movingBounds.left - incomingBounds.left)}px)`;
+        incomingElement.style.opacity = incomingOpacity;
       }
-      if (incomingElement) incomingElement.style.opacity = incomingOpacity;
       if (stationary) {
         stationary.style.zIndex = "3";
         stationary.style.opacity = "1";
@@ -449,8 +447,11 @@ export class PageTurnOrchestrator {
     } finally {
       leaf.dispose();
       if (incomingGutter) incomingGutter.style.opacity = gutterOpacity;
-      if (incomingElement) incomingElement.style.opacity = incomingOpacity;
-      this.finishSpreadTurn(oldHost, newHost, [outgoing, incoming, stationary, destination, stationaryPaper], false);
+      if (incomingElement) {
+        incomingElement.style.opacity = incomingOpacity;
+        incomingElement.style.clipPath = incomingClip;
+      }
+      this.finishSpreadTurn(oldHost, newHost, [outgoing, incoming, stationary, destination], false);
     }
   }
 

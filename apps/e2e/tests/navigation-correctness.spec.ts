@@ -526,18 +526,18 @@ test.describe("paginated reflowable navigation correctness", () => {
       for (let click = 0; click < 8 && !hasChapterTwo; click++) {
         const result = await clickForwardAndWait(readerPage);
         label = result.after;
-        hasChapterTwo = await readerPage.evaluate(() =>
-          Array.from(document.querySelectorAll("iframe")).some((f) =>
+        hasChapterTwo = await readerPage.evaluate(selector =>
+          Array.from(document.querySelectorAll<HTMLIFrameElement>(selector)).some((f) =>
             (f as HTMLIFrameElement).contentDocument?.body?.innerText?.includes("Chapter Two"),
           ),
-        );
+        READER_FRAME_SELECTOR);
       }
       expect(hasChapterTwo, "never reached the merged spread (chapter two never appeared)").toBe(
         true,
       );
 
-      const columns = await readerPage.evaluate(() => {
-        return Array.from(document.querySelectorAll("iframe"))
+      const columns = await readerPage.evaluate(selector => {
+        return Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
           .filter((el) => getComputedStyle(el).visibility !== "hidden")
           .map((el) => {
             const doc = (el as HTMLIFrameElement).contentDocument;
@@ -550,7 +550,7 @@ test.describe("paginated reflowable navigation correctness", () => {
               scrollbarHeight: doc ? el.clientHeight - doc.documentElement.clientHeight : undefined,
             };
           });
-      });
+      }, READER_FRAME_SELECTOR);
       for (const column of columns) {
         expect(
           column.opacity,

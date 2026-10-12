@@ -62,14 +62,15 @@ export class CurledPageTurn {
       zIndex: "6",
       opacity: "0",
     });
-    this.container.append(frame);
     const abort = () => this.dispose();
     signal?.addEventListener("abort", abort, { once: true });
     try {
       if (signal?.aborted) throw new DOMException("Page turn cancelled", "AbortError");
-      await this.surface.render(
+      const rendering = this.surface.render(
         `<html xmlns="${XHTML}"><head><title>Turning page</title></head><body style="margin:0;background:transparent"/></html>`,
       );
+      this.container.append(frame);
+      await rendering;
       if (this.disposed) throw new DOMException("Page turn cancelled", "AbortError");
       const doc = frame.contentDocument;
       if (!doc) throw new Error("Curled page surface is unavailable.");
@@ -266,16 +267,35 @@ export class CurledPageTurn {
         ? [page.element]
         : Array.from(page.element.querySelectorAll("iframe"));
     const pageBounds = page.element.getBoundingClientRect();
+    const leafBounds = this.surface.element.getBoundingClientRect();
+    const containerBounds = this.container.getBoundingClientRect();
     for (const frame of frames) {
       const source = frame.contentDocument;
       if (!source?.documentElement || !source.defaultView)
         throw new Error("Cannot copy unavailable page content.");
       const bounds = frame.getBoundingClientRect();
+      const frameStyle = frame.ownerDocument.defaultView!.getComputedStyle(frame);
+      const viewportWidth = Number.parseFloat(frameStyle.width);
+      const viewportHeight = Number.parseFloat(frameStyle.height);
+      if (!(viewportWidth > 0) || !(viewportHeight > 0))
+        throw new Error("Cannot copy page with unavailable viewport geometry.");
+      const scaleX = bounds.width / viewportWidth;
+      const scaleY = bounds.height / viewportHeight;
+      const pixelRatio = frame.ownerDocument.defaultView!.devicePixelRatio;
+      const unscaled = scaleX === 1 && scaleY === 1;
+      const left = unscaled
+        ? Math.round(bounds.left * pixelRatio) / pixelRatio -
+          Math.round(leafBounds.left * pixelRatio) / pixelRatio + containerBounds.left
+        : bounds.left;
+      const top = unscaled
+        ? Math.round(bounds.top * pixelRatio) / pixelRatio -
+          Math.round(leafBounds.top * pixelRatio) / pixelRatio + containerBounds.top
+        : bounds.top;
       const copy = this.copyPaint(source.documentElement, doc, {
         top: 0,
-        bottom: frame.clientHeight,
+        bottom: viewportHeight,
         left: 0,
-        right: frame.clientWidth,
+        right: viewportWidth,
       });
       if (!(copy instanceof doc.defaultView!.HTMLElement))
         throw new Error("Cannot copy page root.");
@@ -283,14 +303,15 @@ export class CurledPageTurn {
       viewport.dataset.pageCopy = "";
       Object.assign(viewport.style, {
         position: "absolute",
-        left: `${bounds.left - pageBounds.left}px`,
-        top: `${bounds.top - pageBounds.top}px`,
-        width: `${frame.clientWidth}px`,
-        height: `${frame.clientHeight}px`,
+        // Nested iframes rasterize on their own device-pixel grid.
+        left: `${left - pageBounds.left}px`,
+        top: `${top - pageBounds.top}px`,
+        width: `${viewportWidth}px`,
+        height: `${viewportHeight}px`,
         overflow: "hidden",
-        clipPath: frame.ownerDocument.defaultView!.getComputedStyle(frame).clipPath,
+        clipPath: frameStyle.clipPath,
         transformOrigin: "top left",
-        transform: `scale(${bounds.width / frame.clientWidth}, ${bounds.height / frame.clientHeight})`,
+        transform: `scale(${scaleX}, ${scaleY})`,
       });
       for (const sheet of source.styleSheets) {
         const style = doc.createElement("style");
@@ -409,12 +430,21 @@ export class CurledPageTurn {
     }
     const copy = doc.importNode(element, false) as Element & { style?: CSSStyleDeclaration };
     if (copy.style) {
-      for (const property of computed)
-        copy.style.setProperty(property, computed.getPropertyValue(property), "important");
+      copy.style.cssText = Array.from(
+        computed,
+        property => `${property}:${computed.getPropertyValue(property)} !important;`,
+      ).join("");
       if (typeof element.computedStyleMap === "function") {
-        // Keep unitless line heights: resolved pixel values round each line differently.
-        const lineHeight = element.computedStyleMap().get("line-height");
+        // Typed values retain unitless leading, intrinsic sizing and exact translations.
+        const values = element.computedStyleMap();
+        const lineHeight = values.get("line-height");
         if (lineHeight) copy.style.setProperty("line-height", lineHeight.toString(), "important");
+        const transform = values.get("transform");
+        if (transform) copy.style.setProperty("transform", transform.toString(), "important");
+        for (const property of ["width", "height", "inline-size", "block-size"]) {
+          if (values.get(property)?.toString() === "auto")
+            copy.style.setProperty(property, "auto", "important");
+        }
       }
       copy.style.setProperty("animation", "none", "important");
       copy.style.setProperty("transition", "none", "important");

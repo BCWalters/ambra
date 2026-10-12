@@ -61,6 +61,8 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
             textLength: frame.contentDocument!.body.textContent!.length,
             frames,
             onsetMs: performance.now() - Reflect.get(window, "__turnStarted"),
+            foregroundPrioritized: c.foregroundPaginationOperation !== undefined &&
+              c.foregroundPaginationOperation === c.operations.current,
           });
           last = undefined;
           const geometry = [];
@@ -199,6 +201,7 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
         }
       }
       const metrics = await page.evaluate(() => Reflect.get(window, "__leafMetrics").at(-1));
+      expect(metrics.foregroundPrioritized, "background pagination must yield to the foreground curl").toBe(true);
       expect(metrics.preparationMs).toBeLessThan(250);
       expect(metrics.textLength).toBeLessThan(500000);
       expect(metrics.onsetMs).toBeLessThan(750);

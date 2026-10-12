@@ -123,7 +123,10 @@ for (const rtl of [false, true]) {
       });
       await page.waitForTimeout(1000);
       await page.screenshot({ clip, path: test.info().outputPath("before.png") });
-      const stationaryBefore = await page.screenshot({ clip: stationaryClip });
+      const stationaryBefore = await page.screenshot({
+        clip: stationaryClip,
+        path: test.info().outputPath("stationary-before.png"),
+      });
       const movingBefore = await page.screenshot({ clip: movingClip });
       await page.evaluate(() => {
         Reflect.set(window, "__onsetTurn", Reflect.get(window, "__readerController").turnPage(1));

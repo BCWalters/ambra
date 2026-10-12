@@ -17,6 +17,7 @@ checking and dashboard review before manual store submission.
 - Makes mouse flicks more forgiving after holding, wandering or a small release twitch.
 - Improves single-page Page flip completion, with a 25% slow-drag threshold.
 - Keeps book/chapter titles and page numbers stable while pages turn.
+- Preserves sharp page text through fractional-width layout and animation handoffs.
 - Improves document-boundary turns, short title pages and book-edge navigation.
 - Prepares adjacent pages during idle time for quicker Slide, Film strip and fixed-layout turns.
 - Adds local mouse-gesture diagnostics to help troubleshoot missed page turns.

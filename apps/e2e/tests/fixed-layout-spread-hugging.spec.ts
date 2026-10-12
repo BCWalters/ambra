@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader, clickReadingPage } from "../harness.js";
+import { launchReader, clickReadingPage, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -14,14 +14,14 @@ const FXL_SPREAD_LTR_EPUB = path.resolve(here, "..", "fixtures", "fxl-spread-ltr
 async function visiblePageRects(
   readerPage: import("@playwright/test").Page,
 ): Promise<Array<{ left: number; right: number; width: number }>> {
-  return readerPage.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+  return readerPage.evaluate(selector =>
+    Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
       .filter((f) => getComputedStyle(f).visibility !== "hidden")
       .map((f) => {
         const rect = f.getBoundingClientRect();
         return { left: rect.left, right: rect.right, width: rect.width };
       }).sort((a, b) => a.left - b.left),
-  );
+  READER_FRAME_SELECTOR);
 }
 
 /**
@@ -94,7 +94,7 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
     try {
       await readerPage.waitForTimeout(500);
       // The explicit right cover fills its half-spread up to the viewport edge.
-      await readerPage.frameLocator("iframe").locator("body").press("ArrowRight");
+      await readerPage.frameLocator(READER_FRAME_SELECTOR).locator("body").press("ArrowRight");
       await readerPage.waitForTimeout(700);
 
       await readerPage.setViewportSize({ width: 2200, height: 900 });
@@ -111,11 +111,11 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
       // Navigation still works after the resize.
       await clickReadingPage(readerPage, "right");
       await readerPage.waitForTimeout(700);
-      const texts = await readerPage.evaluate(() =>
-        Array.from(document.querySelectorAll("iframe"))
+      const texts = await readerPage.evaluate(selector =>
+        Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
           .filter((f) => getComputedStyle(f).visibility !== "hidden")
           .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText.trim() ?? ""),
-      );
+      READER_FRAME_SELECTOR);
       expect(texts).toEqual(["P3", "P4"]);
     } finally {
       await context.close();

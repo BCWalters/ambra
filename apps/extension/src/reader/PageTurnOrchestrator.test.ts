@@ -10,15 +10,19 @@ afterEach(() => {
   document.body.removeAttribute("style");
 });
 
-it.each([false, true])(
-  "keeps one spread gutter during a curled turn and restores it (failure=%s)",
-  async (fails) => {
+it.each([
+  { fails: false, rtl: false }, { fails: true, rtl: false },
+  { fails: false, rtl: true }, { fails: true, rtl: true },
+])(
+  "clips incoming content away from the canonical stationary column and restores it (failure=$fails, rtl=$rtl)",
+  async ({ fails, rtl }) => {
     const context = {
       containerEl: () => document.body,
       width: () => 1547,
       height: () => 878,
       pageTheme: () => "white" as const,
       pageTurnAnimationStyle: () => "rotate" as const,
+      rtl: () => rtl,
       setAnimatingPageTurn: vi.fn(),
       notify: vi.fn(),
     };
@@ -29,6 +33,10 @@ it.each([false, true])(
     document.body.append(oldHost.element, newHost.element);
     newHost.gutterElement.style.opacity = "0.8";
     newHost.element.style.opacity = "0.7";
+    newHost.element.style.clipPath = "inset(1px)";
+    vi.spyOn(newHost.element, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1547, 878));
+    vi.spyOn(oldHost.columnElement(rtl ? "left" : "right"), "getBoundingClientRect")
+      .mockReturnValue(new DOMRect(rtl ? 0 : 793.5, 0, 753.5, 878));
     vi.spyOn(CurledPageTurn.prototype, "prepare").mockImplementation(async () => {
       expect(newHost.element.style.opacity).toBe("0");
       expect(oldHost.gutterElement.style.opacity).toBe("");
@@ -41,7 +49,9 @@ it.each([false, true])(
     vi.spyOn(CurledPageTurn.prototype, "hide").mockImplementation(() => {});
     vi.spyOn(CurledPageTurn.prototype, "settle").mockImplementation(async () => {
       expect(newHost.element.style.opacity).toBe("0.7");
-      expect(document.querySelectorAll("[data-ambra-turn-stationary-paper]")).toHaveLength(1);
+      expect(newHost.element.style.clipPath).toBe(rtl ? "inset(0 793.5px 0 0px)" : "inset(0 0px 0 793.5px)");
+      expect(oldHost.element.style.zIndex).toBe("");
+      expect(document.querySelectorAll("[data-ambra-turn-stationary-paper]")).toHaveLength(0);
     });
     const turn = new PageTurnOrchestrator(context, animator).animateSpreadTurn(
       oldHost,
@@ -62,6 +72,7 @@ it.each([false, true])(
     expect(oldHost.gutterElement.style.opacity).toBe("");
     expect(newHost.gutterElement.style.opacity).toBe("0.8");
     expect(newHost.element.style.opacity).toBe("0.7");
+    expect(newHost.element.style.clipPath).toBe("inset(1px)");
     expect(document.querySelectorAll("[data-ambra-turn-stationary-paper]")).toHaveLength(0);
     expect(document.querySelectorAll("[data-ambra-turn-furniture]")).toHaveLength(0);
     oldHost.dispose();
