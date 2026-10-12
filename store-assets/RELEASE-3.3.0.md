@@ -50,9 +50,10 @@ layouts and use the nearest-rank p95 (`ceil(sampleCount * 0.95) - 1`).
 Navigation assertions wait for the actual turn/load/layout completion.
 Publication-only comparisons hide reactive toolbar/scrubber surfaces
 and their shadows; furniture and chrome retain their separate native coverage.
-Curled-leaf tests retain action/screenshot traces but disable DOM snapshots,
-whose serialization of frozen strip styles interrupts native animation timing.
-Other native files retain their usual DOM snapshots.
+Curled-leaf tests retain action traces and explicit screenshots but disable DOM
+snapshots and trace screencasts: frozen-style serialization and per-frame image
+encoding interrupt native animation timing. Other native files retain their
+usual DOM snapshots and screencasts.
 Frozen copies reset to CSS initial values before applying noninitial computed
 declarations, retaining explicit bidi/custom properties and Typed OM precision
 without repeating the complete default declaration set in every strip.

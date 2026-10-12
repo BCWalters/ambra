@@ -6,8 +6,8 @@ import { clickReadingPage, launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { navigationFixture } from "../navigation-fixture.js";
 
-// DOM snapshots serialize megabytes of frozen strip CSS and interrupt native curl timing.
-test.use({ trace: { mode: "retain-on-failure", snapshots: false } });
+// DOM serialization and per-frame screencast encoding interrupt native curl timing.
+test.use({ trace: { mode: "retain-on-failure", snapshots: false, screenshots: false } });
 
 test("curled copies preserve explicit initial values below contrasting parents", async () => {
   const { context, readerPage: page } = await launchReader(
