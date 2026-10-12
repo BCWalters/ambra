@@ -451,6 +451,8 @@ export class CurledPageTurn {
       const initial = this.getInitialPaintStyles(doc);
       const declarations = new Map([["all", "initial"]]);
       for (const property of computed) {
+        // Owned furniture uses resolved paint values, not authored variable references.
+        if (mutableFurniture && property.startsWith("--")) continue;
         const value = computed.getPropertyValue(property);
         // `all` resets inherited values too, except direction, bidi and custom properties.
         if (property === "direction" || property === "unicode-bidi" ||

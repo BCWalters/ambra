@@ -177,8 +177,16 @@ for (const trigger of ["animated turn", "held load"] as const) {
 
         const expectedFrames = mode === "paginated" ? 2 : 1;
         await expect.poll(() => readingFrameCount(page)).toBe(expectedFrames);
-        await expect.poll(() => page.evaluate(() =>
-          Reflect.get(window, "__settingsController").disclosures.documents.size)).toBe(expectedFrames);
+        await expect.poll(() => page.evaluate(selector => {
+          const controller = Reflect.get(window, "__settingsController");
+          const bindings: Iterable<{ document: Document }> = controller.disclosures.documents;
+          const frames = Array.from(bindings, binding => binding.document.defaultView?.frameElement);
+          return {
+            reading: frames.filter(frame => frame && controller.containerEl.contains(frame) &&
+              frame.matches(selector)).length,
+            detached: frames.filter(frame => !frame?.isConnected).length,
+          };
+        }, READER_FRAME_SELECTOR)).toEqual({ reading: expectedFrames, detached: 0 });
         const actual = await page.evaluate(selector => {
           const controller = Reflect.get(window, "__settingsController");
           // Background pagination owns transient offscreen iframes outside this

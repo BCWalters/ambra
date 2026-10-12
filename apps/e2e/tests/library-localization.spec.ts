@@ -32,6 +32,8 @@ test("Contents and Library panel tooltips reflect open state in all nine locales
           const opened = page.getByRole("button", { name: openLabel, exact: true });
           await expect(opened).toHaveAttribute("aria-pressed", "true");
           await page.mouse.move(500, 500);
+          await opened.focus();
+          await expect(opened).toBeFocused();
           await opened.hover();
           await expect(page.getByRole("tooltip", { name: openLabel, exact: true })).toBeVisible();
           await opened.click();

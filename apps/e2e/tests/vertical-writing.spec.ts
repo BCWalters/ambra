@@ -129,7 +129,29 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
           scrollLeft: doc.scrollingElement!.scrollLeft, width: doc.documentElement.clientWidth };
       });
       await dismissChrome(page);
-      await expect.poll(() => isReaderElementPainted(page, "vertical-image"), { message: JSON.stringify(imageState) }).toBe(true);
+      await expect.poll(async () => ({
+        painted: await isReaderElementPainted(page, "vertical-image"),
+        hitTests: await page.evaluate(() => {
+          const controller = Reflect.get(window, "__readerController");
+          const doc = controller.contentDocumentViews()[0].document as Document;
+          const frame = doc.defaultView!.frameElement;
+          if (!(frame instanceof HTMLIFrameElement)) throw new Error("Missing vertical reading iframe.");
+          const image = doc.getElementById("vertical-image");
+          if (!image) throw new Error("Missing vertical image.");
+          const rect = image.getBoundingClientRect();
+          const box = frame.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          return [rect.top + 1, rect.bottom - 1].map(y => ({
+            inner: doc.elementFromPoint(x, y)?.outerHTML.slice(0, 300),
+            outer: document.elementFromPoint(
+              box.left + x * box.width / frame.clientWidth,
+              box.top + y * box.height / frame.clientHeight,
+            )?.outerHTML.slice(0, 300),
+            visible: frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+            frame: box.toJSON(),
+          }));
+        }),
+      }), { message: JSON.stringify(imageState) }).toMatchObject({ painted: true });
       const saved = await page.evaluate(async () => {
         const controller = Reflect.get(window, "__readerController");
         await controller.flushProgress(true);

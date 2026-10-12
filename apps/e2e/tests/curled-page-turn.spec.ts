@@ -13,7 +13,7 @@ test("curled copies preserve explicit initial values below contrasting parents",
   const { context, readerPage: page } = await launchReader(
     navigationFixture(test.info(), [4], (_chapter, index) =>
       `<div style="height:600px;color:rgb(180,20,30);font-weight:700;font-style:italic;direction:rtl">
-        <p><span id="initial-ink-${index}" style="color:rgb(0,0,0);font-weight:400;font-style:normal;direction:ltr;unicode-bidi:normal">${"An original passage in plain ink. ".repeat(100)}</span></p>
+        <p><span id="initial-ink-${index}" style="--original-ink:rgb(0,0,0);color:var(--original-ink);font-weight:400;font-style:normal;direction:ltr;unicode-bidi:normal">${"An original passage in plain ink. ".repeat(100)}</span></p>
       </div>`),
     { viewport: { width: 1547, height: 878 } },
   );
@@ -39,6 +39,12 @@ test("curled copies preserve explicit initial values below contrasting parents",
           const furniture = Array.from(frame.contentDocument!.querySelectorAll<HTMLElement>(
             "[data-ambra-turn-furniture], [data-ambra-turn-furniture] *",
           ));
+          const furnitureSelectors = new Set(furniture.map(element =>
+            `[data-ambra-frozen-paint="${element.getAttribute("data-ambra-frozen-paint")}"]`));
+          const furnitureRules = Array.from(frame.contentDocument!.styleSheets)
+            .flatMap(sheet => Array.from(sheet.cssRules))
+            .filter((rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE)
+            .filter(rule => furnitureSelectors.has(rule.selectorText));
           Reflect.set(window, "__frozenPaintStats", {
             nodes: frozen.length,
             rules: rules.size,
@@ -46,6 +52,8 @@ test("curled copies preserve explicit initial values below contrasting parents",
             furnitureInlineBytes: furniture.reduce((sum, element) => sum + element.style.cssText.length, 0),
             furnitureInlineVariables: furniture.reduce((sum, element) =>
               sum + Array.from(element.style).filter(property => property.startsWith("--")).length, 0),
+            furnitureSharedVariables: furnitureRules.reduce((sum, rule) =>
+              sum + Array.from(rule.style).filter(property => property.startsWith("--")).length, 0),
             inline: Array.from(frozen)
               .filter(element => element.getAttribute("style")?.trim())
               .map(element => `${element.localName}: ${element.getAttribute("style")}`),
@@ -55,7 +63,7 @@ test("curled copies preserve explicit initial values below contrasting parents",
             if (!original) throw new Error("Original contrasting ink is missing.");
             const expected = source.defaultView!.getComputedStyle(original);
             const actual = frame.contentDocument!.defaultView!.getComputedStyle(copy);
-            for (const property of ["color", "font-weight", "font-style", "direction", "unicode-bidi"]) {
+            for (const property of ["color", "font-weight", "font-style", "direction", "unicode-bidi", "--original-ink"]) {
               if (actual.getPropertyValue(property) !== expected.getPropertyValue(property))
                 throw new Error(`Curled copy changed ${property} below a contrasting parent.`);
             }
@@ -76,6 +84,7 @@ test("curled copies preserve explicit initial values below contrasting parents",
     expect(stats.inline).toEqual([]);
     expect(stats.furnitureNodes).toBeGreaterThan(0);
     expect(stats.furnitureInlineVariables).toBe(0);
+    expect(stats.furnitureSharedVariables).toBe(0);
     expect(stats.furnitureInlineBytes).toBeLessThan(stats.furnitureNodes * 1000);
     await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
   } finally {

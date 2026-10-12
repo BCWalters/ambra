@@ -63,7 +63,9 @@ Publication copies and furniture share immutable frozen-style rules across
 strips. Furniture keeps only its mutable positioning, opacity and color inline
 for paper shading and ink adjustments, without duplicating inherited theme
 variables in every strip. Native allocation checks bound inline furniture size
-and reject inline theme-variable duplication.
+and reject inline theme-variable duplication. Owned furniture omits unused theme
+variable definitions entirely because its captured paint values are resolved;
+authored publication variables remain preserved.
 Shared rules are serialized directly rather than parsed into temporary inline
 styles and immediately discarded. Chained-spread assertions inspect the active
 host's own columns, not background page-count measurement frames.
@@ -71,6 +73,8 @@ Flat endpoint faces and curved strips switch with opacity rather than inherited
 visibility or layout-removing display changes, avoiding subtree restyles at onset.
 Held-handoff probes use native arrow keys so a chrome-dismissal helper cannot
 deadlock against their intentionally paused turn. Import probes await readiness.
+Disclosure ownership checks distinguish connected prefetch/measurement documents
+from mounted reading columns and still reject detached registrations.
 Acceptance pacing runs without native profiling. Set `AMBRA_E2E_PROFILE_CURL=1`
 for a separate diagnostic run attaching Chrome layout, paint and garbage-collection
 events; profiled timings do not substitute for unprofiled acceptance evidence.
