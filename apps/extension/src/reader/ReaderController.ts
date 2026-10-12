@@ -1169,14 +1169,9 @@ export class ReaderController {
     if (!this.bookPagination || this.foregroundPaginationOperation) {
       return;
     }
-    const measureWidth =
-      this.host instanceof SpreadPaginatedHost ||
-        (this.isFixedLayoutHost(this.host) && this.viewMode === "paginated" && this.useReflowableSpread(this.width))
-        ? SpreadPaginatedHost.effectiveColumnWidth(this.width)
-        : this.width;
     void this.bookPagination.run(
       this.spineIndex,
-      measureWidth,
+      this.bookMeasurementWidth(),
       this.height,
       this.fontScale,
       this.fontFamily,
@@ -1189,6 +1184,13 @@ export class ReaderController {
     ).catch((error: unknown) => {
       if (!this.operations.disposed) this.reportTransientError(error, "open", "the book's page count");
     });
+  }
+
+  private bookMeasurementWidth(): number {
+    return this.host instanceof SpreadPaginatedHost ||
+      (this.isFixedLayoutHost(this.host) && this.viewMode === "paginated" && this.useReflowableSpread(this.width))
+      ? SpreadPaginatedHost.effectiveColumnWidth(this.width)
+      : this.width;
   }
 
   /** Looks up a saved CFI and, if it resolves to a valid spine item,
@@ -3908,7 +3910,9 @@ export class ReaderController {
     };
     if (this.foregroundPaginationOperation !== operation) {
       this.foregroundPaginationOperation = operation;
-      const resumeMeasurement = this.bookPagination?.pausePendingMeasurement();
+      const measurement = this.bookPagination;
+      const measurementSpine = this.spineIndex;
+      const resumeMeasurement = measurement?.pausePendingMeasurement();
       void operation.settled.then(async () => {
         while (!this.operations.disposed && this.operations.current &&
           this.foregroundPaginationOperation === operation) {
@@ -3917,7 +3921,12 @@ export class ReaderController {
         resumeMeasurement?.();
         if (!this.operations.disposed && this.foregroundPaginationOperation === operation) {
           this.foregroundPaginationOperation = undefined;
-          if (this.host) this.refreshBookPagination();
+          if (this.host && (!measurement?.isMeasuring || this.bookPagination !== measurement ||
+            this.spineIndex !== measurementSpine ||
+            !measurement.matchesLayout(this.bookMeasurementWidth(), this.height, this.fontScale,
+              this.fontFamily, this.lineSpacing, this.letterSpacing, this.contentWidthEm))) {
+            this.refreshBookPagination();
+          }
         }
       });
     }

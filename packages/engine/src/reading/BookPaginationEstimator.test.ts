@@ -77,6 +77,7 @@ describe("book-wide CFI page index", () => {
     const releaseFirst = estimator.pausePendingMeasurement();
     const releaseSecond = estimator.pausePendingMeasurement();
     const pending = run();
+    expect(estimator.isMeasuring).toBe(true);
     await new Promise(resolve => setTimeout(resolve, 10));
     expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
     releaseFirst();
@@ -85,6 +86,7 @@ describe("book-wide CFI page index", () => {
     expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
     releaseSecond();
     await pending;
+    expect(estimator.isMeasuring).toBe(false);
     expect(PaginatedContentHost.prototype.open).toHaveBeenCalled();
     expect(container.children).toHaveLength(0);
     expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
@@ -132,11 +134,40 @@ describe("book-wide CFI page index", () => {
     await new Promise(resolve => setTimeout(resolve, 10));
     const replacement = run(900);
     await first;
+    expect(estimator.isMeasuring).toBe(true);
     expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
     estimator.dispose();
     await replacement;
+    expect(estimator.isMeasuring).toBe(false);
     release();
     expect(container.children).toHaveLength(0);
+  });
+
+  it("clears active measurement after errors and allows a later retry", async () => {
+    vi.mocked(PaginatedContentHost.prototype.open).mockRejectedValueOnce(new Error("measurement failed"));
+    await expect(run()).rejects.toThrow("measurement failed");
+    expect(estimator.isMeasuring).toBe(false);
+    expect(container.children).toHaveLength(0);
+    await run();
+    expect(estimator.isMeasuring).toBe(false);
+    expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
+  });
+
+  it("matches the measured layout rather than newly requested reader settings", async () => {
+    await run();
+    const layout: Parameters<BookPaginationEstimator["matchesLayout"]> = [
+      600, 900, 1, ReadingTheme.DEFAULT_FONT_FAMILY, ReadingTheme.DEFAULT_LINE_SPACING,
+      ReadingTheme.DEFAULT_LETTER_SPACING, ReadingTheme.DEFAULT_CONTENT_WIDTH_EM,
+    ];
+    expect(estimator.matchesLayout(...layout)).toBe(true);
+    for (const index of [0, 1, 2, 4, 5, 6] as const) {
+      const changed: Parameters<BookPaginationEstimator["matchesLayout"]> = [...layout];
+      changed[index]++;
+      expect(estimator.matchesLayout(...changed)).toBe(false);
+    }
+    const changed: Parameters<BookPaginationEstimator["matchesLayout"]> = [...layout];
+    changed[3] = layout[3] === "sans" ? "georgia" : "sans";
+    expect(estimator.matchesLayout(...changed)).toBe(false);
   });
 
   it("never measures supplements, including after layout and disclosure invalidation", async () => {

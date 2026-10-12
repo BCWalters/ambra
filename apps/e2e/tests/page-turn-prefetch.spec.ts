@@ -5,6 +5,70 @@ import { exposeReaderController } from "../reader-controller.js";
 import { navigationFixture } from "../navigation-fixture.js";
 
 for (const single of [false, true]) {
+  test(`${single ? "single" : "spread"} curl resumes unchanged book measurement but refreshes changed typography`, async () => {
+    const { context, readerPage: page } = await launchReader(
+      navigationFixture(test.info(), [12, 3]),
+      { viewport: { width: 1547, height: 878 } },
+    );
+    try {
+      await exposeReaderController(page);
+      await page.evaluate(async single => {
+        const c = Reflect.get(window, "__readerController");
+        await c.setAlwaysShowOnePage(single);
+        await c.setPageTurnAnimationStyle("rotate");
+      }, single);
+      await page.waitForFunction(() => {
+        const c = Reflect.get(window, "__readerController");
+        return !c.foregroundPaginationOperation && !c.operations.current;
+      });
+      const result = await page.evaluate(async () => {
+        const c = Reflect.get(window, "__readerController");
+        const measurement = c.bookPagination;
+        const release = measurement.pausePendingMeasurement();
+        measurement.invalidateSpineItem(c.spineIndex);
+        c.refreshBookPagination();
+        const run = measurement.run;
+        let refreshes = 0;
+        measurement.run = (...args: unknown[]) => {
+          refreshes++;
+          return run.apply(measurement, args);
+        };
+        try {
+          await c.turnPage(1);
+          await Promise.resolve();
+          const afterTurn = { refreshes, active: measurement.isMeasuring };
+          await c.setFontScale(1.25);
+          await Promise.resolve();
+          return {
+            afterTurn,
+            afterTypography: {
+              refreshes, active: measurement.isMeasuring,
+              matchesLayout: measurement.matchesLayout(
+                c.bookMeasurementWidth(), c.height, c.fontScale, c.fontFamily,
+                c.lineSpacing, c.letterSpacing, c.contentWidthEm,
+              ),
+            },
+          };
+        } finally {
+          measurement.run = run;
+          release();
+        }
+      });
+      expect(result.afterTurn).toEqual({ refreshes: 0, active: true });
+      expect(result.afterTypography.refreshes).toBeGreaterThan(0);
+      expect(result.afterTypography.active).toBe(true);
+      expect(result.afterTypography.matchesLayout).toBe(true);
+      await page.waitForFunction(() =>
+        Reflect.get(window, "__readerController").snapshot().bookPageCount !== undefined);
+      await page.evaluate(() => Reflect.get(window, "__readerController").dispose());
+      await expect(page.locator("iframe")).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+for (const single of [false, true]) {
   for (const style of ["slide", "scroll"] as const) {
     test(`${single ? "single" : "spread"} ${style}: a controlled warm turn refills both idle candidates`, async () => {
       const { context, readerPage: page } = await launchReader(

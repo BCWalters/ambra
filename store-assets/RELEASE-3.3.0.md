@@ -95,6 +95,10 @@ Foreground pagination pauses background measurement at its cooperative checkpoin
 without tearing down the in-progress document during the animation. Cancellation,
 replacement, and disposal still immediately release hidden hosts; normal background
 reprioritization resumes once foreground operations settle.
+In-chapter turns resume the same measurement when the chapter, estimator, and
+layout are unchanged, rather than discarding and rebuilding its document after
+every turn. Changed layout/chapter, cancellation, and failed or completed runs
+still follow normal refresh and cleanup.
 Native margin-click probes hold toolbar focus until the physical dismissal tap,
 preventing idle-hide from expiring between the visible-chrome check and input.
 They then release that temporary focus so subsequent reading shortcuts remain
