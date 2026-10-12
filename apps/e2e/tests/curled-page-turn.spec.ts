@@ -6,6 +6,9 @@ import { clickReadingPage, launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { navigationFixture } from "../navigation-fixture.js";
 
+// DOM snapshots serialize megabytes of frozen strip CSS and interrupt native curl timing.
+test.use({ trace: { mode: "retain-on-failure", snapshots: false } });
+
 test("long chapter: curved turn preparation and handoff stay bounded", async () => {
   const epub = process.env.AMBRA_E2E_LONG_CHAPTER;
   const { context, readerPage: page } = await launchReader(
@@ -235,7 +238,7 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
             nodes: number;
             frames: number[];
           }) => {
-            const frames = metric.frames.slice(1).sort((a, b) => a - b);
+            const frames = metric.frames.slice().sort((a, b) => a - b);
             return {
               preparationMs: metric.preparationMs,
               onsetMs: metric.onsetMs,

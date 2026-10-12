@@ -363,6 +363,9 @@ for (const interaction of ["keyboard", "click", "selection"] as const) {
         Reflect.get(window, "__settingsController").host === Reflect.get(window, "__retainedSettingsHost"))).toBe(true);
       await expect.poll(() => readingFrameCount(page)).toBe(2);
 
+      // Recovery errors pin chrome; content-input checks require unpinned chrome.
+      await page.evaluate(() => Reflect.get(window, "__settingsController").dismissError());
+      await expect(page.getByRole("alert")).toHaveCount(0);
       await page.frameLocator("iframe").first().locator("body").focus();
       if (interaction === "keyboard") {
         const before = await page.evaluate(() => JSON.stringify(Reflect.get(window, "__settingsController").host.positions));

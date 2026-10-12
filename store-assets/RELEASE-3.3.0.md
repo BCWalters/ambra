@@ -48,6 +48,9 @@ preparation, without incoming text leaking through the stationary blank area.
 Frame pacing samples must exclude the geometry probe's own paints and forced
 layouts. Publication-only comparisons hide reactive toolbar/scrubber surfaces
 and their shadows; furniture and chrome retain their separate native coverage.
+Curled-leaf tests retain action/screenshot traces but disable DOM snapshots,
+whose serialization of frozen strip styles interrupts native animation timing.
+Other native files retain their usual DOM snapshots.
 
 Physical touchscreen input, real OS app switching, complex EPUB paint fidelity
 and live assistive-technology behavior remain broader manual-validation limits.
