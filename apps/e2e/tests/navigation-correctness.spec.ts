@@ -781,18 +781,18 @@ test.describe("paginated reflowable navigation correctness", () => {
         return !c.isTurningPage && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout;
       });
     const rightSlotHiddenIframe = () =>
-      readerPage.evaluate(selector => {
-        const iframes = Array.from(document.querySelectorAll<HTMLIFrameElement>(selector));
-        return iframes.some((f) => {
-          const rect = f.getBoundingClientRect();
-          return rect.x > 700 && getComputedStyle(f).visibility === "hidden";
-        });
-      }, READER_FRAME_SELECTOR);
+      readerPage.evaluate(() => {
+        const frame = Reflect.get(window, "__readerController").host.columnElement("right");
+        const rect = frame.getBoundingClientRect();
+        return rect.x > 700 && getComputedStyle(frame).visibility === "hidden";
+      });
     const visibleMarkers = () =>
-      readerPage.evaluate(selector => {
-        const texts = Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
+      readerPage.evaluate(() => {
+        const host = Reflect.get(window, "__readerController").host;
+        const frames: HTMLIFrameElement[] = [host.columnElement("left"), host.columnElement("right")];
+        const texts = frames
           .filter((f) => getComputedStyle(f).visibility !== "hidden")
-          .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
+          .map((f) => f.contentDocument?.body?.innerText ?? "");
         return {
           columnCount: texts.length,
           everyColumnHasText: texts.every((t) => t.trim().length > 0),
@@ -801,7 +801,7 @@ test.describe("paginated reflowable navigation correctness", () => {
           hasContents: texts.some((t) => t.includes("Contents Para 1")),
           hasChapter1: texts.some((t) => t.includes("Chapter One")),
         };
-      }, READER_FRAME_SELECTOR);
+      });
 
     try {
       await waitForNavigation();

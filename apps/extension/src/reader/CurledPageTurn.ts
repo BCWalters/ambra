@@ -439,41 +439,41 @@ export class CurledPageTurn {
     const copy = doc.importNode(element, false) as Element & { style?: CSSStyleDeclaration };
     if (copy.style) {
       const initial = this.getInitialPaintStyles(doc);
-      const declarations = ["all:initial !important;"];
+      const declarations = new Map([["all", "initial"]]);
       for (const property of computed) {
         const value = computed.getPropertyValue(property);
         // `all` resets inherited values too, except direction, bidi and custom properties.
         if (property === "direction" || property === "unicode-bidi" ||
             value !== initial.get(property)) {
-          declarations.push(`${property}:${value} !important;`);
+          declarations.set(property, value);
         }
       }
-      copy.style.cssText = declarations.join("");
       if (typeof element.computedStyleMap === "function") {
         // Typed values retain unitless leading, intrinsic sizing and exact translations.
         const values = element.computedStyleMap();
         const lineHeight = values.get("line-height");
-        if (lineHeight) copy.style.setProperty("line-height", lineHeight.toString(), "important");
+        if (lineHeight) declarations.set("line-height", lineHeight.toString());
         const transform = values.get("transform");
-        if (transform) copy.style.setProperty("transform", transform.toString(), "important");
+        if (transform) declarations.set("transform", transform.toString());
         for (const property of ["width", "height", "inline-size", "block-size"]) {
           if (values.get(property)?.toString() === "auto")
-            copy.style.setProperty(property, "auto", "important");
+            declarations.set(property, "auto");
         }
       }
-      copy.style.setProperty("animation", "none", "important");
-      copy.style.setProperty("transition", "none", "important");
+      declarations.set("animation", "none");
+      declarations.set("transition", "none");
+      const paint = Array.from(declarations, ([property, value]) =>
+        `${property}:${value} !important;`).join("");
       if (shareStyles) {
-        const declarations = copy.style.cssText;
-        let paintClass = this.paintClasses.get(declarations);
+        let paintClass = this.paintClasses.get(paint);
         if (!paintClass) {
           paintClass = String(this.paintClasses.size);
-          this.paintClasses.set(declarations, paintClass);
-          this.paintRules.push(`[data-ambra-frozen-paint="${paintClass}"]{${declarations}}`);
+          this.paintClasses.set(paint, paintClass);
+          this.paintRules.push(`[data-ambra-frozen-paint="${paintClass}"]{${paint}}`);
         }
         copy.removeAttribute("style");
         copy.setAttribute("data-ambra-frozen-paint", paintClass);
-      }
+      } else copy.style.cssText = paint;
     }
     for (const attribute of Array.from(copy.attributes)) {
       if (attribute.name.startsWith("on") || attribute.name === "autofocus")

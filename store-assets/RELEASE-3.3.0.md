@@ -59,6 +59,9 @@ declarations, retaining explicit bidi/custom properties and Typed OM precision
 without repeating the complete default declaration set in every strip.
 Publication copies share immutable frozen-style rules across strips; furniture
 keeps its independent inline styles for paper shading and ink adjustments.
+Shared rules are serialized directly rather than parsed into temporary inline
+styles and immediately discarded. Chained-spread assertions inspect the active
+host's own columns, not background page-count measurement frames.
 The long-chapter benchmark attaches a native Chrome timeline for layout,
 paint and garbage-collection diagnosis.
 
