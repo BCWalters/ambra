@@ -45,8 +45,9 @@ boundaries, interruption recovery, prefetch disposal and fixed-layout navigation
 The mixed-document book-start previous margin must create no leaf or position
 change. The title spread must retain its canonical publication pixels throughout
 preparation, without incoming text leaking through the stationary blank area.
-Frame pacing samples must exclude the geometry probe's own paints and forced
-layouts and use the nearest-rank p95 (`ceil(sampleCount * 0.95) - 1`).
+Frame pacing samples use the nearest-rank p95 (`ceil(sampleCount * 0.95) - 1`).
+Geometry probes run after the actual animation, before leaf disposal, so their
+temporary ranges, forced layouts and garbage collection cannot alter its pacing.
 Navigation assertions wait for the actual turn/load/layout completion.
 Publication-only comparisons hide reactive toolbar/scrubber surfaces
 and their shadows; furniture and chrome retain their separate native coverage.
@@ -68,6 +69,8 @@ Held-handoff probes use native arrow keys so a chrome-dismissal helper cannot
 deadlock against their intentionally paused turn. Import probes await readiness.
 The long-chapter benchmark attaches a native Chrome timeline for layout,
 paint and garbage-collection diagnosis.
+Prepared chapter animations clear any spinner shown during a slow preparation;
+the still-running navigation operation does not cover ready content with loading UI.
 
 Physical touchscreen input, real OS app switching, complex EPUB paint fidelity
 and live assistive-technology behavior remain broader manual-validation limits.

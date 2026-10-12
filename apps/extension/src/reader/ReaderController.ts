@@ -382,12 +382,16 @@ export class ReaderController {
       operationSignal: () => this.operations.current?.signal,
       controlledTurn: () => this.controlledTurn,
       setAnimatingPageTurn: (isAnimating) => {
-        this.isAnimatingPageTurn = isAnimating;
+        this.setAnimatingPageTurn(isAnimating);
       },
       notify: () => this.notify(),
     },
     this.pageTurnAnimator,
   );
+  private setAnimatingPageTurn(isAnimating: boolean): void {
+    this.isAnimatingPageTurn = isAnimating;
+    if (isAnimating) this.isLoading = false;
+  }
   /** Book-wide full-text search plus the live "highlight matches on the
    * current page" spotlight (issue #100) — see `SearchCoordinator`. */
   private readonly searchCoordinator: SearchCoordinator;

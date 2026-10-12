@@ -108,12 +108,16 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
         const leaf = create(...args);
         const prepare = leaf.prepare.bind(leaf);
         const paint = leaf.paint.bind(leaf);
+        const settle = leaf.settle.bind(leaf);
         const frames: number[] = [];
         let last: number | undefined;
+        let measuring = false;
         leaf.paint = (progress: number) => {
-          const now = performance.now();
-          if (last !== undefined) frames.push(now - last);
-          last = now;
+          if (measuring) {
+            const now = performance.now();
+            if (last !== undefined) frames.push(now - last);
+            last = now;
+          }
           paint(progress);
         };
         leaf.prepare = async (...prepareArgs: unknown[]) => {
@@ -125,98 +129,102 @@ test("long chapter: curved turn preparation and handoff stay bounded", async () 
             textLength: frame.contentDocument!.body.textContent!.length,
             frames,
             onsetMs: performance.now() - Reflect.get(window, "__turnStarted"),
-            foregroundPrioritized: c.foregroundPaginationOperation !== undefined &&
+            foregroundPrioritized:
+              c.foregroundPaginationOperation !== undefined &&
               c.foregroundPaginationOperation === c.operations.current,
           });
           last = undefined;
-          const geometry = [];
-          for (const [index, face] of ["front", "back"].entries()) {
-            const front = prepareArgs[index] as {
-              element: HTMLIFrameElement;
-              capture?: () => () => void;
-            };
-            const restore = front.capture?.();
-            try {
-              leaf.paint(index);
-              const source = front.element.contentDocument!;
-              const copyViewport = frame.contentDocument!.querySelector<HTMLElement>(
-                `[data-face='${face}'] [data-page-copy]`,
-              )!;
-              if (
-                frame.contentDocument!.defaultView!.getComputedStyle(copyViewport).clipPath !==
-                front.element.ownerDocument.defaultView!.getComputedStyle(front.element).clipPath
-              ) {
-                throw new Error("Turning copy does not preserve the canonical page clip.");
-              }
-              for (const root of [
-                frame.contentDocument!.documentElement,
-                frame.contentDocument!.body,
-              ]) {
+          measuring = true;
+          leaf.settle = async (...settleArgs: unknown[]) => {
+            await settle(...settleArgs);
+            measuring = false;
+            const geometry = [];
+            for (const [index, face] of ["front", "back"].entries()) {
+              const front = prepareArgs[index] as {
+                element: HTMLIFrameElement;
+                capture?: () => () => void;
+              };
+              const restore = front.capture?.();
+              try {
+                leaf.paint(index);
+                const source = front.element.contentDocument!;
+                const copyViewport = frame.contentDocument!.querySelector<HTMLElement>(
+                  `[data-face='${face}'] [data-page-copy]`,
+                )!;
                 if (
-                  frame.contentDocument!.defaultView!.getComputedStyle(root).overflow !== "hidden"
-                )
-                  throw new Error("Turning surface permits scrollbars.");
-              }
-              const origin = copyViewport.getBoundingClientRect();
-              const samples = Array.from(source.querySelectorAll<HTMLElement>("p"))
-                .filter((element) => {
-                  const rect = element.getBoundingClientRect();
-                  return rect.top < front.element.clientHeight && rect.bottom > 0;
-                })
-                .map((element) => {
-                  const copy = Array.from(copyViewport.querySelectorAll<HTMLElement>("p")).find(
-                    (candidate) => candidate.textContent === element.textContent,
-                  );
-                  if (!copy) throw new Error(`Visible paragraph missing from leaf: ${element.id}`);
-                  const a = element.getBoundingClientRect();
-                  const b = copy.getBoundingClientRect();
-                  const sourceWalker = source.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-                  const copyWalker = frame.contentDocument!.createTreeWalker(
-                    copy,
-                    NodeFilter.SHOW_TEXT,
-                  );
-                  const words = [];
-                  for (let node = sourceWalker.nextNode(); node; node = sourceWalker.nextNode()) {
-                    const copiedNode = copyWalker.nextNode();
-                    if (!copiedNode || copiedNode.textContent !== node.textContent)
-                      throw new Error("Leaf text differs from source.");
-                    for (const match of node.textContent!.matchAll(/\S+/g)) {
-                      const sourceRange = source.createRange();
-                      sourceRange.setStart(node, match.index);
-                      sourceRange.setEnd(node, match.index + match[0].length);
-                      const original = sourceRange.getBoundingClientRect();
-                      if (original.top < 0 || original.bottom > front.element.clientHeight)
-                        continue;
-                      const copiedRange = frame.contentDocument!.createRange();
-                      copiedRange.setStart(copiedNode, match.index);
-                      copiedRange.setEnd(copiedNode, match.index + match[0].length);
-                      const painted = copiedRange.getBoundingClientRect();
-                      words.push({
-                        word: match[0],
-                        dx: painted.left - origin.left - original.left,
-                        dy: painted.top - origin.top - original.top,
-                        dw: painted.width - original.width,
-                      });
+                  frame.contentDocument!.defaultView!.getComputedStyle(copyViewport).clipPath !==
+                  front.element.ownerDocument.defaultView!.getComputedStyle(front.element).clipPath
+                ) {
+                  throw new Error("Turning copy does not preserve the canonical page clip.");
+                }
+                for (const root of [
+                  frame.contentDocument!.documentElement,
+                  frame.contentDocument!.body,
+                ]) {
+                  if (
+                    frame.contentDocument!.defaultView!.getComputedStyle(root).overflow !== "hidden"
+                  )
+                    throw new Error("Turning surface permits scrollbars.");
+                }
+                const origin = copyViewport.getBoundingClientRect();
+                const samples = Array.from(source.querySelectorAll<HTMLElement>("p"))
+                  .filter((element) => {
+                    const rect = element.getBoundingClientRect();
+                    return rect.top < front.element.clientHeight && rect.bottom > 0;
+                  })
+                  .map((element) => {
+                    const copy = Array.from(copyViewport.querySelectorAll<HTMLElement>("p")).find(
+                      (candidate) => candidate.textContent === element.textContent,
+                    );
+                    if (!copy)
+                      throw new Error(`Visible paragraph missing from leaf: ${element.id}`);
+                    const a = element.getBoundingClientRect();
+                    const b = copy.getBoundingClientRect();
+                    const sourceWalker = source.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+                    const copyWalker = frame.contentDocument!.createTreeWalker(
+                      copy,
+                      NodeFilter.SHOW_TEXT,
+                    );
+                    const words = [];
+                    for (let node = sourceWalker.nextNode(); node; node = sourceWalker.nextNode()) {
+                      const copiedNode = copyWalker.nextNode();
+                      if (!copiedNode || copiedNode.textContent !== node.textContent)
+                        throw new Error("Leaf text differs from source.");
+                      for (const match of node.textContent!.matchAll(/\S+/g)) {
+                        const sourceRange = source.createRange();
+                        sourceRange.setStart(node, match.index);
+                        sourceRange.setEnd(node, match.index + match[0].length);
+                        const original = sourceRange.getBoundingClientRect();
+                        if (original.top < 0 || original.bottom > front.element.clientHeight)
+                          continue;
+                        const copiedRange = frame.contentDocument!.createRange();
+                        copiedRange.setStart(copiedNode, match.index);
+                        copiedRange.setEnd(copiedNode, match.index + match[0].length);
+                        const painted = copiedRange.getBoundingClientRect();
+                        words.push({
+                          word: match[0],
+                          dx: painted.left - origin.left - original.left,
+                          dy: painted.top - origin.top - original.top,
+                          dw: painted.width - original.width,
+                        });
+                      }
                     }
-                  }
-                  return {
-                    id: element.id,
-                    dy: b.top - origin.top - a.top,
-                    dw: b.width - a.width,
-                    words,
-                  };
-                });
-              if (samples.length === 0) throw new Error("No visible paragraphs tested.");
-              geometry.push(...samples.map((sample) => ({ ...sample, face })));
-            } finally {
-              restore?.();
+                    return {
+                      id: element.id,
+                      dy: b.top - origin.top - a.top,
+                      dw: b.width - a.width,
+                      words,
+                    };
+                  });
+                if (samples.length === 0) throw new Error("No visible paragraphs tested.");
+                geometry.push(...samples.map((sample) => ({ ...sample, face })));
+              } finally {
+                restore?.();
+              }
             }
-          }
-          leaf.paint(0);
-          Reflect.set(window, "__leafGeometry", geometry);
-          // Geometry probes paint both faces and force layout; they are not animation frames.
-          frames.length = 0;
-          last = undefined;
+            leaf.paint(1);
+            Reflect.set(window, "__leafGeometry", geometry);
+          };
         };
         return leaf;
       };
