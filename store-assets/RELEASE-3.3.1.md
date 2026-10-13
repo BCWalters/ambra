@@ -79,6 +79,10 @@ the exact final positive point probe. Other native geometry paths, whitespace
 fallbacks and existing cooperative checkpoints are preserved. Additional
 checkpoints before prefix retries and uncached corrections retain prompt
 cancellation.
+Endpoint visibility also avoids redundant opacity writes during interior curl
+motion, without changing geometry, shading, endpoint snapshots or reverse turns.
+Protected rendering includes eight extra independent four-turn cohorts; these
+are required repetitions, not retries or a selection of the fastest result.
 
 ## Package-bound conformance and manual accessibility
 

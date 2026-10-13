@@ -116,6 +116,61 @@ test("disposed curls release owned document graphs even while the leaf is retain
   }
 });
 
+test("curl endpoint opacity changes only when endpoint visibility changes", async () => {
+  const { context, readerPage: page } = await launchReader(
+    navigationFixture(test.info(), [80]),
+    { viewport: { width: 1547, height: 878 } },
+  );
+  try {
+    await exposeReaderController(page);
+    const result = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const source = c.contentDocumentViews()[0].document.defaultView.frameElement;
+      if (!(source instanceof HTMLIFrameElement)) throw new Error("Missing source page.");
+      const leaf = c.pageTurnOrchestrator.createCurledLeaf("#fff");
+      let writes = 0;
+      const states: { progress: number; faces: string[]; strips: string[] }[] = [];
+      try {
+        await leaf.prepare({ element: source }, { element: source }, 1, undefined, undefined, "single");
+        const doc = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!
+          .contentDocument!;
+        const faces = Array.from(doc.querySelectorAll<HTMLElement>("[data-flat-leaf-face]"));
+        const strips = Array.from(doc.querySelectorAll<HTMLElement>("[data-segment]"));
+        for (const element of [...faces, ...strips]) {
+          const style = element.style;
+          Object.defineProperty(style, "opacity", {
+            configurable: true,
+            get: () => style.getPropertyValue("opacity"),
+            set: (value: string) => { writes++; style.setProperty("opacity", value); },
+          });
+        }
+        for (const progress of [0, 0, 0.2, 0.2, 0.5, 0.8, 1, 1, 0.5, 0]) {
+          leaf.paint(progress);
+          states.push({
+            progress,
+            faces: faces.map(element => doc.defaultView!.getComputedStyle(element).opacity),
+            strips: strips.map(element => doc.defaultView!.getComputedStyle(element).opacity),
+          });
+        }
+        for (const element of [...faces, ...strips]) Reflect.deleteProperty(element.style, "opacity");
+      } finally {
+        leaf.dispose();
+      }
+      return { writes, states };
+    });
+    expect(result.states).toHaveLength(10);
+    for (const { progress, faces, strips } of result.states) {
+      expect(faces).toEqual([progress === 0 ? "1" : "0", progress === 1 ? "1" : "0"]);
+      expect(strips).toHaveLength(20);
+      expect(strips).toEqual(strips.map((_opacity, index) =>
+        (progress === 0 || progress === 1) && (index === 0 || index === 19) ? "0" : "1"));
+    }
+    expect(result.writes).toBe(16);
+  } finally {
+    await context.close();
+  }
+});
+
 test("curled resource decoding sees only band-sized furniture ink clips", async () => {
   const { context, readerPage: page } = await launchReader(
     navigationFixture(test.info(), [80], (_chapter, index) =>

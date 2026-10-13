@@ -51,6 +51,7 @@ export class CurledPageTurn {
   private side: 1 | -1 = 1;
   private disposed = false;
   private flatFaces: [HTMLElement, HTMLElement] | undefined;
+  private paintedEndpoint: -1 | 0 | 1 | undefined;
 
   public constructor(
     private readonly container: HTMLElement,
@@ -154,6 +155,7 @@ export class CurledPageTurn {
           transformStyle: "preserve-3d",
           transformOrigin: `${STRIP_OVERLAP + (side === 1 ? 0 : length)}px center`,
           willChange: "transform",
+          opacity: "1",
           zIndex: "1",
         });
         strip.dataset.segment = String(index);
@@ -266,6 +268,7 @@ export class CurledPageTurn {
       });
       if (this.disposed) throw new DOMException("Page turn cancelled", "AbortError");
       void scene.offsetHeight;
+      this.paintedEndpoint = undefined;
       this.paint(0);
       frame.dataset.preparationMs = String(performance.now() - started);
     } finally {
@@ -615,9 +618,13 @@ export class CurledPageTurn {
   public paint(progress: number): void {
     if (this.disposed) return;
     const p = Math.max(0, Math.min(1, progress));
-    this.flatFaces?.forEach((face, index) => {
-      face.style.opacity = p === index ? "1" : "0";
-    });
+    const endpoint = p === 0 ? 0 : p === 1 ? 1 : -1;
+    const endpointChanged = endpoint !== this.paintedEndpoint;
+    if (endpointChanged) {
+      this.flatFaces?.forEach((face, index) => {
+        face.style.opacity = endpoint === index ? "1" : "0";
+      });
+    }
     const length = this.width / SEGMENTS;
     const hinge = this.hinge + (this.destinationHinge - this.hinge) * p * p * (3 - 2 * p);
     const wave = Math.sin(Math.PI * p);
@@ -629,7 +636,8 @@ export class CurledPageTurn {
       const segment = this.segments[index]!;
       // Opaque endpoint snapshots cover interior strips; hide only outer overlaps.
       const outerStrip = index === 0 || index === this.segments.length - 1;
-      segment.element.style.opacity = (p === 0 || p === 1) && outerStrip ? "0" : "1";
+      if (endpointChanged && outerStrip)
+        segment.element.style.opacity = endpoint === -1 ? "1" : "0";
       const left = hinge + this.side * x - (this.side < 0 ? length : 0) - STRIP_OVERLAP;
       segment.element.style.transform = `translate3d(${left}px, 0, ${z}px) rotateY(${this.side * angle}rad)`;
       const opacity = String(wave * (0.04 + (0.1 * index) / SEGMENTS));
@@ -638,6 +646,7 @@ export class CurledPageTurn {
       x += length * Math.cos(angle);
       z -= length * Math.sin(angle);
     }
+    this.paintedEndpoint = endpoint;
     this.surface.element.dataset.progress = String(p);
   }
 

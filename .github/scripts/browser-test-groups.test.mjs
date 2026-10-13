@@ -39,7 +39,7 @@ test("full matrix preserves every legacy protected file invocation, including in
       "page-turn-spread-onset", "single-page-leaf-content", "fixed-layout-animation",
       "page-turn-motion-lab", "page-turn-flick", "page-turn-boundary-lifecycle",
       "page-turn-selection", "reader-operation-lifetime", "resize-lifecycle",
-      "page-turn-prefetch"].sort());
+      "page-turn-prefetch", "curled-page-turn"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
   assert.equal(core.length, 59);
@@ -49,11 +49,15 @@ test("full matrix preserves every legacy protected file invocation, including in
 });
 
 test("page-turn release regressions use the packaged candidate without retries or timing contention", () => {
-  for (const id of ["page-turn-rendering", "page-turn-input", "page-turn-prefetch"]) {
+  for (const id of ["page-turn-rendering", "curl-reliability", "page-turn-input", "page-turn-prefetch"]) {
     assert.ok(browserMatrix("full").include.some(group => group.id === id), id);
     for (const step of browserArguments(id)) {
       assert.ok(step.args.includes("--workers=1"));
-      assert.ok(!step.args.includes("--grep"));
+      if (step.name === "curl-reliability") {
+        assert.ok(step.args.includes("--repeat-each=8"));
+        assert.deepEqual(step.args.slice(step.args.indexOf("--grep"), step.args.indexOf("--grep") + 2),
+          ["--grep", "^long chapter: curved turn preparation and handoff stay bounded$"]);
+      } else assert.ok(!step.args.includes("--grep"));
       assert.ok(!step.args.includes("--grep-invert"));
     }
   }

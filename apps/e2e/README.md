@@ -1273,6 +1273,18 @@ gap caps isolated stalls. Synthetic cases verify these boundaries. This does not
 visuals, filter samples, force GC, add retries or override browser/GPU settings.
 Failure-only profiles remain diagnostic, never acceptance substitutes.
 
+Protected rendering also runs eight additional independent long-chapter
+cohorts, each with a fresh profile and all four predetermined turns. Repetitions
+are not retries: every cohort must pass and every interval remains recorded.
+The full rendering suite also remains unfiltered on its own worker.
+
+Endpoint snapshot and outer-strip opacity are updated only when moving between
+the initial endpoint, interior motion and final endpoint. Interior strips remain
+opaque. Native instrumentation verifies ten forward/repeated/reversing poses
+perform 16 endpoint-opacity writes instead of 220, with identical computed
+visibility at every pose. This reduces redundant CSS writes, not a claim that
+native GC or Linux software draws have been eliminated.
+
 Indexed native collection walks preserve frozen CSS declaration/child order
 without allocating an iterator result per property or child. A paired local
 four-turn allocation profile reduced the `copyPaint` subtree from 6.58 MB to
