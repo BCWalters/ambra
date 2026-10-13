@@ -17,19 +17,31 @@ function setUp(mode: Mode, commonFirst = true) {
   container.append(frame);
   document.body.append(container);
   const doc = frame.contentDocument!;
-  doc.body.innerHTML = "<p>Book text</p><a href='#chapter'>Link</a><details><summary>More</summary></details>";
-  const frameRect = mode === "single" ? new DOMRect(0, 0, 900, 700)
-    : mode === "spread" ? new DOMRect(470, 0, 430, 700) : new DOMRect(100, 0, 700, 700);
+  doc.body.innerHTML =
+    "<p>Book text</p><a href='#chapter'>Link</a><details><summary>More</summary></details>";
+  const frameRect =
+    mode === "single"
+      ? new DOMRect(0, 0, 900, 700)
+      : mode === "spread"
+        ? new DOMRect(470, 0, 430, 700)
+        : new DOMRect(100, 0, 700, 700);
   const intrinsicWidth = mode === "fixed" ? 1400 : frameRect.width;
   vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(frameRect);
   Object.defineProperty(frame, "clientWidth", { value: intrinsicWidth });
-  vi.spyOn(doc.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, intrinsicWidth, 700));
+  vi.spyOn(doc.body, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(0, 0, intrinsicWidth, 700),
+  );
   doc.body.style.padding = mode === "single" ? "0 60px" : "0 30px";
   vi.spyOn(container, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 900, 700));
   // Happy DOM does not wire this browser-owned relationship itself.
   Object.defineProperty(doc.defaultView!, "frameElement", { configurable: true, value: frame });
-  const host = Object.create(mode === "single" ? PaginatedContentHost.prototype
-    : mode === "spread" ? SpreadPaginatedHost.prototype : FixedSpreadHost.prototype);
+  const host = Object.create(
+    mode === "single"
+      ? PaginatedContentHost.prototype
+      : mode === "spread"
+        ? SpreadPaginatedHost.prototype
+        : FixedSpreadHost.prototype,
+  );
   Object.defineProperty(host, "element", { value: mode === "single" ? frame : container });
   if (mode === "spread") {
     const companion = document.createElement("iframe");
@@ -37,7 +49,7 @@ function setUp(mode: Mode, commonFirst = true) {
     companion.style.visibility = "hidden";
     vi.spyOn(companion, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 430, 700));
     Object.defineProperty(companion, "clientWidth", { value: 430 });
-    host.columnElement = (side: "left" | "right") => side === "left" ? companion : frame;
+    host.columnElement = (side: "left" | "right") => (side === "left" ? companion : frame);
   }
   const views = [{ document: doc, spineIndex: 0, physicalSide: "right" }];
   const controller = Object.create(ReaderController.prototype);
@@ -50,8 +62,12 @@ function setUp(mode: Mode, commonFirst = true) {
     containerEl: container,
     width: 900,
     height: 700,
+    pageTurnAnimationStyle: "none",
     operations: { disposed: false, begin: vi.fn(() => operation), owns: () => true },
-    pkg: { spine: [{ manifestItem: { path: "book.xhtml" } }], effectivePageProgressionDirection: "ltr" },
+    pkg: {
+      spine: [{ manifestItem: { path: "book.xhtml" } }],
+      effectivePageProgressionDirection: "ltr",
+    },
     contentPointerActivityId: 0,
     contentDocumentViews: () => views,
     allContentDocuments: () => [doc],
@@ -88,9 +104,23 @@ function setUp(mode: Mode, commonFirst = true) {
   return { controller, container, doc, margin };
 }
 
-function pointer(target: EventTarget, type: string, x: number, pointerType = "mouse", id = 1, y = 300) {
+function pointer(
+  target: EventTarget,
+  type: string,
+  x: number,
+  pointerType = "mouse",
+  id = 1,
+  y = 300,
+) {
   const event = new PointerEvent(type, {
-    clientX: x, clientY: y, pointerType, pointerId: id, bubbles: true, button: 0,
+    clientX: x,
+    clientY: y,
+    screenX: x,
+    screenY: y,
+    pointerType,
+    pointerId: id,
+    bubbles: true,
+    button: 0,
   });
   target.dispatchEvent(event);
   return event;
@@ -102,35 +132,41 @@ function tap(target: EventTarget, x: number, pointerType = "mouse") {
 }
 
 describe("content clicks dismiss chrome before navigating", () => {
-  it.each(["single", "spread"] as const)("%s parent bands exclude controls and unrelated UI", mode => {
-    const { controller, container, doc } = setUp(mode);
-    const dismiss = vi.fn(() => false);
-    controller.setContentUiDismissal(dismiss);
-    const band = document.createElement("div");
-    band.setAttribute("data-ambra-page-band", "");
-    container.after(band);
-    const unrelated = document.createElement("aside");
-    container.after(unrelated);
-    cleanups.push(() => { band.remove(); unrelated.remove(); });
-    tap(band, 830);
-    expect(dismiss).toHaveBeenCalledExactlyOnceWith({ clientX: 830, clientY: 300 });
-    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
-    dismiss.mockClear();
-    controller.turnPage.mockClear();
-    for (const role of ["button", "slider"]) {
-      const control = document.createElement("div");
-      control.setAttribute("role", role);
-      band.append(control);
-      tap(control, 830);
-    }
-    tap(unrelated, 830);
-    expect(dismiss).not.toHaveBeenCalled();
-    expect(controller.turnPage).not.toHaveBeenCalled();
+  it.each(["single", "spread"] as const)(
+    "%s parent bands exclude controls and unrelated UI",
+    (mode) => {
+      const { controller, container, doc } = setUp(mode);
+      const dismiss = vi.fn(() => false);
+      controller.setContentUiDismissal(dismiss);
+      const band = document.createElement("div");
+      band.setAttribute("data-ambra-page-band", "");
+      container.after(band);
+      const unrelated = document.createElement("aside");
+      container.after(unrelated);
+      cleanups.push(() => {
+        band.remove();
+        unrelated.remove();
+      });
+      tap(band, 830);
+      expect(dismiss).toHaveBeenCalledExactlyOnceWith({ clientX: 830, clientY: 300 });
+      expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+      dismiss.mockClear();
+      controller.turnPage.mockClear();
+      for (const role of ["button", "slider"]) {
+        const control = document.createElement("div");
+        control.setAttribute("role", role);
+        band.append(control);
+        tap(control, 830);
+      }
+      tap(unrelated, 830);
+      expect(dismiss).not.toHaveBeenCalled();
+      expect(controller.turnPage).not.toHaveBeenCalled();
 
-    tap(doc.body, mode === "single" ? 850 : 420);
-    expect(dismiss).toHaveBeenLastCalledWith(undefined);
-    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
-  });
+      tap(doc.body, mode === "single" ? 850 : 420);
+      expect(dismiss).toHaveBeenLastCalledWith(undefined);
+      expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+    },
+  );
 
   it.each([
     ["#arriv%C3%A9e", 0, "arrivée"],
@@ -143,29 +179,33 @@ describe("content clicks dismiss chrome before navigating", () => {
     const anchor = doc.querySelector("a")!;
     anchor.setAttribute("href", href);
     anchor.click();
-    expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(
-      spineIndex, { fragment, history: "jump" },
-    );
+    expect(controller.openSpineItem).toHaveBeenCalledExactlyOnceWith(spineIndex, {
+      fragment,
+      history: "jump",
+    });
   });
 
-  it.each(["note-été", "literal%20note"])("resolves an encoded footnote to its actual ID %s", id => {
-    const { controller, doc } = setUp("single");
-    controller.openSpineItem = vi.fn();
-    const note = doc.createElement("aside");
-    note.id = id;
-    note.textContent = "Decoded note content";
-    doc.body.append(note);
-    const anchor = doc.querySelector("a")!;
-    anchor.setAttribute("href", `#${encodeURIComponent(id)}`);
-    anchor.setAttributeNS("http://www.idpf.org/2007/ops", "epub:type", "noteref");
-    anchor.click();
-    expect(controller.footnotePopup?.content).toBe("Decoded note content");
-    expect(controller.openSpineItem).not.toHaveBeenCalled();
-  });
+  it.each(["note-été", "literal%20note"])(
+    "resolves an encoded footnote to its actual ID %s",
+    (id) => {
+      const { controller, doc } = setUp("single");
+      controller.openSpineItem = vi.fn();
+      const note = doc.createElement("aside");
+      note.id = id;
+      note.textContent = "Decoded note content";
+      doc.body.append(note);
+      const anchor = doc.querySelector("a")!;
+      anchor.setAttribute("href", `#${encodeURIComponent(id)}`);
+      anchor.setAttributeNS("http://www.idpf.org/2007/ops", "epub:type", "noteref");
+      anchor.click();
+      expect(controller.footnotePopup?.content).toBe("Decoded note content");
+      expect(controller.openSpineItem).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["single", "spread", "fixed"] as const)(
     "%s publication content dismisses chrome but never becomes a navigation target",
-    mode => {
+    (mode) => {
       const { controller, doc } = setUp(mode);
       const dismiss = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
       controller.setContentUiDismissal(dismiss);
@@ -221,8 +261,10 @@ describe("content clicks dismiss chrome before navigating", () => {
   });
 
   it.each([
-    ["single", false], ["single", true],
-    ["spread", false], ["spread", true],
+    ["single", false],
+    ["single", true],
+    ["spread", false],
+    ["spread", true],
     ["fixed", true],
   ] as const)("%s container=%s consumes the first tap but not the next", (mode, inContainer) => {
     const { controller, container, doc, margin } = setUp(mode);
@@ -246,42 +288,54 @@ describe("content clicks dismiss chrome before navigating", () => {
     expect(controller.turnPage).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["single", "spread", "fixed"] as const)("deduplicates %s pointerdown regardless of listener order", mode => {
-    const { controller, doc } = setUp(mode, false);
-    controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
-    tap(doc.body, mode === "spread" ? 420 : 850);
-    expect(controller.dismissReaderUi).toHaveBeenCalledTimes(1);
-    expect(controller.turnPage).not.toHaveBeenCalled();
-  });
+  it.each(["single", "spread", "fixed"] as const)(
+    "deduplicates %s pointerdown regardless of listener order",
+    (mode) => {
+      const { controller, doc } = setUp(mode, false);
+      controller.setContentUiDismissal(vi.fn().mockReturnValueOnce(true).mockReturnValue(false));
+      tap(doc.body, mode === "spread" ? 420 : 850);
+      expect(controller.dismissReaderUi).toHaveBeenCalledTimes(1);
+      expect(controller.turnPage).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each(["single", "spread", "fixed"] as const)("preserves %s behavior without a UI handler or with held chrome", mode => {
-    const { controller, margin } = setUp(mode);
-    tap(margin.target, margin.x);
-    controller.setContentUiDismissal(() => false);
-    tap(margin.target, margin.x);
-    expect(controller.turnPage).toHaveBeenCalledTimes(2);
-  });
+  it.each(["single", "spread", "fixed"] as const)(
+    "preserves %s behavior without a UI handler or with held chrome",
+    (mode) => {
+      const { controller, margin } = setUp(mode);
+      tap(margin.target, margin.x);
+      controller.setContentUiDismissal(() => false);
+      tap(margin.target, margin.x);
+      expect(controller.turnPage).toHaveBeenCalledTimes(2);
+    },
+  );
 
-  it.each(["single", "spread", "fixed"] as const)("keeps the %s dismissal snapshot across listener rebuilding", mode => {
-    const { controller, margin } = setUp(mode);
-    controller.setContentUiDismissal(() => true);
-    pointer(margin.target, "pointerdown", margin.x);
-    controller.setContentUiDismissal(() => false);
-    controller.setUpDragPageTurn();
-    pointer(margin.target, "pointerup", margin.x);
-    expect(controller.turnPage).not.toHaveBeenCalled();
-    tap(margin.target, margin.x);
-    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
-  });
+  it.each(["single", "spread", "fixed"] as const)(
+    "keeps the %s dismissal snapshot across listener rebuilding",
+    (mode) => {
+      const { controller, margin } = setUp(mode);
+      controller.setContentUiDismissal(() => true);
+      pointer(margin.target, "pointerdown", margin.x);
+      controller.setContentUiDismissal(() => false);
+      controller.setUpDragPageTurn();
+      pointer(margin.target, "pointerup", margin.x);
+      expect(controller.turnPage).not.toHaveBeenCalled();
+      tap(margin.target, margin.x);
+      expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+    },
+  );
 
-  it.each(["body", "a", "img"])("retains a deliberate spread swipe from %s while dismissing chrome", tag => {
-    const { controller, doc } = setUp("spread");
-    controller.setContentUiDismissal(() => true);
-    const target = doc.querySelector(tag) ?? doc.body.appendChild(doc.createElement(tag));
-    pointer(target, "pointerdown", 400, "touch");
-    pointer(doc.body, "pointerup", 200, "touch");
-    expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
-  });
+  it.each(["body", "a", "img"])(
+    "retains a deliberate spread swipe from %s while dismissing chrome",
+    (tag) => {
+      const { controller, doc } = setUp("spread");
+      controller.setContentUiDismissal(() => true);
+      const target = doc.querySelector(tag) ?? doc.body.appendChild(doc.createElement(tag));
+      pointer(target, "pointerdown", 400, "touch");
+      pointer(doc.body, "pointerup", 200, "touch");
+      expect(controller.turnPage).toHaveBeenCalledExactlyOnceWith(1);
+    },
+  );
 
   it("allows a single-page drag even when its pointerdown dismissed chrome", async () => {
     const { controller, doc } = setUp("single");
@@ -292,25 +346,35 @@ describe("content clicks dismiss chrome before navigating", () => {
     await Promise.resolve();
     expect(controller.prepareIncomingPage).toHaveBeenCalledOnce();
     expect(controller.settleDragPageTurn).toHaveBeenCalledWith(
-      controller.host, undefined, 1, 0.5, expect.anything(), undefined, undefined, undefined,
+      controller.host,
+      undefined,
+      1,
+      0.5,
+      expect.anything(),
+      "none",
+      undefined,
+      undefined,
     );
     expect(controller.turnPage).not.toHaveBeenCalled();
   });
 
-  it.each(["single", "spread", "fixed"] as const)("preserves %s link, disclosure, selection, and highlight guards", mode => {
-    const { controller, doc, margin } = setUp(mode);
-    controller.setContentUiDismissal(() => false);
-    const x = margin.x;
-    tap(doc.querySelector("a")!, x);
-    tap(doc.querySelector("summary")!, x);
-    vi.spyOn(doc, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
-    tap(margin.target, x);
-    expect(controller.highlightInteraction.dismissSelectionToolbar).toHaveBeenCalledOnce();
-    vi.mocked(doc.getSelection).mockReturnValue(null);
-    controller.highlightInteraction.findHighlightAtPoint.mockReturnValue({ id: "highlight" });
-    tap(margin.target, x);
-    expect(controller.turnPage).not.toHaveBeenCalled();
-  });
+  it.each(["single", "spread", "fixed"] as const)(
+    "preserves %s link, disclosure, selection, and highlight guards",
+    (mode) => {
+      const { controller, doc, margin } = setUp(mode);
+      controller.setContentUiDismissal(() => false);
+      const x = margin.x;
+      tap(doc.querySelector("a")!, x);
+      tap(doc.querySelector("summary")!, x);
+      vi.spyOn(doc, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
+      tap(margin.target, x);
+      expect(controller.highlightInteraction.dismissSelectionToolbar).toHaveBeenCalledOnce();
+      vi.mocked(doc.getSelection).mockReturnValue(null);
+      controller.highlightInteraction.findHighlightAtPoint.mockReturnValue({ id: "highlight" });
+      tap(margin.target, x);
+      expect(controller.turnPage).not.toHaveBeenCalled();
+    },
+  );
 
   it("retains RTL navigation after consuming a fixed-layout tap", () => {
     const { controller, margin } = setUp("fixed");
@@ -325,7 +389,7 @@ describe("content clicks dismiss chrome before navigating", () => {
 
   it.each(["single", "spread"] as const)(
     "%s ignores retained off-page selection before and during a margin tap",
-    mode => {
+    (mode) => {
       const { controller, doc } = setUp(mode);
       const x = mode === "spread" ? 420 : 850;
       const selection = { isCollapsed: false, removeAllRanges: vi.fn() } as unknown as Selection;
@@ -350,10 +414,12 @@ describe("content clicks dismiss chrome before navigating", () => {
 
   it.each(["single", "spread", "fixed"] as const)(
     "%s preserves a visible selection created during a tap",
-    mode => {
+    (mode) => {
       const { controller, margin } = setUp(mode);
       pointer(margin.target, "pointerdown", margin.x);
-      vi.spyOn(margin.document, "getSelection").mockReturnValue({ isCollapsed: false } as Selection);
+      vi.spyOn(margin.document, "getSelection").mockReturnValue({
+        isCollapsed: false,
+      } as Selection);
       pointer(margin.target, "pointerup", margin.x);
       expect(controller.turnPage).not.toHaveBeenCalled();
       expect(controller.highlightInteraction.dismissSelectionToolbar).not.toHaveBeenCalled();
@@ -389,7 +455,9 @@ describe("content clicks dismiss chrome before navigating", () => {
     const { controller, doc } = setUp("spread");
     const dismiss = vi.fn(() => true);
     controller.setContentUiDismissal(dismiss);
-    doc.body.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "mouse", button: 2, bubbles: true }));
+    doc.body.dispatchEvent(
+      new PointerEvent("pointerdown", { pointerType: "mouse", button: 2, bubbles: true }),
+    );
     expect(dismiss).not.toHaveBeenCalled();
     pointer(doc.body, "pointerdown", 400);
     pointer(doc.body, "pointerup", 400, "mouse", 2);

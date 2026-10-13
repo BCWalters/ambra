@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
@@ -9,6 +9,8 @@ const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 async function holdIncomingFrame(page: Page): Promise<void> {
   await page.evaluate(() => {
     const ctl = Reflect.get(window, "__readerController");
+    ctl.pageTurnPrefetch.clear();
+    ctl.schedulePageTurnPrefetch = () => {};
     const container = ctl.containerEl;
     const prototype = HTMLIFrameElement.prototype;
     const descriptor = Object.getOwnPropertyDescriptor(prototype, "src")!;
@@ -33,6 +35,94 @@ async function holdIncomingFrame(page: Page): Promise<void> {
       },
     });
   });
+}
+
+async function dragForwardEdge(page: Page): Promise<void> {
+  const bounds = await page.evaluate(() => {
+    const ctl = Reflect.get(window, "__readerController");
+    const edge = [...ctl.pageMargins().edges].sort((a, b) => a.left - b.left).at(-1);
+    return { x: edge.right - 3, y: edge.top + edge.height / 2, width: ctl.width };
+  });
+  await page.mouse.move(bounds.x, bounds.y);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x - bounds.width * 0.6, bounds.y, { steps: 12 });
+}
+
+for (const style of ["slide", "scroll"] as const) {
+  for (const direction of [1, -1] as const) {
+    test(`${style} direction=${direction}: mouse paper moves at 8px before the incoming page loads`, async () => {
+      const { context, readerPage: page } = await launchReader(
+        path.join(fixtures, "two-chapter.epub"),
+      );
+      try {
+        await exposeReaderController(page);
+        await page.evaluate(async (style) => {
+          const c = Reflect.get(window, "__readerController");
+          await c.setPageTurnAnimationStyle("none");
+          await c.turnPage(1);
+          await c.setPageTurnAnimationStyle(style);
+        }, style);
+        await holdIncomingFrame(page);
+        const before = await page.evaluate(() =>
+          Reflect.get(window, "__readerController").currentReadingCfi(),
+        );
+        const bounds = await page.evaluate((direction) => {
+          const c = Reflect.get(window, "__readerController");
+          const edges = [...c.pageMargins().edges].sort((a, b) => a.left - b.left);
+          const edge = edges[direction === 1 ? edges.length - 1 : 0];
+          return {
+            x: direction === 1 ? edge.right - 3 : edge.left + 3,
+            y: edge.top + edge.height / 2,
+            width: c.width,
+          };
+        }, direction);
+        await page.mouse.move(bounds.x, bounds.y);
+        await page.mouse.down();
+        await page.mouse.move(bounds.x - direction * 8, bounds.y);
+        await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
+        const preview = await page.evaluate(() => {
+          const c = Reflect.get(window, "__readerController");
+          const paper =
+            document.querySelector<HTMLElement>("[data-ambra-preparing-page-turn]") ??
+            c.hostWrapperEl ??
+            c.host.element;
+          return {
+            transform: paper.style.transform,
+            animating: c.isAnimatingPageTurn,
+            cfi: c.currentReadingCfi(),
+          };
+        });
+        expect(preview.animating).toBe(false);
+        expect(preview.cfi).toBe(before);
+        const expected =
+          style === "slide" && direction === -1
+            ? direction * 100 * (1 - 8 / bounds.width)
+            : (-direction * 100 * 8) / bounds.width;
+        expect(Number.parseFloat(preview.transform.slice("translateX(".length))).toBeCloseTo(
+          expected,
+          4,
+        );
+        await page.keyboard.press("Escape");
+        await page.evaluate(() => Reflect.get(window, "__operationGate").release());
+        await page.mouse.up();
+        await page.waitForFunction(() => !Reflect.get(window, "__readerController").isTurningPage);
+        await expect(
+          page.locator("[data-ambra-preparing-page-turn], [data-ambra-page-turn-input]"),
+        ).toHaveCount(0);
+        expect(
+          await page.evaluate(() => {
+            const c = Reflect.get(window, "__readerController");
+            return (c.hostWrapperEl ?? c.host.element).style.transform;
+          }),
+        ).toBe("");
+        expect(
+          await page.evaluate(() => Reflect.get(window, "__readerController").currentReadingCfi()),
+        ).toBe(before);
+      } finally {
+        await context.close();
+      }
+    });
+  }
 }
 
 for (const trigger of ["held", "animated"] as const) {
@@ -70,7 +160,7 @@ for (const trigger of ["held", "animated"] as const) {
       });
       expect(result.spineIndex).toBe(1);
       expect(result.text).toContain("CHAPTER TWO");
-      await expect.poll(() => page.locator("iframe").count()).toBe(1);
+      await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(1);
       expect(errors).toEqual([]);
     } finally {
       await context.close();
@@ -164,7 +254,7 @@ test("a failed page preparation keeps the current host interactive and permits a
         );
       }),
     ).toBe(true);
-    await expect.poll(() => page.locator("iframe").count()).toBe(1);
+    await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(1);
     await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
     expect(
       await page.evaluate(() => Reflect.get(window, "__readerController").host.currentPageIndex),
@@ -221,7 +311,9 @@ for (const fixture of ["two-chapter.epub", "fxl-spread-ltr.epub"]) {
             page.evaluate(() => {
               const ctl = Reflect.get(window, "__readerController");
               return (
-                document.querySelectorAll("iframe").length - ctl.host.contentDocuments().length
+                Array.from(document.querySelectorAll("iframe")).filter(
+                  (frame) => !frame.closest("[data-ambra-prefetched-turn]"),
+                ).length - ctl.host.contentDocuments().length
               );
             }),
           )
@@ -305,7 +397,7 @@ test("a failed navigation that cancels an animated turn retains the original int
         );
       }),
     ).toBe(true);
-    await expect.poll(() => page.locator("iframe").count()).toBe(1);
+    await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(1);
     await page.keyboard.press("ArrowRight");
     await page.waitForFunction(
       () => Reflect.get(window, "__readerController").host.currentPageIndex === 1,
@@ -361,7 +453,7 @@ test("settings superseded by navigation settle only when the replacement using t
         return { scale: ctl.fontScale, spine: ctl.spineIndex, error: ctl.snapshot().error };
       }),
     ).toEqual({ scale: 1.25, spine: 1, error: undefined });
-    await expect.poll(() => page.locator("iframe").count()).toBe(2);
+    await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(2);
     expect(errors).toEqual([]);
   } finally {
     await context.close();
@@ -375,27 +467,20 @@ test("failed drag preparation releases its gate and gesture listeners", async ()
   try {
     await exposeReaderController(page);
     await holdIncomingFrame(page);
-    await page.evaluate(() => {
-      const ctl = Reflect.get(window, "__readerController");
-      const doc = ctl.host.element.contentDocument;
-      doc.dispatchEvent(
-        new PointerEvent("pointerdown", { pointerId: 1, clientX: 800, clientY: 200 }),
-      );
-      doc.dispatchEvent(
-        new PointerEvent("pointermove", { pointerId: 1, clientX: 100, clientY: 200 }),
-      );
-    });
+    await dragForwardEdge(page);
     await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
     await page.evaluate(() => Reflect.get(window, "__operationGate").release(true));
     await page.waitForFunction(() => !Reflect.get(window, "__readerController").isTurningPage);
+    await page.mouse.up();
+    await expect(page.locator("[data-ambra-page-turn-input]")).toHaveCount(0);
     expect(
-      await page.evaluate(() => Reflect.get(window, "__readerController").gestureCleanup),
+      await page.evaluate(() => Reflect.get(window, "__readerController").controlledTurn),
     ).toBeUndefined();
     await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
     expect(
       await page.evaluate(() => Reflect.get(window, "__readerController").host.currentPageIndex),
     ).toBe(1);
-    await expect.poll(() => page.locator("iframe").count()).toBe(1);
+    await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(1);
     expect(errors).toEqual([]);
   } finally {
     await context.close();
@@ -409,26 +494,24 @@ test("pointercancel never commits a drag even after passing the commit threshold
   try {
     await exposeReaderController(page);
     await holdIncomingFrame(page);
+    await dragForwardEdge(page);
+    await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
     await page.evaluate(() => {
       const ctl = Reflect.get(window, "__readerController");
-      const doc = ctl.host.element.contentDocument;
-      doc.dispatchEvent(
-        new PointerEvent("pointerdown", { pointerId: 1, clientX: 800, clientY: 200 }),
-      );
-      doc.dispatchEvent(
-        new PointerEvent("pointermove", { pointerId: 1, clientX: 100, clientY: 200 }),
-      );
-      doc.dispatchEvent(
-        new PointerEvent("pointercancel", { pointerId: 1, clientX: 100, clientY: 200 }),
+      document.dispatchEvent(
+        new PointerEvent("pointercancel", {
+          pointerId: ctl.controlledTurn.start.pointerId,
+        }),
       );
     });
-    await page.waitForFunction(() => Reflect.get(window, "__operationGate").held);
     await page.evaluate(() => Reflect.get(window, "__operationGate").release());
     await page.waitForFunction(() => !Reflect.get(window, "__readerController").isTurningPage);
+    await page.mouse.up();
+    await expect(page.locator("[data-ambra-page-turn-input]")).toHaveCount(0);
     expect(
       await page.evaluate(() => Reflect.get(window, "__readerController").host.currentPageIndex),
     ).toBe(0);
-    await expect.poll(() => page.locator("iframe").count()).toBe(1);
+    await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(1);
     await page.evaluate(() => Reflect.get(window, "__readerController").turnPage(1));
     expect(
       await page.evaluate(() => Reflect.get(window, "__readerController").host.currentPageIndex),

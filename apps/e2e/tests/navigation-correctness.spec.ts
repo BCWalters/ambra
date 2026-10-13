@@ -10,6 +10,7 @@ import {
   currentPageText,
   clickForwardAndWait,
   clickReadingPage,
+  READER_FRAME_SELECTOR,
 } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -525,18 +526,18 @@ test.describe("paginated reflowable navigation correctness", () => {
       for (let click = 0; click < 8 && !hasChapterTwo; click++) {
         const result = await clickForwardAndWait(readerPage);
         label = result.after;
-        hasChapterTwo = await readerPage.evaluate(() =>
-          Array.from(document.querySelectorAll("iframe")).some((f) =>
+        hasChapterTwo = await readerPage.evaluate(selector =>
+          Array.from(document.querySelectorAll<HTMLIFrameElement>(selector)).some((f) =>
             (f as HTMLIFrameElement).contentDocument?.body?.innerText?.includes("Chapter Two"),
           ),
-        );
+        READER_FRAME_SELECTOR);
       }
       expect(hasChapterTwo, "never reached the merged spread (chapter two never appeared)").toBe(
         true,
       );
 
-      const columns = await readerPage.evaluate(() => {
-        return Array.from(document.querySelectorAll("iframe"))
+      const columns = await readerPage.evaluate(selector => {
+        return Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
           .filter((el) => getComputedStyle(el).visibility !== "hidden")
           .map((el) => {
             const doc = (el as HTMLIFrameElement).contentDocument;
@@ -549,7 +550,7 @@ test.describe("paginated reflowable navigation correctness", () => {
               scrollbarHeight: doc ? el.clientHeight - doc.documentElement.clientHeight : undefined,
             };
           });
-      });
+      }, READER_FRAME_SELECTOR);
       for (const column of columns) {
         expect(
           column.opacity,
@@ -774,19 +775,24 @@ test.describe("paginated reflowable navigation correctness", () => {
     const { context, readerPage } = await launchReader(CHAINED_SINGLE_PAGE_CHAPTERS_EPUB, {
       viewport: { width: 1400, height: 900 },
     });
+    const waitForNavigation = () =>
+      readerPage.waitForFunction(() => {
+        const c = Reflect.get(window, "__readerController");
+        return !c.isTurningPage && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout;
+      });
     const rightSlotHiddenIframe = () =>
       readerPage.evaluate(() => {
-        const iframes = Array.from(document.querySelectorAll("iframe"));
-        return iframes.some((f) => {
-          const rect = f.getBoundingClientRect();
-          return rect.x > 700 && getComputedStyle(f).visibility === "hidden";
-        });
+        const frame = Reflect.get(window, "__readerController").host.columnElement("right");
+        const rect = frame.getBoundingClientRect();
+        return rect.x > 700 && getComputedStyle(frame).visibility === "hidden";
       });
     const visibleMarkers = () =>
       readerPage.evaluate(() => {
-        const texts = Array.from(document.querySelectorAll("iframe"))
+        const host = Reflect.get(window, "__readerController").host;
+        const frames: HTMLIFrameElement[] = [host.columnElement("left"), host.columnElement("right")];
+        const texts = frames
           .filter((f) => getComputedStyle(f).visibility !== "hidden")
-          .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText ?? "");
+          .map((f) => f.contentDocument?.body?.innerText ?? "");
         return {
           columnCount: texts.length,
           everyColumnHasText: texts.every((t) => t.trim().length > 0),
@@ -798,7 +804,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       });
 
     try {
-      await readerPage.waitForTimeout(500);
+      await waitForNavigation();
 
       // The book's very first spread merges forward immediately (see
       // the `BOOK_START_MERGE_EPUB` test above) — cover and title page
@@ -820,7 +826,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       // Advance well into the real (27-page) first chapter.
       for (let press = 0; press < 8; press++) {
         await readerPage.keyboard.press("ArrowRight");
-        await readerPage.waitForTimeout(500);
+        await waitForNavigation();
       }
 
       // Now navigate all the way back past every chained single-page
@@ -837,7 +843,7 @@ test.describe("paginated reflowable navigation correctness", () => {
       const MAX_BACK_PRESSES = 15;
       for (let press = 0; press < MAX_BACK_PRESSES && !reachedStart; press++) {
         await readerPage.keyboard.press("ArrowLeft");
-        await readerPage.waitForTimeout(700);
+        await waitForNavigation();
         expect(
           await rightSlotHiddenIframe(),
           `back-press ${press}: a facing column was hidden`,

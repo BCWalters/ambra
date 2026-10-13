@@ -19,6 +19,7 @@ export class SpreadPaginatedHost {
   private readonly first: PaginatedContentHost;
   private readonly second: PaginatedContentHost;
   private readonly containerEl: HTMLDivElement;
+  private readonly gutterEl: HTMLDivElement;
   private spread: ReflowableSpread = { first: { spineIndex: 0, pageIndex: 0 } };
   private rtl = false;
 
@@ -34,6 +35,7 @@ export class SpreadPaginatedHost {
     this.first.element.style.flexShrink = "0";
     this.second.element.style.flexShrink = "0";
     const divider = doc.createElement("div");
+    this.gutterEl = divider;
     Object.assign(divider.style, {
       width: `${SpreadPaginatedHost.GUTTER_WIDTH}px`,
       flexShrink: "0",
@@ -53,9 +55,13 @@ export class SpreadPaginatedHost {
   public get element(): HTMLDivElement {
     return this.containerEl;
   }
+  public get gutterElement(): HTMLDivElement {
+    return this.gutterEl;
+  }
   public get positions(): ReflowableSpread {
     return this.spread;
   }
+  private readonly loadedSpineIndices = new Map<PaginatedContentHost, number>();
   public get primarySpineIndex(): number {
     return this.spread.second?.spineIndex ?? this.spread.first.spineIndex;
   }
@@ -88,9 +94,9 @@ export class SpreadPaginatedHost {
   }
   /** Reuse only the documents already owned by their respective columns. */
   public tryGoToSpread(spread: ReflowableSpread): boolean {
-    if (spread.first.spineIndex !== this.spread.first.spineIndex ||
+    if (spread.first.spineIndex !== this.loadedSpineIndices.get(this.first) ||
       spread.first.pageIndex < 0 || spread.first.pageIndex >= this.first.pageCount ||
-      (spread.second && (spread.second.spineIndex !== this.spread.second?.spineIndex ||
+      (spread.second && (spread.second.spineIndex !== this.loadedSpineIndices.get(this.second) ||
         spread.second.pageIndex < 0 || spread.second.pageIndex >= this.second.pageCount))) return false;
     this.first.goToPageIndex(spread.first.pageIndex);
     if (spread.second) this.second.goToPageIndex(spread.second.pageIndex);
@@ -156,6 +162,7 @@ export class SpreadPaginatedHost {
     paginationOptions?: PaginatedOpenOptions,
   ): Promise<void> {
     this.spread = spread;
+    this.loadedSpineIndices.clear();
     const snapshots = new Map<number, PaginationSnapshot>();
     for (const [host, position] of [
       [this.first, spread.first],
@@ -165,6 +172,7 @@ export class SpreadPaginatedHost {
       if (!position) continue;
       await host.open(loader, resolver, position.spineIndex, disclosures, configure, paginationOptions,
         snapshots.get(position.spineIndex) ?? snapshotFor?.(position.spineIndex));
+      this.loadedSpineIndices.set(host, position.spineIndex);
       const snapshot = host.paginationSnapshot();
       if (snapshot) snapshots.set(position.spineIndex, snapshot);
       host.goToPageIndex(position.pageIndex);

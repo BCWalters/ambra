@@ -112,6 +112,8 @@ export class BookPaginationEstimator {
   private figurePositions: (readonly FigurePositions[] | undefined)[];
   private generation = 0;
   private activeRun: AbortController | undefined;
+  private measurementPauses = 0;
+  private readonly measurementWaiters = new Set<() => void>();
   private lastWidth: number | undefined;
   private lastHeight: number | undefined;
   private lastFontScale: number | undefined;
@@ -119,6 +121,20 @@ export class BookPaginationEstimator {
   private lastLineSpacing: number | undefined;
   private lastLetterSpacing: number | undefined;
   private lastContentWidthEm: number | undefined;
+
+  public get isMeasuring(): boolean {
+    return this.activeRun !== undefined;
+  }
+
+  public matchesLayout(
+    width: number, height: number, fontScale: number, fontFamily: FontFamilyChoice,
+    lineSpacing: number, letterSpacing: number, contentWidthEm: number,
+  ): boolean {
+    return width === this.lastWidth && height === this.lastHeight &&
+      fontScale === this.lastFontScale && fontFamily === this.lastFontFamily &&
+      lineSpacing === this.lastLineSpacing && letterSpacing === this.lastLetterSpacing &&
+      contentWidthEm === this.lastContentWidthEm;
+  }
 
   public constructor(
     private readonly contentLoader: ContentLoader,
@@ -182,15 +198,7 @@ export class BookPaginationEstimator {
     this.activeRun = controller;
     const { signal } = controller;
     const token = ++this.generation;
-    if (
-      width !== this.lastWidth ||
-      height !== this.lastHeight ||
-      fontScale !== this.lastFontScale ||
-      fontFamily !== this.lastFontFamily ||
-      lineSpacing !== this.lastLineSpacing ||
-      letterSpacing !== this.lastLetterSpacing ||
-      contentWidthEm !== this.lastContentWidthEm
-    ) {
+    if (!this.matchesLayout(width, height, fontScale, fontFamily, lineSpacing, letterSpacing, contentWidthEm)) {
       this.pageCounts = this.initialPageCounts();
       this.pageStarts = new Array(this.spine.length).fill(undefined);
       this.pageStartAncestors = new Array(this.spine.length).fill(undefined);
@@ -205,50 +213,54 @@ export class BookPaginationEstimator {
       this.lastContentWidthEm = contentWidthEm;
     }
 
-    const order = computePriorityOrder(currentSpineIndex, this.spine.length);
-    for (const spineIndex of order) {
-      if (this.pageCounts[spineIndex] !== undefined) {
-        // Already measured at this width/height/font — nothing to do.
-        continue;
+    try {
+      const order = computePriorityOrder(currentSpineIndex, this.spine.length);
+      for (const spineIndex of order) {
+        if (this.pageCounts[spineIndex] !== undefined) {
+          // Already measured at this width/height/font — nothing to do.
+          continue;
+        }
+        const spineItem = this.spine[spineIndex];
+        if (!spineItem) {
+          continue;
+        }
+        // Yield before chapter loading as well as at the incremental measurement
+        // checkpoints, and stop superseded runs before allocating another host.
+        await this.yieldMeasurement(signal);
+        if (signal.aborted || token !== this.generation) return;
+        let measured: MeasuredSpineItem;
+        try {
+          measured = await this.measureSpineItem(
+            spineItem,
+            spineIndex,
+            width,
+            height,
+            fontScale,
+            fontFamily,
+            lineSpacing,
+            letterSpacing,
+            contentWidthEm,
+            signal,
+          );
+        } catch (error) {
+          if (signal.aborted) return;
+          throw error;
+        }
+        if (token !== this.generation) {
+          // A newer `run` call has since started — this one's remaining
+          // work is stale and should stop reporting (and stop consuming
+          // resources measuring further items nobody wants anymore).
+          return;
+        }
+        this.pageCounts[spineIndex] = measured.pageCount;
+        this.pageStarts[spineIndex] = measured.pageStarts;
+        this.pageStartAncestors[spineIndex] = measured.pageStartAncestors;
+        this.fragmentPages[spineIndex] = measured.fragmentPages;
+        this.figurePositions[spineIndex] = measured.figurePositions;
+        onProgress();
       }
-      const spineItem = this.spine[spineIndex];
-      if (!spineItem) {
-        continue;
-      }
-      // Yield before chapter loading as well as at the incremental measurement
-      // checkpoints, and stop superseded runs before allocating another host.
-      await yieldToEventLoop();
-      if (signal.aborted || token !== this.generation) return;
-      let measured: MeasuredSpineItem;
-      try {
-        measured = await this.measureSpineItem(
-          spineItem,
-          spineIndex,
-          width,
-          height,
-          fontScale,
-          fontFamily,
-          lineSpacing,
-          letterSpacing,
-          contentWidthEm,
-          signal,
-        );
-      } catch (error) {
-        if (signal.aborted) return;
-        throw error;
-      }
-      if (token !== this.generation) {
-        // A newer `run` call has since started — this one's remaining
-        // work is stale and should stop reporting (and stop consuming
-        // resources measuring further items nobody wants anymore).
-        return;
-      }
-      this.pageCounts[spineIndex] = measured.pageCount;
-      this.pageStarts[spineIndex] = measured.pageStarts;
-      this.pageStartAncestors[spineIndex] = measured.pageStartAncestors;
-      this.fragmentPages[spineIndex] = measured.fragmentPages;
-      this.figurePositions[spineIndex] = measured.figurePositions;
-      onProgress();
+    } finally {
+      if (this.activeRun === controller) this.activeRun = undefined;
     }
   }
 
@@ -292,7 +304,7 @@ export class BookPaginationEstimator {
           ReadingTheme.applyLetterSpacing(doc, letterSpacing);
           ReadingTheme.applyContentWidth(doc, contentWidthEm);
         },
-        { signal },
+        { signal, yieldControl: () => this.yieldMeasurement(signal) },
       );
       signal.throwIfAborted();
       // Retain only portable boundary data, never the measured document or DOM ranges.
@@ -332,7 +344,7 @@ export class BookPaginationEstimator {
             figures.set(rootCfi, positions);
           }
           if (performance.now() >= deadline) {
-            await yieldToEventLoop();
+            await this.yieldMeasurement(signal);
             signal.throwIfAborted();
             deadline = performance.now() + 8;
           }
@@ -438,7 +450,36 @@ export class BookPaginationEstimator {
     this.figurePositions[spineIndex] = undefined;
   }
 
-  /** Pauses pending work and releases its hidden host immediately, preserving
+  /** Suspends at work checkpoints without discarding the current document.
+   * The idempotent release resumes work after all foreground owners finish. */
+  public pausePendingMeasurement(): () => void {
+    this.measurementPauses++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      if (--this.measurementPauses === 0) {
+        for (const resume of this.measurementWaiters) resume();
+      }
+    };
+  }
+
+  private async yieldMeasurement(signal: AbortSignal): Promise<void> {
+    await yieldToEventLoop();
+    while (this.measurementPauses > 0 && !signal.aborted) {
+      await new Promise<void>(resolve => {
+        const resume = () => {
+          this.measurementWaiters.delete(resume);
+          signal.removeEventListener("abort", resume);
+          resolve();
+        };
+        this.measurementWaiters.add(resume);
+        signal.addEventListener("abort", resume, { once: true });
+      });
+    }
+  }
+
+  /** Cancels pending work and releases its hidden host immediately, preserving
    * completed counts/CFIs and their layout key. Resume with `run`; unchanged
    * chapters are skipped. Intended for foreground work that needs exclusive
    * main-thread time, not every cheap in-place page turn. */

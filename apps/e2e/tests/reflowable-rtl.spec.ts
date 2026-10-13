@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { clickReadingPage, launchReader } from "../harness.js";
+import { clickReadingPage, launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let rtlBook: string;
@@ -41,7 +41,7 @@ for (const direction of ["ltr", "rtl"]) {
     const book = direction === "rtl" ? rtlChainedBook : path.resolve(here, "../fixtures/chained-single-page-chapters.epub");
     const { context, readerPage: page } = await launchReader(book, { viewport: { width: 1400, height: 900 } });
     try {
-      await page.locator("iframe").first().evaluate(frame => {
+      await page.locator(READER_FRAME_SELECTOR).first().evaluate(frame => {
         const doc = (frame as HTMLIFrameElement).contentDocument!;
         const range = doc.createRange();
         range.selectNodeContents(doc.querySelector("p")!);
@@ -119,7 +119,7 @@ for (const width of [760, 1400]) {
           await expect(animation).toHaveValue(style);
           await page.keyboard.press("Escape");
         }
-        await page.locator("iframe").first().evaluate(frame => {
+        await page.locator(READER_FRAME_SELECTOR).first().evaluate(frame => {
           (frame as HTMLIFrameElement).focus();
           (frame as HTMLIFrameElement).contentDocument!.body.focus();
         });
@@ -127,12 +127,12 @@ for (const width of [760, 1400]) {
         expect(initial).toHaveLength(width === 1400 ? 2 : 1);
         // The EPUB prose remains LTR; progression only mirrors page placement.
         expect(
-          await page.evaluate(() =>
-            Array.from(document.querySelectorAll("iframe")).map(
+          await page.evaluate(selector =>
+            Array.from(document.querySelectorAll<HTMLIFrameElement>(selector)).map(
               (frame) =>
                 frame.contentWindow!.getComputedStyle(frame.contentDocument!.body).direction,
             ),
-          ),
+          READER_FRAME_SELECTOR),
         ).toEqual(width === 1400 ? ["ltr", "ltr"] : ["ltr"]);
         if (width === 1400) {
           const offsets = initial.map((text) => Number(text.match(/translateY\(([-\d.]+)px/)?.[1]));
@@ -159,6 +159,9 @@ for (const width of [760, 1400]) {
         expect(await signature(page)).toEqual(next);
         await key("Shift+Space");
         expect(await signature(page)).toEqual(initial);
+        const bookmark = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ });
+        await bookmark.focus();
+        await expect(bookmark.locator("..")).toHaveCSS("pointer-events", "auto");
         await clickReadingPage(page, "left");
         await settled(page);
         expect(await signature(page)).toEqual(next);
@@ -169,7 +172,7 @@ for (const width of [760, 1400]) {
         // Swipe right is forward in RTL. Dispatch touch pointer events to
         // avoid native mouse text selection, which correctly cancels turns.
         await page
-          .locator("iframe")
+          .locator(READER_FRAME_SELECTOR)
           .last()
           .evaluate((frame) => {
             const doc = (frame as HTMLIFrameElement).contentDocument!;

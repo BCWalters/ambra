@@ -35,6 +35,26 @@ async function holdTurnAtStart(page: Page): Promise<void> {
     };
     Reflect.set(window, "__gutterRequests", requests);
     Reflect.set(window, "__gutterAnimations", animations);
+    if (controller.pageTurnAnimationStyle === "rotate") {
+      const create = controller.pageTurnOrchestrator.createCurledLeaf.bind(controller.pageTurnOrchestrator);
+      let held = false;
+      controller.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+        const leaf = create(...args);
+        const settle = leaf.settle.bind(leaf);
+        leaf.settle = async (...settleArgs: unknown[]) => {
+          if (!held) {
+            held = true;
+            leaf.paint(0);
+            Reflect.set(window, "__gutterCurledLeaf", leaf);
+            await new Promise<void>(resolve => Reflect.set(window, "__releaseGutterTurn", resolve));
+          }
+          return settle(...settleArgs);
+        };
+        return leaf;
+      };
+      Reflect.set(window, "__gutterPendingTurn", controller.turnPage(1));
+      return;
+    }
     // Hold the owned transition's safety deadline as well as its CSS clock.
     browserWindow.setTimeout = (handler, timeout, ...args) => {
       if (controller.isAnimatingPageTurn && timeout === 600 && typeof handler === "function") {
@@ -65,12 +85,15 @@ async function holdTurnAtStart(page: Page): Promise<void> {
     });
     Reflect.set(window, "__gutterPendingTurn", controller.turnPage(1));
   });
-  await page.waitForFunction(() => Reflect.get(window, "__gutterAnimations").length > 0);
+  await page.waitForFunction(() => !!Reflect.get(window, "__gutterCurledLeaf") ||
+    Reflect.get(window, "__gutterAnimations").length > 0);
 }
 
 async function setTurnPhase(page: Page, time: number): Promise<void> {
   await page.evaluate(async time => {
-    for (const animation of Reflect.get(window, "__gutterAnimations") as Animation[]) animation.currentTime = time;
+    const leaf = Reflect.get(window, "__gutterCurledLeaf");
+    if (leaf) leaf.paint(time / 380);
+    else for (const animation of Reflect.get(window, "__gutterAnimations") as Animation[]) animation.currentTime = time;
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   }, time);
 }

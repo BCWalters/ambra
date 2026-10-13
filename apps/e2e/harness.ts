@@ -197,18 +197,22 @@ export async function clickForwardAndWait(
 
 /** A page-turning click, including the separate UI-dismissal tap when needed.
  * Navigation tests use this only with unpinned chrome and no open panels. */
+export const READER_FRAME_SELECTOR =
+  "iframe:not([data-ambra-prefetched-turn]):not([data-ambra-prefetched-turn] iframe)";
+
 export async function clickReadingPage(
   readerPage: Page,
   side: "left" | "right",
 ): Promise<void> {
   const point = await outerMarginPoint(readerPage, side);
-  const toolbar = readerPage
-    .getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
-    .locator("..");
+  const bookmark = readerPage.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ });
+  const toolbar = bookmark.locator("..");
   if (await toolbar.evaluate((element) => getComputedStyle(element).pointerEvents !== "none")) {
     await exposeReaderController(readerPage);
     // Rearm the idle timer so chrome cannot auto-hide between the probe and tap.
     await readerPage.mouse.move(10, 10);
+    await bookmark.focus();
+    await expect(bookmark).toBeFocused();
     await expect(toolbar).toHaveCSS("pointer-events", "auto");
     await expect(toolbar).toHaveCSS("opacity", "1");
     const position = () =>
@@ -224,6 +228,8 @@ export async function clickReadingPage(
       return !c.isTurningPage && !c.isLoadInFlight && !c.isApplyingLayout && !c.pendingLayout;
     });
     expect(await position(), "dismissing chrome is not a page turn").toEqual(before);
+    await bookmark.evaluate(button => button.blur());
+    await expect(bookmark).not.toBeFocused();
   }
   await readerPage.mouse.click(point.x, point.y);
 }

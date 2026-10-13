@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const book = process.env.AMBRA_E2E_ROMEO_EPUB ??
@@ -81,7 +81,18 @@ for (const style of ["slide", "scroll"] as const) {
       expect(await position(page)).toEqual(before);
       await expect(toolbar(page)).toHaveCSS("pointer-events", "none");
       await expect(page.getByRole("button", { name: "Add note", exact: true })).toBeHidden();
-      const selections = await page.evaluate(() => Array.from(document.querySelectorAll("iframe")).map(frame => {
+      // Controlled releases clear native selection; still exercise an explicit stale off-page range.
+      await page.locator(READER_FRAME_SELECTOR).first().evaluate(frame => {
+        const doc = (frame as HTMLIFrameElement).contentDocument!;
+        const paragraph = doc.querySelector("p:last-of-type");
+        if (!paragraph) throw new Error("Missing off-page selection fixture.");
+        const range = doc.createRange();
+        range.selectNodeContents(paragraph);
+        const selection = doc.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+      const selections = await page.evaluate(selector => Array.from(document.querySelectorAll<HTMLIFrameElement>(selector)).map(frame => {
         const s = frame.contentDocument!.getSelection();
         const box = frame.getBoundingClientRect();
         const [top = 0, right = top, bottom = top, left = right] =
@@ -97,7 +108,7 @@ for (const style of ["slide", "scroll"] as const) {
             r.right > Math.max(left, -box.left) &&
             r.left < Math.min(box.width - right, innerWidth - box.left)).length,
         };
-      }));
+      }), READER_FRAME_SELECTOR);
       await test.info().attach("before-single-click", {
         body: JSON.stringify({ before, selections }, null, 2), contentType: "application/json",
       });

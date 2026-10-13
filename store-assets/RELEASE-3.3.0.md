@@ -1,0 +1,195 @@
+# Ambra 3.3.0 manual release
+
+The owner approved the animation and gesture improvements in the live development
+extension, including fixed-layout single/two-page spreads, clicks/flicks, curled
+strip coverage, and the opening title spread in *Reflections on the Revolution in
+France*. The owner selected 3.3.0 for this feature release.
+
+Preparation does not upload, submit, publish, change Public visibility, or replace
+earlier release handoffs. The final production package still requires owner sanity
+checking and dashboard review before manual store submission.
+
+## Update notes
+
+```text
+- Adds smooth, two-sided curled Page flip animations in single-page and spread views.
+- Adds direct click-and-drag control for Page flip, Slide and Film strip.
+- Makes mouse flicks more forgiving after holding, wandering or a small release twitch.
+- Improves single-page Page flip completion, with a 25% slow-drag threshold.
+- Keeps book/chapter titles and page numbers stable while pages turn.
+- Preserves sharp page text through fractional-width layout and animation handoffs.
+- Improves document-boundary turns, short title pages and book-edge navigation.
+- Prepares adjacent pages during idle time for quicker Slide, Film strip and fixed-layout turns.
+- Adds local mouse-gesture diagnostics to help troubleshoot missed page turns.
+```
+
+Spread Page flip, Slide and Film strip retain the 40% slow-drag threshold. Mouse
+flicks require 5% forward travel within 400ms, with a 250ms release allowance and
+8px backward-jitter tolerance. Touch retains its 250ms window, 100ms release
+allowance and strict reversal handling. Diagnostics remain bounded, in-memory
+and local, without publication text or automatic uploads.
+
+## Validation and limits
+
+Require root package, extension package and source manifest versions to agree on
+`3.3.0`. Internal unpublished workspace versions remain independent.
+
+Run lint, typecheck, all unit/tooling tests and the protected browser groups.
+The dedicated page-turn rendering, input and prefetch groups run without retries
+and use one worker for timing-sensitive regressions. Validate the exact production
+package, not the development bundle accepted during iteration.
+
+Check curled front/back geometry, furniture ink/folios, visible strip coverage,
+single/spread thresholds, recent flicks and button-cleared releases, chapter
+boundaries, interruption recovery, prefetch disposal and fixed-layout navigation.
+The mixed-document book-start previous margin must create no leaf or position
+change. The title spread must retain its canonical publication pixels throughout
+preparation, without incoming text leaking through the stationary blank area.
+Frame pacing samples use the nearest-rank p95 (`ceil(sampleCount * 0.95) - 1`).
+Geometry probes run after the actual animation, before leaf disposal, in a
+separate test/browser context. Their temporary ranges, forced layouts and
+garbage collection cannot alter pacing on the following measured turn.
+Navigation assertions wait for the actual turn/load/layout completion.
+Publication-only comparisons hide reactive toolbar/scrubber surfaces
+and their shadows; furniture and chrome retain their separate native coverage.
+Curled-leaf tests retain action traces and explicit screenshots but disable DOM
+snapshots and trace screencasts: frozen-style serialization and per-frame image
+encoding interrupt native animation timing. Other native files retain their
+usual DOM snapshots and screencasts.
+Frozen copies reset to CSS initial values before applying noninitial computed
+declarations, retaining explicit bidi/custom properties and Typed OM precision
+without repeating the complete default declaration set in every strip.
+Publication copies and furniture share immutable frozen-style rules across
+strips. Furniture keeps only its mutable positioning, opacity and color inline
+for paper shading and ink adjustments, without duplicating inherited theme
+variables in every strip. Native allocation checks bound inline furniture size
+and reject inline theme-variable duplication. Owned furniture omits unused theme
+variable definitions entirely because its captured paint values are resolved;
+authored publication variables remain preserved.
+Shared rules are serialized directly rather than parsed into temporary inline
+styles and immediately discarded. Chained-spread assertions inspect the active
+host's own columns, not background page-count measurement frames.
+Flat endpoint faces and curved strips switch with opacity rather than inherited
+visibility or layout-removing display changes, avoiding subtree restyles at onset.
+Held-handoff probes use native arrow keys so a chrome-dismissal helper cannot
+deadlock against their intentionally paused turn. Import probes await readiness.
+Disclosure ownership checks distinguish connected prefetch/measurement documents
+from mounted reading columns and still reject detached registrations.
+Acceptance pacing runs without native profiling. Set `AMBRA_E2E_PROFILE_CURL=1`
+for a separate diagnostic run attaching Chrome layout, paint and garbage-collection
+events; profiled timings do not substitute for unprofiled acceptance evidence.
+On a failed rendering group, CI collects a separate native curl profile and
+retains its report with failure diagnostics. The original acceptance failure
+remains required and cannot be replaced by the diagnostic result.
+Diagnostic profiling also samples allocations, including collected objects, to
+identify sources of native GC pressure. Tooltip probes await the opened panel's
+focus handoff before returning to the trigger. Vertical-image evidence checks
+every interior screenshot pixel against the original red fixture; the intentional
+transparent top-edge hover strip owns pointer hits but does not cover image paint.
+Pagination offset probes use native character-data lengths instead of reading
+entire text strings on every bisection. UTF-16 offsets, current mutated lengths
+and endpoint clamping retain their original behavior.
+Bisection reuses one scratch text position per leaf instead of allocating an
+object at every candidate offset. Saved line/CFI anchors remain independent.
+Foreground pagination pauses background measurement at its cooperative checkpoints
+without tearing down the in-progress document during the animation. Cancellation,
+replacement, and disposal still immediately release hidden hosts; normal background
+reprioritization resumes once foreground operations settle.
+In-chapter turns resume the same measurement when the chapter, estimator, and
+layout are unchanged, rather than discarding and rebuilding its document after
+every turn. Changed layout/chapter, cancellation, and failed or completed runs
+still follow normal refresh and cleanup.
+Native margin-click probes hold toolbar focus until the physical dismissal tap,
+preventing idle-hide from expiring between the visible-chrome check and input.
+They then release that temporary focus so subsequent reading shortcuts remain
+owned by the reader. Native RTL coverage explicitly exercises focused chrome
+before margin clicks followed by swipes and keyboard navigation.
+Curled faces contain paint within their existing clipped strip bounds, retaining
+the same segment count, overlap, geometry, and opaque paper. Failure-only native
+profiling includes compositor/GPU events to identify remaining rendering stalls.
+At flat endpoints, opaque snapshots cover the interior mesh while only its outer
+overlap strips disappear. Starting the turn no longer changes visibility for the
+whole mesh at once; endpoint paper and stationary-page clipping stay unchanged.
+Settings-recovery probes use the shared mounted-reading registration check,
+excluding connected measurement/prefetch documents while rejecting detached leaks.
+Line-start bisection reuses scalar endpoint geometry within each measured leaf,
+bounded to 4,096 offsets without retaining native rectangle wrappers. Native
+fragment-list measurement, collapsed-whitespace prefix fallback, abort/pause
+checkpoints and saved anchors remain unchanged; reflow starts a fresh cache.
+Native regressions compare every line boundary with independently measured glyphs
+and bound repeated endpoint measurements before and after typography changes.
+Cooperative line measurement also snapshots native fragment coordinates into
+scalar records before yielding, rather than retaining DOMRect wrappers through
+foreground pauses. Native fragment order, caption unions, overlapping-break
+handling, line/CFI boundaries and all cooperative checkpoints stay unchanged.
+Compact-library keyboard probes wait for the imported book's saved-reading
+resume card before navigating, so its asynchronous size change does not race
+native focus scrolling. Vertical-scroll restoration checks native glyph ink in
+both halves of the visible interior, alongside document hit tests and geometry;
+the transparent toolbar hover strip does not count as a paint obstruction.
+The vertical image check still requires every interior pixel to match the fixture.
+Curled running-header and folio ink uses strip-width, band-height clips rather
+than transparent page-height wrappers. Frozen bands retain their original
+typography and full-width alignment above the shade; publication frames stay
+in place. Opt-in profiling records native layer bounds as diagnostic evidence,
+not a substitute for the unchanged paint and pacing acceptance gates.
+Separately composited publication, shade and furniture-ink children explicitly
+use their face's backface-culling policy. Native fixed-pose comparisons verify
+front/back curve paint against the previous child-layer policy in single/spread
+and LTR/RTL views; paper, shading, mesh geometry and canonical frames are unchanged.
+Each paint reuses its progress wave and one opacity string per front/back shade
+pair, without changing the original shading arithmetic or animation duration.
+Prepared chapter animations clear any spinner shown during a slow preparation;
+the still-running navigation operation does not cover ready content with loading UI.
+
+Physical touchscreen input, real OS app switching, complex EPUB paint fidelity
+and live assistive-technology behavior remain broader manual-validation limits.
+This release does not claim a new official EPUB conformance score or complete
+EPUB support. Published conformance results remain frozen; record package-bound
+release assessment evidence separately without deploying a new assessment.
+
+Permissions, Public distribution, existing store item and listing screenshots
+remain unchanged. Do not use the historical UNLISTED uploader for the Public item.
+
+## Exact merged-main package
+
+Require passing protected PR checks, a normal head-pinned merge and successful
+validation of the actual merged commit. Use its `beta-release-<merged SHA>` CI
+artifact, not a PR merge-ref package or a different local rebuild.
+
+Verify `release.json`, `SHA256SUMS`, archive CRC/paths, production entry points,
+license notices, unchanged permissions and absence of development-server code,
+source maps and local/debug feature bundles:
+
+```sh
+cd /path/to/downloaded/artifact
+shasum -a 256 -c SHA256SUMS
+unzip -tq ambra-3.3.0.zip
+```
+
+Require the actual merged commit, `version: "3.3.0"`, `dirty: false`,
+`publication: "PUBLIC"` and an independently matching archive SHA-256.
+Run native release smoke checks against the exact extracted archive.
+
+Dispatch **Assess EPUB 3.4 release candidate** on this merged `main` commit with
+`release_run_id` set to the accepted CI run and both automated profiles enabled.
+Preserve its package-bound worksheet, observations and scored reports with the
+handoff. Verify its archive digest matches the selected store ZIP. Record native
+failures and unassessed/manual criteria separately; the known incomplete-release
+gate is not ordinary CI success or a full-conformance claim. Do not deploy these
+results to the frozen published assessment.
+
+Prepare a separate handoff with the ZIP, exact unpacked extension, receipt,
+checksums, update notes and actual acceptance evidence. Preserve all older
+handoffs. Do not substitute a different build after owner acceptance.
+
+## Owner-only submission
+
+1. Sanity-check the exact unpacked 3.3.0 candidate and verify the Public item's
+   dashboard version/review state allows a new submission.
+2. Upload only the verified `ambra-3.3.0.zip` to item
+   `mcjkkebkhifgkkbahlcapjlnaihocogj`.
+3. Keep current visibility, permissions disclosures, listing settings and
+   screenshots. Use the update notes above and submit manually.
+4. Record the actual outcome separately; preparation and passing checks do not
+   establish submission, approval or publication.

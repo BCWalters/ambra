@@ -3,6 +3,7 @@ import {
   positionFromTextNodes,
   sumTextLength,
   totalTextLength,
+  type TextNodePosition,
 } from "./DomTextWalker.js";
 import { isReaderOwnedContent } from "../content/ReaderOwnedContent.js";
 import { isSvgRoot } from "../content/ContentDocumentRoot.js";
@@ -321,6 +322,8 @@ function atomicBounds(element: Element, pageHeight: number, viewportWidth: numbe
  * considered "the same line" — accounts for sub-pixel layout rounding,
  * not a meaningful visual difference. */
 const LINE_TOLERANCE_PX = 1;
+const MAX_CACHED_LINE_PROBES = 4096;
+type LineRect = Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">;
 
 const BASELINE_INLINE_TEXT_TAGS = new Set([
   "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "del", "em", "i",
@@ -328,7 +331,7 @@ const BASELINE_INLINE_TEXT_TAGS = new Set([
   "sub", "sup", "time", "u", "var", "wbr",
 ]);
 
-function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generator<undefined, DOMRect[]> {
+function* normalizeWrappingInlineRects(range: Range, rects: LineRect[]): Generator<undefined, LineRect[]> {
   if (!rects.some((rect, index) => index > 0 && rect.top < rects[index - 1]!.top - LINE_TOLERANCE_PX)) return rects;
   const root = range.commonAncestorContainer;
   if (root.nodeType !== 1) return rects;
@@ -337,7 +340,7 @@ function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generato
     rootStyle.float !== "none" || rootStyle.transform !== "none") return rects;
 
   const seen = new Set<string>();
-  const lines: DOMRect[] = [];
+  const lines: LineRect[] = [];
   for (let index = 0; index < rects.length; index++) {
     if (index % 64 === 0) yield undefined;
     const rect = rects[index]!;
@@ -368,10 +371,10 @@ function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generato
   return lines;
 }
 
-function excludeOverlappingBreakRects(range: Range, rects: DOMRect[]): DOMRect[] {
-  const key = (rect: DOMRect): string => `${rect.left}:${rect.top}:${rect.right}:${rect.bottom}`;
+function excludeOverlappingBreakRects(range: Range, rects: LineRect[]): LineRect[] {
+  const key = (rect: LineRect): string => `${rect.left}:${rect.top}:${rect.right}:${rect.bottom}`;
   const candidates = new Map<string, string>();
-  let previous: DOMRect | undefined;
+  let previous: LineRect | undefined;
   for (const rect of rects) {
     if (rect.width > 0) previous = rect;
     else if (previous && rect.top >= previous.top && rect.top < previous.bottom &&
@@ -409,7 +412,11 @@ function* measureTextLeafChunks(
   pageHeight: number,
   reorderedCaption = false,
 ): Generator<Chunk | undefined> {
-  const rects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
+  // Cooperative pauses retain scalar snapshots, not native fragment wrappers.
+  const rects = Array.from(fullRange.getClientRects(), rect => ({
+    left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+    width: rect.width, height: rect.height,
+  })).filter((r) => paintsInViewport(r, viewportWidth));
   // Continuous-scroll tracking keeps its existing line geometry.
   const lineRects = reorderedCaption ? yield* captionLineBands(rects) : Number.isFinite(pageHeight)
     ? yield* normalizeWrappingInlineRects(fullRange, excludeOverlappingBreakRects(fullRange, rects))
@@ -422,8 +429,8 @@ function* measureTextLeafChunks(
   /** Only used inside already-validated normal-flow captions. Union each physical
    * line's inline boxes, including small raised/lowered scripts; DOM boundaries
    * are then measured afresh rather than sorted alongside these rectangles. */
-  function* captionLineBands(rects: readonly DOMRect[]): Generator<undefined, DOMRect[]> {
-    const lines: DOMRect[] = [];
+  function* captionLineBands(rects: readonly LineRect[]): Generator<undefined, LineRect[]> {
+    const lines: LineRect[] = [];
     const ordered = [...rects].sort((a, b) => a.top - b.top);
     for (let index = 0; index < ordered.length; index++) {
       if (index % 64 === 0) yield undefined;
@@ -431,8 +438,12 @@ function* measureTextLeafChunks(
       const previous = lines.at(-1);
       if (previous && rect.top < previous.bottom) {
         const left = Math.min(previous.left, rect.left);
-        lines[lines.length - 1] = new DOMRect(left, previous.top,
-          Math.max(previous.right, rect.right) - left, Math.max(previous.bottom, rect.bottom) - previous.top);
+        const width = Math.max(previous.right, rect.right) - left;
+        const height = Math.max(previous.bottom, rect.bottom) - previous.top;
+        lines[lines.length - 1] = {
+          left, top: previous.top, right: left + width, bottom: previous.top + height,
+          width, height,
+        };
       } else lines.push(rect);
     }
     return lines;
@@ -442,7 +453,10 @@ function* measureTextLeafChunks(
   // walking the subtree, especially around large MathML expressions (#102).
   const totalLength = sumTextLength(textNodes);
   const probeRange = fullRange.cloneRange();
+  const probePosition = positionFromTextNodes(textNodes, 0);
   const lineOffsets = new Map<number, number>();
+  // Keep only scalar geometry for this leaf, not live native rectangle wrappers.
+  const probeEndTops = new Map<number, number | null>();
   // A lone text node has no intervening inline boxes or atomic content whose
   // rect could end a prefix. Probe its last character instead of remeasuring
   // every preceding line. Complex inline runs retain the prefix algorithm.
@@ -463,7 +477,7 @@ function* measureTextLeafChunks(
     const targetTop = lineRects[lineIndex]!.top;
     let offset = lineOffsets.get(targetTop);
     if (offset === undefined) {
-      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth);
+      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops);
       lineOffsets.set(targetTop, offset);
     }
     let position = positionFromTextNodes(textNodes, offset);
@@ -495,8 +509,8 @@ function* measureTextLeafChunks(
 /** Binary-searches the smallest prefix end offset within `fullRange` whose
  * rendered position has already reached `targetTop`. The caller converts
  * this exclusive end to the boundary before the first glyph. Relies purely on
- * `Range.getClientRects()`, a real layout measurement, evaluated at each
- * candidate offset. `textNodes` contains only this range's text nodes,
+ * `Range.getClientRects()`, a real layout measurement, reused at repeated
+ * candidate offsets within this leaf. `textNodes` contains only this range's text nodes,
  * collected once by the caller (see `measureTextLeafChunks`) rather than
  * re-walked on every bisection step. */
 function* bisectLineStartOffset(
@@ -507,6 +521,8 @@ function* bisectLineStartOffset(
   targetTop: number,
   usePointProbe: boolean,
   viewportWidth: number,
+  probePosition: TextNodePosition | undefined,
+  probeEndTops: Map<number, number | null>,
 ): Generator<undefined, number> {
   let lo = 0;
   let hi = totalLength;
@@ -514,7 +530,7 @@ function* bisectLineStartOffset(
   while (lo < hi) {
     yield undefined;
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth)) {
+    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops)) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -532,11 +548,17 @@ function hasReachedLine(
   targetTop: number,
   usePointProbe: boolean,
   viewportWidth: number,
+  probePosition: TextNodePosition | undefined,
+  probeEndTops: Map<number, number | null>,
 ): boolean {
   if (globalOffset === 0) {
     return false;
   }
-  const position = positionFromTextNodes(textNodes, globalOffset);
+  const cachedTop = probeEndTops.get(globalOffset);
+  if (cachedTop !== undefined) {
+    return cachedTop !== null && cachedTop >= targetTop - LINE_TOLERANCE_PX;
+  }
+  const position = positionFromTextNodes(textNodes, globalOffset, probePosition);
   if (!position) {
     return false;
   }
@@ -551,14 +573,17 @@ function hasReachedLine(
     const rect = rects[index]!;
     if (paintsInViewport(rect, viewportWidth)) {
       if (usePointProbe && rect.width === 0) break;
+      if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, rect.top);
       return rect.top >= targetTop - LINE_TOLERANCE_PX;
     }
   }
   // Collapsed whitespace can have a zero-width rect on the next line even
   // when its prefix still ends on the previous one. Keep exact old boundaries.
-  return usePointProbe
-    ? hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth)
-    : false;
+  if (usePointProbe) {
+    return hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth, probePosition, probeEndTops);
+  }
+  if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, null);
+  return false;
 }
 
 /**
@@ -702,7 +727,7 @@ function* chunkMeasurements(
 /** Horizontal clipping is visual only: offscreen semantic headings remain
  * untouched in the DOM/accessibility tree. Do not exclude positioned elements:
  * visible absolute content and descendants still need to contribute bounds. */
-function paintsInViewport(rect: DOMRect, viewportWidth: number): boolean {
+function paintsInViewport(rect: LineRect, viewportWidth: number): boolean {
   return rect.height > 0 && (viewportWidth <= 0 || (rect.right > 0 && rect.left < viewportWidth));
 }
 

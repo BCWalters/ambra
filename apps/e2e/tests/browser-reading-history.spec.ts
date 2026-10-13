@@ -332,7 +332,7 @@ async function holdIncomingFrame(page: Page) {
     Object.defineProperty(HTMLIFrameElement.prototype, "src", {
       ...descriptor,
       set(this: HTMLIFrameElement, value: string) {
-        if (!gate.held && c.containerEl.contains(this)) {
+        if (!gate.held && !this.closest("[data-ambra-prefetched-turn]") && c.containerEl.contains(this)) {
           gate.held = true;
           Object.defineProperty(HTMLIFrameElement.prototype, "src", descriptor);
           const block = (event: Event) => event.stopImmediatePropagation();

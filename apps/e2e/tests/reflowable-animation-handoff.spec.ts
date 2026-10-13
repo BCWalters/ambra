@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import type { SpreadPaginatedHost } from "../../../packages/engine/src/index.js";
-import { clickReadingPage, launchReader } from "../harness.js";
+import { launchReader } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 import { navigationFixture } from "../navigation-fixture.js";
 
@@ -13,6 +13,7 @@ declare global {
       incoming?: SpreadPaginatedHost;
       release?: () => void;
       transitions: number;
+      curledTurns: number;
     };
   }
 }
@@ -98,7 +99,7 @@ for (const direction of ["ltr", "rtl"] as const) {
   for (const style of ["slide", "rotate", "scroll", "none"] as const) {
     const widths = direction === "ltr" && style === "slide"
       ? [1547, 1547.5, 1546]
-      : [1547.5];
+      : style === "rotate" ? [1547.5, 1547] : [1547.5];
     test(`${direction} ${style}: text stays fixed across spread handoff${widths.length > 1 ? ", odd/fractional widths and resize" : ""} (#208)`, async () => {
       test.setTimeout(90_000);
       const { context, readerPage: page } = await launchReader(longTextBook(direction), {
@@ -111,7 +112,7 @@ for (const direction of ["ltr", "rtl"] as const) {
           const c = Reflect.get(window, "__readerController");
           await c.openSpineItem(0, { landOnFractionInItem: 0.5 });
           await c.setPageTurnAnimationStyle(style);
-          window.spreadHandoff = { transitions: 0 };
+          window.spreadHandoff = { transitions: 0, curledTurns: 0 };
           document.addEventListener("transitionrun", event => {
             if (event.propertyName === "transform" && event.target instanceof Element &&
               c.containerEl.contains(event.target)) window.spreadHandoff.transitions++;
@@ -132,14 +133,42 @@ for (const direction of ["ltr", "rtl"] as const) {
               await new Promise<void>(resolve => { window.spreadHandoff.release = resolve; });
             };
           }
+          if (style === "rotate") {
+            const create = orchestrator.createCurledLeaf.bind(orchestrator);
+            orchestrator.createCurledLeaf = (...args: unknown[]) => {
+              const leaf = create(...args);
+              let capture: (() => () => void) | undefined;
+              const prepare = leaf.prepare.bind(leaf);
+              leaf.prepare = (...args: unknown[]) => {
+                capture = (args[1] as { capture?: () => () => void }).capture;
+                return prepare(...args);
+              };
+              const settle = leaf.settle.bind(leaf);
+              leaf.settle = async (...args: unknown[]) => {
+                await settle(...args);
+                window.spreadHandoff.curledTurns++;
+                const restore = capture?.();
+                try {
+                  await new Promise<void>(resolve => { window.spreadHandoff.release = resolve; });
+                } finally {
+                  restore?.();
+                }
+              };
+              return leaf;
+            };
+          }
         }, style);
         await settled(page);
         const measurements = [];
         for (const width of widths) {
-          await page.setViewportSize({ width: Math.ceil(width), height: 878 });
-          await page.evaluate(width => {
-            Reflect.get(window, "__readerController").containerEl.style.right = `${Math.ceil(width) - width}px`;
-          }, width);
+          const offset = style === "rotate" && width === 1547 ? 0.5 : 0;
+          const viewportWidth = Math.ceil(width + offset);
+          await page.setViewportSize({ width: viewportWidth, height: 878 });
+          await page.evaluate(({ width, offset, viewportWidth }) => {
+            const container = Reflect.get(window, "__readerController").containerEl;
+            container.style.left = `${offset}px`;
+            container.style.right = `${viewportWidth - width - offset}px`;
+          }, { width, offset, viewportWidth });
           await page.waitForFunction(width => Reflect.get(window, "__readerController").appliedWidth === width, width);
           await settled(page);
           await page.evaluate(() => { window.spreadHandoff.incoming = undefined; });
@@ -149,7 +178,7 @@ for (const direction of ["ltr", "rtl"] as const) {
           const initialPng = style === "none" ? await page.screenshot() : undefined;
           for (const forward of [true, false]) {
             const side = forward === (direction === "ltr") ? "right" : "left";
-            await clickReadingPage(page, side);
+            await page.keyboard.press(side === "right" ? "ArrowRight" : "ArrowLeft");
             if (style === "none") {
               await settled(page);
               const after = await measure(page);
@@ -184,7 +213,8 @@ for (const direction of ["ltr", "rtl"] as const) {
             await test.info().attach(`${width}-${side}-ink`, {
               body: JSON.stringify(ink), contentType: "application/json",
             });
-            if (JSON.stringify(before) !== JSON.stringify(after) || ink.some(v => v.bestShift !== 0)) {
+            if (JSON.stringify(before) !== JSON.stringify(after) ||
+              ink.some(v => v.bestShift !== 0 || v.differences.find(d => d.dx === 0)!.difference !== 0)) {
               await test.info().attach(`${width}-${side}-final-frame`, { body: beforePng, contentType: "image/png" });
               await test.info().attach(`${width}-${side}-settled`, { body: afterPng, contentType: "image/png" });
             }
@@ -199,6 +229,8 @@ for (const direction of ["ltr", "rtl"] as const) {
         }
         const transitions = await page.evaluate(() => window.spreadHandoff.transitions);
         if (style === "none") expect(transitions).toBe(0);
+        else if (style === "rotate")
+          expect(await page.evaluate(() => window.spreadHandoff.curledTurns)).toBe(widths.length * 2);
         else expect(transitions).toBeGreaterThan(0);
         await test.info().attach("handoff-measurements", {
           body: JSON.stringify(measurements), contentType: "application/json",

@@ -1,7 +1,9 @@
-import { FixedContentHost, PaginatedContentHost, SpreadPaginatedHost } from "@ambra/engine";
+import { FixedContentHost, PaginatedContentHost, SpreadPaginatedHost, ReadingTheme } from "@ambra/engine";
 import type { MetadataTextContext } from "@ambra/engine";
 import { PageTurnAnimator } from "./PageTurnAnimator.js";
 import type { PageTurnAnimatorContext } from "./PageTurnAnimator.js";
+import { CurledPageTurn } from "./CurledPageTurn.js";
+import type { ControlledPageTurn } from "./ControlledPageTurn.js";
 
 /** What `PageTurnOrchestrator` needs from `ReaderController` beyond what
  * `PageTurnAnimator` already asks for — plain getters/setters only, this
@@ -12,6 +14,7 @@ import type { PageTurnAnimatorContext } from "./PageTurnAnimator.js";
  * chrome, but turning back *off* deliberately doesn't — the host swap
  * that follows notifies once for both at the same time. */
 export interface PageTurnOrchestratorContext extends PageTurnAnimatorContext {
+  controlledTurn?(): ControlledPageTurn | undefined;
   width(): number;
   setAnimatingPageTurn(isAnimating: boolean): void;
   notify(): void;
@@ -25,6 +28,7 @@ export interface PageTurnFurnitureInfo {
   titleContext?: MetadataTextContext | undefined;
   title: string;
   chapterLabel: string;
+  incomingChapterLabel?: string | undefined;
   outgoingPage: number | undefined;
   incomingPage: number | undefined;
 }
@@ -73,6 +77,25 @@ export class PageTurnOrchestrator {
     private readonly animator: PageTurnAnimator,
   ) {}
 
+  private createCurledLeaf(background: string): CurledPageTurn {
+    return new CurledPageTurn(this.ctx.containerEl()!, background);
+  }
+
+  private async flatTurn(animate: () => Promise<void>): Promise<void> {
+    const container = this.ctx.containerEl();
+    const overflowX = container?.style.overflowX ?? "";
+    const overflowY = container?.style.overflowY ?? "";
+    if (container) container.style.overflow = "hidden";
+    try {
+      await animate();
+    } finally {
+      if (container) {
+        container.style.overflowX = overflowX;
+        container.style.overflowY = overflowY;
+      }
+    }
+  }
+
   /** Animates an in-chapter single-page turn between two already-open
    * hosts. Host ownership and adoption remain with the caller. */
   public async animatePageTurn(
@@ -81,77 +104,68 @@ export class PageTurnOrchestrator {
     direction: 1 | -1,
     furniture: PageTurnFurnitureInfo,
   ): Promise<void> {
+    this.ctx.controlledTurn?.()?.stopPreparationPreview();
     switch (this.ctx.pageTurnAnimationStyle()) {
       case "rotate":
         return this.rotatePageTurn(oldHost, newHost, direction, furniture);
       case "slide":
-        return this.slidePageTurn(oldHost, newHost, direction, furniture);
+        return this.flatTurn(() => this.slidePageTurn(oldHost, newHost, direction, furniture));
       case "scroll":
-        return this.scrollPageTurn(oldHost, newHost, direction, furniture);
+        return this.flatTurn(() => this.scrollPageTurn(oldHost, newHost, direction, furniture));
       case "none":
         return this.finishPageTurn(oldHost, newHost, []);
     }
   }
 
-  /** "rotate": moves clipping inside both full-height iframe viewports
-   * (overlapping clipped iframes do not composite correctly in Chromium)
-   * and turns a real 3D page so it lands visibly instead of freezing edge-on. */
+  /** The single leaf leaves the viewport, revealing the next page underneath. */
   private async rotatePageTurn(
     oldHost: PaginatedContentHost,
     newHost: PaginatedContentHost,
     direction: 1 | -1,
     furniture: PageTurnFurnitureInfo,
+    captureDestination?: () => () => void,
   ): Promise<void> {
     const containerEl = this.ctx.containerEl()!;
-    const entering = direction === -1;
-    const animatingHost = entering ? newHost : oldHost;
-    const otherHost = entering ? oldHost : newHost;
-    animatingHost.suppressClipPathForAnimation();
-    const animatingNaturalHeight = animatingHost.element.getBoundingClientRect().height;
-    animatingHost.growToFullHeight(this.ctx.height());
-    otherHost.suppressClipPathForAnimation();
-
-    let turnGrowthMask: HTMLDivElement | undefined;
-    let outgoingOverlay: HTMLDivElement | undefined;
-    let incomingOverlay: HTMLDivElement | undefined;
-    if (!this.animator.shouldSkipPageTurnAnimation()) {
-      turnGrowthMask = this.animator.buildTurnGrowthMask(
-        animatingHost.element,
-        animatingNaturalHeight,
-      );
-      if (turnGrowthMask) {
-        turnGrowthMask.style.zIndex = "2";
-        animatingHost.element.parentElement?.insertBefore(
-          turnGrowthMask,
-          animatingHost.element.nextSibling,
-        );
+    if (this.animator.shouldSkipPageTurnAnimation()) {
+      await this.ctx.controlledTurn?.()?.play(() => {}, this.ctx.operationSignal?.(), true);
+      this.finishPageTurn(oldHost, newHost, []);
+      return;
+    }
+    const { outgoing, incoming } = this.buildInChapterOverlays(oldHost.element, newHost.element, furniture);
+    const leaf = this.createCurledLeaf(ReadingTheme.PAGE_THEMES[this.ctx.pageTheme()].background);
+    const physical = this.ctx.rtl?.() ? -direction : direction;
+    try {
+      for (const overlay of [outgoing, incoming]) {
+        if (overlay) {
+          overlay.style.opacity = "0";
+          containerEl.append(overlay);
+        }
       }
-      ({ outgoing: outgoingOverlay, incoming: incomingOverlay } = this.buildInChapterOverlays(
-        oldHost.element,
-        newHost.element,
-        furniture,
-      ));
-      this.stackOverlays(containerEl, outgoingOverlay, incomingOverlay, entering, false);
+      await leaf.prepare(
+        { element: oldHost.element, furniture: outgoing },
+        { element: newHost.element, furniture: incoming, capture: captureDestination },
+        physical === 1 ? 1 : -1, this.ctx.operationSignal?.(),
+        { element: newHost.element, furniture: incoming, capture: captureDestination }, "single",
+      );
+      leaf.hide(oldHost.element);
       this.ctx.setAnimatingPageTurn(true);
       this.ctx.notify();
-    }
-
-    const turnEl = entering ? newHost.element : oldHost.element;
-    const animatedOverlay = entering ? incomingOverlay : outgoingOverlay;
-    try {
-      await this.animator.playPageTurnAnimation(
-        turnEl,
-        turnEl,
-        direction,
-        [
-          ...(animatedOverlay ? [animatedOverlay] : []),
-          ...(turnGrowthMask ? [turnGrowthMask] : []),
-        ],
-        entering,
-      );
+      const gesture = this.ctx.controlledTurn?.();
+      if (gesture) await gesture.play(progress => leaf.paint(progress), this.ctx.operationSignal?.());
+      else await leaf.settle(0, 1, this.ctx.operationSignal?.());
     } finally {
-      this.finishPageTurn(oldHost, newHost, [outgoingOverlay, incomingOverlay, turnGrowthMask]);
+      leaf.dispose();
+      this.finishPageTurn(oldHost, newHost, [outgoing, incoming]);
     }
+  }
+
+  public async animateReusablePageTurn(
+    host: PaginatedContentHost,
+    direction: 1 | -1,
+    furniture: PageTurnFurnitureInfo,
+    captureDestination: () => () => void,
+  ): Promise<void> {
+    await this.rotatePageTurn(host, host, direction, furniture, captureDestination);
   }
 
   /** "slide": moves clipping inside both hosts as "rotate" does,
@@ -258,7 +272,8 @@ export class PageTurnOrchestrator {
       {
         left: 0,
         width: newEl.getBoundingClientRect().width,
-        header,
+        header: furniture.incomingChapterLabel === undefined ? header :
+          { ...header, right: furniture.incomingChapterLabel },
         footerText:
           furniture.incomingPage !== undefined ? `Page ${furniture.incomingPage}` : undefined,
       },
@@ -346,122 +361,107 @@ export class PageTurnOrchestrator {
     direction: 1 | -1,
     furniture: SpreadPageTurnFurnitureInfo,
   ): Promise<void> {
+    this.ctx.controlledTurn?.()?.stopPreparationPreview();
     switch (this.ctx.pageTurnAnimationStyle()) {
       case "rotate":
-        return this.rotateSpreadTurn(oldHost, newHost, direction, furniture);
+        return this.curledSpreadTurn(oldHost, newHost, direction, furniture);
       case "slide":
-        return this.slideSpreadTurn(oldHost, newHost, direction, furniture);
+        return this.flatTurn(() => this.slideSpreadTurn(oldHost, newHost, direction, furniture));
       case "scroll":
-        return this.scrollSpreadTurn(oldHost, newHost, direction, furniture);
+        return this.flatTurn(() => this.scrollSpreadTurn(oldHost, newHost, direction, furniture));
       case "none":
         return this.finishSpreadTurn(oldHost, newHost, [], false);
     }
   }
 
-  /** "rotate" only turns the spine-side (right) column, adding a back face so it lands
-   * visibly past 90° instead of vanishing edge-on — the left column
-   * stays put but still needs clip-path suppressed on both hosts (see
-   * `animatePageTurn`'s own rotate case) and its own furniture overlay,
-   * since it stays stacked above/below the other spread the whole time. */
-  private async rotateSpreadTurn(
+  private async curledSpreadTurn(
     oldHost: SpreadPaginatedHost,
     newHost: SpreadPaginatedHost,
     direction: 1 | -1,
     furniture: SpreadPageTurnFurnitureInfo,
+    captureDestination?: () => () => void,
   ): Promise<void> {
-    const containerEl = this.ctx.containerEl()!;
-    const entering = direction === -1;
-    const turnHost = entering ? newHost : oldHost;
-    const otherHost = entering ? oldHost : newHost;
-
-    const turnColumn = this.ctx.rtl?.() ? "left" : "right";
-    turnHost.suppressColumnClipPathForAnimation(turnColumn);
-    const turnColumnNaturalHeight = this.animator
-      .spreadColumnElement(turnHost, 1)
-      .getBoundingClientRect().height;
-    turnHost.growColumnToFullHeight(turnColumn, this.ctx.height());
-    turnHost.suppressColumnClipPathForAnimation("left");
-    otherHost.suppressColumnClipPathForAnimation("left");
-    otherHost.suppressColumnClipPathForAnimation("right");
-    const turnEl = this.animator.spreadColumnElement(turnHost, 1);
-
-    let turnGrowthMask: HTMLDivElement | undefined;
-    let rotateBackFace: HTMLDivElement | undefined;
-    let outgoingOverlay: HTMLDivElement | undefined;
-    let incomingOverlay: HTMLDivElement | undefined;
-    let outgoingLeftOverlay: HTMLDivElement | undefined;
-    let incomingLeftOverlay: HTMLDivElement | undefined;
-    if (!this.animator.shouldSkipPageTurnAnimation()) {
-      turnGrowthMask = this.animator.buildTurnGrowthMask(turnEl, turnColumnNaturalHeight);
-      if (turnGrowthMask) {
-        turnGrowthMask.style.zIndex = "2";
-        turnEl.parentElement?.insertBefore(turnGrowthMask, turnEl.nextSibling);
+    if (this.animator.shouldSkipPageTurnAnimation()) {
+      await this.ctx.controlledTurn?.()?.play(() => {}, this.ctx.operationSignal?.(), true);
+      this.finishSpreadTurn(oldHost, newHost, [], false);
+      return;
+    }
+    const physical = this.ctx.rtl?.() ? -direction : direction;
+    const side = physical === 1 ? "right" : "left";
+    const opposite = side === "right" ? "left" : "right";
+    const front = oldHost.columnElement(side);
+    const back = newHost.columnElement(opposite);
+    const forward = direction === 1;
+    const outgoing = this.buildSpreadColumnOverlay(front,
+      forward ? furniture.outgoingChapterLabel : furniture.title,
+      forward ? furniture.outgoingSecondaryPage : furniture.outgoingPrimaryPage, furniture.titleContext);
+    const incoming = this.buildSpreadColumnOverlay(back,
+      forward ? furniture.title : furniture.incomingChapterLabel,
+      forward ? furniture.incomingPrimaryPage : furniture.incomingSecondaryPage, furniture.titleContext);
+    const stationary = this.buildSpreadColumnOverlay(oldHost.columnElement(opposite),
+      forward ? furniture.title : furniture.outgoingChapterLabel,
+      forward ? furniture.outgoingPrimaryPage : furniture.outgoingSecondaryPage, furniture.titleContext);
+    const destination = this.buildSpreadColumnOverlay(newHost.columnElement(side),
+      forward ? furniture.incomingChapterLabel : furniture.title,
+      forward ? furniture.incomingSecondaryPage : furniture.incomingPrimaryPage, furniture.titleContext);
+    const leaf = this.createCurledLeaf(ReadingTheme.PAGE_THEMES[this.ctx.pageTheme()].background);
+    const incomingGutter = oldHost === newHost ? undefined : newHost.gutterElement;
+    const gutterOpacity = incomingGutter?.style.opacity ?? "";
+    const incomingElement = oldHost === newHost ? undefined : newHost.element;
+    const incomingOpacity = incomingElement?.style.opacity ?? "";
+    const incomingClip = incomingElement?.style.clipPath ?? "";
+    try {
+      if (incomingElement) incomingElement.style.opacity = "0";
+      if (incomingGutter) incomingGutter.style.opacity = "0";
+      for (const overlay of [outgoing, incoming, stationary, destination]) {
+        if (overlay) {
+          overlay.style.zIndex = "-1";
+          overlay.style.opacity = "0";
+          this.ctx.containerEl()!.append(overlay);
+        }
       }
-      rotateBackFace = this.animator.buildRotateBackFace(turnEl);
-
-      const oldColumnEl = this.animator.spreadColumnElement(oldHost, 1);
-      const newColumnEl = this.animator.spreadColumnElement(newHost, 1);
-      outgoingOverlay = this.buildSpreadColumnOverlay(
-        oldColumnEl,
-        furniture.outgoingChapterLabel,
-        furniture.outgoingSecondaryPage,
-      );
-      incomingOverlay = this.buildSpreadColumnOverlay(
-        newColumnEl,
-        furniture.incomingChapterLabel,
-        furniture.incomingSecondaryPage,
-      );
-
-      const oldLeftColumnEl = this.animator.spreadColumnElement(oldHost, 0);
-      const newLeftColumnEl = this.animator.spreadColumnElement(newHost, 0);
-      outgoingLeftOverlay = this.buildSpreadColumnOverlay(
-        oldLeftColumnEl,
-        furniture.title,
-        furniture.outgoingPrimaryPage,
-        furniture.titleContext,
-      );
-      incomingLeftOverlay = this.buildSpreadColumnOverlay(
-        newLeftColumnEl,
-        furniture.title,
-        furniture.incomingPrimaryPage,
-        furniture.titleContext,
-      );
-
-      this.stackOverlays(containerEl, outgoingOverlay, incomingOverlay, entering, false);
-      this.stackSpreadLeftOverlays(containerEl, outgoingLeftOverlay, incomingLeftOverlay, entering);
+      await leaf.prepare({ element: front, furniture: outgoing },
+        { element: back, furniture: incoming, capture: captureDestination },
+        physical === 1 ? 1 : -1, this.ctx.operationSignal?.(),
+        captureDestination ? { element: front, furniture: destination, capture: captureDestination } : undefined);
+      if (incomingElement) {
+        const incomingBounds = incomingElement.getBoundingClientRect();
+        const movingBounds = front.getBoundingClientRect();
+        incomingElement.style.clipPath = `inset(0 ${Math.max(0, incomingBounds.right - movingBounds.right)}px 0 ${Math.max(0, movingBounds.left - incomingBounds.left)}px)`;
+        incomingElement.style.opacity = incomingOpacity;
+      }
+      if (stationary) {
+        stationary.style.zIndex = "3";
+        stationary.style.opacity = "1";
+      }
+      if (destination && !captureDestination) {
+        destination.style.zIndex = "1";
+        destination.style.opacity = "1";
+      }
+      leaf.hide(front);
       this.ctx.setAnimatingPageTurn(true);
       this.ctx.notify();
-    }
-
-    const animatedOverlayEl = entering ? incomingOverlay : outgoingOverlay;
-    try {
-      await this.animator.playPageTurnAnimation(
-        turnHost.element,
-        turnEl,
-        direction,
-        [
-          ...(animatedOverlayEl ? [animatedOverlayEl] : []),
-          ...(rotateBackFace ? [rotateBackFace] : []),
-          ...(turnGrowthMask ? [turnGrowthMask] : []),
-        ],
-        entering,
-        rotateBackFace ? 180 : undefined,
-      );
+      const gesture = this.ctx.controlledTurn?.();
+      if (gesture) await gesture.play(p => leaf.paint(p), this.ctx.operationSignal?.());
+      else await leaf.settle(0, 1, this.ctx.operationSignal?.());
     } finally {
-      this.finishSpreadTurn(
-        oldHost,
-        newHost,
-        [
-          rotateBackFace,
-          outgoingOverlay,
-          incomingOverlay,
-          outgoingLeftOverlay,
-          incomingLeftOverlay,
-          turnGrowthMask,
-        ],
-        true,
-      );
+      leaf.dispose();
+      if (incomingGutter) incomingGutter.style.opacity = gutterOpacity;
+      if (incomingElement) {
+        incomingElement.style.opacity = incomingOpacity;
+        incomingElement.style.clipPath = incomingClip;
+      }
+      this.finishSpreadTurn(oldHost, newHost, [outgoing, incoming, stationary, destination], false);
     }
+  }
+
+  public async animateReusableSpreadTurn(
+    host: SpreadPaginatedHost,
+    direction: 1 | -1,
+    furniture: SpreadPageTurnFurnitureInfo,
+    captureDestination: () => () => void,
+  ): Promise<void> {
+    await this.curledSpreadTurn(host, host, direction, furniture, captureDestination);
   }
 
   /** "slide" moves the whole spread as one unit — both columns drop
@@ -621,27 +621,6 @@ export class PageTurnOrchestrator {
     ]);
   }
 
-  /** The left-column overlay pair for a "rotate" spread turn stacks the
-   * same way the turning side's own overlay does — matching whichever
-   * host stays visually on top for the whole animation. */
-  private stackSpreadLeftOverlays(
-    containerEl: HTMLElement,
-    outgoingLeft: HTMLDivElement | undefined,
-    incomingLeft: HTMLDivElement | undefined,
-    entering: boolean,
-  ): void {
-    const turnSide = entering ? incomingLeft : outgoingLeft;
-    const otherSide = entering ? outgoingLeft : incomingLeft;
-    if (otherSide) {
-      otherSide.style.zIndex = "1";
-      containerEl.appendChild(otherSide);
-    }
-    if (turnSide) {
-      turnSide.style.zIndex = "2";
-      containerEl.appendChild(turnSide);
-    }
-  }
-
   /** Shared cleanup for every in-chapter spread turn style.
    * `restoreColumnHeights` is skipped for "scroll" (and "none", which
    * never calls this with transient elements at all), which never grows
@@ -695,15 +674,22 @@ export class PageTurnOrchestrator {
     stagingEl: HTMLDivElement,
     direction: 1 | -1,
   ): Promise<boolean> {
+    this.ctx.controlledTurn?.()?.stopPreparationPreview();
+    if (this.animator.shouldSkipPageTurnAnimation()) {
+      await this.ctx.controlledTurn?.()?.play(() => {}, this.ctx.operationSignal?.(), true);
+      return false;
+    }
     if (
       !this.ctx.containerEl() ||
-      !previousWrapperEl ||
-      this.animator.shouldSkipPageTurnAnimation()
+      !previousWrapperEl
     ) {
       return false;
     }
     const oldEl = previousWrapperEl;
     const newEl = stagingEl;
+    if (this.ctx.pageTurnAnimationStyle() === "rotate") {
+      return this.curledFixedSpreadTurn(oldEl, newEl, direction);
+    }
     const isScroll = this.ctx.pageTurnAnimationStyle() === "scroll";
     const entering = direction === -1;
     const animatingEl = entering ? newEl : oldEl;
@@ -723,6 +709,7 @@ export class PageTurnOrchestrator {
     this.ctx.notify();
 
     try {
+      await this.flatTurn(async () => {
       if (isScroll) {
         await this.animator.playScrollTurn([oldEl], [newEl], direction);
       } else {
@@ -734,6 +721,7 @@ export class PageTurnOrchestrator {
           entering,
         );
       }
+      });
     } finally {
       animatingEl.style.background = "";
       this.ctx.setAnimatingPageTurn(false);
@@ -758,5 +746,38 @@ export class PageTurnOrchestrator {
       }
     }
     return true;
+  }
+
+  private async curledFixedSpreadTurn(oldEl: HTMLElement, newEl: HTMLElement, direction: 1 | -1): Promise<boolean> {
+    const physical = this.ctx.rtl?.() ? -direction : direction;
+    const oldFrames = Array.from(oldEl.querySelectorAll("iframe")).sort((a, b) =>
+      a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    const newFrames = Array.from(newEl.querySelectorAll("iframe")).sort((a, b) =>
+      a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    const front = oldFrames[physical === 1 ? oldFrames.length - 1 : 0];
+    const back = newFrames[physical === 1 ? 0 : newFrames.length - 1];
+    if (!front || !back) throw new Error("Fixed-layout page turn has no rendered page.");
+    const leaf = this.createCurledLeaf(FixedContentHost.LETTERBOX_BACKGROUND);
+    const originalZ = oldEl.style.zIndex;
+    try {
+      const single = oldFrames.length === 1 && newFrames.length === 1;
+      await leaf.prepare({ element: front }, { element: back }, physical === 1 ? 1 : -1,
+        this.ctx.operationSignal?.(), single ? { element: back } : undefined,
+        single ? "single" : "spread");
+      newEl.style.opacity = "";
+      newEl.style.pointerEvents = "";
+      oldEl.style.zIndex = "2";
+      leaf.hide(front);
+      this.ctx.setAnimatingPageTurn(true);
+      this.ctx.notify();
+      const gesture = this.ctx.controlledTurn?.();
+      if (gesture) await gesture.play(p => leaf.paint(p), this.ctx.operationSignal?.());
+      else await leaf.settle(0, 1, this.ctx.operationSignal?.());
+      return true;
+    } finally {
+      leaf.dispose();
+      oldEl.style.zIndex = originalZ;
+      this.ctx.setAnimatingPageTurn(false);
+    }
   }
 }

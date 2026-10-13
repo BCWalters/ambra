@@ -44,14 +44,23 @@ function makeLocatorResolver(): LocatorResolver {
  * (it only ever reads `getClientRects()`/`comparePoint`, and hands the
  * range opaquely to the (mocked) painting functions), never real DOM
  * Range semantics. */
-function makeFakeRange(rects: Array<{ top: number; bottom: number; left?: number; right?: number }> = []): Range {
+function makeFakeRange(
+  rects: Array<{ top: number; bottom: number; left?: number; right?: number }> = [],
+): Range {
   const range = {
     setStart: vi.fn(),
     setEnd: vi.fn(),
     cloneRange: () => range,
-    getClientRects: () => rects.map((r) =>
-      new DOMRect(r.left ?? 0, r.top, (r.right ?? 10) - (r.left ?? 0), r.bottom - r.top)),
-    getBoundingClientRect: () => ({ top: rects[0]?.top ?? 0, left: 0, right: 10, bottom: rects[0]?.bottom ?? 0 }),
+    getClientRects: () =>
+      rects.map(
+        (r) => new DOMRect(r.left ?? 0, r.top, (r.right ?? 10) - (r.left ?? 0), r.bottom - r.top),
+      ),
+    getBoundingClientRect: () => ({
+      top: rects[0]?.top ?? 0,
+      left: 0,
+      right: 10,
+      bottom: rects[0]?.bottom ?? 0,
+    }),
     comparePoint: vi.fn().mockReturnValue(0),
   } as unknown as Range;
   return range;
@@ -68,13 +77,20 @@ function makeFakeDoc(
     range?: Range;
     caretRangeFromPoint?: (() => Range | null) | undefined;
   } = {},
-): { doc: Document; iframeEl: HTMLIFrameElement; listeners: Map<string, (event: unknown) => void> } {
+): {
+  doc: Document;
+  iframeEl: HTMLIFrameElement;
+  listeners: Map<string, (event: unknown) => void>;
+} {
   const listeners = new Map<string, (event: unknown) => void>();
   const iframeEl = {
-    getBoundingClientRect: () => new DOMRect(
-      options.iframeRect?.left ?? 0, options.iframeRect?.top ?? 0,
-      options.iframeRect?.width ?? 600, options.iframeRect?.height ?? 800,
-    ),
+    getBoundingClientRect: () =>
+      new DOMRect(
+        options.iframeRect?.left ?? 0,
+        options.iframeRect?.top ?? 0,
+        options.iframeRect?.width ?? 600,
+        options.iframeRect?.height ?? 800,
+      ),
     ownerDocument: { defaultView: { innerWidth: 1200, innerHeight: 900 } },
     style: { clipPath: options.clipPath ?? "" },
   } as unknown as HTMLIFrameElement;
@@ -82,14 +98,17 @@ function makeFakeDoc(
     defaultView: { frameElement: iframeEl },
     createRange: () => options.range ?? makeFakeRange(),
     getSelection: vi.fn().mockReturnValue(null),
-    addEventListener: (type: string, listener: (event: unknown) => void) => listeners.set(type, listener),
+    addEventListener: (type: string, listener: (event: unknown) => void) =>
+      listeners.set(type, listener),
     removeEventListener: (type: string) => listeners.delete(type),
     caretRangeFromPoint: options.caretRangeFromPoint,
   } as unknown as Document;
   return { doc, iframeEl, listeners };
 }
 
-function makeContext(overrides: Partial<HighlightInteractionContext> = {}): HighlightInteractionContext & {
+function makeContext(
+  overrides: Partial<HighlightInteractionContext> = {},
+): HighlightInteractionContext & {
   readonly activeHighlight: ActiveHighlightState | undefined;
   readonly selectionToolbar: SelectionToolbarState | undefined;
   readonly pendingSelectionRange: Range | undefined;
@@ -129,12 +148,15 @@ function makeContext(overrides: Partial<HighlightInteractionContext> = {}): High
 }
 
 function views(...documents: Document[]): ContentDocumentView[] {
-  return documents.map(document => ({ document, spineIndex: 3, physicalSide: "single" }));
+  return documents.map((document) => ({ document, spineIndex: 3, physicalSide: "single" }));
 }
 
 function selectRange(doc: Document, range: Range): Selection {
   const selection = {
-    isCollapsed: false, rangeCount: 1, getRangeAt: () => range, removeAllRanges: vi.fn(),
+    isCollapsed: false,
+    rangeCount: 1,
+    getRangeAt: () => range,
+    removeAllRanges: vi.fn(),
   } as unknown as Selection;
   vi.mocked(doc.getSelection).mockReturnValue(selection);
   return selection;
@@ -150,18 +172,27 @@ describe("HighlightInteraction", () => {
       const { doc } = makeFakeDoc();
       const interaction = new HighlightInteraction(makeLocatorResolver(), makeContext());
       expect(interaction.hasVisibleSelection(doc)).toBe(false);
-      vi.mocked(doc.getSelection).mockReturnValue({ isCollapsed: true, rangeCount: 1 } as Selection);
+      vi.mocked(doc.getSelection).mockReturnValue({
+        isCollapsed: true,
+        rangeCount: 1,
+      } as Selection);
       expect(interaction.hasVisibleSelection(doc)).toBe(false);
-      vi.mocked(doc.getSelection).mockReturnValue({ isCollapsed: false, rangeCount: 0 } as Selection);
+      vi.mocked(doc.getSelection).mockReturnValue({
+        isCollapsed: false,
+        rangeCount: 0,
+      } as Selection);
       expect(interaction.hasVisibleSelection(doc)).toBe(false);
     });
 
     it("preserves fixed-layout selection guards without applying unscaled page geometry", () => {
       const { doc } = makeFakeDoc();
       selectRange(doc, makeFakeRange([{ top: 1000, bottom: 1020 }]));
-      const interaction = new HighlightInteraction(makeLocatorResolver(), makeContext({
-        isFixedLayoutHost: () => true,
-      }));
+      const interaction = new HighlightInteraction(
+        makeLocatorResolver(),
+        makeContext({
+          isFixedLayoutHost: () => true,
+        }),
+      );
       expect(interaction.hasVisibleSelection(doc)).toBe(true);
     });
   });
@@ -171,19 +202,28 @@ describe("HighlightInteraction", () => {
       const { doc } = makeFakeDoc();
       const resolver = makeLocatorResolver();
       vi.mocked(resolver.resolveInDocument).mockReturnValue({
-        spineIndex: 3, node: document.createElement("img"),
-        characterOffset: undefined, alternativeTextOffset: 3,
+        spineIndex: 3,
+        node: document.createElement("img"),
+        characterOffset: undefined,
+        alternativeTextOffset: 3,
       });
       const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
-        const interaction = new HighlightInteraction(resolver, makeContext({
-          contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()],
-        }));
+        const interaction = new HighlightInteraction(
+          resolver,
+          makeContext({
+            contentDocuments: () => views(doc),
+            forSpineIndex: () => [makeHighlight()],
+          }),
+        );
         interaction.applyHighlightsToCurrentHost();
         expect(vi.mocked(applyHighlightRanges).mock.calls[0]![1]).toEqual([]);
         expect(warning).toHaveBeenCalledWith(
           "Could not resolve the highlight's DOM range.",
-          expect.objectContaining({ name: "LocatorResolutionError", message: expect.stringContaining("alternative-text") }),
+          expect.objectContaining({
+            name: "LocatorResolutionError",
+            message: expect.stringContaining("alternative-text"),
+          }),
         );
       } finally {
         warning.mockRestore();
@@ -234,7 +274,10 @@ describe("HighlightInteraction", () => {
 
     it("also refreshes the search-match spotlight and note markers", () => {
       const { doc } = makeFakeDoc();
-      const ctx = makeContext({ contentDocuments: () => views(doc), currentSearchHighlightQuery: () => "faun" });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        currentSearchHighlightQuery: () => "faun",
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applyHighlightsToCurrentHost();
       expect(findTextRangesInDocument).toHaveBeenCalledWith(doc, "faun");
@@ -252,7 +295,10 @@ describe("HighlightInteraction", () => {
 
     it("clears matches (empty ranges) when there's no current query", () => {
       const { doc } = makeFakeDoc();
-      const ctx = makeContext({ contentDocuments: () => views(doc), currentSearchHighlightQuery: () => undefined });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        currentSearchHighlightQuery: () => undefined,
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.applySearchHighlightToCurrentHost();
       expect(findTextRangesInDocument).not.toHaveBeenCalled();
@@ -284,7 +330,10 @@ describe("HighlightInteraction", () => {
     it("skips a highlight without a note", () => {
       const range = makeFakeRange([{ top: 100, bottom: 120 }]);
       const { doc } = makeFakeDoc({ range });
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight({ note: undefined })] });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [makeHighlight({ note: undefined })],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.updateNoteMarkers();
       expect(interaction.noteMarkers).toEqual([]);
@@ -295,7 +344,10 @@ describe("HighlightInteraction", () => {
       // the highlight's only rect sits entirely above it.
       const range = makeFakeRange([{ top: 100, bottom: 120 }]);
       const { doc } = makeFakeDoc({ clipPath: "inset(900px 0px 100px 0px)", range });
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight({ note: "x" })] });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [makeHighlight({ note: "x" })],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.updateNoteMarkers();
       expect(interaction.noteMarkers).toEqual([]);
@@ -306,7 +358,8 @@ describe("HighlightInteraction", () => {
     it("hits and opens notes from the earlier document in a cross-chapter spread", () => {
       const caret = { startContainer: {} as Node, startOffset: 0 } as Range;
       const { doc: earlier, listeners } = makeFakeDoc({
-        caretRangeFromPoint: () => caret, range: makeFakeRange([{ top: 100, bottom: 120 }]),
+        caretRangeFromPoint: () => caret,
+        range: makeFakeRange([{ top: 100, bottom: 120 }]),
       });
       const { doc: later } = makeFakeDoc();
       const highlight = makeHighlight({ spineIndex: 7, note: "Earlier chapter" });
@@ -316,7 +369,7 @@ describe("HighlightInteraction", () => {
           { document: earlier, spineIndex: 7, physicalSide: "right" },
           { document: later, spineIndex: 12, physicalSide: "left" },
         ],
-        forSpineIndex: index => index === 7 ? [highlight] : undefined,
+        forSpineIndex: (index) => (index === 7 ? [highlight] : undefined),
       });
       const interaction = new HighlightInteraction(resolver, ctx);
       expect(interaction.findHighlightAtPoint(earlier, 1, 2)).toBe(highlight);
@@ -333,7 +386,10 @@ describe("HighlightInteraction", () => {
 
     it("returns undefined when the document has no caretRangeFromPoint support", () => {
       const { doc } = makeFakeDoc({ caretRangeFromPoint: undefined });
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()] });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [makeHighlight()],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       expect(interaction.findHighlightAtPoint(doc, 1, 2)).toBeUndefined();
     });
@@ -343,7 +399,10 @@ describe("HighlightInteraction", () => {
       const matchingRange = makeFakeRange();
       const { doc } = makeFakeDoc({ caretRangeFromPoint: () => caretRange, range: matchingRange });
       const highlight = makeHighlight();
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [highlight] });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [highlight],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       expect(interaction.findHighlightAtPoint(doc, 1, 2)).toBe(highlight);
     });
@@ -352,14 +411,33 @@ describe("HighlightInteraction", () => {
       const caretRange = { startContainer: {} as Node, startOffset: 0 } as Range;
       const nonMatchingRange = makeFakeRange();
       vi.mocked(nonMatchingRange.comparePoint).mockReturnValue(1);
-      const { doc } = makeFakeDoc({ caretRangeFromPoint: () => caretRange, range: nonMatchingRange });
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()] });
+      const { doc } = makeFakeDoc({
+        caretRangeFromPoint: () => caretRange,
+        range: nonMatchingRange,
+      });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [makeHighlight()],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       expect(interaction.findHighlightAtPoint(doc, 1, 2)).toBeUndefined();
     });
   });
 
   describe("setUpHighlightSelection() + selection/click handling", () => {
+    it("does not open annotation actions for a navigation-consumed pointer release", () => {
+      const range = makeFakeRange([{ top: 5, bottom: 15, left: 5, right: 15 }]);
+      const { doc, listeners } = makeFakeDoc({ iframeRect: { top: 0, left: 0 } });
+      selectRange(doc, range);
+      const ctx = makeContext({ contentDocuments: () => views(doc) });
+      const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
+      interaction.setUpHighlightSelection();
+      listeners.get("pointerup")!({ clientX: 1, clientY: 2, defaultPrevented: true });
+      expect(ctx.pendingSelectionRange).toBeUndefined();
+      expect(ctx.selectionToolbar).toBeUndefined();
+      expect(ctx.activeHighlight).toBeUndefined();
+    });
+
     it("sets selectionToolbar/pendingSelectionRange on a non-collapsed selection, and clears activeHighlight", () => {
       const range = makeFakeRange([{ top: 5, bottom: 15, left: 5, right: 15 }]);
       const { doc, listeners } = makeFakeDoc({ iframeRect: { top: 0, left: 0 } });
@@ -383,16 +461,22 @@ describe("HighlightInteraction", () => {
         [{ top: 100, bottom: 120, left: 20, right: 20 }],
         [{ top: 30, bottom: 50 }],
         [{ top: 750, bottom: 770 }],
-        [{ top: -200, bottom: -180 }, { top: 800, bottom: 820 }],
+        [
+          { top: -200, bottom: -180 },
+          { top: 800, bottom: 820 },
+        ],
       ])(`${event} suppresses annotation UI for invisible selection rects %j`, (...rects) => {
         const range = makeFakeRange(rects);
         const caretRangeFromPoint = vi.fn(() => range);
         const { doc, listeners } = makeFakeDoc({
-          clipPath: "inset(50px 0px 50px 0px)", caretRangeFromPoint, range,
+          clipPath: "inset(50px 0px 50px 0px)",
+          caretRangeFromPoint,
+          range,
         });
         const selection = selectRange(doc, range);
         const ctx = makeContext({
-          contentDocuments: () => views(doc), forSpineIndex: () => [makeHighlight()],
+          contentDocuments: () => views(doc),
+          forSpineIndex: () => [makeHighlight()],
         });
         ctx.setSelectionToolbar({ left: 20, top: 100 });
         ctx.setPendingSelectionRange(range);
@@ -416,7 +500,8 @@ describe("HighlightInteraction", () => {
         { top: 760, bottom: 790 },
       ]);
       const { doc, listeners } = makeFakeDoc({
-        iframeRect: { left: 100, top: 20 }, clipPath: "inset(50px 0px 50px 0px)",
+        iframeRect: { left: 100, top: 20 },
+        clipPath: "inset(50px 0px 50px 0px)",
       });
       const selection = selectRange(doc, range);
       const ctx = makeContext({ contentDocuments: () => views(doc) });
@@ -441,36 +526,39 @@ describe("HighlightInteraction", () => {
       expect(ctx.pendingSelectionRange).toBe(range);
     });
 
-    it.each([false, true])("scroll only updates an already presented selection toolbar (presented: %s)", presented => {
-      const rects = [{ top: 100, bottom: 120 }];
-      const range = makeFakeRange(rects);
-      const { doc, listeners } = makeFakeDoc();
-      const selection = selectRange(doc, range);
-      const ctx = makeContext({ contentDocuments: () => views(doc) });
-      const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
-      let scrollFrame: FrameRequestCallback | undefined;
-      const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
-        scrollFrame = callback;
-        return 1;
-      });
-      try {
-        interaction.setUpHighlightSelection();
-        if (presented) {
-          listeners.get("keyup")!({});
-          expect(ctx.selectionToolbar).toBeDefined();
-          rects[0] = { top: -100, bottom: -80 };
+    it.each([false, true])(
+      "scroll only updates an already presented selection toolbar (presented: %s)",
+      (presented) => {
+        const rects = [{ top: 100, bottom: 120 }];
+        const range = makeFakeRange(rects);
+        const { doc, listeners } = makeFakeDoc();
+        const selection = selectRange(doc, range);
+        const ctx = makeContext({ contentDocuments: () => views(doc) });
+        const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
+        let scrollFrame: FrameRequestCallback | undefined;
+        const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+          scrollFrame = callback;
+          return 1;
+        });
+        try {
+          interaction.setUpHighlightSelection();
+          if (presented) {
+            listeners.get("keyup")!({});
+            expect(ctx.selectionToolbar).toBeDefined();
+            rects[0] = { top: -100, bottom: -80 };
+          }
+          listeners.get("scroll")!({});
+          expect(scrollFrame).toBeDefined();
+          scrollFrame!(0);
+          expect(ctx.selectionToolbar).toBeUndefined();
+          expect(ctx.pendingSelectionRange).toBeUndefined();
+          expect(selection.removeAllRanges).not.toHaveBeenCalled();
+        } finally {
+          interaction.teardownSelection();
+          raf.mockRestore();
         }
-        listeners.get("scroll")!({});
-        expect(scrollFrame).toBeDefined();
-        scrollFrame!(0);
-        expect(ctx.selectionToolbar).toBeUndefined();
-        expect(ctx.pendingSelectionRange).toBeUndefined();
-        expect(selection.removeAllRanges).not.toHaveBeenCalled();
-      } finally {
-        interaction.teardownSelection();
-        raf.mockRestore();
-      }
-    });
+      },
+    );
 
     it("does not replace a selection toolbar when a different spread document scrolls", () => {
       const left = makeFakeDoc();
@@ -482,7 +570,7 @@ describe("HighlightInteraction", () => {
       const ctx = makeContext({ contentDocuments: () => views(left.doc, right.doc) });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       let scrollFrame: FrameRequestCallback | undefined;
-      const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
+      const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
         scrollFrame = callback;
         return 1;
       });
@@ -505,10 +593,16 @@ describe("HighlightInteraction", () => {
       const selection = { isCollapsed: true, rangeCount: 0 } as unknown as Selection;
       const caretRange = { startContainer: {} as Node, startOffset: 0 } as Range;
       const matchingRange = makeFakeRange();
-      const { doc, listeners } = makeFakeDoc({ caretRangeFromPoint: () => caretRange, range: matchingRange });
+      const { doc, listeners } = makeFakeDoc({
+        caretRangeFromPoint: () => caretRange,
+        range: matchingRange,
+      });
       vi.mocked(doc.getSelection).mockReturnValue(selection);
       const highlight = makeHighlight();
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [highlight] });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [highlight],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.setUpHighlightSelection();
       listeners.get("pointerup")!({ clientX: 1, clientY: 2 });
@@ -556,7 +650,10 @@ describe("HighlightInteraction", () => {
       const range = makeFakeRange([{ top: 100, bottom: 120 }]);
       const { doc } = makeFakeDoc({ iframeRect: { top: 10, left: 5 }, range });
       const highlight = makeHighlight({ id: "hl-note", note: "x" });
-      const ctx = makeContext({ contentDocuments: () => views(doc), forSpineIndex: () => [highlight] });
+      const ctx = makeContext({
+        contentDocuments: () => views(doc),
+        forSpineIndex: () => [highlight],
+      });
       const interaction = new HighlightInteraction(makeLocatorResolver(), ctx);
       interaction.updateNoteMarkers();
       interaction.openHighlightPopup("hl-note");

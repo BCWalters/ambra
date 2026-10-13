@@ -9,99 +9,148 @@ const addNote = (page: Page) => page.getByRole("button", { name: "Add note", exa
 async function settled(page: Page) {
   await page.waitForFunction(() => {
     const c = Reflect.get(window, "__readerController");
-    return c?.host && !c.isLoadInFlight && !c.isTurningPage && !c.isApplyingLayout && !c.pendingLayout;
+    return (
+      c?.host && !c.isLoadInFlight && !c.isTurningPage && !c.isApplyingLayout && !c.pendingLayout
+    );
   });
 }
 
 async function selectionGeometry(page: Page) {
-  return page.evaluate(() => Array.from(document.querySelectorAll("iframe")).map(frame => {
-    const box = frame.getBoundingClientRect();
-    const doc = frame.contentDocument!;
-    const selection = doc.getSelection();
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
-    const insets = Array.from(frame.style.clipPath.matchAll(/(-?[\d.]+)px/g), m => Number(m[1]));
-    const [top = 0, right = top, bottom = top, left = right] = insets;
-    const bounds = {
-      top: Math.max(0, box.top + top), bottom: Math.min(innerHeight, box.bottom - bottom),
-      left: Math.max(0, box.left + left), right: Math.min(innerWidth, box.right - right),
-    };
-    const rects = Array.from(range?.getClientRects() ?? [], rect => ({
-      top: box.top + rect.top, bottom: box.top + rect.bottom,
-      left: box.left + rect.left, right: box.left + rect.right,
-      width: rect.width, height: rect.height,
-    }));
-    return {
-      frame: box.toJSON(), clip: frame.style.clipPath, bounds,
-      text: selection?.toString(), rects,
-      visible: rects.filter(rect => rect.width > 0 && rect.height > 0 &&
-        rect.bottom > bounds.top && rect.top < bounds.bottom &&
-        rect.right > bounds.left && rect.left < bounds.right),
-      endpoints: range ? {
-        start: range.startContainer.textContent, startOffset: range.startOffset,
-        end: range.endContainer.textContent, endOffset: range.endOffset,
-      } : undefined,
-    };
-  }));
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll("iframe")).map((frame) => {
+      const box = frame.getBoundingClientRect();
+      const doc = frame.contentDocument!;
+      const selection = doc.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined;
+      const insets = Array.from(frame.style.clipPath.matchAll(/(-?[\d.]+)px/g), (m) =>
+        Number(m[1]),
+      );
+      const [top = 0, right = top, bottom = top, left = right] = insets;
+      const bounds = {
+        top: Math.max(0, box.top + top),
+        bottom: Math.min(innerHeight, box.bottom - bottom),
+        left: Math.max(0, box.left + left),
+        right: Math.min(innerWidth, box.right - right),
+      };
+      const rects = Array.from(range?.getClientRects() ?? [], (rect) => ({
+        top: box.top + rect.top,
+        bottom: box.top + rect.bottom,
+        left: box.left + rect.left,
+        right: box.left + rect.right,
+        width: rect.width,
+        height: rect.height,
+      }));
+      return {
+        frame: box.toJSON(),
+        clip: frame.style.clipPath,
+        bounds,
+        text: selection?.toString(),
+        rects,
+        visible: rects.filter(
+          (rect) =>
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom > bounds.top &&
+            rect.top < bounds.bottom &&
+            rect.right > bounds.left &&
+            rect.left < bounds.right,
+        ),
+        endpoints: range
+          ? {
+              start: range.startContainer.textContent,
+              startOffset: range.startOffset,
+              end: range.endContainer.textContent,
+              endOffset: range.endOffset,
+            }
+          : undefined,
+      };
+    }),
+  );
 }
 
 async function recordGeometry(page: Page, label: string, extra = {}) {
   const geometry = await selectionGeometry(page);
   await test.info().attach(label, {
-    body: JSON.stringify({ ...extra, geometry, popup: await addNote(page).isVisible() ? await addNote(page).boundingBox() : null }, null, 2),
+    body: JSON.stringify(
+      {
+        ...extra,
+        geometry,
+        popup: (await addNote(page).isVisible()) ? await addNote(page).boundingBox() : null,
+      },
+      null,
+      2,
+    ),
     contentType: "application/json",
   });
   return geometry;
 }
 
-async function selectRange(page: Page, shape: "hidden" | "spanning" | "visible" | "keyboard", frameIndex?: number) {
-  return page.evaluate(({ shape, frameIndex }) => {
-    const frames = Array.from(document.querySelectorAll("iframe"));
-    const diagnostics = [];
-    for (const [index, frame] of frames.entries()) {
-      if (frameIndex !== undefined && index !== frameIndex) continue;
-      const doc = frame.contentDocument!;
-      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-      const frameBox = frame.getBoundingClientRect();
-      const clipTop = Number(frame.style.clipPath.match(/inset\(([\d.]+)px/)?.[1] ?? 0);
-      let first: Text | undefined;
-      let visible: { node: Text; offset: number } | undefined;
-      for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
-        if (!node.textContent?.trim()) continue;
-        first ??= node;
-        for (let offset = 0; offset <= node.length - 10; offset++) {
-          const probe = doc.createRange();
-          probe.setStart(node, offset);
-          probe.setEnd(node, offset + 10);
-          const rect = probe.getBoundingClientRect();
-          if (rect.width > 0 && rect.top >= Math.max(150 - frameBox.top, clipTop) &&
-            rect.bottom + frameBox.top < Math.min(frameBox.bottom - 100, innerHeight - 100)) {
-            visible = { node, offset };
-            break;
+async function selectRange(
+  page: Page,
+  shape: "hidden" | "spanning" | "visible" | "keyboard",
+  frameIndex?: number,
+) {
+  return page.evaluate(
+    ({ shape, frameIndex }) => {
+      const frames = Array.from(document.querySelectorAll("iframe"));
+      const diagnostics = [];
+      for (const [index, frame] of frames.entries()) {
+        if (frameIndex !== undefined && index !== frameIndex) continue;
+        const doc = frame.contentDocument!;
+        const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+        const frameBox = frame.getBoundingClientRect();
+        const clipTop = Number(frame.style.clipPath.match(/inset\(([\d.]+)px/)?.[1] ?? 0);
+        let first: Text | undefined;
+        let visible: { node: Text; offset: number } | undefined;
+        for (
+          let node = walker.nextNode() as Text | null;
+          node;
+          node = walker.nextNode() as Text | null
+        ) {
+          if (!node.textContent?.trim()) continue;
+          first ??= node;
+          for (let offset = 0; offset <= node.length - 10; offset++) {
+            const probe = doc.createRange();
+            probe.setStart(node, offset);
+            probe.setEnd(node, offset + 10);
+            const rect = probe.getBoundingClientRect();
+            if (
+              rect.width > 0 &&
+              rect.top >= Math.max(150 - frameBox.top, clipTop) &&
+              rect.bottom + frameBox.top < Math.min(frameBox.bottom - 100, innerHeight - 100)
+            ) {
+              visible = { node, offset };
+              break;
+            }
           }
+          if (visible) break;
         }
-        if (visible) break;
+        if (!first || !visible) {
+          diagnostics.push({
+            index,
+            frame: frameBox.toJSON(),
+            clip: frame.style.clipPath,
+            body: doc.body.getBoundingClientRect().toJSON(),
+          });
+          continue;
+        }
+        const range = doc.createRange();
+        if (shape === "hidden" || shape === "spanning") range.setStart(first, 0);
+        else range.setStart(visible.node, visible.offset);
+        if (shape === "hidden") range.setEnd(first, Math.min(10, first.length));
+        else range.setEnd(visible.node, visible.offset + 10);
+        if (shape === "keyboard") doc.defaultView!.focus();
+        const selection = doc.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        if (shape !== "keyboard")
+          doc.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+        return { text: selection.toString(), frameIndex: index };
       }
-      if (!first || !visible) {
-        diagnostics.push({
-          index, frame: frameBox.toJSON(), clip: frame.style.clipPath,
-          body: doc.body.getBoundingClientRect().toJSON(),
-        });
-        continue;
-      }
-      const range = doc.createRange();
-      if (shape === "hidden" || shape === "spanning") range.setStart(first, 0);
-      else range.setStart(visible.node, visible.offset);
-      if (shape === "hidden") range.setEnd(first, Math.min(10, first.length));
-      else range.setEnd(visible.node, visible.offset + 10);
-      if (shape === "keyboard") doc.defaultView!.focus();
-      const selection = doc.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-      if (shape !== "keyboard") doc.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-      return { text: selection.toString(), frameIndex: index };
-    }
-    throw new Error(`Fixture has no suitable visible text: ${JSON.stringify(diagnostics)}`);
-  }, { shape, frameIndex });
+      throw new Error(`Fixture has no suitable visible text: ${JSON.stringify(diagnostics)}`);
+    },
+    { shape, frameIndex },
+  );
 }
 
 for (const { width, margin, frameIndex, edge } of [
@@ -125,7 +174,9 @@ for (const { width, margin, frameIndex, edge } of [
         const s = Reflect.get(window, "__readerController").snapshot();
         return { spine: s.spineIndex, page: s.pageIndex };
       });
-      const toolbar = page.getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ }).locator("..");
+      const toolbar = page
+        .getByRole("button", { name: /^(Bookmark this page|Remove bookmark)$/ })
+        .locator("..");
       await page.mouse.move(10, 2);
       await expect(toolbar).toHaveCSS("pointer-events", "auto");
       await expect(toolbar).toHaveCSS("opacity", "1");
@@ -137,27 +188,53 @@ for (const { width, margin, frameIndex, edge } of [
       await page.mouse.move(point.x, point.y);
       await page.mouse.down();
       // Playwright's drag-interception probe hangs on these clipped iframes.
-      // CDP still delivers a real trusted mouse move and Chromium's native selection.
+      // CDP still delivers a real trusted mouse move and Chromium's selection behavior.
       const input = await context.newCDPSession(page);
       await input.send("Input.dispatchMouseEvent", {
-        type: "mouseMoved", x: point.x, y: point.y + 8, button: "left", buttons: 1,
+        type: "mouseMoved",
+        x: point.x,
+        y: point.y + 8,
+        button: "left",
+        buttons: 1,
       });
       await input.send("Input.dispatchMouseEvent", {
-        type: "mouseReleased", x: point.x, y: point.y + 8, button: "left", buttons: 0, clickCount: 1,
+        type: "mouseReleased",
+        x: point.x,
+        y: point.y + 8,
+        button: "left",
+        buttons: 0,
+        clickCount: 1,
       });
       await input.detach();
       await settled(page);
-      const geometry = await recordGeometry(page, "native-margin-drag", { from: point, to: { ...point, y: point.y + 8 } });
-      const selected = geometry.find(frame => frame.text?.trim());
-      expect(selected, "the real pointer gesture must produce native text selection").toBeDefined();
-      expect(selected!.rects.length).toBeGreaterThan(0);
-      expect(selected!.visible, "every selected client rect is outside the painted page").toEqual([]);
+      const geometry = await recordGeometry(page, "native-margin-drag", {
+        from: point,
+        to: { ...point, y: point.y + 8 },
+      });
+      const selected = geometry.find((frame) => frame.text?.trim());
+      const navigationEdge = margin === "right" || margin.startsWith("outer");
+      if (navigationEdge) {
+        expect(selected, "navigation edges prevent native off-page selection").toBeUndefined();
+      } else {
+        expect(
+          selected,
+          "the real pointer gesture must produce native text selection",
+        ).toBeDefined();
+        expect(selected!.rects.length).toBeGreaterThan(0);
+        expect(selected!.visible, "every selected client rect is outside the painted page").toEqual(
+          [],
+        );
+      }
       await expect(addNote(page)).toBeHidden();
-      expect(await page.evaluate(() => {
-        const s = Reflect.get(window, "__readerController").snapshot();
-        return { spine: s.spineIndex, page: s.pageIndex };
-      })).toEqual(before);
-      expect((await selectionGeometry(page)).find(frame => frame.text?.trim())?.endpoints).toEqual(selected!.endpoints);
+      expect(
+        await page.evaluate(() => {
+          const s = Reflect.get(window, "__readerController").snapshot();
+          return { spine: s.spineIndex, page: s.pageIndex };
+        }),
+      ).toEqual(before);
+      expect(
+        (await selectionGeometry(page)).find((frame) => frame.text?.trim())?.endpoints,
+      ).toEqual(selected?.endpoints);
     } finally {
       await context.close();
     }
@@ -193,10 +270,16 @@ for (const { width, height } of [
           await expect(addNote(page)).toBeHidden();
         } else {
           expect(geometry.visible.length).toBeGreaterThan(0);
-          if (shape === "spanning") expect(geometry.rects.some(rect => rect.bottom <= geometry.bounds.top)).toBe(true);
+          if (shape === "spanning")
+            expect(geometry.rects.some((rect) => rect.bottom <= geometry.bounds.top)).toBe(true);
           await expect(addNote(page)).toBeVisible();
-          const popup = (await addNote(page).locator("xpath=ancestor::*[@role='toolbar']").boundingBox())!;
-          const visibleTop = Math.max(geometry.bounds.top, Math.min(...geometry.visible.map(rect => rect.top)));
+          const popup = (await addNote(page)
+            .locator("xpath=ancestor::*[@role='toolbar']")
+            .boundingBox())!;
+          const visibleTop = Math.max(
+            geometry.bounds.top,
+            Math.min(...geometry.visible.map((rect) => rect.top)),
+          );
           expect.soft(popup.y + popup.height).toBeGreaterThanOrEqual(visibleTop - 20);
           expect.soft(popup.y + popup.height).toBeLessThanOrEqual(visibleTop);
         }
@@ -221,13 +304,17 @@ test("keyboard completion preserves a visible DOM range in paginated and scroll 
       if (mode === "scroll") {
         await page.mouse.move(10, 2);
         await page.getByRole("button", { name: "Ambra settings", exact: true }).click();
-        const readingMode = page.getByRole("dialog", { name: "Ambra settings", exact: true })
+        const readingMode = page
+          .getByRole("dialog", { name: "Ambra settings", exact: true })
           .getByRole("combobox", { name: "Reading mode", exact: true });
         await readingMode.selectOption("scroll");
         await expect(readingMode).toHaveValue("scroll");
         await page.keyboard.press("Escape");
-        await expect.poll(() => page.evaluate(() =>
-          Reflect.get(window, "__readerController").snapshot().viewMode)).toBe("scroll");
+        await expect
+          .poll(() =>
+            page.evaluate(() => Reflect.get(window, "__readerController").snapshot().viewMode),
+          )
+          .toBe("scroll");
         await settled(page);
       }
       const { text } = await selectRange(page, "keyboard", 0);

@@ -57,4 +57,24 @@ describe("Startup chapter publication (#175)", () => {
     Object.assign(reader, { cachedSnapshot: undefined, isLoading: false });
     expect(reader.snapshot().loadingPhase).toBeUndefined();
   });
+
+  it("clears a slow-load spinner once prepared content starts animating", () => {
+    const { reader } = controller();
+    Object.assign(reader, { host: {}, isLoading: true });
+    expect(reader.snapshot().loadingPhase).toBe("navigating");
+    Reflect.get(reader, "setAnimatingPageTurn").call(reader, true);
+    Object.assign(reader, { cachedSnapshot: undefined });
+    expect(reader.snapshot().isLoading).toBe(false);
+    expect(reader.snapshot().loadingPhase).toBeUndefined();
+    Reflect.get(reader, "setAnimatingPageTurn").call(reader, false);
+    Object.assign(reader, { cachedSnapshot: undefined });
+    expect(reader.snapshot().isLoading).toBe(false);
+  });
+
+  it("does not hide an actual load when animation ends or is skipped", () => {
+    const { reader } = controller();
+    Object.assign(reader, { host: {}, isLoading: true });
+    Reflect.get(reader, "setAnimatingPageTurn").call(reader, false);
+    expect(reader.snapshot().loadingPhase).toBe("navigating");
+  });
 });

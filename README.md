@@ -21,7 +21,10 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [3.2.0 release checklist](store-assets/RELEASE-3.2.0.md).
+and the [3.3.0 release checklist](store-assets/RELEASE-3.3.0.md).
+Version 3.3.0 adds controlled curled Page flip, Slide and Film strip gestures,
+more forgiving mouse flicks, stable page furniture and smoother document-boundary
+turns in reflowable and fixed-layout books.
 Version 3.2.0 improves packaged SVG resources, annotations, CFI restoration
 and narration. Native vertical scrolling tracks reading positions, scroll
 boundaries offer chapter navigation, and recovered navigation warnings remain
@@ -39,7 +42,7 @@ baseline, manual self-assessment, known failures and unresolved cases.
 The published assessment remains frozen. Closing implementation/policy issues
 with documented limitations does not establish new conformance passes; this release
 does not publish a new assessment. Verify the current dashboard version and
-review state before uploading 3.2.0. Preparing a package does not mean it has been
+review state before uploading 3.3.0. Preparing a package does not mean it has been
 uploaded, submitted or published.
 
 ## Structure
@@ -164,6 +167,113 @@ separate storage. Do not uninstall the existing extension to switch build modes.
   do not prove that permission declarations are current. Identify the competing process
   and stop it deliberately before restarting your chosen dev/build process. Never stop
   another session's processes or replace its live output without coordinating.
+- The standalone page-turn motion lab for #369/#370 is served separately from the
+  extension: `python3 -m http.server 4179 --bind 127.0.0.1 --directory scripts/page-turn-lab`,
+  then open `http://127.0.0.1:4179`. It compares a two-sided curled leaf, a rigid
+  leaf, softer Slide and a Film strip reference with original text/artwork pages,
+  RTL, click/drag, release/reversal and a frame-inspection slider. Each renderer
+  is isolated; gesture settlement is shared. Geometry tests run with `pnpm test:tools`.
+  This standalone lab is not integrated EPUB rendering. The reader's settings
+  label is "Page flip", with no prototype badge. Real iframe compositing, chapter boundaries, zoom, selection,
+  reduced-motion behavior and cancellation require reader integration checks.
+- Local reader integration for #369/#370 now uses sandboxed, display-only
+  curved leaves for two-page reflowable and fixed-layout Page flip. Outer-edge
+  drags follow the leaf; a slow release at 40% or farther completes the turn,
+  and a short quick forward flick can also complete it. Escape or pointer
+  cancellation returns without changing the reading position. Reduced motion
+  waits for release without showing the preview.
+  Cancellation publishes the settled reader state immediately, restoring
+  static titles/folios without another pointer interaction.
+  Zoomed fixed-layout content retains panning instead of edge dragging.
+  The settings label currently reads "Page flip" without a prototype badge.
+  The owner has visually accepted single-page, spread and fixed-layout modes;
+  complex EPUB paint fidelity and preparation costs still need validation.
+  Single-page Page flip uses the same two-sided curled leaf with a fixed outer
+  hinge, revealing the incoming page beneath it instead of landing on a spread
+  companion. Both faces of the single-page turning sheet retain the outgoing
+  content; only the exposed underlay shows the incoming page. Same-chapter
+  single-page flips reuse the loaded document and capture the destination
+  synchronously, avoiding a chapter reload before the page starts moving.
+  Controlled turns start after 8px of forward travel. Single-page Page flip
+  completes a slow release at 25% of the pane width; spread Page flip, Slide
+  and Film strip retain the 40% threshold.
+  Mouse-controlled Slide and Film strip provide immediate paper movement while
+  the incoming page loads. Backward Slide previews the entering paper; the
+  other flat turns move the outgoing page and its furniture. These temporary
+  transforms are restored before the full renderer measures or paints its
+  pages, and on cancellation/failure. Reduced motion has no preparation preview.
+  Idle preparation warms the next turn first, then the previous one, keeping
+  at most two hidden, inert animation candidates. Single-page flat turns warm
+  adjacent pages, including reflowable chapter boundaries; spread and fixed-layout turns warm their
+  adjacent spreads. Reflowable Page flip reuses the loaded document instead.
+  Candidates never own reading position or persistence, are released on
+  navigation/layout changes or disposal, and transfer to the foreground turn
+  without detaching/reloading their frames. An unfinished preload is cancelled
+  rather than making pointer input wait for it. Background failures are recorded
+  in local diagnostics; foreground preparation still reports its normal errors.
+  Flicks require a final forward swipe covering at least 5% of the pane width
+  within 400ms for a mouse, with up to 250ms to release after the last forward
+  movement. Mouse flick intent tolerates up to 8px of backward jitter from its
+  forward peak; a larger reversal resets it. Touch retains a 250ms swipe window,
+  a 100ms release allowance and strict reversals. Earlier holds do not count
+  toward the swipe; the release position is included even if the last movement
+  event lagged behind it.
+  Copy diagnostics includes local `page-turn-mouse` traces grouped by gesture ID:
+  down, sampled movement (at most once per 80ms), activation, idle/reversal resets,
+  release, preparation, per-rule pass/fail decisions, cancellation and completion.
+  Policy thresholds, relative pointer travel, recent forward distance and release
+  age are recorded without publication text or DOM content. The existing bounded
+  in-memory log is cleared when the reader reloads; no traces are uploaded.
+  An active, focused mouse drag also settles when a buttons-cleared movement
+  arrives before `pointerup`, using its last button-held position so free mouse
+  movement cannot become extra drag travel. Unstarted stale gestures and
+  focus-loss interruptions still cancel without triggering taps or page turns.
+  Slide and Film strip use the same controlled outer-edge gestures in single,
+  spread, and fixed-layout views. Slide moves one paper surface; Film strip moves
+  outgoing and incoming surfaces together, keeping page and gutter measures
+  stable inside a temporarily clipped animation window. Reduced motion still
+  waits for release without displaying a preview.
+  Curled snapshots retain visible ink and lightweight flow spacers for
+  off-page blocks, rather than cloning long chapter text into every strip.
+  Leaf endpoints match the actual destination bounds, including the spread
+  gutter. Ordinary same-chapter flips reuse loaded documents and capture their
+  destination paint synchronously, restoring the canonical position before
+  animation. The copied content viewport preserves the original iframe clip;
+  the display sandbox cannot scroll. Only one gutter is painted during Page
+  flip, and titles/folios remain attached to stationary, turning, and incoming
+  page surfaces. Curl shading covers the whole paper face, including furniture
+  bands; running-head/folio ink retains its static blended color above the shade.
+  Copied ink uses that same color for text fill, not a frozen pre-blend fill.
+  Capture-only furniture is transparent in the live pane so destination folios
+  cannot flash through its clipped header/footer while the leaf is prepared.
+  The exposed destination stays below the leaf, including its furniture.
+  The flat endpoint is painted before handing back to the canonical page.
+  Flat endpoints use an untransformed full-page copy; the curled intermediate
+  frames use segmented transforms, avoiding residual strip resampling at handoff.
+  Curled strips overlap slightly to cover compositor seams. Their nominal hinges
+  and reverse-face content offsets stay aligned, including right-to-left turns.
+  Snapshot line heights preserve computed units rather than resolving unitless
+  values to pixels, avoiding cumulative line-position rounding differences.
+  Eligible outer-margin gestures suppress native text selection and consume
+  their release before annotation actions; interior text selection is unchanged.
+  Controlled taps normalize parent-shield release coordinates back into the
+  original publication viewport before checking the margin and highlights.
+  Browser focus loss or a hidden tab cancels interrupted gestures and removes
+  their input shield, so returning to Chrome cannot leave margin clicks blocked.
+  Automated focus-loss checks simulate OS blur before exercising native recovery
+  clicks; switching away from Chrome still needs manual verification.
+  Single-page chapter-boundary drags wait for release without a preview, then
+  animate the prepared incoming chapter. Page flip chapter reveals use the same
+  curled renderer as in-chapter turns in both single-page and spread views.
+  Incoming spreads stay hidden until the curl is ready. An opaque stationary
+  paper backing prevents incoming text leaking through a short title page's
+  clipped blank area. Mixed-document spreads navigate beyond their visible outer
+  spine edges, so the previous margin at the book's beginning is a no-op.
+  Native regressions check both faces' word geometry, preparation/frame-time
+  budgets, and removal of transient folio layers after forward/backward turns.
+  To repeat the optional local Reflections reproduction, set
+  `AMBRA_E2E_LONG_CHAPTER` to that EPUB's path when running
+  `curled-page-turn.spec.ts`; the normal test uses original synthetic text.
 - A production build replaces the dev-server loaders in `dist`. Merely leaving Vite
   running does not turn that bundle back into a live development build. Stop and restart
   `pnpm --filter @ambra/extension dev`, then reload Ambra in `chrome://extensions`.

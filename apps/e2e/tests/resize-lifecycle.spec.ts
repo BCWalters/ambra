@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 const book = path.resolve(
@@ -10,8 +10,8 @@ const book = path.resolve(
 );
 
 async function columns(page: Page): Promise<number[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+  return page.evaluate((selector) =>
+    Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
       .filter((frame) => {
         const rect = frame.getBoundingClientRect();
         if (rect.width < 100 || rect.right <= 0 || rect.left >= innerWidth) return false;
@@ -23,18 +23,20 @@ async function columns(page: Page): Promise<number[]> {
         return true;
       })
       .map((frame) => Math.round(frame.getBoundingClientRect().width)),
+    READER_FRAME_SELECTOR,
   );
 }
 
 async function position(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+  return page.evaluate((selector) =>
+    Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
       .filter(
         (frame) =>
           frame.getBoundingClientRect().right > 0 &&
           getComputedStyle(frame).visibility !== "hidden",
       )
       .map((frame) => frame.contentDocument?.body.style.transform ?? ""),
+    READER_FRAME_SELECTOR,
   );
 }
 
@@ -44,13 +46,13 @@ async function verifyNavigation(page: Page, width: number): Promise<void> {
   await expect.poll(() => columns(page)).toEqual([width, width]);
   // Pagination probes can overlap the viewport inside a zero-size clipped
   // container. Capture only after they and any outgoing spread are released.
-  await expect.poll(() => page.locator("iframe").count()).toBe(2);
+  await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(2);
   const before = await position(page);
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => position(page)).not.toEqual(before);
   await expect.poll(() => columns(page)).toEqual([width, width]);
   // Wait for the committed page, not a transient outgoing/incoming pair.
-  await expect.poll(() => page.locator("iframe").count()).toBe(2);
+  await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(2);
   await page.keyboard.press("ArrowLeft");
   await expect.poll(() => position(page)).toEqual(before);
   await expect.poll(() => columns(page)).toEqual([width, width]);
@@ -139,7 +141,7 @@ for (const style of ["slide", "rotate", "scroll"] as const) {
       await page.waitForFunction(() => Reflect.get(window, "__readerController").isAnimatingPageTurn);
       await page.setViewportSize({ width: 1300, height: 900 });
       await verifyNavigation(page, 630);
-      await expect.poll(() => page.locator("iframe").count()).toBe(2);
+      await expect.poll(() => page.locator(READER_FRAME_SELECTOR).count()).toBe(2);
     } finally {
       await context.close();
     }

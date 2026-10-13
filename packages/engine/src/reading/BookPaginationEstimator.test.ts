@@ -73,6 +73,103 @@ describe("book-wide CFI page index", () => {
     return locators.generate(0, nodes.get(0)!, offset).cfi;
   }
 
+  it("waits for every foreground owner before loading, with idempotent releases", async () => {
+    const releaseFirst = estimator.pausePendingMeasurement();
+    const releaseSecond = estimator.pausePendingMeasurement();
+    const pending = run();
+    expect(estimator.isMeasuring).toBe(true);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
+    releaseFirst();
+    releaseFirst();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
+    releaseSecond();
+    await pending;
+    expect(estimator.isMeasuring).toBe(false);
+    expect(PaginatedContentHost.prototype.open).toHaveBeenCalled();
+    expect(container.children).toHaveLength(0);
+    expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
+  });
+
+  for (const cancel of [false, true]) {
+    it(`${cancel ? "cancels" : "resumes"} a paused pagination checkpoint without premature host teardown`, async () => {
+      const originalOpen = vi.mocked(PaginatedContentHost.prototype.open).getMockImplementation()!;
+      const dispose = vi.spyOn(PaginatedContentHost.prototype, "dispose");
+      let release: (() => void) | undefined;
+      let entered!: () => void;
+      const checkpoint = new Promise<void>(resolve => { entered = resolve; });
+      let held = false;
+      vi.mocked(PaginatedContentHost.prototype.open).mockImplementation(async function (
+        this: PaginatedContentHost, ...args
+      ) {
+        await originalOpen.apply(this, args);
+        if (held) return;
+        held = true;
+        release = estimator.pausePendingMeasurement();
+        entered();
+        await args[5]!.yieldControl!();
+      });
+      let settled = false;
+      const pending = run().then(() => { settled = true; });
+      await checkpoint;
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(settled).toBe(false);
+      expect(container.children).toHaveLength(1);
+      expect(dispose).not.toHaveBeenCalled();
+      if (cancel) estimator.cancelPendingMeasurement();
+      else release!();
+      await pending;
+      release!();
+      expect(container.children).toHaveLength(0);
+      expect(dispose).toHaveBeenCalled();
+      if (cancel) expect(estimator.positionFor(0, 0).totalPages).toBeUndefined();
+      else expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
+    });
+  }
+
+  it("settles superseded and disposed runs even while foreground work is paused", async () => {
+    const release = estimator.pausePendingMeasurement();
+    const first = run();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const replacement = run(900);
+    await first;
+    expect(estimator.isMeasuring).toBe(true);
+    expect(PaginatedContentHost.prototype.open).not.toHaveBeenCalled();
+    estimator.dispose();
+    await replacement;
+    expect(estimator.isMeasuring).toBe(false);
+    release();
+    expect(container.children).toHaveLength(0);
+  });
+
+  it("clears active measurement after errors and allows a later retry", async () => {
+    vi.mocked(PaginatedContentHost.prototype.open).mockRejectedValueOnce(new Error("measurement failed"));
+    await expect(run()).rejects.toThrow("measurement failed");
+    expect(estimator.isMeasuring).toBe(false);
+    expect(container.children).toHaveLength(0);
+    await run();
+    expect(estimator.isMeasuring).toBe(false);
+    expect(estimator.pageIndexForCfi(0, cfi(10))).toBe(1);
+  });
+
+  it("matches the measured layout rather than newly requested reader settings", async () => {
+    await run();
+    const layout: Parameters<BookPaginationEstimator["matchesLayout"]> = [
+      600, 900, 1, ReadingTheme.DEFAULT_FONT_FAMILY, ReadingTheme.DEFAULT_LINE_SPACING,
+      ReadingTheme.DEFAULT_LETTER_SPACING, ReadingTheme.DEFAULT_CONTENT_WIDTH_EM,
+    ];
+    expect(estimator.matchesLayout(...layout)).toBe(true);
+    for (const index of [0, 1, 2, 4, 5, 6] as const) {
+      const changed: Parameters<BookPaginationEstimator["matchesLayout"]> = [...layout];
+      changed[index]++;
+      expect(estimator.matchesLayout(...changed)).toBe(false);
+    }
+    const changed: Parameters<BookPaginationEstimator["matchesLayout"]> = [...layout];
+    changed[3] = layout[3] === "sans" ? "georgia" : "sans";
+    expect(estimator.matchesLayout(...changed)).toBe(false);
+  });
+
   it("never measures supplements, including after layout and disclosure invalidation", async () => {
     const primary = loader.packageDocument.spine[0]!;
     const supplement = new SpineItemRef(primary.manifestItem, false, new Set(), []);

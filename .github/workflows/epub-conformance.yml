@@ -3,6 +3,10 @@ name: Assess EPUB 3.4 release candidate
 on:
   workflow_dispatch:
     inputs:
+      release_run_id:
+        description: Successful merged-main CI run whose exact store archive should be assessed (blank builds a separate candidate)
+        type: string
+        default: ""
       automated_core:
         description: Assess 21 pinned native media, metadata, navigation and roll criteria
         type: boolean
@@ -14,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: epub-3-4-release-assessment
@@ -42,14 +47,32 @@ jobs:
           node-version: 24.18.0
       - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
         with:
-          version: 10.32.1
+          version: 11.11.0
           run_install: false
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Build exact production package
+        if: inputs.release_run_id == ''
         env:
           VITE_AMBRA_LOCAL_FEATURES: "0"
         run: node .github/scripts/package-extension.mjs
+      - name: Restore the exact accepted merged-main CI package
+        if: inputs.release_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+        run: |
+          if [[ ! "$RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A numeric merged-main CI run ID is required."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" > "$RUNNER_TEMP/release-ci-run.json"
+          node .github/scripts/verify-assessment-ci-run.mjs "$RUNNER_TEMP/release-ci-run.json"
+          gh run download "$RELEASE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "beta-release-$GITHUB_SHA" --dir dist/beta-release/artifacts
+          CI_PACKAGE_COMMIT="$GITHUB_SHA" \
+          CI_PACKAGE_SHA256="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('dist/beta-release/artifacts/release.json')).sha256)")" \
+            node .github/scripts/restore-ci-package.mjs
       - name: Check out pinned W3C assessment sources
         env:
           AUTOMATED_CORE: ${{ inputs.automated_core }}

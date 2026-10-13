@@ -103,7 +103,9 @@ test.describe("Library UX: sorting, full-tab expand, themed remove", () => {
     const { context, libraryPage } = await launchReader(LONG_CONTENT, { viewport: { width: 1000, height: 700 } });
     try {
       await libraryPage.goto(`${libraryPage.url()}?view=tab`);
-      await libraryPage.locator('input[type="file"]').setInputFiles([TWO_CHAPTER]);
+      const fileInput = libraryPage.locator('input[type="file"]');
+      await expect(fileInput).toBeEnabled();
+      await fileInput.setInputFiles([TWO_CHAPTER]);
 
       const titlesInOrder = () =>
         libraryPage

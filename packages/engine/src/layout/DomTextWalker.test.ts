@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { globalTextOffsetToPosition, totalTextLength } from "./DomTextWalker.js";
+import { globalTextOffsetToPosition, positionFromTextNodes, sumTextLength, totalTextLength } from "./DomTextWalker.js";
 
 function parseXhtmlFragment(html: string): Document {
   return new DOMParser().parseFromString(
@@ -10,6 +10,44 @@ function parseXhtmlFragment(html: string): Document {
 }
 
 describe("totalTextLength", () => {
+  it("reuses caller-owned probe positions without mutating independent reading anchors", () => {
+    const nodes = [document.createTextNode("first"), document.createTextNode("last")];
+    const saved = positionFromTextNodes(nodes, 1)!;
+    const scratch = positionFromTextNodes(nodes, 0)!;
+    expect(positionFromTextNodes(nodes, 7, scratch)).toBe(scratch);
+    expect(scratch).toEqual({ node: nodes[1], offset: 2 });
+    expect(saved).toEqual({ node: nodes[0], offset: 1 });
+    expect(positionFromTextNodes(nodes, 100, scratch)).toBe(scratch);
+    expect(scratch).toEqual({ node: nodes[1], offset: 4 });
+    expect(positionFromTextNodes([], 0, scratch)).toBeUndefined();
+    expect(scratch).toEqual({ node: nodes[1], offset: 4 });
+  });
+
+  it("uses native UTF-16 lengths without materializing character data during offset probes", () => {
+    const nodes = ["A\uD83D\uDE00\u00E9", "e\u0301"].map(value => {
+      const node = document.createTextNode(value);
+      Object.defineProperty(node, "length", { value: value.length });
+      Object.defineProperty(node, "data", {
+        get: () => { throw new Error("Offset lookup must not materialize text data."); },
+      });
+      return node;
+    });
+    expect(sumTextLength(nodes)).toBe(6);
+    expect(positionFromTextNodes(nodes, 0)).toEqual({ node: nodes[0], offset: 0 });
+    expect(positionFromTextNodes(nodes, 4)).toEqual({ node: nodes[0], offset: 4 });
+    expect(positionFromTextNodes(nodes, 5)).toEqual({ node: nodes[1], offset: 1 });
+    expect(positionFromTextNodes(nodes, 999)).toEqual({ node: nodes[1], offset: 2 });
+    expect(positionFromTextNodes([], 0)).toBeUndefined();
+  });
+
+  it("uses current character-data lengths after a publication mutates its text", () => {
+    const first = document.createTextNode("short");
+    const second = document.createTextNode("end");
+    first.appendData("\uD83D\uDE00");
+    expect(sumTextLength([first, second])).toBe(10);
+    expect(positionFromTextNodes([first, second], 8)).toEqual({ node: second, offset: 1 });
+  });
+
   it("sums text across nested inline elements", () => {
     const doc = parseXhtmlFragment("<body><p>Hello <em>world</em> today</p></body>");
     const p = doc.getElementsByTagName("p")[0]!;

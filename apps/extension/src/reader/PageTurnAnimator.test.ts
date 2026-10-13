@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaginatedContentHost, SpreadPaginatedHost } from "@ambra/engine";
 import type { PageTheme } from "@ambra/engine";
 import { PageTurnAnimator, type PageTurnAnimatorContext } from "./PageTurnAnimator.js";
+import { ControlledPageTurn } from "./ControlledPageTurn.js";
 
 function makeContext(overrides: Partial<PageTurnAnimatorContext> = {}): PageTurnAnimatorContext {
   return {
@@ -16,10 +17,7 @@ function makeContext(overrides: Partial<PageTurnAnimatorContext> = {}): PageTurn
 /** A fake `matchMedia` — controls `prefersReducedMotion()`'s OS-level
  * check independently of `pageTurnAnimationStyle`. */
 function stubMatchMedia(matches: boolean): void {
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn().mockReturnValue({ matches } as unknown as MediaQueryList),
-  );
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches } as unknown as MediaQueryList));
 }
 
 beforeEach(() => {
@@ -32,6 +30,75 @@ afterEach(() => {
 });
 
 describe("PageTurnAnimator", () => {
+  for (const style of ["slide", "scroll"] as const) {
+    for (const rtl of [false, true]) {
+      for (const direction of [1, -1] as const) {
+        it(`follows controlled ${style} progress (${rtl ? "RTL" : "LTR"}, direction=${direction})`, async () => {
+          const physical = rtl ? -direction : direction;
+          const event = (type: string, x: number) =>
+            new PointerEvent(type, {
+              pointerId: 1,
+              screenX: x,
+              screenY: 100,
+              bubbles: true,
+              cancelable: true,
+            });
+          const gesture = new ControlledPageTurn(
+            event("pointerdown", 1000),
+            document,
+            physical === 1 ? 1 : -1,
+            1000,
+            vi.fn(),
+            vi.fn(),
+          );
+          document.dispatchEvent(event("pointermove", 1000 - physical * 450));
+          const animator = new PageTurnAnimator(
+            makeContext({
+              rtl: () => rtl,
+              pageTurnAnimationStyle: () => style,
+              controlledTurn: () => gesture,
+            }),
+          );
+          const old = document.createElement("div");
+          const incoming = document.createElement("div");
+          const furniture = document.createElement("div");
+          document.body.append(old, incoming, furniture);
+          const turning = direction === -1 ? incoming : old;
+          const result =
+            style === "scroll"
+              ? animator.playScrollTurn([old, furniture], [incoming], direction)
+              : animator.playPageTurnAnimation(
+                  turning,
+                  turning,
+                  direction,
+                  [furniture],
+                  direction === -1,
+                );
+          if (style === "scroll") {
+            expect(old.style.transform).toBe(`translateX(${-physical * 45}%)`);
+            expect(
+              Number.parseFloat(incoming.style.transform.slice("translateX(".length)),
+            ).toBeCloseTo(physical * 55);
+            expect(furniture.style.transform).toBe(old.style.transform);
+          } else {
+            const amount = direction === -1 ? physical * 55 : -physical * 45;
+            expect(
+              Number.parseFloat(turning.style.transform.slice("translateX(".length)),
+            ).toBeCloseTo(amount);
+            expect(furniture.style.transform).toBe(turning.style.transform);
+          }
+          vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+            queueMicrotask(() => callback(performance.now() + 1000));
+            return 1;
+          });
+          vi.stubGlobal("cancelAnimationFrame", vi.fn());
+          document.dispatchEvent(event("pointerup", 1000 - physical * 450));
+          await result;
+          expect(document.querySelector("[data-ambra-page-turn-input]")).toBeNull();
+        });
+      }
+    }
+  }
   it("preserves title language and direction in split and single temporary headers", () => {
     const animator = new PageTurnAnimator(makeContext());
     const titleContext = { direction: "rtl", language: "ar" } as const;
@@ -49,7 +116,9 @@ describe("PageTurnAnimator", () => {
     }
   });
   it("mirrors RTL motion and hinges while preserving logical forward/backward", () => {
-    const animator = new PageTurnAnimator(makeContext({ rtl: () => true, pageTurnAnimationStyle: () => "rotate" }));
+    const animator = new PageTurnAnimator(
+      makeContext({ rtl: () => true, pageTurnAnimationStyle: () => "rotate" }),
+    );
     expect(animator.pageTurnPartialAmount(1, 0.5)).toBe(45);
     expect(animator.pageTurnPartialAmount(-1, 0.5)).toBe(-45);
     expect(animator.scrollDragEnterAmount(1, 0)).toBe(-100);
@@ -63,7 +132,9 @@ describe("PageTurnAnimator", () => {
   });
   describe("shouldSkipPageTurnAnimation()", () => {
     it("is false when a real style is chosen and the OS has no reduced-motion preference", () => {
-      const animator = new PageTurnAnimator(makeContext({ pageTurnAnimationStyle: () => "rotate" }));
+      const animator = new PageTurnAnimator(
+        makeContext({ pageTurnAnimationStyle: () => "rotate" }),
+      );
       expect(animator.shouldSkipPageTurnAnimation()).toBe(false);
     });
 
@@ -81,7 +152,9 @@ describe("PageTurnAnimator", () => {
 
   describe("pageTurnPartialAmount()", () => {
     it("scales to a quarter turn (90) for 'rotate', signed by direction", () => {
-      const animator = new PageTurnAnimator(makeContext({ pageTurnAnimationStyle: () => "rotate" }));
+      const animator = new PageTurnAnimator(
+        makeContext({ pageTurnAnimationStyle: () => "rotate" }),
+      );
       expect(animator.pageTurnPartialAmount(1, 0.5)).toBeCloseTo(-45);
       expect(animator.pageTurnPartialAmount(-1, 0.5)).toBeCloseTo(45);
     });
@@ -112,7 +185,9 @@ describe("PageTurnAnimator", () => {
     });
 
     it("sets a rotateY + inset self-shading box-shadow for 'rotate'", () => {
-      const animator = new PageTurnAnimator(makeContext({ pageTurnAnimationStyle: () => "rotate" }));
+      const animator = new PageTurnAnimator(
+        makeContext({ pageTurnAnimationStyle: () => "rotate" }),
+      );
       const el = document.createElement("div");
       animator.setPageTurnTransform(el, 45, 1);
       expect(el.style.transform).toBe("rotateY(45deg)");
@@ -155,7 +230,9 @@ describe("PageTurnAnimator", () => {
 
     it("sets up 3D perspective/hinge-side transform-origin only for 'rotate'", () => {
       const container = document.body;
-      const animator = new PageTurnAnimator(makeContext({ pageTurnAnimationStyle: () => "rotate" }));
+      const animator = new PageTurnAnimator(
+        makeContext({ pageTurnAnimationStyle: () => "rotate" }),
+      );
       const hostEl = document.createElement("div");
       const turnEl = document.createElement("div");
       animator.stagePageTurn(hostEl, turnEl, 1);
@@ -165,7 +242,9 @@ describe("PageTurnAnimator", () => {
     });
 
     it("flips the hinge side for a backward (entering) turn", () => {
-      const animator = new PageTurnAnimator(makeContext({ pageTurnAnimationStyle: () => "rotate" }));
+      const animator = new PageTurnAnimator(
+        makeContext({ pageTurnAnimationStyle: () => "rotate" }),
+      );
       const hostEl = document.createElement("div");
       animator.stagePageTurn(hostEl, hostEl, 1, [], true);
       expect(hostEl.style.transformOrigin).toBe("right center");
@@ -226,7 +305,12 @@ describe("PageTurnAnimator", () => {
       const matchEl = document.createElement("div");
       document.body.appendChild(matchEl);
       const overlay = animator.buildTurnFurnitureOverlay(matchEl, [
-        { left: 0, width: 400, header: { mode: "single", text: "Chapter 1" }, footerText: "Page 3" },
+        {
+          left: 0,
+          width: 400,
+          header: { mode: "single", text: "Chapter 1" },
+          footerText: "Page 3",
+        },
       ]);
       expect(overlay).toBeDefined();
       expect(overlay!.style.height).toBe("800px");
@@ -239,7 +323,12 @@ describe("PageTurnAnimator", () => {
       const matchEl = document.createElement("div");
       document.body.appendChild(matchEl);
       const overlay = animator.buildTurnFurnitureOverlay(matchEl, [
-        { left: 0, width: 400, header: { mode: "single", text: "Chapter 1" }, footerText: undefined },
+        {
+          left: 0,
+          width: 400,
+          header: { mode: "single", text: "Chapter 1" },
+          footerText: undefined,
+        },
       ]);
       expect(overlay!.children).toHaveLength(1);
     });
@@ -249,7 +338,12 @@ describe("PageTurnAnimator", () => {
       const matchEl = document.createElement("div");
       document.body.appendChild(matchEl);
       const overlay = animator.buildTurnFurnitureOverlay(matchEl, [
-        { left: 0, width: 400, header: { mode: "split", left: "Ch. 2", right: "p. 12" }, footerText: undefined },
+        {
+          left: 0,
+          width: 400,
+          header: { mode: "split", left: "Ch. 2", right: "p. 12" },
+          footerText: undefined,
+        },
       ]);
       expect(overlay!.textContent).toContain("Ch. 2");
       expect(overlay!.textContent).toContain("p. 12");

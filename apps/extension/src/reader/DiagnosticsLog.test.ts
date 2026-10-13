@@ -53,6 +53,21 @@ describe("bounded local diagnostics", () => {
     expect(log.format({})).toContain('navigation source="details" fraction=0.5');
   });
 
+  it("exports mouse gesture criteria without truncating the release decision", () => {
+    const log = new DiagnosticsLog();
+    log.recordEvent({
+      kind: "page-turn-mouse", gestureId: 7, style: "scroll", layout: "spread", phase: "decision",
+      inputTimeMs: 3500.125, source: "reader", elapsedMs: 3200.125,
+      dxPx: -96, dyPx: 2, progressPct: 5, recentPx: 96, swipeMs: 350, ageMs: 180,
+      reversePx: 2, started: true, stage: "renderer",
+      slowPass: false, distancePass: true, releasePass: true, flickPass: true, cancelled: false, commit: true,
+    });
+    const report = log.format({});
+    expect(report).toContain('page-turn-mouse gestureId=7 style="scroll" layout="spread" phase="decision"');
+    expect(report).toContain("distancePass=true releasePass=true flickPass=true cancelled=false commit=true");
+    expect(report).not.toContain("…");
+  });
+
   it("includes Go-to mode on both lifecycle events and mode changes", () => {
     const log = new DiagnosticsLog();
     log.recordSurfaces({ "go-to": { open: true, mode: "page" } });

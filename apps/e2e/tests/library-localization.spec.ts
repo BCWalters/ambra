@@ -19,9 +19,9 @@ test("Contents and Library panel tooltips reflect open state in all nine locales
         await expect(page.locator("html")).toHaveAttribute("lang", locale);
         t = getTranslate(locale);
         await page.keyboard.press("Escape");
-        for (const [closedLabel, openLabel] of [
-          [t("toolbar.showContents"), t("toolbar.hideContents")],
-          [t("toolbar.backToLibrary"), t("toolbar.hideLibrary")],
+        for (const [closedLabel, openLabel, panelLabel] of [
+          [t("toolbar.showContents"), t("toolbar.hideContents"), t("toc.tableOfContents")],
+          [t("toolbar.backToLibrary"), t("toolbar.hideLibrary"), t("toolbar.backToLibrary")],
         ]) {
           const closed = page.getByRole("button", { name: closedLabel, exact: true });
           await closed.focus();
@@ -31,8 +31,37 @@ test("Contents and Library panel tooltips reflect open state in all nine locales
           await closed.click();
           const opened = page.getByRole("button", { name: openLabel, exact: true });
           await expect(opened).toHaveAttribute("aria-pressed", "true");
+          const panel = page.getByRole("navigation", { name: panelLabel, exact: true });
+          await expect.poll(() => panel.evaluate(element =>
+            element.contains(document.activeElement),
+          )).toBe(true);
           await page.mouse.move(500, 500);
+          await opened.focus();
+          await expect(opened).toBeFocused();
           await opened.hover();
+          await test.info().attach(`tooltip-trigger-${locale}-${openLabel}`, {
+            body: JSON.stringify(await opened.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              return {
+                visibility: document.visibilityState,
+                focused: document.activeElement === element,
+                pointerEvents: getComputedStyle(element).pointerEvents,
+                bounds: bounds.toJSON(),
+                hit: document.elementFromPoint(
+                  bounds.left + bounds.width / 2, bounds.top + bounds.height / 2,
+                )?.outerHTML,
+                ancestors: Array.from((function* () {
+                  for (let parent = element.parentElement; parent; parent = parent.parentElement)
+                    yield parent;
+                })()).map((parent) => ({
+                  tag: parent.tagName,
+                  opacity: getComputedStyle(parent).opacity,
+                  pointerEvents: getComputedStyle(parent).pointerEvents,
+                })),
+              };
+            })),
+            contentType: "application/json",
+          });
           await expect(page.getByRole("tooltip", { name: openLabel, exact: true })).toBeVisible();
           await opened.click();
           await expect(closed).toHaveAttribute("aria-pressed", "false");
@@ -102,6 +131,7 @@ test("French Library localizes live, preserves toolbar order and persists across
     await expect(about.getByRole("link", { name: t("about.feedback") })).toHaveAttribute("href", "mailto:AmbraEPUB@outlook.com");
     await expect(about.getByRole("button", { name: t("about.copyDiagnostics") })).toBeVisible();
     await about.getByRole("button", { name: t("highlight.close"), exact: true }).click();
+    await expect(about).toBeHidden();
     const detailsButton = page.getByRole("button", { name: t("library.bookDetails", { title }), exact: true });
     await detailsButton.focus();
     await detailsButton.press("Enter");

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, READER_FRAME_SELECTOR } from "../harness.js";
 import { exposeReaderController } from "../reader-controller.js";
 
 // Regenerate: node apps/e2e/scripts/generate-media-overlay-fixtures.mjs
@@ -585,8 +585,8 @@ async function highlighted(page: Page) {
 }
 
 async function visibleFrames(page: Page) {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("iframe"))
+  return page.evaluate(selector =>
+    Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
       .filter((frame) => {
         const bounds = frame.getBoundingClientRect();
         return (
@@ -598,7 +598,7 @@ async function visibleFrames(page: Page) {
         x: frame.getBoundingClientRect().x,
         scrollTop: frame.contentDocument?.scrollingElement?.scrollTop ?? 0,
       })),
-  );
+  READER_FRAME_SELECTOR);
 }
 
 async function narrationTarget(page: Page): Promise<string | undefined> {

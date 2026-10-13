@@ -87,6 +87,28 @@ export const browserGroups = [
     steps: [step("packaged-reader", files)],
   })),
   {
+    id: "page-turn-rendering",
+    modes: ["full"],
+    steps: [step("curled-paper-and-furniture", [
+      "curled-page-turn", "page-turn-color", "page-turn-folio", "page-turn-seams",
+      "page-turn-spread-onset", "single-page-leaf-content", "fixed-layout-animation",
+      "page-turn-motion-lab",
+    ], 1)],
+  },
+  {
+    id: "page-turn-input",
+    modes: ["full"],
+    steps: [step("gestures-and-interruptions", [
+      "page-turn-flick", "page-turn-boundary-lifecycle", "page-turn-selection",
+      "reader-operation-lifetime", "resize-lifecycle",
+    ], 1)],
+  },
+  {
+    id: "page-turn-prefetch",
+    modes: ["full"],
+    steps: [step("candidate-cache-lifecycle", ["page-turn-prefetch"], 1)],
+  },
+  {
     id: "contention-sensitive",
     modes: ["full"],
     steps: [step("isolated-input-budgets", ["reader-diagnostics", "reader-scale-navigation", "scrubber-seek", "pagination-measurement"], 1)],

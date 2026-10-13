@@ -34,13 +34,29 @@ function selected(mode) {
 
 test("full matrix preserves every legacy protected file invocation, including intentional duplicates", () => {
   assert.deepEqual(selected("full").flatMap(group => group.steps.flatMap(step => step.files)).sort(),
-    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors", "svg-resource-graphs", "vertical-writing"].sort());
+    [...legacyFullFiles, "reader-error-recovery", "default-progression", "reflowable-rtl", "packaged-frames", "embedded-data-images", "svg-narration", "mixed-layout-placement", "html-base", "annotation-selectors", "svg-resource-graphs", "vertical-writing",
+      "curled-page-turn", "page-turn-color", "page-turn-folio", "page-turn-seams",
+      "page-turn-spread-onset", "single-page-leaf-content", "fixed-layout-animation",
+      "page-turn-motion-lab", "page-turn-flick", "page-turn-boundary-lifecycle",
+      "page-turn-selection", "reader-operation-lifetime", "resize-lifecycle",
+      "page-turn-prefetch"].sort());
   const core = selected("full").filter(group => group.id.startsWith("reader-core-"))
     .flatMap(group => group.steps.flatMap(step => step.files));
   assert.equal(core.length, 58);
   assert.equal(new Set(core).size, core.length);
   assert.ok(selected("full").find(group => group.id === "contention-sensitive")
     .steps.some(step => step.files.includes("pagination-measurement") && step.workers === 1));
+});
+
+test("page-turn release regressions use the packaged candidate without retries or timing contention", () => {
+  for (const id of ["page-turn-rendering", "page-turn-input", "page-turn-prefetch"]) {
+    assert.ok(browserMatrix("full").include.some(group => group.id === id), id);
+    for (const step of browserArguments(id)) {
+      assert.ok(step.args.includes("--workers=1"));
+      assert.ok(!step.args.includes("--grep"));
+      assert.ok(!step.args.includes("--grep-invert"));
+    }
+  }
 });
 
 test("approved reader polish runs in protected CI without optional original-publication paths", () => {
@@ -136,7 +152,20 @@ test("workflow preserves required-check name, non-cancelling shards and same-pac
 
 test("browser execution matches the package's local-feature mode", () => {
   const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
-  assert.match(workflow, /name: Run selected browser group without retries\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
+  assert.match(workflow, /name: Run selected browser group without retries\s+id: browser-regressions\s+env:\s+BROWSER_GROUP: \$\{\{ matrix\.id \}\}\s+VITE_AMBRA_LOCAL_FEATURES: \$\{\{ matrix\.localFeatures && '1' \|\| '0' \}\}\s+run:/);
+});
+
+test("native curl profiling is a separate failure-only diagnostic, never acceptance", () => {
+  const workflow = readFileSync(new URL("../workflows/ci.yml", import.meta.url), "utf8");
+  const diagnostic = workflow.split("- name: Diagnostic native curl profile after rendering failure")[1]
+    ?.split("- name: Keep browser timings")[0];
+  assert.ok(diagnostic);
+  assert.match(diagnostic, /if: failure\(\) && steps\.browser-regressions\.outcome == 'failure' && matrix\.id == 'page-turn-rendering'/);
+  assert.match(diagnostic, /AMBRA_E2E_PROFILE_CURL: "1"/);
+  assert.match(diagnostic, /PLAYWRIGHT_JSON_OUTPUT_NAME: test-results\/page-turn-rendering\/curl-native-profile\/report\.json/);
+  assert.match(diagnostic, /--workers=1 --reporter=list,json/);
+  assert.doesNotMatch(diagnostic, /continue-on-error|--retries|\|\|/);
+  assert.match(workflow, /name: Keep failed browser diagnostics\s+if: failure\(\)/);
 });
 
 test("vertical-writing validation installs real CJK fonts within the bounded Ubuntu package policy", () => {

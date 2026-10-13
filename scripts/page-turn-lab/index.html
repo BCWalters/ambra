@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ambra page-turn motion lab</title>
+  <link rel="stylesheet" href="lab.css">
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">AMBRA / MOTION LAB</span><h1>A leaf, not a rigid panel.</h1>
+      <p>Comparison prototype for #369 and #370. Original sample pages; not the live EPUB renderer.</p></header>
+    <section class="controls" aria-label="Motion settings">
+      <label>Motion<select id="style"><option value="curl">Page flip / curled leaf</option><option value="rigid">Page flip / rigid comparison</option><option value="slide">Slide / softer paper</option><option value="film">Film strip / reference</option></select></label>
+      <label>Pages<select id="content"><option value="text">Reflowable-like text</option><option value="art">Fixed-layout-like artwork</option></select></label>
+      <label>Reading order<select id="direction"><option value="ltr">Left to right</option><option value="rtl">Right to left</option></select></label>
+      <label>Duration <output id="duration-value">540 ms</output><input id="duration" type="range" min="250" max="900" value="540" step="10"></label>
+      <label>Curl <output id="curl-value">0.65</output><input id="curl" type="range" min="0" max="0.9" value="0.65" step="0.05"></label>
+    </section>
+    <div class="stage">
+      <div id="book" aria-label="Book preview: drag a page toward the opposite side" role="group">
+        <div id="base"></div><div id="moving" aria-hidden="true"></div>
+      </div>
+    </div>
+    <section class="transport" aria-label="Preview controls">
+      <button id="previous">Previous spread</button><button id="next">Next spread</button>
+      <button id="cancel" disabled>Return leaf</button><button id="commit" disabled>Complete turn</button>
+      <label class="scrubber">Inspect turn <input id="progress" type="range" min="0" max="1" value="0" step="0.005"></label>
+      <output id="status" aria-live="polite">Pages 1-2</output>
+    </section>
+    <p class="hint">Click an outer page or use arrow keys. Drag with mouse/touch (a trackpad can click-drag):
+      slow movement follows your hand; release at or past 40% completes; drag back below 40% to return the leaf.
+      The slider freezes any frame for inspection.</p>
+    <p class="hint">The reverse face is the destination page, including artwork. The other page stays still.
+      Real EPUB frame compositing, selection, chapter boundaries and zoom are integration work, not proven by this lab.</p>
+  </main>
+  <script type="module" src="lab.mjs"></script>
+</body>
+</html>
