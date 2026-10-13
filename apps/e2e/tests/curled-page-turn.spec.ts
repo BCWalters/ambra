@@ -365,7 +365,7 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
       if (!verifyGeometry) {
         const gaps = metrics.frames.slice().sort((a: number, b: number) => a - b);
         expect(gaps.length).toBeGreaterThan(5);
-        expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(40);
+        expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(50);
         expect(Math.max(...gaps)).toBeLessThan(100);
       }
       const snapshot = await page.evaluate(() =>

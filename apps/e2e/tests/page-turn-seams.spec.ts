@@ -32,6 +32,8 @@ for (const rtl of [false, true]) {
           Reflect.set(window, "__cullingTurn", c.turnPage(1));
         }, single);
         await page.waitForFunction(() => !!Reflect.get(window, "__releaseCullingLeaf"));
+        await page.getByRole("button", { name: "Bookmark this page", exact: true }).focus();
+        await expect(page.getByRole("tooltip").filter({ hasText: "Bookmark this page" })).toBeVisible();
         const leaf = page.locator("[data-ambra-curled-leaf]");
         const initial = await leaf.evaluate(element => {
           const doc = (element as HTMLIFrameElement).contentDocument!;
@@ -63,8 +65,8 @@ for (const rtl of [false, true]) {
               return count;
             }, { progress, enabled });
             expect(count).toBeGreaterThanOrEqual(80);
-            // Compare the composed viewport without scrolling the iframe
-            // independently of the surrounding reader chrome.
+            // Focus and tooltip readiness keep idle chrome stable while
+            // comparing the composed viewport, not a scrolled iframe.
             return page.screenshot({ animations: "disabled" });
           };
           const original = await paint(false);

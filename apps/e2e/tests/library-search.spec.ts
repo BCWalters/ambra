@@ -15,6 +15,8 @@ test("short compact Library keeps books and fixed navigation reachable with coll
   try {
     await readerPage.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 1);
     await readerPage.evaluate(() => Reflect.get(window, "__readerController").flushProgress(true));
+    await readerPage.close();
+    await page.reload();
     await page.bringToFront();
     await expect(page.locator("[data-library-continue]")).toBeVisible();
     const open = page.getByRole("main").getByRole("button", { name: /^Open / }).first();
