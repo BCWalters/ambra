@@ -77,6 +77,12 @@ starts fitted. Unequal XHTML/SVG LTR/RTL spreads retain one shared scale and
 their loaded document identity. Publisher typography and viewport attributes
 remain unchanged; roll/reflowable hosts retain their existing controls.
 
+`tests/fixed-layout-spread-hugging.spec.ts` checks shared-scale, gapless
+fixed spreads before and after resizing. Post-resize navigation waits for
+exactly the destination pair's visible text rather than assuming the outgoing
+animation has finished after 700 ms. This is a functional completion check;
+the separate curl preparation and frame-pacing limits remain unchanged.
+
 `tests/mixed-layout-placement.spec.ts` checks the five-item fixed/reflowable
 sequence behind #381 using native word-range hit-testing, not DOM presence.
 Generated filenames/titles carry ID 3.1.7. Set `AMBRA_MIXED_LAYOUT_EPUB` to
