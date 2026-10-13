@@ -21,7 +21,12 @@ as confirmed by the owner. No trusted-tester allowlist is required. Public sourc
 visibility, and npm's `"private": true` (which prevents accidental package
 publication) are independent.
 See [contributing](CONTRIBUTING.md), the [privacy policy](store-assets/privacy-policy.md),
-and the [3.3.0 release checklist](store-assets/RELEASE-3.3.0.md).
+and the [3.3.1 release checklist](store-assets/RELEASE-3.3.1.md).
+Version 3.3.1 binds copied error diagnostics to the specific notification and
+keeps newly created paginated highlights and notes within the visible page.
+Existing annotations and continuous scrolling remain unchanged. The
+[detailed manual accessibility walkthrough](docs/screen-reader-walkthrough-3.3.1.md)
+splits final-candidate testing into short, independently recorded sessions.
 Version 3.3.0 adds controlled curled Page flip, Slide and Film strip gestures,
 more forgiving mouse flicks, stable page furniture and smoother document-boundary
 turns in reflowable and fixed-layout books.
@@ -42,7 +47,7 @@ baseline, manual self-assessment, known failures and unresolved cases.
 The published assessment remains frozen. Closing implementation/policy issues
 with documented limitations does not establish new conformance passes; this release
 does not publish a new assessment. Verify the current dashboard version and
-review state before uploading 3.3.0. Preparing a package does not mean it has been
+review state before uploading 3.3.1. Preparing a package does not mean it has been
 uploaded, submitted or published.
 
 ## Structure
