@@ -24,6 +24,15 @@ Bookmarks supplied with the book have a **Publisher note** tag and cannot be del
    write a note together.
 3. Choose **Save** when your note is ready.
 
+In paginated reading, new highlights and notes are limited to the visible page in
+the document where you selected text. Dragging into a top or bottom margin, or
+extending a keyboard selection, cannot include preceding or following pages.
+Each side of a two-page spread is separate, including pages from different
+chapters; selecting across pages is not a supported annotation workflow.
+If CSS reordering leaves disjoint visible text separated by off-page content,
+select within one contiguous visible passage rather than joining those spans.
+Existing saved or imported annotations are not shortened or rewritten.
+
 Open a highlight to edit or delete it, or find it in **Annotations**.
 **Go to passage** takes you back to its location. Save note edits before
 leaving the reader.

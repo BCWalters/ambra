@@ -246,7 +246,7 @@ for (const { width, height } of [
   { width: 1400, height: 900 },
   { width: 1400, height: 1000 },
 ]) {
-  test(`${width}x${height}px: hidden and page-start-spanning DOM ranges retain their native selection (#169)`, async () => {
+  test(`${width}x${height}px: hidden DOM ranges stay native while spanning ranges are clipped to their page (#169, #422)`, async () => {
     const { context, readerPage: page } = await launchReader(fixture, {
       viewport: { width, height },
     });
@@ -271,7 +271,7 @@ for (const { width, height } of [
         } else {
           expect(geometry.visible.length).toBeGreaterThan(0);
           if (shape === "spanning")
-            expect(geometry.rects.some((rect) => rect.bottom <= geometry.bounds.top)).toBe(true);
+            expect(geometry.rects.some((rect) => rect.bottom <= geometry.bounds.top)).toBe(false);
           await expect(addNote(page)).toBeVisible();
           const popup = (await addNote(page)
             .locator("xpath=ancestor::*[@role='toolbar']")

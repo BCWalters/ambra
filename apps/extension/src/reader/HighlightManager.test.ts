@@ -69,6 +69,7 @@ function makeContext(overrides: Partial<HighlightManagerContext> = {}): Highligh
     isSpineVisible: spineIndex => spineIndex === 0,
     isFixedLayoutHost: () => false,
     pendingSelectionRange: () => selection,
+    visibleSelectionRange: (range) => range,
     selectionToolbarAnchor: () => ({ left: 10, top: 20 }),
     dismissSelectionToolbar: vi.fn(),
     applyHighlightsToCurrentHost: vi.fn(),
@@ -85,6 +86,35 @@ function makeContext(overrides: Partial<HighlightManagerContext> = {}): Highligh
 }
 
 describe("HighlightManager", () => {
+  it("rechecks the visible-page intersection at creation and stores matching text and CFI endpoints", async () => {
+    const pending = makeRange("off-page and visible text");
+    const clipped = makeRange("visible text");
+    const visibleSelectionRange = vi.fn(() => clipped);
+    const library = makeLibrary();
+    const resolver = makeLocatorResolver();
+    const ctx = makeContext({ pendingSelectionRange: () => pending, visibleSelectionRange });
+    await new HighlightManager(library, "book-1", resolver, ctx).add("yellow", true);
+    expect(visibleSelectionRange).toHaveBeenCalledWith(pending);
+    expect(library.addHighlight).toHaveBeenCalledWith(expect.objectContaining({ text: "visible text" }));
+    expect(resolver.generate).toHaveBeenNthCalledWith(1, 0, clipped.startContainer, clipped.startOffset);
+    expect(resolver.generate).toHaveBeenNthCalledWith(2, 0, clipped.endContainer, clipped.endOffset);
+    expect(ctx.dismissSelectionToolbar).toHaveBeenCalledOnce();
+    expect(ctx.getActiveHighlight()?.openNoteEditor).toBe(true);
+  });
+
+  it("does not persist an empty intersection or change existing saved highlights", async () => {
+    const library = makeLibrary();
+    const ctx = makeContext({ visibleSelectionRange: () => undefined });
+    const manager = new HighlightManager(library, "book-1", makeLocatorResolver(), ctx);
+    const existing = makeHighlight();
+    manager.load([existing]);
+    await manager.add("green");
+    expect(library.addHighlight).not.toHaveBeenCalled();
+    expect(manager.allSorted()).toEqual([existing]);
+    expect(ctx.reportError).toHaveBeenCalledWith(new Error("The selection contains no text on the visible page."));
+    expect(ctx.dismissSelectionToolbar).toHaveBeenCalledOnce();
+  });
+
   it("load() groups highlights by spine index", () => {
     const manager = new HighlightManager(makeLibrary(), "book-1", makeLocatorResolver(), makeContext());
     const a = makeHighlight({ id: "a", spineIndex: 0 });

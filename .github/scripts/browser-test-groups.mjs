@@ -29,7 +29,7 @@ const core = [
     "harness-lifecycle", "popup-hover-ownership", "margin-selection", "page-turn-margin",
     "scrubber-bookmarks", "scrubber-fast-release",
     "library-scrubber-progress", "bookmark-panel", "annotation-mutation-lifecycle",
-    "annotation-export-import", "annotation-selectors", "embedded-annotations", "page-theme",
+    "annotation-export-import", "annotation-selectors", "annotation-page-boundaries", "embedded-annotations", "page-theme",
     "spread-gutter-navigation",
   ],
 ];

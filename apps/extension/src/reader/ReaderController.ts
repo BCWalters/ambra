@@ -116,6 +116,7 @@ import type {
   SelectionToolbarState,
 } from "./ReaderTypes.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
+import { annotationSelectionRange } from "./AnnotationSelection.js";
 import { attachTableControls, updateTableControlLabels, updateTableControlTheme } from "./TableControls.js";
 import { prepareTableViewer } from "./TableViewerContent.js";
 import type { PreparedTable } from "./TableViewerContent.js";
@@ -532,6 +533,7 @@ export class ReaderController {
         this.contentDocumentViews().some((view) => view.spineIndex === index),
       isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
       pendingSelectionRange: () => this.pendingSelectionRange,
+      visibleSelectionRange: (range) => annotationSelectionRange(range, this.contentDocumentViews()),
       selectionToolbarAnchor: () => this.selectionToolbar,
       dismissSelectionToolbar: () => this.dismissSelectionToolbar(),
       applyHighlightsToCurrentHost: () => this.highlightInteraction.applyHighlightsToCurrentHost(),
@@ -552,6 +554,8 @@ export class ReaderController {
     this.highlightInteraction = new HighlightInteraction(locatorResolver, {
       isFixedLayoutHost: () => this.isFixedLayoutHost(this.host),
       contentDocuments: () => this.contentDocumentViews(),
+      visibleSelectionRange: (range) => annotationSelectionRange(range, this.contentDocumentViews()),
+      reportError: (error) => this.reportTransientError(error, "select", "that highlight"),
       forSpineIndex: (spineIndex) => this.highlights.forSpineIndex(spineIndex),
       currentSearchHighlightQuery: () => this.searchCoordinator.currentHighlightQuery,
       getActiveHighlight: () => this.activeHighlight,

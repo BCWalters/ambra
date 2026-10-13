@@ -121,6 +121,8 @@ function makeContext(
   return {
     isFixedLayoutHost: () => false,
     contentDocuments: () => [],
+    visibleSelectionRange: (range) => range,
+    reportError: vi.fn(),
     forSpineIndex: () => undefined,
     currentSearchHighlightQuery: () => undefined,
     getActiveHighlight: () => state.activeHighlight,

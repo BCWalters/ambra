@@ -76,6 +76,7 @@ export { measureSimpleTableRows } from "./layout/SimpleTable.js";
 export { globalTextOffsetToPosition, totalTextLength } from "./layout/DomTextWalker.js";
 export { ScrollViewEngine } from "./layout/ScrollViewEngine.js";
 export { compareDomPositions, findChunkAtScrollOffset, findChunkForPosition } from "./layout/ScrollPositionTracker.js";
+export { intersectPageRange } from "./layout/PageRange.js";
 export { Locator, LocatorResolver, LocatorResolutionError, requireDomRangeBoundary } from "./locator/Locator.js";
 export type { ResolvedLocator, ResolvedLocatorRange } from "./locator/Locator.js";
 export { readingPositionForLocator } from "./locator/CfiReadingPosition.js";
