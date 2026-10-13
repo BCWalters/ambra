@@ -670,7 +670,13 @@ export class CurledPageTurn {
     if (this.disposed) return;
     this.disposed = true;
     for (const [element, opacity] of this.savedOpacity) element.style.opacity = opacity;
+    this.savedOpacity.clear();
+    const document = this.surface.element.contentDocument;
     this.surface.dispose();
+    // A retained callback must not keep the display copy's document graph alive.
+    document?.documentElement?.replaceChildren();
+    if (document) this.initialPaintStyles.delete(document);
+    this.flatFaces = undefined;
     this.segments.length = 0;
     this.paintClasses.clear();
     this.paintRules.length = 0;

@@ -1270,6 +1270,13 @@ background pagination progressed differently between the two diagnostic runs.
 Full native geometry, authored-variable and exact-pixel regressions remain
 required, as does unprofiled protected acceptance at the unchanged limits.
 
+Disposed curls explicitly release their owned copied document tree, flat-face
+references, initial-style cache and saved-opacity references after restoring
+the original pages. A native regression deliberately retains the disposed leaf
+and copy root, checks zero copied descendants and released caches, verifies
+source text/opacity preservation and repeats disposal. This is resource cleanup,
+not forced GC or a change to animation samples.
+
 Fixed-pose backface comparisons keep reader chrome focused and await its tooltip
 so idle hiding or delayed hints cannot change pixels between captures. They
 compare the composed viewport and retain the one-channel-step maximum pixel

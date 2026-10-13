@@ -66,6 +66,9 @@ for the sparse-sample rationale and fixture prerequisites.
 Frozen paint copying uses indexed native collection traversal to reduce
 temporary iterator allocations while preserving property/child order and
 authored variables. This is not a change to accepted visuals or timing limits.
+Disposed curls also release only their owned copied DOM/caches after restoring
+original-page opacity; queued callbacks retaining a leaf cannot retain its
+copied document graph. Native coverage checks this ownership and idempotency.
 
 ## Package-bound conformance and manual accessibility
 
