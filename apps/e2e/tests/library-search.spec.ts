@@ -11,8 +11,12 @@ const SECOND = path.resolve(here, "../fixtures/two-chapter.epub");
 const TITLE = "Ambra Long Content Test Fixture";
 
 test("short compact Library keeps books and fixed navigation reachable with collapsed tools", async () => {
-  const { context, libraryPage: page } = await launchReader(FIRST, { viewport: { width: 320, height: 256 } });
+  const { context, libraryPage: page, readerPage } = await launchReader(FIRST, { viewport: { width: 320, height: 256 } });
   try {
+    await readerPage.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 1);
+    await readerPage.evaluate(() => Reflect.get(window, "__readerController").flushProgress(true));
+    await readerPage.close();
+    await page.reload();
     await page.bringToFront();
     await expect(page.locator("[data-library-continue]")).toBeVisible();
     const open = page.getByRole("main").getByRole("button", { name: /^Open / }).first();

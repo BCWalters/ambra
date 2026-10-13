@@ -1,4 +1,4 @@
-import { Locator, LocatorResolutionError, requireDomRangeBoundary } from "@ambra/engine";
+import { compareDomPositions, Locator, LocatorResolutionError, requireDomRangeBoundary } from "@ambra/engine";
 import type { ContentDocumentView, LocatorResolver } from "@ambra/engine";
 import type { Highlight } from "../library/LibraryDatabase.js";
 import { applyActiveHighlightRange, applyHighlightRanges, applySearchMatchRanges } from "./HighlightRenderer.js";
@@ -14,6 +14,8 @@ import { visiblePageBounds } from "./VisiblePageBounds.js";
 export interface HighlightInteractionContext {
   isFixedLayoutHost(): boolean;
   contentDocuments(): readonly ContentDocumentView[];
+  visibleSelectionRange(range: Range): Range | undefined;
+  reportError(error: unknown): void;
   forSpineIndex(spineIndex: number): readonly Highlight[] | undefined;
   currentSearchHighlightQuery(): string | undefined;
   /** Whichever highlight's popup is currently open, if any — read (not
@@ -272,7 +274,19 @@ export class HighlightInteraction {
           this.ctx.setSelectionToolbar(undefined);
           return false;
         }
-        const range = selection.getRangeAt(0);
+        const nativeRange = selection.getRangeAt(0);
+        let range: Range | undefined;
+        try {
+          range = this.ctx.visibleSelectionRange(nativeRange);
+        } catch (error) {
+          this.ctx.reportError(error);
+        }
+        if (!range) {
+          selectionDocument = undefined;
+          this.ctx.setPendingSelectionRange(undefined);
+          this.ctx.setSelectionToolbar(undefined);
+          return true;
+        }
         const rangeRect = HighlightInteraction.visibleSelectionRect(range, iframeEl);
         if (!rangeRect) {
           // Preserve native/assistive-technology selections, but never offer
@@ -281,6 +295,17 @@ export class HighlightInteraction {
           this.ctx.setPendingSelectionRange(undefined);
           this.ctx.setSelectionToolbar(undefined);
           return true;
+        }
+        if (range.startContainer !== nativeRange.startContainer || range.startOffset !== nativeRange.startOffset ||
+          range.endContainer !== nativeRange.endContainer || range.endOffset !== nativeRange.endOffset) {
+          const backward = selection.anchorNode && selection.focusNode && compareDomPositions(
+            { node: selection.anchorNode, offset: selection.anchorOffset },
+            { node: selection.focusNode, offset: selection.focusOffset },
+          ) > 0;
+          selection.setBaseAndExtent(
+            backward ? range.endContainer : range.startContainer, backward ? range.endOffset : range.startOffset,
+            backward ? range.startContainer : range.endContainer, backward ? range.startOffset : range.endOffset,
+          );
         }
         const iframeRect = iframeEl.getBoundingClientRect();
         selectionDocument = doc;

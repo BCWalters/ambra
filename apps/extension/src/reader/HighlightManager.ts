@@ -13,6 +13,7 @@ export interface HighlightManagerContext {
   isFixedLayoutHost(): boolean;
   /** The live `Range` `setUpHighlightSelection` last captured. */
   pendingSelectionRange(): Range | undefined;
+  visibleSelectionRange(range: Range): Range | undefined;
   /** The selection toolbar's current anchor point, reused as the note
    * editor's anchor (issue #60). */
   selectionToolbarAnchor(): { left: number; top: number } | undefined;
@@ -79,16 +80,18 @@ export class HighlightManager {
    * `openNoteEditor` (issue #60) opens the note editor for it right
    * away, at the toolbar's own anchor. */
   public async add(style: HighlightStyle, openNoteEditor = false): Promise<void> {
-    const range = this.ctx.pendingSelectionRange();
-    if (!range || this.ctx.isFixedLayoutHost()) {
+    const pending = this.ctx.pendingSelectionRange();
+    if (!pending || this.ctx.isFixedLayoutHost()) {
       return;
     }
     // Captured before `dismissSelectionToolbar` clears it, below.
     const anchor = this.ctx.selectionToolbarAnchor();
-    const document = range.startContainer.ownerDocument;
+    const document = pending.startContainer.ownerDocument;
     try {
       const spineIndex = document ? this.ctx.spineIndexForDocument(document) : undefined;
       if (spineIndex === undefined) throw new Error("The selection no longer belongs to a visible document.");
+      const range = this.ctx.visibleSelectionRange(pending);
+      if (!range) throw new Error("The selection contains no text on the visible page.");
       const startLocator = this.locatorResolver.generate(spineIndex, range.startContainer, range.startOffset);
       const endLocator = this.locatorResolver.generate(spineIndex, range.endContainer, range.endOffset);
       const highlight = await this.library.addHighlight({
@@ -108,7 +111,7 @@ export class HighlightManager {
       }
       this.ctx.applyHighlightsToCurrentHost();
       this.ctx.announce("announcements.highlightAdded");
-      if (openNoteEditor && anchor && this.ctx.pendingSelectionRange() === range &&
+      if (openNoteEditor && anchor && this.ctx.pendingSelectionRange() === pending &&
           document && this.ctx.spineIndexForDocument(document) === spineIndex) {
         this.ctx.setActiveHighlight({ highlight, left: anchor.left, top: anchor.top, openNoteEditor: true });
       }
@@ -116,7 +119,7 @@ export class HighlightManager {
     } catch (err) {
       this.ctx.reportError(err);
     } finally {
-      if (this.ctx.pendingSelectionRange() === range) this.ctx.dismissSelectionToolbar();
+      if (this.ctx.pendingSelectionRange() === pending) this.ctx.dismissSelectionToolbar();
     }
   }
 

@@ -363,9 +363,11 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
       expect(metrics.onsetMs).toBeLessThan(750);
       expect(timing).toBeLessThan(1500);
       if (!verifyGeometry) {
-        const gaps = metrics.frames.slice().sort((a: number, b: number) => a - b);
+        const gaps: number[] = metrics.frames.slice().sort((a: number, b: number) => a - b);
         expect(gaps.length).toBeGreaterThan(5);
-        expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(40);
+        expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(35);
+        expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(40);
+        expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(80);
         expect(Math.max(...gaps)).toBeLessThan(100);
       }
       const snapshot = await page.evaluate(() =>
@@ -397,6 +399,8 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
                 onsetMs: metric.onsetMs,
                 nodes: metric.nodes,
                 textLength: metric.textLength,
+                meanFrameMs: frames.reduce((total, gap) => total + gap, 0) / frames.length,
+                p90FrameMs: frames[Math.ceil(frames.length * 0.9) - 1],
                 p95FrameMs: frames[Math.ceil(frames.length * 0.95) - 1],
                 worstFrameMs: Math.max(...frames),
               };

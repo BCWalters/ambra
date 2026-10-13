@@ -99,6 +99,8 @@ for (const width of [320, 360]) {
         await expect(page.locator("[data-library-book-count]")).toHaveText(formatLibraryBookCount(12, locale, getTranslate(locale)));
         await expectFixedChrome(page, locale, 480);
         const toggle = page.getByRole("button", { name: getTranslate(locale)("library.findAndSort"), exact: true });
+        await toggle.focus();
+        await expect(page.getByRole("tooltip")).toHaveCount(0);
         await expect(toggle).toHaveAttribute("aria-expanded", "false");
         await expect(page.getByRole("button", { name: getTranslate(locale)("library.sort"), exact: true })).toBeHidden();
         await toggle.click();
