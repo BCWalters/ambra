@@ -9,6 +9,44 @@ import { navigationFixture } from "../navigation-fixture.js";
 // DOM serialization and per-frame screencast encoding interrupt native curl timing.
 test.use({ trace: { mode: "retain-on-failure", snapshots: false, screenshots: false } });
 
+function expectCurlFramePacing(turns: readonly (readonly number[])[]): number {
+  expect(turns).toHaveLength(4);
+  const allFrames: number[] = [];
+  for (const frames of turns) {
+    const gaps = [...frames].sort((a, b) => a - b);
+    expect(gaps.length).toBeGreaterThan(5);
+    expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(35);
+    expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(40);
+    expect(Math.max(...gaps)).toBeLessThan(100);
+    allFrames.push(...gaps);
+  }
+  allFrames.sort((a, b) => a - b);
+  const p95 = allFrames[Math.ceil(allFrames.length * 0.95) - 1];
+  expect(p95).toBeLessThan(40);
+  return p95;
+}
+
+test("curl pacing gates distinguish isolated stalls from sustained slowdown", () => {
+  const steady = Array<number>(18).fill(28);
+  const isolated = [...steady];
+  isolated[2] = 97.2;
+  expect(expectCurlFramePacing([isolated, steady, steady, steady])).toBe(28);
+  const excessive = [...steady];
+  excessive[2] = 100;
+  const pooledBoundary = [...steady];
+  pooledBoundary[2] = 40;
+  const slowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(40)];
+  for (const turns of [
+    [isolated, isolated, isolated, isolated],
+    [pooledBoundary, pooledBoundary, pooledBoundary, pooledBoundary],
+    [excessive, steady, steady, steady],
+    [Array<number>(18).fill(35), steady, steady, steady],
+    [slowTail, steady, steady, steady],
+    [steady.slice(0, 5), steady, steady, steady],
+    [steady, steady, steady],
+  ]) expect(() => expectCurlFramePacing(turns)).toThrow();
+});
+
 test("curled copies preserve explicit initial values below contrasting parents", async () => {
   const { context, readerPage: page } = await launchReader(
     navigationFixture(test.info(), [4], (_chapter, index) =>
@@ -305,6 +343,7 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
       });
       sampling = true;
     }
+    const frameIntervals: number[][] = [];
     for (const [i, direction] of [1, 1, -1, 1].entries()) {
       if (i === 0) {
         await clickReadingPage(page, "right");
@@ -362,14 +401,7 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
       expect(metrics.textLength).toBeLessThan(500000);
       expect(metrics.onsetMs).toBeLessThan(750);
       expect(timing).toBeLessThan(1500);
-      if (!verifyGeometry) {
-        const gaps: number[] = metrics.frames.slice().sort((a: number, b: number) => a - b);
-        expect(gaps.length).toBeGreaterThan(5);
-        expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(35);
-        expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(40);
-        expect(gaps[Math.ceil(gaps.length * 0.95) - 1]).toBeLessThan(80);
-        expect(Math.max(...gaps)).toBeLessThan(100);
-      }
+      if (!verifyGeometry) frameIntervals.push(metrics.frames);
       const snapshot = await page.evaluate(() =>
         Reflect.get(window, "__readerController").snapshot(),
       );
@@ -381,7 +413,8 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
         await expect(page.getByText(`Page ${number}`, { exact: true })).toHaveCount(1);
       await page.screenshot({ path: test.info().outputPath(`long-chapter-${i}.png`) });
     }
-    if (!verifyGeometry)
+    if (!verifyGeometry) {
+      console.log("LONG_CHAPTER_POOLED_P95", expectCurlFramePacing(frameIntervals));
       console.log(
         "LONG_CHAPTER_METRICS",
         await page.evaluate(() =>
@@ -408,6 +441,7 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
           ),
         ),
       );
+    }
   } finally {
     try {
       const session = tracingSession;
