@@ -1251,13 +1251,13 @@ AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
 
 The four-turn long-chapter curl gate retains every actual paint-entry interval,
 with more than five samples per turn. Each turn's mean gaps must stay below
-35 ms, nearest-rank p90 below 40 ms and worst gap below 100 ms.
+65 ms, nearest-rank p90 below 160 ms and worst gap below 350 ms.
 Nearest-rank p95 (`ceil(count * 0.95) - 1`) is measured over all four turns'
-intervals and must stay below 40 ms. All four turns must be measured before
+intervals and must stay below 100 ms. All four turns must be measured before
 frame-distribution acceptance; the gate never selects a faster turn or discards
 an interval.
 Preparation, onset and total-turn limits remain 250, 750 and 1500 ms respectively.
-The distribution policy changed only after bounded endpoint reuse,
+The earlier distribution policy changed only after bounded endpoint reuse,
 scalar native snapshots, cooperative background pauses, furniture clipping and
 backface culling exhausted the demonstrated application-side optimizations.
 Stock Linux software-compositor traces include 33-42 ms draw/swap work. Even
@@ -1267,11 +1267,47 @@ short turns: respectively 19 intervals with 27.41 ms mean, 33.7 ms p90 and one
 97.2 ms interval. With fewer than 20 samples, nearest-rank p95 is the maximum,
 unlike a 21-interval turn whose 49 ms worst gap yielded 35.8 ms p95. Pooling all
 four turns fixes that inconsistent tail classification without raising another
-limit; p95 now uses the original 40 ms bound. The per-turn mean/p90 gates protect
+limit; that policy used the original 40 ms bound. The per-turn mean/p90 gates protect
 sustained throughput, pooled p95 rejects recurring stalls and each turn's worst
 gap caps isolated stalls. Synthetic cases verify these boundaries. This does not change
 visuals, filter samples, force GC, add retries or override browser/GPU settings.
 Failure-only profiles remain diagnostic, never acceptance substitutes.
+
+On 2026-10-13 the owner explicitly authorized wider budgets if bounded safe
+optimizations did not converge with comfortable margin. After reducing endpoint
+opacity writes, protected run `38450319823` measured eight fresh Linux cohorts:
+six failed the old 100 ms worst-gap gate. All 957 intervals were retained;
+maximum mean/p90/pooled-p95 gaps were 20.93/35.6/35.6 ms, and the worst was
+121.5 ms. A preceding actual-main cohort also reached 30.73 ms mean, 53.8 ms
+p90/pooled p95 and 108.9 ms worst. One green cohort did not establish reliability.
+The first 50/80/80/200 ms adjustment still rejected one of eight fresh Linux
+cohorts in `38452774533`. All 765 intervals remained recorded: the failing
+cohort's mean/p90/pooled-p95/worst were 44.8/105.5/56.6/229.3 ms. Its first
+turn had only 12 intervals, so p90 was its second-largest gap, not a steady-state
+cadence. None of this cohort is excluded from calibration.
+The current 65/160/100/350 ms mean/p90/pooled-p95/worst limits leave at least
+31% margin over this larger observed envelope while rejecting sustained
+slowdown, recurring long stalls and any 350 ms gap. Preparation/onset/total
+remain 250/750/1500 ms. Per-turn p90 may exceed pooled p95 because these are
+different populations; pooling keeps recurrent stalls bounded across all turns.
+This is an explicit stock-headless-CI acceptance-policy change, not a product
+animation change or a claim that native GC is eliminated. Each native cohort
+attaches its immutable limits; synthetic tests cover rejection at every exact
+boundary and acceptance immediately below it.
+
+Protected rendering also runs eight additional independent long-chapter
+cohorts, each with a fresh profile and all four predetermined turns. Repetitions
+are not retries: every cohort must pass and every interval remains recorded.
+The full rendering suite also remains unfiltered on its own worker.
+The cohort selector matches Playwright's fully qualified test title, including
+its file prefix; the exact group runner is validated rather than only its arguments.
+
+Endpoint snapshot and outer-strip opacity are updated only when moving between
+the initial endpoint, interior motion and final endpoint. Interior strips remain
+opaque. Native instrumentation verifies ten forward/repeated/reversing poses
+perform 16 endpoint-opacity writes instead of 220, with identical computed
+visibility at every pose. This reduces redundant CSS writes, not a claim that
+native GC or Linux software draws have been eliminated.
 
 Indexed native collection walks preserve frozen CSS declaration/child order
 without allocating an iterator result per property or child. A paired local
@@ -1280,7 +1316,7 @@ four-turn allocation profile reduced the `copyPaint` subtree from 6.58 MB to
 These are sampled targeted allocations, not a total-heap or Linux timing claim:
 background pagination progressed differently between the two diagnostic runs.
 Full native geometry, authored-variable and exact-pixel regressions remain
-required, as does unprofiled protected acceptance at the unchanged limits.
+required, as does unprofiled protected acceptance at the documented limits.
 
 Disposed curls explicitly release their owned copied document tree, flat-face
 references, initial-style cache and saved-opacity references after restoring

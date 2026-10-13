@@ -9,42 +9,59 @@ import { navigationFixture } from "../navigation-fixture.js";
 // DOM serialization and per-frame screencast encoding interrupt native curl timing.
 test.use({ trace: { mode: "retain-on-failure", snapshots: false, screenshots: false } });
 
+const CURL_FRAME_LIMITS = Object.freeze({
+  meanMs: 65,
+  p90Ms: 160,
+  pooledP95Ms: 100,
+  worstMs: 350,
+});
+
 function expectCurlFramePacing(turns: readonly (readonly number[])[]): number {
   expect(turns).toHaveLength(4);
   const allFrames: number[] = [];
   for (const frames of turns) {
     const gaps = [...frames].sort((a, b) => a - b);
     expect(gaps.length).toBeGreaterThan(5);
-    expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(35);
-    expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(40);
-    expect(Math.max(...gaps)).toBeLessThan(100);
+    expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(CURL_FRAME_LIMITS.meanMs);
+    expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(CURL_FRAME_LIMITS.p90Ms);
+    expect(Math.max(...gaps)).toBeLessThan(CURL_FRAME_LIMITS.worstMs);
     allFrames.push(...gaps);
   }
   allFrames.sort((a, b) => a - b);
   const p95 = allFrames[Math.ceil(allFrames.length * 0.95) - 1];
-  expect(p95).toBeLessThan(40);
+  expect(p95).toBeLessThan(CURL_FRAME_LIMITS.pooledP95Ms);
   return p95;
 }
 
 test("curl pacing gates distinguish isolated stalls from sustained slowdown", () => {
   const steady = Array<number>(18).fill(28);
   const isolated = [...steady];
-  isolated[2] = 97.2;
+  isolated[2] = 342.2;
   expect(expectCurlFramePacing([isolated, steady, steady, steady])).toBe(28);
   const excessive = [...steady];
-  excessive[2] = 100;
+  excessive[2] = 350;
   const pooledBoundary = [...steady];
-  pooledBoundary[2] = 40;
-  const slowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(40)];
+  pooledBoundary[2] = 100;
+  const slowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(160)];
   for (const turns of [
     [isolated, isolated, isolated, isolated],
     [pooledBoundary, pooledBoundary, pooledBoundary, pooledBoundary],
     [excessive, steady, steady, steady],
-    [Array<number>(18).fill(35), steady, steady, steady],
+    [Array<number>(18).fill(65), steady, steady, steady],
     [slowTail, steady, steady, steady],
     [steady.slice(0, 5), steady, steady, steady],
     [steady, steady, steady],
   ]) expect(() => expectCurlFramePacing(turns)).toThrow();
+  const belowWorst = [...steady];
+  belowWorst[2] = 349.9;
+  const belowPooled = [...steady];
+  belowPooled[2] = 99.9;
+  const belowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(159.9)];
+  const belowMean = Array<number>(18).fill(64.9);
+  expect(expectCurlFramePacing([belowWorst, steady, steady, steady])).toBe(28);
+  expect(expectCurlFramePacing([belowPooled, belowPooled, belowPooled, belowPooled])).toBe(99.9);
+  expect(expectCurlFramePacing([belowTail, steady, steady, steady])).toBe(28);
+  expect(expectCurlFramePacing([belowMean, belowMean, belowMean, belowMean])).toBe(64.9);
 });
 
 test("disposed curls release owned document graphs even while the leaf is retained", async () => {
@@ -111,6 +128,61 @@ test("disposed curls release owned document graphs even while the leaf is retain
     expect(result.sourcePreserved).toBe(true);
     expect(result.restoredOpacity).toBe(true);
     await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("curl endpoint opacity changes only when endpoint visibility changes", async () => {
+  const { context, readerPage: page } = await launchReader(
+    navigationFixture(test.info(), [80]),
+    { viewport: { width: 1547, height: 878 } },
+  );
+  try {
+    await exposeReaderController(page);
+    const result = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      const source = c.contentDocumentViews()[0].document.defaultView.frameElement;
+      if (!(source instanceof HTMLIFrameElement)) throw new Error("Missing source page.");
+      const leaf = c.pageTurnOrchestrator.createCurledLeaf("#fff");
+      let writes = 0;
+      const states: { progress: number; faces: string[]; strips: string[] }[] = [];
+      try {
+        await leaf.prepare({ element: source }, { element: source }, 1, undefined, undefined, "single");
+        const doc = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!
+          .contentDocument!;
+        const faces = Array.from(doc.querySelectorAll<HTMLElement>("[data-flat-leaf-face]"));
+        const strips = Array.from(doc.querySelectorAll<HTMLElement>("[data-segment]"));
+        for (const element of [...faces, ...strips]) {
+          const style = element.style;
+          Object.defineProperty(style, "opacity", {
+            configurable: true,
+            get: () => style.getPropertyValue("opacity"),
+            set: (value: string) => { writes++; style.setProperty("opacity", value); },
+          });
+        }
+        for (const progress of [0, 0, 0.2, 0.2, 0.5, 0.8, 1, 1, 0.5, 0]) {
+          leaf.paint(progress);
+          states.push({
+            progress,
+            faces: faces.map(element => doc.defaultView!.getComputedStyle(element).opacity),
+            strips: strips.map(element => doc.defaultView!.getComputedStyle(element).opacity),
+          });
+        }
+        for (const element of [...faces, ...strips]) Reflect.deleteProperty(element.style, "opacity");
+      } finally {
+        leaf.dispose();
+      }
+      return { writes, states };
+    });
+    expect(result.states).toHaveLength(10);
+    for (const { progress, faces, strips } of result.states) {
+      expect(faces).toEqual([progress === 0 ? "1" : "0", progress === 1 ? "1" : "0"]);
+      expect(strips).toHaveLength(20);
+      expect(strips).toEqual(strips.map((_opacity, index) =>
+        (progress === 0 || progress === 1) && (index === 0 || index === 19) ? "0" : "1"));
+    }
+    expect(result.writes).toBe(16);
   } finally {
     await context.close();
   }
@@ -277,6 +349,12 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
   } | undefined;
   const layerShapes: { area: number; shapes: [string, number][] }[] = [];
   try {
+    if (!verifyGeometry) {
+      await test.info().attach("curl-pacing-policy", {
+        body: JSON.stringify(CURL_FRAME_LIMITS),
+        contentType: "application/json",
+      });
+    }
     await exposeReaderController(page);
     await page.evaluate(
       async ({ realBook, verifyGeometry }) => {
