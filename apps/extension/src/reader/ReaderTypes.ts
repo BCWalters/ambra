@@ -10,6 +10,7 @@ import type {
   MetadataTextContext,
 } from "@ambra/engine";
 import type { Bookmark, Highlight } from "../library/LibraryDatabase.js";
+import type { DiagnosticNotification } from "./NotificationDiagnostics.js";
 import type { ChromeThemeChoice } from "./chromeTheme.js";
 import type { PageTurnAnimationStyle } from "./PageTurnAnimationStyle.js";
 import type { ProgressMarkerStyle } from "./ProgressMarkerStyle.js";
@@ -230,6 +231,7 @@ export interface ReaderSnapshot {
   loadingPhase?: "opening" | "navigating";
   error: string | undefined;
   errorNotificationId: number;
+  errorDiagnostics?: DiagnosticNotification;
   /** "blocking" (nothing readable on screen), "navigationFailed" (a
    * persistent reading error with the previous page available on dismissal),
    * "transient" (a nonblocking action failed, auto-dismisses),

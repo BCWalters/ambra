@@ -417,6 +417,10 @@ does not require an ARIA application mode or bare-letter shortcuts.
 it also includes the current book's diagnostic report, which can contain book
 details, reading locations, and recent events. Review it before sharing; copying
 does not send anything automatically.
+Copying from a reader error notification also includes that notification's captured
+message, operation and available exception/cause/stack details, rather than a later
+error. Missing details are explicitly unavailable; long details and cause chains
+are bounded. Ordinary Help & About reports remain session diagnostics.
 
 ## Reading boundaries with a keyboard or screen reader
 

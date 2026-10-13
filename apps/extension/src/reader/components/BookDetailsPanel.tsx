@@ -14,6 +14,7 @@ import { PaneDisclosure } from "../../components/PaneSections.js";
 import { CHROME_TOOLBAR_HEIGHT } from "../../components/ChromeToolbarStyles.js";
 import { BookSaveAsAction } from "../../components/BookSaveAsAction.js";
 import { FriendlyError } from "./FriendlyError.js";
+import { captureDiagnosticNotification, type DiagnosticNotification } from "../NotificationDiagnostics.js";
 import { metadataTextContext } from "@ambra/engine";
 import { BookAccessibilityRows } from "../../components/BookAccessibilityRows.js";
 
@@ -36,7 +37,7 @@ export interface BookDetailsPanelProps {
   onOpenInspector: () => void;
   onOpenHelp: (returnFocusTo: HTMLElement) => void;
   onSaveAs?: (() => Promise<void>) | undefined;
-  getDiagnosticsText?: (() => string | undefined) | undefined;
+  getDiagnosticsText?: ((notification?: DiagnosticNotification) => string | undefined) | undefined;
   /** Whether the progress scrubber is currently shown (paginated
    * reflowable content only — see `ProgressScrubber`'s own identical
    * condition) — this panel needs to stop *above* it rather than
@@ -250,8 +251,9 @@ export const BookDetailsPanel: FC<BookDetailsPanelProps> = ({
                   {onSaveAs && (
                     <BookSaveAsAction accent={chromeTheme.actionBackground} accentForeground={chromeTheme.accentForeground}
                       onSaveAs={onSaveAs}
-                      renderError={(message, onDismiss) => (
+                      renderError={(message, onDismiss, cause) => (
                         <FriendlyError message={message} severity="actionFailed" onDismiss={onDismiss}
+                          diagnostics={captureDiagnosticNotification({ message, severity: "actionFailed", operation: "save book as" }, cause)}
                           getDiagnosticsText={getDiagnosticsText} />
                       )} />
                   )}

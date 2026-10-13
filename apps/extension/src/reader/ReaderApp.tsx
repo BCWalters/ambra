@@ -24,6 +24,7 @@ import { HighlightActionPopup } from "./components/HighlightActionPopup.js";
 import { FootnotePopup } from "./components/FootnotePopup.js";
 import { NoteMarkers } from "./components/NoteMarkers.js";
 import { FriendlyError } from "./components/FriendlyError.js";
+import { captureDiagnosticNotification, type DiagnosticNotification } from "./NotificationDiagnostics.js";
 import { isInvalidEpubError } from "../EpubErrors.js";
 import { PageFurniture } from "./components/PageFurniture.js";
 import { ProgressScrubber } from "./components/ProgressScrubber.js";
@@ -153,7 +154,7 @@ const ReaderAppInner: FC = () => {
   const [referenceRowSize, setReferenceRowSize] = useState({
     available: 0, toc: 0, annotations: 0, search: 0,
   });
-  const [seekError, setSeekError] = useState<string>();
+  const [seekError, setSeekError] = useState<DiagnosticNotification>();
   const [bookmarkFilterRequest, setBookmarkFilterRequest] = useState(0);
   const [bookmarkChooserOpen, setBookmarkChooserOpen] = useState(false);
   const [bookmarkChooserDismissRequest, setBookmarkChooserDismissRequest] = useState(0);
@@ -262,7 +263,7 @@ const ReaderAppInner: FC = () => {
   const [inspectorReader, setInspectorReader] = useState<InspectorReaderBridge>();
   const inspectionFocusReturn = useRef<(() => void) | undefined>(undefined);
   const [inspectionData, setInspectionData] = useState<EpubInspectionData | undefined>(undefined);
-  const [openError, setOpenError] = useState<{ message: string; invalidEpub?: boolean } | null>(null);
+  const [openError, setOpenError] = useState<{ message: string; invalidEpub?: boolean; diagnostics?: DiagnosticNotification } | null>(null);
   const hasReaderLayout = snapshot !== undefined && openError === null;
   useLayoutEffect(() => {
     const visibility = { toc: isTocOpen, annotations: isAnnotationsOpen, search: isSearchOpen };
@@ -430,7 +431,10 @@ const ReaderAppInner: FC = () => {
         setBookDetails(details);
       }
     }).catch((error: unknown) => {
-      if (!cancelled) setSeekError(error instanceof Error ? error.message : String(error));
+      if (!cancelled) setSeekError(captureDiagnosticNotification({
+        message: error instanceof Error ? error.message : String(error),
+        severity: "transient", operation: "load book details",
+      }, error));
     });
     return () => {
       cancelled = true;
@@ -566,7 +570,8 @@ const ReaderAppInner: FC = () => {
   useEffect(() => {
     const bookId = new URLSearchParams(window.location.search).get("bookId");
     if (!bookId) {
-      setOpenError({ message: "No book selected — open this book from the Ambra library." });
+      const message = "No book selected — open this book from the Ambra library.";
+      setOpenError({ message, diagnostics: captureDiagnosticNotification({ message, severity: "blocking", operation: "open reader" }) });
       return;
     }
 
@@ -597,7 +602,9 @@ const ReaderAppInner: FC = () => {
       } catch (err) {
         library?.close();
         if (!cancelled) {
-          setOpenError({ message: err instanceof Error ? err.message : String(err), invalidEpub: isInvalidEpubError(err) });
+          const message = err instanceof Error ? err.message : String(err);
+          setOpenError({ message, invalidEpub: isInvalidEpubError(err),
+            diagnostics: captureDiagnosticNotification({ message, severity: "blocking", operation: "open reader" }, err) });
         }
       }
     })();
@@ -612,6 +619,7 @@ const ReaderAppInner: FC = () => {
       <div style={{ height: "100vh", position: "relative" }}>
         <FriendlyError
           message={openError.message}
+          diagnostics={openError.diagnostics}
           headline={openError.invalidEpub ? t("error.invalidEpubHeadline") : undefined}
           severity="blocking"
           libraryHref={libraryFullTabUrl()}
@@ -696,7 +704,10 @@ const ReaderAppInner: FC = () => {
             onOutsideClick={() => dismissPanelToContent("library")}
             onActivateBook={bookId => {
               void activateLibraryBook(bookId).catch(error =>
-                setSeekError(error instanceof Error ? error.message : String(error)));
+                setSeekError(captureDiagnosticNotification({
+                  message: error instanceof Error ? error.message : String(error),
+                  severity: "transient", operation: "activate library book",
+                }, error)));
             }}
           />
             )}
@@ -972,7 +983,10 @@ const ReaderAppInner: FC = () => {
                 setSeekError(undefined);
                 await seekToFraction(fraction);
               }}
-              onSeekError={(error) => setSeekError(error instanceof Error ? error.message : String(error))}
+              onSeekError={(error) => setSeekError(captureDiagnosticNotification({
+                message: error instanceof Error ? error.message : String(error),
+                severity: "transient", operation: "seek from scrubber",
+              }, error))}
               onGoToBookmark={bookmark => { void goToBookmark(bookmark.cfi); }}
               onShowBookmarks={() => {
                 openPanel("annotations");
@@ -984,7 +998,8 @@ const ReaderAppInner: FC = () => {
 
                 {(activeSeekError || (snapshot.error && snapshot.errorSeverity)) && (
               <FriendlyError
-                message={activeSeekError ?? snapshot.error!}
+                message={activeSeekError?.message ?? snapshot.error!}
+                diagnostics={activeSeekError ?? snapshot.errorDiagnostics}
                 notificationId={snapshot.errorNotificationId}
                 detail={activeSeekError ? undefined : snapshot.errorDetail}
                 severity={activeSeekError ? "transient" : snapshot.errorSeverity!}
