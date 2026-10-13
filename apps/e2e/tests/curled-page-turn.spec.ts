@@ -9,42 +9,59 @@ import { navigationFixture } from "../navigation-fixture.js";
 // DOM serialization and per-frame screencast encoding interrupt native curl timing.
 test.use({ trace: { mode: "retain-on-failure", snapshots: false, screenshots: false } });
 
+const CURL_FRAME_LIMITS = Object.freeze({
+  meanMs: 50,
+  p90Ms: 80,
+  pooledP95Ms: 80,
+  worstMs: 200,
+});
+
 function expectCurlFramePacing(turns: readonly (readonly number[])[]): number {
   expect(turns).toHaveLength(4);
   const allFrames: number[] = [];
   for (const frames of turns) {
     const gaps = [...frames].sort((a, b) => a - b);
     expect(gaps.length).toBeGreaterThan(5);
-    expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(35);
-    expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(40);
-    expect(Math.max(...gaps)).toBeLessThan(100);
+    expect(gaps.reduce((total, gap) => total + gap, 0) / gaps.length).toBeLessThan(CURL_FRAME_LIMITS.meanMs);
+    expect(gaps[Math.ceil(gaps.length * 0.9) - 1]).toBeLessThan(CURL_FRAME_LIMITS.p90Ms);
+    expect(Math.max(...gaps)).toBeLessThan(CURL_FRAME_LIMITS.worstMs);
     allFrames.push(...gaps);
   }
   allFrames.sort((a, b) => a - b);
   const p95 = allFrames[Math.ceil(allFrames.length * 0.95) - 1];
-  expect(p95).toBeLessThan(40);
+  expect(p95).toBeLessThan(CURL_FRAME_LIMITS.pooledP95Ms);
   return p95;
 }
 
 test("curl pacing gates distinguish isolated stalls from sustained slowdown", () => {
   const steady = Array<number>(18).fill(28);
   const isolated = [...steady];
-  isolated[2] = 97.2;
+  isolated[2] = 197.2;
   expect(expectCurlFramePacing([isolated, steady, steady, steady])).toBe(28);
   const excessive = [...steady];
-  excessive[2] = 100;
+  excessive[2] = 200;
   const pooledBoundary = [...steady];
-  pooledBoundary[2] = 40;
-  const slowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(40)];
+  pooledBoundary[2] = 80;
+  const slowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(80)];
   for (const turns of [
     [isolated, isolated, isolated, isolated],
     [pooledBoundary, pooledBoundary, pooledBoundary, pooledBoundary],
     [excessive, steady, steady, steady],
-    [Array<number>(18).fill(35), steady, steady, steady],
+    [Array<number>(18).fill(50), steady, steady, steady],
     [slowTail, steady, steady, steady],
     [steady.slice(0, 5), steady, steady, steady],
     [steady, steady, steady],
   ]) expect(() => expectCurlFramePacing(turns)).toThrow();
+  const belowWorst = [...steady];
+  belowWorst[2] = 199.9;
+  const belowPooled = [...steady];
+  belowPooled[2] = 79.9;
+  const belowTail = [...Array<number>(15).fill(27), ...Array<number>(3).fill(79.9)];
+  const belowMean = Array<number>(18).fill(49.9);
+  expect(expectCurlFramePacing([belowWorst, steady, steady, steady])).toBe(28);
+  expect(expectCurlFramePacing([belowPooled, belowPooled, belowPooled, belowPooled])).toBe(79.9);
+  expect(expectCurlFramePacing([belowTail, steady, steady, steady])).toBe(28);
+  expect(expectCurlFramePacing([belowMean, belowMean, belowMean, belowMean])).toBe(49.9);
 });
 
 test("disposed curls release owned document graphs even while the leaf is retained", async () => {
@@ -332,6 +349,12 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
   } | undefined;
   const layerShapes: { area: number; shapes: [string, number][] }[] = [];
   try {
+    if (!verifyGeometry) {
+      await test.info().attach("curl-pacing-policy", {
+        body: JSON.stringify(CURL_FRAME_LIMITS),
+        contentType: "application/json",
+      });
+    }
     await exposeReaderController(page);
     await page.evaluate(
       async ({ realBook, verifyGeometry }) => {

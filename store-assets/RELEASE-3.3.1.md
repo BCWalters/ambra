@@ -56,9 +56,9 @@ seeded between those events; they do not establish a full automated held-pointer
 drag. Real selection feel remains a manual check.
 
 The current four-turn curl gate retains every actual paint-entry interval.
-Each turn requires more than five samples, mean below 35 ms, nearest-rank p90
-below 40 ms and worst gap below 100 ms. Pooled nearest-rank p95 across all four
-predetermined turns must be below 40 ms. Preparation/onset/total-turn limits
+Each turn requires more than five samples, mean below 50 ms, nearest-rank p90
+below 80 ms and worst gap below 200 ms. Pooled nearest-rank p95 across all four
+predetermined turns must be below 80 ms. Preparation/onset/total-turn limits
 remain 250/750/1500 ms. No retries, filtering, forced GC or browser/GPU overrides
 substitute for acceptance. Native geometry, ink and exact-pixel checks remain.
 See [E2E measurement guidance](../apps/e2e/README.md#pagination-measurement-regressions-197--198)
@@ -83,6 +83,16 @@ Endpoint visibility also avoids redundant opacity writes during interior curl
 motion, without changing geometry, shading, endpoint snapshots or reverse turns.
 Protected rendering includes eight extra independent four-turn cohorts; these
 are required repetitions, not retries or a selection of the fastest result.
+
+The owner authorized this pacing-budget adjustment on 2026-10-13 after bounded
+safe optimizations still did not provide reliable margin. Eight fresh Linux
+cohorts at the opacity-optimized head retained 957 intervals: six failed the old
+100 ms worst-gap limit, with maxima of 20.93 ms mean, 35.6 ms p90/pooled p95 and
+121.5 ms worst. Earlier actual-main variability included 53.8 ms p90/pooled p95.
+The new limits deliberately leave room for stock headless rendering/native GC;
+they do not change the automatic curl's 540 ms base duration, shape or gestures.
+Preparation, onset and total-turn deadlines remain unchanged. Exact-boundary
+synthetic tests, complete visual checks and every repeated cohort remain required.
 
 ## Package-bound conformance and manual accessibility
 
