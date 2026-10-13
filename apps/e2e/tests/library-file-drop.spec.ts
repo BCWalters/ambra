@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { launchReader } from "../harness.js";
 import { getTranslate } from "../../extension/src/i18n/translate.js";
+import { formatLibraryProgress } from "../../extension/src/library/LibraryFormatting.js";
 
 const twoChapter = fileURLToPath(new URL("../fixtures/two-chapter.epub", import.meta.url));
 const longContent = fileURLToPath(new URL("../fixtures/long-content.epub", import.meta.url));
@@ -50,9 +51,21 @@ test.describe("Library file drop", () => {
   test("imports an ordered multi-file drop through the standard pipeline, including invalid-file feedback", async () => {
     const { context, libraryPage: page, readerPage } = await launchReader(twoChapter);
     try {
+      await readerPage.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount > 1);
+      const fraction = await readerPage.evaluate(async () => {
+        const controller = Reflect.get(window, "__readerController");
+        await controller.flushProgress(true);
+        const progress = await controller.library.getProgress(controller.bookId);
+        if (typeof progress?.fractionComplete !== "number") throw new Error("Reading fraction was not saved.");
+        return progress.fractionComplete;
+      });
+      const existingBookLabel = getTranslate("en")("library.openBookProgress", {
+        title: twoChapterTitle, progress: formatLibraryProgress(fraction, "en"),
+      });
       await readerPage.close();
       await page.goto(`${page.url()}?view=tab`);
       await page.bringToFront();
+      await expect(page.locator("[data-library-continue]")).toBeVisible();
       await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
       const originalUrl = page.url();
       const batch = await fileTransfer(page, [longContent, twoChapter], true);
@@ -73,7 +86,7 @@ test.describe("Library file drop", () => {
         const collection = page.locator("[data-library-collection]");
         await expect(collection.locator("[data-library-book]")).toHaveCount(2);
         await expect(page.getByRole("button", { name: `Open ${longContentTitle}`, exact: true })).toBeVisible();
-        await expect(collection.getByRole("button", { name: `Open ${twoChapterTitle}`, exact: true })).toBeVisible();
+        await expect(collection.getByRole("button", { name: existingBookLabel, exact: true })).toBeVisible();
         await expect(page.getByTestId("library-import-status").getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
         await expect(page.getByTestId("library-import-status")).toContainText(
           getTranslate("en")("library.importAlreadyPresent", { fileName: twoChapterTitle }),
