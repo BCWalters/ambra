@@ -110,13 +110,11 @@ test.describe("fixed-layout (FXL) two-page spreads stay tightly hugged together"
 
       // Navigation still works after the resize.
       await clickReadingPage(readerPage, "right");
-      await readerPage.waitForTimeout(700);
-      const texts = await readerPage.evaluate(selector =>
+      await expect.poll(() => readerPage.evaluate(selector =>
         Array.from(document.querySelectorAll<HTMLIFrameElement>(selector))
           .filter((f) => getComputedStyle(f).visibility !== "hidden")
           .map((f) => (f as HTMLIFrameElement).contentDocument?.body?.innerText.trim() ?? ""),
-      READER_FRAME_SELECTOR);
-      expect(texts).toEqual(["P3", "P4"]);
+      READER_FRAME_SELECTOR)).toEqual(["P3", "P4"]);
     } finally {
       await context.close();
     }

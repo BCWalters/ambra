@@ -143,6 +143,7 @@ test("line endpoint probes reuse native geometry within a leaf and reset for ref
           const pages = window.paginationEngine.PaginationEngine.paginate(doc.body, 1);
           const maximumProbeCalls = Math.max(...probes.values());
           const uniqueProbes = probes.size;
+          const repeatedProbeCalls = [...probes.values()].reduce((sum, count) => sum + count - 1, 0);
           const expectedStarts = new Map<number, number>();
           const character = doc.createRange();
           for (let offset = 0; offset < text.length; offset++) {
@@ -154,7 +155,7 @@ test("line endpoint probes reuse native geometry within a leaf and reset for ref
           }
           const offsets = [...expectedStarts.values()];
           return {
-            fontSize, maximumProbeCalls, uniqueProbes, pages: pages.length,
+            fontSize, maximumProbeCalls, uniqueProbes, repeatedProbeCalls, pages: pages.length,
             nativeLines: offsets.length,
             boundariesMatch: pages.slice(1).every((page, index) =>
               page.startBreak.node === text && page.startBreak.offset === offsets[index + 1]),
@@ -173,6 +174,7 @@ test("line endpoint probes reuse native geometry within a leaf and reset for ref
       expect(result.boundariesMatch).toBe(true);
       expect(result.uniqueProbes).toBeGreaterThan(100);
       expect(result.maximumProbeCalls).toBeLessThanOrEqual(2);
+      expect(result.repeatedProbeCalls).toBeLessThan(result.nativeLines * 0.75);
     }
   } finally {
     await session.close();

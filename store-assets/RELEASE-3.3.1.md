@@ -66,6 +66,19 @@ for the sparse-sample rationale and fixture prerequisites.
 Frozen paint copying uses indexed native collection traversal to reduce
 temporary iterator allocations while preserving property/child order and
 authored variables. This is not a change to accepted visuals or timing limits.
+Disposed curls also release only their owned copied DOM/caches after restoring
+original-page opacity; queued callbacks retaining a leaf cannot retain its
+copied document graph. Native coverage checks this ownership and idempotency.
+Owned ink clips are also bounded before preparation waits for fonts/images,
+avoiding temporary page-height ink surfaces in its first composited frame.
+Resource readiness, geometry, visuals and all timing limits remain required.
+Frozen CSS serialization also avoids temporary Map entry iterators while
+preserving every declaration and its order.
+Line measurement reuses an already-measured final correction glyph when it is
+the exact final positive point probe. Other native geometry paths, whitespace
+fallbacks and existing cooperative checkpoints are preserved. Additional
+checkpoints before prefix retries and uncached corrections retain prompt
+cancellation.
 
 ## Package-bound conformance and manual accessibility
 

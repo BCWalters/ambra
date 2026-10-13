@@ -47,6 +47,129 @@ test("curl pacing gates distinguish isolated stalls from sustained slowdown", ()
   ]) expect(() => expectCurlFramePacing(turns)).toThrow();
 });
 
+test("disposed curls release owned document graphs even while the leaf is retained", async () => {
+  const { context, readerPage: page } = await launchReader(
+    navigationFixture(test.info(), [80]),
+    { viewport: { width: 1547, height: 878 } },
+  );
+  try {
+    await exposeReaderController(page);
+    const result = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      await c.setPageTurnAnimationStyle("rotate");
+      const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
+      let retainedRoot: Element | undefined;
+      let retainedDocument: Document | undefined;
+      let sourceDocument: Document | undefined;
+      let sourceText: string | null | undefined;
+      let copiedNodes = 0;
+      let restoredOpacity = false;
+      c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+        const leaf = create(...args);
+        Reflect.set(window, "__retainedDisposedLeaf", leaf);
+        const prepare = leaf.prepare.bind(leaf);
+        leaf.prepare = async (...pages: unknown[]) => {
+          await prepare(...pages);
+          sourceDocument = (pages[0] as { element: HTMLIFrameElement }).element.contentDocument!;
+          sourceText = sourceDocument.body.textContent;
+          retainedDocument = document.querySelector<HTMLIFrameElement>(
+            "[data-ambra-curled-leaf]",
+          )!.contentDocument!;
+          if (retainedDocument === sourceDocument) throw new Error("Curl surface must own its copy.");
+          retainedRoot = retainedDocument.documentElement;
+          copiedNodes = retainedRoot.querySelectorAll("*").length;
+        };
+        const dispose = leaf.dispose.bind(leaf);
+        leaf.dispose = () => {
+          const originals = Array.from<[HTMLElement, string]>(leaf.savedOpacity);
+          dispose();
+          if (originals.length)
+            restoredOpacity = originals.every(([element, opacity]) => element.style.opacity === opacity);
+        };
+        return leaf;
+      };
+      await c.turnPage(1);
+      if (!retainedRoot || !retainedDocument || !sourceDocument)
+        throw new Error("Curl disposal fixture did not prepare its documents.");
+      const leaf = Reflect.get(window, "__retainedDisposedLeaf");
+      leaf.dispose();
+      return {
+        copiedNodes,
+        remainingNodes: retainedRoot.querySelectorAll("*").length,
+        savedOpacity: leaf.savedOpacity.size,
+        flatFacesReleased: leaf.flatFaces === undefined,
+        initialStylesReleased: !leaf.initialPaintStyles.has(retainedDocument),
+        sourcePreserved: sourceDocument.body.textContent === sourceText,
+        restoredOpacity,
+      };
+    });
+    expect(result.copiedNodes).toBeGreaterThan(0);
+    expect(result.remainingNodes).toBe(0);
+    expect(result.savedOpacity).toBe(0);
+    expect(result.flatFacesReleased).toBe(true);
+    expect(result.initialStylesReleased).toBe(true);
+    expect(result.sourcePreserved).toBe(true);
+    expect(result.restoredOpacity).toBe(true);
+    await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test("curled resource decoding sees only band-sized furniture ink clips", async () => {
+  const { context, readerPage: page } = await launchReader(
+    navigationFixture(test.info(), [80], (_chapter, index) =>
+      `<p><img width="16" height="16" alt="" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22black%22/%3E%3C/svg%3E"/>Paragraph ${index}. ${"Readable chapter text. ".repeat(12)}</p>`,
+    ),
+    { viewport: { width: 1547, height: 878 } },
+  );
+  try {
+    await exposeReaderController(page);
+    const result = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      await c.setPageTurnAnimationStyle("rotate");
+      const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
+      const patched = new WeakSet<Document>();
+      let decodedImages = 0;
+      let boundedInk = true;
+      c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+        const leaf = create(...args);
+        const copy = leaf.copyCapturedPage.bind(leaf);
+        leaf.copyCapturedPage = (...copyArgs: unknown[]) => {
+          const doc = copyArgs[1] as Document;
+          if (!patched.has(doc)) {
+            patched.add(doc);
+            const prototype = Reflect.get(doc.defaultView!, "HTMLImageElement").prototype;
+            const decode = prototype.decode;
+            prototype.decode = function (this: HTMLImageElement) {
+              decodedImages++;
+              const clips = doc.querySelectorAll<HTMLElement>(
+                "[data-face] [data-ambra-turn-furniture]",
+              );
+              boundedInk &&= clips.length > 0 && Array.from(clips).every(clip => {
+                const band = clip.firstElementChild;
+                return clip.childElementCount === 1 && band !== null &&
+                  doc.defaultView!.getComputedStyle(clip).height ===
+                  doc.defaultView!.getComputedStyle(band).height;
+              });
+              return decode.call(this);
+            };
+          }
+          return copy(...copyArgs);
+        };
+        return leaf;
+      };
+      await c.turnPage(1);
+      return { decodedImages, boundedInk };
+    });
+    expect(result.decodedImages).toBeGreaterThan(0);
+    expect(result.boundedInk).toBe(true);
+    await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
 test("curled copies preserve explicit initial values below contrasting parents", async () => {
   const { context, readerPage: page } = await launchReader(
     navigationFixture(test.info(), [4], (_chapter, index) =>

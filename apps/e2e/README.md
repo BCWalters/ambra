@@ -77,6 +77,12 @@ starts fitted. Unequal XHTML/SVG LTR/RTL spreads retain one shared scale and
 their loaded document identity. Publisher typography and viewport attributes
 remain unchanged; roll/reflowable hosts retain their existing controls.
 
+`tests/fixed-layout-spread-hugging.spec.ts` checks shared-scale, gapless
+fixed spreads before and after resizing. Post-resize navigation waits for
+exactly the destination pair's visible text rather than assuming the outgoing
+animation has finished after 700 ms. This is a functional completion check;
+the separate curl preparation and frame-pacing limits remain unchanged.
+
 `tests/mixed-layout-placement.spec.ts` checks the five-item fixed/reflowable
 sequence behind #381 using native word-range hit-testing, not DOM presence.
 Generated filenames/titles carry ID 3.1.7. Set `AMBRA_MIXED_LAYOUT_EPUB` to
@@ -1270,6 +1276,30 @@ background pagination progressed differently between the two diagnostic runs.
 Full native geometry, authored-variable and exact-pixel regressions remain
 required, as does unprofiled protected acceptance at the unchanged limits.
 
+Disposed curls explicitly release their owned copied document tree, flat-face
+references, initial-style cache and saved-opacity references after restoring
+the original pages. A native regression deliberately retains the disposed leaf
+and copy root, checks zero copied descendants and released caches, verifies
+source text/opacity preservation and repeats disposal. This is resource cleanup,
+not forced GC or a change to animation samples.
+
+Owned ink bands are clipped before awaiting font/image readiness, so the first
+composited preparation frame cannot contain page-height transparent ink wrappers.
+Their fixed band geometry is independent of font metrics; resource readiness is
+still required before animation. A native image-decoding probe verifies that
+every strip's furniture wrapper is already a single band-sized clip at that point.
+Local native diagnostic snapshots went from 43 page-sized `753x878` layers at
+preparation peak to three, with total peak intrinsic layer area changing from
+39.47M to 13.37M pixels. This eliminates the temporary wrappers, not a claim of
+lower steady-state area or successful Linux pacing; unprofiled CI remains required.
+
+Frozen declaration serialization uses `Map.forEach` rather than mapping its
+entry iterator. Declaration order, strings and joining are identical; paired
+four-turn local samples reduced this serializer subtree from 1.91MB to 1.32MB,
+with sampled iterator-result allocation changing from 0.33MB to zero.
+Total heap samples vary with background pagination and are not an isolated
+serializer effect.
+
 Fixed-pose backface comparisons keep reader chrome focused and await its tooltip
 so idle hiding or delayed hints cannot change pixels between captures. They
 compare the composed viewport and retain the one-channel-step maximum pixel
@@ -1359,6 +1389,17 @@ An additional comparison checks every measured chunk against prefix-range
 bisection across whitespace, bidi, ligatures, ruby, and MathML. Plain-text leaves
 use single-character probes (falling back for zero-width/collapsed characters);
 complex inline content keeps prefix probes, with repeated line-top lookups cached.
+
+When bisection's final positive single-character probe is the correction glyph,
+line measurement reuses its scalar top/bottom rather than querying it again.
+Other paths retain the exact native fragment-list lookup, traversed by index.
+The native endpoint regression independently checks every glyph boundary at two
+font sizes and requires at least 25% fewer repeated queries than one per line.
+Local 117/160-line comparisons reduced repeated calls from 116/159 to 74/100,
+preserving all boundaries, unique endpoints and cooperative checkpoints.
+Prefix retries and uncached correction queries now have their own checkpoints,
+so a native read that triggers cancellation cannot issue another read before
+observing it. The existing caption cancellation limit remains exactly 50 reads.
 
 Background estimates use cooperative measurement checkpoints, including line
 bisections, with an 8ms target work budget. Browser layout queries themselves

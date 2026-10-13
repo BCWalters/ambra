@@ -28,8 +28,11 @@ const MUTABLE_FURNITURE_PAINT = new Set([
 ]);
 
 function serializePaint(declarations: ReadonlyMap<string, string>): string {
-  return Array.from(declarations, ([property, value]) =>
-    `${property}:${value} !important;`).join("");
+  const parts: string[] = [];
+  declarations.forEach((value, property) => {
+    parts.push(`${property}:${value} !important;`);
+  });
+  return parts.join("");
 }
 
 /** Display-only copies stay inside a script-disabled publication sandbox. */
@@ -238,6 +241,8 @@ export class CurledPageTurn {
       // Small ink bands avoid compositing their transparent page-height wrapper.
       paintStyles.textContent = `${this.paintRules.join("\n")}\n${INK_BAND_PAINT}`;
       doc.head.append(paintStyles);
+      // Owned bands have fixed geometry; clip them before resource waits expose a frame.
+      this.splitFurnitureInk(doc, furnitureInk, stripWidth);
       void scene.offsetHeight;
       const ready = Promise.all([
         doc.fonts.ready,
@@ -260,7 +265,6 @@ export class CurledPageTurn {
         else void ready.then(() => finish(), finish);
       });
       if (this.disposed) throw new DOMException("Page turn cancelled", "AbortError");
-      this.splitFurnitureInk(doc, furnitureInk, stripWidth);
       void scene.offsetHeight;
       this.paint(0);
       frame.dataset.preparationMs = String(performance.now() - started);
@@ -670,7 +674,13 @@ export class CurledPageTurn {
     if (this.disposed) return;
     this.disposed = true;
     for (const [element, opacity] of this.savedOpacity) element.style.opacity = opacity;
+    this.savedOpacity.clear();
+    const document = this.surface.element.contentDocument;
     this.surface.dispose();
+    // A retained callback must not keep the display copy's document graph alive.
+    document?.documentElement?.replaceChildren();
+    if (document) this.initialPaintStyles.delete(document);
+    this.flatFaces = undefined;
     this.segments.length = 0;
     this.paintClasses.clear();
     this.paintRules.length = 0;
