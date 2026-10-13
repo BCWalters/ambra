@@ -11,9 +11,17 @@ interface Segment {
   shades: HTMLElement[];
 }
 
+interface FurnitureInk {
+  element: HTMLElement;
+  furniture: HTMLElement;
+}
+
 const SEGMENTS = 20;
 const STRIP_OVERLAP = 1.5;
 const XHTML = "http://www.w3.org/1999/xhtml";
+const INK_BAND_PAINT =
+  "[data-ambra-frozen-ink-band]{background:transparent!important;}" +
+  "[data-ambra-frozen-ink-clip]{will-change:transform;}";
 const MUTABLE_FURNITURE_PAINT = new Set([
   "inset-inline-start", "inset-inline-end", "inset-block-start", "inset-block-end",
   "left", "top", "right", "bottom", "z-index", "color", "opacity",
@@ -130,6 +138,7 @@ export class CurledPageTurn {
       const length = bounds.width / SEGMENTS;
       // Cover compositor seams while keeping the nominal hinges and copied ink aligned.
       const stripWidth = length + 2 * STRIP_OVERLAP;
+      const furnitureInk: FurnitureInk[] = [];
       for (let index = 0; index < SEGMENTS; index++) {
         const strip = doc.createElement("div");
         Object.assign(strip.style, {
@@ -171,7 +180,7 @@ export class CurledPageTurn {
             ink.style.zIndex = "2";
             for (const band of furniture.children) {
               if (band instanceof doc.defaultView!.HTMLElement)
-                band.style.setProperty("background", "transparent", "important");
+                band.dataset.ambraFrozenInkBand = "";
             }
             for (const text of furniture.querySelectorAll("span")) {
               const style = text.style;
@@ -186,6 +195,7 @@ export class CurledPageTurn {
             }
             ink.append(furniture);
             face.append(ink);
+            furnitureInk.push({ element: ink, furniture });
           }
           const shade = doc.createElement("div");
           Object.assign(shade.style, {
@@ -222,7 +232,8 @@ export class CurledPageTurn {
         scene.append(copy);
       }
       const paintStyles = doc.createElement("style");
-      paintStyles.textContent = this.paintRules.join("\n");
+      // Small ink bands avoid compositing their transparent page-height wrapper.
+      paintStyles.textContent = `${this.paintRules.join("\n")}\n${INK_BAND_PAINT}`;
       doc.head.append(paintStyles);
       void scene.offsetHeight;
       const ready = Promise.all([
@@ -246,6 +257,8 @@ export class CurledPageTurn {
         else void ready.then(() => finish(), finish);
       });
       if (this.disposed) throw new DOMException("Page turn cancelled", "AbortError");
+      this.splitFurnitureInk(doc, furnitureInk, stripWidth);
+      void scene.offsetHeight;
       this.paint(0);
       frame.dataset.preparationMs = String(performance.now() - started);
     } finally {
@@ -540,6 +553,44 @@ export class CurledPageTurn {
     } finally {
       probe.remove();
     }
+  }
+
+  private splitFurnitureInk(doc: Document, ink: readonly FurnitureInk[], width: number): void {
+    const layout = ink.flatMap(({ element, furniture }) => {
+      const parent = element.parentElement;
+      if (!parent) throw new Error("Curled furniture has no face.");
+      const offset = Number.parseFloat(element.style.left);
+      return Array.from(furniture.children)
+        .filter((band): band is HTMLElement => band instanceof doc.defaultView!.HTMLElement)
+        .map(band => {
+          const style = doc.defaultView!.getComputedStyle(band);
+          const left = offset + Number.parseFloat(style.left);
+          const top = Number.parseFloat(style.top);
+          const height = Number.parseFloat(style.height);
+          if (![left, top, height].every(Number.isFinite) || height <= 0)
+            throw new Error("Curled furniture band geometry is unavailable.");
+          return { parent, band, left, top, height };
+        });
+    });
+    for (const { parent, band, left, top, height } of layout) {
+      const clip = doc.createElement("div");
+      clip.dataset.ambraFrozenInkClip = "";
+      clip.dataset.ambraTurnFurniture = "";
+      Object.assign(clip.style, {
+        position: "absolute", left: "0", top: `${top}px`, width: `${width}px`,
+        height: `${height}px`, overflow: "hidden", zIndex: "2",
+      });
+      for (const property of [
+        "inset-inline-start", "inset-inline-end", "inset-block-start", "inset-block-end",
+      ]) band.style.removeProperty(property);
+      band.style.setProperty("left", `${left}px`, "important");
+      band.style.setProperty("top", "0", "important");
+      band.style.setProperty("right", "auto", "important");
+      band.style.setProperty("bottom", "auto", "important");
+      clip.append(band);
+      parent.insertBefore(clip, parent.lastChild);
+    }
+    for (const { element } of ink) element.remove();
   }
 
   public hide(...elements: HTMLElement[]): void {

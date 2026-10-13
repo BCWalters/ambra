@@ -110,6 +110,11 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
   let tracingSession: CDPSession | undefined;
   let profiling = false;
   let sampling = false;
+  let largestLayerSnapshot: {
+    area: number;
+    layers: { id: string; width: number; height: number; node: number | undefined }[];
+  } | undefined;
+  const layerShapes: { area: number; shapes: [string, number][] }[] = [];
   try {
     await exposeReaderController(page);
     await page.evaluate(
@@ -271,6 +276,22 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
     );
     if (process.env.AMBRA_E2E_PROFILE_CURL === "1") {
       tracingSession = await context.newCDPSession(page);
+      tracingSession.on("LayerTree.layerTreeDidChange", event => {
+        const layers = (event.layers ?? []).filter(layer => layer.drawsContent).map(layer => ({
+          id: layer.layerId, width: layer.width, height: layer.height, node: layer.backendNodeId,
+        }));
+        const area = layers.reduce((sum, layer) => sum + layer.width * layer.height, 0);
+        const shapes = new Map<string, number>();
+        for (const layer of layers) {
+          const key = `${layer.width}x${layer.height}`;
+          shapes.set(key, (shapes.get(key) ?? 0) + 1);
+        }
+        layerShapes.push({ area, shapes: [...shapes] });
+        if (!largestLayerSnapshot || area > largestLayerSnapshot.area) {
+          largestLayerSnapshot = { area, layers };
+        }
+      });
+      await tracingSession.send("LayerTree.enable");
       tracingSession.on("Tracing.dataCollected", (event) => timeline.push(...event.value));
       await tracingSession.send("Tracing.start", {
         categories: "devtools.timeline,cc,gpu,viz",
@@ -394,6 +415,10 @@ async function runLongChapterTurn(verifyGeometry: boolean): Promise<void> {
         await complete;
         await test.info().attach("native-curl-timeline", {
           body: JSON.stringify(timeline),
+          contentType: "application/json",
+        });
+        await test.info().attach("native-curl-layers", {
+          body: JSON.stringify({ available: largestLayerSnapshot !== undefined, snapshot: largestLayerSnapshot, changes: layerShapes }),
           contentType: "application/json",
         });
         if (sampling) {
@@ -588,19 +613,23 @@ for (const rtl of [false, true]) {
               (face) => {
                 const content = face.firstElementChild as HTMLElement;
                 const shade = face.lastElementChild as HTMLElement;
-                const furniture = face.querySelector<HTMLElement>("[data-ambra-turn-furniture]");
+                const furniture = Array.from(face.querySelectorAll<HTMLElement>(
+                  "[data-ambra-frozen-ink-clip]",
+                ));
                 return (
                   content.style.zIndex === "0" &&
                   shade.style.zIndex === "1" &&
-                  (!furniture ||
-                    (furniture.parentElement!.style.zIndex === "2" &&
-                      Array.from(furniture.children).every(
-                        (band) => (band as HTMLElement).style.background === "transparent",
-                      ) &&
-                      Array.from(furniture.querySelectorAll("span")).every(
+                  furniture.every(clip =>
+                    clip.style.zIndex === "2" &&
+                    clip.style.width === face.parentElement!.style.width &&
+                    clip.style.overflow === "hidden" &&
+                    Array.from(clip.children).every(
+                      band => doc.defaultView!.getComputedStyle(band).backgroundColor === "rgba(0, 0, 0, 0)",
+                    ) &&
+                    Array.from(clip.querySelectorAll("span")).every(
                         (text) =>
                           text.style.opacity === "1" && text.style.color.startsWith("color-mix("),
-                      )))
+                    ))
                 );
               },
             ),

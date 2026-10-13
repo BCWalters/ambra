@@ -118,6 +118,11 @@ fragment-list measurement, collapsed-whitespace prefix fallback, abort/pause
 checkpoints and saved anchors remain unchanged; reflow starts a fresh cache.
 Native regressions compare every line boundary with independently measured glyphs
 and bound repeated endpoint measurements before and after typography changes.
+Curled running-header and folio ink uses strip-width, band-height clips rather
+than transparent page-height wrappers. Frozen bands retain their original
+typography and full-width alignment above the shade; publication frames stay
+in place. Opt-in profiling records native layer bounds as diagnostic evidence,
+not a substitute for the unchanged paint and pacing acceptance gates.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 
