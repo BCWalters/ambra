@@ -5,6 +5,12 @@ in **real headless-capable Chromium** via Playwright — deliberately
 separate from `@ambra/engine`'s fast unit tests (which run in Node/happy-dom
 and can't observe real layout, paint, or interaction timing at all).
 
+The shared `waitForReaderReady` harness gate requires visible publication
+content, no loading indicator and completed opening/layout. The settings
+persistence regression uses the same gate after reload as initial import/open;
+an attached iframe alone does not establish reader readiness. Preference
+values, focus assertions and production behavior are unchanged.
+
 ## Why this exists
 
 Reader polish regressions live in `tests/reader-error-recovery.spec.ts` (both

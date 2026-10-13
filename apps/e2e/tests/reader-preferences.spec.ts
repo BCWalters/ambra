@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchReader } from "../harness.js";
+import { launchReader, waitForReaderReady } from "../harness.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
 
@@ -149,7 +149,7 @@ test("global settings retain choices across modes, reload and library while disa
     await brightness.press("Escape");
     await expect(trigger).toBeFocused();
     await page.reload();
-    await expect(page.locator("iframe").first()).toBeAttached();
+    await waitForReaderReady(page);
     await trigger.click();
     await expect(pageTheme).toHaveValue("sepia");
     await expect(readerTheme).toHaveValue("blue");

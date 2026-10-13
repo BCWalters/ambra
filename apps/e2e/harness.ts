@@ -24,6 +24,20 @@ export interface LaunchedReader {
   extensionId: string;
 }
 
+export async function waitForReaderReady(readerPage: Page): Promise<void> {
+  // The content host mounts before opening/layout finishes.
+  await expect(readerPage.getByRole("main").locator("iframe").first()).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(readerPage.getByRole("progressbar")).toHaveCount(0, { timeout: 20_000 });
+  await exposeReaderController(readerPage);
+  await readerPage.waitForFunction(() => {
+    const controller = Reflect.get(window, "__readerController");
+    return controller.snapshot().hasRenderedContent &&
+      !controller.isLoadInFlight && !controller.isApplyingLayout && !controller.pendingLayout;
+  }, undefined, { timeout: 20_000 });
+}
+
 /** Use only after Library has initialized the real preference store. */
 export async function seedReadingWelcomeAcknowledgement(page: Page): Promise<void> {
   await page.evaluate(async () => {
@@ -127,19 +141,7 @@ export async function launchReader(
     ]);
     await readerPage.waitForURL(`chrome-extension://${extensionId}/src/reader/index.html*`);
     await readerPage.waitForLoadState("domcontentloaded");
-    // The content host mounts before opening/layout finishes. Wait for both
-    // the visible book frame and the loading indicator to finish, not a fixed
-    // delay or a page label (which does not exist in every reading mode).
-    await expect(readerPage.getByRole("main").locator("iframe").first()).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(readerPage.getByRole("progressbar")).toHaveCount(0, { timeout: 20_000 });
-    await exposeReaderController(readerPage);
-    await readerPage.waitForFunction(() => {
-      const controller = Reflect.get(window, "__readerController");
-      return controller.snapshot().hasRenderedContent &&
-        !controller.isLoadInFlight && !controller.isApplyingLayout && !controller.pendingLayout;
-    }, undefined, { timeout: 20_000 });
+    await waitForReaderReady(readerPage);
     if (options.firstReadingWelcome) {
       await expect(readerPage.locator('.reading-welcome[role="dialog"]')).toBeVisible();
     }
