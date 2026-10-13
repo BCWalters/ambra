@@ -53,6 +53,7 @@ test.describe("Library file drop", () => {
       await readerPage.close();
       await page.goto(`${page.url()}?view=tab`);
       await page.bringToFront();
+      await expect(page.locator("[data-library-continue]")).toBeVisible();
       await expect(page.getByRole("button", { name: "Import book", exact: true })).toBeEnabled();
       const originalUrl = page.url();
       const batch = await fileTransfer(page, [longContent, twoChapter], true);
@@ -73,7 +74,7 @@ test.describe("Library file drop", () => {
         const collection = page.locator("[data-library-collection]");
         await expect(collection.locator("[data-library-book]")).toHaveCount(2);
         await expect(page.getByRole("button", { name: `Open ${longContentTitle}`, exact: true })).toBeVisible();
-        await expect(collection.getByRole("button", { name: `Open ${twoChapterTitle}`, exact: true })).toBeVisible();
+        await expect(collection.getByRole("button", { name: new RegExp(`^Open ${twoChapterTitle}, \\d+% read$`) })).toBeVisible();
         await expect(page.getByTestId("library-import-status").getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
         await expect(page.getByTestId("library-import-status")).toContainText(
           getTranslate("en")("library.importAlreadyPresent", { fileName: twoChapterTitle }),
