@@ -1261,6 +1261,15 @@ gap caps isolated stalls. Synthetic cases verify these boundaries. This does not
 visuals, filter samples, force GC, add retries or override browser/GPU settings.
 Failure-only profiles remain diagnostic, never acceptance substitutes.
 
+Indexed native collection walks preserve frozen CSS declaration/child order
+without allocating an iterator result per property or child. A paired local
+four-turn allocation profile reduced the `copyPaint` subtree from 6.58 MB to
+3.87 MB and its sampled iterator `next` allocations from 2.62 MB to 0.52 MB.
+These are sampled targeted allocations, not a total-heap or Linux timing claim:
+background pagination progressed differently between the two diagnostic runs.
+Full native geometry, authored-variable and exact-pixel regressions remain
+required, as does unprofiled protected acceptance at the unchanged limits.
+
 Fixed-pose backface comparisons keep reader chrome focused and await its tooltip
 so idle hiding or delayed hints cannot change pixels between captures. They
 compare the composed viewport and retain the one-channel-step maximum pixel

@@ -467,7 +467,8 @@ export class CurledPageTurn {
     if (copy.style) {
       const initial = this.getInitialPaintStyles(doc);
       const declarations = new Map([["all", "initial"]]);
-      for (const property of computed) {
+      for (let index = 0, length = computed.length; index < length; index++) {
+        const property = computed[index]!;
         // Owned furniture uses resolved paint values, not authored variable references.
         if (mutableFurniture && property.startsWith("--")) continue;
         const value = computed.getPropertyValue(property);
@@ -522,7 +523,8 @@ export class CurledPageTurn {
     const mergeSpacers =
       (computed.display === "block" || computed.display === "flow-root") &&
       computed.whiteSpace === "normal";
-    for (const child of element.childNodes) {
+    for (let index = 0, length = element.childNodes.length; index < length; index++) {
+      const child = element.childNodes[index]!;
       if (
         mergeSpacers &&
         copy.lastChild &&
@@ -547,10 +549,11 @@ export class CurledPageTurn {
     doc.body.append(probe);
     try {
       const computed = doc.defaultView!.getComputedStyle(probe);
-      const initial = new Map(Array.from(
-        computed,
-        property => [property, computed.getPropertyValue(property)] as const,
-      ));
+      const initial = new Map<string, string>();
+      for (let index = 0, length = computed.length; index < length; index++) {
+        const property = computed[index]!;
+        initial.set(property, computed.getPropertyValue(property));
+      }
       this.initialPaintStyles.set(doc, initial);
       return initial;
     } finally {
