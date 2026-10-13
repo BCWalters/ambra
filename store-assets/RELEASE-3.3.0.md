@@ -133,6 +133,12 @@ than transparent page-height wrappers. Frozen bands retain their original
 typography and full-width alignment above the shade; publication frames stay
 in place. Opt-in profiling records native layer bounds as diagnostic evidence,
 not a substitute for the unchanged paint and pacing acceptance gates.
+Separately composited publication, shade and furniture-ink children explicitly
+use their face's backface-culling policy. Native fixed-pose comparisons verify
+front/back curve paint against the previous child-layer policy in single/spread
+and LTR/RTL views; paper, shading, mesh geometry and canonical frames are unchanged.
+Each paint reuses its progress wave and one opacity string per front/back shade
+pair, without changing the original shading arithmetic or animation duration.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 

@@ -171,6 +171,8 @@ export class CurledPageTurn {
           const content = template.cloneNode(true) as HTMLElement;
           content.style.left = `${-(faceIndex === 0 ? frontOffset : bounds.width - frontOffset - stripWidth)}px`;
           content.style.zIndex = "0";
+          // Backface visibility is not inherited by independently composited children.
+          content.style.backfaceVisibility = "hidden";
           face.append(content);
           const furniture = content.querySelector<HTMLElement>("[data-ambra-turn-furniture]");
           if (furniture) {
@@ -204,6 +206,7 @@ export class CurledPageTurn {
             background: "#322714",
             pointerEvents: "none",
             willChange: "opacity",
+            backfaceVisibility: "hidden",
             zIndex: "1",
           });
           face.append(shade);
@@ -579,6 +582,7 @@ export class CurledPageTurn {
       Object.assign(clip.style, {
         position: "absolute", left: "0", top: `${top}px`, width: `${width}px`,
         height: `${height}px`, overflow: "hidden", zIndex: "2",
+        backfaceVisibility: "hidden",
       });
       for (const property of [
         "inset-inline-start", "inset-inline-end", "inset-block-start", "inset-block-end",
@@ -609,19 +613,21 @@ export class CurledPageTurn {
     });
     const length = this.width / SEGMENTS;
     const hinge = this.hinge + (this.destinationHinge - this.hinge) * p * p * (3 - 2 * p);
+    const wave = Math.sin(Math.PI * p);
     let x = 0;
     let z = 0;
     for (let index = 0; index < this.segments.length; index++) {
       const angle =
-        -Math.PI * p + 0.65 * Math.sin(Math.PI * p) * ((2 * (index + 0.5)) / SEGMENTS - 1);
+        -Math.PI * p + 0.65 * wave * ((2 * (index + 0.5)) / SEGMENTS - 1);
       const segment = this.segments[index]!;
       // Opaque endpoint snapshots cover interior strips; hide only outer overlaps.
       const outerStrip = index === 0 || index === this.segments.length - 1;
       segment.element.style.opacity = (p === 0 || p === 1) && outerStrip ? "0" : "1";
       const left = hinge + this.side * x - (this.side < 0 ? length : 0) - STRIP_OVERLAP;
       segment.element.style.transform = `translate3d(${left}px, 0, ${z}px) rotateY(${this.side * angle}rad)`;
+      const opacity = String(wave * (0.04 + (0.1 * index) / SEGMENTS));
       for (const shade of segment.shades)
-        shade.style.opacity = String(Math.sin(Math.PI * p) * (0.04 + (0.1 * index) / SEGMENTS));
+        shade.style.opacity = opacity;
       x += length * Math.cos(angle);
       z -= length * Math.sin(angle);
     }

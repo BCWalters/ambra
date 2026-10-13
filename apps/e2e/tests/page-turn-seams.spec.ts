@@ -5,6 +5,104 @@ import { navigationFixture } from "../navigation-fixture.js";
 
 for (const rtl of [false, true]) {
   for (const single of [false, true]) {
+    test(`${single ? "single" : "spread"} ${rtl ? "RTL" : "LTR"}: composited child backface culling preserves native curve paint`, async () => {
+      const { context, readerPage: page } = await launchReader(
+        navigationFixture(test.info(), [12], undefined, rtl ? "rtl" : "ltr"),
+        { viewport: { width: 1547, height: 878 } },
+      );
+      try {
+        await exposeReaderController(page);
+        await page.evaluate(async single => {
+          const c = Reflect.get(window, "__readerController");
+          await c.setAlwaysShowOnePage(single);
+          await c.setPageTurnAnimationStyle("none");
+          await c.turnPage(1);
+          await c.setPageTurnAnimationStyle("rotate");
+          const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
+          c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+            const leaf = create(...args);
+            const settle = leaf.settle.bind(leaf);
+            leaf.settle = async (...settleArgs: unknown[]) => {
+              Reflect.set(window, "__cullingLeaf", leaf);
+              await new Promise<void>(resolve => Reflect.set(window, "__releaseCullingLeaf", resolve));
+              return settle(...settleArgs);
+            };
+            return leaf;
+          };
+          Reflect.set(window, "__cullingTurn", c.turnPage(1));
+        }, single);
+        await page.waitForFunction(() => !!Reflect.get(window, "__releaseCullingLeaf"));
+        const leaf = page.locator("[data-ambra-curled-leaf]");
+        const initial = await leaf.evaluate(element => {
+          const doc = (element as HTMLIFrameElement).contentDocument!;
+          return Array.from(doc.querySelectorAll<HTMLElement>("[data-face]"))
+            .flatMap(face => Array.from(face.children).map(child => {
+              if (!(child instanceof doc.defaultView!.HTMLElement))
+                throw new Error("Curled face has a non-HTML paint child.");
+              return child.style.backfaceVisibility;
+            }));
+        });
+        expect(initial.length).toBeGreaterThanOrEqual(80);
+        expect(initial.every(value => value === "hidden")).toBe(true);
+        for (const progress of [0.2, 0.48, 0.52, 0.8]) {
+          const paint = async (enabled: boolean) => {
+            const count = await page.evaluate(({ progress, enabled }) => {
+              const frame = document.querySelector<HTMLIFrameElement>("[data-ambra-curled-leaf]")!;
+              const doc = frame.contentDocument!;
+              const faces = doc.querySelectorAll<HTMLElement>("[data-face]");
+              let count = 0;
+              for (const face of faces) {
+                for (const child of face.children) {
+                  if (!(child instanceof doc.defaultView!.HTMLElement))
+                    throw new Error("Curled face has a non-HTML paint child.");
+                  child.style.backfaceVisibility = enabled ? "hidden" : "visible";
+                  count++;
+                }
+              }
+              Reflect.get(window, "__cullingLeaf").paint(progress);
+              return count;
+            }, { progress, enabled });
+            expect(count).toBeGreaterThanOrEqual(80);
+            return leaf.screenshot({ animations: "disabled" });
+          };
+          const original = await paint(false);
+          const culled = await paint(true);
+          const difference = await page.evaluate(async ([before, after]) => {
+            const pixels = async (encoded: string) => {
+              const image = new Image();
+              image.src = `data:image/png;base64,${encoded}`;
+              await image.decode();
+              const canvas = document.createElement("canvas");
+              canvas.width = image.width;
+              canvas.height = image.height;
+              const context = canvas.getContext("2d");
+              if (!context) throw new Error("Native backface comparison canvas is unavailable.");
+              context.drawImage(image, 0, 0);
+              return context.getImageData(0, 0, canvas.width, canvas.height);
+            };
+            const a = await pixels(before!);
+            const b = await pixels(after!);
+            if (a.width !== b.width || a.height !== b.height)
+              throw new Error("Native backface comparison dimensions differ.");
+            let maximum = 0;
+            for (let index = 0; index < a.data.length; index++)
+              maximum = Math.max(maximum, Math.abs(a.data[index]! - b.data[index]!));
+            return maximum;
+          }, [original.toString("base64"), culled.toString("base64")]);
+          await test.info().attach(`backface-paint-${progress}`, {
+            body: culled, contentType: "image/png",
+          });
+          expect(difference, `progress ${progress} native backface paint difference`).toBeLessThanOrEqual(1);
+        }
+        await page.evaluate(async () => {
+          Reflect.get(window, "__releaseCullingLeaf")();
+          await Reflect.get(window, "__cullingTurn");
+        });
+      } finally {
+        await context.close();
+      }
+    });
+
     test(`${single ? "single" : "spread"} ${rtl ? "RTL" : "LTR"}: curled paper covers visible strip joints`, async () => {
       const { context, readerPage: page } = await launchReader(
         navigationFixture(test.info(), [12], undefined, rtl ? "rtl" : "ltr"),
