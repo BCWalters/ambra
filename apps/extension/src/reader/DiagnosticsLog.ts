@@ -3,6 +3,7 @@ import type { LocalePreference } from "../i18n/Locale.js";
 import type { NarrationAction } from "./ReaderTypes.js";
 import type { ReaderCommandId } from "../shortcuts/ReaderCommands.js";
 import type { ControlledPageTurnDiagnostic } from "./ControlledPageTurn.js";
+import { formatDiagnosticNotification, type DiagnosticNotification } from "./NotificationDiagnostics.js";
 
 export type DiagnosticSettings = BookReadingSettings & GlobalReadingSettings & {
   locale: LocalePreference;
@@ -61,7 +62,8 @@ export type DiagnosticEvent = SettingEvent |
 export class DiagnosticsLog {
   /** Five times the previous trail covers panel/settings interactions as
    * well as navigation. Bounded entries and context keep each exported
-   * report below 310,000 characters, even after a long reading session. */
+   * report below 310,000 characters (330,000 with notification details),
+   * even after a long reading session. */
   public static readonly MAX_ENTRIES = 500;
   public static readonly MAX_MESSAGE_LENGTH = 512;
   private dropped = 0;
@@ -113,12 +115,13 @@ export class DiagnosticsLog {
    * spine index, view mode, pane dimensions, etc.) — meant to be either
    * dumped to `console.error` alongside a real error, or copied to the
    * clipboard via a "Copy diagnostics" action for a bug report. */
-  public format(context: Readonly<Record<string, string>>): string {
+  public format(context: Readonly<Record<string, string>>, notification?: DiagnosticNotification): string {
     const lines = [
       "Ambra diagnostics",
       `Generated: ${new Date().toISOString()}`,
       "Local session only; review before sharing. No automatic upload.",
       "Requested actions are intent, not confirmation of completion; subsequent events show the outcome.",
+      ...(notification ? formatDiagnosticNotification(notification) : []),
       ...Object.entries(context).slice(0, 32).map(([key, value]) =>
         `${DiagnosticsLog.boundedLine(key)}: ${DiagnosticsLog.boundedLine(value)}`),
       "",

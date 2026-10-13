@@ -24,6 +24,33 @@ function setup() {
 }
 
 describe("reader diagnostic intent", () => {
+  it("retains notification-specific exception details after dismissal and another error", () => {
+    const { controller } = setup();
+    Object.assign(controller, { errorNotificationId: 0, diagnosticsContext: () => ({ spineIndex: "0" }) });
+    const original = new Error("Original exception", { cause: new Error("Original cause") });
+    Reflect.get(controller, "reportTransientError").call(controller, original, "open", "the next page");
+    const notification = Reflect.get(controller, "errorDiagnostics");
+    controller.dismissError();
+    Reflect.get(controller, "reportTransientError").call(controller, new Error("Replacement exception"), "save", "a bookmark");
+    const report = controller.getDiagnosticsText(notification);
+    expect(report).toContain("Original exception");
+    expect(report).toContain("Original cause");
+    expect(report).toContain('Operation: "open the next page"');
+    expect(report).not.toContain("Replacement exception");
+    expect(controller.getDiagnosticsText()).not.toContain("Associated notification");
+  });
+
+  it("does not replace a persistent reading error's diagnostic context with a nonblocking notice", () => {
+    const { controller } = setup();
+    Object.assign(controller, { errorNotificationId: 0 });
+    Reflect.get(controller, "setNotification").call(controller, "Chapter failed", "navigationFailed", undefined,
+      { operation: "open spine item 1", error: new Error("Original chapter failure") });
+    const notification = Reflect.get(controller, "errorDiagnostics");
+    Reflect.get(controller, "reportTransientError").call(controller, new Error("Later action failure"), "save", "a bookmark");
+    expect(Reflect.get(controller, "errorDiagnostics")).toBe(notification);
+    expect(notification.exceptions[0].message).toBe("Original chapter failure");
+  });
+
   it("records why a mouse gesture was ignored before activation", () => {
     const { controller, diagnostics } = setup();
     Object.assign(controller, {
