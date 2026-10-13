@@ -1384,6 +1384,17 @@ bisection across whitespace, bidi, ligatures, ruby, and MathML. Plain-text leave
 use single-character probes (falling back for zero-width/collapsed characters);
 complex inline content keeps prefix probes, with repeated line-top lookups cached.
 
+When bisection's final positive single-character probe is the correction glyph,
+line measurement reuses its scalar top/bottom rather than querying it again.
+Other paths retain the exact native fragment-list lookup, traversed by index.
+The native endpoint regression independently checks every glyph boundary at two
+font sizes and requires at least 25% fewer repeated queries than one per line.
+Local 117/160-line comparisons reduced repeated calls from 116/159 to 74/100,
+preserving all boundaries, unique endpoints and cooperative checkpoints.
+Prefix retries and uncached correction queries now have their own checkpoints,
+so a native read that triggers cancellation cannot issue another read before
+observing it. The existing caption cancellation limit remains exactly 50 reads.
+
 Background estimates use cooperative measurement checkpoints, including line
 bisections, with an 8ms target work budget. Browser layout queries themselves
 cannot be interrupted, so this is not a hard main-thread latency guarantee.

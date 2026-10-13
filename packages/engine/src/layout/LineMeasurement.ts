@@ -401,6 +401,13 @@ function excludeOverlappingBreakRects(range: Range, rects: LineRect[]): LineRect
   return rects.filter(rect => rect.width !== 0 || !excluded.has(key(rect)));
 }
 
+interface LineEndProbe {
+  offset: number;
+  top: number;
+  bottom: number;
+  needsPrefix: boolean;
+}
+
 /** Measures a text run's rendered lines (via `Range.getClientRects()`,
  * a real layout query — not an approximation) as one `Chunk` per visual
  * line, each with its exact DOM break position found by bisecting the
@@ -457,6 +464,7 @@ function* measureTextLeafChunks(
   const lineOffsets = new Map<number, number>();
   // Keep only scalar geometry for this leaf, not live native rectangle wrappers.
   const probeEndTops = new Map<number, number | null>();
+  const lineEndProbe: LineEndProbe = { offset: -1, top: 0, bottom: 0, needsPrefix: false };
   // A lone text node has no intervening inline boxes or atomic content whose
   // rect could end a prefix. Probe its last character instead of remeasuring
   // every preceding line. Complex inline runs retain the prefix algorithm.
@@ -475,9 +483,10 @@ function* measureTextLeafChunks(
 
   for (let lineIndex = 1; lineIndex < lineRects.length; lineIndex++) {
     const targetTop = lineRects[lineIndex]!.top;
+    lineEndProbe.offset = -1;
     let offset = lineOffsets.get(targetTop);
     if (offset === undefined) {
-      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops);
+      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops, lineEndProbe);
       lineOffsets.set(targetTop, offset);
     }
     let position = positionFromTextNodes(textNodes, offset);
@@ -488,10 +497,23 @@ function* measureTextLeafChunks(
     // Move before that glyph only when it actually paints on this line.
     if (offset > 0) {
       const before = positionFromTextNodes(textNodes, offset - 1)!;
-      probeRange.setStart(before.node, before.offset);
-      probeRange.setEnd(position.node, position.offset);
-      const rect = Array.from(probeRange.getClientRects()).reverse()
-        .find(rect => rect.width > 0 && paintsInViewport(rect, viewportWidth));
+      let rect: { top: number; bottom: number } | undefined;
+      if (lineEndProbe.offset === offset) {
+        // The final positive point probe already measured this correction glyph.
+        rect = lineEndProbe;
+      } else {
+        yield undefined;
+        probeRange.setStart(before.node, before.offset);
+        probeRange.setEnd(position.node, position.offset);
+        const rects = probeRange.getClientRects();
+        for (let index = rects.length - 1; index >= 0; index--) {
+          const candidate = rects[index]!;
+          if (candidate.width > 0 && paintsInViewport(candidate, viewportWidth)) {
+            rect = candidate;
+            break;
+          }
+        }
+      }
       if (rect && rect.top >= targetTop - LINE_TOLERANCE_PX &&
           rect.bottom <= lineRects[lineIndex]!.bottom + LINE_TOLERANCE_PX) {
         position = before;
@@ -523,6 +545,7 @@ function* bisectLineStartOffset(
   viewportWidth: number,
   probePosition: TextNodePosition | undefined,
   probeEndTops: Map<number, number | null>,
+  lineEndProbe: LineEndProbe,
 ): Generator<undefined, number> {
   let lo = 0;
   let hi = totalLength;
@@ -530,7 +553,12 @@ function* bisectLineStartOffset(
   while (lo < hi) {
     yield undefined;
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops)) {
+    let reached = hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops, lineEndProbe, hi - lo === 1);
+    if (lineEndProbe.needsPrefix) {
+      yield undefined;
+      reached = hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, false, viewportWidth, probePosition, probeEndTops, lineEndProbe);
+    }
+    if (reached) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -550,7 +578,10 @@ function hasReachedLine(
   viewportWidth: number,
   probePosition: TextNodePosition | undefined,
   probeEndTops: Map<number, number | null>,
+  lineEndProbe: LineEndProbe,
+  captureLineEnd = false,
 ): boolean {
+  lineEndProbe.needsPrefix = false;
   if (globalOffset === 0) {
     return false;
   }
@@ -573,14 +604,23 @@ function hasReachedLine(
     const rect = rects[index]!;
     if (paintsInViewport(rect, viewportWidth)) {
       if (usePointProbe && rect.width === 0) break;
-      if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, rect.top);
-      return rect.top >= targetTop - LINE_TOLERANCE_PX;
+      const top = rect.top;
+      const reached = top >= targetTop - LINE_TOLERANCE_PX;
+      if (usePointProbe && reached && captureLineEnd) {
+        lineEndProbe.offset = globalOffset;
+        lineEndProbe.top = top;
+        lineEndProbe.bottom = rect.bottom;
+      }
+      if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, top);
+      return reached;
     }
   }
   // Collapsed whitespace can have a zero-width rect on the next line even
   // when its prefix still ends on the previous one. Keep exact old boundaries.
   if (usePointProbe) {
-    return hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth, probePosition, probeEndTops);
+    // The cooperative caller checkpoints before issuing another native query.
+    lineEndProbe.needsPrefix = true;
+    return false;
   }
   if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, null);
   return false;

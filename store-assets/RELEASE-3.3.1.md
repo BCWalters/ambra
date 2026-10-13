@@ -74,6 +74,11 @@ avoiding temporary page-height ink surfaces in its first composited frame.
 Resource readiness, geometry, visuals and all timing limits remain required.
 Frozen CSS serialization also avoids temporary Map entry iterators while
 preserving every declaration and its order.
+Line measurement reuses an already-measured final correction glyph when it is
+the exact final positive point probe. Other native geometry paths, whitespace
+fallbacks and existing cooperative checkpoints are preserved. Additional
+checkpoints before prefix retries and uncached corrections retain prompt
+cancellation.
 
 ## Package-bound conformance and manual accessibility
 
