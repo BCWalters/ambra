@@ -112,6 +112,73 @@ function book(content: string): string {
   return bytes;
 }
 
+test("line endpoint probes reuse native geometry within a leaf and reset for reflow", async () => {
+  const session = await browser();
+  try {
+    const results = await session.page.evaluate(() => {
+      const frame = document.createElement("iframe");
+      frame.style.cssText = "width:600px;height:300px";
+      document.body.append(frame);
+      const doc = frame.contentDocument!;
+      doc.body.style.cssText = "margin:0;font:18px/24px monospace";
+      const paragraph = doc.createElement("p");
+      paragraph.style.margin = "0";
+      const text = doc.createTextNode("Precise native line geometry survives repeated endpoint probes. ".repeat(100));
+      paragraph.append(text);
+      doc.body.append(paragraph);
+      const prototype = doc.defaultView!.Range.prototype;
+      const original = prototype.getClientRects;
+      const probes = new Map<number, number>();
+      prototype.getClientRects = function (this: Range) {
+        if (this.startContainer === text && this.endContainer === text &&
+          this.endOffset === this.startOffset + 1) {
+          probes.set(this.endOffset, (probes.get(this.endOffset) ?? 0) + 1);
+        }
+        return original.call(this);
+      };
+      try {
+        return [18, 23].map(fontSize => {
+          paragraph.style.fontSize = `${fontSize}px`;
+          probes.clear();
+          const pages = window.paginationEngine.PaginationEngine.paginate(doc.body, 1);
+          const maximumProbeCalls = Math.max(...probes.values());
+          const uniqueProbes = probes.size;
+          const expectedStarts = new Map<number, number>();
+          const character = doc.createRange();
+          for (let offset = 0; offset < text.length; offset++) {
+            character.setStart(text, offset);
+            character.setEnd(text, offset + 1);
+            for (const rect of original.call(character)) {
+              if (rect.width > 0 && !expectedStarts.has(rect.top)) expectedStarts.set(rect.top, offset);
+            }
+          }
+          const offsets = [...expectedStarts.values()];
+          return {
+            fontSize, maximumProbeCalls, uniqueProbes, pages: pages.length,
+            nativeLines: offsets.length,
+            boundariesMatch: pages.slice(1).every((page, index) =>
+              page.startBreak.node === text && page.startBreak.offset === offsets[index + 1]),
+          };
+        });
+      } finally {
+        prototype.getClientRects = original;
+      }
+    });
+    await test.info().attach("native-endpoint-probes", {
+      body: JSON.stringify(results), contentType: "application/json",
+    });
+    for (const result of results) {
+      expect(result.pages).toBeGreaterThan(50);
+      expect(result.pages).toBe(result.nativeLines);
+      expect(result.boundariesMatch).toBe(true);
+      expect(result.uniqueProbes).toBeGreaterThan(100);
+      expect(result.maximumProbeCalls).toBeLessThanOrEqual(2);
+    }
+  } finally {
+    await session.close();
+  }
+});
+
 test("simple contents tables paginate intact rows, suppress zoom, and preserve anchors", async () => {
   const session = await browser();
   try {

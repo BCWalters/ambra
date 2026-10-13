@@ -322,6 +322,7 @@ function atomicBounds(element: Element, pageHeight: number, viewportWidth: numbe
  * considered "the same line" — accounts for sub-pixel layout rounding,
  * not a meaningful visual difference. */
 const LINE_TOLERANCE_PX = 1;
+const MAX_CACHED_LINE_PROBES = 4096;
 
 const BASELINE_INLINE_TEXT_TAGS = new Set([
   "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "del", "em", "i",
@@ -445,6 +446,8 @@ function* measureTextLeafChunks(
   const probeRange = fullRange.cloneRange();
   const probePosition = positionFromTextNodes(textNodes, 0);
   const lineOffsets = new Map<number, number>();
+  // Keep only scalar geometry for this leaf, not live native rectangle wrappers.
+  const probeEndTops = new Map<number, number | null>();
   // A lone text node has no intervening inline boxes or atomic content whose
   // rect could end a prefix. Probe its last character instead of remeasuring
   // every preceding line. Complex inline runs retain the prefix algorithm.
@@ -465,7 +468,7 @@ function* measureTextLeafChunks(
     const targetTop = lineRects[lineIndex]!.top;
     let offset = lineOffsets.get(targetTop);
     if (offset === undefined) {
-      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth, probePosition);
+      offset = yield* bisectLineStartOffset(fullRange, probeRange, textNodes, totalLength, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops);
       lineOffsets.set(targetTop, offset);
     }
     let position = positionFromTextNodes(textNodes, offset);
@@ -497,8 +500,8 @@ function* measureTextLeafChunks(
 /** Binary-searches the smallest prefix end offset within `fullRange` whose
  * rendered position has already reached `targetTop`. The caller converts
  * this exclusive end to the boundary before the first glyph. Relies purely on
- * `Range.getClientRects()`, a real layout measurement, evaluated at each
- * candidate offset. `textNodes` contains only this range's text nodes,
+ * `Range.getClientRects()`, a real layout measurement, reused at repeated
+ * candidate offsets within this leaf. `textNodes` contains only this range's text nodes,
  * collected once by the caller (see `measureTextLeafChunks`) rather than
  * re-walked on every bisection step. */
 function* bisectLineStartOffset(
@@ -510,6 +513,7 @@ function* bisectLineStartOffset(
   usePointProbe: boolean,
   viewportWidth: number,
   probePosition: TextNodePosition | undefined,
+  probeEndTops: Map<number, number | null>,
 ): Generator<undefined, number> {
   let lo = 0;
   let hi = totalLength;
@@ -517,7 +521,7 @@ function* bisectLineStartOffset(
   while (lo < hi) {
     yield undefined;
     const mid = (lo + hi) >> 1;
-    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth, probePosition)) {
+    if (hasReachedLine(fullRange, probeRange, textNodes, mid, targetTop, usePointProbe, viewportWidth, probePosition, probeEndTops)) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -536,9 +540,14 @@ function hasReachedLine(
   usePointProbe: boolean,
   viewportWidth: number,
   probePosition: TextNodePosition | undefined,
+  probeEndTops: Map<number, number | null>,
 ): boolean {
   if (globalOffset === 0) {
     return false;
+  }
+  const cachedTop = probeEndTops.get(globalOffset);
+  if (cachedTop !== undefined) {
+    return cachedTop !== null && cachedTop >= targetTop - LINE_TOLERANCE_PX;
   }
   const position = positionFromTextNodes(textNodes, globalOffset, probePosition);
   if (!position) {
@@ -555,14 +564,17 @@ function hasReachedLine(
     const rect = rects[index]!;
     if (paintsInViewport(rect, viewportWidth)) {
       if (usePointProbe && rect.width === 0) break;
+      if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, rect.top);
       return rect.top >= targetTop - LINE_TOLERANCE_PX;
     }
   }
   // Collapsed whitespace can have a zero-width rect on the next line even
   // when its prefix still ends on the previous one. Keep exact old boundaries.
-  return usePointProbe
-    ? hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth, probePosition)
-    : false;
+  if (usePointProbe) {
+    return hasReachedLine(fullRange, range, textNodes, globalOffset, targetTop, false, viewportWidth, probePosition, probeEndTops);
+  }
+  if (probeEndTops.size < MAX_CACHED_LINE_PROBES) probeEndTops.set(globalOffset, null);
+  return false;
 }
 
 /**

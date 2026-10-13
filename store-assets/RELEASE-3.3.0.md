@@ -112,6 +112,12 @@ overlap strips disappear. Starting the turn no longer changes visibility for the
 whole mesh at once; endpoint paper and stationary-page clipping stay unchanged.
 Settings-recovery probes use the shared mounted-reading registration check,
 excluding connected measurement/prefetch documents while rejecting detached leaks.
+Line-start bisection reuses scalar endpoint geometry within each measured leaf,
+bounded to 4,096 offsets without retaining native rectangle wrappers. Native
+fragment-list measurement, collapsed-whitespace prefix fallback, abort/pause
+checkpoints and saved anchors remain unchanged; reflow starts a fresh cache.
+Native regressions compare every line boundary with independently measured glyphs
+and bound repeated endpoint measurements before and after typography changes.
 Prepared chapter animations clear any spinner shown during a slow preparation;
 the still-running navigation operation does not cover ready content with loading UI.
 
