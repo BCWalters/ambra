@@ -7,12 +7,12 @@ export const BookSaveAsAction: FC<{
   accent: string;
   accentForeground: string;
   onSaveAs: () => Promise<void>;
-  renderError: (message: string, onDismiss: () => void) => ReactNode;
+  renderError: (message: string, onDismiss: () => void, cause: unknown) => ReactNode;
 }> = ({ accent, accentForeground, onSaveAs, renderError }) => {
   const t = useTranslation();
   const busy = useRef(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<{ message: string; cause: unknown }>();
   const save = async () => {
     if (busy.current) return;
     busy.current = true;
@@ -21,7 +21,7 @@ export const BookSaveAsAction: FC<{
     try {
       await onSaveAs();
     } catch (cause) {
-      setError(t("library.saveAsFailed", { message: cause instanceof Error ? cause.message : String(cause) }));
+      setError({ message: t("library.saveAsFailed", { message: cause instanceof Error ? cause.message : String(cause) }), cause });
     } finally {
       busy.current = false;
       setSaving(false);
@@ -50,7 +50,7 @@ export const BookSaveAsAction: FC<{
       >
         {t("library.saveAs")}
       </Button>
-      {error && renderError(error, () => setError(undefined))}
+      {error && renderError(error.message, () => setError(undefined), error.cause)}
     </div>
   );
 };

@@ -4,6 +4,8 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FriendlyError } from "./FriendlyError.js";
 import type { FriendlyErrorProps } from "./FriendlyError.js";
+import { captureDiagnosticNotification } from "../NotificationDiagnostics.js";
+import { DiagnosticsLog } from "../DiagnosticsLog.js";
 
 describe("FriendlyError notification lifetime", () => {
   let root: Root;
@@ -137,5 +139,25 @@ describe("FriendlyError notification lifetime", () => {
   it.each(["transient", "actionFailed", "info"] as const)("does not add a library action to %s notifications", severity => {
     render({ severity, libraryHref: "chrome-extension://ambra/src/library/index.html?view=tab" });
     expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("copies the associated notification rather than a later controller error", async () => {
+    const writeText = vi.fn(async (_text: string) => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const diagnostics = captureDiagnosticNotification({
+      message: "Original visible failure", severity: "actionFailed", operation: "import annotations",
+    }, new Error("Original exception"));
+    const getDiagnosticsText = vi.fn(notification => new DiagnosticsLog().format({}, notification));
+    render({ message: "Original visible failure", severity: "actionFailed", notificationId: 1, diagnostics, getDiagnosticsText });
+    const copy = [...container.querySelectorAll("button")].find(button => button.textContent === "Copy diagnostics")!;
+    await act(async () => copy.click());
+    expect(getDiagnosticsText).toHaveBeenCalledWith(diagnostics);
+    expect(writeText.mock.calls[0]?.[0]).toContain("Original exception");
+    expect(container.textContent).toContain("Copied!");
+    render({ message: "Replacement failure", severity: "actionFailed", notificationId: 2, getDiagnosticsText });
+    expect(container.textContent).not.toContain("Copied!");
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Copy diagnostics")!.click());
+    expect(writeText.mock.calls[1]?.[0]).toContain('Message: "Replacement failure"');
+    expect(writeText.mock.calls[1]?.[0]).not.toContain("Original exception");
   });
 });

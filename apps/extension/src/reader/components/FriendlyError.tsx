@@ -6,6 +6,7 @@ import { CHROME_BORDER, CHROME_SHADOW } from "../chromeTheme.js";
 import { useChromeTheme } from "../ChromeThemeContext.js";
 import { useTranslation } from "../../i18n/LocaleContext.js";
 import { ErrorDetails } from "../../components/ErrorDetails.js";
+import { captureDiagnosticNotification, type DiagnosticNotification } from "../NotificationDiagnostics.js";
 
 /** How long a "transient" toast stays up before auto-dismissing itself —
  * long enough to read a short message and, if wanted, click "Copy
@@ -39,10 +40,11 @@ export interface FriendlyErrorProps {
   libraryHref?: string;
   onOpenInspector?: () => void;
   onDismiss: () => void;
+  diagnostics?: DiagnosticNotification;
   /** Returns the current diagnostics trail (see `DiagnosticsLog`) plus
-   * basic reader state, ready to copy to the clipboard — `undefined` if
+   * basic reader state and the supplied notification, ready to copy — `undefined` if
    * there's genuinely nothing to copy yet. */
-  getDiagnosticsText: () => string | undefined;
+  getDiagnosticsText: (notification?: DiagnosticNotification) => string | undefined;
 }
 
 /**
@@ -65,12 +67,15 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   onOpenInspector,
   onDismiss,
   getDiagnosticsText,
+  diagnostics,
 }) => {
   const chromeTheme = useChromeTheme();
   const t = useTranslation();
   const [copied, setCopied] = useState(false);
   const headingRef = useRef<HTMLDivElement | null>(null);
   const onDismissRef = useRef(onDismiss);
+
+  useEffect(() => setCopied(false), [message, notificationId]);
 
   useEffect(() => {
     onDismissRef.current = onDismiss;
@@ -93,7 +98,10 @@ export const FriendlyError: FC<FriendlyErrorProps> = ({
   }, [severity, notificationId]);
 
   const copyDiagnostics = (): void => {
-    const text = getDiagnosticsText();
+    const notification = diagnostics
+      ? Object.freeze({ ...diagnostics, headline })
+      : captureDiagnosticNotification({ message, headline, severity, detail, notificationId });
+    const text = getDiagnosticsText(notification);
     if (!text) {
       return;
     }

@@ -117,6 +117,7 @@ import type {
 } from "./ReaderTypes.js";
 import { DiagnosticsLog } from "./DiagnosticsLog.js";
 import { annotationSelectionRange } from "./AnnotationSelection.js";
+import { captureDiagnosticNotification, type DiagnosticNotification } from "./NotificationDiagnostics.js";
 import { attachTableControls, updateTableControlLabels, updateTableControlTheme } from "./TableControls.js";
 import { prepareTableViewer } from "./TableViewerContent.js";
 import type { PreparedTable } from "./TableViewerContent.js";
@@ -298,6 +299,7 @@ export class ReaderController {
   });
   private error: string | undefined;
   private errorNotificationId = 0;
+  private errorDiagnostics: DiagnosticNotification | undefined;
   private errorSeverity: ReaderSnapshot["errorSeverity"];
   /** A smaller, de-emphasized technical detail shown alongside `error`
    * for "actionFailed" errors — e.g. the raw underlying exception
@@ -901,6 +903,7 @@ export class ReaderController {
         loadingPhase: this.isLoading ? (this.host ? "navigating" : "opening") : undefined,
         error: this.error,
         errorNotificationId: this.errorNotificationId,
+        errorDiagnostics: this.errorDiagnostics,
         errorSeverity: this.errorSeverity,
         errorDetail: this.errorDetail,
         announcement: this.announcement,
@@ -1090,7 +1093,7 @@ export class ReaderController {
         this.operations.finish(resumeOperation);
         this.isLoading = false;
         this.isLoadInFlight = false;
-        this.setNotification("The publication has no primary reading order.", "blocking");
+        this.setNotification("The publication has no primary reading order.", "blocking", undefined, { operation: "open publication" });
         this.notify();
         return;
       }
@@ -1105,6 +1108,8 @@ export class ReaderController {
       this.setNotification(
         `This book's Table of Contents couldn't be loaded: ${message} You can still read using the page/chapter navigation controls.`,
         "transient",
+        undefined,
+        { operation: "load table of contents", error: message },
       );
       this.errorDetail = undefined;
       this.notify();
@@ -1577,8 +1582,7 @@ export class ReaderController {
       const detail = error instanceof Error ? error.message : String(error);
       this.diagnostics.record(`Narration ${action} failed: ${detail}`);
       if (!this.narration.snapshot.error) {
-        this.setNotification(this.translate("narration.error"), "transient");
-        this.errorDetail = detail;
+        this.setNotification(this.translate("narration.error"), "transient", detail, { operation: `narration ${action}`, error });
         this.notify();
       }
     }
@@ -3151,6 +3155,7 @@ export class ReaderController {
     this.error = undefined;
     this.errorSeverity = undefined;
     this.errorDetail = undefined;
+    this.errorDiagnostics = undefined;
     this.notify();
   }
 
@@ -3158,6 +3163,7 @@ export class ReaderController {
     message: string,
     severity: NonNullable<ReaderSnapshot["errorSeverity"]>,
     detail?: string,
+    source?: { operation: string; error?: unknown },
   ): void {
     if ((severity === "transient" || severity === "info") &&
       (this.errorSeverity === "blocking" || this.errorSeverity === "navigationFailed")) {
@@ -3168,12 +3174,18 @@ export class ReaderController {
     this.error = message;
     this.errorSeverity = severity;
     this.errorDetail = detail;
+    this.errorDiagnostics = captureDiagnosticNotification({
+      message, severity, detail, notificationId: this.errorNotificationId,
+      operation: source?.operation, spineIndex: this.spineIndex,
+      pageIndex: this.host instanceof SpreadPaginatedHost ? this.host.pageIndex :
+        this.host instanceof PaginatedContentHost ? this.host.currentPageIndex : undefined,
+    }, source?.error);
   }
 
   /** Failed actions stay visible without interrupting the current reading surface. */
   private reportTransientError(err: unknown, action: string, subject: string): void {
     if (this.operations.disposed) return;
-    this.setNotification(describeStorageError(err, action, subject), "transient");
+    this.setNotification(describeStorageError(err, action, subject), "transient", undefined, { operation: `${action} ${subject}`, error: err });
     this.notify();
   }
 
@@ -3183,7 +3195,7 @@ export class ReaderController {
       this.isLoadInFlight = false;
       const message = error instanceof Error ? error.message : String(error);
       this.diagnostics.record(`Reader opening failed: ${message}`);
-      this.setNotification(message, "blocking");
+      this.setNotification(message, "blocking", undefined, { operation: "open reader", error });
       this.notify();
       return;
     }
@@ -3191,8 +3203,8 @@ export class ReaderController {
   }
 
   /** Import failures persist until dismissed; technical details are secondary copy. */
-  private reportImportFailure(message: string, detail?: string): void {
-    this.setNotification(message, "actionFailed", detail);
+  private reportImportFailure(message: string, detail?: string, error?: unknown): void {
+    this.setNotification(message, "actionFailed", detail, { operation: "import annotations", error });
     this.notify();
   }
 
@@ -3204,12 +3216,13 @@ export class ReaderController {
    * its own specific, friendly message with nothing further to add. */
   private reportGenericImportFailure(err: unknown): void {
     if (err instanceof DOMException && err.name === "QuotaExceededError") {
-      this.reportImportFailure(describeStorageError(err, "import", "that annotation file"));
+      this.reportImportFailure(describeStorageError(err, "import", "that annotation file"), undefined, err);
       return;
     }
     this.reportImportFailure(
       this.translate("annotations.importGenericFailure"),
       describeStorageError(err, "import", "that annotation file"),
+      err,
     );
   }
 
@@ -5058,8 +5071,8 @@ export class ReaderController {
   }
 
   /** Formats the diagnostics trail and reader state as plain text. */
-  public getDiagnosticsText(): string {
-    return this.diagnostics.format(this.diagnosticsContext());
+  public getDiagnosticsText(notification?: DiagnosticNotification): string {
+    return this.diagnostics.format(this.diagnosticsContext(), notification);
   }
 
   public recordDiagnosticEvent(event: DiagnosticEvent): void {
@@ -5611,6 +5624,7 @@ export class ReaderController {
       this.error = undefined;
       this.errorSeverity = undefined;
       this.errorDetail = undefined;
+      this.errorDiagnostics = undefined;
     }
     this.isLoadInFlight = true;
     const openingSize = { width: this.width, height: this.height };
@@ -5971,7 +5985,7 @@ export class ReaderController {
           (this.errorSeverity !== "blocking" && this.errorSeverity !== "navigationFailed")) {
           const severity = !this.host ? "blocking"
             : options.preserveReadingError ? "transient" : "navigationFailed";
-          this.setNotification(message, severity);
+          this.setNotification(message, severity, undefined, { operation: `open spine item ${spineIndex}`, error: err });
           this.errorDetail = undefined;
         }
         this.diagnostics.record(

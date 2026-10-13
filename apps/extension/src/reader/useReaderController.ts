@@ -6,7 +6,8 @@ import type { LibraryDatabase } from "../library/LibraryDatabase.js";
 import type { Bookmark } from "../library/LibraryDatabase.js";
 import type { AnnotationImportResult } from "../library/AnnotationInterop.js";
 import { ReaderController } from "./ReaderController.js";
-import type { DiagnosticEvent, DiagnosticSurfaces } from "./DiagnosticsLog.js";
+import { DiagnosticsLog, type DiagnosticEvent, type DiagnosticSurfaces } from "./DiagnosticsLog.js";
+import type { DiagnosticNotification } from "./NotificationDiagnostics.js";
 import type { ShortcutPlatform, ShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { parseShortcutPreferences } from "../shortcuts/ReaderCommands.js";
 import { prepareBookOpeningTransition } from "./BookOpeningTransition.js";
@@ -73,7 +74,7 @@ export interface UseReaderControllerResult {
   closeTableViewer: () => void;
   reportTableViewerError: (error: unknown) => void;
   restoreContentFocus: () => void;
-  getDiagnosticsText: () => string | undefined;
+  getDiagnosticsText: (notification?: DiagnosticNotification) => string | undefined;
   addBookmark: () => Promise<Bookmark | undefined>;
   toggleBookmark: () => Promise<void>;
   refreshBookmarks: () => Promise<void>;
@@ -451,8 +452,9 @@ export function useReaderController(translate: Translate): UseReaderControllerRe
     controller?.restoreContentFocus();
   }, [controller]);
 
-  const getDiagnosticsText = useCallback(() => {
-    return controller?.getDiagnosticsText();
+  const getDiagnosticsText = useCallback((notification?: DiagnosticNotification) => {
+    return controller?.getDiagnosticsText(notification) ??
+      (notification ? new DiagnosticsLog().format({ reader: "not initialized" }, notification) : undefined);
   }, [controller]);
 
   const addBookmark = useCallback(async () => {
