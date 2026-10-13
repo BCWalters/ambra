@@ -1277,6 +1277,16 @@ and copy root, checks zero copied descendants and released caches, verifies
 source text/opacity preservation and repeats disposal. This is resource cleanup,
 not forced GC or a change to animation samples.
 
+Owned ink bands are clipped before awaiting font/image readiness, so the first
+composited preparation frame cannot contain page-height transparent ink wrappers.
+Their fixed band geometry is independent of font metrics; resource readiness is
+still required before animation. A native image-decoding probe verifies that
+every strip's furniture wrapper is already a single band-sized clip at that point.
+Local native diagnostic snapshots went from 43 page-sized `753x878` layers at
+preparation peak to three, with total peak intrinsic layer area changing from
+39.47M to 13.37M pixels. This eliminates the temporary wrappers, not a claim of
+lower steady-state area or successful Linux pacing; unprofiled CI remains required.
+
 Fixed-pose backface comparisons keep reader chrome focused and await its tooltip
 so idle hiding or delayed hints cannot change pixels between captures. They
 compare the composed viewport and retain the one-channel-step maximum pixel

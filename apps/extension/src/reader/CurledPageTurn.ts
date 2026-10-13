@@ -238,6 +238,8 @@ export class CurledPageTurn {
       // Small ink bands avoid compositing their transparent page-height wrapper.
       paintStyles.textContent = `${this.paintRules.join("\n")}\n${INK_BAND_PAINT}`;
       doc.head.append(paintStyles);
+      // Owned bands have fixed geometry; clip them before resource waits expose a frame.
+      this.splitFurnitureInk(doc, furnitureInk, stripWidth);
       void scene.offsetHeight;
       const ready = Promise.all([
         doc.fonts.ready,
@@ -260,7 +262,6 @@ export class CurledPageTurn {
         else void ready.then(() => finish(), finish);
       });
       if (this.disposed) throw new DOMException("Page turn cancelled", "AbortError");
-      this.splitFurnitureInk(doc, furnitureInk, stripWidth);
       void scene.offsetHeight;
       this.paint(0);
       frame.dataset.preparationMs = String(performance.now() - started);

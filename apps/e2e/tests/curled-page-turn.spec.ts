@@ -116,6 +116,60 @@ test("disposed curls release owned document graphs even while the leaf is retain
   }
 });
 
+test("curled resource decoding sees only band-sized furniture ink clips", async () => {
+  const { context, readerPage: page } = await launchReader(
+    navigationFixture(test.info(), [80], (_chapter, index) =>
+      `<p><img width="16" height="16" alt="" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22black%22/%3E%3C/svg%3E"/>Paragraph ${index}. ${"Readable chapter text. ".repeat(12)}</p>`,
+    ),
+    { viewport: { width: 1547, height: 878 } },
+  );
+  try {
+    await exposeReaderController(page);
+    const result = await page.evaluate(async () => {
+      const c = Reflect.get(window, "__readerController");
+      await c.setPageTurnAnimationStyle("rotate");
+      const create = c.pageTurnOrchestrator.createCurledLeaf.bind(c.pageTurnOrchestrator);
+      const patched = new WeakSet<Document>();
+      let decodedImages = 0;
+      let boundedInk = true;
+      c.pageTurnOrchestrator.createCurledLeaf = (...args: unknown[]) => {
+        const leaf = create(...args);
+        const copy = leaf.copyCapturedPage.bind(leaf);
+        leaf.copyCapturedPage = (...copyArgs: unknown[]) => {
+          const doc = copyArgs[1] as Document;
+          if (!patched.has(doc)) {
+            patched.add(doc);
+            const prototype = Reflect.get(doc.defaultView!, "HTMLImageElement").prototype;
+            const decode = prototype.decode;
+            prototype.decode = function (this: HTMLImageElement) {
+              decodedImages++;
+              const clips = doc.querySelectorAll<HTMLElement>(
+                "[data-face] [data-ambra-turn-furniture]",
+              );
+              boundedInk &&= clips.length > 0 && Array.from(clips).every(clip => {
+                const band = clip.firstElementChild;
+                return clip.childElementCount === 1 && band !== null &&
+                  doc.defaultView!.getComputedStyle(clip).height ===
+                  doc.defaultView!.getComputedStyle(band).height;
+              });
+              return decode.call(this);
+            };
+          }
+          return copy(...copyArgs);
+        };
+        return leaf;
+      };
+      await c.turnPage(1);
+      return { decodedImages, boundedInk };
+    });
+    expect(result.decodedImages).toBeGreaterThan(0);
+    expect(result.boundedInk).toBe(true);
+    await expect(page.locator("[data-ambra-curled-leaf]")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
 test("curled copies preserve explicit initial values below contrasting parents", async () => {
   const { context, readerPage: page } = await launchReader(
     navigationFixture(test.info(), [4], (_chapter, index) =>

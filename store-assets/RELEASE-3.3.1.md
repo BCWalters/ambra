@@ -69,6 +69,9 @@ authored variables. This is not a change to accepted visuals or timing limits.
 Disposed curls also release only their owned copied DOM/caches after restoring
 original-page opacity; queued callbacks retaining a leaf cannot retain its
 copied document graph. Native coverage checks this ownership and idempotency.
+Owned ink clips are also bounded before preparation waits for fonts/images,
+avoiding temporary page-height ink surfaces in its first composited frame.
+Resource readiness, geometry, visuals and all timing limits remain required.
 
 ## Package-bound conformance and manual accessibility
 
