@@ -99,7 +99,7 @@ export const browserGroups = [
     id: "curl-reliability",
     modes: ["full"],
     steps: [step("curl-reliability", ["curled-page-turn"], 1, [
-      "--grep", "^long chapter: curved turn preparation and handoff stay bounded$",
+      "--grep", "long chapter: curved turn preparation and handoff stay bounded$",
       "--repeat-each=8",
     ])],
   },

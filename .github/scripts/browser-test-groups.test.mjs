@@ -56,7 +56,9 @@ test("page-turn release regressions use the packaged candidate without retries o
       if (step.name === "curl-reliability") {
         assert.ok(step.args.includes("--repeat-each=8"));
         assert.deepEqual(step.args.slice(step.args.indexOf("--grep"), step.args.indexOf("--grep") + 2),
-          ["--grep", "^long chapter: curved turn preparation and handoff stay bounded$"]);
+          ["--grep", "long chapter: curved turn preparation and handoff stay bounded$"]);
+        assert.ok(new RegExp(step.args[step.args.indexOf("--grep") + 1]).test(
+          "curled-page-turn.spec.ts long chapter: curved turn preparation and handoff stay bounded"));
       } else assert.ok(!step.args.includes("--grep"));
       assert.ok(!step.args.includes("--grep-invert"));
     }

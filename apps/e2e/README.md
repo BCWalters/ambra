@@ -1277,6 +1277,8 @@ Protected rendering also runs eight additional independent long-chapter
 cohorts, each with a fresh profile and all four predetermined turns. Repetitions
 are not retries: every cohort must pass and every interval remains recorded.
 The full rendering suite also remains unfiltered on its own worker.
+The cohort selector matches Playwright's fully qualified test title, including
+its file prefix; the exact group runner is validated rather than only its arguments.
 
 Endpoint snapshot and outer-strip opacity are updated only when moving between
 the initial endpoint, interior motion and final endpoint. Interior strips remain
