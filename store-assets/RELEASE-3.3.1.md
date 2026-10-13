@@ -63,6 +63,9 @@ remain 250/750/1500 ms. No retries, filtering, forced GC or browser/GPU override
 substitute for acceptance. Native geometry, ink and exact-pixel checks remain.
 See [E2E measurement guidance](../apps/e2e/README.md#pagination-measurement-regressions-197--198)
 for the sparse-sample rationale and fixture prerequisites.
+Frozen paint copying uses indexed native collection traversal to reduce
+temporary iterator allocations while preserving property/child order and
+authored variables. This is not a change to accepted visuals or timing limits.
 
 ## Package-bound conformance and manual accessibility
 
