@@ -63,7 +63,9 @@ for (const rtl of [false, true]) {
               return count;
             }, { progress, enabled });
             expect(count).toBeGreaterThanOrEqual(80);
-            return leaf.screenshot({ animations: "disabled" });
+            // Compare the composed viewport without scrolling the iframe
+            // independently of the surrounding reader chrome.
+            return page.screenshot({ animations: "disabled" });
           };
           const original = await paint(false);
           const culled = await paint(true);
