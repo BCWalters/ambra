@@ -50,8 +50,9 @@ Geometry probes run after the actual animation, before leaf disposal, in a
 separate test/browser context. Their temporary ranges, forced layouts and
 garbage collection cannot alter pacing on the following measured turn.
 Navigation assertions wait for the actual turn/load/layout completion.
-Native multi-file drop coverage awaits saved reading progress and verifies the
-existing book's progress-bearing accessible label alongside the newly imported
+Native multi-file drop coverage awaits completed book pagination, explicitly saves
+real reading progress, and verifies the existing book's exact progress-bearing
+accessible label alongside the newly imported
 unread book, rather than assuming an already opened book is still unread.
 Publication-only comparisons hide reactive toolbar/scrubber surfaces
 and their shadows; furniture and chrome retain their separate native coverage.
