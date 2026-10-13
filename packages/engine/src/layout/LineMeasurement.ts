@@ -323,6 +323,7 @@ function atomicBounds(element: Element, pageHeight: number, viewportWidth: numbe
  * not a meaningful visual difference. */
 const LINE_TOLERANCE_PX = 1;
 const MAX_CACHED_LINE_PROBES = 4096;
+type LineRect = Pick<DOMRect, "left" | "top" | "right" | "bottom" | "width" | "height">;
 
 const BASELINE_INLINE_TEXT_TAGS = new Set([
   "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "del", "em", "i",
@@ -330,7 +331,7 @@ const BASELINE_INLINE_TEXT_TAGS = new Set([
   "sub", "sup", "time", "u", "var", "wbr",
 ]);
 
-function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generator<undefined, DOMRect[]> {
+function* normalizeWrappingInlineRects(range: Range, rects: LineRect[]): Generator<undefined, LineRect[]> {
   if (!rects.some((rect, index) => index > 0 && rect.top < rects[index - 1]!.top - LINE_TOLERANCE_PX)) return rects;
   const root = range.commonAncestorContainer;
   if (root.nodeType !== 1) return rects;
@@ -339,7 +340,7 @@ function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generato
     rootStyle.float !== "none" || rootStyle.transform !== "none") return rects;
 
   const seen = new Set<string>();
-  const lines: DOMRect[] = [];
+  const lines: LineRect[] = [];
   for (let index = 0; index < rects.length; index++) {
     if (index % 64 === 0) yield undefined;
     const rect = rects[index]!;
@@ -370,10 +371,10 @@ function* normalizeWrappingInlineRects(range: Range, rects: DOMRect[]): Generato
   return lines;
 }
 
-function excludeOverlappingBreakRects(range: Range, rects: DOMRect[]): DOMRect[] {
-  const key = (rect: DOMRect): string => `${rect.left}:${rect.top}:${rect.right}:${rect.bottom}`;
+function excludeOverlappingBreakRects(range: Range, rects: LineRect[]): LineRect[] {
+  const key = (rect: LineRect): string => `${rect.left}:${rect.top}:${rect.right}:${rect.bottom}`;
   const candidates = new Map<string, string>();
-  let previous: DOMRect | undefined;
+  let previous: LineRect | undefined;
   for (const rect of rects) {
     if (rect.width > 0) previous = rect;
     else if (previous && rect.top >= previous.top && rect.top < previous.bottom &&
@@ -411,7 +412,11 @@ function* measureTextLeafChunks(
   pageHeight: number,
   reorderedCaption = false,
 ): Generator<Chunk | undefined> {
-  const rects = Array.from(fullRange.getClientRects()).filter((r) => paintsInViewport(r, viewportWidth));
+  // Cooperative pauses retain scalar snapshots, not native fragment wrappers.
+  const rects = Array.from(fullRange.getClientRects(), rect => ({
+    left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+    width: rect.width, height: rect.height,
+  })).filter((r) => paintsInViewport(r, viewportWidth));
   // Continuous-scroll tracking keeps its existing line geometry.
   const lineRects = reorderedCaption ? yield* captionLineBands(rects) : Number.isFinite(pageHeight)
     ? yield* normalizeWrappingInlineRects(fullRange, excludeOverlappingBreakRects(fullRange, rects))
@@ -424,8 +429,8 @@ function* measureTextLeafChunks(
   /** Only used inside already-validated normal-flow captions. Union each physical
    * line's inline boxes, including small raised/lowered scripts; DOM boundaries
    * are then measured afresh rather than sorted alongside these rectangles. */
-  function* captionLineBands(rects: readonly DOMRect[]): Generator<undefined, DOMRect[]> {
-    const lines: DOMRect[] = [];
+  function* captionLineBands(rects: readonly LineRect[]): Generator<undefined, LineRect[]> {
+    const lines: LineRect[] = [];
     const ordered = [...rects].sort((a, b) => a.top - b.top);
     for (let index = 0; index < ordered.length; index++) {
       if (index % 64 === 0) yield undefined;
@@ -433,8 +438,12 @@ function* measureTextLeafChunks(
       const previous = lines.at(-1);
       if (previous && rect.top < previous.bottom) {
         const left = Math.min(previous.left, rect.left);
-        lines[lines.length - 1] = new DOMRect(left, previous.top,
-          Math.max(previous.right, rect.right) - left, Math.max(previous.bottom, rect.bottom) - previous.top);
+        const width = Math.max(previous.right, rect.right) - left;
+        const height = Math.max(previous.bottom, rect.bottom) - previous.top;
+        lines[lines.length - 1] = {
+          left, top: previous.top, right: left + width, bottom: previous.top + height,
+          width, height,
+        };
       } else lines.push(rect);
     }
     return lines;
@@ -718,7 +727,7 @@ function* chunkMeasurements(
 /** Horizontal clipping is visual only: offscreen semantic headings remain
  * untouched in the DOM/accessibility tree. Do not exclude positioned elements:
  * visible absolute content and descendants still need to contribute bounds. */
-function paintsInViewport(rect: DOMRect, viewportWidth: number): boolean {
+function paintsInViewport(rect: LineRect, viewportWidth: number): boolean {
   return rect.height > 0 && (viewportWidth <= 0 || (rect.right > 0 && rect.left < viewportWidth));
 }
 

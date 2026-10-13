@@ -118,6 +118,10 @@ fragment-list measurement, collapsed-whitespace prefix fallback, abort/pause
 checkpoints and saved anchors remain unchanged; reflow starts a fresh cache.
 Native regressions compare every line boundary with independently measured glyphs
 and bound repeated endpoint measurements before and after typography changes.
+Cooperative line measurement also snapshots native fragment coordinates into
+scalar records before yielding, rather than retaining DOMRect wrappers through
+foreground pauses. Native fragment order, caption unions, overlapping-break
+handling, line/CFI boundaries and all cooperative checkpoints stay unchanged.
 Compact-library keyboard probes wait for the imported book's saved-reading
 resume card before navigating, so its asynchronous size change does not race
 native focus scrolling. Vertical-scroll restoration checks native glyph ink in
