@@ -1287,6 +1287,13 @@ preparation peak to three, with total peak intrinsic layer area changing from
 39.47M to 13.37M pixels. This eliminates the temporary wrappers, not a claim of
 lower steady-state area or successful Linux pacing; unprofiled CI remains required.
 
+Frozen declaration serialization uses `Map.forEach` rather than mapping its
+entry iterator. Declaration order, strings and joining are identical; paired
+four-turn local samples reduced this serializer subtree from 1.91MB to 1.32MB,
+with sampled iterator-result allocation changing from 0.33MB to zero.
+Total heap samples vary with background pagination and are not an isolated
+serializer effect.
+
 Fixed-pose backface comparisons keep reader chrome focused and await its tooltip
 so idle hiding or delayed hints cannot change pixels between captures. They
 compare the composed viewport and retain the one-channel-step maximum pixel

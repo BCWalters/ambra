@@ -72,6 +72,8 @@ copied document graph. Native coverage checks this ownership and idempotency.
 Owned ink clips are also bounded before preparation waits for fonts/images,
 avoiding temporary page-height ink surfaces in its first composited frame.
 Resource readiness, geometry, visuals and all timing limits remain required.
+Frozen CSS serialization also avoids temporary Map entry iterators while
+preserving every declaration and its order.
 
 ## Package-bound conformance and manual accessibility
 

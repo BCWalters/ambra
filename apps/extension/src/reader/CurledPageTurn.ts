@@ -28,8 +28,11 @@ const MUTABLE_FURNITURE_PAINT = new Set([
 ]);
 
 function serializePaint(declarations: ReadonlyMap<string, string>): string {
-  return Array.from(declarations, ([property, value]) =>
-    `${property}:${value} !important;`).join("");
+  const parts: string[] = [];
+  declarations.forEach((value, property) => {
+    parts.push(`${property}:${value} !important;`);
+  });
+  return parts.join("");
 }
 
 /** Display-only copies stay inside a script-disabled publication sandbox. */
