@@ -118,6 +118,12 @@ fragment-list measurement, collapsed-whitespace prefix fallback, abort/pause
 checkpoints and saved anchors remain unchanged; reflow starts a fresh cache.
 Native regressions compare every line boundary with independently measured glyphs
 and bound repeated endpoint measurements before and after typography changes.
+Compact-library keyboard probes wait for the imported book's saved-reading
+resume card before navigating, so its asynchronous size change does not race
+native focus scrolling. Vertical-scroll restoration checks native glyph ink in
+both halves of the visible interior, alongside document hit tests and geometry;
+the transparent toolbar hover strip does not count as a paint obstruction.
+The vertical image check still requires every interior pixel to match the fixture.
 Curled running-header and folio ink uses strip-width, band-height clips rather
 than transparent page-height wrappers. Frozen bands retain their original
 typography and full-width alignment above the shade; publication frames stay

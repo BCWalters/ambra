@@ -14,6 +14,7 @@ test("short compact Library keeps books and fixed navigation reachable with coll
   const { context, libraryPage: page } = await launchReader(FIRST, { viewport: { width: 320, height: 256 } });
   try {
     await page.bringToFront();
+    await expect(page.locator("[data-library-continue]")).toBeVisible();
     const open = page.getByRole("main").getByRole("button", { name: /^Open / }).first();
     await open.focus();
     await open.press("Shift+Tab");
@@ -113,6 +114,9 @@ for (const width of [360, 1200]) {
       }
       await expect(search).toHaveValue("  LoVELace   long  ");
       await expect(covers).toHaveCount(1);
+      await page.bringToFront();
+      await search.click();
+      await expect(search).toBeFocused();
       await search.dispatchEvent("keydown", { key: "Escape", isComposing: true });
       await expect(search).toHaveValue("  LoVELace   long  ");
       await search.press("Escape");

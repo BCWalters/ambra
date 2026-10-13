@@ -4,6 +4,71 @@ import fs from "node:fs";
 import { launchReader } from "../harness.js";
 import { exposeReaderController, isReaderElementPainted } from "../reader-controller.js";
 
+async function readVerticalPaint(page: Page, id: string) {
+  return page.evaluate(targetId => {
+    const controller = Reflect.get(window, "__readerController");
+    const doc = controller.contentDocumentViews()[0].document as Document;
+    const frame = doc.defaultView!.frameElement;
+    if (!(frame instanceof HTMLIFrameElement)) throw new Error("Missing vertical reading iframe.");
+    const element = doc.getElementById(targetId);
+    if (!element) throw new Error(`Missing vertical paint target: ${targetId}.`);
+    const range = doc.createRange();
+    range.selectNodeContents(element);
+    const rect = element.localName === "img" ? element.getBoundingClientRect() : range.getBoundingClientRect();
+    const box = frame.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    return {
+      contained: rect.left + 1 >= 0 && rect.right - 1 <= frame.clientWidth &&
+        rect.top + 1 >= 0 && rect.bottom - 1 <= frame.clientHeight,
+      clip: {
+        x: box.left + (rect.left + 1) * box.width / frame.clientWidth,
+        y: box.top + (rect.top + 1) * box.height / frame.clientHeight,
+        width: (rect.width - 2) * box.width / frame.clientWidth,
+        height: (rect.height - 2) * box.height / frame.clientHeight,
+      },
+      hitTests: [rect.top + 1, rect.bottom - 1].map(y => ({
+        innerImage: element.contains(doc.elementFromPoint(x, y)),
+        inner: doc.elementFromPoint(x, y)?.outerHTML.slice(0, 300),
+        outer: document.elementFromPoint(
+          box.left + x * box.width / frame.clientWidth,
+          box.top + y * box.height / frame.clientHeight,
+        )?.outerHTML.slice(0, 300),
+        visible: frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
+        frame: box.toJSON(),
+      })),
+    };
+  }, id);
+}
+
+async function readNativePaint(page: Page, clip: { x: number; y: number; width: number; height: number }) {
+  const screenshot = await page.screenshot({ clip });
+  return page.evaluate(async encoded => {
+    const image = new Image();
+    image.src = `data:image/png;base64,${encoded}`;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Native paint canvas is unavailable.");
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let red = 0;
+    let topInk = 0;
+    let bottomInk = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] === 255 && pixels[index + 1] === 0 &&
+        pixels[index + 2] === 0 && pixels[index + 3] === 255) red++;
+      if (pixels[index]! < 128 && pixels[index + 1]! < 128 &&
+        pixels[index + 2]! < 128 && pixels[index + 3] === 255) {
+        if (Math.floor(index / 4 / canvas.width) < canvas.height / 2) topInk++;
+        else bottomInk++;
+      }
+    }
+    return { redRatio: red / (canvas.width * canvas.height), topInk, bottomInk };
+  }, screenshot.toString("base64"));
+}
+
 async function dismissChrome(page: Page): Promise<void> {
   const point = await page.evaluate(() => {
     for (const frame of document.querySelectorAll("iframe")) {
@@ -80,7 +145,21 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
       expect(result.after).not.toBe(result.before);
       expect(result.progress).toBe(result.after);
       await dismissChrome(page);
-      await expect.poll(() => isReaderElementPainted(page, "text30"), { message: JSON.stringify(result) }).toBe(true);
+      const glyphPaint = await readVerticalPaint(page, "text30");
+      await info.attach("vertical-glyph-hit-tests", {
+        body: JSON.stringify(glyphPaint), contentType: "application/json",
+      });
+      expect(glyphPaint.contained).toBe(true);
+      expect(glyphPaint.hitTests.every(hit => hit.visible && hit.innerImage)).toBe(true);
+      // The transparent top-edge hover strip can own hits without covering glyph ink.
+      await expect.poll(async () => {
+        const paint = await readNativePaint(page, (await readVerticalPaint(page, "text30")).clip);
+        return paint.topInk > 0 && paint.bottomInk > 0;
+      }, { message: JSON.stringify(result) }).toBe(true);
+      await info.attach("vertical-glyph-native-paint", {
+        body: await page.screenshot({ clip: (await readVerticalPaint(page, "text30")).clip }),
+        contentType: "image/png",
+      });
       const beforeMovement = await page.evaluate(() => {
         const controller = Reflect.get(window, "__readerController");
         const doc = controller.contentDocumentViews()[0].document as Document;
@@ -129,35 +208,7 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
           scrollLeft: doc.scrollingElement!.scrollLeft, width: doc.documentElement.clientWidth };
       });
       await dismissChrome(page);
-      const readImagePaint = () => page.evaluate(() => {
-          const controller = Reflect.get(window, "__readerController");
-          const doc = controller.contentDocumentViews()[0].document as Document;
-          const frame = doc.defaultView!.frameElement;
-          if (!(frame instanceof HTMLIFrameElement)) throw new Error("Missing vertical reading iframe.");
-          const image = doc.getElementById("vertical-image");
-          if (!image) throw new Error("Missing vertical image.");
-          const rect = image.getBoundingClientRect();
-          const box = frame.getBoundingClientRect();
-          const x = rect.left + rect.width / 2;
-          return {
-            clip: {
-              x: box.left + (rect.left + 1) * box.width / frame.clientWidth,
-              y: box.top + (rect.top + 1) * box.height / frame.clientHeight,
-              width: (rect.width - 2) * box.width / frame.clientWidth,
-              height: (rect.height - 2) * box.height / frame.clientHeight,
-            },
-            hitTests: [rect.top + 1, rect.bottom - 1].map(y => ({
-            innerImage: image.contains(doc.elementFromPoint(x, y)),
-            inner: doc.elementFromPoint(x, y)?.outerHTML.slice(0, 300),
-            outer: document.elementFromPoint(
-              box.left + x * box.width / frame.clientWidth,
-              box.top + y * box.height / frame.clientHeight,
-            )?.outerHTML.slice(0, 300),
-            visible: frame.checkVisibility({ opacityProperty: true, visibilityProperty: true }),
-            frame: box.toJSON(),
-          })),
-          };
-      });
+      const readImagePaint = () => readVerticalPaint(page, "vertical-image");
       const imagePaint = await readImagePaint();
       await info.attach("vertical-image-hit-tests", {
         body: JSON.stringify(imagePaint), contentType: "application/json",
@@ -165,25 +216,7 @@ for (const mode of ["vertical-rl", "vertical-lr"]) {
       expect(imagePaint.hitTests.every(hit => hit.visible && hit.innerImage)).toBe(true);
       // The transparent top-edge toolbar hover strip owns hits, not image paint.
       await expect.poll(async () => {
-        const screenshot = await page.screenshot({ clip: (await readImagePaint()).clip });
-        return page.evaluate(async encoded => {
-          const image = new Image();
-          image.src = `data:image/png;base64,${encoded}`;
-          await image.decode();
-          const canvas = document.createElement("canvas");
-          canvas.width = image.width;
-          canvas.height = image.height;
-          const context = canvas.getContext("2d");
-          if (!context) throw new Error("Native image paint canvas is unavailable.");
-          context.drawImage(image, 0, 0);
-          const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-          let red = 0;
-          for (let index = 0; index < pixels.length; index += 4) {
-            if (pixels[index] === 255 && pixels[index + 1] === 0 &&
-              pixels[index + 2] === 0 && pixels[index + 3] === 255) red++;
-          }
-          return red / (canvas.width * canvas.height);
-        }, screenshot.toString("base64"));
+        return (await readNativePaint(page, (await readImagePaint()).clip)).redRatio;
       }, { message: JSON.stringify(imageState) }).toBe(1);
       await info.attach("vertical-image-native-paint", {
         body: await page.screenshot({ clip: (await readImagePaint()).clip }), contentType: "image/png",
