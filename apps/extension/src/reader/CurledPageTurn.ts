@@ -49,6 +49,7 @@ export class CurledPageTurn {
   >();
   private width = 0;
   private side: 1 | -1 = 1;
+  private entering = false;
   private disposed = false;
   private flatFaces: [HTMLElement, HTMLElement] | undefined;
   private paintedEndpoint: -1 | 0 | 1 | undefined;
@@ -67,8 +68,11 @@ export class CurledPageTurn {
     signal?: AbortSignal,
     destination?: LeafPage,
     layout: "spread" | "single" = "spread",
+    entering = false,
   ): Promise<void> {
     const started = performance.now();
+    this.entering = layout === "single" && entering;
+    if (this.entering) side = side === 1 ? -1 : 1;
     this.side = side;
     const bounds = front.element.getBoundingClientRect();
     const containerBounds = this.container.getBoundingClientRect();
@@ -115,15 +119,19 @@ export class CurledPageTurn {
         transformStyle: "preserve-3d",
       });
       doc.body.append(scene);
-      const frontCopy = this.copyPage(front, doc, bounds.width, bounds.height);
+      let frontCopy = this.copyPage(front, doc, bounds.width, bounds.height);
       let backCopy: HTMLElement;
       let underlay: HTMLElement | undefined;
       const restore = back.capture?.();
       try {
+        if (this.entering) {
+          underlay = frontCopy;
+          frontCopy = this.copyCapturedPage(back, doc, bounds.width, bounds.height);
+        }
         backCopy = layout === "single"
           ? frontCopy.cloneNode(true) as HTMLElement
           : this.copyCapturedPage(back, doc, bounds.width, bounds.height);
-        if (destination) {
+        if (destination && !this.entering) {
           underlay =
             destination.capture === back.capture
               ? this.copyCapturedPage(destination, doc, bounds.width, bounds.height)
@@ -617,7 +625,8 @@ export class CurledPageTurn {
 
   public paint(progress: number): void {
     if (this.disposed) return;
-    const p = Math.max(0, Math.min(1, progress));
+    const fraction = Math.max(0, Math.min(1, progress));
+    const p = this.entering ? 1 - fraction : fraction;
     const endpoint = p === 0 ? 0 : p === 1 ? 1 : -1;
     const endpointChanged = endpoint !== this.paintedEndpoint;
     if (endpointChanged) {
@@ -647,7 +656,7 @@ export class CurledPageTurn {
       z -= length * Math.sin(angle);
     }
     this.paintedEndpoint = endpoint;
-    this.surface.element.dataset.progress = String(p);
+    this.surface.element.dataset.progress = String(fraction);
   }
 
   public async settle(from: number, to: number, signal?: AbortSignal): Promise<void> {
