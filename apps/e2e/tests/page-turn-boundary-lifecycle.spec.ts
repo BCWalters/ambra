@@ -95,6 +95,19 @@ for (const single of [false, true]) {
           const headers = await page.locator("[data-ambra-turn-furniture]").allTextContents();
           expect(headers.join(" ")).toContain("Chapter 1");
           expect(headers.join(" ")).toContain("Chapter 2");
+          if (single) {
+            const ink = await page.locator("[data-ambra-curled-leaf]").evaluate(
+              (frame: HTMLIFrameElement) => {
+                const doc = frame.contentDocument!;
+                return {
+                  leaf: doc.querySelector("[data-flat-leaf-face='front'] [data-page-copy]")!.textContent,
+                  underlay: doc.querySelector("[data-leaf-underlay] [data-page-copy]")!.textContent,
+                };
+              },
+            );
+            expect(ink.leaf).toContain("Chapter 1");
+            expect(ink.underlay).toContain("Chapter 2");
+          }
           await page.screenshot({
             path: test.info().outputPath(`chapter-curled-${direction}.png`),
           });

@@ -117,7 +117,7 @@ export class PageTurnOrchestrator {
     }
   }
 
-  /** The single leaf leaves the viewport, revealing the next page underneath. */
+  /** Forward turns peel the current page away; backward turns restore the previous leaf. */
   private async rotatePageTurn(
     oldHost: PaginatedContentHost,
     newHost: PaginatedContentHost,
@@ -146,6 +146,7 @@ export class PageTurnOrchestrator {
         { element: newHost.element, furniture: incoming, capture: captureDestination },
         physical === 1 ? 1 : -1, this.ctx.operationSignal?.(),
         { element: newHost.element, furniture: incoming, capture: captureDestination }, "single",
+        direction === -1,
       );
       leaf.hide(oldHost.element);
       this.ctx.setAnimatingPageTurn(true);
@@ -763,7 +764,7 @@ export class PageTurnOrchestrator {
       const single = oldFrames.length === 1 && newFrames.length === 1;
       await leaf.prepare({ element: front }, { element: back }, physical === 1 ? 1 : -1,
         this.ctx.operationSignal?.(), single ? { element: back } : undefined,
-        single ? "single" : "spread");
+        single ? "single" : "spread", single && direction === -1);
       newEl.style.opacity = "";
       newEl.style.pointerEvents = "";
       oldEl.style.zIndex = "2";

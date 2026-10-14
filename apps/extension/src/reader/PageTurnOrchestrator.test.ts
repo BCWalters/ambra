@@ -106,13 +106,17 @@ it("leaves both hosts owned by the caller until it commits the replacement", asy
   newHost.dispose();
 });
 
-it("reuses the single-page host with a separate destination capture and restores its styles", async () => {
+it.each([
+  { direction: 1 as const, rtl: false }, { direction: -1 as const, rtl: false },
+  { direction: 1 as const, rtl: true }, { direction: -1 as const, rtl: true },
+])("reuses the single-page host and selects incoming ink only backwards (direction=$direction, rtl=$rtl)", async ({ direction, rtl }) => {
   const context = {
     containerEl: () => document.body,
     width: () => 800,
     height: () => 800,
     pageTheme: () => "white" as const,
     pageTurnAnimationStyle: () => "rotate" as const,
+    rtl: () => rtl,
     setAnimatingPageTurn: vi.fn(),
     notify: vi.fn(),
   };
@@ -121,18 +125,19 @@ it("reuses the single-page host with a separate destination capture and restores
   const host = new PaginatedContentHost(800, 800);
   document.body.append(host.element);
   const capture = vi.fn(() => vi.fn());
-  vi.spyOn(CurledPageTurn.prototype, "prepare").mockImplementation(async (front, back, side, _signal, destination, layout) => {
+  vi.spyOn(CurledPageTurn.prototype, "prepare").mockImplementation(async (front, back, side, _signal, destination, layout, entering) => {
     expect(front.element).toBe(host.element);
     expect(front.capture).toBeUndefined();
     expect(back.capture).toBe(capture);
     expect(destination?.capture).toBe(capture);
     expect(layout).toBe("single");
-    expect(side).toBe(1);
+    expect(side).toBe(rtl ? -direction : direction);
+    expect(entering).toBe(direction === -1);
   });
   vi.spyOn(CurledPageTurn.prototype, "hide").mockImplementation(() => {});
   vi.spyOn(CurledPageTurn.prototype, "settle").mockResolvedValue();
   const dispose = vi.spyOn(host, "dispose");
-  await new PageTurnOrchestrator(context, animator).animateReusablePageTurn(host, 1, {
+  await new PageTurnOrchestrator(context, animator).animateReusablePageTurn(host, direction, {
     title: "Book", chapterLabel: "Chapter", outgoingPage: 4, incomingPage: 5,
   }, capture);
   expect(dispose).not.toHaveBeenCalled();

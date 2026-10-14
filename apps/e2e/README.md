@@ -1249,6 +1249,15 @@ AMBRA_E2E_HEADLESS=1 pnpm --filter @ambra/e2e exec playwright test \
 
 ## Pagination measurement regressions (#197 / #198)
 
+Single-page backward Page flip (#433) restores the previous page over the
+current-page underlay, along the inverse forward curl path. Native
+`single-page-leaf-content.spec.ts` checks reflowable and authored fixed-layout
+single pages in LTR/RTL: matching forward/backward poses retain identical
+previous-page ink on both faces and all 20 strip transforms. Reflowable hosts
+are still reused. `page-turn-boundary-lifecycle.spec.ts` also checks ownership
+across chapters; existing gesture return/commit/interruption tests retain their
+logical progress and thresholds. Forward turns and spreads are unchanged.
+
 The four-turn long-chapter curl gate retains every actual paint-entry interval,
 with more than five samples per turn. Each turn's mean gaps must stay below
 65 ms, nearest-rank p90 below 160 ms and worst gap below 350 ms.
