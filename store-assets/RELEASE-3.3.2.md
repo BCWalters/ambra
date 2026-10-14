@@ -13,6 +13,9 @@ The previous page supplies both curled faces on a backward single-page turn;
 the current page stays underneath. Logical gesture progress stays unchanged,
 while the physical curl follows the inverse path, including return/cancellation.
 Snapshots stay script-disabled and restore capture state before painting.
+Fixed-layout returning leaves retain the previous page's dimensions when
+adjacent pages have different aspect ratios. The current-page underlay keeps
+its own bounds and is hidden when the backward turn completes.
 
 ## Validation and acceptance
 
@@ -20,6 +23,8 @@ Require root package, extension package and manifest version **3.3.2**.
 Run orchestration units and native regressions for reflowable/fixed-layout
 single-page LTR/RTL. Matching forward/backward poses must have identical
 previous-page ink and all 20 strip transforms, with correct underlay ownership.
+Include mixed portrait/landscape fixed pages, current-page underlay bounds,
+and completed/returned underlay visibility.
 Verify chapter boundaries, gesture return/commit/interruption, reduced motion,
 spread geometry/ink/seams, prefetch ownership and the existing eight-cohort
 curl reliability group. Do not change 3.3.1's calibrated timing policy.

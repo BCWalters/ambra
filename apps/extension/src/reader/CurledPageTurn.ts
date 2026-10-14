@@ -52,6 +52,7 @@ export class CurledPageTurn {
   private entering = false;
   private disposed = false;
   private flatFaces: [HTMLElement, HTMLElement] | undefined;
+  private underlay: HTMLElement | undefined;
   private paintedEndpoint: -1 | 0 | 1 | undefined;
 
   public constructor(
@@ -74,7 +75,8 @@ export class CurledPageTurn {
     this.entering = layout === "single" && entering;
     if (this.entering) side = side === 1 ? -1 : 1;
     this.side = side;
-    const bounds = front.element.getBoundingClientRect();
+    const currentBounds = front.element.getBoundingClientRect();
+    const bounds = this.entering ? back.element.getBoundingClientRect() : currentBounds;
     const containerBounds = this.container.getBoundingClientRect();
     this.width = bounds.width;
     const frame = this.surface.element;
@@ -119,7 +121,7 @@ export class CurledPageTurn {
         transformStyle: "preserve-3d",
       });
       doc.body.append(scene);
-      let frontCopy = this.copyPage(front, doc, bounds.width, bounds.height);
+      let frontCopy = this.copyPage(front, doc, currentBounds.width, currentBounds.height);
       let backCopy: HTMLElement;
       let underlay: HTMLElement | undefined;
       const restore = back.capture?.();
@@ -141,10 +143,12 @@ export class CurledPageTurn {
         restore?.();
       }
       if (underlay) {
+        this.underlay = underlay;
+        const underlayBounds = this.entering ? currentBounds : bounds;
         underlay.dataset.leafUnderlay = "";
         underlay.style.zIndex = "0";
-        underlay.style.left = `${bounds.left - containerBounds.left}px`;
-        underlay.style.top = `${bounds.top - containerBounds.top}px`;
+        underlay.style.left = `${underlayBounds.left - containerBounds.left}px`;
+        underlay.style.top = `${underlayBounds.top - containerBounds.top}px`;
         scene.append(underlay);
       }
       const length = bounds.width / SEGMENTS;
@@ -630,6 +634,8 @@ export class CurledPageTurn {
     const endpoint = p === 0 ? 0 : p === 1 ? 1 : -1;
     const endpointChanged = endpoint !== this.paintedEndpoint;
     if (endpointChanged) {
+      if (this.entering && this.underlay)
+        this.underlay.style.opacity = fraction === 1 ? "0" : "1";
       this.flatFaces?.forEach((face, index) => {
         face.style.opacity = endpoint === index ? "1" : "0";
       });
@@ -699,6 +705,7 @@ export class CurledPageTurn {
     document?.documentElement?.replaceChildren();
     if (document) this.initialPaintStyles.delete(document);
     this.flatFaces = undefined;
+    this.underlay = undefined;
     this.segments.length = 0;
     this.paintClasses.clear();
     this.paintRules.length = 0;
