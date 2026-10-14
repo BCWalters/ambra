@@ -36,7 +36,10 @@ for (const fixed of [false, true]) {
             document,
             fs
               .readFileSync(document, "utf8")
-              .replace("<head>", '<head><meta name="viewport" content="width=600,height=900"/>'),
+              .replace(
+                "<head>",
+                `<head><meta name="viewport" content="${index === 1 ? "width=900,height=600" : "width=600,height=900"}"/>`,
+              ),
           );
         }
         execFileSync("zip", ["-q", "-X", "-r", epub, "EPUB"], { cwd: source });
@@ -60,6 +63,16 @@ for (const fixed of [false, true]) {
             const leaf = create(...args);
             const settle = leaf.settle.bind(leaf);
             leaf.settle = async (...args: unknown[]) => {
+              const surface = document.querySelector<HTMLIFrameElement>(
+                "[data-ambra-curled-leaf]",
+              )!;
+              const doc = surface.contentDocument!;
+              const underlay = doc.querySelector<HTMLElement>("[data-leaf-underlay]")!;
+              leaf.paint(1);
+              const complete = doc.defaultView!.getComputedStyle(underlay).opacity;
+              leaf.paint(0);
+              const returned = doc.defaultView!.getComputedStyle(underlay).opacity;
+              Reflect.set(window, "__singleEndpoints", { complete, returned });
               leaf.paint(Reflect.get(window, "__holdSingleProgress"));
               await new Promise<void>((resolve) =>
                 Reflect.set(window, "__releaseSingleLeaf", resolve),
@@ -87,6 +100,7 @@ for (const fixed of [false, true]) {
             Reflect.get(window, "__readerController").currentReadingCfi(),
           );
           const physical = rtl ? -direction : direction;
+          const currentBounds = (await page.locator(READER_FRAME_SELECTOR).boundingBox())!;
           await clickReadingPage(page, physical === 1 ? "right" : "left");
           await page.waitForFunction(() => !!Reflect.get(window, "__releaseSingleLeaf"));
           const ink = await page
@@ -103,12 +117,31 @@ for (const fixed of [false, true]) {
                 transforms: Array.from(doc.querySelectorAll<HTMLElement>("[data-segment]")).map(
                   (segment) => segment.style.transform,
                 ),
+                underlayBounds: (() => {
+                  const bounds = doc
+                    .querySelector<HTMLElement>("[data-leaf-underlay]")!
+                    .getBoundingClientRect();
+                  const surface = frame.getBoundingClientRect();
+                  return {
+                    x: bounds.left + surface.left,
+                    y: bounds.top + surface.top,
+                    width: bounds.width,
+                    height: bounds.height,
+                  };
+                })(),
               };
             });
           expect(ink.front).not.toBe(ink.underlay);
           expect(ink.faces).toHaveLength(40);
           for (const face of ink.faces) expect(face).toBe(ink.front);
           captures.push(ink);
+          const endpoints = await page.evaluate(() => Reflect.get(window, "__singleEndpoints"));
+          expect(endpoints.complete).toBe(direction === -1 ? "0" : "1");
+          expect(endpoints.returned).toBe("1");
+          if (direction === -1) {
+            for (const key of ["x", "y", "width", "height"] as const)
+              expect(ink.underlayBounds[key]).toBeCloseTo(currentBounds[key], 1);
+          }
           if (!fixed)
             expect(
               await page.evaluate(() =>

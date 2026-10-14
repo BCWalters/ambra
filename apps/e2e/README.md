@@ -1253,8 +1253,11 @@ Single-page backward Page flip (#433) restores the previous page over the
 current-page underlay, along the inverse forward curl path. Native
 `single-page-leaf-content.spec.ts` checks reflowable and authored fixed-layout
 single pages in LTR/RTL: matching forward/backward poses retain identical
-previous-page ink on both faces and all 20 strip transforms. Reflowable hosts
-are still reused. `page-turn-boundary-lifecycle.spec.ts` also checks ownership
+previous-page ink on both faces and all 20 strip transforms. Fixed pages alternate
+portrait and landscape dimensions; the returning leaf retains the previous
+page's geometry, while its current-page underlay retains its own bounds and
+is hidden only at completion, not on return. Reflowable hosts are still reused.
+`page-turn-boundary-lifecycle.spec.ts` also checks ownership
 across chapters; existing gesture return/commit/interruption tests retain their
 logical progress and thresholds. Forward turns and spreads are unchanged.
 
