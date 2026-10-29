@@ -26,6 +26,11 @@ interface theme, page color, brightness, and page-turn effect. Page color
 is under **Reading preferences → Page theme**; it is separate from the
 interface theme. Light or dark interface appearance follows your browser.
 
+**Page flip** is the default page-turn effect. Choose **Slide**, **Film strip**,
+or **Off** under **Reading preferences → Page turn** if you prefer.
+Updating Ambra keeps your previously saved choice. Reduced-motion preferences
+are still respected.
+
 ## Look closer at images and tables
 
 Click an image that offers zoom for a closer look. Scroll to zoom and drag

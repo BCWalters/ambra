@@ -42,7 +42,7 @@ for (const surface of ["reader", "library"] as const) {
       }
       for (const [label, value] of [
         ["Page theme", "white"], ["Reading mode", "paginated"],
-        ["Page turn", "slide"], ["Interface theme", "ambra"], ["Language", "system"],
+        ["Page turn", "rotate"], ["Interface theme", "ambra"], ["Language", "system"],
       ]) {
         await expect(settings.getByRole("combobox", { name: label, exact: true })).toHaveValue(value!);
       }

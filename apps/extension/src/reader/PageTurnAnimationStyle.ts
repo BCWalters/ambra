@@ -23,4 +23,4 @@
  * reading behavior — same reasoning as `ViewMode`. */
 export type PageTurnAnimationStyle = "rotate" | "slide" | "scroll" | "none";
 
-export const DEFAULT_PAGE_TURN_ANIMATION_STYLE: PageTurnAnimationStyle = "slide";
+export const DEFAULT_PAGE_TURN_ANIMATION_STYLE: PageTurnAnimationStyle = "rotate";
