@@ -11,7 +11,14 @@ it("defaults to automatic spreads and an app-wide white page theme", async () =>
   expect(DEFAULT_BOOK_READING_SETTINGS.alwaysShowOnePage).toBe(false);
   expect(await database.getGlobalReadingSettings()).toEqual(DEFAULT_GLOBAL_READING_SETTINGS);
   expect(DEFAULT_GLOBAL_READING_SETTINGS.pageTheme).toBe("white");
+  expect(DEFAULT_GLOBAL_READING_SETTINGS.pageTurnAnimationStyle).toBe("rotate");
   expect(DEFAULT_GLOBAL_READING_SETTINGS.progressMarkerStyle).toBe("upcoming");
+});
+
+it.each(["rotate", "slide", "scroll", "none"] as const)("preserves the saved page-turn style %s", async style => {
+  const database = Object.create(LibraryDatabase.prototype);
+  database.getAll = vi.fn(async () => [{ key: "defaultPageTurnAnimationStyle", value: style }]);
+  expect((await database.getGlobalReadingSettings()).pageTurnAnimationStyle).toBe(style);
 });
 
 it.each(["off", "ticks", "sections", "minimal", "upcoming"] as const)("loads or migrates global progress marker style %s", async style => {

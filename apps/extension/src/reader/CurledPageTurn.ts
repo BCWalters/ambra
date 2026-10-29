@@ -350,7 +350,7 @@ export class CurledPageTurn {
         left: 0,
         right: viewportWidth,
       });
-      if (!(copy instanceof doc.defaultView!.HTMLElement))
+      if (!(copy instanceof doc.defaultView!.Element))
         throw new Error("Cannot copy page root.");
       const viewport = doc.createElement("div");
       viewport.dataset.pageCopy = "";

@@ -346,6 +346,7 @@ test("standalone SVG spine opens, retains native focus and resumes without error
       const point = controller.host.currentPosition();
       return {
         spine: controller.snapshot().spineIndex,
+        animation: controller.snapshot().pageTurnAnimationStyle,
         diagnostics: controller.getDiagnosticsText(),
         body: doc.body,
         size: [frame.style.width, frame.style.height],
@@ -360,7 +361,7 @@ test("standalone SVG spine opens, retains native focus and resumes without error
     const initial = await inspect();
     expect(initial.diagnostics).not.toContain("ERROR");
     expect(initial).toMatchObject({
-      spine: 0, body: null, size: ["600px", "800px"], positionRoot: true,
+      spine: 0, animation: "rotate", body: null, size: ["600px", "800px"], positionRoot: true,
       focused: true, activeRoot: true, sandbox: "allow-same-origin", scriptRan: false,
       title: "SVG page 1",
     });
@@ -419,6 +420,7 @@ test("reflowable SVG stays native through paging, scrolling, resize and resume",
       return {
         spine: controller.snapshot().spineIndex,
         mode: controller.snapshot().viewMode,
+        animation: controller.snapshot().pageTurnAnimationStyle,
         root: root.localName,
         body: doc.body,
         title: doc.querySelector("title")?.textContent,
@@ -444,7 +446,7 @@ test("reflowable SVG stays native through paging, scrolling, resize and resume",
       }).toEqual({ spine, mode, painted: true, positionDocument: true });
       const state = await inspect();
       if (mode === "paginated") expect(state.positionRoot).toBe(true);
-      expect(state).toMatchObject({ root: "svg", body: null, title: `SVG page ${spine + 1}`,
+      expect(state).toMatchObject({ root: "svg", animation: "rotate", body: null, title: `SVG page ${spine + 1}`,
         sandbox: "allow-same-origin", scriptRan: false });
       expect(state.diagnostics).not.toContain("ERROR");
       await expect(page.getByRole("alert")).toHaveCount(0);
