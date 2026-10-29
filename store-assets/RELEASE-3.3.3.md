@@ -5,12 +5,14 @@
 ```text
 - Page flip is now the default page-turn effect.
 - Previously saved page-turn choices are preserved, and reduced-motion preferences are still respected.
+- Page flip supports standalone SVG pages without interrupting navigation.
 ```
 
-This patch changes only the built-in page-turn default from Slide to Page flip
+This patch changes the built-in page-turn default from Slide to Page flip
 (stored as `rotate`). It does not migrate or overwrite existing preferences.
 The reader and Library share the same default. Scrolling mode and the available
-page-turn effects remain unchanged.
+page-turn effects remain unchanged. Page-flip snapshots accept native SVG roots
+as well as HTML roots, preserving standalone SVG navigation with the new default.
 
 ## Validation and packaging
 
@@ -18,6 +20,7 @@ Require root package, extension package and manifest version **3.3.3**.
 Verify fresh reader and Library settings select Page flip, saved choices survive
 reload, and all four persisted effects remain unchanged. Retain the existing
 animation and reduced-motion regressions.
+Cover fixed-layout and reflowable SVG paging, native focus, resize and resume.
 
 Merge through normal exact-head protected checks, then require successful
 actual-main CI. Use only its exact `beta-release-<merged SHA>` Public archive,
