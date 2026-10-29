@@ -95,8 +95,9 @@ test("native margin clicks during preparation retain only one extra turn", async
     await exposeReaderController(page);
     await page.waitForFunction(() => Reflect.get(window, "__readerController").snapshot().bookPageCount !== undefined);
     const point = await outerMarginPoint(page, "right");
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const controller = Reflect.get(window, "__readerController");
+      await controller.setPageTurnAnimationStyle("slide");
       const prepare = controller.prepareIncomingSpread;
       const gate = { held: false, release: () => {} };
       Reflect.set(window, "__scaleTurnGate", gate);

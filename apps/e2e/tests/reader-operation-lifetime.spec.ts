@@ -6,9 +6,11 @@ import { exposeReaderController } from "../reader-controller.js";
 
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../fixtures");
 
-async function holdIncomingFrame(page: Page): Promise<void> {
-  await page.evaluate(() => {
+async function holdIncomingFrame(page: Page, style: "slide" | "scroll" = "slide"): Promise<void> {
+  await page.evaluate(async style => {
     const ctl = Reflect.get(window, "__readerController");
+    // Page flip reuses documents; flat effects exercise incoming-frame ownership.
+    await ctl.setPageTurnAnimationStyle(style);
     ctl.pageTurnPrefetch.clear();
     ctl.schedulePageTurnPrefetch = () => {};
     const container = ctl.containerEl;
@@ -34,7 +36,7 @@ async function holdIncomingFrame(page: Page): Promise<void> {
         descriptor.set!.call(this, value);
       },
     });
-  });
+  }, style);
 }
 
 async function dragForwardEdge(page: Page): Promise<void> {
@@ -62,7 +64,7 @@ for (const style of ["slide", "scroll"] as const) {
           await c.turnPage(1);
           await c.setPageTurnAnimationStyle(style);
         }, style);
-        await holdIncomingFrame(page);
+        await holdIncomingFrame(page, style);
         const before = await page.evaluate(() =>
           Reflect.get(window, "__readerController").currentReadingCfi(),
         );
